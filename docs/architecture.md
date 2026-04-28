@@ -59,6 +59,12 @@ minimal path pattern into arena-owned segments, matches one path against that pa
 captures route parameters. It is not an HTTP server, request parser, route table/trie,
 method dispatcher, public TypeScript API, `app.mapGet`, llhttp/libuv integration, V8
 integration, middleware, or compiler work.
+TASK 10.B adds the first llhttp/libuv integration skeleton. The normal vcpkg-backed build
+now includes llhttp and libuv. The HTTP module can parse one complete in-memory HTTP/1
+request head into arena-owned method, raw target, path, and headers, and it has a libuv
+loop init/close smoke. It still does not implement socket accept/read/write, streaming
+parser state, request bodies, response writing, route dispatch, request lifecycle,
+middleware, public TypeScript API, app host behavior, V8 integration, or compiler work.
 
 ## Future Phase
 

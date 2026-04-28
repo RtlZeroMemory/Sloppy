@@ -4,6 +4,10 @@
 
 Partially implemented for TASK 09.A, TASK 09.B, and TASK 09.C.
 
+TASK 10.B adds libuv as a vcpkg/CMake dependency and a minimal init/close smoke under the
+HTTP parser tests. It does not change the implemented `SlLoop`, `SlAsync`, or
+`SlWorkerPool` semantics.
+
 ## Purpose
 
 Define Sloppy's event loop, completion queue, owner-thread, promise settlement, and worker
@@ -28,10 +32,10 @@ backpressure, and thread-safe posting.
 
 ## Non-goals
 
-No libuv backend, OS event loop, timers, sockets, HTTP, real worker threads, atomics, locks,
-V8 Promise integration, V8 microtask draining, JS async handler execution, request
-lifecycle, cancellation token, deadline, backpressure, blocking DB/filesystem work, or
-cross-thread posting behavior in TASK 09.C.
+No libuv backend, OS event loop, timers, sockets, HTTP server behavior, real worker threads,
+atomics, locks, V8 Promise integration, V8 microtask draining, JS async handler execution,
+request lifecycle, cancellation token, deadline, backpressure, blocking DB/filesystem work,
+or cross-thread posting behavior in TASK 09.C or TASK 10.B.
 
 ## Public/Internal API
 
@@ -202,9 +206,12 @@ CTest registers `tests/unit/core/test_worker_pool.c`, covering:
 - completion callback failure propagation through loop drain without result double destroy;
 - NULL payload and completion user behavior.
 
+TASK 10.B also registers `core.http.parser`, which includes a libuv loop init/close smoke
+only to verify the dependency links.
+
 V8 Promise integration, V8 microtasks, request-scope retention, cancellation cleanup,
-thread-safe posting, libuv/backend behavior, and no-V8-entry worker tests remain future
-work.
+thread-safe posting, real libuv/backend behavior, and no-V8-entry worker tests remain
+future work.
 
 ## Source Docs
 

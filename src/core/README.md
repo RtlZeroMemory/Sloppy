@@ -13,6 +13,7 @@ Implemented TASK 02.A primitives:
 - caller-backed `SlLoop` native completion queue skeleton.
 - caller-owned `SlAsync` native promise settlement skeleton over `SlLoop`.
 - inline/fake `SlWorkerPool` native worker completion skeleton over `SlLoop`.
+- complete-buffer HTTP/1 request-head parser over llhttp plus a libuv dependency smoke.
 - native route pattern parser and one-pattern matcher for static segments, string params,
   int params, and parameter captures.
 - TASK 06.A minimal Plan v1 structs/helpers for version support, handler ID rules, handler

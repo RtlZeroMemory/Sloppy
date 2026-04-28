@@ -44,6 +44,11 @@ Completion callbacks are never invoked directly by submit; they run when
 real worker threads, OS APIs, libuv, cross-thread posting, blocking DB/filesystem workers,
 HTTP integration, cancellation tokens, deadlines, or backpressure behavior.
 
+TASK 10.B adds libuv as a vcpkg/CMake dependency for the HTTP foundation and proves linkage
+with a stack-local loop init/close smoke. It does not add a libuv backend for `SlLoop`,
+thread-safe posting, socket I/O, timers, owner-thread checks, or request lifecycle
+integration.
+
 The remaining event loop backend, real worker pool, request lifecycle, V8 promise
 integration, and async backend behavior is still future work.
 

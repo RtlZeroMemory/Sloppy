@@ -227,6 +227,18 @@ else()
 endif()
 
 find_package(yyjson CONFIG REQUIRED)
+find_package(llhttp CONFIG REQUIRED)
+find_package(libuv CONFIG REQUIRED)
+
+if(TARGET llhttp::llhttp)
+    set(SLOPPY_LLHTTP_TARGET llhttp::llhttp)
+elseif(TARGET llhttp::llhttp_static)
+    set(SLOPPY_LLHTTP_TARGET llhttp::llhttp_static)
+elseif(TARGET llhttp)
+    set(SLOPPY_LLHTTP_TARGET llhttp)
+else()
+    message(FATAL_ERROR "llhttp dependency was found, but no known CMake target is available.")
+endif()
 
 set(
     SLOPPY_CORE_SOURCES
@@ -240,6 +252,7 @@ set(
     src/core/loop.c
     src/core/async.c
     src/core/worker_pool.c
+    src/core/http.c
     src/core/route.c
     src/core/plan.c
     src/core/plan_parse.c
@@ -265,6 +278,7 @@ set(
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
     tests/unit/core/test_worker_pool.c
+    tests/unit/core/test_http.c
     tests/unit/core/test_route.c
     tests/unit/core/test_plan.c
     tests/unit/core/test_plan_parse.c
@@ -285,7 +299,11 @@ endif()
 add_library(sloppy_core STATIC ${SLOPPY_CORE_SOURCES})
 target_include_directories(sloppy_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy_core PUBLIC c_std_17)
-target_link_libraries(sloppy_core PRIVATE yyjson::yyjson)
+target_link_libraries(
+    sloppy_core
+    PRIVATE yyjson::yyjson
+            ${SLOPPY_LLHTTP_TARGET}
+            $<IF:$<TARGET_EXISTS:libuv::uv_a>,libuv::uv_a,libuv::uv>)
 
 if(SLOPPY_ENABLE_V8)
     target_compile_features(sloppy_core PRIVATE cxx_std_20)
@@ -448,6 +466,7 @@ if(SLOPPY_ENABLE_TESTS)
         core_async_settlement core.async.settlement tests/unit/core/test_async.c)
     sloppy_add_c_unit_test(
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
+    sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
     sloppy_add_c_unit_test(core_plan_contract core.plan.contract tests/unit/core/test_plan.c)
     set_tests_properties(core.plan.contract PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")

@@ -423,6 +423,12 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_DUPLICATE_ROUTE_PARAM:
         return sl_diag_literal("SLOPPY_E_DUPLICATE_ROUTE_PARAM",
                                sizeof("SLOPPY_E_DUPLICATE_ROUTE_PARAM") - 1U);
+    case SL_DIAG_INVALID_HTTP_REQUEST:
+        return sl_diag_literal("SLOPPY_E_INVALID_HTTP_REQUEST",
+                               sizeof("SLOPPY_E_INVALID_HTTP_REQUEST") - 1U);
+    case SL_DIAG_HTTP_HEADER_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_HEADER_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_HEADER_LIMIT") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

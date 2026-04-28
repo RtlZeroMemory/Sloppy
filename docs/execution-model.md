@@ -74,6 +74,11 @@ dispatch. It supports only a minimal path-pattern subset and one-pattern matchin
 not add HTTP parsing, request lifecycle, method matching, route table/trie dispatch,
 handler invocation, public TypeScript APIs, llhttp, libuv, V8 integration, or compiler
 extraction.
+TASK 10.B adds a bounded HTTP dependency/parser skeleton. It uses llhttp to parse one
+complete HTTP/1 request head into arena-owned native fields and uses libuv only for a
+dependency/link smoke. It does not add sockets, streaming request parsing, body parsing,
+response writing, route dispatch, request contexts, handler invocation, public TypeScript
+APIs, V8 integration, or compiler extraction.
 
 ## Current Handwritten Milestone
 
