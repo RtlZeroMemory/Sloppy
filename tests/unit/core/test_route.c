@@ -357,13 +357,17 @@ static int test_match_rejects_malformed_public_patterns(void)
                                        SL_ROUTE_SEGMENT_INVALID, SL_ROUTE_PARAM_STRING};
     SlRouteSegment bad_param_kind_segment = {sl_str_empty(), sl_str_from_cstr("id"),
                                              SL_ROUTE_SEGMENT_PARAM, SL_ROUTE_PARAM_INVALID};
+    SlRoutePattern zeroed_pattern = {0};
+    SlRoutePattern root_without_source = {sl_str_empty(), NULL, 0U, 0U};
+    SlRoutePattern root_with_params = {sl_str_from_cstr("/"), NULL, 0U, 1U};
+    SlRoutePattern non_root_without_source = {sl_str_empty(), &static_segment, 1U, 0U};
     SlRoutePattern missing_segments = {sl_str_empty(), NULL, 1U, 0U};
     SlRoutePattern too_many_segments = {sl_str_empty(), &static_segment, SL_ROUTE_MAX_SEGMENTS + 1U,
                                         0U};
     SlRoutePattern too_many_params = {sl_str_empty(), &param_segment, 1U, SL_ROUTE_MAX_PARAMS + 1U};
-    SlRoutePattern bad_kind = {sl_str_empty(), &bad_kind_segment, 1U, 0U};
-    SlRoutePattern bad_param_kind = {sl_str_empty(), &bad_param_kind_segment, 1U, 1U};
-    SlRoutePattern bad_param_count = {sl_str_empty(), &param_segment, 1U, 0U};
+    SlRoutePattern bad_kind = {sl_str_from_cstr("/users"), &bad_kind_segment, 1U, 0U};
+    SlRoutePattern bad_param_kind = {sl_str_from_cstr("/{id}"), &bad_param_kind_segment, 1U, 1U};
+    SlRoutePattern bad_param_count = {sl_str_from_cstr("/{id}"), &param_segment, 1U, 0U};
     SlStatus status;
 
     status = init_arena(&arena, storage, sizeof(storage));
@@ -372,44 +376,72 @@ static int test_match_rejects_malformed_public_patterns(void)
     }
 
     if (expect_status(
-            sl_route_pattern_match(&arena, &missing_segments, sl_str_from_cstr("/users"), &match),
+            sl_route_pattern_match(&arena, &zeroed_pattern, sl_str_from_cstr("/"), &match),
             SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 163;
     }
 
     if (expect_status(
-            sl_route_pattern_match(&arena, &too_many_segments, sl_str_from_cstr("/users"), &match),
+            sl_route_pattern_match(&arena, &root_without_source, sl_str_from_cstr("/"), &match),
             SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 164;
     }
 
     if (expect_status(
-            sl_route_pattern_match(&arena, &too_many_params, sl_str_from_cstr("/123"), &match),
+            sl_route_pattern_match(&arena, &root_with_params, sl_str_from_cstr("/"), &match),
             SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 165;
     }
 
-    if (expect_status(sl_route_pattern_match(&arena, &bad_kind, sl_str_from_cstr("/users"), &match),
+    if (expect_status(sl_route_pattern_match(&arena, &non_root_without_source,
+                                             sl_str_from_cstr("/users"), &match),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 166;
     }
 
     if (expect_status(
-            sl_route_pattern_match(&arena, &bad_param_kind, sl_str_from_cstr("/123"), &match),
+            sl_route_pattern_match(&arena, &missing_segments, sl_str_from_cstr("/users"), &match),
             SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 167;
     }
 
     if (expect_status(
-            sl_route_pattern_match(&arena, &bad_param_count, sl_str_from_cstr("/123"), &match),
+            sl_route_pattern_match(&arena, &too_many_segments, sl_str_from_cstr("/users"), &match),
             SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 168;
+    }
+
+    if (expect_status(
+            sl_route_pattern_match(&arena, &too_many_params, sl_str_from_cstr("/123"), &match),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 169;
+    }
+
+    if (expect_status(sl_route_pattern_match(&arena, &bad_kind, sl_str_from_cstr("/users"), &match),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 170;
+    }
+
+    if (expect_status(
+            sl_route_pattern_match(&arena, &bad_param_kind, sl_str_from_cstr("/123"), &match),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 171;
+    }
+
+    if (expect_status(
+            sl_route_pattern_match(&arena, &bad_param_count, sl_str_from_cstr("/123"), &match),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 172;
     }
 
     return 0;
@@ -429,17 +461,17 @@ static int test_failed_match_does_not_consume_arena(void)
 
     status = init_arena(&parse_arena, parse_storage, sizeof(parse_storage));
     if (!sl_status_is_ok(status)) {
-        return 169;
+        return 173;
     }
 
     status = init_arena(&match_arena, match_storage, sizeof(match_storage));
     if (!sl_status_is_ok(status)) {
-        return 170;
+        return 174;
     }
 
     status = parse_pattern(&parse_arena, "/users/{id:int}", &pattern, NULL);
     if (!sl_status_is_ok(status)) {
-        return 171;
+        return 175;
     }
 
     used_before = sl_arena_used(&match_arena);
@@ -447,13 +479,13 @@ static int test_failed_match_does_not_consume_arena(void)
         status =
             sl_route_pattern_match(&match_arena, &pattern, sl_str_from_cstr("/users/abc"), &match);
         if (!sl_status_is_ok(status)) {
-            return 172;
+            return 176;
         }
 
         if (match.matched || match.params != NULL || match.param_count != 0U ||
             sl_arena_used(&match_arena) != used_before)
         {
-            return 173;
+            return 177;
         }
     }
 
@@ -461,7 +493,7 @@ static int test_failed_match_does_not_consume_arena(void)
     if (!sl_status_is_ok(status) || !match.matched || match.params == NULL ||
         match.param_count != 1U || sl_arena_used(&match_arena) <= used_before)
     {
-        return 174;
+        return 178;
     }
 
     return 0;

@@ -614,10 +614,26 @@ static SlStatus sl_route_pattern_validate_for_match(const SlRoutePattern* patter
     }
 
     *out_param_count = 0U;
+    if (!sl_route_str_valid(pattern->source) || pattern->source.length == 0U ||
+        pattern->source.ptr[0] != '/' || sl_route_contains_byte(pattern->source, '?'))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
     if (pattern->segment_count > SL_ROUTE_MAX_SEGMENTS ||
         pattern->param_count > SL_ROUTE_MAX_PARAMS)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (pattern->segment_count == 0U) {
+        if (pattern->param_count != 0U ||
+            !sl_str_equal(pattern->source, sl_route_literal("/", sizeof("/") - 1U)))
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+
+        return sl_status_ok();
     }
 
     if (pattern->segment_count != 0U && pattern->segments == NULL) {
