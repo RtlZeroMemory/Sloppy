@@ -36,7 +36,7 @@ tests.
 Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
-  arena behavior, and assertion macro compilation;
+  arena behavior, diagnostics foundation behavior, and assertion macro compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
@@ -91,12 +91,14 @@ tests/unit/core/
   test_bytes.c
   test_checked_math.c
   test_arena.c
+  test_diagnostics.c
   test_assert.c
   test_source_loc_cpp.cpp
 tests/unit/platform/
   test_platform_boundary_docs.c   # only if useful; scanner remains script-based
-tests/diagnostics/
-  README.md
+tests/golden/diagnostics/
+  missing_service.snap
+  invalid_plan_version.snap
 tests/golden/compiler/
   README.md
 ```
@@ -200,11 +202,13 @@ They should verify:
 Expected layout:
 
 ```text
-tests/diagnostics/
-  snapshots/
-    SLP_PLAN_UNSUPPORTED_VERSION.snap
-    SLP_SERVICE_MISSING.snap
+tests/golden/diagnostics/
+  invalid_plan_version.snap
+  missing_service.snap
 ```
+
+TASK 04.A wires `core.diagnostics.foundation` to read and compare those fixture files.
+Snapshot drift fails CTest unless the expected fixture change is intentional.
 
 ## Integration Tests
 

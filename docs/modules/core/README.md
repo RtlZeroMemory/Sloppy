@@ -7,7 +7,8 @@ Partially implemented for TASK 02.A and TASK 03.A.
 ## Purpose
 
 Portable runtime core primitives such as status, source locations, string/byte views,
-checked math, assertions, and the first caller-backed arena primitive.
+checked math, assertions, the first caller-backed arena primitive, and the first
+diagnostics foundation.
 
 ## Scope
 
@@ -27,7 +28,9 @@ Implemented public C headers under `include/sloppy/`:
 - `bytes.h`: borrowed `SlBytes` pointer-plus-length views;
 - `checked_math.h`: checked `size_t` add/multiply helpers;
 - `assert.h`: internal invariant assertion macros;
-- `arena.h`: caller-backed `SlArena` allocation, marks, resets, and usage stats.
+- `arena.h`: caller-backed `SlArena` allocation, marks, resets, and usage stats;
+- `diagnostics.h`: diagnostic severity/code model, user/app source spans, bounded related
+  spans and hints, arena-copying builder, and deterministic text renderer.
 
 Implementations live under `src/core/`.
 
@@ -62,13 +65,15 @@ caller-provided buffer.
 
 Low-level status is separate from human diagnostics.
 
-`SlStatus` carries only a stable status code. Diagnostics rendering, source frames, and
-human-facing messages are future EPIC-04 work.
+`SlStatus` carries only a stable status code. EPIC-04 now provides the initial `SlDiag`
+model and plain-text renderer for human-facing diagnostics. Source frames, JSON output, and
+runtime integrations remain future diagnostics work.
 
 ## Tests
 
 CTest now registers focused C unit tests for status, source locations, string views, byte
-views, checked size arithmetic, arena behavior, and assertion macro compilation.
+views, checked size arithmetic, arena behavior, diagnostics foundation behavior, and
+assertion macro compilation.
 
 ## Source Docs
 
