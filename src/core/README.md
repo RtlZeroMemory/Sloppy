@@ -11,6 +11,7 @@ Implemented TASK 02.A primitives:
 - internal assertion macros;
 - caller-backed `SlArena` allocation, mark/reset, and high-water stats.
 - caller-backed `SlLoop` native completion queue skeleton.
+- caller-owned `SlAsync` native promise settlement skeleton over `SlLoop`.
 - TASK 06.A minimal Plan v1 structs/helpers for version support, handler ID rules, handler
   lookup, and duplicate ID detection.
 - TASK 04.A diagnostic severity/code model, source spans, bounded related spans/hints,

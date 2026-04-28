@@ -36,9 +36,10 @@ tests.
 Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
-  arena behavior, native cleanup scope behavior, native completion queue behavior, minimal
-  plan contract helper behavior, minimal plan JSON parser/validator behavior, diagnostics
-  foundation behavior, and assertion macro compilation;
+  arena behavior, native cleanup scope behavior, native completion queue behavior, native
+  async settlement behavior, minimal plan contract helper behavior, minimal plan JSON
+  parser/validator behavior, diagnostics foundation behavior, and assertion macro
+  compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
@@ -104,6 +105,7 @@ tests/unit/core/
   test_arena.c
   test_scope.c
   test_loop.c
+  test_async.c
   test_plan.c
   test_plan_parse.c
   test_diagnostics.c
@@ -272,7 +274,8 @@ Later integration tests cover HTTP, routing, modules, providers, and packaging.
 
 Future concurrency tests should cover:
 
-- promise settlement and rejected promise diagnostics;
+- native async settlement over `SlLoop`;
+- V8 Promise settlement and rejected promise diagnostics;
 - request scope lifetime across pending promises;
 - cancellation cleanup;
 - worker-pool no-V8-entry contract;
@@ -362,6 +365,9 @@ Phase 1:
 - no primitive API lands without ownership/lifetime tests.
 - native completion queue tests cover FIFO dispatch, capacity exhaustion, callback failure,
   stop/reset, and single-threaded drain behavior.
+- native async settlement tests cover pending/fulfilled/rejected/cancelled states, loop-post
+  dispatch, double settlement failure, failed-post atomicity, borrowed diagnostics,
+  reinit-before-drain rejection, and continuation failure propagation.
 
 Plan loader phase:
 

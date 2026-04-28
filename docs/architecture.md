@@ -46,6 +46,10 @@ execute Sloppy Plan handlers, load modules, run HTTP, or provide the public JS A
 TASK 09.A adds the first `SlLoop` completion queue skeleton. It is caller-backed,
 fixed-capacity, and synchronous, with no libuv, OS event loop, threads, HTTP, promise
 settlement, or V8 microtask integration.
+TASK 09.B adds the first native `SlAsync` promise settlement model skeleton over `SlLoop`.
+It is caller-owned, manual/fake native settlement only, with no V8 Promise integration,
+microtask handling, request-scope retention, HTTP lifecycle, worker pool, cross-thread
+posting, cancellation/deadline/backpressure, or libuv integration.
 
 ## Future Phase
 

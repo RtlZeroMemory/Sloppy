@@ -29,8 +29,15 @@ completion queue. It is deterministic and single-threaded: callbacks run synchro
 the caller thread through `sl_loop_run_once` or `sl_loop_drain`. It creates no threads,
 uses no OS APIs, has no libuv backend, and does not settle promises or drive HTTP.
 
-The remaining event loop, worker pool, request lifecycle, promise settlement, and async
-backend behavior is still future work.
+TASK 09.B implements `SlAsync`, the first native promise settlement model skeleton over
+`SlLoop`. It represents pending, fulfilled, rejected, and cancelled native work; settlement
+posts one completion to the loop and invokes a caller-provided continuation only when the
+loop drains. It is manual/fake native settlement only: there is still no JS Promise API
+integration, V8 microtask handling, request scope retention, HTTP lifecycle, worker pool,
+cross-thread posting, cancellation token, deadline, or backpressure behavior.
+
+The remaining event loop backend, worker pool, request lifecycle, V8 promise integration,
+and async backend behavior is still future work.
 
 ## Core Decision
 
@@ -156,8 +163,47 @@ The queue semantics are:
 - consumed completions are not retried after callback failure.
 
 This is intentionally not a real OS event loop. libuv integration, IOCP/epoll/kqueue,
-timers, sockets, HTTP, thread-safe posting, worker pools, promise settlement, microtask
-draining, request lifecycle, cancellation, deadlines, and backpressure are deferred.
+timers, sockets, HTTP, thread-safe posting, worker pools, V8 Promise integration,
+microtask draining, request lifecycle, cancellation tokens, deadlines, and backpressure are
+deferred.
+
+## Current SlAsync Settlement Skeleton Semantics
+
+`SlAsync` is a caller-owned native settlement record. It never allocates memory and does not
+own payload, user, or diagnostic pointers. `SlAsyncResult.diag` is borrowed and must remain
+valid until loop dispatch. Future request-scope and V8 work will define stronger diagnostic
+ownership for real async handlers.
+
+The settlement semantics are:
+
+- storage passed to `sl_async_init` must be zero-initialized before first use or already
+  initialized by `sl_async_init`;
+- initial state is `SL_ASYNC_STATE_PENDING`;
+- continuation is required at initialization;
+- `sl_async_fulfill` stores an OK result plus borrowed payload/user pointers;
+- `sl_async_reject` stores a non-OK status plus optional borrowed diagnostic;
+- `sl_async_cancel` stores a non-OK status plus optional borrowed diagnostic;
+- fulfillment, rejection, and cancellation post exactly one `SL_COMPLETION_KIND_ASYNC`
+  completion to `SlLoop`;
+- the continuation runs only when `sl_loop_run_once` or `sl_loop_drain` dispatches that
+  completion;
+- continuation failure propagates through the loop drain/run call;
+- only pending async objects can settle;
+- double settlement fails with `SL_STATUS_INVALID_STATE`;
+- NULL async or loop arguments fail with `SL_STATUS_INVALID_ARGUMENT`;
+- rejected/cancelled settlement with `SL_STATUS_OK` fails with
+  `SL_STATUS_INVALID_ARGUMENT`;
+- if loop posting fails, settlement returns that failure and leaves the async object
+  pending with no stored result.
+- reinitializing a settled async object before its queued completion drains fails with
+  `SL_STATUS_INVALID_STATE`;
+- reinitialization is allowed after the queued completion drains because the completion has
+  copied the original state and result for dispatch.
+
+`SlAsync` is not thread-safe. Settlement must occur on the owning runtime thread for now.
+Cross-thread settlement and thread-safe completion queues are future worker-pool/event-loop
+work. Current completion callbacks run on the loop caller thread, so this skeleton must not
+be used to bypass the V8 isolate owner-thread rule.
 
 ## Request Lifecycle With Async Handler
 
@@ -184,6 +230,9 @@ After calling into JS, the engine bridge must drain or schedule microtasks accor
 runtime policy. Rejected promises become diagnostics. Request scope remains alive while a
 promise is pending. Promise settlement triggers response or error handling. Unhandled
 rejections should include route and handler context when possible.
+
+TASK 09.B does not implement this V8 behavior. It only defines the native settlement record
+and loop-continuation shape that future V8 Promise resolution can map onto or evolve.
 
 ## Request Scope Lifetime
 
@@ -309,7 +358,8 @@ app-host level:
 ## Testing Requirements
 
 - Unit tests for request scope lifetime later.
-- Promise settlement tests later.
+- Native SlAsync settlement tests now; V8 Promise, microtask, and request-scope settlement
+  tests later.
 - Cancellation cleanup tests later.
 - Worker pool no-V8-entry tests later.
 - Resource leak tests.

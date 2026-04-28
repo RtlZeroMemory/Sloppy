@@ -57,6 +57,12 @@ thread during `sl_loop_run_once` or `sl_loop_drain`. It does not integrate with 
 microtasks, promise settlement, HTTP, libuv, OS event loops, worker pools, or request
 lifetime.
 
+TASK 09.B adds a native `SlAsync` promise settlement model skeleton over `SlLoop`. It can
+manually represent pending, fulfilled, rejected, and cancelled native work and dispatch a
+continuation through the loop. It is not JS Promise integration, V8 microtask draining,
+async handler execution, HTTP request lifecycle, request-scope retention, worker-pool
+completion, or cancellation/deadline/backpressure behavior.
+
 ## Current Handwritten Milestone
 
 The first real milestone is not full TypeScript compilation. It is now covered by a
@@ -296,6 +302,17 @@ Promise lifecycle requirements:
 - rejected promises become diagnostics;
 - microtask draining is controlled by the V8 bridge;
 - cancellation semantics are specified in `docs/concurrency.md` and implemented later.
+
+Current native skeleton:
+
+- `SlAsync` starts pending and settles exactly once;
+- settlement posts a completion to `SlLoop` rather than running continuations inline;
+- fulfillment carries borrowed payload/user pointers;
+- rejection/cancellation carry a non-OK `SlStatus` and optional borrowed `SlDiag`;
+- failed loop posting leaves the async object pending.
+
+Future V8 Promise handling should resolve or reject through this model or a documented
+evolution of it so request cleanup remains owned by the runtime.
 
 ## Source Map Diagnostic Flow
 

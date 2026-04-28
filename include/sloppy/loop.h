@@ -16,7 +16,8 @@ typedef enum SlCompletionKind
 {
     SL_COMPLETION_KIND_NONE = 0,
     SL_COMPLETION_KIND_TEST = 1,
-    SL_COMPLETION_KIND_USER = 2
+    SL_COMPLETION_KIND_USER = 2,
+    SL_COMPLETION_KIND_ASYNC = 3
 } SlCompletionKind;
 
 /*

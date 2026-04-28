@@ -39,13 +39,15 @@ Implemented now:
 Later scope:
 
 - handler registration intrinsics/function handles;
-- promise settlement.
+- V8 Promise integration that maps resolved/rejected JS promises onto the native `SlAsync`
+  settlement model or a documented evolution of it.
 
 ## Non-goals
 
 No HTTP, compiler extraction, public JS API bootstrap, module loading, ESM resolver, full
-app host, request context, route matcher, handler table registration, async/promise model,
-workers, inspector, snapshots, Node compatibility, or package-manager behavior.
+app host, request context, route matcher, handler table registration, V8 Promise
+integration, microtask policy, workers, inspector, snapshots, Node compatibility, or
+package-manager behavior.
 
 ## Public/Internal API
 
@@ -112,6 +114,10 @@ The current ABI is not thread-safe. TASK 07.C creates and enters the isolate on 
 thread and documents the owner-thread rule, but does not enforce cross-thread entry yet.
 Owner-thread checks remain deferred until later bridge/event-loop tasks.
 
+TASK 09.B's `SlAsync` model lives in the C runtime core and does not include V8 types. The
+future bridge should settle returned JS promises by posting back to the owning loop and must
+continue to keep V8 handles and microtask policy inside `src/engine/v8/`.
+
 V8 requires process-wide platform initialization. TASK 07.C initializes that state once,
 keeps it private to `src/engine/v8/`, and intentionally leaves it alive for process
 lifetime. Per-engine destroy releases isolates and contexts only. A future explicit runtime
@@ -168,8 +174,8 @@ source/resource name when available, 1-based line and column when V8 reports the
 bounded stack string as a related note when practical. V8 reports start columns as
 zero-based; the bridge converts them to Sloppy's 1-based diagnostic column convention. No
 source maps, TypeScript remapping, rich code frames, async stack policy, route/handler
-context, promise rejection policy, Sloppy Plan execution, public JS API, Node compatibility,
-or package-manager behavior is implemented here.
+context, V8 promise rejection policy, Sloppy Plan execution, public JS API, Node
+compatibility, or package-manager behavior is implemented here.
 
 ## Tests
 
