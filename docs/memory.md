@@ -29,8 +29,9 @@ This document does not implement allocators, arenas, resource tables, or JS bind
 
 ## Current Phase
 
-Only `SlStatus` exists as a minimal placeholder. String, bytes, buffer, arena, and resource
-primitives are not implemented yet.
+The core foundation now implements `SlStatus`, `SlSourceLoc`, borrowed `SlStr`, borrowed
+`SlBytes`, checked `size_t` arithmetic, and assertion macros. `SlBuf`, string builders,
+arenas, allocator modules, and resource primitives are not implemented yet.
 
 ## Future Phase
 
@@ -59,9 +60,10 @@ typedef struct SlBuf {
 } SlBuf;
 ```
 
-`SlStr` is a borrowed string view. It is not necessarily null-terminated. `SlBytes` is a
-borrowed byte view. `SlBuf` is a mutable owned or externally-backed buffer depending on API
-contract.
+`SlStr` is a borrowed string view. It is not necessarily null-terminated and can contain
+embedded NUL bytes as data. `SlBytes` is a borrowed byte view. Neither view allocates,
+copies, frees, or transfers ownership. `SlBuf` is future work and will be a mutable owned or
+externally-backed buffer depending on API contract.
 
 ## SlStringBuilder
 
@@ -227,9 +229,9 @@ Each primitive needs tests:
 
 ## Phase 1 Implementation Tasks
 
-- Add checked math helpers.
-- Add `SlStr` and tests.
-- Add `SlBytes` and tests.
+- Add checked math helpers. Done for `size_t` add/multiply in TASK 02.A.
+- Add `SlStr` and tests. Done for borrowed views in TASK 02.A.
+- Add `SlBytes` and tests. Done for borrowed views in TASK 02.A.
 - Add `SlBuf` and tests.
 - Add allocator interface with a default bootstrap allocator.
 - Add arena skeleton.

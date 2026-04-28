@@ -35,6 +35,8 @@ tests.
 
 Current tests:
 
+- CTest unit tests for core status, source location, string view, byte view, checked math,
+  and assertion macro compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
@@ -85,9 +87,11 @@ First Phase 1 layout:
 tests/unit/core/
   test_status.c
   test_source_loc.c
-  test_str.c
+  test_string.c
   test_bytes.c
   test_checked_math.c
+  test_assert.c
+  test_source_loc_cpp.cpp
 tests/unit/platform/
   test_platform_boundary_docs.c   # only if useful; scanner remains script-based
 tests/diagnostics/
@@ -129,9 +133,11 @@ Required for:
 - resource table;
 - platform abstraction.
 
-munit is the planned C framework, but it is not vendored yet.
+munit is still a possible future C framework, but TASK 02.A uses a tiny dependency-free C
+test style: each test source is a small executable that returns nonzero on failure and is
+registered by CTest.
 
-munit integration plan:
+possible munit integration plan:
 
 1. add munit only when first real C unit test lands;
 2. keep it in an explicit third-party/vendor location or documented dependency path;
