@@ -14,6 +14,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "SLOPPY_ENABLE_TESTS": "ON",
         "SLOPPY_ENABLE_WERROR": "OFF"
@@ -27,6 +28,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
         "SLOPPY_ENABLE_TESTS": "ON",
         "SLOPPY_ENABLE_ASSERTS": "OFF"
       }
@@ -39,6 +41,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
         "SLOPPY_ENABLE_TESTS": "ON"
       }
     },
@@ -50,6 +53,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
         "SLOPPY_ENABLE_TESTS": "ON",
         "SLOPPY_ENABLE_ASAN": "ON",
         "SLOPPY_ENABLE_ASSERTS": "ON"

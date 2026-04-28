@@ -9,6 +9,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "msvc-env.ps1")
+
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $BuildDir = Join-Path (Join-Path $Root "build") $Preset
 $CompilerManifest = Join-Path $Root "compiler/Cargo.toml"
@@ -49,6 +51,8 @@ function Resolve-GateTool {
 }
 
 function Invoke-Configure {
+    Import-SlVisualStudioEnvironment
+
     $args = @("--preset", $Preset)
     if ($CMakeArgs.Count -gt 0) {
         $args += $CMakeArgs
@@ -58,10 +62,12 @@ function Invoke-Configure {
 }
 
 function Invoke-Build {
+    Import-SlVisualStudioEnvironment
     Invoke-Native "cmake" @("--build", "--preset", $Preset)
 }
 
 function Invoke-Test {
+    Import-SlVisualStudioEnvironment
     Invoke-Native "ctest" @("--preset", $Preset, "--output-on-failure")
 
     $cargo = Resolve-GateTool "cargo" "cargo test"
@@ -214,6 +220,8 @@ function Invoke-CComplexityWarningCheck {
 }
 
 function Invoke-Lint {
+    Import-SlVisualStudioEnvironment
+
     Invoke-PlatformBoundaryCheck
     Invoke-CStandardsCheck
     Invoke-DocsFreshnessCheck

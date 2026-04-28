@@ -12,8 +12,12 @@
 - Linux/macOS CI is future.
 - Package compatibility is future.
 - Exact event loop backend integration is future.
+- HTTP request scope integration with `SlScope` is future.
+- Resource-table cleanup callbacks registered through `SlScope` are future.
+- Async cancellation and deadline-triggered `SlScope` cleanup are future.
 - Exact worker-pool implementation is future.
 - DB provider async strategy is future.
+- DB transaction scope integration with native lifetime cleanup is future.
 - Multiple worker/process scaling model is future.
 - Cancellation semantics by provider are future.
 - Docs freshness automated checker is lightweight and should become more semantic over time.

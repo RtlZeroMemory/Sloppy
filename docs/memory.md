@@ -15,6 +15,7 @@ This document covers:
 - `SlBuf`;
 - `SlStringBuilder`;
 - arena types;
+- scope cleanup registration storage;
 - allocator rules;
 - ownership rules;
 - resource table/generation counter model;
@@ -30,9 +31,10 @@ This document does not implement allocators, arenas, resource tables, or JS bind
 ## Current Phase
 
 The core foundation now implements `SlStatus`, `SlSourceLoc`, borrowed `SlStr`, borrowed
-`SlBytes`, checked `size_t` arithmetic, assertion macros, and a caller-backed `SlArena`.
-`SlBuf`, string builders, allocator modules, and resource primitives are not implemented
-yet.
+`SlBytes`, checked `size_t` arithmetic, assertion macros, a caller-backed `SlArena`, and a
+fixed-capacity native cleanup `SlScope`.
+`SlBuf`, string builders, allocator modules, and resource table primitives are not
+implemented yet.
 
 ## Future Phase
 
@@ -89,6 +91,11 @@ Planned arenas:
 Arenas are deliberate, not universal. Independently closed resources must not be stored only
 in arenas.
 
+`SlScope` may use caller-provided or arena-provided storage to record cleanup callbacks.
+The scope owns the cleanup registrations, not the callback payloads. Arena-backed scope
+storage is invalidated by the same arena reset/reset-to-mark rules as other arena
+allocations.
+
 Implemented TASK 03.A arena behavior:
 
 - `SlArena` is initialized over caller-provided memory and never owns or frees that memory;
@@ -125,6 +132,9 @@ No implicit ownership transfer. Naming and comments must agree.
 - APIs should prefer count plus element size where overflow is possible;
 - out-of-memory returns `SlStatus` and emits diagnostics where context exists;
 - debug builds should tag allocations by module where practical.
+
+Fixed caller-provided storage exhaustion is reported as `SL_STATUS_CAPACITY_EXCEEDED`
+rather than pretending an OS or heap allocation failed.
 
 ## Resource Table Model
 
@@ -222,6 +232,8 @@ Typical status codes:
 - overflow;
 - stale resource;
 - resource already closed.
+- invalid state;
+- capacity exceeded.
 
 ## Testing Requirements
 
@@ -232,6 +244,8 @@ Each primitive needs tests:
 - `SlBuf`: append, reserve, overflow, ownership, cleanup;
 - `SlStringBuilder`: append, arena lifetime, overflow;
 - arenas: allocate, reset, nested scope, high-water tracking;
+- scope cleanup: registration, LIFO close, idempotent close, reset behavior, capacity
+  exhaustion;
 - checked math: boundary values;
 - resource table: generation mismatch, double close, stale ID, leak tracking.
 

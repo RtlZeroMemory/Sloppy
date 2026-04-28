@@ -14,14 +14,15 @@ Implemented now:
 
 - `SlArena`: caller-backed scoped arena allocation;
 - `SlArenaMark`: offset marks for scoped reset.
+- optional `SlScope` cleanup registration storage allocated from `SlArena`.
 
 Future memory work still includes allocator interfaces, `SlBuf`, and `SlStringBuilder`.
 
 ## Non-goals
 
 No arena-everything architecture and no independently closable resource storage only in
-arenas. TASK 03.A does not add an OS page allocator, malloc-backed arena factory, scratch
-arena system, request lifecycle, resource table, or generic allocator framework.
+arenas. Current arena work does not add an OS page allocator, malloc-backed arena factory,
+scratch arena system, request lifecycle, resource table, or generic allocator framework.
 
 ## Public/Internal API
 
@@ -45,6 +46,10 @@ Implemented API:
 allocation is rejected as `SL_STATUS_INVALID_ARGUMENT` so callers do not depend on an
 ambiguous pointer for an allocation that owns no bytes.
 
+`SlScope` lives in the resource module, but `sl_scope_init_from_arena` may use `SlArena` to
+allocate fixed cleanup-registration storage. The scope still owns only registrations; it
+does not make callback payloads arena-owned.
+
 ## Ownership/Lifetime Rules
 
 `SlArena` does not own its backing buffer. The caller owns the buffer lifetime and must keep
@@ -59,6 +64,10 @@ Arena allocations remain valid until:
 Arena allocations must not be used for independently closable resources. Data crossing
 async boundaries must not point into a shorter-lived arena. `SlArena` is not thread-safe
 unless callers provide external synchronization.
+
+Arena-backed scope storage has the same lifetime as any other arena allocation. Resetting
+the arena invalidates that storage; callers must close or stop using the scope before that
+happens.
 
 ## Invariants
 
@@ -95,6 +104,8 @@ CTest registers `tests/unit/core/test_arena.c`, covering:
   in all builds;
 - capacity, used, remaining, and high-water stats;
 - debug poisoning when `SL_ENABLE_ASSERTS` is enabled.
+
+`tests/unit/core/test_scope.c` covers the arena-backed scope-storage helper.
 
 ## Source Docs
 

@@ -12,6 +12,8 @@ int main(void)
     SlStatus ok = sl_status_ok();
     SlStatus invalid = sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     SlStatus overflow = sl_status_from_code(SL_STATUS_OVERFLOW);
+    SlStatus invalid_state = sl_status_from_code(SL_STATUS_INVALID_STATE);
+    SlStatus capacity = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
 
     if (expect_true(sl_status_is_ok(ok)) != 0) {
         return 1;
@@ -31,6 +33,14 @@ int main(void)
 
     if (expect_true(sl_status_code(overflow) == SL_STATUS_OVERFLOW) != 0) {
         return 5;
+    }
+
+    if (expect_true(sl_status_code(invalid_state) == SL_STATUS_INVALID_STATE) != 0) {
+        return 6;
+    }
+
+    if (expect_true(sl_status_code(capacity) == SL_STATUS_CAPACITY_EXCEEDED) != 0) {
+        return 7;
     }
 
     return 0;
