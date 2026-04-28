@@ -57,7 +57,8 @@ set(
     tests/unit/core/test_string.c
     tests/unit/core/test_bytes.c
     tests/unit/core/test_checked_math.c
-    tests/unit/core/test_assert.c)
+    tests/unit/core/test_assert.c
+    tests/unit/core/test_assert_enabled_under_ndebug.c)
 
 add_library(sloppy_core STATIC ${SLOPPY_CORE_SOURCES})
 target_include_directories(sloppy_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -211,6 +212,17 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
     sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
+
+    add_executable(
+        core_assert_enabled_under_ndebug tests/unit/core/test_assert_enabled_under_ndebug.c)
+    target_include_directories(
+        core_assert_enabled_under_ndebug PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_compile_features(core_assert_enabled_under_ndebug PRIVATE c_std_17)
+    target_compile_definitions(core_assert_enabled_under_ndebug PRIVATE SL_ENABLE_ASSERTS=1 NDEBUG)
+    sloppy_apply_warnings(core_assert_enabled_under_ndebug)
+    sloppy_apply_sanitizers(core_assert_enabled_under_ndebug)
+    add_test(NAME core.assert.enabled_under_ndebug COMMAND core_assert_enabled_under_ndebug)
+    set_tests_properties(core.assert.enabled_under_ndebug PROPERTIES WILL_FAIL TRUE)
 
     if(CMAKE_CXX_COMPILER)
         add_executable(core_source_loc_cpp_syntax tests/unit/core/test_source_loc_cpp.cpp)

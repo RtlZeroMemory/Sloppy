@@ -34,8 +34,14 @@ int main(void)
         return 4;
     }
 
-    if (expect_true(!sl_bytes_equal(view, empty)) != 0) {
+    if (expect_true(
+            !sl_bytes_equal(sl_bytes_from_parts(NULL, 4U), sl_bytes_from_parts(NULL, 4U))) != 0)
+    {
         return 5;
+    }
+
+    if (expect_true(!sl_bytes_equal(view, empty)) != 0) {
+        return 6;
     }
 
     return 0;
