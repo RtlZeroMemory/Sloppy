@@ -253,6 +253,7 @@ Phase 1 CTest expectations:
 - `core.str.*`;
 - `core.bytes.*`;
 - `core.checked_math.*`;
+- `core.scope.*`;
 - existing CLI smoke remains.
 
 ## Future Gates

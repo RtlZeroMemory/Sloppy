@@ -10,7 +10,7 @@ ready.
 | C standards | Yellow | Standards exist and scanner begins enforcement. | Add fixtures and tighten allocator rules after allocator modules land. |
 | Platform isolation | Yellow | Scanner and docs exist. | Add scanner self-tests and future Unix CI. |
 | Build tooling | Yellow | Windows workflow and CI skeleton exist. | Add more script tests and Unix presets later. |
-| Testing | Yellow | Smoke, structural checks, and initial core C unit tests exist. | Add richer C test reporting if needed and golden/snapshot harnesses. |
+| Testing | Yellow | Smoke, structural checks, and initial core C unit tests including scope lifetime tests exist. | Add richer C test reporting if needed and golden/snapshot harnesses. |
 | Testing intent model | Yellow | Strategy now defines tests-as-documented-intent. | Require implementation PRs to tie tests to source docs and add reviewer enforcement. |
 | User-facing docs | Yellow | Planned public docs skeleton exists and marks examples as not implemented. | Fill pages as public features land and add example tests. |
 | Module docs | Yellow | Module README skeletons exist with required headings. | Keep module docs updated with implemented behavior and strengthen freshness checks. |
@@ -24,4 +24,4 @@ ready.
 | Runtime execution plan | Yellow | Execution model is documented. | Add plan loader, V8 smoke, and handwritten execution tests later. |
 | Concurrency/async model | Yellow | Canonical spec and ADR exist; implementation is future. | Add owner-thread checks, promise settlement tests, cancellation, backpressure, and worker scaling design. |
 | Agent harness | Green | Guide, harness docs, playbooks, plans, score, and debt tracker exist. | Keep repeated feedback promoted into docs/checks. |
-| Mechanical enforcement | Yellow | Platform, C standards, and artifact gates exist. | Add allocator/resource/V8 checks as implementation grows. |
+| Mechanical enforcement | Yellow | Platform, C standards, artifact gates, and first scope lifetime tests exist. | Add allocator/resource/V8 checks as implementation grows. |

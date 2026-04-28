@@ -36,7 +36,8 @@ tests.
 Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
-  arena behavior, diagnostics foundation behavior, and assertion macro compilation;
+  arena behavior, native cleanup scope behavior, diagnostics foundation behavior, and
+  assertion macro compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
@@ -91,6 +92,7 @@ tests/unit/core/
   test_bytes.c
   test_checked_math.c
   test_arena.c
+  test_scope.c
   test_diagnostics.c
   test_assert.c
   test_source_loc_cpp.cpp
@@ -311,7 +313,8 @@ Phase 1:
 - C primitive unit tests exist;
 - platform-boundary scanner passes;
 - sanitizer-ready code.
-- CTest includes status, source location, string, bytes, checked-math, and arena tests;
+- CTest includes status, source location, string, bytes, checked-math, arena, and scope
+  tests;
 - no primitive API lands without ownership/lifetime tests.
 
 Plan loader phase:

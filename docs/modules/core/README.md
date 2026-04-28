@@ -7,8 +7,8 @@ Partially implemented for TASK 02.A and TASK 03.A.
 ## Purpose
 
 Portable runtime core primitives such as status, source locations, string/byte views,
-checked math, assertions, the first caller-backed arena primitive, and the first
-diagnostics foundation.
+checked math, assertions, the first caller-backed arena primitive, the first native cleanup
+scope primitive, and the first diagnostics foundation.
 
 ## Scope
 
@@ -29,6 +29,8 @@ Implemented public C headers under `include/sloppy/`:
 - `checked_math.h`: checked `size_t` add/multiply helpers;
 - `assert.h`: internal invariant assertion macros;
 - `arena.h`: caller-backed `SlArena` allocation, marks, resets, and usage stats;
+- `scope.h`: caller-backed or arena-backed cleanup registration scopes with deterministic
+  LIFO close behavior;
 - `diagnostics.h`: diagnostic severity/code model, user/app source spans, bounded related
   spans and hints, arena-copying builder, and deterministic text renderer.
 
@@ -53,13 +55,18 @@ valid until reset/reset-to-mark or backing buffer end. Arena memory is not suita
 independently closable resources and must not cross async boundaries unless the arena
 outlives the async operation.
 
+`SlScope` owns cleanup registrations only. Cleanup payload and user pointers are borrowed
+and may be NULL. Scope cleanup storage is caller-owned unless allocated through
+`sl_scope_init_from_arena`, in which case the storage lifetime follows the arena allocation.
+
 ## Invariants
 
 Core code stays portable C17 and does not include OS or V8 headers.
 
 Core primitives avoid runtime features, platform APIs, V8, package-manager behavior, and
 speculative future abstractions. `SlArena` performs pointer-bump allocation only inside a
-caller-provided buffer.
+caller-provided buffer. `SlScope` performs fixed-capacity cleanup registration only inside
+caller-provided or arena-provided storage.
 
 ## Diagnostics
 
@@ -69,11 +76,17 @@ Low-level status is separate from human diagnostics.
 model and plain-text renderer for human-facing diagnostics. Source frames, JSON output, and
 runtime integrations remain future diagnostics work.
 
+TASK 05.B adds two narrow status codes:
+
+- `SL_STATUS_INVALID_STATE` for valid arguments used against the wrong object state, such as
+  registering cleanup after a scope has closed;
+- `SL_STATUS_CAPACITY_EXCEEDED` for fixed caller-provided storage exhaustion.
+
 ## Tests
 
 CTest now registers focused C unit tests for status, source locations, string views, byte
-views, checked size arithmetic, arena behavior, diagnostics foundation behavior, and
-assertion macro compilation.
+views, checked size arithmetic, arena behavior, scope cleanup lifetime behavior, diagnostics
+foundation behavior, and assertion macro compilation.
 
 ## Source Docs
 

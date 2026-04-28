@@ -48,6 +48,7 @@ set(
     src/core/bytes.c
     src/core/checked_math.c
     src/core/arena.c
+    src/core/scope.c
     src/core/diagnostics.c)
 
 set(
@@ -60,6 +61,7 @@ set(
     tests/unit/core/test_bytes.c
     tests/unit/core/test_checked_math.c
     tests/unit/core/test_arena.c
+    tests/unit/core/test_scope.c
     tests/unit/core/test_diagnostics.c
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c)
@@ -216,6 +218,7 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
     sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
+    sloppy_add_c_unit_test(core_scope_lifetime core.scope.lifetime tests/unit/core/test_scope.c)
     sloppy_add_c_unit_test(
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
     set_tests_properties(

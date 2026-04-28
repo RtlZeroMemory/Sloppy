@@ -22,7 +22,9 @@ typedef enum SlStatusCode
     SL_STATUS_OUT_OF_RANGE = 4,
     SL_STATUS_ASSERTION_FAILED = 5,
     SL_STATUS_INTERNAL = 6,
-    SL_STATUS_UNSUPPORTED = 7
+    SL_STATUS_UNSUPPORTED = 7,
+    SL_STATUS_INVALID_STATE = 8,
+    SL_STATUS_CAPACITY_EXCEEDED = 9
 } SlStatusCode;
 
 typedef struct SlStatus
