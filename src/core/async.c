@@ -8,6 +8,7 @@
  * - payload, user, and diagnostic pointers are borrowed until loop dispatch;
  * - settlement posts through SlLoop and never invokes continuations inline;
  * - state changes only after the loop post succeeds;
+ * - reinitialization is rejected while a queued completion is still pending;
  * - each async object settles at most once;
  * - this skeleton is single-threaded and has no V8, microtask, HTTP, or worker behavior.
  *
@@ -18,14 +19,26 @@
 static SlStatus sl_async_dispatch(SlLoop* loop, SlCompletionKind kind, void* payload, void* user)
 {
     SlAsync* async = (SlAsync*)payload;
+    SlAsyncContinuationFn continuation = NULL;
+    void* continuation_user = NULL;
+    SlAsyncState state = SL_ASYNC_STATE_PENDING;
+    SlAsyncResult result;
 
     (void)kind;
     (void)user;
-    if (async == NULL || async->continuation == NULL || !async->has_result) {
+    if (async == NULL || async->continuation == NULL || !async->has_result ||
+        !async->completion_posted)
+    {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
-    return async->continuation(loop, async->state, &async->result, async->continuation_user);
+    continuation = async->continuation;
+    continuation_user = async->continuation_user;
+    state = async->state;
+    result = async->result;
+    async->completion_posted = false;
+
+    return continuation(loop, state, &result, continuation_user);
 }
 
 static SlStatus sl_async_settle(SlAsync* async, SlLoop* loop, SlAsyncState state, SlStatus status,
@@ -42,7 +55,7 @@ static SlStatus sl_async_settle(SlAsync* async, SlLoop* loop, SlAsyncState state
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (async->state != SL_ASYNC_STATE_PENDING) {
+    if (async->state != SL_ASYNC_STATE_PENDING || async->completion_posted) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
@@ -59,6 +72,7 @@ static SlStatus sl_async_settle(SlAsync* async, SlLoop* loop, SlAsyncState state
     async->state = state;
     async->result = result;
     async->has_result = true;
+    async->completion_posted = true;
 
     return sl_status_ok();
 }
@@ -69,6 +83,10 @@ SlStatus sl_async_init(SlAsync* async, SlAsyncContinuationFn continuation, void*
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    if (async->completion_posted) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
     async->state = SL_ASYNC_STATE_PENDING;
     async->continuation = continuation;
     async->continuation_user = continuation_user;
@@ -77,6 +95,7 @@ SlStatus sl_async_init(SlAsync* async, SlAsyncContinuationFn continuation, void*
     async->result.payload = NULL;
     async->result.user = NULL;
     async->has_result = false;
+    async->completion_posted = false;
 
     return sl_status_ok();
 }

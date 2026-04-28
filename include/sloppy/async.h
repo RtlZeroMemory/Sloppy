@@ -47,9 +47,13 @@ typedef SlStatus (*SlAsyncContinuationFn)(SlLoop* loop, SlAsyncState state,
 /*
  * Caller-owned native async settlement object.
  *
- * SlAsync starts pending and may be settled exactly once. Settlement posts one completion
- * to SlLoop; the continuation is not invoked inline. If posting fails, state remains
- * pending and no result is stored. This object owns no memory and is not thread-safe.
+ * Storage passed to sl_async_init() must be zero-initialized before first use, or must
+ * already have been initialized by sl_async_init(). SlAsync starts pending and may be
+ * settled exactly once per initialization. Settlement posts one completion to SlLoop; the
+ * continuation is not invoked inline. If posting fails, state remains pending and no result
+ * is stored. A settled object must not be reinitialized while its queued completion is
+ * still pending; sl_async_init() rejects that state. This object owns no memory and is not
+ * thread-safe.
  */
 typedef struct SlAsync
 {
@@ -58,6 +62,7 @@ typedef struct SlAsync
     void* continuation_user;
     SlAsyncResult result;
     bool has_result;
+    bool completion_posted;
 } SlAsync;
 
 SlStatus sl_async_init(SlAsync* async, SlAsyncContinuationFn continuation, void* continuation_user);

@@ -365,8 +365,8 @@ Phase 1:
 - native completion queue tests cover FIFO dispatch, capacity exhaustion, callback failure,
   stop/reset, and single-threaded drain behavior.
 - native async settlement tests cover pending/fulfilled/rejected/cancelled states, loop-post
-  dispatch, double settlement failure, failed-post atomicity, borrowed diagnostics, and
-  continuation failure propagation.
+  dispatch, double settlement failure, failed-post atomicity, borrowed diagnostics,
+  reinit-before-drain rejection, and continuation failure propagation.
 
 Plan loader phase:
 

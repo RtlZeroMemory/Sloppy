@@ -69,10 +69,11 @@ posts.
 Future request scopes live until promise settlement, response completion, or cancellation
 cleanup.
 
-`SlAsync` is caller-owned and does not allocate. It owns only the settlement record fields.
-Payload, result user data, continuation user data, and diagnostics are borrowed. Borrowed
-diagnostics must remain valid until loop dispatch; real V8/request scope integration will
-define a stronger ownership contract later.
+`SlAsync` is caller-owned and does not allocate. Storage passed to `sl_async_init` must be
+zero-initialized before first use or already initialized by `sl_async_init`. The object owns
+only the settlement record fields. Payload, result user data, continuation user data, and
+diagnostics are borrowed. Borrowed diagnostics must remain valid until loop dispatch; real
+V8/request scope integration will define a stronger ownership contract later.
 
 ## Invariants
 
@@ -99,6 +100,9 @@ Implemented loop invariants:
 - settlement posts exactly one `SL_COMPLETION_KIND_ASYNC` completion;
 - continuations run from `sl_loop_run_once` or `sl_loop_drain`, never inline during
   settlement;
+- reinitialization while a settled async completion is still queued fails with
+  `SL_STATUS_INVALID_STATE`;
+- reinitialization after the queued completion drains is allowed;
 - double settlement fails with `SL_STATUS_INVALID_STATE`;
 - failed loop posting leaves the async object pending and without a stored result;
 - continuation failure propagates through the loop dispatch call.
@@ -150,6 +154,7 @@ CTest registers `tests/unit/core/test_async.c`, covering:
 - invalid OK rejection/cancellation status rejection;
 - double settlement and cross-state settlement failure;
 - loop post failure leaving async pending;
+- reinit-before-drain rejection and preservation of the original queued completion result;
 - NULL loop and NULL async settlement rejection;
 - continuation failure propagation through loop drain;
 - deterministic completion order across multiple async objects.

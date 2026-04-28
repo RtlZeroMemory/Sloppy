@@ -176,6 +176,8 @@ ownership for real async handlers.
 
 The settlement semantics are:
 
+- storage passed to `sl_async_init` must be zero-initialized before first use or already
+  initialized by `sl_async_init`;
 - initial state is `SL_ASYNC_STATE_PENDING`;
 - continuation is required at initialization;
 - `sl_async_fulfill` stores an OK result plus borrowed payload/user pointers;
@@ -193,6 +195,10 @@ The settlement semantics are:
   `SL_STATUS_INVALID_ARGUMENT`;
 - if loop posting fails, settlement returns that failure and leaves the async object
   pending with no stored result.
+- reinitializing a settled async object before its queued completion drains fails with
+  `SL_STATUS_INVALID_STATE`;
+- reinitialization is allowed after the queued completion drains because the completion has
+  copied the original state and result for dispatch.
 
 `SlAsync` is not thread-safe. Settlement must occur on the owning runtime thread for now.
 Cross-thread settlement and thread-safe completion queues are future worker-pool/event-loop
