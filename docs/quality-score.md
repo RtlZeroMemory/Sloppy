@@ -21,7 +21,7 @@ ready.
 | Modularity | Yellow | Module architecture is documented. | Add plan/module extraction tests in later phases. |
 | Data providers | Yellow | Provider model is documented. | Add provider tasks/tests when provider phases begin. |
 | Compiler plan | Yellow | `sloppyc` shape is documented and placeholder exists. | Add fake emitter/golden tests, then Oxc integration. |
-| Runtime execution plan | Yellow | Execution model is documented, minimal Plan v1 structs exist, the parser validates a documented golden fixture matrix into arena-owned native data, and V8 SDK detection is opt-in for future bridge work. | Add file-based loader, runtime compatibility checks, V8 smoke, and handwritten execution tests later. |
+| Runtime execution plan | Yellow | Execution model is documented, minimal Plan v1 structs exist, the parser validates a documented golden fixture matrix into arena-owned native data, V8 SDK detection is opt-in, and the engine-neutral `SlEngine` ABI has noop/unsupported coverage. | Add file-based loader, runtime compatibility checks, V8-backed handler execution, and handwritten execution tests later. |
 | Concurrency/async model | Yellow | Canonical spec and ADR exist; implementation is future. | Add owner-thread checks, promise settlement tests, cancellation, backpressure, and worker scaling design. |
 | Agent harness | Green | Guide, harness docs, playbooks, plans, score, and debt tracker exist. | Keep repeated feedback promoted into docs/checks. |
 | Mechanical enforcement | Yellow | Platform, C standards, artifact gates, and first scope lifetime tests exist. | Add allocator/resource/V8 checks as implementation grows. |

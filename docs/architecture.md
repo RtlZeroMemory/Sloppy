@@ -39,7 +39,9 @@ The foundation phase does not implement:
 The repository is in foundation/spec/tooling phase. The placeholder `sloppy` and `sloppyc`
 CLIs exist only to prove toolchain wiring. They are not runtime or compiler implementations.
 TASK 07.A adds optional V8 SDK detection for future bridge work, but no V8 runtime code is
-implemented and normal builds do not require V8.
+implemented and normal builds do not require V8. TASK 07.B adds the engine-neutral
+`SlEngine` C ABI and a noop engine implementation; it does not initialize V8, load
+JavaScript, or execute handlers.
 
 ## Future Phase
 
@@ -123,6 +125,9 @@ It will own:
 
 Rules:
 
+- the C runtime talks to engines through `include/sloppy/engine.h`;
+- `SlEngine` is opaque and the public ABI exposes only C structs, `SlStatus`, `SlDiag`,
+  `SlStr`, and plan handler IDs;
 - no `v8::*` type may leak outside `src/engine/v8/`;
 - JS never receives raw C pointers;
 - native handles exposed to JS use resource IDs with generation counters;
@@ -238,7 +243,7 @@ Runtime lifecycle target:
 2. initialize core allocators and diagnostics;
 3. load and validate plan;
 4. build native app graph;
-5. initialize engine bridge;
+5. create an engine through the engine-neutral C ABI;
 6. load bootstrap stdlib;
 7. load app bundle;
 8. verify handler table;

@@ -232,12 +232,18 @@ static int test_names_and_spans(void)
         return 40;
     }
 
-    if (unknown.has_location || unknown.path.length != 0U) {
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_UNSUPPORTED_ENGINE),
+                         sl_str_from_cstr("SLOPPY_E_UNSUPPORTED_ENGINE")) != 0)
+    {
         return 41;
     }
 
-    if (partial.has_location) {
+    if (unknown.has_location || unknown.path.length != 0U) {
         return 42;
+    }
+
+    if (partial.has_location) {
+        return 43;
     }
 
     return 0;
