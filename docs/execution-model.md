@@ -51,6 +51,12 @@ engine boundary and receives the copied string result `sloppy-ok`. This is still
 HTTP runtime, compiler output, route dispatch, module loader, request context, public
 TypeScript API, or full `Results.*` model.
 
+TASK 09.A adds a native `SlLoop` completion queue skeleton for future async runtime work.
+It is caller-backed, fixed-capacity, and synchronous: completion callbacks run on the caller
+thread during `sl_loop_run_once` or `sl_loop_drain`. It does not integrate with V8
+microtasks, promise settlement, HTTP, libuv, OS event loops, worker pools, or request
+lifetime.
+
 ## Current Handwritten Milestone
 
 The first real milestone is not full TypeScript compilation. It is now covered by a

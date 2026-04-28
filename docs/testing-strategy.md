@@ -91,6 +91,7 @@ Compiler:
 Runtime execution:
 
 - handwritten artifacts first;
+- native completion queue skeleton before real async backends;
 - handler ID dispatch;
 - promise settlement later;
 - route-aware diagnostics.

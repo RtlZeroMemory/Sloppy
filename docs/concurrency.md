@@ -22,6 +22,16 @@ differences from ASP.NET Core, Node, Bun, and Deno.
 - No libuv integration in this task.
 - No CPU-parallel JS execution in a single isolate.
 
+## Current Implementation
+
+TASK 09.A implements the first `SlLoop` skeleton as a caller-backed, fixed-capacity native
+completion queue. It is deterministic and single-threaded: callbacks run synchronously on
+the caller thread through `sl_loop_run_once` or `sl_loop_drain`. It creates no threads,
+uses no OS APIs, has no libuv backend, and does not settle promises or drive HTTP.
+
+The remaining event loop, worker pool, request lifecycle, promise settlement, and async
+backend behavior is still future work.
+
 ## Core Decision
 
 ```text
@@ -86,6 +96,7 @@ Native event loop/backend:
 - handles socket readiness/completions;
 - drives timers;
 - posts work completion.
+- future work; TASK 09.A only provides a synchronous test-loop completion queue.
 
 Native worker pool:
 
@@ -116,6 +127,37 @@ TASK 07.C creates a V8 isolate/context for the opt-in smoke bridge and enters it
 calling thread. It still does not create workers, event-loop queues, or owner-thread
 enforcement. Callers must treat the engine as single-thread-owned until the later bridge and
 event-loop tasks add explicit checks.
+
+TASK 09.A adds the first native completion queue shape that later backends can post into,
+but the current skeleton is still single-threaded. Cross-thread posting, owner-thread
+identity checks, wakeups, and worker-thread-safe APIs are not implemented yet. Completion
+callbacks in the skeleton run on the caller thread, so they must not be used to bypass the
+V8 owner-thread rule.
+
+## Current SlLoop Skeleton Semantics
+
+`SlLoop` uses caller-provided `SlCompletion` storage. It never allocates memory, calls OS
+APIs, starts threads, or depends on libuv.
+
+The queue semantics are:
+
+- FIFO dispatch;
+- fixed capacity;
+- posting to a full queue returns `SL_STATUS_CAPACITY_EXCEEDED`;
+- posting after `sl_loop_stop` returns `SL_STATUS_INVALID_STATE`;
+- `sl_loop_run_once` runs at most one completion;
+- `sl_loop_drain` runs until the queue is empty, the loop is stopped, or a callback fails;
+- `sl_loop_stop` prevents further drain after the current callback returns;
+- `sl_loop_reset` clears pending completions and the stopped flag;
+- callbacks may post more completions while capacity is available;
+- callbacks may call `sl_loop_stop`;
+- nested drains on the same loop are rejected with `SL_STATUS_INVALID_STATE`;
+- callback failure propagates through `run_once`/`drain`;
+- consumed completions are not retried after callback failure.
+
+This is intentionally not a real OS event loop. libuv integration, IOCP/epoll/kqueue,
+timers, sockets, HTTP, thread-safe posting, worker pools, promise settlement, microtask
+draining, request lifecycle, cancellation, deadlines, and backpressure are deferred.
 
 ## Request Lifecycle With Async Handler
 

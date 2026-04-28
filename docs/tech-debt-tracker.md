@@ -8,6 +8,9 @@
 - Runtime execution is still limited to handwritten V8 smoke artifacts; no HTTP app host,
   compiler output loader, public TypeScript API, modules, services, or data providers exist
   yet.
+- `SlLoop` exists only as a caller-backed, single-threaded completion queue skeleton; it has
+  no libuv/backend integration, OS wakeup mechanism, cross-thread posting, or owner-thread
+  enforcement yet.
 
 ## Deferred decisions
 
@@ -15,6 +18,11 @@
 - Linux/macOS CI is future.
 - Package compatibility is future.
 - Exact event loop backend integration is future.
+- Thread-safe completion posting is future work.
+- `SlLoop` owner-thread identity checks are future work.
+- libuv event-loop backend integration is future work.
+- Worker-pool completion posting into `SlLoop` is future work.
+- Promise settlement through `SlLoop` is future work.
 - HTTP request scope integration with `SlScope` is future.
 - Resource-table cleanup callbacks registered through `SlScope` are future.
 - Async cancellation and deadline-triggered `SlScope` cleanup are future.

@@ -36,9 +36,9 @@ tests.
 Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
-  arena behavior, native cleanup scope behavior, minimal plan contract helper behavior,
-  minimal plan JSON parser/validator behavior, diagnostics foundation behavior, and
-  assertion macro compilation;
+  arena behavior, native cleanup scope behavior, native completion queue behavior, minimal
+  plan contract helper behavior, minimal plan JSON parser/validator behavior, diagnostics
+  foundation behavior, and assertion macro compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
@@ -103,6 +103,7 @@ tests/unit/core/
   test_checked_math.c
   test_arena.c
   test_scope.c
+  test_loop.c
   test_plan.c
   test_plan_parse.c
   test_diagnostics.c
@@ -359,6 +360,8 @@ Phase 1:
 - CTest includes status, source location, string, bytes, checked-math, arena, and scope
   tests;
 - no primitive API lands without ownership/lifetime tests.
+- native completion queue tests cover FIFO dispatch, capacity exhaustion, callback failure,
+  stop/reset, and single-threaded drain behavior.
 
 Plan loader phase:
 
