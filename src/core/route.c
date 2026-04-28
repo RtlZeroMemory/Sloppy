@@ -593,29 +593,86 @@ static bool sl_route_match_param(SlRouteParamKind kind, SlStr segment)
     return true;
 }
 
-static void sl_route_match_set_no_match(SlRouteMatch* out_match, SlRouteParam* params)
+static bool sl_route_segment_kind_known(SlRouteSegmentKind kind)
 {
-    out_match->matched = false;
-    out_match->params = params;
-    out_match->param_count = 0U;
+    return kind == SL_ROUTE_SEGMENT_STATIC || kind == SL_ROUTE_SEGMENT_PARAM;
 }
 
-static SlStatus sl_route_alloc_match_params(SlArena* arena, size_t param_count, SlRouteParam** out)
+static bool sl_route_param_kind_known(SlRouteParamKind kind)
+{
+    return kind == SL_ROUTE_PARAM_STRING || kind == SL_ROUTE_PARAM_INT;
+}
+
+static SlStatus sl_route_pattern_validate_for_match(const SlRoutePattern* pattern,
+                                                    size_t* out_param_count)
+{
+    size_t index = 0U;
+    size_t actual_param_count = 0U;
+
+    if (pattern == NULL || out_param_count == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_param_count = 0U;
+    if (pattern->segment_count > SL_ROUTE_MAX_SEGMENTS ||
+        pattern->param_count > SL_ROUTE_MAX_PARAMS)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (pattern->segment_count != 0U && pattern->segments == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < pattern->segment_count; index += 1U) {
+        const SlRouteSegment* segment = &pattern->segments[index];
+
+        if (!sl_route_segment_kind_known(segment->kind)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+
+        if (segment->kind == SL_ROUTE_SEGMENT_STATIC) {
+            if (!sl_route_str_valid(segment->text) || segment->text.length == 0U) {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
+            continue;
+        }
+
+        if (!sl_route_param_kind_known(segment->param_kind) ||
+            !sl_route_param_name_valid(segment->param_name))
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+
+        actual_param_count += 1U;
+        if (actual_param_count > pattern->param_count || actual_param_count > SL_ROUTE_MAX_PARAMS) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+    }
+
+    *out_param_count = actual_param_count;
+    return sl_status_ok();
+}
+
+static SlStatus sl_route_copy_match_params(SlArena* arena, const SlRouteParam* captures,
+                                           size_t capture_count, SlRouteParam** out)
 {
     void* ptr = NULL;
     size_t alloc_size = 0U;
+    size_t index = 0U;
+    SlRouteParam* params = NULL;
     SlStatus status;
 
-    if (arena == NULL || out == NULL) {
+    if (arena == NULL || captures == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     *out = NULL;
-    if (param_count == 0U) {
+    if (capture_count == 0U) {
         return sl_status_ok();
     }
 
-    status = sl_checked_mul_size(param_count, sizeof(SlRouteParam), &alloc_size);
+    status = sl_checked_mul_size(capture_count, sizeof(SlRouteParam), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -625,7 +682,12 @@ static SlStatus sl_route_alloc_match_params(SlArena* arena, size_t param_count, 
         return status;
     }
 
-    *out = (SlRouteParam*)ptr;
+    params = (SlRouteParam*)ptr;
+    for (index = 0U; index < capture_count; index += 1U) {
+        params[index] = captures[index];
+    }
+
+    *out = params;
     return sl_status_ok();
 }
 
@@ -660,16 +722,20 @@ static SlStatus sl_route_match_one_segment(const SlRouteSegment* pattern_segment
 }
 
 static SlStatus sl_route_match_segments(const SlRoutePattern* pattern, SlStr path,
-                                        SlRouteParam* params, SlRouteMatch* out_match)
+                                        SlRouteParam* captures, size_t* out_capture_count,
+                                        bool* out_matched)
 {
     size_t pattern_index = 0U;
     size_t path_pos = 1U;
     size_t param_index = 0U;
     SlStatus status;
 
-    if (pattern == NULL || out_match == NULL) {
+    if (pattern == NULL || captures == NULL || out_capture_count == NULL || out_matched == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+
+    *out_capture_count = 0U;
+    *out_matched = false;
 
     while (pattern_index < pattern->segment_count) {
         const SlRouteSegment* pattern_segment = &pattern->segments[pattern_index];
@@ -679,7 +745,6 @@ static SlStatus sl_route_match_segments(const SlRoutePattern* pattern, SlStr pat
         bool segment_matched = false;
 
         if (path_pos >= path.length) {
-            sl_route_match_set_no_match(out_match, params);
             return sl_status_ok();
         }
 
@@ -688,14 +753,13 @@ static SlStatus sl_route_match_segments(const SlRoutePattern* pattern, SlStr pat
         }
 
         path_segment = sl_str_from_parts(path.ptr + segment_start, segment_end - segment_start);
-        status = sl_route_match_one_segment(pattern_segment, path_segment, params, &param_index,
+        status = sl_route_match_one_segment(pattern_segment, path_segment, captures, &param_index,
                                             &segment_matched);
         if (!sl_status_is_ok(status)) {
             return status;
         }
 
         if (!segment_matched) {
-            sl_route_match_set_no_match(out_match, params);
             return sl_status_ok();
         }
 
@@ -709,16 +773,19 @@ static SlStatus sl_route_match_segments(const SlRoutePattern* pattern, SlStr pat
         }
     }
 
-    out_match->matched = path_pos == path.length && path.ptr[path.length - 1U] != '/';
-    out_match->params = params;
-    out_match->param_count = out_match->matched ? param_index : 0U;
+    *out_matched = path_pos == path.length && path.ptr[path.length - 1U] != '/';
+    *out_capture_count = *out_matched ? param_index : 0U;
     return sl_status_ok();
 }
 
 SlStatus sl_route_pattern_match(SlArena* arena, const SlRoutePattern* pattern, SlStr path,
                                 SlRouteMatch* out_match)
 {
-    SlRouteParam* params = NULL;
+    SlRouteParam captures[SL_ROUTE_MAX_PARAMS];
+    SlRouteParam* copied_params = NULL;
+    size_t actual_param_count = 0U;
+    size_t capture_count = 0U;
+    bool matched = false;
     SlStatus status;
 
     if (out_match == NULL) {
@@ -733,17 +800,35 @@ SlStatus sl_route_pattern_match(SlArena* arena, const SlRoutePattern* pattern, S
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_route_alloc_match_params(arena, pattern->param_count, &params);
+    status = sl_route_pattern_validate_for_match(pattern, &actual_param_count);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
     if (pattern->segment_count == 0U) {
         out_match->matched = path.length == 1U;
-        out_match->params = params;
+        out_match->params = NULL;
         out_match->param_count = 0U;
         return sl_status_ok();
     }
 
-    return sl_route_match_segments(pattern, path, params, out_match);
+    (void)actual_param_count;
+    status = sl_route_match_segments(pattern, path, captures, &capture_count, &matched);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (!matched) {
+        return sl_status_ok();
+    }
+
+    status = sl_route_copy_match_params(arena, captures, capture_count, &copied_params);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    out_match->matched = true;
+    out_match->params = copied_params;
+    out_match->param_count = capture_count;
+    return sl_status_ok();
 }

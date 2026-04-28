@@ -84,9 +84,10 @@ Parsed route patterns copy source text, static segment text, and parameter names
 caller-provided `SlArena`. Parsed pattern views remain valid until that arena is reset or
 its backing storage ends.
 
-Route match arrays are allocated from the caller-provided match arena. Captured parameter
-names point into the parsed pattern arena. Captured parameter values are borrowed slices of
-the matched path input and are valid only while that path storage remains valid.
+Successful route match arrays are allocated from the caller-provided match arena. Failed
+matches return no parameter array. Captured parameter names point into the parsed pattern
+arena. Captured parameter values are borrowed slices of the matched path input and are valid
+only while that path storage remains valid.
 
 Request data must have documented ownership and may not outlive its scope unsafely once HTTP
 request handling exists.

@@ -329,16 +329,139 @@ static int test_match_failure_shapes(void)
 
     if (parse_and_match("/users/{id}", "/users", &pattern, &match, parse_storage, match_storage) !=
             0 ||
-        match.matched)
+        match.matched || match.params != NULL || match.param_count != 0U)
     {
         return 160;
     }
 
     if (parse_and_match("/users/{id}", "/users/abc/extra", &pattern, &match, parse_storage,
                         match_storage) != 0 ||
-        match.matched)
+        match.matched || match.params != NULL || match.param_count != 0U)
     {
         return 161;
+    }
+
+    return 0;
+}
+
+static int test_match_rejects_malformed_public_patterns(void)
+{
+    unsigned char storage[1024];
+    SlArena arena = {0};
+    SlRouteMatch match = {0};
+    SlRouteSegment static_segment = {sl_str_from_cstr("users"), sl_str_empty(),
+                                     SL_ROUTE_SEGMENT_STATIC, SL_ROUTE_PARAM_STRING};
+    SlRouteSegment param_segment = {sl_str_empty(), sl_str_from_cstr("id"), SL_ROUTE_SEGMENT_PARAM,
+                                    SL_ROUTE_PARAM_STRING};
+    SlRouteSegment bad_kind_segment = {sl_str_from_cstr("users"), sl_str_empty(),
+                                       SL_ROUTE_SEGMENT_INVALID, SL_ROUTE_PARAM_STRING};
+    SlRouteSegment bad_param_kind_segment = {sl_str_empty(), sl_str_from_cstr("id"),
+                                             SL_ROUTE_SEGMENT_PARAM, SL_ROUTE_PARAM_INVALID};
+    SlRoutePattern missing_segments = {sl_str_empty(), NULL, 1U, 0U};
+    SlRoutePattern too_many_segments = {sl_str_empty(), &static_segment, SL_ROUTE_MAX_SEGMENTS + 1U,
+                                        0U};
+    SlRoutePattern too_many_params = {sl_str_empty(), &param_segment, 1U, SL_ROUTE_MAX_PARAMS + 1U};
+    SlRoutePattern bad_kind = {sl_str_empty(), &bad_kind_segment, 1U, 0U};
+    SlRoutePattern bad_param_kind = {sl_str_empty(), &bad_param_kind_segment, 1U, 1U};
+    SlRoutePattern bad_param_count = {sl_str_empty(), &param_segment, 1U, 0U};
+    SlStatus status;
+
+    status = init_arena(&arena, storage, sizeof(storage));
+    if (!sl_status_is_ok(status)) {
+        return 162;
+    }
+
+    if (expect_status(
+            sl_route_pattern_match(&arena, &missing_segments, sl_str_from_cstr("/users"), &match),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 163;
+    }
+
+    if (expect_status(
+            sl_route_pattern_match(&arena, &too_many_segments, sl_str_from_cstr("/users"), &match),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 164;
+    }
+
+    if (expect_status(
+            sl_route_pattern_match(&arena, &too_many_params, sl_str_from_cstr("/123"), &match),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 165;
+    }
+
+    if (expect_status(sl_route_pattern_match(&arena, &bad_kind, sl_str_from_cstr("/users"), &match),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 166;
+    }
+
+    if (expect_status(
+            sl_route_pattern_match(&arena, &bad_param_kind, sl_str_from_cstr("/123"), &match),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 167;
+    }
+
+    if (expect_status(
+            sl_route_pattern_match(&arena, &bad_param_count, sl_str_from_cstr("/123"), &match),
+            SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 168;
+    }
+
+    return 0;
+}
+
+static int test_failed_match_does_not_consume_arena(void)
+{
+    unsigned char parse_storage[TEST_ARENA_SIZE];
+    unsigned char match_storage[256];
+    SlArena parse_arena = {0};
+    SlArena match_arena = {0};
+    SlRoutePattern pattern = {0};
+    SlRouteMatch match = {0};
+    size_t used_before = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    status = init_arena(&parse_arena, parse_storage, sizeof(parse_storage));
+    if (!sl_status_is_ok(status)) {
+        return 169;
+    }
+
+    status = init_arena(&match_arena, match_storage, sizeof(match_storage));
+    if (!sl_status_is_ok(status)) {
+        return 170;
+    }
+
+    status = parse_pattern(&parse_arena, "/users/{id:int}", &pattern, NULL);
+    if (!sl_status_is_ok(status)) {
+        return 171;
+    }
+
+    used_before = sl_arena_used(&match_arena);
+    for (index = 0U; index < 32U; index += 1U) {
+        status =
+            sl_route_pattern_match(&match_arena, &pattern, sl_str_from_cstr("/users/abc"), &match);
+        if (!sl_status_is_ok(status)) {
+            return 172;
+        }
+
+        if (match.matched || match.params != NULL || match.param_count != 0U ||
+            sl_arena_used(&match_arena) != used_before)
+        {
+            return 173;
+        }
+    }
+
+    status = sl_route_pattern_match(&match_arena, &pattern, sl_str_from_cstr("/users/123"), &match);
+    if (!sl_status_is_ok(status) || !match.matched || match.params == NULL ||
+        match.param_count != 1U || sl_arena_used(&match_arena) <= used_before)
+    {
+        return 174;
     }
 
     return 0;
@@ -464,6 +587,16 @@ int main(void)
     }
 
     result = test_match_failure_shapes();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_match_rejects_malformed_public_patterns();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_failed_match_does_not_consume_arena();
     if (result != 0) {
         return result;
     }

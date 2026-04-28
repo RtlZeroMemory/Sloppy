@@ -19,13 +19,15 @@ extern "C" {
 typedef enum SlRouteSegmentKind
 {
     SL_ROUTE_SEGMENT_STATIC = 0,
-    SL_ROUTE_SEGMENT_PARAM = 1
+    SL_ROUTE_SEGMENT_PARAM = 1,
+    SL_ROUTE_SEGMENT_INVALID = 2
 } SlRouteSegmentKind;
 
 typedef enum SlRouteParamKind
 {
     SL_ROUTE_PARAM_STRING = 0,
-    SL_ROUTE_PARAM_INT = 1
+    SL_ROUTE_PARAM_INT = 1,
+    SL_ROUTE_PARAM_INVALID = 2
 } SlRouteParamKind;
 
 typedef struct SlRouteSegment
@@ -56,7 +58,8 @@ typedef struct SlRoutePattern
  *
  * `name` points into the parsed pattern arena. `value` is a borrowed slice of the path
  * passed to sl_route_pattern_match and is valid only while that path storage remains valid.
- * The match object stores its parameter array in the match arena supplied by the caller.
+ * Successful matches store their parameter array in the match arena supplied by the caller.
+ * Failed matches return `params == NULL` and `param_count == 0`.
  */
 typedef struct SlRouteParam
 {
