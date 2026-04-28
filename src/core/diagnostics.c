@@ -397,6 +397,14 @@ SlStr sl_diag_code_name(SlDiagCode code)
                                sizeof("SLOPPY_E_PERMISSION_DENIED") - 1U);
     case SL_DIAG_INTERNAL_ERROR:
         return sl_diag_literal("SLOPPY_E_INTERNAL", sizeof("SLOPPY_E_INTERNAL") - 1U);
+    case SL_DIAG_INVALID_PLAN_FIELD:
+        return sl_diag_literal("SLOPPY_E_INVALID_PLAN_FIELD",
+                               sizeof("SLOPPY_E_INVALID_PLAN_FIELD") - 1U);
+    case SL_DIAG_DUPLICATE_HANDLER_ID:
+        return sl_diag_literal("SLOPPY_E_DUPLICATE_HANDLER_ID",
+                               sizeof("SLOPPY_E_DUPLICATE_HANDLER_ID") - 1U);
+    case SL_DIAG_MALFORMED_JSON:
+        return sl_diag_literal("SLOPPY_E_MALFORMED_JSON", sizeof("SLOPPY_E_MALFORMED_JSON") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

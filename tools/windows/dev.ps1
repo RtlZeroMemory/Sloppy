@@ -30,6 +30,32 @@ function Invoke-Native {
     }
 }
 
+function Resolve-VcpkgRoot {
+    $localRoot = Join-Path $Root ".sdeps/vcpkg"
+    $localToolchain = Join-Path $localRoot "scripts/buildsystems/vcpkg.cmake"
+    if (Test-Path -LiteralPath $localToolchain) {
+        return (Resolve-Path -LiteralPath $localRoot).Path
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:VCPKG_ROOT)) {
+        $candidate = Join-Path $env:VCPKG_ROOT "scripts/buildsystems/vcpkg.cmake"
+        if (Test-Path -LiteralPath $candidate) {
+            return (Resolve-Path -LiteralPath $env:VCPKG_ROOT).Path
+        }
+    }
+
+    $vcpkgCommand = Get-Command "vcpkg" -ErrorAction SilentlyContinue
+    if ($null -ne $vcpkgCommand) {
+        $commandDir = Split-Path -Parent $vcpkgCommand.Source
+        $commandToolchain = Join-Path $commandDir "scripts/buildsystems/vcpkg.cmake"
+        if (Test-Path -LiteralPath $commandToolchain) {
+            return (Resolve-Path -LiteralPath $commandDir).Path
+        }
+    }
+
+    throw "vcpkg was not found. Set VCPKG_ROOT, install vcpkg on PATH, or bootstrap .sdeps/vcpkg."
+}
+
 function Resolve-GateTool {
     param(
         [string]$Name,
@@ -53,7 +79,12 @@ function Resolve-GateTool {
 function Invoke-Configure {
     Import-SlVisualStudioEnvironment
 
+    $vcpkgRoot = Resolve-VcpkgRoot
+    $vcpkgToolchain = Join-Path $vcpkgRoot "scripts/buildsystems/vcpkg.cmake"
     $args = @("--preset", $Preset)
+    if (-not (Test-Path -LiteralPath (Join-Path $BuildDir "CMakeCache.txt"))) {
+        $args += "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain"
+    }
     if ($CMakeArgs.Count -gt 0) {
         $args += $CMakeArgs
     }

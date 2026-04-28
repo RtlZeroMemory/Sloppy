@@ -330,6 +330,6 @@ Architecture foundation is accepted when:
 
 - Exact public C API shape for platform abstraction.
 - Exact V8 SDK artifact layout.
-- Whether the first plan loader uses yyjson immediately or a tiny temporary parser.
+- Exact file-based plan loader API after the TASK 06.B yyjson byte parser.
 - Whether source maps are parsed in C or delegated to a tooling helper.
 - How much dynamic mode is allowed before v0.1.

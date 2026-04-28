@@ -37,7 +37,8 @@ Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
   arena behavior, native cleanup scope behavior, minimal plan contract helper behavior,
-  diagnostics foundation behavior, and assertion macro compilation;
+  minimal plan JSON parser/validator behavior, diagnostics foundation behavior, and
+  assertion macro compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
@@ -94,6 +95,7 @@ tests/unit/core/
   test_arena.c
   test_scope.c
   test_plan.c
+  test_plan_parse.c
   test_diagnostics.c
   test_assert.c
   test_source_loc_cpp.cpp
@@ -330,7 +332,8 @@ Plan loader phase:
 
 - valid/invalid plan fixtures;
 - fixture existence checks before the parser exists;
-- diagnostics snapshots;
+- parser tests once the parser exists;
+- diagnostics checks;
 - malformed JSON tests.
 
 V8 smoke phase:

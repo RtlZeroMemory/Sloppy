@@ -8,6 +8,7 @@ $requiredTools = @(
     "git",
     "cmake",
     "ninja",
+    "vcpkg",
     "clang-cl",
     "lld-link",
     "cargo"
@@ -17,6 +18,28 @@ $missing = @()
 $sloppyIsCi = -not [string]::IsNullOrWhiteSpace($env:CI) -and
     $env:CI -ne "0" -and
     $env:CI -ne "false"
+$root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+
+function Find-SlVcpkg {
+    $localCandidate = Join-Path $root ".sdeps/vcpkg/vcpkg.exe"
+    if (Test-Path -LiteralPath $localCandidate) {
+        return $localCandidate
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:VCPKG_ROOT)) {
+        $candidate = Join-Path $env:VCPKG_ROOT "vcpkg.exe"
+        if (Test-Path -LiteralPath $candidate) {
+            return $candidate
+        }
+    }
+
+    $command = Get-Command "vcpkg" -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+
+    return $null
+}
 
 try {
     Import-SlVisualStudioEnvironment
@@ -31,12 +54,18 @@ try {
 Write-Host "Checking Sloppy foundation toolchain..."
 
 foreach ($tool in $requiredTools) {
-    $command = Get-Command $tool -ErrorAction SilentlyContinue
-    if ($null -eq $command) {
+    if ($tool -eq "vcpkg") {
+        $source = Find-SlVcpkg
+    } else {
+        $command = Get-Command $tool -ErrorAction SilentlyContinue
+        $source = if ($null -eq $command) { $null } else { $command.Source }
+    }
+
+    if ($null -eq $source) {
         Write-Host "[missing] $tool" -ForegroundColor Red
         $missing += $tool
     } else {
-        Write-Host "[ok]      $tool -> $($command.Source)"
+        Write-Host "[ok]      $tool -> $source"
     }
 }
 
@@ -44,7 +73,7 @@ if ($missing.Count -gt 0) {
     Write-Host ""
     Write-Host "Missing required tools: $($missing -join ', ')" -ForegroundColor Red
     Write-Host "Install the missing tools, then rerun tools/windows/bootstrap.ps1."
-    Write-Host "TODO: add optional vcpkg bootstrap guidance once dependencies are introduced."
+    Write-Host "Set VCPKG_ROOT or put vcpkg on PATH so CMake can install manifest dependencies."
     exit 1
 }
 
@@ -71,5 +100,5 @@ if (-not ($hasCHeader -and $hasKernelLib -and $hasRuntimeLib)) {
     Write-Host "MSVC/Windows SDK build environment is available."
 }
 
-Write-Host "vcpkg manifest files are present, but no C dependencies are required yet."
+Write-Host "vcpkg manifest mode is required for C dependencies such as yyjson."
 Write-Host "V8 fetching is intentionally not implemented in this phase."

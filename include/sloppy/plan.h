@@ -1,6 +1,9 @@
 #ifndef SLOPPY_PLAN_H
 #define SLOPPY_PLAN_H
 
+#include "sloppy/arena.h"
+#include "sloppy/bytes.h"
+#include "sloppy/diagnostics.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -75,6 +78,17 @@ typedef struct SlPlan
     size_t handler_count;
 } SlPlan;
 
+/*
+ * Options for parsing caller-provided `app.plan.json` bytes.
+ *
+ * `source_name` is an optional borrowed name used in diagnostics. It is copied into
+ * diagnostics when `out_diag` is provided and never affects parser ownership.
+ */
+typedef struct SlPlanParseOptions
+{
+    SlStr source_name;
+} SlPlanParseOptions;
+
 bool sl_plan_version_supported(uint32_t version);
 bool sl_handler_id_valid(SlHandlerId id);
 
@@ -96,6 +110,21 @@ SlStatus sl_plan_find_handler_by_id(const SlPlan* plan, SlHandlerId id, const Sl
  * table diagnostic.
  */
 bool sl_plan_has_duplicate_handler_ids(const SlPlan* plan);
+
+/*
+ * Parses and validates minimal Sloppy Plan v1 JSON from caller-provided bytes.
+ *
+ * `arena`, `out_plan`, and non-empty `json` bytes are required. `options` and `out_diag`
+ * may be NULL. The parser performs no file I/O, no platform calls, and no runtime
+ * compatibility checks beyond the documented minimal shape.
+ *
+ * On success, all strings and the handler array stored in `*out_plan` are arena-owned and
+ * remain valid until `arena` is reset or its caller-owned backing buffer ends. On failure,
+ * `*out_plan` is cleared where practical. If `out_diag` is provided, it receives an
+ * arena-owned diagnostic describing the failure.
+ */
+SlStatus sl_plan_parse_json(SlArena* arena, SlBytes json, const SlPlanParseOptions* options,
+                            SlPlan* out_plan, SlDiag* out_diag);
 
 #ifdef __cplusplus
 }
