@@ -19,6 +19,8 @@ option(SLOPPY_ENABLE_V8 "Enable the phase-gated V8 bridge SDK integration." OFF)
 set(SLOPPY_ENGINE "none" CACHE STRING "JavaScript engine backend for this build.")
 set_property(CACHE SLOPPY_ENGINE PROPERTY STRINGS "v8" "none")
 set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a prebuilt V8 SDK root.")
+set(SLOPPY_V8_EXPECTED_REVISION "7221f49fdb6c89cce6be08005732ebcab3c45b38")
+set(SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION "af4386908c3762433d412689038de6e6333f5921")
 
 find_program(CARGO_EXECUTABLE cargo)
 find_program(CLANG_FORMAT_EXECUTABLE clang-format)
@@ -57,6 +59,27 @@ function(sloppy_require_v8_path relative_path description)
             FATAL_ERROR
                 "V8 bridge: enabled but ${description} is missing: ${required_path}\n"
                 "Set SLOPPY_V8_ROOT to a prebuilt SDK root with include/, lib/, and optional bin/.")
+endif()
+endfunction()
+
+function(sloppy_require_v8_manifest_string expected_value description)
+    string(JSON actual_value GET "${SLOPPY_V8_MANIFEST}" ${ARGN})
+    if(NOT actual_value STREQUAL expected_value)
+        message(
+            FATAL_ERROR
+                "V8 bridge: SDK manifest ${description} is incompatible.\n"
+                "Expected '${expected_value}', got '${actual_value}'.\n"
+                "Rebuild/package V8 with tools/windows/build-v8.ps1.")
+    endif()
+endfunction()
+
+function(sloppy_require_v8_manifest_true description)
+    string(JSON actual_value GET "${SLOPPY_V8_MANIFEST}" ${ARGN})
+    if(NOT actual_value)
+        message(
+            FATAL_ERROR
+                "V8 bridge: SDK manifest ${description} must be true.\n"
+                "Rebuild/package V8 with tools/windows/build-v8.ps1.")
     endif()
 endfunction()
 
@@ -77,42 +100,125 @@ if(SLOPPY_ENABLE_V8)
     sloppy_require_v8_path("include/v8.h" "include/v8.h")
     sloppy_require_v8_path("include/libplatform/libplatform.h" "include/libplatform/libplatform.h")
     sloppy_require_v8_path("lib" "lib directory")
+    sloppy_require_v8_path("share/sloppy-v8-sdk.json" "V8 SDK manifest")
+
+    file(READ "${SLOPPY_V8_ROOT}/share/sloppy-v8-sdk.json" SLOPPY_V8_MANIFEST)
+    sloppy_require_v8_manifest_string("sloppy-v8-sdk" "name" name)
+    sloppy_require_v8_manifest_string("windows-x64" "platform" platform)
+    sloppy_require_v8_manifest_string("${SLOPPY_V8_EXPECTED_REVISION}" "v8Revision" v8Revision)
+    sloppy_require_v8_manifest_string("release" "buildType" buildType)
+    sloppy_require_v8_manifest_string(
+        "Release or RelWithDebInfo" "crtCompatibility" crtCompatibility)
+    sloppy_require_v8_manifest_string(
+        "${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}" "abi.crLibcxxRevision" abi
+        crLibcxxRevision)
+    sloppy_require_v8_manifest_string("x64" "abi.v8TargetArch" abi v8TargetArch)
+    sloppy_require_v8_manifest_true("abi.v8CompressPointers" abi v8CompressPointers)
+    sloppy_require_v8_manifest_true(
+        "abi.v8CompressPointersInSharedCage" abi v8CompressPointersInSharedCage)
+    sloppy_require_v8_manifest_true(
+        "abi.v8_31BitSmisOn64BitArch" abi v8_31BitSmisOn64BitArch)
+    sloppy_require_v8_manifest_true("abi.v8EnableSandbox" abi v8EnableSandbox)
 
     file(
         GLOB
-        SLOPPY_V8_CORE_LIBS
+        SLOPPY_V8_MONOLITH_LIBS
         CONFIGURE_DEPENDS
-        "${SLOPPY_V8_ROOT}/lib/v8.lib"
         "${SLOPPY_V8_ROOT}/lib/v8_monolith*.lib")
+    file(
+        GLOB
+        SLOPPY_V8_SPLIT_CORE_LIBS
+        CONFIGURE_DEPENDS
+        "${SLOPPY_V8_ROOT}/lib/v8.lib")
     file(
         GLOB
         SLOPPY_V8_PLATFORM_LIBS
         CONFIGURE_DEPENDS
         "${SLOPPY_V8_ROOT}/lib/v8_libplatform*.lib")
     file(GLOB SLOPPY_V8_BASE_LIBS CONFIGURE_DEPENDS "${SLOPPY_V8_ROOT}/lib/v8_libbase*.lib")
+    file(GLOB SLOPPY_V8_LIBCXX_LIBS CONFIGURE_DEPENDS "${SLOPPY_V8_ROOT}/lib/libc++*.lib")
 
-    if(NOT SLOPPY_V8_CORE_LIBS)
+    if(SLOPPY_V8_MONOLITH_LIBS)
+        if(NOT SLOPPY_V8_PLATFORM_LIBS)
+            message(
+                FATAL_ERROR
+                    "V8 bridge: enabled but no v8_libplatform*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+        endif()
+        if(NOT SLOPPY_V8_BASE_LIBS)
+            message(
+                FATAL_ERROR
+                    "V8 bridge: enabled but no v8_libbase*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+        endif()
+        set(SLOPPY_V8_LIBS ${SLOPPY_V8_MONOLITH_LIBS} ${SLOPPY_V8_PLATFORM_LIBS}
+                           ${SLOPPY_V8_BASE_LIBS} ${SLOPPY_V8_LIBCXX_LIBS})
+        if(SLOPPY_V8_LIBCXX_LIBS)
+            sloppy_require_v8_path("support/libcxx/include/memory" "libc++ support headers")
+            sloppy_require_v8_path("support/libcxx/buildtools/__config_site"
+                                   "libc++ build configuration header")
+            if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+                message(
+                    FATAL_ERROR
+                        "V8 bridge: this SDK was packaged with Chromium libc++ release libraries and cannot be linked into the Debug CRT configuration.\n"
+                        "Use -Preset windows-relwithdebinfo for V8 smoke tests, or build/package a matching Debug V8 SDK.")
+            endif()
+            message(STATUS "V8 SDK support library: libc++")
+        endif()
+        message(STATUS "V8 SDK library mode: monolithic")
+    elseif(SLOPPY_V8_SPLIT_CORE_LIBS)
+        if(NOT SLOPPY_V8_PLATFORM_LIBS)
+            message(
+                FATAL_ERROR
+                    "V8 bridge: enabled but no v8_libplatform*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+        endif()
+        if(NOT SLOPPY_V8_BASE_LIBS)
+            message(
+                FATAL_ERROR
+                    "V8 bridge: enabled but no v8_libbase*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+        endif()
+        set(SLOPPY_V8_LIBS ${SLOPPY_V8_SPLIT_CORE_LIBS} ${SLOPPY_V8_PLATFORM_LIBS}
+                           ${SLOPPY_V8_BASE_LIBS})
+        message(STATUS "V8 SDK library mode: split")
+    else()
         message(
             FATAL_ERROR
                 "V8 bridge: enabled but no core V8 library was found under ${SLOPPY_V8_ROOT}/lib.\n"
-                "Expected v8.lib or v8_monolith*.lib; support libraries alone are not sufficient.")
-    endif()
-    if(NOT SLOPPY_V8_PLATFORM_LIBS)
-        message(
-            FATAL_ERROR
-                "V8 bridge: enabled but no v8_libplatform*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
-    endif()
-    if(NOT SLOPPY_V8_BASE_LIBS)
-        message(
-            FATAL_ERROR
-                "V8 bridge: enabled but no v8_libbase*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+                "Expected v8_monolith*.lib, or v8.lib with v8_libplatform*.lib and v8_libbase*.lib.")
     endif()
 
     add_library(Sloppy::V8 INTERFACE IMPORTED)
     target_include_directories(Sloppy::V8 INTERFACE "${SLOPPY_V8_ROOT}/include")
-    target_link_libraries(
+    target_compile_definitions(
         Sloppy::V8
-        INTERFACE ${SLOPPY_V8_CORE_LIBS} ${SLOPPY_V8_PLATFORM_LIBS} ${SLOPPY_V8_BASE_LIBS})
+        INTERFACE
+            $<$<COMPILE_LANGUAGE:CXX>:V8_COMPRESS_POINTERS>
+            $<$<COMPILE_LANGUAGE:CXX>:V8_COMPRESS_POINTERS_IN_SHARED_CAGE>
+            $<$<COMPILE_LANGUAGE:CXX>:V8_31BIT_SMIS_ON_64BIT_ARCH>
+            $<$<COMPILE_LANGUAGE:CXX>:V8_ENABLE_SANDBOX>
+            $<$<COMPILE_LANGUAGE:CXX>:V8_TARGET_ARCH_X64>)
+    if(SLOPPY_V8_LIBCXX_LIBS)
+        target_compile_definitions(
+            Sloppy::V8
+            INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE>
+                $<$<COMPILE_LANGUAGE:CXX>:_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS>
+                $<$<COMPILE_LANGUAGE:CXX>:CR_LIBCXX_REVISION=${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}>)
+        target_compile_options(
+            Sloppy::V8
+            INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/buildtools>
+                $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/include>)
+    endif()
+    target_link_libraries(Sloppy::V8 INTERFACE ${SLOPPY_V8_LIBS})
+    if(WIN32)
+        target_link_libraries(
+            Sloppy::V8
+            INTERFACE winmm
+                      dbghelp
+                      $<$<CONFIG:Debug>:vcruntimed>
+                      $<$<NOT:$<CONFIG:Debug>>:vcruntime>
+                      $<$<CONFIG:Debug>:msvcprtd>
+                      $<$<NOT:$<CONFIG:Debug>>:msvcprt>)
+    endif()
 
     message(STATUS "V8 bridge: enabled")
     message(STATUS "V8 SDK root: ${SLOPPY_V8_ROOT}")
@@ -133,6 +239,7 @@ set(
     src/core/scope.c
     src/core/plan.c
     src/core/plan_parse.c
+    src/core/runtime_contract.c
     src/core/diagnostics.c
     src/engine/engine.c)
 
@@ -153,13 +260,18 @@ set(
     tests/unit/core/test_scope.c
     tests/unit/core/test_plan.c
     tests/unit/core/test_plan_parse.c
+    tests/unit/core/test_runtime_contract.c
     tests/unit/core/test_engine.c
     tests/unit/core/test_diagnostics.c
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c)
 
 if(SLOPPY_ENABLE_V8)
-    list(APPEND SLOPPY_C_LINT_SOURCES tests/unit/engine/test_v8_smoke.c)
+    list(
+        APPEND
+        SLOPPY_C_LINT_SOURCES
+        tests/unit/engine/test_v8_smoke.c
+        tests/integration/execution/test_handwritten_artifact_execution.c)
 endif()
 
 add_library(sloppy_core STATIC ${SLOPPY_CORE_SOURCES})
@@ -168,7 +280,7 @@ target_compile_features(sloppy_core PUBLIC c_std_17)
 target_link_libraries(sloppy_core PRIVATE yyjson::yyjson)
 
 if(SLOPPY_ENABLE_V8)
-    target_compile_features(sloppy_core PRIVATE cxx_std_17)
+    target_compile_features(sloppy_core PRIVATE cxx_std_20)
     target_compile_definitions(sloppy_core PUBLIC SLOPPY_ENABLE_V8_BRIDGE=1)
     target_link_libraries(sloppy_core PRIVATE Sloppy::V8)
 endif()
@@ -328,10 +440,17 @@ if(SLOPPY_ENABLE_TESTS)
         core_plan_parse_json core.plan.parse_json tests/unit/core/test_plan_parse.c)
     set_tests_properties(
         core.plan.parse_json PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(
+        core_runtime_contract core.runtime_contract tests/unit/core/test_runtime_contract.c)
     sloppy_add_c_unit_test(core_engine_abi core.engine.abi tests/unit/core/test_engine.c)
     if(SLOPPY_ENABLE_V8)
         sloppy_add_c_unit_test(
             engine_v8_smoke engine.v8.smoke tests/unit/engine/test_v8_smoke.c)
+        sloppy_add_c_unit_test(
+            execution_handwritten_artifact execution.handwritten_artifact
+            tests/integration/execution/test_handwritten_artifact_execution.c)
+        set_tests_properties(
+            execution.handwritten_artifact PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
     sloppy_add_c_unit_test(
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)

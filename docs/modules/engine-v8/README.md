@@ -5,7 +5,8 @@
 SDK detection implemented for TASK 07.A. TASK 07.B adds the engine-neutral C ABI and noop
 engine stub. TASK 07.C adds the first V8-backed smoke path when the build is explicitly
 configured with `SLOPPY_ENABLE_V8=ON` and a valid SDK. TASK 07.D adds the first basic V8
-exception-to-`SlDiag` mapping skeleton for that smoke path.
+exception-to-`SlDiag` mapping skeleton for that smoke path. TASK 08.A adds the first
+handwritten `app.plan.json` + `app.js` execution smoke through the V8 bridge.
 
 ## Purpose
 
@@ -30,17 +31,21 @@ Implemented now:
 - zero-argument global function calls through `sl_engine_call_function0`;
 - copied string results through `SlEngineResult`.
 - basic exception diagnostics for compile/eval/call failures.
+- `sl_runtime_contract_call_handler` maps a parsed plan handler ID to a named JS global
+  and invokes it through the engine boundary;
+- V8-gated handwritten artifact integration fixtures under
+  `tests/integration/execution/handwritten_smoke/`.
 
 Later scope:
 
-- handler-ID dispatch from Sloppy Plan metadata;
+- handler registration intrinsics/function handles;
 - promise settlement.
 
 ## Non-goals
 
-No HTTP, compiler extraction, public JS API bootstrap, module loading, ESM resolver, app
-plan handler execution, handler table registration, async/promise model, workers,
-inspector, snapshots, Node compatibility, or package-manager behavior.
+No HTTP, compiler extraction, public JS API bootstrap, module loading, ESM resolver, full
+app host, request context, route matcher, handler table registration, async/promise model,
+workers, inspector, snapshots, Node compatibility, or package-manager behavior.
 
 ## Public/Internal API
 
@@ -60,9 +65,10 @@ Current behavior:
   engine context, using `source_name` as the generated JavaScript diagnostic label;
 - `sl_engine_call_function0` looks up a named global function, calls it with no arguments,
   and copies a string return value into the caller-provided arena;
-- `sl_engine_call_handler` exists as the future handler dispatch shape but returns
-  `SL_STATUS_UNSUPPORTED` for the noop engine and remains unsupported for V8 until handler
-  registration/plan mapping lands.
+- `sl_runtime_contract_call_handler` looks up a handler ID in `SlPlan`, validates the
+  export name, and calls the named global through `sl_engine_call_function0`;
+- `sl_engine_call_handler` exists as a future engine-owned handler dispatch shape but
+  still returns `SL_STATUS_UNSUPPORTED` for the noop engine.
 
 Build options:
 
@@ -72,6 +78,10 @@ Build options:
   enabled.
 
 Default foundation builds and CI do not require V8.
+
+The current source-built Windows SDK is a release/RelWithDebInfo SDK. Do not link it into
+the Debug CRT build. Use `windows-relwithdebinfo` for local V8 execution tests unless a
+separate matching Debug V8 SDK is built and packaged.
 
 ## Ownership/Lifetime Rules
 
@@ -113,14 +123,37 @@ Expected SDK layout:
 <SLOPPY_V8_ROOT>/
   include/v8.h
   include/libplatform/libplatform.h
-  lib/v8.lib or lib/v8_monolith*.lib
+  lib/v8_monolith*.lib
   lib/v8_libplatform*.lib
   lib/v8_libbase*.lib
+  lib/libc++*.lib
+  support/libcxx/include/
+  support/libcxx/buildtools/__config_site
   bin/  # optional runtime DLLs for dynamic SDKs
 ```
 
-The exact prebuilt SDK source, version pin, manifest, and DLL packaging strategy remain
-deferred.
+The approved local source-build strategy uses official V8/depot_tools source, GN, Ninja,
+and an ignored SDK under `.sdeps/v8/windows-x64`. The source checkout may live in an
+ignored local work root such as `.sdeps/v8-work` or an explicit local drive path. The
+normal default build never fetches or builds V8.
+
+The current GN shape is an embeddable monolithic release build:
+
+```gn
+is_debug = false
+target_cpu = "x64"
+is_component_build = false
+v8_monolithic = true
+v8_use_external_startup_data = false
+v8_enable_temporal_support = false
+```
+
+Temporal is disabled for the smoke SDK because it pulls Rust `temporal_rs` link
+requirements that are outside the 0.2 runtime contract. Chromium libc++ support headers
+and `libc++.lib` are packaged because the current V8 public C++ ABI uses libc++ types in
+public functions such as `v8::platform::NewDefaultPlatform`.
+
+Exact prebuilt artifact hosting, checksum policy, and update cadence remain deferred.
 
 ## Diagnostics
 
@@ -156,6 +189,10 @@ Current checks:
   missing function diagnostics, non-callable global diagnostics, thrown function
   diagnostics, unsupported result diagnostics, and create/destroy/create lifecycle
   behavior.
+- `execution.handwritten_artifact` is registered only when V8 is enabled and covers parsing
+  the handwritten plan fixture, evaluating handwritten `app.js`, invoking handler ID `1`,
+  missing plan handler ID diagnostics, missing JS function diagnostics, and thrown handler
+  diagnostics.
 
 Later checks:
 
@@ -172,6 +209,5 @@ Later checks:
 
 ## Open Questions
 
-- Exact V8 SDK source and version pin.
-- Sloppy V8 SDK manifest/checksum format.
+- Exact prebuilt V8 SDK hosting and checksum format.
 - Dynamic runtime DLL packaging rules.
