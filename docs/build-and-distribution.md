@@ -36,6 +36,9 @@ The foundation phase does not:
 The project builds a placeholder `sloppy` executable and a placeholder Rust `sloppyc`
 binary. The default CMake project uses C only. V8 is not required.
 
+TASK 07.A adds optional V8 SDK detection for future bridge work. The default build keeps the
+V8 bridge disabled.
+
 ## Future Phase
 
 Future phases add V8 SDK discovery, runtime dependencies, install layout, release staging,
@@ -92,11 +95,27 @@ relevant implementation phase.
 
 V8 is special and not managed by vcpkg initially.
 
+Build options:
+
+- `SLOPPY_ENABLE_V8` defaults to `OFF`.
+- `SLOPPY_ENGINE` defaults to `none`; `SLOPPY_ENGINE=v8` also enables the V8 SDK gate.
+- `SLOPPY_V8_ROOT` is required only when V8 is enabled.
+
+When V8 is disabled, configure prints `V8 bridge: disabled` and normal configure/build/test
+gates continue without a V8 SDK. CI uses this default non-V8 path.
+
+When V8 is enabled and `SLOPPY_V8_ROOT` is empty or invalid, CMake configure fails before
+any bridge code is compiled.
+
 Contributor path:
 
 - use verified prebuilt V8 SDK artifacts;
 - fetch through `tools/windows/fetch-v8.ps1` later;
+- validate an existing SDK root with
+  `.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>`;
 - set `SLOPPY_V8_ROOT` to SDK root;
+- configure explicitly with `-DSLOPPY_ENABLE_V8=ON -DSLOPPY_V8_ROOT=<sdk-root>` or
+  `-DSLOPPY_ENGINE=v8 -DSLOPPY_V8_ROOT=<sdk-root>`;
 - do not build V8 locally by default.
 
 Maintainer path:
@@ -109,12 +128,19 @@ Maintainer path:
 Expected future SDK layout:
 
 ```text
-.sdeps/v8/
-  include/
-  lib/
-  bin/
-  share/sloppy-v8-sdk.json
+<SLOPPY_V8_ROOT>/
+  include/v8.h
+  include/libplatform/libplatform.h
+  lib/v8*.lib
+  lib/v8_libplatform*.lib
+  lib/v8_libbase*.lib
+  bin/  # optional runtime DLLs for dynamic SDKs
+  share/sloppy-v8-sdk.json  # future manifest, not required yet
 ```
+
+The CMake gate creates `Sloppy::V8` as an imported interface target after validation. TASK
+07.A does not compile real bridge sources, include V8 headers, call V8 APIs, or execute
+JavaScript.
 
 ## Tool Layout
 
@@ -248,7 +274,7 @@ Build scripts should fail with clear messages:
 
 - missing tool;
 - missing MSVC/Windows SDK environment;
-- missing V8 SDK when V8 becomes required;
+- missing or invalid V8 SDK when V8 is explicitly enabled;
 - unsupported preset;
 - generated artifact accidentally tracked.
 
@@ -294,6 +320,7 @@ Build/distribution foundation is accepted when:
 ## Open Questions
 
 - Exact V8 SDK version pinning policy.
+- Exact verified prebuilt V8 SDK source and checksum format.
 - Whether release ZIP includes debug symbols separately.
 - Whether `sloppyc` is installed by CMake or packaged by Cargo first.
 - Exact Linux/macOS preset timing.

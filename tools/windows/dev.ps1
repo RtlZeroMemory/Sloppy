@@ -85,6 +85,12 @@ function Invoke-Configure {
     if (-not (Test-Path -LiteralPath (Join-Path $BuildDir "CMakeCache.txt"))) {
         $args += "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain"
     }
+    $hasV8Selection = @($CMakeArgs | Where-Object {
+            $_ -match "^-DSLOPPY_(ENABLE_V8|ENGINE|V8_ROOT)="
+        }).Count -gt 0
+    if (-not $hasV8Selection) {
+        $args += @("-DSLOPPY_ENGINE=none", "-DSLOPPY_ENABLE_V8=OFF")
+    }
     if ($CMakeArgs.Count -gt 0) {
         $args += $CMakeArgs
     }

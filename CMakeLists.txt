@@ -20,27 +20,95 @@ option(SLOPPY_ENABLE_ASAN "Enable AddressSanitizer where supported." OFF)
 option(SLOPPY_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer where supported." OFF)
 option(SLOPPY_ENABLE_TSAN "Enable ThreadSanitizer where supported." OFF)
 option(SLOPPY_BUILD_COMPILER "Add the sloppyc Rust compiler target when Cargo is available." ON)
+option(SLOPPY_ENABLE_V8 "Enable the phase-gated V8 bridge SDK integration." OFF)
 
-set(SLOPPY_ENGINE "v8" CACHE STRING "JavaScript engine backend placeholder.")
+set(SLOPPY_ENGINE "none" CACHE STRING "JavaScript engine backend for this build.")
 set_property(CACHE SLOPPY_ENGINE PROPERTY STRINGS "v8" "none")
-set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a future prebuilt V8 SDK root.")
+set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a prebuilt V8 SDK root.")
 
 find_program(CARGO_EXECUTABLE cargo)
 find_program(CLANG_FORMAT_EXECUTABLE clang-format)
 find_program(CLANG_TIDY_EXECUTABLE clang-tidy)
 
-find_package(yyjson CONFIG REQUIRED)
-
 if(NOT SLOPPY_ENGINE STREQUAL "v8" AND NOT SLOPPY_ENGINE STREQUAL "none")
     message(FATAL_ERROR "SLOPPY_ENGINE must be 'v8' or 'none'.")
 endif()
 
-if(SLOPPY_ENGINE STREQUAL "v8")
-    message(STATUS "SLOPPY_ENGINE=v8 selected; V8 is not required for the foundation build.")
-    if(SLOPPY_V8_ROOT)
-        message(STATUS "Future V8 SDK root: ${SLOPPY_V8_ROOT}")
-    endif()
+if(SLOPPY_ENGINE STREQUAL "v8" AND NOT SLOPPY_ENABLE_V8)
+    set(SLOPPY_ENABLE_V8
+        ON
+        CACHE BOOL "Enable the phase-gated V8 bridge SDK integration." FORCE)
 endif()
+
+if(SLOPPY_ENABLE_V8 AND SLOPPY_ENGINE STREQUAL "none")
+    set(SLOPPY_ENGINE
+        "v8"
+        CACHE STRING "JavaScript engine backend for this build." FORCE)
+endif()
+
+function(sloppy_require_v8_path relative_path description)
+    set(required_path "${SLOPPY_V8_ROOT}/${relative_path}")
+    if(NOT EXISTS "${required_path}")
+        message(
+            FATAL_ERROR
+                "V8 bridge: enabled but ${description} is missing: ${required_path}\n"
+                "Set SLOPPY_V8_ROOT to a prebuilt SDK root with include/, lib/, and optional bin/.")
+    endif()
+endfunction()
+
+if(SLOPPY_ENABLE_V8)
+    if(NOT SLOPPY_V8_ROOT)
+        message(
+            FATAL_ERROR
+                "V8 bridge: enabled but SLOPPY_V8_ROOT is empty.\n"
+                "Configure with -DSLOPPY_ENABLE_V8=ON -DSLOPPY_V8_ROOT=<sdk-root> or leave V8 disabled.")
+    endif()
+
+    if(NOT IS_DIRECTORY "${SLOPPY_V8_ROOT}")
+        message(
+            FATAL_ERROR
+                "V8 bridge: enabled but SLOPPY_V8_ROOT is not a directory: ${SLOPPY_V8_ROOT}")
+    endif()
+
+    sloppy_require_v8_path("include/v8.h" "include/v8.h")
+    sloppy_require_v8_path("include/libplatform/libplatform.h" "include/libplatform/libplatform.h")
+    sloppy_require_v8_path("lib" "lib directory")
+
+    file(GLOB SLOPPY_V8_CORE_LIBS CONFIGURE_DEPENDS "${SLOPPY_V8_ROOT}/lib/v8*.lib")
+    file(
+        GLOB
+        SLOPPY_V8_PLATFORM_LIBS
+        CONFIGURE_DEPENDS
+        "${SLOPPY_V8_ROOT}/lib/v8_libplatform*.lib")
+    file(GLOB SLOPPY_V8_BASE_LIBS CONFIGURE_DEPENDS "${SLOPPY_V8_ROOT}/lib/v8_libbase*.lib")
+
+    if(NOT SLOPPY_V8_CORE_LIBS)
+        message(FATAL_ERROR "V8 bridge: enabled but no v8*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+    endif()
+    if(NOT SLOPPY_V8_PLATFORM_LIBS)
+        message(
+            FATAL_ERROR
+                "V8 bridge: enabled but no v8_libplatform*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+    endif()
+    if(NOT SLOPPY_V8_BASE_LIBS)
+        message(
+            FATAL_ERROR
+                "V8 bridge: enabled but no v8_libbase*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+    endif()
+
+    add_library(Sloppy::V8 INTERFACE IMPORTED)
+    target_include_directories(Sloppy::V8 INTERFACE "${SLOPPY_V8_ROOT}/include")
+    target_link_libraries(
+        Sloppy::V8
+        INTERFACE ${SLOPPY_V8_CORE_LIBS} ${SLOPPY_V8_PLATFORM_LIBS} ${SLOPPY_V8_BASE_LIBS})
+
+    message(STATUS "V8 bridge: enabled")
+    message(STATUS "V8 SDK root: ${SLOPPY_V8_ROOT}")
+else()
+    message(STATUS "V8 bridge: disabled")
+endif()
+
+find_package(yyjson CONFIG REQUIRED)
 
 set(
     SLOPPY_CORE_SOURCES
