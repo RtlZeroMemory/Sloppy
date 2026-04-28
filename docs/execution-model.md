@@ -348,8 +348,11 @@ Startup must validate:
 - module ordering;
 - declared features.
 
-TASK 06.A implements only the borrowed native struct shape and small handler/version
-helpers for this contract. It does not load JSON or perform startup consistency checks.
+TASK 06.A implements the borrowed native struct shape and small handler/version helpers for
+this contract. TASK 06.B parses caller-provided Plan v1 JSON bytes into arena-owned
+`SlPlan` storage and validates the minimal handwritten shape. It does not load files,
+verify runtime compatibility, verify hashes, load bundles, or perform startup consistency
+checks beyond the parser's shape rules.
 
 Mismatch fails before serving work.
 

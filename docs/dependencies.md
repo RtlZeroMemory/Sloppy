@@ -12,8 +12,8 @@ platform-boundary expectations, and acceptance criteria for adding a new depende
 
 ## Non-Goals
 
-The foundation phase does not add V8, Oxc, libuv, llhttp, yyjson, sqlite, libpq, ODBC, TLS,
-compression, or other runtime dependencies.
+The foundation phase did not add V8, Oxc, libuv, llhttp, sqlite, libpq, ODBC, TLS,
+compression, or other runtime dependencies before their relevant phases.
 
 Use dependencies for:
 
@@ -45,7 +45,7 @@ Do not outsource:
 - Oxc: primary TypeScript parser, transform, and app-plan extraction foundation;
 - libuv: future event loop abstraction backend;
 - llhttp: future HTTP/1 parser;
-- yyjson: future JSON/config/plan parser;
+- yyjson: current Plan v1 JSON parser and future config parser candidate;
 - sqlite3: future first-class SQLite integration;
 - libpq: future PostgreSQL provider backend;
 - Microsoft ODBC Driver for SQL Server / ODBC API: future SQL Server provider backend on
@@ -64,6 +64,48 @@ driver is installed and usable.
 
 All dependencies need explicit ownership, update, security, license, and test strategy
 before they become required in the default build.
+
+## Current Dependencies
+
+### yyjson
+
+`yyjson` is added in TASK 06.B through vcpkg manifest mode as the Plan v1 JSON parser.
+
+Why it is used:
+
+- `docs/dependencies.md` already identified yyjson as the intended C JSON/config/plan
+  parser;
+- parsing JSON correctly is specialized enough that a dependency is safer than a custom
+  parser;
+- the Plan parser keeps yyjson private to `src/core/plan_parse.c`, so Sloppy's public plan
+  API remains `SlBytes`, `SlArena`, `SlPlan`, `SlStatus`, and `SlDiag`.
+
+Build wiring:
+
+- `vcpkg.json` lists `yyjson`;
+- CMake uses `find_package(yyjson CONFIG REQUIRED)`;
+- `sloppy_core` links `yyjson::yyjson`;
+- Windows dev scripts pass the vcpkg toolchain file from local `.sdeps/vcpkg`, `VCPKG_ROOT`,
+  or a PATH install.
+
+Ownership and lifetime:
+
+- yyjson document storage is temporary parser storage;
+- no yyjson pointer escapes `src/core/plan_parse.c`;
+- parsed strings and handler arrays are copied into the caller-provided `SlArena`.
+
+License/update/security:
+
+- vcpkg currently installs yyjson 0.12.0 from the pinned manifest baseline;
+- yyjson declares the MIT license in vcpkg;
+- update cadence and broader security review remain lightweight until release packaging
+  begins.
+
+Tests:
+
+- `tests/unit/core/test_plan_parse.c` covers valid parsing, malformed JSON, wrong field
+  types, missing fields, duplicate handler IDs, invalid handler IDs, empty handler arrays,
+  and unknown field allowance.
 
 Cross-platform dependencies do not remove the need for Sloppy-owned platform boundaries.
 libuv may hide event-loop details internally, but Sloppy still owns the future `SlLoop`
@@ -85,6 +127,5 @@ A dependency can be added when:
 ## Open Questions
 
 - Exact V8 SDK version pinning and update cadence.
-- Whether yyjson is introduced in plan loader or config first.
 - Exact sqlite packaging strategy.
 - Whether PostgreSQL libpq comes from vcpkg or provider package tooling.

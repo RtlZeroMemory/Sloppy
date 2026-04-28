@@ -82,11 +82,11 @@ platform implementation layer can support them.
 
 ## vcpkg Policy
 
-vcpkg manifest mode is reserved for normal C dependencies. The current manifest intentionally
-has no dependencies.
+vcpkg manifest mode is reserved for normal C dependencies. TASK 06.B introduces `yyjson`
+through the manifest for Plan JSON parsing.
 
-Do not add libuv, llhttp, yyjson, sqlite, libpq, ODBC, or other runtime dependencies until
-the relevant implementation phase.
+Do not add libuv, llhttp, sqlite, libpq, ODBC, or other runtime dependencies until the
+relevant implementation phase.
 
 ## V8 SDK Policy
 

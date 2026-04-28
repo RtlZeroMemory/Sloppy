@@ -214,12 +214,30 @@ static int test_names_and_spans(void)
         return 37;
     }
 
-    if (unknown.has_location || unknown.path.length != 0U) {
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_INVALID_PLAN_FIELD),
+                         sl_str_from_cstr("SLOPPY_E_INVALID_PLAN_FIELD")) != 0)
+    {
+        return 38;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_DUPLICATE_HANDLER_ID),
+                         sl_str_from_cstr("SLOPPY_E_DUPLICATE_HANDLER_ID")) != 0)
+    {
         return 39;
     }
 
-    if (partial.has_location) {
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_MALFORMED_JSON),
+                         sl_str_from_cstr("SLOPPY_E_MALFORMED_JSON")) != 0)
+    {
         return 40;
+    }
+
+    if (unknown.has_location || unknown.path.length != 0U) {
+        return 41;
+    }
+
+    if (partial.has_location) {
+        return 42;
     }
 
     return 0;

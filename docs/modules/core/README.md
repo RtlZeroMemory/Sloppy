@@ -8,7 +8,8 @@ Partially implemented for TASK 02.A and TASK 03.A.
 
 Portable runtime core primitives such as status, source locations, string/byte views,
 checked math, assertions, the first caller-backed arena primitive, the first native cleanup
-scope primitive, the minimal plan contract helpers, and the first diagnostics foundation.
+scope primitive, the minimal plan contract helpers, the Plan v1 JSON parser/validator, and
+the first diagnostics foundation.
 
 ## Scope
 
@@ -32,7 +33,7 @@ Implemented public C headers under `include/sloppy/`:
 - `scope.h`: caller-backed or arena-backed cleanup registration scopes with deterministic
   LIFO close behavior;
 - `plan.h`: minimal Plan v1 native structs, supported version checks, handler ID rules,
-  handler lookup, and duplicate handler ID detection;
+  handler lookup, duplicate handler ID detection, and JSON parser entry point;
 - `diagnostics.h`: diagnostic severity/code model, user/app source spans, bounded related
   spans and hints, arena-copying builder, and deterministic text renderer.
 
@@ -61,8 +62,10 @@ outlives the async operation.
 and may be NULL. Scope cleanup storage is caller-owned unless allocated through
 `sl_scope_init_from_arena`, in which case the storage lifetime follows the arena allocation.
 
-`SlPlan` and its child structs own no memory. Plan strings are borrowed `SlStr` views, and
-the handler table is a borrowed caller-owned array.
+`SlPlan` and its child structs own no memory by themselves. Manually constructed plans use
+borrowed `SlStr` views and a borrowed caller-owned handler array. Plans returned by
+`sl_plan_parse_json` point to strings and a handler array copied into the caller-provided
+arena.
 
 ## Invariants
 
@@ -71,8 +74,8 @@ Core code stays portable C17 and does not include OS or V8 headers.
 Core primitives avoid runtime features, platform APIs, V8, package-manager behavior, and
 speculative future abstractions. `SlArena` performs pointer-bump allocation only inside a
 caller-provided buffer. `SlScope` performs fixed-capacity cleanup registration only inside
-caller-provided or arena-provided storage. Plan helpers do not parse JSON, validate files,
-or build runtime host graphs.
+caller-provided or arena-provided storage. Plan parsing validates only the minimal JSON
+shape from caller-provided bytes; it does not validate files or build runtime host graphs.
 
 ## Diagnostics
 
@@ -92,8 +95,8 @@ TASK 05.B adds two narrow status codes:
 
 CTest now registers focused C unit tests for status, source locations, string views, byte
 views, checked size arithmetic, arena behavior, scope cleanup lifetime behavior, minimal
-plan contract helper behavior, diagnostics foundation behavior, and assertion macro
-compilation.
+plan contract helper behavior, minimal plan JSON parser/validator behavior, diagnostics
+foundation behavior, and assertion macro compilation.
 
 ## Source Docs
 

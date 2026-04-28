@@ -29,6 +29,8 @@ find_program(CARGO_EXECUTABLE cargo)
 find_program(CLANG_FORMAT_EXECUTABLE clang-format)
 find_program(CLANG_TIDY_EXECUTABLE clang-tidy)
 
+find_package(yyjson CONFIG REQUIRED)
+
 if(NOT SLOPPY_ENGINE STREQUAL "v8" AND NOT SLOPPY_ENGINE STREQUAL "none")
     message(FATAL_ERROR "SLOPPY_ENGINE must be 'v8' or 'none'.")
 endif()
@@ -50,6 +52,7 @@ set(
     src/core/arena.c
     src/core/scope.c
     src/core/plan.c
+    src/core/plan_parse.c
     src/core/diagnostics.c)
 
 set(
@@ -64,6 +67,7 @@ set(
     tests/unit/core/test_arena.c
     tests/unit/core/test_scope.c
     tests/unit/core/test_plan.c
+    tests/unit/core/test_plan_parse.c
     tests/unit/core/test_diagnostics.c
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c)
@@ -71,6 +75,7 @@ set(
 add_library(sloppy_core STATIC ${SLOPPY_CORE_SOURCES})
 target_include_directories(sloppy_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy_core PUBLIC c_std_17)
+target_link_libraries(sloppy_core PRIVATE yyjson::yyjson)
 
 if(SLOPPY_ENABLE_ASSERTS)
     target_compile_definitions(sloppy_core PUBLIC SL_ENABLE_ASSERTS=1)
@@ -223,6 +228,10 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(core_scope_lifetime core.scope.lifetime tests/unit/core/test_scope.c)
     sloppy_add_c_unit_test(core_plan_contract core.plan.contract tests/unit/core/test_plan.c)
     set_tests_properties(core.plan.contract PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(
+        core_plan_parse_json core.plan.parse_json tests/unit/core/test_plan_parse.c)
+    set_tests_properties(
+        core.plan.parse_json PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
     set_tests_properties(

@@ -2,7 +2,7 @@
 
 ## Status
 
-Partially implemented for TASK 06.A.
+Partially implemented for TASK 06.B.
 
 ## Purpose
 
@@ -18,20 +18,25 @@ Implemented now:
 - handler ID type and invalid/reserved ID rule;
 - handler lookup by numeric runtime dispatch ID;
 - duplicate handler ID detection;
-- valid and invalid handwritten plan fixtures.
+- valid and invalid handwritten plan fixtures;
+- JSON parsing from caller-provided bytes with `yyjson`;
+- minimal Plan v1 shape validation;
+- arena-owned parsed plan storage;
+- basic diagnostics for invalid plan JSON and validation failures.
 
 Future scope:
 
-- JSON loading;
-- validation diagnostics;
+- file-based loading;
+- runtime compatibility checks;
 - hash/source map checks;
 - native host graph construction.
 
 ## Non-goals
 
-No JSON parser, JSON validator, file I/O, route model, service model, module model, data
-provider model, permission/capability model, source map parser, hash verification, HTTP,
-V8 execution, compiler extraction, or package-manager behavior.
+No file I/O, route model, service model, module model, data provider model,
+permission/capability model, source map parser, hash verification, HTTP, V8 execution,
+compiler extraction, JSON serialization, streaming parser, schema framework, plugin
+validator, or package-manager behavior.
 
 ## Public/Internal API
 
@@ -53,7 +58,9 @@ Implemented API:
 - `sl_plan_version_supported`;
 - `sl_handler_id_valid`;
 - `sl_plan_find_handler_by_id`;
-- `sl_plan_has_duplicate_handler_ids`.
+- `sl_plan_has_duplicate_handler_ids`;
+- `SlPlanParseOptions`;
+- `sl_plan_parse_json`.
 
 ## Ownership/Lifetime Rules
 
@@ -61,12 +68,16 @@ All `SlStr` fields in the TASK 06.A structs are borrowed views. They do not requ
 termination, do not allocate, and remain valid only for the caller-documented plan
 lifetime.
 
-`SlPlan.handlers` is a borrowed, caller-owned array. `SlPlan` never allocates, copies, or
-frees handler storage. `sl_plan_find_handler_by_id` returns a borrowed pointer into that
-array.
+`SlPlan.handlers` is a borrowed, caller-owned array for manually constructed plans.
+`sl_plan_find_handler_by_id` returns a borrowed pointer into that array.
 
-The future loader owns copied storage and parser allocation policy in TASK 06.B. This PR
-does not define owned parsed-plan storage.
+`sl_plan_parse_json` copies all parsed strings and the handler array into the supplied
+`SlArena`. Parsed plans returned by that API remain valid until the arena is reset or the
+caller-owned arena backing buffer ends. No string or handler returned from the parser points
+into the `yyjson` document; the parser frees the document before returning.
+
+`SlPlanParseOptions.source_name` is a borrowed diagnostic label. It is copied into
+diagnostics when a diagnostic is emitted.
 
 ## Invariants
 
@@ -84,16 +95,40 @@ Implemented invariants:
 Future loader invariants:
 
 - unsupported schema versions and malformed plans fail before runtime work is served;
-- unknown field policy is decided by the parser/validator task;
+- unknown fields are allowed and ignored for forward compatibility;
 - bundle/source-map hash verification is a later validation task.
+
+Parser validation rules:
+
+- the JSON root must be an object;
+- `schemaVersion` is required and must equal `1`;
+- `compilerVersion`, `runtimeMinimumVersion`, and `stdlibVersion` are required non-empty
+  strings;
+- `target.platform` and `target.engine` are required non-empty strings;
+- target values are shape-validated only; runtime compatibility is deferred;
+- `bundle.path`, `bundle.id`, and `bundle.hash` are required non-empty strings;
+- `sourceMap.path`, `sourceMap.id`, and `sourceMap.hash` are required non-empty strings;
+- `handlers` is required and must be a non-empty array;
+- every handler must have a nonzero unsigned integer `id`;
+- handler IDs must be unique;
+- every handler must have non-empty string `exportName` and `displayName`.
+
+Known fields with the wrong JSON type fail validation. Unknown top-level and nested fields
+are ignored.
 
 ## Diagnostics
 
-TASK 06.A returns `SlStatus` from the small handler lookup helper only. It does not emit
-plan diagnostics.
+The parser emits basic arena-owned diagnostics when `out_diag` is supplied:
 
-Future plan errors should identify section, offending value, and source location when
-available.
+- `SL_DIAG_MALFORMED_JSON` for invalid JSON bytes;
+- `SL_DIAG_INVALID_PLAN_VERSION` for missing, malformed, or unsupported `schemaVersion`;
+- `SL_DIAG_INVALID_PLAN_FIELD` for missing required fields, wrong field types, invalid
+  handler IDs, empty strings, and empty handler arrays;
+- `SL_DIAG_DUPLICATE_HANDLER_ID` for duplicate handler IDs.
+
+Diagnostics include error severity, a stable code, a short message, an optional source name,
+and a simple hint. JSON pointer spans, source frames, and source-map integration are
+deferred.
 
 ## Tests
 
@@ -107,6 +142,21 @@ CTest registers `tests/unit/core/test_plan.c`, covering:
 - empty handler table behavior;
 - duplicate handler ID detection;
 - availability of checked-in plan fixtures.
+
+CTest registers `tests/unit/core/test_plan_parse.c`, covering:
+
+- parsing the minimal valid fixture;
+- parsed field values and handler lookup;
+- invalid version fixture diagnostics;
+- missing bundle and source map fixture diagnostics;
+- missing handler export diagnostics;
+- duplicate handler ID diagnostics;
+- malformed JSON diagnostics;
+- wrong handler ID type rejection;
+- handler ID `0` rejection;
+- empty handler array rejection;
+- unknown field allowance;
+- invalid parser arguments.
 
 Fixture files:
 
@@ -127,6 +177,7 @@ Fixture files:
 
 ## Open Questions
 
-- JSON parser choice and unknown field policy.
 - Exact hash verification policy.
-- Exact source map required/optional policy.
+- Runtime compatibility policy for target platform, target engine, runtime minimum version,
+  and stdlib version.
+- JSON pointer/source-frame diagnostic strategy.

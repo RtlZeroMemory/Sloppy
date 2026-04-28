@@ -18,8 +18,7 @@ loader.
 
 The foundation phase does not implement:
 
-- a JSON parser;
-- plan loading;
+- file-based plan loading;
 - route matching;
 - service graph execution;
 - module extraction;
@@ -27,14 +26,10 @@ The foundation phase does not implement:
 
 ## Current Phase
 
-TASK 06.A implements the minimal native C shape for Plan v1 and adds handwritten valid and
-invalid fixtures. The runtime still does not parse, validate, load, or execute
-`app.plan.json`.
-
-## Future Phase
-
-TASK 06.B should read a small handwritten plan, validate metadata, and expose a handler
-table to the runtime.
+TASK 06.B implements JSON parsing and minimal shape validation for handwritten Plan v1
+bytes. The parser exposes an arena-owned `SlPlan` and handler table to later runtime work.
+The runtime still does not load a plan from disk, execute JavaScript, build routes, verify
+hashes, or run handlers.
 
 ## Public API Shape
 
@@ -66,8 +61,10 @@ The implemented native C shape in `include/sloppy/plan.h` is deliberately small:
 - `sourceMap.path`, `sourceMap.id`, and `sourceMap.hash`;
 - `handlers[].id`, `handlers[].exportName`, and `handlers[].displayName`.
 
-All native `SlStr` fields are borrowed views. The handler table is borrowed and
-caller-owned. The future loader owns copied storage and JSON parser lifetimes.
+All native `SlStr` fields are borrowed views in the struct model. Manually constructed
+plans borrow caller-owned storage. `sl_plan_parse_json` copies JSON strings and handler
+arrays into the supplied arena, so parsed plan lifetime is tied to that arena rather than
+to the JSON parser document.
 
 Handler rules implemented now:
 
@@ -77,7 +74,8 @@ Handler rules implemented now:
 - handler export names are future engine bridge export names;
 - display names are diagnostic/user-facing only.
 
-Unknown field handling is deferred to TASK 06.B because this PR does not parse JSON.
+Unknown JSON fields are allowed and ignored in Plan v1 for forward compatibility. Known
+fields with the wrong JSON type fail validation.
 
 ## Schema Sections
 
@@ -323,7 +321,26 @@ Illustrative future shape, not implemented:
 
 ## Validation Rules
 
-Plan validation must check:
+Current TASK 06.B parser validation checks:
+
+- JSON root is an object;
+- `schemaVersion` exists and equals supported Plan v1;
+- `compilerVersion`, `runtimeMinimumVersion`, and `stdlibVersion` exist and are non-empty
+  strings;
+- `target.platform` and `target.engine` exist and are non-empty strings;
+- `bundle.path`, `bundle.id`, and `bundle.hash` exist and are non-empty strings;
+- `sourceMap.path`, `sourceMap.id`, and `sourceMap.hash` exist and are non-empty strings;
+- `handlers` exists and is a non-empty array;
+- every handler has nonzero unsigned integer `id`;
+- handler IDs are unique;
+- every handler has non-empty string `exportName` and `displayName`;
+- malformed JSON fails with a diagnostic rather than crashing.
+
+Current TASK 06.B parser validation deliberately does not check target compatibility,
+runtime minimum version compatibility, stdlib availability, bundle hash contents, source map
+hash contents, or any future route/module/service/provider sections.
+
+Future plan validation must check:
 
 - schema version is supported;
 - target platform and engine are supported;
@@ -344,9 +361,9 @@ Plan validation must check:
 - source map presence follows target mode policy;
 - no secret values are embedded in plan config.
 
-TASK 06.A does not implement these JSON validation rules. It only provides helper coverage
-for supported version checks, handler ID validity, handler lookup, and duplicate handler ID
-detection.
+TASK 06.A provided helper coverage for supported version checks, handler ID validity,
+handler lookup, and duplicate handler ID detection. TASK 06.B adds minimal JSON parser
+validation on top of those helpers.
 
 ## Runtime Compatibility Rules
 
@@ -390,6 +407,16 @@ Examples:
 - missing config key for provider;
 - incompatible runtime feature.
 
+Current TASK 06.B parser diagnostics are intentionally smaller:
+
+- `SL_DIAG_MALFORMED_JSON`;
+- `SL_DIAG_INVALID_PLAN_VERSION`;
+- `SL_DIAG_INVALID_PLAN_FIELD`;
+- `SL_DIAG_DUPLICATE_HANDLER_ID`.
+
+Diagnostics include error severity, stable code, message, optional source name, and a simple
+hint. JSON pointer spans, source frames, source maps, and rendered code frames are deferred.
+
 ## Testing Requirements
 
 Plan tests should include:
@@ -409,6 +436,10 @@ Future parser/validator phases should add:
 - permissions referencing unknown capability;
 - golden full plan fixture.
 
+TASK 06.B parser tests cover the existing minimal valid and invalid fixtures plus embedded
+malformed JSON, wrong handler ID type, handler ID `0`, empty handlers, and unknown field
+allowance.
+
 ## Quality Gates
 
 - plan fixture tests run in CTest;
@@ -421,9 +452,9 @@ Future parser/validator phases should add:
 
 - Define C structs for parsed plan model.
 - Add minimal plan fixture directory.
-- Choose JSON parser in the appropriate phase.
-- Add validator with section-specific diagnostics.
-- Add handler table extraction.
+- Choose JSON parser in the appropriate phase. Done for TASK 06.B with `yyjson`.
+- Add validator with section-specific diagnostics. Started for minimal v1 shape.
+- Add handler table extraction. Done for minimal v1 handlers.
 - Add plan/bundle consistency checks.
 - Add golden tests for JSON fixtures.
 - Add CTest integration for valid and invalid plans.

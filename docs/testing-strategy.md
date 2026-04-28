@@ -99,8 +99,8 @@ Plan schema fixtures:
 
 - handwritten JSON fixtures under `tests/golden/plan/`;
 - fixture availability checks before production parsing exists;
-- parser/validator tests later must verify documented valid and invalid fixture intent
-  rather than current parser accident.
+- parser/validator tests verify documented valid and invalid fixture intent rather than
+  current parser accident.
 
 Public API:
 
