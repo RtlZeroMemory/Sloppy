@@ -2,10 +2,12 @@
 
 ## Active debt
 
-- V8 SDK fetch/source-build workflow is placeholder; TASK 07.A validates existing SDK roots
-  only.
+- V8 SDK source-build workflow exists for local maintainer use, but prebuilt hosting,
+  checksums, and update cadence are still deferred.
 - Sanitizer coverage is incomplete on Windows.
-- No real runtime features yet.
+- Runtime execution is still limited to handwritten V8 smoke artifacts; no HTTP app host,
+  compiler output loader, public TypeScript API, modules, services, or data providers exist
+  yet.
 
 ## Deferred decisions
 
@@ -40,17 +42,18 @@
 - Plan route/service/module/data provider/capability/permission sections are future work.
 - Plan route/service/module/data provider/capability/permission golden fixtures are future
   work and should be added only when those sections are implemented.
-- Exact V8 SDK source, version pin, checksum manifest, and update cadence are future work.
-- Exact V8 source-build workflow, GN args, and SDK packaging matrix are future work.
+- Exact V8 SDK prebuilt hosting, checksum manifest, and update cadence are future work.
+- Exact V8 SDK debug/release packaging matrix is future work.
 - Exact V8 dynamic DLL copy/package rules are future work.
-- Exact final V8 library list is future work beyond the TASK 07.A minimal family checks.
-- V8-backed `SlEngine` creation now exists only for the TASK 07.C smoke path; app bundle
-  loading and handler-ID execution remain future work.
-- Explicit V8 process shutdown policy is future work; TASK 07.C keeps process-wide V8
+- Exact final V8 library list for non-monolithic/component builds is future work.
+- V8-backed handwritten `app.plan.json` + `app.js` execution exists only as a smoke path;
+  compiler output loading, handler registration intrinsics, HTTP/request context, routing,
+  and full result conversion remain future work.
+- Explicit V8 process shutdown policy is future work; the bridge keeps process-wide V8
   platform state alive after first initialization and releases only per-engine isolates.
 - `SlEngine` owner-thread checks are future bridge/event-loop work.
-- Real `sl_engine_call_handler` execution and plan handler-ID mapping are future EPIC-08/09
-  work.
+- Real `sl_engine_call_handler` execution, engine-owned handler tables, and registration
+  intrinsics are future EPIC-08/09 work.
 - V8 source-map remapping is future work; TASK 07.D reports generated JavaScript locations
   only.
 - V8 route/handler-aware diagnostics are future EPIC-08/09 work after plan handler mapping

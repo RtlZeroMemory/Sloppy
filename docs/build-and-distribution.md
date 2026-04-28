@@ -108,7 +108,7 @@ gates continue without a V8 SDK. CI uses this default non-V8 path.
 When V8 is enabled and `SLOPPY_V8_ROOT` is empty or invalid, CMake configure fails before
 any bridge code is compiled. When the SDK is valid, CMake compiles
 `src/engine/v8/engine_v8.cc`, links it only to the V8-enabled core target, and registers the
-`engine.v8.smoke` test.
+`engine.v8.smoke` and `execution.handwritten_artifact` tests.
 
 Contributor path:
 
@@ -123,27 +123,36 @@ Contributor path:
 
 Maintainer path:
 
-- build from source through future `tools/windows/build-v8.ps1`;
-- use depot_tools/GN/Ninja;
-- package a Sloppy-compatible SDK;
-- publish checksums and manifest metadata.
+- build from official V8 source through `tools/windows/build-v8.ps1`;
+- use depot_tools/GN/Ninja with `DEPOT_TOOLS_WIN_TOOLCHAIN=0` for the local Visual Studio
+  toolchain;
+- package only the Sloppy-compatible SDK surface;
+- keep depot_tools, source trees, build trees, headers, libraries, and generated outputs
+  under ignored local paths;
+- publish checksums later when a prebuilt distribution channel exists.
 
-Expected future SDK layout:
+Current SDK layout:
 
 ```text
 <SLOPPY_V8_ROOT>/
   include/v8.h
   include/libplatform/libplatform.h
-  lib/v8.lib or lib/v8_monolith*.lib
+  lib/v8_monolith*.lib
   lib/v8_libplatform*.lib
   lib/v8_libbase*.lib
+  lib/libc++*.lib
+  support/libcxx/include/
+  support/libcxx/buildtools/__config_site
   bin/  # optional runtime DLLs for dynamic SDKs
-  share/sloppy-v8-sdk.json  # future manifest, not required yet
+  share/sloppy-v8-sdk.json
 ```
 
-The CMake gate creates `Sloppy::V8` as an imported interface target after validation. TASK
-07.A does not compile real bridge sources, include V8 headers, call V8 APIs, or execute
-JavaScript.
+The current source SDK is a monolithic release build and should be consumed through the
+`windows-relwithdebinfo` preset. The default `windows-dev` Debug preset remains the normal
+non-V8 contributor path.
+
+The CMake gate creates `Sloppy::V8` as an imported interface target after validation and
+keeps V8 headers/types isolated to `src/engine/v8/`.
 
 ## Tool Layout
 

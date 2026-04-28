@@ -53,8 +53,9 @@ Do not outsource:
 - munit: future C unit test framework;
 - future TLS, crypto, and compression dependencies as requirements become concrete.
 
-V8 is special and is not managed by vcpkg initially. It should be consumed as a verified SDK
-through Sloppy tooling so normal contributors do not need to build V8 from source.
+V8 is special and is not managed by vcpkg initially. It is consumed as a local SDK through
+Sloppy tooling so normal contributors do not need to build V8 from source for default
+work.
 
 TASK 07.A adds the first phase-gated V8 SDK detection path. V8 remains optional for normal
 foundation builds and CI. V8 validation runs only when requested with
@@ -65,16 +66,24 @@ to a prebuilt SDK root with this minimal Windows layout:
 <SLOPPY_V8_ROOT>/
   include/v8.h
   include/libplatform/libplatform.h
-  lib/v8.lib or lib/v8_monolith*.lib
+  lib/v8_monolith*.lib
   lib/v8_libplatform*.lib
   lib/v8_libbase*.lib
+  lib/libc++*.lib
+  support/libcxx/include/
+  support/libcxx/buildtools/__config_site
   bin/  # optional runtime DLLs for dynamic SDKs
 ```
 
 CMake validates the headers, `lib/` directory, and the documented library families before
-creating the `Sloppy::V8` interface target. The exact V8 version, artifact source,
-checksum manifest, and source-build workflow are still deferred. CMake must not download
-V8 or hardcode machine-local SDK paths.
+creating the `Sloppy::V8` interface target. TASK 08.A uses the official V8/depot_tools
+source workflow, GN, and Ninja to create an ignored local SDK under `.sdeps/v8/windows-x64`
+or another explicit ignored path. CMake must not download V8 or hardcode machine-local SDK
+paths.
+
+The current Windows source SDK is a monolithic release build with Chromium libc++ support.
+Use `windows-relwithdebinfo` for V8 execution tests with this SDK. The `windows-dev` Debug
+CRT preset remains the default non-V8 contributor path.
 
 TASK 07.C uses that opt-in target to compile the minimal bridge under `src/engine/v8/` when
 V8 is enabled. Default builds still do not require the SDK. V8 tests are registered only

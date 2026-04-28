@@ -10,9 +10,16 @@ function Write-ExpectedLayout {
     Write-Host "Expected SLOPPY_V8_ROOT layout:"
     Write-Host "  include/v8.h"
     Write-Host "  include/libplatform/libplatform.h"
-    Write-Host "  lib/v8.lib or lib/v8_monolith*.lib"
+    Write-Host "  lib/v8_monolith*.lib"
     Write-Host "  lib/v8_libplatform*.lib"
     Write-Host "  lib/v8_libbase*.lib"
+    Write-Host "  lib/libc++*.lib  # required for current custom-libc++ V8 source builds"
+    Write-Host "  support/libcxx/include/"
+    Write-Host "  support/libcxx/buildtools/__config_site"
+    Write-Host "    or split SDK libraries:"
+    Write-Host "      lib/v8.lib"
+    Write-Host "      lib/v8_libplatform*.lib"
+    Write-Host "      lib/v8_libbase*.lib"
     Write-Host "  bin/  # optional runtime DLLs for dynamic SDKs"
     Write-Host "  share/sloppy-v8-sdk.json  # future manifest, not required yet"
 }
@@ -46,11 +53,12 @@ function Test-V8SdkLayout {
         if (-not (Test-Path -LiteralPath $libDir -PathType Container)) {
             $missing.Add("lib/")
         } else {
-            $coreLibraries = @()
-            $coreLibraries += @(Get-ChildItem -LiteralPath $libDir -Filter "v8.lib" -File -ErrorAction SilentlyContinue)
-            $coreLibraries += @(Get-ChildItem -LiteralPath $libDir -Filter "v8_monolith*.lib" -File -ErrorAction SilentlyContinue)
-            if ($coreLibraries.Count -eq 0) {
-                $missing.Add("lib/v8.lib or lib/v8_monolith*.lib")
+            $monolithLibraries = @(Get-ChildItem -LiteralPath $libDir -Filter "v8_monolith*.lib" -File -ErrorAction SilentlyContinue)
+            $coreLibraries = @(Get-ChildItem -LiteralPath $libDir -Filter "v8.lib" -File -ErrorAction SilentlyContinue)
+            $libcxxLibraries = @(Get-ChildItem -LiteralPath $libDir -Filter "libc++*.lib" -File -ErrorAction SilentlyContinue)
+
+            if ($monolithLibraries.Count -eq 0 -and $coreLibraries.Count -eq 0) {
+                $missing.Add("lib/v8_monolith*.lib or lib/v8.lib")
             }
 
             $libraryPatterns = @(
@@ -62,6 +70,20 @@ function Test-V8SdkLayout {
                 $matches = @(Get-ChildItem -LiteralPath $libDir -Filter $pattern -File -ErrorAction SilentlyContinue)
                 if ($matches.Count -eq 0) {
                     $missing.Add("lib/$pattern")
+                }
+            }
+
+            if ($monolithLibraries.Count -gt 0 -and $libcxxLibraries.Count -gt 0) {
+                $libcxxRequiredFiles = @(
+                    "support/libcxx/include/memory",
+                    "support/libcxx/buildtools/__config_site"
+                )
+
+                foreach ($relativePath in $libcxxRequiredFiles) {
+                    $path = Join-Path $Root $relativePath
+                    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                        $missing.Add($relativePath)
+                    }
                 }
             }
         }

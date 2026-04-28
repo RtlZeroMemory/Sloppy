@@ -71,7 +71,8 @@ Handler rules implemented now:
 - handler IDs are numeric runtime dispatch keys;
 - handler ID `0` is reserved and invalid;
 - duplicate handler IDs are invalid plan input;
-- handler export names are future engine bridge export names;
+- handler export names identify engine bridge callable names. TASK 08.A uses the export
+  name as a handwritten V8 global function name for the smoke path;
 - display names are diagnostic/user-facing only.
 
 Unknown JSON fields are allowed and ignored in Plan v1 for forward compatibility. Known

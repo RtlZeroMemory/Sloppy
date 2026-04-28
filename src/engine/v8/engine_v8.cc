@@ -39,7 +39,7 @@ struct SlV8Engine
 };
 
 std::mutex g_v8_platform_mutex;
-std::unique_ptr<v8::Platform> g_v8_platform;
+v8::Platform* g_v8_platform = nullptr;
 bool g_v8_platform_initialized = false;
 
 SlStr sl_v8_literal(const char* ptr, size_t length)
@@ -180,7 +180,7 @@ SlStatus sl_v8_write_diag_string(SlArena* arena, SlDiag* out_diag, SlDiagCode co
                                  SlStatusCode failure_code, const std::string& message,
                                  SlStr source_name, SlStr hint)
 {
-    SlStr copied_message = {0};
+    SlStr copied_message = {};
     SlStatus status;
 
     if (out_diag == nullptr) {
@@ -201,7 +201,7 @@ SlStatus sl_v8_write_diag_string_with_span(SlArena* arena, SlDiag* out_diag, SlD
                                            SlSourceSpan span, SlStr hint,
                                            const std::string& stack_summary)
 {
-    SlStr copied_message = {0};
+    SlStr copied_message = {};
     SlStatus status;
 
     if (out_diag == nullptr) {
@@ -349,14 +349,15 @@ SlStatus sl_v8_platform_acquire(void)
     std::lock_guard<std::mutex> lock(g_v8_platform_mutex);
 
     if (!g_v8_platform_initialized) {
-        v8::V8::InitializeICUDefaultLocation(nullptr);
-        v8::V8::InitializeExternalStartupData(nullptr);
-        g_v8_platform = v8::platform::NewDefaultPlatform();
-        if (!g_v8_platform) {
+        v8::V8::InitializeICUDefaultLocation("");
+        v8::V8::InitializeExternalStartupData("");
+        std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
+        if (!platform) {
             return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
         }
 
-        v8::V8::InitializePlatform(g_v8_platform.get());
+        g_v8_platform = platform.release();
+        v8::V8::InitializePlatform(g_v8_platform);
         v8::V8::Initialize();
         g_v8_platform_initialized = true;
     }
@@ -383,7 +384,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     SlEngine* engine = nullptr;
     SlV8Engine* backend = nullptr;
     SlStatus status;
-    SlArenaMark mark = {0};
+    SlArenaMark mark = {};
 
     (void)options;
 
@@ -515,7 +516,7 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
         return status;
     }
 
-    v8::ScriptOrigin origin(isolate, source_name_string);
+    v8::ScriptOrigin origin(source_name_string);
     v8::ScriptCompiler::Source script_source(source_string, origin);
     v8::MaybeLocal<v8::Script> maybe_script = v8::ScriptCompiler::Compile(context, &script_source);
     v8::Local<v8::Script> script;

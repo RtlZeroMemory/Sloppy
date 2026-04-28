@@ -90,6 +90,9 @@ Implemented invariants:
 - duplicate handler IDs are invalid plan input;
 - handler export names identify future engine bridge exports;
 - handler display names are diagnostic/user-facing labels only;
+- TASK 08.A uses `exportName` as the V8 global function name for the handwritten execution
+  smoke path; this is a temporary smoke convention, not the final handler registration
+  protocol.
 - helper functions do not allocate, parse JSON, perform file I/O, or call platform/engine
   APIs.
 

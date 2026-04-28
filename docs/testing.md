@@ -50,7 +50,10 @@ When V8 is explicitly enabled and a valid SDK is configured, CTest also register
 `engine.v8.smoke`. That test evaluates classic JavaScript source, calls a named global
 function returning `sloppy-ok`, and checks syntax errors, missing/non-callable globals,
 throwing functions, and unsupported result types fail with diagnostics instead of crashing.
-It is not part of the default non-V8 test set.
+TASK 08.A also registers `execution.handwritten_artifact`, which parses the handwritten
+plan fixture, evaluates handwritten `app.js`, invokes handler ID `1`, and covers missing
+handler ID, missing JS function, and thrown handler diagnostics. These are not part of the
+default non-V8 test set.
 
 ## Future Phase
 
@@ -250,6 +253,18 @@ First target:
 handwritten app.js + handwritten app.plan.json -> runtime calls handler by ID
 ```
 
+The first target is implemented as a V8-gated CTest integration executable:
+
+```text
+tests/integration/execution/test_handwritten_artifact_execution.c
+tests/integration/execution/handwritten_smoke/app.plan.json
+tests/integration/execution/handwritten_smoke/app.js
+```
+
+It uses the runtime contract helper directly and does not start HTTP, route matching,
+compiler output loading, public TypeScript APIs, modules, services, data providers, or an
+async event loop.
+
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 
 ## Async and Concurrency Tests
@@ -361,6 +376,7 @@ V8 smoke phase:
 - thrown function failure smoke;
 - syntax error diagnostic smoke;
 - missing/non-callable function diagnostic smoke;
+- handwritten plan handler ID to JS global smoke;
 - handler registration smoke later.
 
 HTTP/router phase:

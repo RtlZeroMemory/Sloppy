@@ -42,19 +42,26 @@ engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call
 The noop backend is always available. A V8-enabled build can run the TASK 07.C smoke path:
 evaluate a borrowed classic JavaScript source string and call a named global zero-argument
 function returning a copied string. TASK 07.D maps basic V8 compile/eval/call exceptions
-from that smoke path into `SlDiag`. Handler calls by numeric Sloppy Plan ID still return
-unsupported until handler registration and plan mapping land.
+from that smoke path into `SlDiag`.
 
-## Future Phase
+TASK 08.A adds the first handwritten artifact execution smoke path. A parsed handwritten
+`app.plan.json` can map numeric handler ID `1` to a handwritten `app.js` global named
+`__sloppy_handler_1`; the runtime contract helper then invokes that global through the
+engine boundary and receives the copied string result `sloppy-ok`. This is still not the
+HTTP runtime, compiler output, route dispatch, module loader, request context, public
+TypeScript API, or full `Results.*` model.
 
-The first real milestone is not full TypeScript compilation. It is:
+## Current Handwritten Milestone
+
+The first real milestone is not full TypeScript compilation. It is now covered by a
+V8-gated integration test:
 
 ```text
 handwritten app.js + handwritten app.plan.json -> runtime calls handler by numeric ID
 ```
 
-That milestone should use a synthetic execution path before HTTP exists. A CTest fixture can
-ask the runtime to invoke handler ID `1` directly and assert the returned result descriptor.
+That milestone uses a synthetic execution path before HTTP exists. CTest asks the runtime
+contract helper to invoke handler ID `1` directly and asserts the returned string result.
 
 ## Public API Shape
 
@@ -244,25 +251,26 @@ Target request flow:
 10. release request arena;
 11. report debug leaks.
 
-Before HTTP exists, the synthetic execution flow is:
+Before HTTP exists, the current synthetic execution flow is:
 
 1. load handwritten plan;
 2. load handwritten bundle;
-3. register handlers;
-4. create synthetic request/job context;
-5. call handler ID directly;
-6. assert result descriptor;
-7. cleanup scope/resources.
+3. evaluate the bundle as a classic script in the V8 bridge;
+4. find the plan handler by numeric ID;
+5. call the plan handler export/global name through the engine boundary;
+6. assert copied string result or diagnostic;
+7. cleanup engine resources.
 
 The C-side handler-call ABI for this future path is already shaped as
 `sl_engine_call_handler(SlEngine*, SlEngineHandlerCall*, SlEngineResult*, SlDiag*)`.
 TASK 07.B deliberately implements that entry point as unsupported for the noop engine; it
 does not load modules, invoke exports, convert JavaScript values, or run `app.js`.
 
-TASK 07.C deliberately uses a smaller smoke-only shape before the handwritten artifact
-execution milestone: `sl_engine_eval_source` evaluates classic script text, and
-`sl_engine_call_function0` calls a global function name such as `sloppy_smoke`. This is not
-`app.js` module execution, not ESM loading, and not Sloppy Plan handler dispatch.
+TASK 08.A deliberately keeps the handwritten path small. `sl_engine_eval_source` evaluates
+classic script text, `sl_runtime_contract_call_handler` maps a plan handler ID to its
+`exportName`, and `sl_engine_call_function0` calls that global function. This is not ESM
+loading, handler registration intrinsics, request/job context construction, or compiler
+output loading.
 
 ## Async And Promise Lifecycle
 
@@ -466,22 +474,24 @@ Test shape:
 tests/integration/execution/handwritten_smoke/
   app.plan.json
   app.js
-  app.js.map
 ```
 
-CTest should execute the runtime in a synthetic mode and assert the returned result text.
+CTest executes the runtime contract helper in a synthetic mode and asserts the returned
+result text.
 
 ## Acceptance Criteria For First Execution Milestone
 
 The first execution milestone is accepted when:
 
 - a handwritten `app.plan.json` declares one handler ID;
-- a handwritten `app.js` registers that handler ID;
-- runtime validates plan/bundle consistency;
+- a handwritten `app.js` defines global function `__sloppy_handler_1`;
+- runtime validates enough plan/bundle consistency to catch missing plan handler IDs,
+  duplicate plan handler IDs, missing JS functions, and thrown handlers;
 - runtime invokes the handler by numeric ID;
-- runtime converts a simple result;
+- runtime converts a simple string result;
 - CTest integration covers the flow;
-- missing handler, duplicate handler, and wrong bundle diagnostics are tested;
+- missing handler, duplicate handler, missing JS function, and thrown handler diagnostics
+  are tested;
 - no TypeScript compiler extraction is required for the milestone.
 - no V8 types leak outside `src/engine/v8/`;
 - no OS APIs appear outside `src/platform/*`.
@@ -489,6 +499,6 @@ The first execution milestone is accepted when:
 ## Open Questions
 
 - Exact JS module format for `app.js`.
-- Whether handler registration is explicit exports, bootstrap calls, or both.
+- Whether final handler registration is explicit exports, bootstrap calls, or both.
 - Whether source map parsing lives in runtime C or a helper library.
 - Exact dev watch/restart behavior.
