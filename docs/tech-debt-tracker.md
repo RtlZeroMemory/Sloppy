@@ -17,6 +17,10 @@
 - `SlWorkerPool` exists only as an inline/fake design skeleton over `SlLoop`; it has no real
   threads, OS wakeups, thread-safe completion posting, libuv backend, cancellation,
   deadlines, backpressure, blocking DB/filesystem integration, or V8/HTTP integration yet.
+- `SlRoutePattern` exists only as a one-pattern parser/matcher foundation. It has no HTTP
+  parser/server integration, method dispatch, route table/trie, route precedence,
+  catch-all/optional/regex constraints, percent decoding, route groups, OpenAPI metadata,
+  validation/schema integration, public TypeScript API, or compiler extraction yet.
 
 ## Deferred decisions
 
@@ -82,6 +86,16 @@
 - V8 promise rejection policy and async stack traces are future event-loop/promise work.
 - Rich V8 code frames are future diagnostics renderer work.
 - ESM/module loading and resolver behavior are future work.
+- Route table/trie or equivalent optimized dispatch is future work.
+- Route precedence and ambiguity diagnostics are future work.
+- Route catch-all/wildcard parameters are future work.
+- Route optional segments and regex constraints are future work.
+- Route group prefix composition is future work.
+- Route percent decoding and URL normalization policy are future work.
+- Route method dispatch and handler-ID lookup are future TASK 10.C work.
+- HTTP parser/server integration with llhttp/libuv is future TASK 10.B work.
+- Public `app.mapGet` route API integration is future work.
+- Route OpenAPI metadata and validation/schema integration are future work.
 
 ## Cleanup candidates
 

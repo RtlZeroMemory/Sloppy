@@ -37,9 +37,9 @@ Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
   arena behavior, native cleanup scope behavior, native completion queue behavior, native
-  async settlement behavior, inline worker-pool completion contract behavior, minimal plan
-  contract helper behavior, minimal plan JSON parser/validator behavior, diagnostics
-  foundation behavior, and assertion macro
+  async settlement behavior, inline worker-pool completion contract behavior, route pattern
+  parser/matcher behavior, minimal plan contract helper behavior, minimal plan JSON
+  parser/validator behavior, diagnostics foundation behavior, and assertion macro
   compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
@@ -108,6 +108,7 @@ tests/unit/core/
   test_loop.c
   test_async.c
   test_worker_pool.c
+  test_route.c
   test_plan.c
   test_plan_parse.c
   test_diagnostics.c
@@ -396,7 +397,7 @@ V8 smoke phase:
 
 HTTP/router phase:
 
-- route parser unit tests;
+- route parser/matcher unit tests; started in TASK 10.A with `core.route.pattern`;
 - route match integration tests;
 - fuzz target for route patterns.
 

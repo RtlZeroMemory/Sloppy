@@ -138,6 +138,15 @@ Native route table input:
 - permissions;
 - source location.
 
+TASK 10.A implements the native parser/matcher for the initial route path pattern subset
+that future plan `routes[].path` values can reuse. The current Plan v1 parser still does
+not parse a `routes` section, validate route-handler relationships, or build a route table.
+
+Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
+and `{name:int}`. Query strings, catch-all parameters, optional segments, regex
+constraints, route groups, method matching, route precedence, percent decoding,
+OpenAPI metadata, and validation metadata remain future work.
+
 ### handlers
 
 Handler table contract:

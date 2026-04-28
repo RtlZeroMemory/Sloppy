@@ -128,6 +128,12 @@ users.mapPost("/", createUser)
   .withName("Users.Create");
 ```
 
+Native TASK 10.A route pattern support is intentionally smaller than the final public API
+shown above. The implemented C parser/matcher supports only `/`, static segments,
+`{name}`, `{name:str}`, and `{name:int}`. It does not implement route groups, method
+matching, route precedence, percent decoding, query string matching, HTTP serving,
+`app.mapGet`, middleware, validation, or OpenAPI metadata yet.
+
 Route groups contribute:
 
 - path prefix;

@@ -54,6 +54,11 @@ TASK 09.C adds the first `SlWorkerPool` design skeleton. It is inline/fake only:
 on the caller thread and posts completion back to `SlLoop` for deterministic tests. It has
 no real worker threads, cross-thread posting, libuv, OS event-loop integration, blocking
 DB/filesystem work, cancellation/deadlines/backpressure, HTTP, or V8 integration.
+TASK 10.A adds the first native route pattern parser and matcher foundation. It parses one
+minimal path pattern into arena-owned segments, matches one path against that pattern, and
+captures route parameters. It is not an HTTP server, request parser, route table/trie,
+method dispatcher, public TypeScript API, `app.mapGet`, llhttp/libuv integration, V8
+integration, middleware, or compiler work.
 
 ## Future Phase
 
