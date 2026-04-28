@@ -28,8 +28,11 @@ The foundation phase does not implement:
 
 TASK 06.B implements JSON parsing and minimal shape validation for handwritten Plan v1
 bytes. The parser exposes an arena-owned `SlPlan` and handler table to later runtime work.
-The runtime still does not load a plan from disk, execute JavaScript, build routes, verify
-hashes, or run handlers.
+TASK 08.A adds a V8-gated handwritten smoke path that parses an `app.plan.json` fixture,
+evaluates handwritten `app.js`, maps handler ID `1` to the plan `exportName`, and invokes
+that global JavaScript function through the engine boundary. The runtime still does not
+load production plans from disk, build routes, verify hashes, run HTTP, execute compiler
+output, or provide the final handler registration protocol.
 
 ## Public API Shape
 
