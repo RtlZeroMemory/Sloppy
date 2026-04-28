@@ -220,6 +220,67 @@ static int test_missing_handler_export_fixture_fails(void)
     return 0;
 }
 
+static int test_failed_parse_rolls_back_plan_allocations(void)
+{
+    unsigned char json_storage[8192];
+    unsigned char arena_storage[8192];
+    SlArena arena = {0};
+    SlBytes json = {0};
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlPlanParseOptions options = {0};
+    size_t used_before = 0U;
+    size_t used_after_no_diag = 0U;
+    size_t used_after_diag = 0U;
+    SlStatus status;
+
+    if (read_fixture("tests/golden/plan/missing-handler-export.plan.json", json_storage,
+                     sizeof(json_storage), &json) != 0)
+    {
+        return 43;
+    }
+
+    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    if (!sl_status_is_ok(status)) {
+        return 44;
+    }
+
+    used_before = sl_arena_used(&arena);
+    status = sl_plan_parse_json(&arena, json, NULL, &plan, NULL);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 45;
+    }
+
+    used_after_no_diag = sl_arena_used(&arena);
+    if (used_after_no_diag != used_before || plan.handlers != NULL || plan.handler_count != 0U) {
+        return 46;
+    }
+
+    options.source_name = sl_str_from_cstr("tests/golden/plan/missing-handler-export.plan.json");
+    status = sl_plan_parse_json(&arena, json, &options, &plan, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 47;
+    }
+
+    used_after_diag = sl_arena_used(&arena);
+    if (used_after_diag <= used_after_no_diag) {
+        return 48;
+    }
+
+    if (plan.handlers != NULL || plan.handler_count != 0U) {
+        return 49;
+    }
+
+    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
+        !sl_str_equal(diag.message, sl_str_from_cstr("invalid handler export name")) ||
+        !sl_str_equal(diag.primary_span.path, options.source_name))
+    {
+        return 50;
+    }
+
+    return 0;
+}
+
 static int test_missing_source_map_fixture_fails(void)
 {
     unsigned char arena_storage[8192];
@@ -492,6 +553,11 @@ int main(void)
     }
 
     result = test_missing_handler_export_fixture_fails();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_failed_parse_rolls_back_plan_allocations();
     if (result != 0) {
         return result;
     }

@@ -27,6 +27,9 @@ typedef struct SlPlanParseContext
     SlArena* arena;
     const SlPlanParseOptions* options;
     SlDiag* out_diag;
+    SlDiagCode diag_code;
+    SlStr diag_message;
+    SlStr diag_hint;
 } SlPlanParseContext;
 
 static SlStr sl_plan_parse_literal(const char* ptr, size_t length)
@@ -42,6 +45,20 @@ static bool sl_plan_parse_str_valid(SlStr str)
 static SlStatus sl_plan_parse_set_diag(SlPlanParseContext* ctx, SlDiagCode code, SlStr message,
                                        SlStr hint)
 {
+    if (ctx == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    ctx->diag_code = code;
+    ctx->diag_message = message;
+    ctx->diag_hint = hint;
+
+    return sl_status_from_code(code == SL_DIAG_INVALID_PLAN_VERSION ? SL_STATUS_UNSUPPORTED
+                                                                    : SL_STATUS_INVALID_ARGUMENT);
+}
+
+static SlStatus sl_plan_parse_finish_diag(SlPlanParseContext* ctx)
+{
     SlDiagBuilder builder;
     SlStatus status;
 
@@ -49,15 +66,14 @@ static SlStatus sl_plan_parse_set_diag(SlPlanParseContext* ctx, SlDiagCode code,
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (ctx->out_diag == NULL) {
-        return sl_status_from_code(code == SL_DIAG_INVALID_PLAN_VERSION
-                                       ? SL_STATUS_UNSUPPORTED
-                                       : SL_STATUS_INVALID_ARGUMENT);
+    if (ctx->out_diag == NULL || ctx->diag_code == SL_DIAG_NONE) {
+        return sl_status_ok();
     }
 
     *ctx->out_diag = (SlDiag){0};
 
-    status = sl_diag_builder_init(&builder, ctx->arena, SL_DIAG_SEVERITY_ERROR, code, message);
+    status = sl_diag_builder_init(&builder, ctx->arena, SL_DIAG_SEVERITY_ERROR, ctx->diag_code,
+                                  ctx->diag_message);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -70,20 +86,14 @@ static SlStatus sl_plan_parse_set_diag(SlPlanParseContext* ctx, SlDiagCode code,
         }
     }
 
-    if (!sl_str_is_empty(hint)) {
-        status = sl_diag_builder_add_hint(&builder, hint);
+    if (!sl_str_is_empty(ctx->diag_hint)) {
+        status = sl_diag_builder_add_hint(&builder, ctx->diag_hint);
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
 
-    status = sl_diag_builder_finish(&builder, ctx->out_diag);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    return sl_status_from_code(code == SL_DIAG_INVALID_PLAN_VERSION ? SL_STATUS_UNSUPPORTED
-                                                                    : SL_STATUS_INVALID_ARGUMENT);
+    return sl_diag_builder_finish(&builder, ctx->out_diag);
 }
 
 static SlStatus sl_plan_parse_field_diag(SlPlanParseContext* ctx, SlStr message, SlStr hint)
@@ -504,11 +514,14 @@ SlStatus sl_plan_parse_json(SlArena* arena, SlBytes json, const SlPlanParseOptio
                             SlPlan* out_plan, SlDiag* out_diag)
 {
     SlPlanParseContext ctx = {0};
+    SlArenaMark mark = {0};
     yyjson_read_err error = {0};
     yyjson_doc* doc = NULL;
     yyjson_val* root = NULL;
     SlPlan parsed = {0};
     SlStatus status;
+    SlStatus reset_status;
+    SlStatus diag_status;
 
     if (out_diag != NULL) {
         *out_diag = (SlDiag){0};
@@ -527,15 +540,18 @@ SlStatus sl_plan_parse_json(SlArena* arena, SlBytes json, const SlPlanParseOptio
     ctx.arena = arena;
     ctx.options = options;
     ctx.out_diag = out_diag;
+    ctx.diag_code = SL_DIAG_NONE;
+    mark = sl_arena_mark(arena);
 
     doc = yyjson_read_opts((char*)json.ptr, json.length, 0U, NULL, &error);
     if (doc == NULL) {
-        return sl_plan_parse_set_diag(
+        status = sl_plan_parse_set_diag(
             &ctx, SL_DIAG_MALFORMED_JSON,
             sl_plan_parse_literal("malformed app plan JSON",
                                   sizeof("malformed app plan JSON") - 1U),
             sl_plan_parse_literal("provide strict JSON bytes for app.plan.json",
                                   sizeof("provide strict JSON bytes for app.plan.json") - 1U));
+        goto failure;
     }
 
     root = yyjson_doc_get_root(doc);
@@ -544,10 +560,24 @@ SlStatus sl_plan_parse_json(SlArena* arena, SlBytes json, const SlPlanParseOptio
     yyjson_doc_free(doc);
 
     if (!sl_status_is_ok(status)) {
-        *out_plan = (SlPlan){0};
-        return status;
+        goto failure;
     }
 
     *out_plan = parsed;
     return sl_status_ok();
+
+failure:
+    *out_plan = (SlPlan){0};
+
+    reset_status = sl_arena_reset_to(arena, mark);
+    if (!sl_status_is_ok(reset_status)) {
+        return reset_status;
+    }
+
+    diag_status = sl_plan_parse_finish_diag(&ctx);
+    if (!sl_status_is_ok(diag_status)) {
+        return diag_status;
+    }
+
+    return status;
 }
