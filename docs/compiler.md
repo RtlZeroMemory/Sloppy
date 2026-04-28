@@ -197,6 +197,12 @@ Compiler-owned models should mirror but not blindly duplicate the JSON plan sche
 
 The JSON schema remains the runtime contract.
 
+TASK 06.A defines the first minimal runtime contract shape for handwritten plan fixtures:
+`schemaVersion`, `compilerVersion`, `runtimeMinimumVersion`, `stdlibVersion`,
+`target.platform`, `target.engine`, bundle path/id/hash, source map path/id/hash, and
+handler id/exportName/displayName entries. The compiler placeholder does not emit those
+artifacts yet.
+
 ## Lifecycle Flow
 
 Compiler lifecycle target:
@@ -246,7 +252,7 @@ Acceptance:
 
 - golden plan test;
 - no TypeScript parsing;
-- plan matches schema fixture.
+- plan matches the current minimal Plan v1 fixture field names.
 
 ### Phase C: One-Route Extractor
 

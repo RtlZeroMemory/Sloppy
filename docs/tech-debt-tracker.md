@@ -31,6 +31,11 @@
 - Diagnostics structured fixes/metadata are future.
 - Diagnostics redaction policy is future; TASK 04.A only provides an explicit
   `<redacted>` placeholder helper.
+- Plan JSON parser and validator are future TASK 06.B work.
+- Plan unknown field policy is deferred to the parser/validator task.
+- Plan hash verification is future validation work.
+- Plan source map required/optional policy and source map parser integration are future
+  work.
 
 ## Cleanup candidates
 

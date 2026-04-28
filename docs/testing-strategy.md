@@ -28,6 +28,7 @@ The workflow is:
 - C unit tests;
 - Rust/`sloppyc` tests;
 - compiler golden tests;
+- plan fixture tests;
 - diagnostics golden/snapshot tests;
 - integration tests;
 - structural/static scanner tests;
@@ -93,6 +94,13 @@ Runtime execution:
 - handler ID dispatch;
 - promise settlement later;
 - route-aware diagnostics.
+
+Plan schema fixtures:
+
+- handwritten JSON fixtures under `tests/golden/plan/`;
+- fixture availability checks before production parsing exists;
+- parser/validator tests later must verify documented valid and invalid fixture intent
+  rather than current parser accident.
 
 Public API:
 
