@@ -52,6 +52,11 @@ bool sl_v8_str_valid(SlStr str)
     return str.length == 0U || str.ptr != nullptr;
 }
 
+SlStr sl_v8_str_from_string(const std::string& str)
+{
+    return sl_str_from_parts(str.data(), str.size());
+}
+
 SlStatus sl_v8_copy_string(SlArena* arena, const std::string& src, SlStr* out)
 {
     void* memory = nullptr;
@@ -122,6 +127,55 @@ SlStatus sl_v8_write_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code,
     return sl_status_from_code(failure_code);
 }
 
+SlStatus sl_v8_write_diag_with_span(SlArena* arena, SlDiag* out_diag, SlDiagCode code,
+                                    SlStatusCode failure_code, SlStr message, SlSourceSpan span,
+                                    SlStr hint, const std::string& stack_summary)
+{
+    SlDiagBuilder builder;
+    SlStatus status;
+
+    if (out_diag == nullptr) {
+        return sl_status_from_code(failure_code);
+    }
+
+    if (arena == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_diag_builder_init(&builder, arena, SL_DIAG_SEVERITY_ERROR, code, message);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (span.path.length != 0U || span.has_location) {
+        status = sl_diag_builder_set_primary_span(&builder, span);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    if (!stack_summary.empty()) {
+        status = sl_diag_builder_add_related(&builder, span, sl_v8_str_from_string(stack_summary));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    if (hint.length != 0U) {
+        status = sl_diag_builder_add_hint(&builder, hint);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    status = sl_diag_builder_finish(&builder, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_status_from_code(failure_code);
+}
+
 SlStatus sl_v8_write_diag_string(SlArena* arena, SlDiag* out_diag, SlDiagCode code,
                                  SlStatusCode failure_code, const std::string& message,
                                  SlStr source_name, SlStr hint)
@@ -142,6 +196,27 @@ SlStatus sl_v8_write_diag_string(SlArena* arena, SlDiag* out_diag, SlDiagCode co
     return sl_v8_write_diag(arena, out_diag, code, failure_code, copied_message, source_name, hint);
 }
 
+SlStatus sl_v8_write_diag_string_with_span(SlArena* arena, SlDiag* out_diag, SlDiagCode code,
+                                           SlStatusCode failure_code, const std::string& message,
+                                           SlSourceSpan span, SlStr hint,
+                                           const std::string& stack_summary)
+{
+    SlStr copied_message = {0};
+    SlStatus status;
+
+    if (out_diag == nullptr) {
+        return sl_status_from_code(failure_code);
+    }
+
+    status = sl_v8_copy_string(arena, message, &copied_message);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_v8_write_diag_with_span(arena, out_diag, code, failure_code, copied_message, span,
+                                      hint, stack_summary);
+}
+
 std::string sl_v8_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value)
 {
     v8::String::Utf8Value utf8(isolate, value);
@@ -153,6 +228,15 @@ std::string sl_v8_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> val
     return std::string(*utf8, static_cast<size_t>(utf8.length()));
 }
 
+std::string sl_v8_maybe_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value)
+{
+    if (value.IsEmpty()) {
+        return std::string();
+    }
+
+    return sl_v8_value_to_string(isolate, value);
+}
+
 std::string sl_v8_exception_message(v8::Isolate* isolate, v8::TryCatch& try_catch,
                                     const char* fallback)
 {
@@ -161,6 +245,85 @@ std::string sl_v8_exception_message(v8::Isolate* isolate, v8::TryCatch& try_catc
     }
 
     return sl_v8_value_to_string(isolate, try_catch.Exception());
+}
+
+std::string sl_v8_stack_summary(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                v8::TryCatch& try_catch)
+{
+    v8::Local<v8::Value> stack;
+    std::string summary;
+    const size_t max_stack_summary = 512U;
+
+    if (!try_catch.StackTrace(context).ToLocal(&stack)) {
+        return std::string();
+    }
+
+    summary = "JavaScript stack: " + sl_v8_value_to_string(isolate, stack);
+    if (summary.size() > max_stack_summary) {
+        summary.resize(max_stack_summary);
+        summary += "...";
+    }
+
+    return summary;
+}
+
+std::string sl_v8_message_source_name(v8::Isolate* isolate, v8::TryCatch& try_catch,
+                                      SlStr fallback_source_name)
+{
+    v8::Local<v8::Message> message = try_catch.Message();
+    std::string source_name;
+
+    if (!message.IsEmpty()) {
+        source_name = sl_v8_maybe_value_to_string(isolate, message->GetScriptResourceName());
+    }
+
+    if (!source_name.empty()) {
+        return source_name;
+    }
+
+    if (fallback_source_name.length != 0U) {
+        return std::string(fallback_source_name.ptr, fallback_source_name.length);
+    }
+
+    return std::string();
+}
+
+SlSourceSpan sl_v8_exception_span(v8::Local<v8::Context> context, v8::TryCatch& try_catch,
+                                  const std::string& source_name)
+{
+    v8::Local<v8::Message> message = try_catch.Message();
+    int line = 0;
+    int start_column = -1;
+    size_t sloppy_column = 0U;
+
+    if (message.IsEmpty()) {
+        return sl_source_span_make(sl_v8_str_from_string(source_name), 0U, 0U, 0U);
+    }
+
+    line = message->GetLineNumber(context).FromMaybe(0);
+    start_column = message->GetStartColumn(context).FromMaybe(-1);
+    if (start_column >= 0) {
+        // V8 reports start columns as zero-based; Sloppy diagnostics store 1-based columns.
+        sloppy_column = static_cast<size_t>(start_column) + 1U;
+    }
+
+    return sl_source_span_make(sl_v8_str_from_string(source_name),
+                               line > 0 ? static_cast<size_t>(line) : 0U, sloppy_column, 0U);
+}
+
+SlStatus sl_v8_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCode code,
+                                    SlStatusCode failure_code, v8::Isolate* isolate,
+                                    v8::Local<v8::Context> context, v8::TryCatch& try_catch,
+                                    SlStr fallback_source_name, const char* fallback_message,
+                                    SlStr hint)
+{
+    std::string message = sl_v8_exception_message(isolate, try_catch, fallback_message);
+    std::string source_name = sl_v8_message_source_name(isolate, try_catch, fallback_source_name);
+    SlSourceSpan span = sl_v8_exception_span(context, try_catch, source_name);
+    std::string stack_summary = sl_v8_stack_summary(isolate, context, try_catch);
+
+    return sl_v8_write_diag_string_with_span(engine->arena, out_diag, code, failure_code, message,
+                                             span, hint, stack_summary);
 }
 
 SlStatus sl_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
@@ -340,32 +503,42 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
     v8::Local<v8::Context> context = backend->context.Get(isolate);
     v8::Context::Scope context_scope(context);
     v8::TryCatch try_catch(isolate);
+    v8::Local<v8::String> source_name_string;
 
     status = sl_v8_to_local_string(isolate, source, &source_string);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    v8::MaybeLocal<v8::Script> maybe_script = v8::Script::Compile(context, source_string);
+    status = sl_v8_to_local_string(isolate, source_name, &source_name_string);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    v8::ScriptOrigin origin(isolate, source_name_string);
+    v8::ScriptCompiler::Source script_source(source_string, origin);
+    v8::MaybeLocal<v8::Script> maybe_script = v8::ScriptCompiler::Compile(context, &script_source);
     v8::Local<v8::Script> script;
     if (!maybe_script.ToLocal(&script)) {
-        std::string message = "JavaScript compile failed: " +
-                              sl_v8_exception_message(isolate, try_catch, "compile failed");
-        return sl_v8_write_diag_string(
-            engine->arena, out_diag, SL_DIAG_INTERNAL_ERROR, SL_STATUS_INVALID_STATE, message,
-            source_name,
-            sl_v8_literal("TASK 07.D will add fuller exception mapping.",
-                          sizeof("TASK 07.D will add fuller exception mapping.") - 1U));
+        return sl_v8_write_exception_diag(
+            engine, out_diag, SL_DIAG_ENGINE_COMPILE_ERROR, SL_STATUS_INVALID_STATE, isolate,
+            context, try_catch, source_name, "JavaScript compile failed",
+            sl_v8_literal(
+                "Generated JavaScript locations are reported without source-map remapping.",
+                sizeof("Generated JavaScript locations are reported without source-map "
+                       "remapping.") -
+                    1U));
     }
 
     if (script->Run(context).IsEmpty()) {
-        std::string message = "JavaScript evaluation failed: " +
-                              sl_v8_exception_message(isolate, try_catch, "evaluation failed");
-        return sl_v8_write_diag_string(
-            engine->arena, out_diag, SL_DIAG_INTERNAL_ERROR, SL_STATUS_INVALID_STATE, message,
-            source_name,
-            sl_v8_literal("TASK 07.D will add fuller exception mapping.",
-                          sizeof("TASK 07.D will add fuller exception mapping.") - 1U));
+        return sl_v8_write_exception_diag(
+            engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,
+            try_catch, source_name, "JavaScript evaluation failed",
+            sl_v8_literal(
+                "Generated JavaScript locations are reported without source-map remapping.",
+                sizeof("Generated JavaScript locations are reported without source-map "
+                       "remapping.") -
+                    1U));
     }
 
     return sl_status_ok();
@@ -405,14 +578,37 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
 
     v8::MaybeLocal<v8::Value> maybe_value = context->Global()->Get(context, name_string);
     v8::Local<v8::Value> value;
-    if (!maybe_value.ToLocal(&value) || !value->IsFunction()) {
-        return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_INTERNAL_ERROR, SL_STATUS_INVALID_STATE,
-            sl_v8_literal("JavaScript function was not found",
-                          sizeof("JavaScript function was not found") - 1U),
-            sl_str_empty(),
+    if (!maybe_value.ToLocal(&value)) {
+        return sl_v8_write_exception_diag(
+            engine, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE, isolate, context,
+            try_catch, sl_str_empty(), "JavaScript function lookup failed",
             sl_v8_literal("TASK 08 will map plan handler IDs to registered functions.",
                           sizeof("TASK 08 will map plan handler IDs to registered functions.") -
+                              1U));
+    }
+
+    if (value->IsUndefined()) {
+        std::string message = "JavaScript function was not found: " +
+                              std::string(function_name.ptr, function_name.length);
+        return sl_v8_write_diag_string(engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR,
+                                       SL_STATUS_INVALID_STATE, message, sl_str_empty(),
+                                       sl_v8_literal("TASK 08 will map plan handler IDs to "
+                                                     "registered functions.",
+                                                     sizeof("TASK 08 will map plan handler IDs to "
+                                                            "registered functions.") -
+                                                         1U));
+    }
+
+    if (!value->IsFunction()) {
+        std::string message = "JavaScript global is not callable: " +
+                              std::string(function_name.ptr, function_name.length);
+        return sl_v8_write_diag_string(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE, message,
+            sl_str_empty(),
+            sl_v8_literal("Only global functions can be called by the "
+                          "TASK 07 smoke API.",
+                          sizeof("Only global functions can be called by "
+                                 "the TASK 07 smoke API.") -
                               1U));
     }
 
@@ -420,18 +616,19 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
     v8::MaybeLocal<v8::Value> maybe_result = function->Call(context, context->Global(), 0, nullptr);
     v8::Local<v8::Value> js_result;
     if (!maybe_result.ToLocal(&js_result)) {
-        std::string message = "JavaScript function threw: " +
-                              sl_v8_exception_message(isolate, try_catch, "function threw");
-        return sl_v8_write_diag_string(
-            engine->arena, out_diag, SL_DIAG_INTERNAL_ERROR, SL_STATUS_INVALID_STATE, message,
-            sl_str_empty(),
-            sl_v8_literal("TASK 07.D will add fuller exception mapping.",
-                          sizeof("TASK 07.D will add fuller exception mapping.") - 1U));
+        return sl_v8_write_exception_diag(
+            engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,
+            try_catch, sl_str_empty(), "JavaScript function threw",
+            sl_v8_literal(
+                "Generated JavaScript locations are reported without source-map remapping.",
+                sizeof("Generated JavaScript locations are reported without source-map "
+                       "remapping.") -
+                    1U));
     }
 
     if (!js_result->IsString()) {
         return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_UNSUPPORTED_ENGINE, SL_STATUS_UNSUPPORTED,
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
             sl_v8_literal("JavaScript function returned an unsupported result type",
                           sizeof("JavaScript function returned an unsupported result type") - 1U),
             sl_str_empty(),

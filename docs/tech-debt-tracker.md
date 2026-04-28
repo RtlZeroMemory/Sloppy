@@ -51,7 +51,12 @@
 - `SlEngine` owner-thread checks are future bridge/event-loop work.
 - Real `sl_engine_call_handler` execution and plan handler-ID mapping are future EPIC-08/09
   work.
-- Full V8 exception mapping is future TASK 07.D work; TASK 07.C reports basic failures.
+- V8 source-map remapping is future work; TASK 07.D reports generated JavaScript locations
+  only.
+- V8 route/handler-aware diagnostics are future EPIC-08/09 work after plan handler mapping
+  exists.
+- V8 promise rejection policy and async stack traces are future event-loop/promise work.
+- Rich V8 code frames are future diagnostics renderer work.
 - ESM/module loading and resolver behavior are future work.
 
 ## Cleanup candidates

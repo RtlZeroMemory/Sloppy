@@ -110,6 +110,9 @@ Implemented foundation codes:
 - `SLOPPY_E_DUPLICATE_HANDLER_ID`;
 - `SLOPPY_E_MALFORMED_JSON`;
 - `SLOPPY_E_UNSUPPORTED_ENGINE`;
+- `SLOPPY_E_ENGINE_EXCEPTION`;
+- `SLOPPY_E_ENGINE_COMPILE_ERROR`;
+- `SLOPPY_E_ENGINE_CALL_ERROR`;
 - `SLOPPY_E_MISSING_SERVICE`;
 - `SLOPPY_E_PERMISSION_DENIED`;
 - `SLOPPY_E_INTERNAL`.
@@ -243,8 +246,18 @@ V8 diagnostics:
 
 - engine initialization failure;
 - JavaScript exception;
+- JavaScript compile error;
+- JavaScript call boundary failure such as a missing/non-callable smoke function or
+  unsupported result type;
 - rejected promise;
 - handler registration mismatch.
+
+TASK 07.D implements only the basic V8 exception mapping skeleton for the current classic
+script/global-function smoke API. The bridge captures message text, generated JavaScript
+source name when available, 1-based line/column when V8 provides them, and a bounded stack
+summary as a related note when practical. It does not perform source-map remapping, render
+code frames, add route/handler context, define a promise rejection policy, or capture rich
+async stacks.
 
 Services diagnostics:
 

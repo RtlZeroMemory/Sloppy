@@ -4,7 +4,8 @@
 
 SDK detection implemented for TASK 07.A. TASK 07.B adds the engine-neutral C ABI and noop
 engine stub. TASK 07.C adds the first V8-backed smoke path when the build is explicitly
-configured with `SLOPPY_ENABLE_V8=ON` and a valid SDK.
+configured with `SLOPPY_ENABLE_V8=ON` and a valid SDK. TASK 07.D adds the first basic V8
+exception-to-`SlDiag` mapping skeleton for that smoke path.
 
 ## Purpose
 
@@ -28,11 +29,11 @@ Implemented now:
 - classic script source evaluation through `sl_engine_eval_source`;
 - zero-argument global function calls through `sl_engine_call_function0`;
 - copied string results through `SlEngineResult`.
+- basic exception diagnostics for compile/eval/call failures.
 
 Later scope:
 
 - handler-ID dispatch from Sloppy Plan metadata;
-- exception mapping skeleton;
 - promise settlement.
 
 ## Non-goals
@@ -56,7 +57,7 @@ Current behavior:
 - `SL_ENGINE_KIND_V8` creates a V8 isolate/context only when V8 is enabled at configure
   time; otherwise it returns `SL_STATUS_UNSUPPORTED`;
 - `sl_engine_eval_source` evaluates borrowed classic JavaScript source strings in the
-  engine context, using `source_name` only as a diagnostic label;
+  engine context, using `source_name` as the generated JavaScript diagnostic label;
 - `sl_engine_call_function0` looks up a named global function, calls it with no arguments,
   and copies a string return value into the caller-provided arena;
 - `sl_engine_call_handler` exists as the future handler dispatch shape but returns
@@ -84,6 +85,12 @@ resetting the arena that backs the opaque handle.
 arena. Returned `SlStr` views remain valid until that arena is reset or its backing storage
 ends. No V8 handle or raw native pointer escapes the bridge, and JS never receives raw
 native pointers.
+
+Diagnostics produced by the V8 bridge are built through `SlDiagBuilder` in the engine
+arena. Exception message text, generated source names, hints, and bounded stack summaries
+are copied before returning to C. They remain valid until the engine arena is reset; callers
+may still pass `out_diag == NULL`, in which case the bridge returns the failure status
+without materializing a diagnostic.
 
 ## Invariants
 
@@ -118,9 +125,18 @@ deferred.
 ## Diagnostics
 
 Current engine diagnostics include `SLOPPY_E_UNSUPPORTED_ENGINE` for unsupported noop
-operations and unsupported result types. V8 compile/evaluation failure, missing global
-function, and thrown functions return failure without crashing and currently use
-`SLOPPY_E_INTERNAL`; TASK 07.D owns fuller exception mapping.
+operations, `SLOPPY_E_ENGINE_COMPILE_ERROR` for V8 syntax/compile failures,
+`SLOPPY_E_ENGINE_EXCEPTION` for thrown eval/function exceptions, and
+`SLOPPY_E_ENGINE_CALL_ERROR` for missing/non-callable smoke globals and unsupported smoke
+result types.
+
+The mapping is intentionally basic. It captures V8 exception message text, generated
+source/resource name when available, 1-based line and column when V8 reports them, and a
+bounded stack string as a related note when practical. V8 reports start columns as
+zero-based; the bridge converts them to Sloppy's 1-based diagnostic column convention. No
+source maps, TypeScript remapping, rich code frames, async stack policy, route/handler
+context, promise rejection policy, Sloppy Plan execution, public JS API, Node compatibility,
+or package-manager behavior is implemented here.
 
 ## Tests
 
@@ -136,12 +152,13 @@ Current checks:
   creation in non-V8 builds, noop handler-call unsupported behavior, noop eval/call
   unsupported behavior, and invalid handler-call arguments.
 - `engine.v8.smoke` is registered only when V8 is enabled and covers classic script
-  evaluation, global function call returning `sloppy-ok`, missing function failure, and
-  thrown function failure, and create/destroy/create lifecycle behavior.
+  evaluation, global function call returning `sloppy-ok`, syntax-error diagnostics,
+  missing function diagnostics, non-callable global diagnostics, thrown function
+  diagnostics, unsupported result diagnostics, and create/destroy/create lifecycle
+  behavior.
 
 Later checks:
 
-- thrown exception diagnostic;
 - wrong-thread checks.
 
 ## Source Docs

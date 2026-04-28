@@ -41,7 +41,8 @@ Only placeholder CLIs exist. The execution model is specified but not implemente
 engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call shapes.
 The noop backend is always available. A V8-enabled build can run the TASK 07.C smoke path:
 evaluate a borrowed classic JavaScript source string and call a named global zero-argument
-function returning a copied string. Handler calls by numeric Sloppy Plan ID still return
+function returning a copied string. TASK 07.D maps basic V8 compile/eval/call exceptions
+from that smoke path into `SlDiag`. Handler calls by numeric Sloppy Plan ID still return
 unsupported until handler registration and plan mapping land.
 
 ## Future Phase
@@ -287,12 +288,17 @@ Promise lifecycle requirements:
 Runtime exception flow:
 
 1. V8 reports generated JS location;
-2. bridge captures exception, stack, and promise state;
+2. bridge captures exception message, generated source name, generated line/column, and
+   stack summary when available;
 3. runtime maps generated location through `app.js.map`;
 4. diagnostic reports original TypeScript file/span;
 5. generated location is included as fallback detail;
 6. missing source map is a diagnostic quality failure in dev and a configurable packaging
    concern in production.
+
+Current TASK 07.D behavior stops after step 2 for the smoke API. Source maps, TypeScript
+source remapping, code frames, route/handler context, async stacks, and promise rejection
+policy remain future work.
 
 Source map task boundaries:
 

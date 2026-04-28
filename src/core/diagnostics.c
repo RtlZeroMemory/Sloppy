@@ -408,6 +408,15 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_UNSUPPORTED_ENGINE:
         return sl_diag_literal("SLOPPY_E_UNSUPPORTED_ENGINE",
                                sizeof("SLOPPY_E_UNSUPPORTED_ENGINE") - 1U);
+    case SL_DIAG_ENGINE_EXCEPTION:
+        return sl_diag_literal("SLOPPY_E_ENGINE_EXCEPTION",
+                               sizeof("SLOPPY_E_ENGINE_EXCEPTION") - 1U);
+    case SL_DIAG_ENGINE_COMPILE_ERROR:
+        return sl_diag_literal("SLOPPY_E_ENGINE_COMPILE_ERROR",
+                               sizeof("SLOPPY_E_ENGINE_COMPILE_ERROR") - 1U);
+    case SL_DIAG_ENGINE_CALL_ERROR:
+        return sl_diag_literal("SLOPPY_E_ENGINE_CALL_ERROR",
+                               sizeof("SLOPPY_E_ENGINE_CALL_ERROR") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }
