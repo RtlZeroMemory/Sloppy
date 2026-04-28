@@ -36,8 +36,8 @@ tests.
 Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
-  arena behavior, native cleanup scope behavior, diagnostics foundation behavior, and
-  assertion macro compilation;
+  arena behavior, native cleanup scope behavior, minimal plan contract helper behavior,
+  diagnostics foundation behavior, and assertion macro compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
@@ -93,6 +93,7 @@ tests/unit/core/
   test_checked_math.c
   test_arena.c
   test_scope.c
+  test_plan.c
   test_diagnostics.c
   test_assert.c
   test_source_loc_cpp.cpp
@@ -101,6 +102,13 @@ tests/unit/platform/
 tests/golden/diagnostics/
   missing_service.snap
   invalid_plan_version.snap
+tests/golden/plan/
+  minimal-valid.plan.json
+  invalid-version.plan.json
+  duplicate-handler-id.plan.json
+  missing-bundle.plan.json
+  missing-source-map.plan.json
+  missing-handler-export.plan.json
 tests/golden/compiler/
   README.md
 ```
@@ -111,6 +119,7 @@ CTest naming should expose subsystem and behavior:
 core.status.success
 core.str.slice
 core.checked_math.overflow
+core.plan.contract
 compiler.cli.version
 ```
 
@@ -320,6 +329,7 @@ Phase 1:
 Plan loader phase:
 
 - valid/invalid plan fixtures;
+- fixture existence checks before the parser exists;
 - diagnostics snapshots;
 - malformed JSON tests.
 

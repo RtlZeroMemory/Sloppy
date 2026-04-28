@@ -1,0 +1,104 @@
+#ifndef SLOPPY_PLAN_H
+#define SLOPPY_PLAN_H
+
+#include "sloppy/status.h"
+#include "sloppy/string.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define SL_PLAN_VERSION_1 UINT32_C(1)
+#define SL_PLAN_CURRENT_VERSION SL_PLAN_VERSION_1
+
+#define SL_PLAN_TARGET_PLATFORM_WINDOWS_X64 "windows-x64"
+#define SL_PLAN_TARGET_ENGINE_V8 "v8"
+#define SL_PLAN_RUNTIME_MIN_VERSION_0_1_0 "0.1.0"
+#define SL_PLAN_STDLIB_VERSION_0_1_0 "0.1.0"
+
+typedef uint32_t SlHandlerId;
+
+#define SL_HANDLER_ID_INVALID UINT32_C(0)
+
+/*
+ * Sloppy Plan v1 is the minimal native representation of `app.plan.json`.
+ *
+ * This header defines the borrowed, allocation-free runtime contract shape only. TASK 06.B
+ * owns JSON parsing, copied storage, validation diagnostics, file I/O, hash verification,
+ * and loader lifetime management.
+ *
+ * All SlStr fields below are borrowed views. They do not require NUL termination and remain
+ * valid only for the caller-documented plan lifetime. The handler array is borrowed and
+ * caller-owned; SlPlan never allocates, copies, or frees it.
+ */
+typedef struct SlPlanTarget
+{
+    SlStr platform;
+    SlStr engine;
+} SlPlanTarget;
+
+typedef struct SlPlanBundle
+{
+    SlStr path;
+    SlStr id;
+    SlStr hash;
+} SlPlanBundle;
+
+typedef struct SlPlanSourceMap
+{
+    SlStr path;
+    SlStr id;
+    SlStr hash;
+} SlPlanSourceMap;
+
+typedef struct SlPlanHandler
+{
+    SlHandlerId id;
+    SlStr export_name;
+    SlStr display_name;
+} SlPlanHandler;
+
+typedef struct SlPlan
+{
+    uint32_t version;
+    SlStr compiler_version;
+    SlStr runtime_min_version;
+    SlStr stdlib_version;
+    SlPlanTarget target;
+    SlPlanBundle bundle;
+    SlPlanSourceMap source_map;
+    const SlPlanHandler* handlers;
+    size_t handler_count;
+} SlPlan;
+
+bool sl_plan_version_supported(uint32_t version);
+bool sl_handler_id_valid(SlHandlerId id);
+
+/*
+ * Finds a handler by numeric runtime dispatch ID.
+ *
+ * `plan` and `out` are required. `id` must be valid; handler ID 0 is reserved/invalid. When
+ * `handler_count` is nonzero, `plan->handlers` must point to at least that many caller-owned
+ * entries. On success, `*out` is a borrowed pointer into `plan->handlers` and remains valid
+ * for the handler array lifetime. On failure, `*out` is set to NULL.
+ */
+SlStatus sl_plan_find_handler_by_id(const SlPlan* plan, SlHandlerId id, const SlPlanHandler** out);
+
+/*
+ * Reports whether the borrowed handler table contains duplicate numeric dispatch IDs.
+ *
+ * Passing NULL, an empty table, or a nonzero count with a NULL handler array returns false
+ * because there is no valid table to inspect. Future validation owns the separate malformed
+ * table diagnostic.
+ */
+bool sl_plan_has_duplicate_handler_ids(const SlPlan* plan);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

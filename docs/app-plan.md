@@ -27,13 +27,14 @@ The foundation phase does not implement:
 
 ## Current Phase
 
-The schema is illustrative and still design-level. Future implementation must turn it into
-versioned test fixtures and validation code.
+TASK 06.A implements the minimal native C shape for Plan v1 and adds handwritten valid and
+invalid fixtures. The runtime still does not parse, validate, load, or execute
+`app.plan.json`.
 
 ## Future Phase
 
-The first plan loader should read a small handwritten plan, validate metadata, and expose a
-handler table to the runtime.
+TASK 06.B should read a small handwritten plan, validate metadata, and expose a handler
+table to the runtime.
 
 ## Public API Shape
 
@@ -43,13 +44,40 @@ commands such as `sloppy audit`, `sloppy routes`, and `sloppy doctor`.
 
 ## Versioning Rules
 
-- `schemaVersion` is mandatory.
+- `schemaVersion` is mandatory in JSON fixtures.
 - Runtime must reject plans with unsupported major schema versions.
 - Runtime may accept compatible minor additions only if unknown fields are explicitly
   allowed by that schema version.
-- Plan must declare runtime minimum version and feature requirements.
+- Plan must declare runtime minimum version. Feature requirements are future schema work.
 - Plan must declare target platform and target engine.
 - Compiler version is diagnostic metadata and cache input.
+- TASK 06.A supports only schema version `1` through `sl_plan_version_supported`.
+
+## Implemented Minimal Plan v1 Shape
+
+The implemented native C shape in `include/sloppy/plan.h` is deliberately small:
+
+- `schemaVersion` / `SlPlan.version`;
+- `compilerVersion` / `SlPlan.compiler_version`;
+- `runtimeMinimumVersion` / `SlPlan.runtime_min_version`;
+- `stdlibVersion` / `SlPlan.stdlib_version`;
+- `target.platform` and `target.engine`;
+- `bundle.path`, `bundle.id`, and `bundle.hash`;
+- `sourceMap.path`, `sourceMap.id`, and `sourceMap.hash`;
+- `handlers[].id`, `handlers[].exportName`, and `handlers[].displayName`.
+
+All native `SlStr` fields are borrowed views. The handler table is borrowed and
+caller-owned. The future loader owns copied storage and JSON parser lifetimes.
+
+Handler rules implemented now:
+
+- handler IDs are numeric runtime dispatch keys;
+- handler ID `0` is reserved and invalid;
+- duplicate handler IDs are invalid plan input;
+- handler export names are future engine bridge export names;
+- display names are diagnostic/user-facing only.
+
+Unknown field handling is deferred to TASK 06.B because this PR does not parse JSON.
 
 ## Schema Sections
 
@@ -57,22 +85,15 @@ commands such as `sloppy audit`, `sloppy routes`, and `sloppy doctor`.
 
 Build identity and provenance:
 
-- app name;
 - plan schema version;
-- compiler name/version;
-- generated timestamp if reproducibility policy allows it;
-- build ID;
-- diagnostic metadata.
+- compiler version.
 
 ### target
 
 Runtime compatibility:
 
-- minimum runtime version;
 - target platform;
-- target engine;
-- required runtime features;
-- bootstrap stdlib version.
+- target engine.
 
 ### bundle
 
@@ -80,18 +101,15 @@ Executable JavaScript artifact:
 
 - path;
 - bundle ID;
-- hash;
-- module format;
-- expected bootstrap ABI.
+- hash.
 
 ### sourceMap
 
 Diagnostic mapping artifact:
 
 - path;
-- hash;
-- original source root policy;
-- availability requirement.
+- source map ID;
+- hash.
 
 ### modules
 
@@ -124,10 +142,10 @@ Handler table contract:
 
 - numeric handler ID;
 - generated export or registration name;
-- user-facing name;
-- source location;
-- expected signature metadata;
-- result metadata if known.
+- user-facing name.
+
+The remaining sections below are future schema sections and are not represented in TASK
+06.A native structs.
 
 ### services
 
@@ -227,162 +245,79 @@ compiler/src/plan/
 
 Do not create parser or validator files without tests.
 
-## Sample Full Plan
+## Minimal Plan v1 Fixture
 
-Illustrative, not final:
+Current handwritten fixture shape:
 
 ```json
 {
   "schemaVersion": 1,
-  "metadata": {
-    "appName": "example",
-    "buildId": "dev-placeholder",
-    "compiler": {
-      "name": "sloppyc",
-      "version": "0.0.0-foundation"
-    }
-  },
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
   "target": {
-    "minRuntimeVersion": "0.1.0",
     "platform": "windows-x64",
-    "engine": "v8",
-    "features": ["handler-ids", "native-routing"],
-    "stdlibVersion": "0.1.0"
+    "engine": "v8"
   },
   "bundle": {
-    "path": "app.js",
-    "id": "app-js-placeholder",
-    "hash": "sha256-placeholder",
-    "moduleFormat": "esm",
-    "bootstrapAbi": "sloppy-js-bootstrap-1"
+    "path": ".sloppy/app.js",
+    "id": "app-js-test",
+    "hash": "test-only"
   },
   "sourceMap": {
-    "path": "app.js.map",
-    "hash": "sha256-placeholder",
-    "required": true
+    "path": ".sloppy/app.js.map",
+    "id": "app-js-map-test",
+    "hash": "test-only"
   },
-  "modules": [
-    {
-      "name": "data",
-      "order": 10,
-      "dependencies": [],
-      "contributes": ["services", "dataProviders", "permissions"]
-    },
-    {
-      "name": "users",
-      "order": 20,
-      "dependencies": ["data"],
-      "contributes": ["routes", "services", "permissions"]
-    }
-  ],
-  "routes": [
+  "handlers": [
     {
       "id": 1,
-      "method": "GET",
-      "path": "/users/{id:int}",
-      "handlerId": 100,
-      "name": "Users.Get",
-      "filters": [],
-      "middleware": [],
-      "permissions": ["data.main.read"],
-      "source": {
-        "file": "users.ts",
-        "line": 12,
-        "column": 5
-      }
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Home"
     }
-  ],
+  ]
+}
+```
+
+## Future Full Plan
+
+Later schema phases may add routes, modules, services, middleware, filters, schemas, data
+providers, capabilities, permissions, diagnostics metadata, and build cache metadata. Those
+sections are intentionally absent from TASK 06.A.
+
+Illustrative future shape, not implemented:
+
+```json
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "app-js-placeholder",
+    "hash": "sha256-placeholder"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "app-js-map-placeholder",
+    "hash": "sha256-placeholder"
+  },
   "handlers": [
     {
       "id": 100,
-      "export": "__sloppy_handler_100",
-      "name": "Users.Get",
-      "source": {
-        "file": "users.ts",
-        "line": 12,
-        "column": 31
-      }
+      "exportName": "__sloppy_handler_100",
+      "displayName": "Users.Get"
     }
   ],
-  "handlerTable": {
-    "expectedIds": [100],
-    "registrationMode": "startup-verified"
-  },
-  "services": [
-    {
-      "token": "data.main",
-      "lifetime": "singleton",
-      "module": "data"
-    }
-  ],
-  "middleware": [],
-  "filters": [],
-  "schemas": [
-    {
-      "id": "schema.createUser",
-      "name": "CreateUser",
-      "kind": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "email": {
-          "type": "string",
-          "format": "email"
-        }
-      },
-      "source": {
-        "file": "users.ts",
-        "line": 4,
-        "column": 7
-      }
-    }
-  ],
-  "dataProviders": [
-    {
-      "token": "data.main",
-      "provider": "sqlite",
-      "module": "data",
-      "lifetime": "singleton-pool",
-      "config": {
-        "pathKey": "DATABASE_PATH"
-      }
-    }
-  ],
-  "capabilities": [
-    {
-      "token": "data.main",
-      "kind": "database",
-      "provider": "sqlite"
-    }
-  ],
-  "permissions": {
-    "database": [
-      {
-        "token": "data.main",
-        "provider": "sqlite",
-        "module": "users"
-      }
-    ]
-  },
-  "diagnostics": {
-    "sourceMap": "app.js.map",
-    "sources": [
-      {
-        "file": "users.ts",
-        "displayPath": "users.ts"
-      }
-    ]
-  },
-  "buildCache": {
-    "sourceHash": "sha256-placeholder",
-    "sloppycVersion": "0.0.0-foundation",
-    "oxcVersion": "planned",
-    "targetEngine": "v8",
-    "targetPlatform": "windows-x64",
-    "stdlibVersion": "0.1.0"
-  }
+  "routes": [],
+  "modules": [],
+  "services": [],
+  "dataProviders": []
 }
 ```
 
@@ -409,11 +344,15 @@ Plan validation must check:
 - source map presence follows target mode policy;
 - no secret values are embedded in plan config.
 
+TASK 06.A does not implement these JSON validation rules. It only provides helper coverage
+for supported version checks, handler ID validity, handler lookup, and duplicate handler ID
+detection.
+
 ## Runtime Compatibility Rules
 
 Runtime rejects a plan when:
 
-- runtime version is below `minRuntimeVersion`;
+- runtime version is below `runtimeMinimumVersion`;
 - target engine is not available;
 - target platform is incompatible;
 - required stdlib version is unavailable;
@@ -460,6 +399,10 @@ Plan tests should include:
 - missing bundle;
 - missing source map;
 - duplicate handler ID;
+- missing handler export.
+
+Future parser/validator phases should add:
+
 - route missing handler;
 - module cycle;
 - invalid provider token;
@@ -477,8 +420,8 @@ Plan tests should include:
 ## Implementation Tasks
 
 - Define C structs for parsed plan model.
-- Choose JSON parser in the appropriate phase.
 - Add minimal plan fixture directory.
+- Choose JSON parser in the appropriate phase.
 - Add validator with section-specific diagnostics.
 - Add handler table extraction.
 - Add plan/bundle consistency checks.

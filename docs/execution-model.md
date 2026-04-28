@@ -100,27 +100,28 @@ Handwritten milestone artifacts should be deliberately tiny:
 ```json
 {
   "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
   "target": {
-    "minRuntimeVersion": "0.1.0",
     "platform": "windows-x64",
-    "engine": "v8",
-    "stdlibVersion": "0.1.0"
+    "engine": "v8"
   },
   "bundle": {
-    "path": "app.js",
+    "path": ".sloppy/app.js",
     "id": "handwritten-smoke",
-    "hash": "sha256-test-placeholder",
-    "moduleFormat": "esm"
+    "hash": "sha256-test-placeholder"
   },
   "sourceMap": {
-    "path": "app.js.map",
-    "required": false
+    "path": ".sloppy/app.js.map",
+    "id": "handwritten-smoke-map",
+    "hash": "sha256-test-placeholder"
   },
   "handlers": [
     {
       "id": 1,
-      "export": "__sloppy_handler_1",
-      "name": "Smoke.Hello"
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Smoke.Hello"
     }
   ]
 }
@@ -346,6 +347,9 @@ Startup must validate:
 - handler exports;
 - module ordering;
 - declared features.
+
+TASK 06.A implements only the borrowed native struct shape and small handler/version
+helpers for this contract. It does not load JSON or perform startup consistency checks.
 
 Mismatch fails before serving work.
 
