@@ -92,8 +92,9 @@ Runtime execution:
 
 - handwritten artifacts first;
 - native completion queue skeleton before real async backends;
+- native async settlement skeleton before V8 Promise integration;
 - handler ID dispatch;
-- promise settlement later;
+- V8 Promise settlement later;
 - route-aware diagnostics.
 
 Plan schema fixtures:

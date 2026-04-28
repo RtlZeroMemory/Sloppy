@@ -11,6 +11,9 @@
 - `SlLoop` exists only as a caller-backed, single-threaded completion queue skeleton; it has
   no libuv/backend integration, OS wakeup mechanism, cross-thread posting, or owner-thread
   enforcement yet.
+- `SlAsync` exists only as a caller-owned native settlement skeleton over `SlLoop`; it has
+  no V8 Promise integration, microtask policy, request-scope retention, thread-safe
+  settlement, cancellation token, deadline, backpressure, or worker-pool integration yet.
 
 ## Deferred decisions
 
@@ -22,7 +25,11 @@
 - `SlLoop` owner-thread identity checks are future work.
 - libuv event-loop backend integration is future work.
 - Worker-pool completion posting into `SlLoop` is future work.
-- Promise settlement through `SlLoop` is future work.
+- V8 Promise settlement through `SlAsync`/`SlLoop` is future work.
+- V8 microtask draining policy for async handlers is future work.
+- Request scope retention until async settlement is future work.
+- Thread-safe async settlement/posting is future work.
+- Cancellation token, deadline, and backpressure integration with `SlAsync` is future work.
 - HTTP request scope integration with `SlScope` is future.
 - Resource-table cleanup callbacks registered through `SlScope` are future.
 - Async cancellation and deadline-triggered `SlScope` cleanup are future.
