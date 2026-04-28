@@ -1,0 +1,90 @@
+# Dependencies
+
+## Purpose
+
+Sloppy should use dependencies where they reduce specialized risk, but not where they define
+the product model.
+
+## Scope
+
+This document defines dependency policy, planned dependency order, ownership expectations,
+platform-boundary expectations, and acceptance criteria for adding a new dependency.
+
+## Non-Goals
+
+The foundation phase does not add V8, Oxc, libuv, llhttp, yyjson, sqlite, libpq, ODBC, TLS,
+compression, or other runtime dependencies.
+
+Use dependencies for:
+
+- JavaScript engine implementation;
+- TypeScript parser and compiler tooling;
+- event loop backend;
+- HTTP parser;
+- JSON parser;
+- SQLite;
+- PostgreSQL client library;
+- SQL Server ODBC driver access;
+- TLS, crypto, and compression;
+- testing and fuzzing tools.
+
+Do not outsource:
+
+- application lifecycle;
+- routing semantics;
+- middleware model;
+- dependency-injection semantics;
+- permissions model;
+- diagnostics style;
+- resource lifetime model;
+- public API shape.
+
+## Planned Dependencies
+
+- V8: first JavaScript engine backend;
+- Oxc: primary TypeScript parser, transform, and app-plan extraction foundation;
+- libuv: future event loop abstraction backend;
+- llhttp: future HTTP/1 parser;
+- yyjson: future JSON/config/plan parser;
+- sqlite3: future first-class SQLite integration;
+- libpq: future PostgreSQL provider backend;
+- Microsoft ODBC Driver for SQL Server / ODBC API: future SQL Server provider backend on
+  Windows;
+- munit: future C unit test framework;
+- future TLS, crypto, and compression dependencies as requirements become concrete.
+
+V8 is special and is not managed by vcpkg initially. It should be consumed as a verified SDK
+through Sloppy tooling so normal contributors do not need to build V8 from source.
+
+SQLite may be consumed through vcpkg, a static build, or a bundled source strategy once the
+provider implementation phase begins. libpq may be a vcpkg/build dependency, but release
+packaging needs an explicit DLL strategy. SQL Server support depends on Microsoft ODBC
+Driver availability on Windows; `sloppy doctor` should later detect whether the external
+driver is installed and usable.
+
+All dependencies need explicit ownership, update, security, license, and test strategy
+before they become required in the default build.
+
+Cross-platform dependencies do not remove the need for Sloppy-owned platform boundaries.
+libuv may hide event-loop details internally, but Sloppy still owns the future `SlLoop`
+abstraction. Core runtime modules should depend on Sloppy abstractions rather than direct OS
+APIs or dependency-specific platform behavior.
+
+## Acceptance Criteria For Adding A Dependency
+
+A dependency can be added when:
+
+- the roadmap epic for that dependency has started;
+- docs explain why the dependency is needed;
+- build and packaging impact is documented;
+- license/security/update ownership is documented;
+- tests cover the dependency boundary;
+- CI behavior is clear when the dependency is unavailable;
+- the dependency does not define Sloppy's public product model.
+
+## Open Questions
+
+- Exact V8 SDK version pinning and update cadence.
+- Whether yyjson is introduced in plan loader or config first.
+- Exact sqlite packaging strategy.
+- Whether PostgreSQL libpq comes from vcpkg or provider package tooling.

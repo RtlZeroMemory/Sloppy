@@ -1,0 +1,283 @@
+# Concurrency and Async Model
+
+## Purpose
+
+This document defines how Sloppy handles many concurrent requests, async operations, native
+worker work, JavaScript promise continuations, and future multicore scaling.
+
+## Scope
+
+This covers the JS event loop model, V8 isolate ownership, native async I/O, native worker
+pools, request scopes across promises, database provider async strategy, cancellation and
+deadlines, backpressure, CPU-bound work, future multiple JS workers/isolates, and conceptual
+differences from ASP.NET Core, Node, Bun, and Deno.
+
+## Non-Goals
+
+- No thread-per-request model.
+- No arbitrary thread-pool continuation into a shared V8 isolate.
+- No parallel execution of JS callbacks inside one isolate.
+- No worker implementation in v0.1.
+- No custom event loop implementation in this spec pass.
+- No libuv integration in this task.
+- No CPU-parallel JS execution in a single isolate.
+
+## Core Decision
+
+```text
+Sloppy uses one JavaScript execution thread per JS worker/isolate.
+The owning JS event-loop thread is the only thread allowed to enter that isolate.
+Native I/O may complete elsewhere, but completion callbacks are posted back to the owning JS event loop.
+```
+
+Sloppy is not thread-per-request. Many requests can be in flight because operations yield to
+native async work, not because one V8 isolate runs many JS continuations in parallel.
+
+## Comparison With ASP.NET Core
+
+ASP.NET Core uses .NET ThreadPool workers. `await` releases a worker while I/O is pending.
+The continuation may resume on another ThreadPool thread, and many requests may execute
+continuations concurrently across different ThreadPool threads.
+
+Sloppy cannot and should not copy that model for JavaScript inside one V8 isolate. A V8
+isolate has a strict owner-thread rule in Sloppy, so random pool threads must not enter it.
+
+```text
+ASP.NET Core:
+request starts on ThreadPool thread A
+await I/O
+thread A returns to pool
+I/O completes
+continuation resumes on ThreadPool thread B
+```
+
+## Comparison With Node/Bun/Deno
+
+Node, Bun, and Deno are closer to Sloppy's JS model. One JS worker/event-loop thread
+executes JS callbacks sequentially. Many requests are in flight because I/O is async.
+CPU-heavy JS blocks that worker. Concurrency is I/O concurrency, not parallel JS execution
+inside one worker. CPU scaling uses workers, processes, or isolates.
+
+```text
+JS worker:
+request A enters handler
+handler starts async DB query and yields
+request B enters handler
+DB for A completes
+A continuation is queued
+A continuation runs on JS thread
+```
+
+## Sloppy v0/v1 Threading Model
+
+Main/runtime thread:
+
+- owns native host startup and initial JS worker.
+
+JS event-loop thread:
+
+- owns one V8 isolate/context;
+- calls JS route handlers;
+- drains microtasks;
+- receives native completion events.
+
+Native event loop/backend:
+
+- handles socket readiness/completions;
+- drives timers;
+- posts work completion.
+
+Native worker pool:
+
+- runs blocking or CPU-heavy native operations;
+- never enters V8 directly;
+- posts completion back to the JS event loop.
+
+Request scope:
+
+- lives until the handler promise settles or the request is cancelled.
+
+## V8 Isolation Rules
+
+One isolate is entered only by its owning JS thread. V8 types do not cross into core
+runtime. Native worker pool threads must not call JS handlers. Cross-thread communication
+uses runtime queues/completion messages. Future workers use separate isolates. Any
+exception must be owned and reported on the JS thread/engine bridge.
+
+## Request Lifecycle With Async Handler
+
+1. Socket receives bytes.
+2. Native HTTP parser produces request.
+3. Native router matches route.
+4. Request scope is created.
+5. Runtime calls JS handler by handler ID.
+6. Handler returns value or Promise.
+7. If value: convert result and write response.
+8. If Promise: keep request scope alive and return to event loop.
+9. Native async operation completes.
+10. Completion posts back to JS event loop.
+11. Promise resolves/rejects.
+12. Continuation runs on JS thread.
+13. Result converts to native response.
+14. Response writes.
+15. Scoped resources dispose.
+16. Request arena resets.
+
+## Promise and Microtask Handling
+
+After calling into JS, the engine bridge must drain or schedule microtasks according to
+runtime policy. Rejected promises become diagnostics. Request scope remains alive while a
+promise is pending. Promise settlement triggers response or error handling. Unhandled
+rejections should include route and handler context when possible.
+
+## Request Scope Lifetime
+
+The request arena exists until response completion or cancellation cleanup. Scoped services
+live until the request finishes. DB transactions/resources tied to the request must
+close/rollback/dispose on cancellation or error. Data crossing async boundaries must not
+point into shorter-lived arenas. Debug builds should detect leaked request resources.
+
+## Native Async Operations
+
+Class A: naturally async socket/event-loop operations:
+
+- network readiness;
+- timers;
+- server socket accept;
+- maybe nonblocking provider sockets later.
+
+Class B: blocking operations using worker pool:
+
+- SQLite queries if blocking;
+- SQL Server ODBC calls if blocking;
+- blocking filesystem operations;
+- compression/crypto later if blocking or CPU-heavy.
+
+Class C: CPU-heavy JS:
+
+- not run on the worker pool automatically;
+- use future workers/tasks APIs.
+
+## Database Provider Async Strategy
+
+The public JS database API is always async and promise-friendly. The provider chooses the
+implementation strategy. SQLite likely uses a dedicated DB executor or worker pool first.
+PostgreSQL/libpq may use blocking worker-pool mode first or nonblocking socket integration
+later. SQL Server/ODBC likely uses a worker-pool strategy first.
+
+Transactions pin their connection/resource until the async callback settles. Completions
+post back to the JS event loop. Providers must support cancellation/deadline where possible,
+or document when they cannot.
+
+```ts
+await db.transaction(async tx => {
+  await tx.exec`insert into users (name) values (${"Ada"})`;
+});
+```
+
+The transaction scope remains alive until the callback settles. Rollback occurs on a thrown
+or rejected callback unless the transaction helper has already committed by policy.
+
+## Cancellation and Deadlines
+
+Future model:
+
+- each request has a cancellation token;
+- client disconnect triggers cancellation;
+- configured timeout/deadline triggers cancellation;
+- native operations receive cancellation where supported;
+- unsupported cancellation is diagnosed/documented;
+- request cleanup still runs;
+- cancelled request should not resume the normal response path.
+
+## Backpressure
+
+Future model:
+
+- limit request body size;
+- limit pending requests per worker;
+- limit worker-pool queue depth;
+- limit DB pool checkout;
+- streaming responses respect socket backpressure;
+- overload returns controlled errors instead of unbounded memory growth.
+
+## Scaling to Many Requests
+
+One JS worker can hold many in-flight I/O-bound requests. JS callbacks execute sequentially
+on that worker. Keeping handlers short and async is critical. Native route matching and
+native preflight reduce JS work. Request arenas and resource tracking help memory stability.
+
+## Scaling to Many CPU Cores
+
+Future model:
+
+- multiple JS workers/isolates;
+- `--workers=N` or config later;
+- `workers: "auto"` later;
+- each worker has a separate V8 isolate/event loop;
+- `app.plan` can be shared/read-only;
+- request distribution strategy is future;
+- worker health/graceful restart is future.
+
+## CPU-Bound Work
+
+CPU-heavy JS blocks a worker. Future APIs may include JS workers, `ctx.tasks.run(...)`, or a
+native task provider. Sloppy will not automatically parallelize CPU-heavy JS inside one
+isolate.
+
+## Sloppy Advantages
+
+Sloppy is similar to Node/Bun/Deno at the JS execution level, but can do better at the
+app-host level:
+
+- native route match before JS;
+- native request scopes;
+- native data-provider scheduling;
+- Sloppy Plan metadata;
+- route timeouts/body limits/permissions known before handler;
+- diagnostics know route/module/service context.
+
+## Implementation Phases
+
+- Phase 0: Documentation and ADR only.
+- Phase 1: No event loop yet; core C primitives.
+- Phase 2: Event loop abstraction skeleton.
+- Phase 3: V8 bridge smoke; single isolate, single owner thread.
+- Phase 4: Handwritten handler execution.
+- Phase 5: Async Promise settlement model.
+- Phase 6: Native worker pool abstraction.
+- Phase 7: DB provider async strategy.
+- Phase 8: HTTP integration with request scopes.
+- Phase 9: Cancellation/deadlines/backpressure.
+- Phase 10: Multiple workers/isolates.
+
+## Testing Requirements
+
+- Unit tests for request scope lifetime later.
+- Promise settlement tests later.
+- Cancellation cleanup tests later.
+- Worker pool no-V8-entry tests later.
+- Resource leak tests.
+- Async DB transaction rollback tests.
+- Stress test for many pending requests later.
+- Concurrency docs acceptance tests may be manual until implementation exists.
+
+## Acceptance Criteria
+
+For this spec pass:
+
+- `docs/concurrency.md` exists.
+- ADR exists.
+- Architecture/execution/memory/data/performance docs link to it.
+- Roadmap has concurrency epic.
+- V8 threading rule is clear.
+- No runtime code added.
+
+For future implementation:
+
+- One isolate has one owner thread.
+- Worker threads cannot call into V8.
+- Promise-returning handler keeps request scope alive.
+- Rejected promise produces route-aware diagnostic.
+- Request cancellation disposes scoped resources.
+- Stress tests show many pending async operations do not create thread-per-request behavior.

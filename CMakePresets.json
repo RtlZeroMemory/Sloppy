@@ -1,0 +1,107 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-dev",
+      "displayName": "Windows dev",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "windows-release",
+      "displayName": "Windows release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_ASSERTS": "OFF"
+      }
+    },
+    {
+      "name": "windows-relwithdebinfo",
+      "displayName": "Windows release with debug info",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-relwithdebinfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "SLOPPY_ENABLE_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-asan",
+      "displayName": "Windows ASan",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_ASAN": "ON",
+        "SLOPPY_ENABLE_ASSERTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-dev",
+      "configurePreset": "windows-dev"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release"
+    },
+    {
+      "name": "windows-relwithdebinfo",
+      "configurePreset": "windows-relwithdebinfo"
+    },
+    {
+      "name": "windows-asan",
+      "configurePreset": "windows-asan"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-dev",
+      "configurePreset": "windows-dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-relwithdebinfo",
+      "configurePreset": "windows-relwithdebinfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-asan",
+      "configurePreset": "windows-asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

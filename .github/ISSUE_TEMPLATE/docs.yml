@@ -1,0 +1,18 @@
+name: Docs
+description: Documentation, ADR, or source-of-truth update.
+title: "DOCS: "
+labels: ["type:docs", "area:docs", "status:ready"]
+body:
+  - type: textarea
+    id: summary
+    attributes: { label: Summary }
+    validations: { required: true }
+  - type: textarea
+    id: source-docs
+    attributes: { label: Source docs affected }
+  - type: textarea
+    id: change
+    attributes: { label: Proposed change }
+  - type: textarea
+    id: acceptance
+    attributes: { label: Acceptance criteria }

@@ -1,0 +1,19 @@
+Checks: >
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -readability-else-after-return,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*(include|src)[/\\].*'
+FormatStyle: file
+CheckOptions:
+  - key: readability-function-size.LineThreshold
+    value: '120'
+  - key: readability-function-size.StatementThreshold
+    value: '60'

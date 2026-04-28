@@ -1,0 +1,54 @@
+name: Task
+description: Bounded-context task intended to map to one coherent PR.
+title: "TASK XX.A: "
+labels: ["type:task", "status:ready", "size:bounded"]
+body:
+  - type: input
+    id: parent-epic
+    attributes: { label: Parent EPIC }
+    validations: { required: true }
+  - type: textarea
+    id: summary
+    attributes: { label: Summary }
+    validations: { required: true }
+  - type: textarea
+    id: source-docs
+    attributes: { label: Source docs }
+    validations: { required: true }
+  - type: textarea
+    id: goal
+    attributes: { label: Goal }
+    validations: { required: true }
+  - type: textarea
+    id: scope
+    attributes: { label: Scope }
+    validations: { required: true }
+  - type: textarea
+    id: non-goals
+    attributes: { label: Non-goals }
+    validations: { required: true }
+  - type: textarea
+    id: implementation-requirements
+    attributes: { label: Implementation requirements }
+  - type: textarea
+    id: files
+    attributes: { label: Files likely touched }
+  - type: textarea
+    id: tests
+    attributes: { label: Tests required }
+  - type: textarea
+    id: quality-gates
+    attributes: { label: Quality gates }
+  - type: textarea
+    id: acceptance
+    attributes: { label: Acceptance criteria }
+    validations: { required: true }
+  - type: textarea
+    id: reviewer-checklist
+    attributes: { label: Reviewer checklist }
+  - type: textarea
+    id: followups
+    attributes: { label: Follow-up tasks }
+  - type: input
+    id: labels
+    attributes: { label: Labels }

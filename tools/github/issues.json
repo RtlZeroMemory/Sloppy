@@ -1,0 +1,1245 @@
+{
+  "epics": [
+    {
+      "bodyPath": "docs/project/epics/EPIC-00-foundation-harness-tooling.md",
+      "title": "EPIC-00: Foundation / Harness / Tooling",
+      "labels": [
+        "type:epic",
+        "area:harness",
+        "priority:p2",
+        "risk:low",
+        "status:ready"
+      ],
+      "milestone": "0.0 Foundation / Harness"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-01-platform-abstraction.md",
+      "title": "EPIC-01: Platform Abstraction",
+      "labels": [
+        "type:epic",
+        "area:platform",
+        "priority:p2",
+        "risk:medium",
+        "status:ready"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-02-core-native-foundation.md",
+      "title": "EPIC-02: Core Native Foundation",
+      "labels": [
+        "type:epic",
+        "area:core",
+        "priority:p2",
+        "risk:medium",
+        "status:ready",
+        "priority:p0"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-03-memory-foundation.md",
+      "title": "EPIC-03: Memory Foundation",
+      "labels": [
+        "type:epic",
+        "area:memory",
+        "priority:p2",
+        "risk:medium",
+        "status:ready"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-04-diagnostics-foundation.md",
+      "title": "EPIC-04: Diagnostics Foundation",
+      "labels": [
+        "type:epic",
+        "area:diagnostics",
+        "priority:p2",
+        "risk:medium",
+        "status:ready"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-05-resource-lifecycle-foundation.md",
+      "title": "EPIC-05: Resource Lifecycle Foundation",
+      "labels": [
+        "type:epic",
+        "area:resource",
+        "priority:p2",
+        "risk:medium",
+        "status:ready"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-06-plan-schema-loader.md",
+      "title": "EPIC-06: Plan Schema and Loader",
+      "labels": [
+        "type:epic",
+        "area:plan",
+        "priority:p2",
+        "risk:high",
+        "status:ready"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-07-v8-bridge-smoke.md",
+      "title": "EPIC-07: V8 Bridge Smoke",
+      "labels": [
+        "type:epic",
+        "area:engine-v8",
+        "priority:p2",
+        "risk:high",
+        "status:deferred"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-08-handwritten-artifact-execution.md",
+      "title": "EPIC-08: Handwritten Artifact Execution",
+      "labels": [
+        "type:epic",
+        "area:plan",
+        "priority:p2",
+        "risk:high",
+        "status:deferred"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-09-event-loop-concurrency-foundation.md",
+      "title": "EPIC-09: Event Loop / Concurrency Foundation",
+      "labels": [
+        "type:epic",
+        "area:concurrency",
+        "priority:p2",
+        "risk:high",
+        "status:deferred"
+      ],
+      "milestone": "0.3 Async Runtime / HTTP"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-10-http-router-foundation.md",
+      "title": "EPIC-10: HTTP Router Foundation",
+      "labels": [
+        "type:epic",
+        "area:http",
+        "priority:p2",
+        "risk:high",
+        "status:deferred"
+      ],
+      "milestone": "0.3 Async Runtime / HTTP"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-11-public-ts-api-bootstrap.md",
+      "title": "EPIC-11: Public TypeScript API Bootstrap",
+      "labels": [
+        "type:epic",
+        "area:ts-api",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-12-app-host-foundation.md",
+      "title": "EPIC-12: App Host Foundation",
+      "labels": [
+        "type:epic",
+        "area:app-host",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-13-developer-ergonomics-layer.md",
+      "title": "EPIC-13: Developer Ergonomics Layer",
+      "labels": [
+        "type:epic",
+        "area:ergonomics",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-14-modularity-app-modules.md",
+      "title": "EPIC-14: Modularity / App Modules",
+      "labels": [
+        "type:epic",
+        "area:modules",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-15-data-capabilities-foundation.md",
+      "title": "EPIC-15: Data / Capabilities Foundation",
+      "labels": [
+        "type:epic",
+        "area:data",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-16-sqlite-provider.md",
+      "title": "EPIC-16: SQLite Provider",
+      "labels": [
+        "type:epic",
+        "area:sqlite",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-17-postgresql-provider.md",
+      "title": "EPIC-17: PostgreSQL Provider",
+      "labels": [
+        "type:epic",
+        "area:postgres",
+        "priority:p2",
+        "risk:high",
+        "status:deferred"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-18-sqlserver-provider.md",
+      "title": "EPIC-18: SQL Server Provider",
+      "labels": [
+        "type:epic",
+        "area:sqlserver",
+        "priority:p2",
+        "risk:high",
+        "status:deferred"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-19-cli-introspection-tooling.md",
+      "title": "EPIC-19: CLI Introspection Tooling",
+      "labels": [
+        "type:epic",
+        "area:cli",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    },
+    {
+      "bodyPath": "docs/project/epics/EPIC-20-benchmarks-performance-validation.md",
+      "title": "EPIC-20: Benchmarks / Performance Validation",
+      "labels": [
+        "type:epic",
+        "area:performance",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    }
+  ],
+  "tasks": [
+    {
+      "bodyPath": "docs/project/tasks/EPIC-00/TASK-00.A-final-docs-audit.md",
+      "title": "TASK 00.A: Final Docs Audit",
+      "parentEpic": "EPIC-00: Foundation / Harness / Tooling",
+      "labels": [
+        "type:docs",
+        "area:docs",
+        "area:harness",
+        "priority:p0",
+        "risk:low",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.0 Foundation / Harness"
+    },
+    {
+      "title": "TASK 00.B: GitHub Ceremony Pass",
+      "parentEpic": "EPIC-00",
+      "bodyPath": "docs/project/tasks/EPIC-00/TASK-00.B-github-ceremony-pass.md",
+      "labels": [
+        "type:tooling",
+        "type:docs",
+        "area:harness",
+        "priority:p0",
+        "risk:low",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.0 Foundation / Harness"
+    },
+    {
+      "title": "TASK 00.C: Review Zip Hygiene",
+      "parentEpic": "EPIC-00",
+      "bodyPath": "docs/project/tasks/EPIC-00/TASK-00.C-review-zip-hygiene.md",
+      "labels": [
+        "type:tooling",
+        "area:ci",
+        "priority:p1",
+        "risk:low",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.0 Foundation / Harness"
+    },
+    {
+      "title": "TASK 00.D: Remaining Harness Cleanup",
+      "parentEpic": "EPIC-00",
+      "bodyPath": "docs/project/tasks/EPIC-00/TASK-00.D-remaining-harness-cleanup.md",
+      "labels": [
+        "type:docs",
+        "area:harness",
+        "priority:p1",
+        "risk:low",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.0 Foundation / Harness"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-01/TASK-01.A-platform-scanner-and-fixtures.md",
+      "title": "TASK 01.A: Platform Scanner and Fixtures",
+      "parentEpic": "EPIC-01: Platform Abstraction",
+      "labels": [
+        "type:tooling",
+        "area:platform",
+        "area:ci",
+        "priority:p1",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "title": "TASK 01.B: Initial Platform Header Boundaries",
+      "parentEpic": "EPIC-01",
+      "bodyPath": "docs/project/tasks/EPIC-01/TASK-01.B-initial-platform-header-boundaries.md",
+      "labels": [
+        "type:task",
+        "area:platform",
+        "priority:p1",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "title": "TASK 01.C: OS API Category Documentation",
+      "parentEpic": "EPIC-01",
+      "bodyPath": "docs/project/tasks/EPIC-01/TASK-01.C-os-api-category-documentation.md",
+      "labels": [
+        "type:docs",
+        "area:platform",
+        "priority:p2",
+        "risk:low",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "title": "TASK 01.D: CI Boundary Integration",
+      "parentEpic": "EPIC-01",
+      "bodyPath": "docs/project/tasks/EPIC-01/TASK-01.D-ci-boundary-integration.md",
+      "labels": [
+        "type:tooling",
+        "area:ci",
+        "area:platform",
+        "priority:p1",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-02/TASK-02.A-core-basics-foundation.md",
+      "title": "TASK 02.A: Core Basics Foundation",
+      "parentEpic": "EPIC-02: Core Native Foundation",
+      "labels": [
+        "type:task",
+        "area:core",
+        "area:testing",
+        "priority:p0",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-03/TASK-03.A-slarena-foundation.md",
+      "title": "TASK 03.A: SlArena Foundation",
+      "parentEpic": "EPIC-03: Memory Foundation",
+      "labels": [
+        "type:task",
+        "area:memory",
+        "area:core",
+        "priority:p1",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "title": "TASK 03.B: String Builder / Buffer Foundation",
+      "parentEpic": "EPIC-03",
+      "bodyPath": "docs/project/tasks/EPIC-03/TASK-03.B-string-builder-buffer-foundation.md",
+      "labels": [
+        "type:task",
+        "area:memory",
+        "area:core",
+        "priority:p2",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-04/TASK-04.A-diagnostic-core.md",
+      "title": "TASK 04.A: Diagnostic Core",
+      "parentEpic": "EPIC-04: Diagnostics Foundation",
+      "labels": [
+        "type:task",
+        "area:diagnostics",
+        "area:testing",
+        "priority:p1",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "title": "TASK 04.B: Source Frame / JSON Diagnostics",
+      "parentEpic": "EPIC-04",
+      "bodyPath": "docs/project/tasks/EPIC-04/TASK-04.B-source-frame-json-diagnostics.md",
+      "labels": [
+        "type:task",
+        "area:diagnostics",
+        "area:testing",
+        "priority:p2",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-05/TASK-05.A-resource-table.md",
+      "title": "TASK 05.A: Resource Table",
+      "parentEpic": "EPIC-05: Resource Lifecycle Foundation",
+      "labels": [
+        "type:task",
+        "area:resource",
+        "area:core",
+        "priority:p1",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "title": "TASK 05.B: Scope / Lifetime Skeleton",
+      "parentEpic": "EPIC-05",
+      "bodyPath": "docs/project/tasks/EPIC-05/TASK-05.B-scope-lifetime-skeleton.md",
+      "labels": [
+        "type:task",
+        "area:resource",
+        "area:memory",
+        "priority:p2",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.1 Native Core"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-06/TASK-06.A-plan-v1-schema-and-native-structs.md",
+      "title": "TASK 06.A: Plan v1 Schema and Native Structs",
+      "parentEpic": "EPIC-06: Plan Schema and Loader",
+      "labels": [
+        "type:task",
+        "area:plan",
+        "area:core",
+        "priority:p1",
+        "risk:medium",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "title": "TASK 06.B: Plan JSON Parser / Validator",
+      "parentEpic": "EPIC-06",
+      "bodyPath": "docs/project/tasks/EPIC-06/TASK-06.B-plan-json-parser-validator.md",
+      "labels": [
+        "type:task",
+        "area:plan",
+        "area:diagnostics",
+        "priority:p1",
+        "risk:high",
+        "status:ready",
+        "size:large-coherent"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "title": "TASK 06.C: Golden Plan Fixtures",
+      "parentEpic": "EPIC-06",
+      "bodyPath": "docs/project/tasks/EPIC-06/TASK-06.C-golden-plan-fixtures.md",
+      "labels": [
+        "type:test",
+        "area:plan",
+        "area:testing",
+        "priority:p1",
+        "risk:low",
+        "status:ready",
+        "size:bounded"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-07/TASK-07.A-v8-sdk-detection-and-build-integration.md",
+      "title": "TASK 07.A: V8 SDK Detection and Build Integration",
+      "parentEpic": "EPIC-07: V8 Bridge Smoke",
+      "labels": [
+        "type:tooling",
+        "area:engine-v8",
+        "area:ci",
+        "priority:p2",
+        "risk:high",
+        "status:blocked",
+        "size:bounded"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "title": "TASK 07.B: Isolated Engine C ABI",
+      "parentEpic": "EPIC-07",
+      "bodyPath": "docs/project/tasks/EPIC-07/TASK-07.B-isolated-engine-c-abi.md",
+      "labels": [
+        "type:task",
+        "area:engine-v8",
+        "area:core",
+        "priority:p2",
+        "risk:high",
+        "status:blocked",
+        "size:bounded"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "title": "TASK 07.C: Load JS and Call Exported Function",
+      "parentEpic": "EPIC-07",
+      "bodyPath": "docs/project/tasks/EPIC-07/TASK-07.C-load-js-and-call-exported-function.md",
+      "labels": [
+        "type:task",
+        "area:engine-v8",
+        "area:testing",
+        "priority:p2",
+        "risk:high",
+        "status:blocked",
+        "size:bounded"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "title": "TASK 07.D: Exception Mapping Skeleton",
+      "parentEpic": "EPIC-07",
+      "bodyPath": "docs/project/tasks/EPIC-07/TASK-07.D-exception-mapping-skeleton.md",
+      "labels": [
+        "type:task",
+        "area:engine-v8",
+        "area:diagnostics",
+        "priority:p2",
+        "risk:high",
+        "status:blocked",
+        "size:bounded"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-08/TASK-08.A-handwritten-app-js-app-plan-execution.md",
+      "title": "TASK 08.A: Handwritten app.js + app.plan Execution",
+      "parentEpic": "EPIC-08: Handwritten Artifact Execution",
+      "labels": [
+        "type:task",
+        "area:plan",
+        "area:engine-v8",
+        "area:testing",
+        "priority:p2",
+        "risk:high",
+        "status:blocked",
+        "size:large-coherent"
+      ],
+      "milestone": "0.2 Runtime Contract"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-09/TASK-09.A-slloop-interface-and-completion-queue-skeleton.md",
+      "title": "TASK 09.A: SlLoop Interface and Completion Queue Skeleton",
+      "parentEpic": "EPIC-09: Event Loop / Concurrency Foundation",
+      "labels": [
+        "type:task",
+        "area:concurrency",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.3 Async Runtime / HTTP"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-09/TASK-09.B-promise-settlement-model-skeleton.md",
+      "title": "TASK 09.B: Promise Settlement Model Skeleton",
+      "parentEpic": "EPIC-09: Event Loop / Concurrency Foundation",
+      "labels": [
+        "type:task",
+        "area:concurrency",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.3 Async Runtime / HTTP"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-09/TASK-09.C-worker-pool-design-skeleton.md",
+      "title": "TASK 09.C: Worker Pool Design Skeleton",
+      "parentEpic": "EPIC-09: Event Loop / Concurrency Foundation",
+      "labels": [
+        "type:task",
+        "area:concurrency",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.3 Async Runtime / HTTP"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-10/TASK-10.A-route-pattern-parser-and-matcher.md",
+      "title": "TASK 10.A: Route Pattern Parser and Matcher",
+      "parentEpic": "EPIC-10: HTTP Router Foundation",
+      "labels": [
+        "type:task",
+        "area:http",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.3 Async Runtime / HTTP"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-10/TASK-10.B-llhttp-libuv-integration-skeleton-when-dependencies-are-allowed.md",
+      "title": "TASK 10.B: llhttp/libuv Integration Skeleton when Dependencies Are Allowed",
+      "parentEpic": "EPIC-10: HTTP Router Foundation",
+      "labels": [
+        "type:task",
+        "area:http",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.3 Async Runtime / HTTP"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-10/TASK-10.C-get-route-dispatch-to-handler-id.md",
+      "title": "TASK 10.C: GET Route Dispatch to Handler ID",
+      "parentEpic": "EPIC-10: HTTP Router Foundation",
+      "labels": [
+        "type:task",
+        "area:http",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.3 Async Runtime / HTTP"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-11/TASK-11.A-bootstrap-stdlib-layout.md",
+      "title": "TASK 11.A: Bootstrap stdlib layout",
+      "parentEpic": "EPIC-11: Public TypeScript API Bootstrap",
+      "labels": [
+        "type:task",
+        "area:ts-api",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-11/TASK-11.B-results-text-json.md",
+      "title": "TASK 11.B: Results.text/json",
+      "parentEpic": "EPIC-11: Public TypeScript API Bootstrap",
+      "labels": [
+        "type:task",
+        "area:ts-api",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-11/TASK-11.C-sloppy-create-app-mapget-conceptual-api.md",
+      "title": "TASK 11.C: Sloppy.create + app.mapGet Conceptual API",
+      "parentEpic": "EPIC-11: Public TypeScript API Bootstrap",
+      "labels": [
+        "type:task",
+        "area:ts-api",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-11/TASK-11.D-examples-hello.md",
+      "title": "TASK 11.D: examples/hello",
+      "parentEpic": "EPIC-11: Public TypeScript API Bootstrap",
+      "labels": [
+        "type:task",
+        "area:ts-api",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-12/TASK-12.A-builder-app-freeze-model.md",
+      "title": "TASK 12.A: Builder/App Freeze Model",
+      "parentEpic": "EPIC-12: App Host Foundation",
+      "labels": [
+        "type:task",
+        "area:app-host",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-12/TASK-12.B-config-skeleton.md",
+      "title": "TASK 12.B: Config Skeleton",
+      "parentEpic": "EPIC-12: App Host Foundation",
+      "labels": [
+        "type:task",
+        "area:app-host",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-12/TASK-12.C-logging-skeleton.md",
+      "title": "TASK 12.C: Logging Skeleton",
+      "parentEpic": "EPIC-12: App Host Foundation",
+      "labels": [
+        "type:task",
+        "area:app-host",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-12/TASK-12.D-services-skeleton.md",
+      "title": "TASK 12.D: Services Skeleton",
+      "parentEpic": "EPIC-12: App Host Foundation",
+      "labels": [
+        "type:task",
+        "area:app-host",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-13/TASK-13.A-route-groups.md",
+      "title": "TASK 13.A: Route Groups",
+      "parentEpic": "EPIC-13: Developer Ergonomics Layer",
+      "labels": [
+        "type:task",
+        "area:ergonomics",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-13/TASK-13.B-results-full-helper-set.md",
+      "title": "TASK 13.B: Results Full Helper Set",
+      "parentEpic": "EPIC-13: Developer Ergonomics Layer",
+      "labels": [
+        "type:task",
+        "area:ergonomics",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-13/TASK-13.C-validation-shape-schema-skeleton.md",
+      "title": "TASK 13.C: Validation Shape / Schema Skeleton",
+      "parentEpic": "EPIC-13: Developer Ergonomics Layer",
+      "labels": [
+        "type:task",
+        "area:ergonomics",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-13/TASK-13.D-ergonomics-examples-and-fixtures.md",
+      "title": "TASK 13.D: Ergonomics Examples and Fixtures",
+      "parentEpic": "EPIC-13: Developer Ergonomics Layer",
+      "labels": [
+        "type:task",
+        "area:ergonomics",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-14/TASK-14.A-sloppy-module-api-skeleton.md",
+      "title": "TASK 14.A: Sloppy.module API Skeleton",
+      "parentEpic": "EPIC-14: Modularity / App Modules",
+      "labels": [
+        "type:task",
+        "area:modules",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-14/TASK-14.B-module-phases-and-dependency-graph.md",
+      "title": "TASK 14.B: Module Phases and Dependency Graph",
+      "parentEpic": "EPIC-14: Modularity / App Modules",
+      "labels": [
+        "type:task",
+        "area:modules",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-14/TASK-14.C-module-plan-contribution.md",
+      "title": "TASK 14.C: Module Plan Contribution",
+      "parentEpic": "EPIC-14: Modularity / App Modules",
+      "labels": [
+        "type:task",
+        "area:modules",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-14/TASK-14.D-module-diagnostics.md",
+      "title": "TASK 14.D: Module Diagnostics",
+      "parentEpic": "EPIC-14: Modularity / App Modules",
+      "labels": [
+        "type:task",
+        "area:modules",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.4 TypeScript App Host"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-15/TASK-15.A-capability-model-skeleton.md",
+      "title": "TASK 15.A: Capability Model Skeleton",
+      "parentEpic": "EPIC-15: Data / Capabilities Foundation",
+      "labels": [
+        "type:task",
+        "area:data",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-15/TASK-15.B-common-data-api-interfaces.md",
+      "title": "TASK 15.B: Common Data API Interfaces",
+      "parentEpic": "EPIC-15: Data / Capabilities Foundation",
+      "labels": [
+        "type:task",
+        "area:data",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-15/TASK-15.C-query-template-lowering-core.md",
+      "title": "TASK 15.C: Query Template Lowering Core",
+      "parentEpic": "EPIC-15: Data / Capabilities Foundation",
+      "labels": [
+        "type:task",
+        "area:data",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-15/TASK-15.D-transaction-scope-model.md",
+      "title": "TASK 15.D: Transaction Scope Model",
+      "parentEpic": "EPIC-15: Data / Capabilities Foundation",
+      "labels": [
+        "type:task",
+        "area:data",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-16/TASK-16.A-sqlite-provider-registration.md",
+      "title": "TASK 16.A: SQLite Provider Registration",
+      "parentEpic": "EPIC-16: SQLite Provider",
+      "labels": [
+        "type:task",
+        "area:sqlite",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-16/TASK-16.B-sqlite-query-exec.md",
+      "title": "TASK 16.B: SQLite Query/Exec",
+      "parentEpic": "EPIC-16: SQLite Provider",
+      "labels": [
+        "type:task",
+        "area:sqlite",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-16/TASK-16.C-sqlite-transactions.md",
+      "title": "TASK 16.C: SQLite Transactions",
+      "parentEpic": "EPIC-16: SQLite Provider",
+      "labels": [
+        "type:task",
+        "area:sqlite",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-16/TASK-16.D-sqlite-tests-diagnostics.md",
+      "title": "TASK 16.D: SQLite Tests/Diagnostics",
+      "parentEpic": "EPIC-16: SQLite Provider",
+      "labels": [
+        "type:task",
+        "area:sqlite",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.5 Data and Capabilities"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-17/TASK-17.A-libpq-provider-skeleton.md",
+      "title": "TASK 17.A: libpq Provider Skeleton",
+      "parentEpic": "EPIC-17: PostgreSQL Provider",
+      "labels": [
+        "type:task",
+        "area:postgres",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-17/TASK-17.B-query-exec-pool.md",
+      "title": "TASK 17.B: Query/Exec/Pool",
+      "parentEpic": "EPIC-17: PostgreSQL Provider",
+      "labels": [
+        "type:task",
+        "area:postgres",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-17/TASK-17.C-transactions.md",
+      "title": "TASK 17.C: Transactions",
+      "parentEpic": "EPIC-17: PostgreSQL Provider",
+      "labels": [
+        "type:task",
+        "area:postgres",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-17/TASK-17.D-driver-doctor-diagnostics.md",
+      "title": "TASK 17.D: Driver/Doctor Diagnostics",
+      "parentEpic": "EPIC-17: PostgreSQL Provider",
+      "labels": [
+        "type:task",
+        "area:postgres",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-18/TASK-18.A-odbc-provider-skeleton.md",
+      "title": "TASK 18.A: ODBC Provider Skeleton",
+      "parentEpic": "EPIC-18: SQL Server Provider",
+      "labels": [
+        "type:task",
+        "area:sqlserver",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-18/TASK-18.B-query-exec-pool.md",
+      "title": "TASK 18.B: Query/Exec/Pool",
+      "parentEpic": "EPIC-18: SQL Server Provider",
+      "labels": [
+        "type:task",
+        "area:sqlserver",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-18/TASK-18.C-transactions.md",
+      "title": "TASK 18.C: Transactions",
+      "parentEpic": "EPIC-18: SQL Server Provider",
+      "labels": [
+        "type:task",
+        "area:sqlserver",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-18/TASK-18.D-missing-driver-diagnostics.md",
+      "title": "TASK 18.D: Missing Driver Diagnostics",
+      "parentEpic": "EPIC-18: SQL Server Provider",
+      "labels": [
+        "type:task",
+        "area:sqlserver",
+        "priority:p2",
+        "risk:high",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.6 External Providers"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-19/TASK-19.A-sloppy-routes.md",
+      "title": "TASK 19.A: sloppy routes",
+      "parentEpic": "EPIC-19: CLI Introspection Tooling",
+      "labels": [
+        "type:task",
+        "area:cli",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-19/TASK-19.B-sloppy-doctor.md",
+      "title": "TASK 19.B: sloppy doctor",
+      "parentEpic": "EPIC-19: CLI Introspection Tooling",
+      "labels": [
+        "type:task",
+        "area:cli",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-19/TASK-19.C-sloppy-audit.md",
+      "title": "TASK 19.C: sloppy audit",
+      "parentEpic": "EPIC-19: CLI Introspection Tooling",
+      "labels": [
+        "type:task",
+        "area:cli",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-19/TASK-19.D-sloppy-openapi-skeleton.md",
+      "title": "TASK 19.D: sloppy openapi skeleton",
+      "parentEpic": "EPIC-19: CLI Introspection Tooling",
+      "labels": [
+        "type:task",
+        "area:cli",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-20/TASK-20.A-benchmark-harness.md",
+      "title": "TASK 20.A: Benchmark Harness",
+      "parentEpic": "EPIC-20: Benchmarks / Performance Validation",
+      "labels": [
+        "type:task",
+        "area:performance",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-20/TASK-20.B-route-matcher-benchmarks.md",
+      "title": "TASK 20.B: Route Matcher Benchmarks",
+      "parentEpic": "EPIC-20: Benchmarks / Performance Validation",
+      "labels": [
+        "type:task",
+        "area:performance",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-20/TASK-20.C-handler-dispatch-benchmarks.md",
+      "title": "TASK 20.C: Handler Dispatch Benchmarks",
+      "parentEpic": "EPIC-20: Benchmarks / Performance Validation",
+      "labels": [
+        "type:task",
+        "area:performance",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    },
+    {
+      "bodyPath": "docs/project/tasks/EPIC-20/TASK-20.D-http-json-db-benchmarks-later.md",
+      "title": "TASK 20.D: HTTP/JSON/DB Benchmarks Later",
+      "parentEpic": "EPIC-20: Benchmarks / Performance Validation",
+      "labels": [
+        "type:task",
+        "area:performance",
+        "priority:p2",
+        "risk:medium",
+        "status:deferred",
+        "size:bounded"
+      ],
+      "milestone": "0.7 Tooling and Performance"
+    }
+  ]
+}

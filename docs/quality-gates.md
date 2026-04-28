@@ -1,0 +1,309 @@
+# Quality Gates
+
+## Purpose
+
+Quality gates define the minimum checks required before code can be trusted. They keep
+foundation work from becoming a pile of unverified intentions.
+
+## Scope
+
+This document covers local gates, CI gates, required tools, local warnings versus CI
+failures, artifact hygiene, platform-boundary scanning, C/Rust formatting and linting,
+CTest, future sanitizer/fuzz gates, exact commands, and acceptance criteria.
+
+## Non-Goals
+
+This document does not replace detailed testing strategy in `docs/testing.md` or the
+testing philosophy in `docs/testing-strategy.md`.
+
+## Current Phase
+
+Current gates cover placeholder C/Rust builds, formatting, linting, CTest, cargo tests,
+artifact hygiene, platform-boundary scanning, C standards scanning, and a lightweight docs
+freshness structure check.
+
+## Future Phase
+
+Future gates add sanitizers, fuzzing, diagnostics snapshots, compiler goldens, benchmarks,
+Linux/macOS jobs, docs link checking, public example tests, and packaging verification.
+
+## Public API Shape
+
+The gate API is the developer script interface under `tools/windows/dev.ps1` plus root
+forwarders.
+
+## Required Tools
+
+Current Windows workflow requires:
+
+- Git;
+- CMake;
+- Ninja;
+- `clang-cl`;
+- `lld-link`;
+- `clang-format`;
+- `clang-tidy`;
+- Rust/Cargo;
+- rustfmt;
+- clippy.
+
+The shell must expose MSVC and Windows SDK include/lib paths for build commands.
+
+## Local Commands
+
+Root wrappers:
+
+```powershell
+.\tools\bootstrap.ps1
+.\tools\dev.ps1 configure
+.\tools\dev.ps1 build
+.\tools\dev.ps1 test
+.\tools\dev.ps1 format-check
+.\tools\dev.ps1 lint
+```
+
+Explicit Windows path:
+
+```powershell
+.\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 configure
+.\tools\windows\dev.ps1 build
+.\tools\windows\dev.ps1 test
+.\tools\windows\dev.ps1 format-check
+.\tools\windows\dev.ps1 lint
+```
+
+Rust direct gates:
+
+```powershell
+cargo fmt --manifest-path compiler/Cargo.toml -- --check
+cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
+cargo test --manifest-path compiler/Cargo.toml
+```
+
+## Local Versus CI Behavior
+
+Locally, missing optional quality tools may print a clear skip warning. In CI, missing
+required quality tools fail the job.
+
+Warnings may be informational locally while the project is early. CI should enable
+warnings-as-errors for configured build and lint gates.
+
+Local warnings that may be skips today:
+
+- missing `clang-format`;
+- missing `clang-tidy`;
+- missing `rustfmt`;
+- missing `clippy`.
+
+CI behavior:
+
+- missing any required quality tool fails;
+- skipped platform/provider integration tests must state the missing environment;
+- warnings-as-errors is enabled for the C build;
+- clippy warnings are errors.
+
+## CI Gates
+
+Current CI should run:
+
+- checkout;
+- MSVC developer environment setup;
+- Rust setup;
+- bootstrap;
+- generated artifact tracking check;
+- CMake configure with `SLOPPY_ENABLE_WERROR=ON`;
+- CMake build;
+- CTest;
+- Cargo build;
+- cargo fmt;
+- cargo clippy;
+- cargo test;
+- format-check;
+- lint.
+
+## Documentation Freshness
+
+Docs freshness is a quality gate. A PR that changes behavior, APIs, module boundaries,
+diagnostics, architecture, CLI behavior, test expectations, or public examples must update
+the relevant docs or explicitly explain why docs did not change.
+
+The lightweight `tools/windows/check-docs-freshness.ps1` gate verifies required policy
+docs, public docs, and module docs skeletons exist and that module docs contain required
+headings. Stronger semantic checks should be added only when they are reliable enough to
+avoid noisy false failures.
+
+Testing follows the tests-as-intent rule from `docs/testing-strategy.md`: tests verify
+documented intended behavior, not accidental current behavior.
+
+## Simplicity Review
+
+Simplicity is reviewed manually for now. Reviewers should use `docs/c-standards.md` to
+reject speculative abstraction, framework-like subsystems, and "safe-looking" code that
+hides ownership, bounds checks, or error paths.
+
+Future optional complexity checks may warn on:
+
+- very large functions;
+- high nesting;
+- too many parameters;
+- macro-heavy code;
+- one-call-site abstraction proliferation.
+
+The warning-only `tools/windows/check-c-complexity.ps1` scanner is informational. Human
+review decides whether complexity is justified.
+
+## Comment Quality
+
+Comment quality is primarily review-enforced. Public APIs and tricky internals need useful
+comments for ownership, lifetime, invariants, and non-obvious safety, platform, engine, or
+threading assumptions. Comments that narrate obvious syntax should be removed or replaced
+with clearer code.
+
+A future optional scanner may warn on low-value comment patterns such as "increment by
+one", "set variable", or "return result", but humans decide context.
+
+## Artifact Hygiene
+
+Never stage or track:
+
+- `build/`;
+- `compiler/target/`;
+- `target/`;
+- `.sdeps/`;
+- `.sloppy/`;
+- `vcpkg_installed/`;
+- `*.zip`;
+- `*.7z`;
+- `*.tar.gz`;
+- `*.exe`;
+- `*.pdb`;
+- `compile_commands.json`.
+
+CI checks tracked generated artifacts with `git ls-files`.
+
+The lint gate should also reject staged ignored/generated artifacts before review. It must
+not delete user files.
+
+## Internal Architecture
+
+`tools/windows/dev.ps1` is the gate orchestrator. CMake owns C build/test targets. Cargo
+owns Rust build/test/lint. CI calls the same script path where practical.
+
+## Platform-Boundary Scanner
+
+`tools/windows/check-platform-boundaries.ps1` scans `include/` and `src/` for forbidden OS
+headers outside platform implementation directories.
+
+Forbidden outside allowed platform dirs:
+
+- `<windows.h>`;
+- `<winsock2.h>`;
+- `<io.h>`;
+- `<unistd.h>`;
+- `<pthread.h>`;
+- `<sys/epoll.h>`;
+- `<sys/event.h>`.
+
+The scanner runs from `tools/windows/dev.ps1 lint`.
+
+Near-term hardening task: add scanner fixtures or a self-test mode so CI proves the scanner
+detects a forbidden include outside `src/platform/*`.
+
+## C Standards Scanner
+
+`tools/windows/check-c-standards.ps1` scans C/C++ source and header files under `include/`
+and `src/`. It prefers git-tracked files to avoid build artifacts, with a recursive fallback
+for early untracked worktrees.
+
+The scanner fails on:
+
+- forbidden OS headers outside `src/platform/*`;
+- unsafe C functions: `gets`, `strcpy`, `strcat`, `sprintf`, `vsprintf`;
+- V8 headers or `v8::` usage outside `src/engine/v8/*`.
+
+It warns on raw `malloc`, `free`, `realloc`, and `calloc` outside allocator paths. Passing
+`-StrictAlloc` turns those allocation warnings into failures. This mode is expected to
+become more useful after allocator modules exist.
+
+The scanner runs from `tools/windows/dev.ps1 lint`, so CI executes it through the lint step.
+Local failures should be fixed or documented before review.
+
+## C/C++ Formatting And Linting
+
+`clang-format` checks C/C++ sources and headers.
+
+`clang-tidy` runs against configured compile commands and treats warnings as errors in the
+script/CMake targets.
+
+## Rust Formatting, Linting, Tests
+
+`cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` are required for
+compiler changes and run as part of quality gates.
+
+## CMake And CTest
+
+CMake must configure and build with the Windows preset. CTest must pass and include smoke
+coverage for both `sloppy` and `sloppyc` while the project is in placeholder phase.
+
+Phase 1 CTest expectations:
+
+- `core.status.*`;
+- `core.source_loc.*`;
+- `core.str.*`;
+- `core.bytes.*`;
+- `core.checked_math.*`;
+- existing CLI smoke remains.
+
+## Future Gates
+
+- ASan/UBSan builds;
+- fuzz tests;
+- diagnostics snapshot tests;
+- compiler golden tests;
+- benchmark trend checks;
+- Linux/macOS platform jobs;
+- packaging smoke tests.
+
+Future sanitizer/fuzz gates should begin as opt-in local commands, then become CI jobs once
+they are stable enough not to create noisy false failures.
+
+## Development Tasks
+
+- Add CMake targets for future test suites.
+- Add sanitizer presets to CI when stable.
+- Add fuzz job when first fuzz target exists.
+- Add diagnostics/golden artifact checks.
+- Add Linux/macOS quality gate variants when platform support exists.
+
+## Acceptance Criteria
+
+Quality gates are acceptable when:
+
+- commands are documented;
+- local skips are explicit;
+- CI fails on missing required tools;
+- generated artifacts are not tracked;
+- platform-boundary violations fail lint;
+- C standards violations fail lint;
+- docs freshness structure checks pass;
+- Rust and C gates both run;
+- future gates have clear placeholders.
+
+For Phase 1 implementation PRs:
+
+- the PR maps to a roadmap EPIC/task;
+- all touched C files are clang-formatted;
+- new C primitives have CTest coverage;
+- docs/specs update if behavior changes;
+- user-facing docs/module docs update when public behavior or module behavior changes;
+- tests cite or encode documented intended behavior;
+- lint includes platform-boundary scan;
+- lint includes C standards scan;
+- cargo gates pass when compiler files changed.
+
+## Open Questions
+
+- Which CI runner gets sanitizer gates first.
+- Whether clang-tidy should lint every C file through a generated target.
+- Exact benchmark regression threshold once benchmarks exist.

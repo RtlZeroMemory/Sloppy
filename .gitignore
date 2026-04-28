@@ -1,55 +1,55 @@
-# Prerequisites
+# Build outputs
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+install_manifest.txt
+/Testing/
+
+# Sloppy local state and dependency caches
+.sdeps/
+.sloppy/
+vcpkg_installed/
+
+# Rust
+compiler/target/
+target/
+
+# C/C++ compiler artifacts
 *.d
-
-# Object files
 *.o
-*.ko
 *.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
 *.lib
 *.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
 *.dll
 *.so
-*.so.*
 *.dylib
-
-# Executables
 *.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# Debug files
-*.dSYM/
-*.su
-*.idb
+*.ilk
 *.pdb
+*.idb
+*.exp
+*.map
+*.pch
+*.gch
+*.dSYM/
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# IDE and editor local state
+.vs/
+.idea/
+*.user
+*.suo
+*.swp
+*.tmp
+*.temp
 
-# debug information files
-*.dwo
+# Logs and temporary artifacts
+logs/
+*.log
+*.trace
+*.zip
+*.7z
+*.tar.gz

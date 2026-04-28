@@ -1,0 +1,27 @@
+name: Bug
+description: Report a defect, regression, or broken quality gate.
+title: "BUG: "
+labels: ["type:bug", "status:ready"]
+body:
+  - type: textarea
+    id: summary
+    attributes: { label: Summary }
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: Expected behavior }
+  - type: textarea
+    id: actual
+    attributes: { label: Actual behavior }
+  - type: textarea
+    id: reproduction
+    attributes: { label: Reproduction steps }
+  - type: textarea
+    id: source-docs
+    attributes: { label: Relevant source docs }
+  - type: textarea
+    id: impact
+    attributes: { label: Impact / risk }
+  - type: textarea
+    id: checks
+    attributes: { label: Commands run }

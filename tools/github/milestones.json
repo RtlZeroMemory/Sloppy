@@ -1,0 +1,71 @@
+[
+    {
+        "epics":  [
+                      "EPIC-00"
+                  ],
+        "title":  "0.0 Foundation / Harness",
+        "purpose":  "Docs, AGENTS/harness, platform boundaries, GitHub ceremony, and no runtime features."
+    },
+    {
+        "epics":  [
+                      "EPIC-01",
+                      "EPIC-02",
+                      "EPIC-03",
+                      "EPIC-04",
+                      "EPIC-05"
+                  ],
+        "title":  "0.1 Native Core",
+        "purpose":  "Platform skeleton, core basics, memory foundation, diagnostics foundation, and resource/lifecycle foundation."
+    },
+    {
+        "epics":  [
+                      "EPIC-06",
+                      "EPIC-07",
+                      "EPIC-08"
+                  ],
+        "title":  "0.2 Runtime Contract",
+        "purpose":  "app.plan schema/loader, V8 bridge smoke, and handwritten artifact execution."
+    },
+    {
+        "epics":  [
+                      "EPIC-09",
+                      "EPIC-10"
+                  ],
+        "title":  "0.3 Async Runtime / HTTP",
+        "purpose":  "Event loop/concurrency foundation, native completion queue, and HTTP/router foundation."
+    },
+    {
+        "epics":  [
+                      "EPIC-11",
+                      "EPIC-12",
+                      "EPIC-13",
+                      "EPIC-14"
+                  ],
+        "title":  "0.4 TypeScript App Host",
+        "purpose":  "Public TS API, app host foundation, Results/routes/groups/validation ergonomics, modules, config, logging, and services."
+    },
+    {
+        "epics":  [
+                      "EPIC-15",
+                      "EPIC-16"
+                  ],
+        "title":  "0.5 Data and Capabilities",
+        "purpose":  "Filesystem/capability model, common data API, SQLite provider, and common provider contracts."
+    },
+    {
+        "epics":  [
+                      "EPIC-17",
+                      "EPIC-18"
+                  ],
+        "title":  "0.6 External Providers",
+        "purpose":  "PostgreSQL, SQL Server, and provider diagnostics/doctor integration."
+    },
+    {
+        "epics":  [
+                      "EPIC-19",
+                      "EPIC-20"
+                  ],
+        "title":  "0.7 Tooling and Performance",
+        "purpose":  "routes/doctor/audit/openapi commands, benchmark suite, and performance validation."
+    }
+]
