@@ -36,8 +36,7 @@ static void record_cleanup(void* payload, void* user)
 {
     CleanupPayload* cleanup_payload = (CleanupPayload*)payload;
     CleanupUser* cleanup_user = (CleanupUser*)user;
-    CleanupRecord* record =
-        cleanup_payload == NULL ? (CleanupRecord*)user : cleanup_payload->record;
+    CleanupRecord* record = cleanup_payload == NULL ? NULL : cleanup_payload->record;
     size_t index = 0U;
 
     if (record == NULL || record->count >= 8U) {
@@ -48,6 +47,22 @@ static void record_cleanup(void* payload, void* user)
     record->order[index] = cleanup_payload == NULL ? -1 : cleanup_payload->value;
     record->payloads[index] = cleanup_payload == NULL ? -1 : cleanup_payload->value;
     record->users[index] = cleanup_user == NULL ? -1 : cleanup_user->value;
+    record->count += 1U;
+}
+
+static void record_null_cleanup(void* payload, void* user)
+{
+    CleanupRecord* record = (CleanupRecord*)user;
+    size_t index = 0U;
+
+    if (payload != NULL || record == NULL || record->count >= 8U) {
+        return;
+    }
+
+    index = record->count;
+    record->order[index] = -1;
+    record->payloads[index] = -1;
+    record->users[index] = -1;
     record->count += 1U;
 }
 
@@ -168,7 +183,7 @@ static int test_registration_and_failure_atomicity(void)
 
 static int test_close_order_and_payload_user(void)
 {
-    SlScopeCleanup storage[3];
+    SlScopeCleanup storage[4];
     SlScope scope;
     CleanupRecord record = {{0}, {0}, {0}, 0U};
     CleanupPayload first = {&record, 1};
@@ -177,7 +192,7 @@ static int test_close_order_and_payload_user(void)
     CleanupUser user_a = {10};
     CleanupUser user_b = {20};
 
-    if (expect_status(sl_scope_init(&scope, storage, 3U), SL_STATUS_OK) != 0) {
+    if (expect_status(sl_scope_init(&scope, storage, 4U), SL_STATUS_OK) != 0) {
         return 20;
     }
 
@@ -186,6 +201,8 @@ static int test_close_order_and_payload_user(void)
         expect_status(sl_scope_add_cleanup(&scope, record_cleanup, &second, NULL), SL_STATUS_OK) !=
             0 ||
         expect_status(sl_scope_add_cleanup(&scope, record_cleanup, &third, &user_b),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_scope_add_cleanup(&scope, record_null_cleanup, NULL, &record),
                       SL_STATUS_OK) != 0)
     {
         return 21;
@@ -195,13 +212,15 @@ static int test_close_order_and_payload_user(void)
         return 22;
     }
 
-    if (record.count != 3U || record.order[0] != 3 || record.order[1] != 2 || record.order[2] != 1)
+    if (record.count != 4U || record.order[0] != -1 || record.order[1] != 3 ||
+        record.order[2] != 2 || record.order[3] != 1)
     {
         return 23;
     }
 
-    if (record.payloads[0] != 3 || record.users[0] != 20 || record.payloads[1] != 2 ||
-        record.users[1] != -1 || record.payloads[2] != 1 || record.users[2] != 10)
+    if (record.payloads[0] != -1 || record.users[0] != -1 || record.payloads[1] != 3 ||
+        record.users[1] != 20 || record.payloads[2] != 2 || record.users[2] != -1 ||
+        record.payloads[3] != 1 || record.users[3] != 10)
     {
         return 24;
     }
