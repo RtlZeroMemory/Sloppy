@@ -6,6 +6,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$ExpectedV8Revision = "7221f49fdb6c89cce6be08005732ebcab3c45b38"
+$ExpectedCrLibcxxRevision = "af4386908c3762433d412689038de6e6333f5921"
+
 function Write-ExpectedLayout {
     Write-Host "Expected SLOPPY_V8_ROOT layout:"
     Write-Host "  include/v8.h"
@@ -21,7 +24,67 @@ function Write-ExpectedLayout {
     Write-Host "      lib/v8_libplatform*.lib"
     Write-Host "      lib/v8_libbase*.lib"
     Write-Host "  bin/  # optional runtime DLLs for dynamic SDKs"
-    Write-Host "  share/sloppy-v8-sdk.json  # future manifest, not required yet"
+    Write-Host "  share/sloppy-v8-sdk.json"
+}
+
+function Test-V8SdkManifest {
+    param([string]$Root)
+
+    $manifestPath = Join-Path $Root "share/sloppy-v8-sdk.json"
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        Write-Host "V8 SDK manifest is missing: share/sloppy-v8-sdk.json"
+        return $false
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    } catch {
+        Write-Host "V8 SDK manifest is not valid JSON: $manifestPath"
+        Write-Host "  $($_.Exception.Message)"
+        return $false
+    }
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    if ($manifest.name -ne "sloppy-v8-sdk") {
+        $errors.Add("name must be sloppy-v8-sdk")
+    }
+    if ($manifest.platform -ne "windows-x64") {
+        $errors.Add("platform must be windows-x64")
+    }
+    if ($manifest.v8Revision -ne $ExpectedV8Revision) {
+        $errors.Add("v8Revision must be $ExpectedV8Revision")
+    }
+    if ($manifest.buildType -ne "release") {
+        $errors.Add("buildType must be release")
+    }
+    if ($manifest.abi.crLibcxxRevision -ne $ExpectedCrLibcxxRevision) {
+        $errors.Add("abi.crLibcxxRevision must be $ExpectedCrLibcxxRevision")
+    }
+    if ($manifest.abi.v8TargetArch -ne "x64") {
+        $errors.Add("abi.v8TargetArch must be x64")
+    }
+    if ($manifest.abi.v8CompressPointers -ne $true) {
+        $errors.Add("abi.v8CompressPointers must be true")
+    }
+    if ($manifest.abi.v8CompressPointersInSharedCage -ne $true) {
+        $errors.Add("abi.v8CompressPointersInSharedCage must be true")
+    }
+    if ($manifest.abi.v8_31BitSmisOn64BitArch -ne $true) {
+        $errors.Add("abi.v8_31BitSmisOn64BitArch must be true")
+    }
+    if ($manifest.abi.v8EnableSandbox -ne $true) {
+        $errors.Add("abi.v8EnableSandbox must be true")
+    }
+
+    if ($errors.Count -gt 0) {
+        Write-Host "V8 SDK manifest is incompatible:"
+        foreach ($error in $errors) {
+            Write-Host "  - $error"
+        }
+        return $false
+    }
+
+    return $true
 }
 
 function Test-V8SdkLayout {
@@ -85,6 +148,11 @@ function Test-V8SdkLayout {
                         $missing.Add($relativePath)
                     }
                 }
+            }
+
+            if (($monolithLibraries.Count -gt 0 -or $coreLibraries.Count -gt 0) -and
+                -not (Test-V8SdkManifest -Root $Root)) {
+                $missing.Add("compatible share/sloppy-v8-sdk.json")
             }
         }
     }

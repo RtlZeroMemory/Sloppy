@@ -73,13 +73,15 @@ to a prebuilt SDK root with this minimal Windows layout:
   support/libcxx/include/
   support/libcxx/buildtools/__config_site
   bin/  # optional runtime DLLs for dynamic SDKs
+  share/sloppy-v8-sdk.json
 ```
 
-CMake validates the headers, `lib/` directory, and the documented library families before
-creating the `Sloppy::V8` interface target. TASK 08.A uses the official V8/depot_tools
-source workflow, GN, and Ninja to create an ignored local SDK under `.sdeps/v8/windows-x64`
-or another explicit ignored path. CMake must not download V8 or hardcode machine-local SDK
-paths.
+CMake validates the headers, `lib/` directory, documented library families, and SDK
+manifest before creating the `Sloppy::V8` interface target. The manifest must match the
+pinned V8 revision and ABI flags that CMake applies to the bridge compile. TASK 08.A uses
+the official V8/depot_tools source workflow, GN, and Ninja to create an ignored local SDK
+under `.sdeps/v8/windows-x64` or another explicit ignored path. CMake must not download V8
+or hardcode machine-local SDK paths.
 
 The current Windows source SDK is a monolithic release build with Chromium libc++ support.
 Use `windows-relwithdebinfo` for V8 execution tests with this SDK. The `windows-dev` Debug
@@ -160,7 +162,7 @@ A dependency can be added when:
 
 ## Open Questions
 
-- Exact V8 SDK version pinning and update cadence.
-- Exact Sloppy V8 SDK prebuilt source, manifest, and checksum policy.
+- Exact V8 SDK update cadence.
+- Exact Sloppy V8 SDK prebuilt source and checksum policy.
 - Exact sqlite packaging strategy.
 - Whether PostgreSQL libpq comes from vcpkg or provider package tooling.

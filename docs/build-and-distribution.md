@@ -126,6 +126,8 @@ Maintainer path:
 - build from official V8 source through `tools/windows/build-v8.ps1`;
 - use depot_tools/GN/Ninja with `DEPOT_TOOLS_WIN_TOOLCHAIN=0` for the local Visual Studio
   toolchain;
+- auto-detect the newest installed Windows SDK by default, or pass `-WindowsSdkVersion`
+  when a specific SDK must be used;
 - package only the Sloppy-compatible SDK surface;
 - keep depot_tools, source trees, build trees, headers, libraries, and generated outputs
   under ignored local paths;
@@ -151,8 +153,10 @@ The current source SDK is a monolithic release build and should be consumed thro
 `windows-relwithdebinfo` preset. The default `windows-dev` Debug preset remains the normal
 non-V8 contributor path.
 
-The CMake gate creates `Sloppy::V8` as an imported interface target after validation and
-keeps V8 headers/types isolated to `src/engine/v8/`.
+The CMake gate validates both SDK layout and `share/sloppy-v8-sdk.json` before creating
+`Sloppy::V8` as an imported interface target. The manifest must match the pinned V8
+revision and ABI flags that CMake applies to the bridge compile. V8 headers/types remain
+isolated to `src/engine/v8/`.
 
 ## Tool Layout
 
@@ -331,7 +335,7 @@ Build/distribution foundation is accepted when:
 
 ## Open Questions
 
-- Exact V8 SDK version pinning policy.
+- Exact V8 SDK update cadence.
 - Exact verified prebuilt V8 SDK source and checksum format.
 - Whether release ZIP includes debug symbols separately.
 - Whether `sloppyc` is installed by CMake or packaged by Cargo first.
