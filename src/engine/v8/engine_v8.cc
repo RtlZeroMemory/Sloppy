@@ -230,7 +230,7 @@ std::string sl_v8_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> val
 
 std::string sl_v8_maybe_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value)
 {
-    if (value.IsEmpty()) {
+    if (value.IsEmpty() || value->IsUndefined() || value->IsNull()) {
         return std::string();
     }
 
