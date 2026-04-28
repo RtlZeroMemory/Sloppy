@@ -37,8 +37,9 @@ Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
   arena behavior, native cleanup scope behavior, native completion queue behavior, native
-  async settlement behavior, minimal plan contract helper behavior, minimal plan JSON
-  parser/validator behavior, diagnostics foundation behavior, and assertion macro
+  async settlement behavior, inline worker-pool completion contract behavior, minimal plan
+  contract helper behavior, minimal plan JSON parser/validator behavior, diagnostics
+  foundation behavior, and assertion macro
   compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
@@ -106,6 +107,7 @@ tests/unit/core/
   test_scope.c
   test_loop.c
   test_async.c
+  test_worker_pool.c
   test_plan.c
   test_plan_parse.c
   test_diagnostics.c
@@ -368,6 +370,10 @@ Phase 1:
 - native async settlement tests cover pending/fulfilled/rejected/cancelled states, loop-post
   dispatch, double settlement failure, failed-post atomicity, borrowed diagnostics,
   reinit-before-drain rejection, and continuation failure propagation.
+- inline worker-pool tests cover submit validation, posted-not-inline completion dispatch,
+  success/failure status forwarding, FIFO completion order, queue-full result destruction,
+  loop-reset cleanup, reinit-before-drain rejection, and completion failure propagation
+  without real threads.
 
 Plan loader phase:
 

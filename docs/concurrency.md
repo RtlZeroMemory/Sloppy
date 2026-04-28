@@ -36,8 +36,16 @@ loop drains. It is manual/fake native settlement only: there is still no JS Prom
 integration, V8 microtask handling, request scope retention, HTTP lifecycle, worker pool,
 cross-thread posting, cancellation token, deadline, or backpressure behavior.
 
-The remaining event loop backend, worker pool, request lifecycle, V8 promise integration,
-and async backend behavior is still future work.
+TASK 09.C implements `SlWorkerPool`, the first worker-pool design skeleton. Only the inline
+backend exists. It runs `SlWorkFn` synchronously on the caller thread, stores a small
+caller-owned completion record in `SlWorkerPool`, and posts completion to `SlLoop`.
+Completion callbacks are never invoked directly by submit; they run when
+`sl_loop_run_once` or `sl_loop_drain` dispatches the posted completion. There are still no
+real worker threads, OS APIs, libuv, cross-thread posting, blocking DB/filesystem workers,
+HTTP integration, cancellation tokens, deadlines, or backpressure behavior.
+
+The remaining event loop backend, real worker pool, request lifecycle, V8 promise
+integration, and async backend behavior is still future work.
 
 ## Core Decision
 
@@ -110,6 +118,8 @@ Native worker pool:
 - runs blocking or CPU-heavy native operations;
 - never enters V8 directly;
 - posts completion back to the JS event loop.
+- future work; TASK 09.C only proves this completion-posting contract through an inline
+  fake backend.
 
 Request scope:
 
@@ -140,6 +150,11 @@ but the current skeleton is still single-threaded. Cross-thread posting, owner-t
 identity checks, wakeups, and worker-thread-safe APIs are not implemented yet. Completion
 callbacks in the skeleton run on the caller thread, so they must not be used to bypass the
 V8 owner-thread rule.
+
+TASK 09.C adds an inline worker-pool skeleton on top of this queue. The work callback also
+runs on the caller thread today, but its completion is still queued to `SlLoop`. Future real
+worker threads must keep the same owner-loop completion rule and must never enter a V8
+isolate from worker code.
 
 ## Current SlLoop Skeleton Semantics
 
@@ -204,6 +219,47 @@ The settlement semantics are:
 Cross-thread settlement and thread-safe completion queues are future worker-pool/event-loop
 work. Current completion callbacks run on the loop caller thread, so this skeleton must not
 be used to bypass the V8 isolate owner-thread rule.
+
+## Current SlWorkerPool Inline Skeleton Semantics
+
+`SlWorkerPool` is a caller-owned worker-pool design skeleton. Today it exposes
+`sl_worker_pool_init_inline` to initialize inline storage, `sl_worker_pool_submit` to run
+work inline and post completion to `SlLoop`, and `sl_worker_pool_reset_inline` to clean up
+pending inline completions after callers deliberately discard them from `SlLoop`. It never
+allocates memory, starts threads, calls OS APIs, uses locks/atomics, depends on libuv,
+performs blocking DB/filesystem work, or enters V8.
+
+The inline worker-pool semantics are:
+
+- storage passed to `sl_worker_pool_init_inline` is caller-owned and must be
+  zero-initialized before first use;
+- `sl_worker_pool_submit` requires a pool, completion loop, work item, work callback, and
+  completion callback;
+- payload, work user, and completion user pointers may be NULL;
+- `SL_WORK_KIND_NONE` and unknown work kinds are rejected;
+- work callbacks run synchronously on the caller thread before submit returns;
+- completion callbacks are posted to `SlLoop` and do not run inline during submit;
+- `sl_loop_run_once` or `sl_loop_drain` invokes worker completions in loop FIFO order;
+- work success posts an OK status and any produced result;
+- work failure posts the failure `SlStatus` and any produced result;
+- result ownership transfers to the completion callback when the loop dispatches that
+  callback;
+- if completion posting fails before dispatch, the worker pool destroys a non-NULL result
+  with the submitted `destroy_result` callback when one exists;
+- if a caller deliberately discards queued worker completions by calling `sl_loop_reset`,
+  it must then call `sl_worker_pool_reset_inline` to destroy pending worker results and
+  free inline completion records;
+- `sl_worker_pool_init_inline` rejects reinitialization while worker completions are
+  pending;
+- completion callback failure propagates through the loop drain/run call;
+- the skeleton stores only a small fixed number of pending inline completion records and
+  returns `SL_STATUS_CAPACITY_EXCEEDED` when those records are exhausted;
+- the skeleton is not thread-safe and does not support cross-thread submission or posting.
+
+Future real worker pools must run `SlWorkFn` outside the JS event-loop thread only after a
+thread-safe completion-posting path exists. They must post completion back to the owning
+`SlLoop` before any JavaScript continuation, promise settlement, request cleanup, or engine
+work occurs.
 
 ## Request Lifecycle With Async Handler
 

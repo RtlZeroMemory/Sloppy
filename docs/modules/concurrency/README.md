@@ -2,7 +2,7 @@
 
 ## Status
 
-Partially implemented for TASK 09.A and TASK 09.B.
+Partially implemented for TASK 09.A, TASK 09.B, and TASK 09.C.
 
 ## Purpose
 
@@ -18,16 +18,20 @@ Implemented now:
 - stop/reset behavior for deterministic single-threaded tests.
 - `SlAsync` as a caller-owned native settlement skeleton over `SlLoop`;
 - manual fulfilled, rejected, and cancelled settlement states for deterministic tests.
+- `SlWorkerPool` as an inline/fake worker-pool design skeleton over `SlLoop`;
+- worker work item callbacks, completion callbacks, and result destroy callbacks;
+- deterministic completion-posting tests without real threads.
 
-Future scope still includes real event-loop backends, V8 Promise integration, microtask
-draining, request lifetime, cancellation tokens, deadlines, backpressure, thread-safe
-posting, and worker pool boundaries.
+Future scope still includes real event-loop backends, real worker threads, V8 Promise
+integration, microtask draining, request lifetime, cancellation tokens, deadlines,
+backpressure, and thread-safe posting.
 
 ## Non-goals
 
-No libuv backend, OS event loop, timers, sockets, HTTP, worker pool, threads, atomics,
-locks, V8 Promise integration, V8 microtask draining, JS async handler execution, request
-lifecycle, cancellation token, deadline, or backpressure behavior in TASK 09.B.
+No libuv backend, OS event loop, timers, sockets, HTTP, real worker threads, atomics, locks,
+V8 Promise integration, V8 microtask draining, JS async handler execution, request
+lifecycle, cancellation token, deadline, backpressure, blocking DB/filesystem work, or
+cross-thread posting behavior in TASK 09.C.
 
 ## Public/Internal API
 
@@ -35,6 +39,7 @@ Implemented public header:
 
 - `include/sloppy/loop.h`
 - `include/sloppy/async.h`
+- `include/sloppy/worker_pool.h`
 
 Implemented API:
 
@@ -54,8 +59,11 @@ Implemented API:
 - `sl_async_fulfill`;
 - `sl_async_reject`;
 - `sl_async_cancel`.
+- `sl_worker_pool_init_inline`;
+- `sl_worker_pool_reset_inline`;
+- `sl_worker_pool_submit`.
 
-Planned worker abstractions remain future work.
+Real worker-thread abstractions remain future work.
 
 ## Ownership/Lifetime Rules
 
@@ -74,6 +82,17 @@ zero-initialized before first use or already initialized by `sl_async_init`. The
 only the settlement record fields. Payload, result user data, continuation user data, and
 diagnostics are borrowed. Borrowed diagnostics must remain valid until loop dispatch; real
 V8/request scope integration will define a stronger ownership contract later.
+
+`SlWorkerPool` is caller-owned and does not allocate. Storage must be zero-initialized
+before first use, or already initialized by `sl_worker_pool_init_inline`. Inline completion
+records live inside the pool until `SlLoop` dispatches them. `SlWorkItem.payload`,
+`SlWorkItem.user`, and completion user pointers are borrowed and may be NULL. A non-NULL
+result produced by `SlWorkFn` is owned by the completion callback once that callback runs.
+If posting the completion fails before dispatch, the pool calls
+`SlWorkItem.destroy_result` for that result when a destroy callback is available. If a
+caller discards queued worker completions with `sl_loop_reset`, it must call
+`sl_worker_pool_reset_inline` afterward so pending results are destroyed and inline records
+are released.
 
 ## Invariants
 
@@ -112,15 +131,23 @@ Concurrency invariants:
 - this skeleton is single-threaded and does not enforce owner-thread identity yet;
 - cross-thread posting is not supported yet;
 - cross-thread async settlement is not supported yet;
+- worker-pool submission is inline only and not thread-safe;
+- worker completions are posted to `SlLoop` and are not invoked directly by submit;
+- worker result ownership transfers only at completion dispatch;
+- worker-pool reinitialization is rejected while inline completions are pending;
+- `sl_worker_pool_reset_inline` is the supported cleanup after `sl_loop_reset` discards
+  queued worker completions;
 - native worker threads must never call JS directly;
 - V8 isolates must only be entered by their owning JS event-loop thread.
 
 ## Diagnostics
 
-TASK 09.A loop APIs and TASK 09.B async APIs return `SlStatus` only and do not emit
-diagnostics. `SlAsync` may borrow an existing diagnostic for rejected/cancelled settlement,
-but it does not build, copy, render, or own diagnostics. V8 Promise rejection,
-route/request-aware cancellation, overload, and wrong-thread diagnostics remain later work.
+TASK 09.A loop APIs, TASK 09.B async APIs, and TASK 09.C worker-pool APIs return `SlStatus`
+only and do not emit diagnostics. `SlAsync` may borrow an existing diagnostic for
+rejected/cancelled settlement, but it does not build, copy, render, or own diagnostics.
+Worker-pool submission reports invalid arguments, unsupported mode, fixed-record capacity,
+and loop post failures through `SlStatus`. V8 Promise rejection, route/request-aware
+cancellation, overload, and wrong-thread diagnostics remain later work.
 
 ## Tests
 
@@ -158,6 +185,22 @@ CTest registers `tests/unit/core/test_async.c`, covering:
 - NULL loop and NULL async settlement rejection;
 - continuation failure propagation through loop drain;
 - deterministic completion order across multiple async objects.
+
+CTest registers `tests/unit/core/test_worker_pool.c`, covering:
+
+- inline pool initialization and invalid initialization;
+- submit validation for NULL pool, loop, item, work callback, completion callback, invalid
+  kind, and unsupported/uninitialized mode;
+- inline work execution with completion posted to `SlLoop` rather than called inline;
+- completion result/status/user forwarding;
+- FIFO completion order for multiple submitted work items;
+- work failure posting a failure status;
+- loop queue-full post failure returning failure and destroying produced results exactly
+  once;
+- loop reset followed by worker-pool reset destroying pending results and freeing records;
+- reinitialization before loop drain failing without corrupting the queued completion;
+- completion callback failure propagation through loop drain without result double destroy;
+- NULL payload and completion user behavior.
 
 V8 Promise integration, V8 microtasks, request-scope retention, cancellation cleanup,
 thread-safe posting, libuv/backend behavior, and no-V8-entry worker tests remain future

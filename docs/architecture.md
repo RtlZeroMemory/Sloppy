@@ -50,6 +50,10 @@ TASK 09.B adds the first native `SlAsync` promise settlement model skeleton over
 It is caller-owned, manual/fake native settlement only, with no V8 Promise integration,
 microtask handling, request-scope retention, HTTP lifecycle, worker pool, cross-thread
 posting, cancellation/deadline/backpressure, or libuv integration.
+TASK 09.C adds the first `SlWorkerPool` design skeleton. It is inline/fake only: work runs
+on the caller thread and posts completion back to `SlLoop` for deterministic tests. It has
+no real worker threads, cross-thread posting, libuv, OS event-loop integration, blocking
+DB/filesystem work, cancellation/deadlines/backpressure, HTTP, or V8 integration.
 
 ## Future Phase
 

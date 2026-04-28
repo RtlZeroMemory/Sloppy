@@ -93,6 +93,7 @@ Runtime execution:
 - handwritten artifacts first;
 - native completion queue skeleton before real async backends;
 - native async settlement skeleton before V8 Promise integration;
+- inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;
 - V8 Promise settlement later;
 - route-aware diagnostics.
