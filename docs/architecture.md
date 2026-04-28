@@ -43,6 +43,9 @@ adds the engine-neutral `SlEngine` C ABI and a noop engine implementation. TASK 
 V8-enabled smoke bridge that can initialize V8, evaluate a classic JavaScript source string,
 call a named global zero-argument function, and copy a string result back to C. It does not
 execute Sloppy Plan handlers, load modules, run HTTP, or provide the public JS API.
+TASK 09.A adds the first `SlLoop` completion queue skeleton. It is caller-backed,
+fixed-capacity, and synchronous, with no libuv, OS event loop, threads, HTTP, promise
+settlement, or V8 microtask integration.
 
 ## Future Phase
 
@@ -104,7 +107,7 @@ The C runtime kernel owns:
 - native app graph and graph freeze later;
 - route dispatch and request lifecycle later;
 - config, logging, services, and app host semantics later;
-- event loop abstraction later.
+- event loop backend integration later.
 
 The kernel must not depend on V8 types, Node APIs, Rust internals, or OS-specific APIs in
 core modules.
