@@ -8,6 +8,7 @@ Golden tests will cover:
 - diagnostics text and machine-readable codes.
 
 Current checked-in plan fixtures under `tests/golden/plan/` define the intended minimal
-Plan v1 parser inputs before production JSON parsing exists.
+Plan v1 parser inputs. `tests/golden/plan/README.md` lists every fixture, expected outcome,
+diagnostic code, and parser coverage status.
 
 Golden files should be reviewed like public API changes.

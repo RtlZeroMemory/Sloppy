@@ -188,28 +188,29 @@ static int test_duplicate_handler_ids(void)
 
 static int test_fixture_files_exist(void)
 {
-    if (!fixture_exists("tests/golden/plan/minimal-valid.plan.json")) {
-        return 60;
-    }
+    static const char* fixtures[] = {"tests/golden/plan/README.md",
+                                     "tests/golden/plan/valid-minimal.plan.json",
+                                     "tests/golden/plan/valid-multiple-handlers.plan.json",
+                                     "tests/golden/plan/unknown-future-field.plan.json",
+                                     "tests/golden/plan/malformed-json.plan.json",
+                                     "tests/golden/plan/invalid-version.plan.json",
+                                     "tests/golden/plan/missing-runtime-minimum-version.plan.json",
+                                     "tests/golden/plan/missing-bundle.plan.json",
+                                     "tests/golden/plan/missing-bundle-path.plan.json",
+                                     "tests/golden/plan/missing-source-map.plan.json",
+                                     "tests/golden/plan/missing-handlers.plan.json",
+                                     "tests/golden/plan/empty-handlers.plan.json",
+                                     "tests/golden/plan/invalid-handler-id.plan.json",
+                                     "tests/golden/plan/duplicate-handler-id.plan.json",
+                                     "tests/golden/plan/missing-handler-export.plan.json",
+                                     "tests/golden/plan/empty-handler-export.plan.json",
+                                     "tests/golden/plan/wrong-field-type.plan.json"};
+    size_t index = 0U;
 
-    if (!fixture_exists("tests/golden/plan/invalid-version.plan.json")) {
-        return 61;
-    }
-
-    if (!fixture_exists("tests/golden/plan/duplicate-handler-id.plan.json")) {
-        return 62;
-    }
-
-    if (!fixture_exists("tests/golden/plan/missing-bundle.plan.json")) {
-        return 63;
-    }
-
-    if (!fixture_exists("tests/golden/plan/missing-source-map.plan.json")) {
-        return 64;
-    }
-
-    if (!fixture_exists("tests/golden/plan/missing-handler-export.plan.json")) {
-        return 65;
+    for (index = 0U; index < sizeof(fixtures) / sizeof(fixtures[0]); index += 1U) {
+        if (!fixture_exists(fixtures[index])) {
+            return 60 + (int)index;
+        }
     }
 
     return 0;

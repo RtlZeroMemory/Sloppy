@@ -98,6 +98,7 @@ Runtime execution:
 Plan schema fixtures:
 
 - handwritten JSON fixtures under `tests/golden/plan/`;
+- a fixture README or manifest that lists expected outcomes and diagnostic codes;
 - fixture availability checks before production parsing exists;
 - parser/validator tests verify documented valid and invalid fixture intent rather than
   current parser accident.
