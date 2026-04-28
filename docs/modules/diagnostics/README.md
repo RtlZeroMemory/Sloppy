@@ -83,14 +83,15 @@ CTest registers `tests/unit/core/test_diagnostics.c`, covering:
 - diagnostic code name mapping;
 - unknown/default source spans;
 - builder success and invalid arguments;
+- failed related-span insertion rolls back arena usage;
+- uninitialized builder finish is rejected;
 - related span and hint bounds;
 - basic renderer output;
 - primary span, related span, and hint rendering through snapshots;
 - redacted placeholder rendering.
 
-Initial snapshot expectations are asserted directly in `tests/unit/core/test_diagnostics.c`
-to keep the C test dependency-free. Matching reference fixtures live under
-`tests/golden/diagnostics/`:
+Initial snapshot fixtures live under `tests/golden/diagnostics/` and are read by the CTest
+diagnostics test:
 
 - `missing_service.snap`;
 - `invalid_plan_version.snap`.

@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 static int expect_true(bool condition)
 {
@@ -23,6 +24,41 @@ static SlStatus make_arena(SlArena* arena, unsigned char* buffer, size_t size)
     return sl_arena_init(arena, buffer, size);
 }
 
+static int expect_snapshot(SlStr actual, const char* path)
+{
+    char expected[1024];
+    FILE* file = NULL;
+    size_t length = 0U;
+
+#ifdef _MSC_VER
+    if (fopen_s(&file, path, "rb") != 0) {
+        return 1;
+    }
+#else
+    file = fopen(path, "rb");
+#endif
+
+    if (file == NULL) {
+        return 1;
+    }
+
+    length = fread(expected, 1U, sizeof(expected), file);
+    if (ferror(file) != 0) {
+        (void)fclose(file);
+        return 2;
+    }
+
+    if (fclose(file) != 0) {
+        return 3;
+    }
+
+    if (length == sizeof(expected)) {
+        return 4;
+    }
+
+    return expect_str_equal(actual, sl_str_from_parts(expected, length));
+}
+
 static int test_missing_service_snapshot(void)
 {
     unsigned char buffer[2048];
@@ -30,16 +66,6 @@ static int test_missing_service_snapshot(void)
     SlDiagBuilder builder;
     SlDiag diag;
     SlStr rendered;
-    SlStr expected =
-        sl_str_from_cstr("error SLOPPY_E_MISSING_SERVICE: service not registered\n"
-                         "\n"
-                         "  at src/users.ts:12:7\n"
-                         "\n"
-                         "  related:\n"
-                         "    src/app.ts:4:1: service registration happens here\n"
-                         "\n"
-                         "  help:\n"
-                         "    Register service \"data.main\" before building the app.\n");
 
     if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
         return 10;
@@ -85,7 +111,7 @@ static int test_missing_service_snapshot(void)
         return 16;
     }
 
-    if (expect_str_equal(rendered, expected) != 0) {
+    if (expect_snapshot(rendered, "tests/golden/diagnostics/missing_service.snap") != 0) {
         return 17;
     }
 
@@ -99,13 +125,6 @@ static int test_invalid_plan_version_snapshot(void)
     SlDiagBuilder builder;
     SlDiag diag;
     SlStr rendered;
-    SlStr expected = sl_str_from_cstr(
-        "error SLOPPY_E_INVALID_PLAN_VERSION: app.plan.json schema version is not supported\n"
-        "\n"
-        "  at app.plan.json:1:1\n"
-        "\n"
-        "  help:\n"
-        "    Rebuild the app with a compatible sloppyc version.\n");
 
     if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
         return 20;
@@ -143,7 +162,7 @@ static int test_invalid_plan_version_snapshot(void)
         return 25;
     }
 
-    if (expect_str_equal(rendered, expected) != 0) {
+    if (expect_snapshot(rendered, "tests/golden/diagnostics/invalid_plan_version.snap") != 0) {
         return 26;
     }
 
@@ -211,6 +230,7 @@ static int test_builder_and_bounds(void)
     unsigned char buffer[1024];
     SlArena arena;
     SlDiagBuilder builder;
+    SlDiagBuilder zero_builder = {0};
     SlDiag diag;
     size_t index = 0U;
     SlStr bad = sl_str_from_parts(NULL, 3U);
@@ -288,6 +308,46 @@ static int test_builder_and_bounds(void)
         return 60;
     }
 
+    if (expect_status(sl_diag_builder_finish(&zero_builder, &diag), SL_STATUS_INVALID_ARGUMENT) !=
+        0)
+    {
+        return 61;
+    }
+
+    return 0;
+}
+
+static int test_related_failure_rolls_back_arena(void)
+{
+    unsigned char buffer[5];
+    SlArena arena;
+    SlDiagBuilder builder;
+    size_t used_before = 0U;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 65;
+    }
+
+    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR,
+                                           SL_DIAG_INTERNAL_ERROR, sl_str_from_cstr("m")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 66;
+    }
+
+    used_before = sl_arena_used(&arena);
+    if (expect_status(sl_diag_builder_add_related(
+                          &builder, sl_source_span_make(sl_str_from_cstr("path"), 1U, 1U, 0U),
+                          sl_str_from_cstr("x")),
+                      SL_STATUS_OUT_OF_MEMORY) != 0)
+    {
+        return 67;
+    }
+
+    if (builder.diag.related_count != 0U || sl_arena_used(&arena) != used_before) {
+        return 68;
+    }
+
     return 0;
 }
 
@@ -359,6 +419,11 @@ int main(void)
     }
 
     result = test_builder_and_bounds();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_related_failure_rolls_back_arena();
     if (result != 0) {
         return result;
     }

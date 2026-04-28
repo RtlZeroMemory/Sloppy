@@ -82,12 +82,12 @@ slice.
 - Read required source docs, task file, and GitHub Issue #33.
 - Added diagnostics public header, core implementation, CMake wiring, unit tests, and
   golden snapshot reference fixtures.
-- Removed `stdio.h` from the C snapshot test after local LLVM `clang-cl` failed to find
-  MSVC standard headers even from `VsDevCmd`; the test now uses dependency-free expected
-  strings and the fixture files mirror those expectations.
 - Updated diagnostics, testing, core/module, quality score, and tech-debt docs.
 - Fixed clang-format and clang-tidy findings, including splitting renderer length
   calculation helpers.
+- Addressed PR review feedback by rolling back arena usage on failed related-span insert,
+  rejecting uninitialized builders in `finish()`, and wiring snapshot tests to read the
+  checked-in fixtures.
 
 ## Decision Log
 

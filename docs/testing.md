@@ -207,9 +207,8 @@ tests/golden/diagnostics/
   missing_service.snap
 ```
 
-TASK 04.A uses dependency-free C snapshot string checks in
-`core.diagnostics.foundation`; checked-in fixture files mirror those expected outputs until
-a file-reading golden harness is added.
+TASK 04.A wires `core.diagnostics.foundation` to read and compare those fixture files.
+Snapshot drift fails CTest unless the expected fixture change is intentional.
 
 ## Integration Tests
 

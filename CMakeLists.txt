@@ -218,6 +218,8 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
     sloppy_add_c_unit_test(
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
+    set_tests_properties(
+        core.diagnostics.foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
 
     add_executable(

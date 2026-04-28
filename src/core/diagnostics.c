@@ -474,6 +474,7 @@ SlStatus sl_diag_builder_set_primary_span(SlDiagBuilder* builder, SlSourceSpan s
 SlStatus sl_diag_builder_add_related(SlDiagBuilder* builder, SlSourceSpan span, SlStr message)
 {
     SlDiagRelated related;
+    SlArenaMark mark;
     SlStatus status;
 
     if (builder == NULL || builder->arena == NULL) {
@@ -484,6 +485,7 @@ SlStatus sl_diag_builder_add_related(SlDiagBuilder* builder, SlSourceSpan span, 
         return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
     }
 
+    mark = sl_arena_mark(builder->arena);
     status = sl_diag_copy_span(builder->arena, span, &related.span);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -491,6 +493,11 @@ SlStatus sl_diag_builder_add_related(SlDiagBuilder* builder, SlSourceSpan span, 
 
     status = sl_diag_copy_str(builder->arena, message, &related.message);
     if (!sl_status_is_ok(status)) {
+        SlStatus reset_status = sl_arena_reset_to(builder->arena, mark);
+        if (!sl_status_is_ok(reset_status)) {
+            return reset_status;
+        }
+
         return status;
     }
 
@@ -524,7 +531,7 @@ SlStatus sl_diag_builder_add_hint(SlDiagBuilder* builder, SlStr hint)
 
 SlStatus sl_diag_builder_finish(SlDiagBuilder* builder, SlDiag* out)
 {
-    if (builder == NULL || out == NULL) {
+    if (builder == NULL || builder->arena == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
