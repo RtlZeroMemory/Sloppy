@@ -12,10 +12,25 @@
 #endif
 
 #if SL_ENABLE_ASSERTS
-#include <assert.h>
-#define SL_ASSERT(expr) assert(expr)
-#define SL_ASSERT_MSG(expr, msg) assert((expr) && (msg))
-#define SL_UNREACHABLE() assert(!"unreachable")
+#include <stdlib.h>
+/*
+ * Use Sloppy's assertion toggle directly instead of <assert.h> so NDEBUG does not silently
+ * disable invariants when SL_ENABLE_ASSERTS is still enabled.
+ */
+#define SL_ASSERT(expr)                                                                            \
+    do {                                                                                           \
+        if (!(expr)) {                                                                             \
+            abort();                                                                               \
+        }                                                                                          \
+    } while (0)
+#define SL_ASSERT_MSG(expr, msg)                                                                   \
+    do {                                                                                           \
+        if (!(expr)) {                                                                             \
+            (void)(msg);                                                                           \
+            abort();                                                                               \
+        }                                                                                          \
+    } while (0)
+#define SL_UNREACHABLE() SL_ASSERT_MSG(0, "unreachable")
 #else
 #define SL_ASSERT(expr) ((void)sizeof(expr))
 #define SL_ASSERT_MSG(expr, msg) ((void)sizeof(expr), (void)sizeof(msg))

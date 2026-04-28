@@ -502,7 +502,9 @@ ownership and lifetime. See `docs/concurrency.md`.
 ## Assertions
 
 Use assertions for internal invariants. Do not use assertions as user input validation.
-Release behavior must remain safe.
+Release behavior must remain safe. `SL_ENABLE_ASSERTS` is Sloppy's project assertion toggle;
+when it is enabled, assertions must remain active even if a toolchain or build mode defines
+`NDEBUG`.
 
 ## Forbidden Patterns
 

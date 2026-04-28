@@ -46,12 +46,12 @@ bool sl_str_equal(SlStr left, SlStr right)
         return true;
     }
 
-    if (left.ptr == right.ptr) {
-        return true;
-    }
-
     if (left.ptr == NULL || right.ptr == NULL) {
         return false;
+    }
+
+    if (left.ptr == right.ptr) {
+        return true;
     }
 
     return memcmp(left.ptr, right.ptr, left.length) == 0;

@@ -41,12 +41,16 @@ int main(void)
         return 5;
     }
 
-    if (expect_true(sl_str_starts_with(embedded_str, prefix)) != 0) {
+    if (expect_true(!sl_str_equal(sl_str_from_parts(NULL, 3U), sl_str_from_parts(NULL, 3U))) != 0) {
         return 6;
     }
 
-    if (expect_true(sl_str_starts_with(embedded_str, empty)) != 0) {
+    if (expect_true(sl_str_starts_with(embedded_str, prefix)) != 0) {
         return 7;
+    }
+
+    if (expect_true(sl_str_starts_with(embedded_str, empty)) != 0) {
+        return 8;
     }
 
     return 0;

@@ -37,12 +37,12 @@ bool sl_bytes_equal(SlBytes left, SlBytes right)
         return true;
     }
 
-    if (left.ptr == right.ptr) {
-        return true;
-    }
-
     if (left.ptr == NULL || right.ptr == NULL) {
         return false;
+    }
+
+    if (left.ptr == right.ptr) {
+        return true;
     }
 
     return memcmp(left.ptr, right.ptr, left.length) == 0;
