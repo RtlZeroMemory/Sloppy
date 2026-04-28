@@ -69,6 +69,12 @@ the completion to `SlLoop`; the completion callback runs only when the loop drai
 not implement real threads, cross-thread posting, blocking DB/filesystem work, libuv, or
 V8 Promise settlement.
 
+TASK 10.A adds a pure-C route pattern parser and matcher foundation for later native route
+dispatch. It supports only a minimal path-pattern subset and one-pattern matching. It does
+not add HTTP parsing, request lifecycle, method matching, route table/trie dispatch,
+handler invocation, public TypeScript APIs, llhttp, libuv, V8 integration, or compiler
+extraction.
+
 ## Current Handwritten Milestone
 
 The first real milestone is not full TypeScript compilation. It is now covered by a

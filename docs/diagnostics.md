@@ -113,6 +113,8 @@ Implemented foundation codes:
 - `SLOPPY_E_ENGINE_EXCEPTION`;
 - `SLOPPY_E_ENGINE_COMPILE_ERROR`;
 - `SLOPPY_E_ENGINE_CALL_ERROR`;
+- `SLOPPY_E_INVALID_ROUTE_PATTERN`;
+- `SLOPPY_E_DUPLICATE_ROUTE_PARAM`;
 - `SLOPPY_E_MISSING_SERVICE`;
 - `SLOPPY_E_PERMISSION_DENIED`;
 - `SLOPPY_E_INTERNAL`.
@@ -241,6 +243,8 @@ Runtime diagnostics:
 - startup validation failure;
 - result conversion failure;
 - request scope leak in debug mode.
+- invalid route pattern in the native route parser;
+- duplicate route parameter names.
 
 V8 diagnostics:
 

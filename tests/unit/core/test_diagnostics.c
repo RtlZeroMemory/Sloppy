@@ -256,12 +256,24 @@ static int test_names_and_spans(void)
         return 44;
     }
 
-    if (unknown.has_location || unknown.path.length != 0U) {
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_INVALID_ROUTE_PATTERN),
+                         sl_str_from_cstr("SLOPPY_E_INVALID_ROUTE_PATTERN")) != 0)
+    {
         return 45;
     }
 
-    if (partial.has_location) {
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_DUPLICATE_ROUTE_PARAM),
+                         sl_str_from_cstr("SLOPPY_E_DUPLICATE_ROUTE_PARAM")) != 0)
+    {
         return 46;
+    }
+
+    if (unknown.has_location || unknown.path.length != 0U) {
+        return 47;
+    }
+
+    if (partial.has_location) {
+        return 48;
     }
 
     return 0;
