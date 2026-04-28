@@ -443,6 +443,12 @@ The public DB API is always async and promise-friendly. Provider implementations
 best native strategy behind that API, and all completions post back to the owning JS event
 loop described in `docs/concurrency.md`.
 
+TASK 09.C provides only an inline/fake `SlWorkerPool` skeleton that proves the completion
+contract. It is not a database execution backend and must not be used to run blocking
+SQLite, libpq, ODBC, or filesystem work yet. Real provider work requires future real
+worker threads or nonblocking provider integration plus thread-safe completion posting back
+to the owning `SlLoop`.
+
 Likely first strategies:
 
 - SQLite uses a dedicated DB executor or worker-pool strategy first.

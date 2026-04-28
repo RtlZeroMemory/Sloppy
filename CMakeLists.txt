@@ -239,6 +239,7 @@ set(
     src/core/scope.c
     src/core/loop.c
     src/core/async.c
+    src/core/worker_pool.c
     src/core/plan.c
     src/core/plan_parse.c
     src/core/runtime_contract.c
@@ -262,6 +263,7 @@ set(
     tests/unit/core/test_scope.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
+    tests/unit/core/test_worker_pool.c
     tests/unit/core/test_plan.c
     tests/unit/core/test_plan_parse.c
     tests/unit/core/test_runtime_contract.c
@@ -442,6 +444,8 @@ if(SLOPPY_ENABLE_TESTS)
         core_loop_completion_queue core.loop.completion_queue tests/unit/core/test_loop.c)
     sloppy_add_c_unit_test(
         core_async_settlement core.async.settlement tests/unit/core/test_async.c)
+    sloppy_add_c_unit_test(
+        core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
     sloppy_add_c_unit_test(core_plan_contract core.plan.contract tests/unit/core/test_plan.c)
     set_tests_properties(core.plan.contract PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(

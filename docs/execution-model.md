@@ -63,6 +63,12 @@ continuation through the loop. It is not JS Promise integration, V8 microtask dr
 async handler execution, HTTP request lifecycle, request-scope retention, worker-pool
 completion, or cancellation/deadline/backpressure behavior.
 
+TASK 09.C adds an inline/fake `SlWorkerPool` skeleton. It proves the native worker
+completion contract by running a work callback immediately on the caller thread and posting
+the completion to `SlLoop`; the completion callback runs only when the loop drains. It does
+not implement real threads, cross-thread posting, blocking DB/filesystem work, libuv, or
+V8 Promise settlement.
+
 ## Current Handwritten Milestone
 
 The first real milestone is not full TypeScript compilation. It is now covered by a
@@ -310,6 +316,14 @@ Current native skeleton:
 - fulfillment carries borrowed payload/user pointers;
 - rejection/cancellation carry a non-OK `SlStatus` and optional borrowed `SlDiag`;
 - failed loop posting leaves the async object pending.
+- `SlWorkerPool` inline mode runs native work immediately but posts completion through
+  `SlLoop`;
+- worker result ownership transfers to the work completion callback when that completion
+  dispatches;
+- failed worker completion posting destroys an owned result through the submitted destroy
+  callback when one is available.
+- discarded worker completions require an explicit `sl_worker_pool_reset_inline` cleanup
+  after the owning `SlLoop` is reset.
 
 Future V8 Promise handling should resolve or reject through this model or a documented
 evolution of it so request cleanup remains owned by the runtime.
