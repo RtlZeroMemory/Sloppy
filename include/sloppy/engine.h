@@ -106,6 +106,10 @@ SlStatus sl_engine_info(const SlEngine* engine, SlEngineInfo* out_info);
  * current V8 implementation evaluates classic scripts in a single context so smoke tests
  * can define global functions. No ESM loader, module resolver, app.plan integration, or
  * public Sloppy JS API is provided by this call.
+ *
+ * `out_diag` is optional. When provided, diagnostic text and source paths are copied into
+ * the engine arena, not into a caller result arena. Those diagnostic views remain valid
+ * until the engine arena is reset or the engine is destroyed.
  */
 SlStatus sl_engine_eval_source(SlEngine* engine, SlStr source_name, SlStr source, SlDiag* out_diag);
 
@@ -117,6 +121,10 @@ SlStatus sl_engine_eval_source(SlEngine* engine, SlStr source_name, SlStr source
  * arena is reset or its caller-owned backing storage ends. V8 handles and values never
  * escape this API. The current smoke bridge supports string results only and returns
  * SL_STATUS_UNSUPPORTED for other JavaScript result types.
+ *
+ * `out_diag` is optional. When provided, diagnostic text and source paths are copied into
+ * the engine arena, not into the result arena passed to this call. Those diagnostic views
+ * remain valid until the engine arena is reset or the engine is destroyed.
  */
 SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr function_name,
                                   SlEngineResult* out_result, SlDiag* out_diag);

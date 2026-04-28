@@ -103,6 +103,9 @@ One isolate is entered only by its owning JS thread. V8 types do not cross into 
 runtime. Native worker pool threads must not call JS handlers. Cross-thread communication
 uses runtime queues/completion messages. Future workers use separate isolates. Any
 exception must be owned and reported on the JS thread/engine bridge.
+TASK 07.D keeps V8 exception capture inside the bridge and copies diagnostic text into
+Sloppy-owned arena storage before returning to C; it does not introduce cross-thread engine
+entry or async promise rejection policy.
 
 The current `SlEngine` ABI is not thread-safe. TASK 07.B documents the future owner-thread
 rule at the C boundary but does not create threads, enforce owner identity, initialize a V8

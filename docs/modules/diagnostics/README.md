@@ -20,6 +20,7 @@ Implemented now:
 - arena-copying diagnostic builder;
 - deterministic plain-text renderer;
 - initial golden/snapshot fixtures.
+- engine exception, compile, and call diagnostic codes used by the V8 bridge skeleton.
 
 ## Non-goals
 
@@ -56,6 +57,10 @@ that arena is reset or the caller-owned arena backing buffer lifetime ends.
 The renderer returns an arena-owned `SlStr` that is not NUL-terminated and remains valid
 until the render arena is reset.
 
+V8 bridge diagnostics copy JavaScript exception strings and generated source names into the
+engine arena through the same builder APIs. They do not point into transient V8 handles or
+temporary UTF-8 adapters after the bridge call returns.
+
 ## Invariants
 
 Diagnostic codes are stable public contracts once released. TASK 04.A keeps the initial code
@@ -68,6 +73,10 @@ Related spans and hints are bounded by `SL_DIAG_MAX_RELATED` and `SL_DIAG_MAX_HI
 
 The current text renderer is deterministic, colorless, and does not normalize paths. Its
 format is a foundation test contract, not a released CLI output contract.
+
+The current diagnostic shape has no dedicated stack field. TASK 07.D stores a bounded V8
+stack summary as a related note when V8 can provide one; full async stacks and code frames
+remain future diagnostics work.
 
 ## Diagnostics
 
