@@ -46,6 +46,11 @@ Current tests:
 - platform-boundary scanner;
 - C standards scanner.
 
+When V8 is explicitly enabled and a valid SDK is configured, CTest also registers
+`engine.v8.smoke`. That test evaluates classic JavaScript source, calls a named global
+function returning `sloppy-ok`, and checks missing/throwing functions fail without crashing.
+It is not part of the default non-V8 test set.
+
 ## Future Phase
 
 Testing expands with each implementation epic. No feature story should land without either
@@ -351,8 +356,9 @@ Plan loader phase:
 V8 smoke phase:
 
 - engine initialization smoke;
-- handler registration smoke;
-- exception diagnostic smoke.
+- classic script/global function smoke;
+- thrown function failure smoke;
+- handler registration smoke later.
 
 HTTP/router phase:
 

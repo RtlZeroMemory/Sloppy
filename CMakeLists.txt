@@ -2,12 +2,6 @@ cmake_minimum_required(VERSION 3.25)
 
 project(Sloppy VERSION 0.0.0 LANGUAGES C)
 
-include(CheckLanguage)
-check_language(CXX)
-if(CMAKE_CXX_COMPILER)
-    enable_language(CXX)
-endif()
-
 set(SLOPPY_ENABLE_ASSERTS_DEFAULT ON)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(SLOPPY_ENABLE_ASSERTS_DEFAULT OFF)
@@ -29,6 +23,16 @@ set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a prebuilt V8 SDK root.")
 find_program(CARGO_EXECUTABLE cargo)
 find_program(CLANG_FORMAT_EXECUTABLE clang-format)
 find_program(CLANG_TIDY_EXECUTABLE clang-tidy)
+
+if(SLOPPY_ENABLE_TESTS OR SLOPPY_ENABLE_V8)
+    include(CheckLanguage)
+    check_language(CXX)
+    if(CMAKE_CXX_COMPILER)
+        enable_language(CXX)
+    elseif(SLOPPY_ENABLE_V8)
+        message(FATAL_ERROR "V8 bridge: enabled but no C++ compiler is available.")
+    endif()
+endif()
 
 if(NOT SLOPPY_ENGINE STREQUAL "v8" AND NOT SLOPPY_ENGINE STREQUAL "none")
     message(FATAL_ERROR "SLOPPY_ENGINE must be 'v8' or 'none'.")
@@ -132,6 +136,10 @@ set(
     src/core/diagnostics.c
     src/engine/engine.c)
 
+if(SLOPPY_ENABLE_V8)
+    list(APPEND SLOPPY_CORE_SOURCES src/engine/v8/engine_v8.cc)
+endif()
+
 set(
     SLOPPY_C_LINT_SOURCES
     src/main.c
@@ -150,10 +158,20 @@ set(
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c)
 
+if(SLOPPY_ENABLE_V8)
+    list(APPEND SLOPPY_C_LINT_SOURCES tests/unit/engine/test_v8_smoke.c)
+endif()
+
 add_library(sloppy_core STATIC ${SLOPPY_CORE_SOURCES})
 target_include_directories(sloppy_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy_core PUBLIC c_std_17)
 target_link_libraries(sloppy_core PRIVATE yyjson::yyjson)
+
+if(SLOPPY_ENABLE_V8)
+    target_compile_features(sloppy_core PRIVATE cxx_std_17)
+    target_compile_definitions(sloppy_core PUBLIC SLOPPY_ENABLE_V8_BRIDGE=1)
+    target_link_libraries(sloppy_core PRIVATE Sloppy::V8)
+endif()
 
 if(SLOPPY_ENABLE_ASSERTS)
     target_compile_definitions(sloppy_core PUBLIC SL_ENABLE_ASSERTS=1)
@@ -178,8 +196,8 @@ function(sloppy_apply_warnings target_name)
                     -Wconversion
                     -Wsign-conversion
                     -Wshadow
-                    -Wstrict-prototypes
-                    -Wmissing-prototypes)
+                    "$<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>"
+                    "$<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>")
         endif()
         if(SLOPPY_ENABLE_WERROR)
             target_compile_options(${target_name} PRIVATE /WX)
@@ -194,8 +212,8 @@ function(sloppy_apply_warnings target_name)
                 -Wconversion
                 -Wsign-conversion
                 -Wshadow
-                -Wstrict-prototypes
-                -Wmissing-prototypes)
+                "$<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>"
+                "$<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>")
         if(SLOPPY_ENABLE_WERROR)
             target_compile_options(${target_name} PRIVATE -Werror)
         endif()
@@ -311,6 +329,10 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(
         core.plan.parse_json PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(core_engine_abi core.engine.abi tests/unit/core/test_engine.c)
+    if(SLOPPY_ENABLE_V8)
+        sloppy_add_c_unit_test(
+            engine_v8_smoke engine.v8.smoke tests/unit/engine/test_v8_smoke.c)
+    endif()
     sloppy_add_c_unit_test(
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
     set_tests_properties(

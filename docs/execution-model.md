@@ -38,9 +38,11 @@ This document does not implement:
 ## Current Phase
 
 Only placeholder CLIs exist. The execution model is specified but not implemented. The
-engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call shapes,
-but the only implemented backend is a noop engine. Handler calls return unsupported until
-the V8 bridge execution tasks land.
+engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call shapes.
+The noop backend is always available. A V8-enabled build can run the TASK 07.C smoke path:
+evaluate a borrowed classic JavaScript source string and call a named global zero-argument
+function returning a copied string. Handler calls by numeric Sloppy Plan ID still return
+unsupported until handler registration and plan mapping land.
 
 ## Future Phase
 
@@ -255,6 +257,11 @@ The C-side handler-call ABI for this future path is already shaped as
 `sl_engine_call_handler(SlEngine*, SlEngineHandlerCall*, SlEngineResult*, SlDiag*)`.
 TASK 07.B deliberately implements that entry point as unsupported for the noop engine; it
 does not load modules, invoke exports, convert JavaScript values, or run `app.js`.
+
+TASK 07.C deliberately uses a smaller smoke-only shape before the handwritten artifact
+execution milestone: `sl_engine_eval_source` evaluates classic script text, and
+`sl_engine_call_function0` calls a global function name such as `sloppy_smoke`. This is not
+`app.js` module execution, not ESM loading, and not Sloppy Plan handler dispatch.
 
 ## Async And Promise Lifecycle
 

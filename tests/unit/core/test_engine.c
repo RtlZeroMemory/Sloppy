@@ -113,6 +113,9 @@ static int test_create_invalid_options(void)
 
 static int test_v8_create_is_unsupported_without_bridge(void)
 {
+#ifdef SLOPPY_ENABLE_V8_BRIDGE
+    return 0;
+#else
     unsigned char storage[128];
     SlArena arena = {0};
     SlEngineOptions options = noop_options();
@@ -132,6 +135,7 @@ static int test_v8_create_is_unsupported_without_bridge(void)
     }
 
     return 0;
+#endif
 }
 
 static int test_noop_call_handler_is_unsupported(void)
@@ -220,6 +224,58 @@ static int test_call_handler_invalid_arguments(void)
     return 0;
 }
 
+static int test_noop_eval_source_and_call_function_are_unsupported(void)
+{
+    unsigned char storage[2048];
+    unsigned char result_storage[256];
+    SlArena arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = noop_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 50;
+    }
+
+    if (expect_status(sl_engine_create(&options, &arena, &engine), SL_STATUS_OK) != 0) {
+        return 51;
+    }
+
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("noop.js"),
+                                            sl_str_from_cstr("function nope() {}"), &diag),
+                      SL_STATUS_UNSUPPORTED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 52;
+    }
+
+    if (diag.code != SL_DIAG_UNSUPPORTED_ENGINE) {
+        sl_engine_destroy(engine);
+        return 53;
+    }
+
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena, sl_str_from_cstr("nope"),
+                                               &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 54;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE) {
+        sl_engine_destroy(engine);
+        return 55;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -249,5 +305,10 @@ int main(void)
         return result;
     }
 
-    return test_call_handler_invalid_arguments();
+    result = test_call_handler_invalid_arguments();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_noop_eval_source_and_call_function_are_unsupported();
 }

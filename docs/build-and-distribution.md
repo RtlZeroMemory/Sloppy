@@ -36,8 +36,9 @@ The foundation phase does not:
 The project builds a placeholder `sloppy` executable and a placeholder Rust `sloppyc`
 binary. The default CMake project uses C only. V8 is not required.
 
-TASK 07.A adds optional V8 SDK detection for future bridge work. The default build keeps the
-V8 bridge disabled.
+TASK 07.A adds optional V8 SDK detection. The default build keeps the V8 bridge disabled.
+TASK 07.C compiles the V8 bridge and V8-gated smoke test only when V8 is explicitly enabled
+and the SDK gate passes.
 
 ## Future Phase
 
@@ -105,7 +106,9 @@ When V8 is disabled, configure prints `V8 bridge: disabled` and normal configure
 gates continue without a V8 SDK. CI uses this default non-V8 path.
 
 When V8 is enabled and `SLOPPY_V8_ROOT` is empty or invalid, CMake configure fails before
-any bridge code is compiled.
+any bridge code is compiled. When the SDK is valid, CMake compiles
+`src/engine/v8/engine_v8.cc`, links it only to the V8-enabled core target, and registers the
+`engine.v8.smoke` test.
 
 Contributor path:
 

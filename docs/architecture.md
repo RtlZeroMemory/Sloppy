@@ -38,10 +38,11 @@ The foundation phase does not implement:
 
 The repository is in foundation/spec/tooling phase. The placeholder `sloppy` and `sloppyc`
 CLIs exist only to prove toolchain wiring. They are not runtime or compiler implementations.
-TASK 07.A adds optional V8 SDK detection for future bridge work, but no V8 runtime code is
-implemented and normal builds do not require V8. TASK 07.B adds the engine-neutral
-`SlEngine` C ABI and a noop engine implementation; it does not initialize V8, load
-JavaScript, or execute handlers.
+TASK 07.A adds optional V8 SDK detection and normal builds do not require V8. TASK 07.B
+adds the engine-neutral `SlEngine` C ABI and a noop engine implementation. TASK 07.C adds a
+V8-enabled smoke bridge that can initialize V8, evaluate a classic JavaScript source string,
+call a named global zero-argument function, and copy a string result back to C. It does not
+execute Sloppy Plan handlers, load modules, run HTTP, or provide the public JS API.
 
 ## Future Phase
 
@@ -115,6 +116,7 @@ The V8 bridge lives under `src/engine/v8/` and is the only required C++ island.
 It will own:
 
 - isolate and context lifecycle;
+- classic script evaluation and named global function smoke calls in EPIC-07;
 - V8 module loading;
 - bootstrap stdlib installation;
 - intrinsic/native callback registration;
