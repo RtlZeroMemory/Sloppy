@@ -105,12 +105,23 @@ tests/golden/diagnostics/
   missing_service.snap
   invalid_plan_version.snap
 tests/golden/plan/
-  minimal-valid.plan.json
+  README.md
+  valid-minimal.plan.json
+  valid-multiple-handlers.plan.json
+  unknown-future-field.plan.json
+  malformed-json.plan.json
   invalid-version.plan.json
+  missing-runtime-minimum-version.plan.json
   duplicate-handler-id.plan.json
   missing-bundle.plan.json
+  missing-bundle-path.plan.json
   missing-source-map.plan.json
+  missing-handlers.plan.json
+  empty-handlers.plan.json
+  invalid-handler-id.plan.json
   missing-handler-export.plan.json
+  empty-handler-export.plan.json
+  wrong-field-type.plan.json
 tests/golden/compiler/
   README.md
 ```
@@ -331,6 +342,7 @@ Phase 1:
 Plan loader phase:
 
 - valid/invalid plan fixtures;
+- fixture README or manifest documenting expected outcomes;
 - fixture existence checks before the parser exists;
 - parser tests once the parser exists;
 - diagnostics checks;

@@ -321,7 +321,7 @@ Illustrative future shape, not implemented:
 
 ## Validation Rules
 
-Current TASK 06.B parser validation checks:
+Current TASK 06.B parser validation checks, with TASK 06.C golden fixture coverage:
 
 - JSON root is an object;
 - `schemaVersion` exists and equals supported Plan v1;
@@ -422,11 +422,21 @@ hint. JSON pointer spans, source frames, source maps, and rendered code frames a
 Plan tests should include:
 
 - valid minimal plan;
+- valid plan with multiple handlers;
+- unknown future-field allowance;
+- malformed JSON;
 - unsupported schema version;
+- missing required top-level field;
 - missing bundle;
+- missing bundle path;
 - missing source map;
+- missing handlers;
+- empty handlers;
+- invalid handler ID;
 - duplicate handler ID;
-- missing handler export.
+- missing handler export;
+- empty handler export;
+- wrong known-field type.
 
 Future parser/validator phases should add:
 
@@ -436,9 +446,13 @@ Future parser/validator phases should add:
 - permissions referencing unknown capability;
 - golden full plan fixture.
 
-TASK 06.B parser tests cover the existing minimal valid and invalid fixtures plus embedded
-malformed JSON, wrong handler ID type, handler ID `0`, empty handlers, and unknown field
-allowance.
+TASK 06.C parser tests read the checked-in fixtures under `tests/golden/plan/` directly.
+The fixture matrix covers valid minimal plans, multiple handlers, unknown future-field
+allowance, malformed JSON, unsupported versions, missing required sections and fields,
+empty handlers, handler ID `0`, duplicate handler IDs, missing or empty handler
+`exportName`, and wrong known-field types. Wrong handler ID type is also covered by an
+embedded parser input because the checked-in fixture matrix uses handler ID `0` as the named
+invalid handler ID case.
 
 ## Quality Gates
 

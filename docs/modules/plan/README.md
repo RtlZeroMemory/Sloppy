@@ -2,7 +2,7 @@
 
 ## Status
 
-Partially implemented for TASK 06.B.
+Partially implemented through TASK 06.C.
 
 ## Purpose
 
@@ -22,7 +22,8 @@ Implemented now:
 - JSON parsing from caller-provided bytes with `yyjson`;
 - minimal Plan v1 shape validation;
 - arena-owned parsed plan storage;
-- basic diagnostics for invalid plan JSON and validation failures.
+- basic diagnostics for invalid plan JSON and validation failures;
+- documented golden plan fixture matrix.
 
 Future scope:
 
@@ -145,27 +146,45 @@ CTest registers `tests/unit/core/test_plan.c`, covering:
 
 CTest registers `tests/unit/core/test_plan_parse.c`, covering:
 
-- parsing the minimal valid fixture;
-- parsed field values and handler lookup;
+- parsing all valid fixtures in `tests/golden/plan/`;
+- parsed field values, handler IDs, export names, display names, target, bundle, and source
+  map values;
 - invalid version fixture diagnostics;
-- missing bundle and source map fixture diagnostics;
-- missing handler export diagnostics;
-- duplicate handler ID diagnostics;
 - malformed JSON diagnostics;
+- missing top-level field, bundle, bundle path, source map, handlers, handler export, and
+  empty handler export diagnostics;
+- duplicate handler ID diagnostics;
+- invalid handler ID diagnostics;
 - wrong handler ID type rejection;
-- handler ID `0` rejection;
+- wrong known-field type rejection;
 - empty handler array rejection;
-- unknown field allowance;
+- unknown future-field allowance;
+- failed parse arena rollback behavior;
 - invalid parser arguments.
 
 Fixture files:
 
-- `tests/golden/plan/minimal-valid.plan.json`;
+- `tests/golden/plan/README.md`;
+- `tests/golden/plan/valid-minimal.plan.json`;
+- `tests/golden/plan/valid-multiple-handlers.plan.json`;
+- `tests/golden/plan/unknown-future-field.plan.json`;
+- `tests/golden/plan/malformed-json.plan.json`;
 - `tests/golden/plan/invalid-version.plan.json`;
-- `tests/golden/plan/duplicate-handler-id.plan.json`;
+- `tests/golden/plan/missing-runtime-minimum-version.plan.json`;
 - `tests/golden/plan/missing-bundle.plan.json`;
+- `tests/golden/plan/missing-bundle-path.plan.json`;
 - `tests/golden/plan/missing-source-map.plan.json`;
-- `tests/golden/plan/missing-handler-export.plan.json`.
+- `tests/golden/plan/missing-handlers.plan.json`;
+- `tests/golden/plan/empty-handlers.plan.json`;
+- `tests/golden/plan/invalid-handler-id.plan.json`;
+- `tests/golden/plan/duplicate-handler-id.plan.json`;
+- `tests/golden/plan/missing-handler-export.plan.json`;
+- `tests/golden/plan/empty-handler-export.plan.json`;
+- `tests/golden/plan/wrong-field-type.plan.json`.
+
+Fixture conventions live in `tests/golden/plan/README.md`. Valid fixtures use the
+`valid-*.plan.json` prefix. Invalid fixtures name the rejected condition directly and must
+be added to the parser fixture matrix when introduced.
 
 ## Source Docs
 

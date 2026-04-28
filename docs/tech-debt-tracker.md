@@ -37,6 +37,8 @@
 - Plan hash verification is future validation work.
 - Plan source map parsing and JSON pointer/source-frame diagnostics are future work.
 - Plan route/service/module/data provider/capability/permission sections are future work.
+- Plan route/service/module/data provider/capability/permission golden fixtures are future
+  work and should be added only when those sections are implemented.
 
 ## Cleanup candidates
 

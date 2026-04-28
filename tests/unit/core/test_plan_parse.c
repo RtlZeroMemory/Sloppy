@@ -2,6 +2,29 @@
 
 #include <stdio.h>
 
+#define TEST_ARENA_SIZE 8192U
+#define TEST_JSON_SIZE 8192U
+
+typedef struct ValidFixtureCase
+{
+    const char* path;
+    size_t handler_count;
+    SlHandlerId first_handler_id;
+    const char* first_export_name;
+    const char* first_display_name;
+    SlHandlerId second_handler_id;
+    const char* second_export_name;
+    const char* second_display_name;
+} ValidFixtureCase;
+
+typedef struct InvalidFixtureCase
+{
+    const char* path;
+    SlStatusCode status_code;
+    SlDiagCode diag_code;
+    const char* message;
+} InvalidFixtureCase;
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
@@ -69,152 +92,204 @@ static SlBytes bytes_from_cstr(const char* text)
     return sl_bytes_from_parts((const unsigned char*)text, sl_str_from_cstr(text).length);
 }
 
-static int parse_fixture(const char* path, SlPlan* out_plan, SlDiag* out_diag,
-                         unsigned char* arena_storage, size_t arena_storage_size)
+static SlStatus parse_fixture(const char* path, SlPlan* out_plan, SlDiag* out_diag,
+                              unsigned char* arena_storage, size_t arena_storage_size)
 {
-    unsigned char json_storage[8192];
+    unsigned char json_storage[TEST_JSON_SIZE];
     SlBytes json = {0};
     SlArena arena = {0};
     SlPlanParseOptions options = {0};
     SlStatus status;
 
     if (read_fixture(path, json_storage, sizeof(json_storage), &json) != 0) {
-        return 1000;
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     status = sl_arena_init(&arena, arena_storage, arena_storage_size);
     if (!sl_status_is_ok(status)) {
-        return 1001;
+        return status;
     }
 
     options.source_name = sl_str_from_cstr(path);
-    status = sl_plan_parse_json(&arena, json, &options, out_plan, out_diag);
-    return (int)sl_status_code(status);
+    return sl_plan_parse_json(&arena, json, &options, out_plan, out_diag);
 }
 
-static int test_parse_minimal_valid_fixture(void)
+static int expect_common_plan_fields(const SlPlan* plan)
 {
-    unsigned char arena_storage[8192];
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    const SlPlanHandler* handler = NULL;
-    int status_code = parse_fixture("tests/golden/plan/minimal-valid.plan.json", &plan, &diag,
-                                    arena_storage, sizeof(arena_storage));
-
-    if (status_code != SL_STATUS_OK) {
-        return 10;
+    if (plan == NULL) {
+        return 1;
     }
 
-    if (expect_true(plan.version == SL_PLAN_VERSION_1) != 0) {
-        return 11;
+    if (expect_true(plan->version == SL_PLAN_VERSION_1) != 0) {
+        return 2;
     }
 
-    if (expect_true(sl_str_equal(plan.compiler_version, sl_str_from_cstr("sloppyc-placeholder"))) !=
-        0)
+    if (expect_true(
+            sl_str_equal(plan->compiler_version, sl_str_from_cstr("sloppyc-placeholder"))) != 0)
     {
-        return 12;
+        return 3;
     }
 
-    if (expect_true(sl_str_equal(plan.runtime_min_version, sl_str_from_cstr("0.1.0"))) != 0) {
-        return 13;
-    }
-
-    if (expect_true(sl_str_equal(plan.target.platform, sl_str_from_cstr("windows-x64"))) != 0 ||
-        expect_true(sl_str_equal(plan.target.engine, sl_str_from_cstr("v8"))) != 0)
+    if (expect_true(sl_str_equal(plan->runtime_min_version, sl_str_from_cstr("0.1.0"))) != 0 ||
+        expect_true(sl_str_equal(plan->stdlib_version, sl_str_from_cstr("0.1.0"))) != 0)
     {
-        return 14;
+        return 4;
     }
 
-    if (expect_true(sl_str_equal(plan.bundle.path, sl_str_from_cstr(".sloppy/app.js"))) != 0 ||
-        expect_true(sl_str_equal(plan.source_map.path, sl_str_from_cstr(".sloppy/app.js.map"))) !=
-            0)
+    if (expect_true(sl_str_equal(plan->target.platform, sl_str_from_cstr("windows-x64"))) != 0 ||
+        expect_true(sl_str_equal(plan->target.engine, sl_str_from_cstr("v8"))) != 0)
     {
-        return 15;
+        return 5;
     }
 
-    if (expect_true(plan.handler_count == 1U) != 0) {
-        return 16;
+    if (expect_true(sl_str_equal(plan->bundle.path, sl_str_from_cstr(".sloppy/app.js"))) != 0 ||
+        expect_true(sl_str_equal(plan->bundle.id, sl_str_from_cstr("app-js-test"))) != 0 ||
+        expect_true(sl_str_equal(plan->bundle.hash, sl_str_from_cstr("test-only"))) != 0)
+    {
+        return 6;
     }
 
-    if (expect_status(sl_plan_find_handler_by_id(&plan, 1U, &handler), SL_STATUS_OK) != 0) {
-        return 17;
-    }
-
-    if (handler == NULL ||
-        expect_true(sl_str_equal(handler->export_name, sl_str_from_cstr("__sloppy_handler_1"))) !=
+    if (expect_true(sl_str_equal(plan->source_map.path, sl_str_from_cstr(".sloppy/app.js.map"))) !=
             0 ||
-        expect_true(sl_str_equal(handler->display_name, sl_str_from_cstr("Home"))) != 0)
+        expect_true(sl_str_equal(plan->source_map.id, sl_str_from_cstr("app-js-map-test"))) != 0 ||
+        expect_true(sl_str_equal(plan->source_map.hash, sl_str_from_cstr("test-only"))) != 0)
     {
-        return 18;
-    }
-
-    if (diag.code != SL_DIAG_NONE) {
-        return 19;
+        return 7;
     }
 
     return 0;
 }
 
-static int test_invalid_version_fixture_fails(void)
+static int expect_handler(const SlPlan* plan, SlHandlerId id, const char* export_name,
+                          const char* display_name)
 {
-    unsigned char arena_storage[8192];
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    int status_code = parse_fixture("tests/golden/plan/invalid-version.plan.json", &plan, &diag,
-                                    arena_storage, sizeof(arena_storage));
+    const SlPlanHandler* handler = NULL;
 
-    if (status_code != SL_STATUS_UNSUPPORTED) {
-        return 20;
+    if (expect_status(sl_plan_find_handler_by_id(plan, id, &handler), SL_STATUS_OK) != 0) {
+        return 1;
     }
 
-    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_VERSION) {
-        return 21;
+    if (handler == NULL) {
+        return 2;
     }
 
-    if (plan.version != 0U || plan.handler_count != 0U || plan.handlers != NULL) {
-        return 22;
+    if (expect_true(sl_str_equal(handler->export_name, sl_str_from_cstr(export_name))) != 0 ||
+        expect_true(sl_str_equal(handler->display_name, sl_str_from_cstr(display_name))) != 0)
+    {
+        return 3;
     }
 
     return 0;
 }
 
-static int test_missing_bundle_fixture_fails(void)
+static int test_valid_fixture_matrix(void)
 {
-    unsigned char arena_storage[8192];
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    int status_code = parse_fixture("tests/golden/plan/missing-bundle.plan.json", &plan, &diag,
-                                    arena_storage, sizeof(arena_storage));
+    static const ValidFixtureCase cases[] = {
+        {"tests/golden/plan/valid-minimal.plan.json", 1U, 1U, "__sloppy_handler_1", "Home", 0U,
+         NULL, NULL},
+        {"tests/golden/plan/valid-multiple-handlers.plan.json", 2U, 1U, "__sloppy_handler_1",
+         "Home", 2U, "__sloppy_handler_2", "Health"},
+        {"tests/golden/plan/unknown-future-field.plan.json", 1U, 1U, "__sloppy_handler_1", "Home",
+         0U, NULL, NULL}};
+    size_t index = 0U;
 
-    if (status_code != SL_STATUS_INVALID_ARGUMENT) {
-        return 30;
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char arena_storage[TEST_ARENA_SIZE];
+        SlPlan plan = {0};
+        SlDiag diag = {0};
+        SlStatus status =
+            parse_fixture(cases[index].path, &plan, &diag, arena_storage, sizeof(arena_storage));
+
+        if (expect_status(status, SL_STATUS_OK) != 0) {
+            return 10 + (int)index;
+        }
+
+        if (expect_common_plan_fields(&plan) != 0) {
+            return 20 + (int)index;
+        }
+
+        if (expect_true(plan.handler_count == cases[index].handler_count) != 0) {
+            return 30 + (int)index;
+        }
+
+        if (expect_handler(&plan, cases[index].first_handler_id, cases[index].first_export_name,
+                           cases[index].first_display_name) != 0)
+        {
+            return 40 + (int)index;
+        }
+
+        if (cases[index].second_handler_id != SL_HANDLER_ID_INVALID &&
+            expect_handler(&plan, cases[index].second_handler_id, cases[index].second_export_name,
+                           cases[index].second_display_name) != 0)
+        {
+            return 50 + (int)index;
+        }
+
+        if (diag.code != SL_DIAG_NONE) {
+            return 60 + (int)index;
+        }
     }
 
-    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
-        return 31;
-    }
-
-    return plan.handlers == NULL && plan.handler_count == 0U ? 0 : 32;
+    return 0;
 }
 
-static int test_missing_handler_export_fixture_fails(void)
+static int test_invalid_fixture_matrix(void)
 {
-    unsigned char arena_storage[8192];
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    int status_code = parse_fixture("tests/golden/plan/missing-handler-export.plan.json", &plan,
-                                    &diag, arena_storage, sizeof(arena_storage));
+    static const InvalidFixtureCase cases[] = {
+        {"tests/golden/plan/malformed-json.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_MALFORMED_JSON, "malformed app plan JSON"},
+        {"tests/golden/plan/invalid-version.plan.json", SL_STATUS_UNSUPPORTED,
+         SL_DIAG_INVALID_PLAN_VERSION, "invalid app plan version"},
+        {"tests/golden/plan/missing-runtime-minimum-version.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "missing required app plan field"},
+        {"tests/golden/plan/missing-bundle.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "missing required app plan field"},
+        {"tests/golden/plan/missing-bundle-path.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "missing required app plan field"},
+        {"tests/golden/plan/missing-source-map.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "missing required app plan field"},
+        {"tests/golden/plan/missing-handlers.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "missing required app plan field"},
+        {"tests/golden/plan/empty-handlers.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "missing required app plan field"},
+        {"tests/golden/plan/invalid-handler-id.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan handler id"},
+        {"tests/golden/plan/duplicate-handler-id.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_DUPLICATE_HANDLER_ID, "duplicate handler id"},
+        {"tests/golden/plan/missing-handler-export.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "invalid handler export name"},
+        {"tests/golden/plan/empty-handler-export.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "invalid handler export name"},
+        {"tests/golden/plan/wrong-field-type.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type"}};
+    size_t index = 0U;
 
-    if (status_code != SL_STATUS_INVALID_ARGUMENT) {
-        return 40;
-    }
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char arena_storage[TEST_ARENA_SIZE];
+        SlPlan plan = {0};
+        SlDiag diag = {0};
+        SlStatus status =
+            parse_fixture(cases[index].path, &plan, &diag, arena_storage, sizeof(arena_storage));
 
-    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
-        return 41;
-    }
+        if (expect_status(status, cases[index].status_code) != 0) {
+            return 70 + (int)index;
+        }
 
-    if (!sl_str_equal(diag.message, sl_str_from_cstr("invalid handler export name"))) {
-        return 42;
+        if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != cases[index].diag_code) {
+            return 90 + (int)index;
+        }
+
+        if (!sl_str_equal(diag.message, sl_str_from_cstr(cases[index].message))) {
+            return 110 + (int)index;
+        }
+
+        if (!sl_str_equal(diag.primary_span.path, sl_str_from_cstr(cases[index].path))) {
+            return 130 + (int)index;
+        }
+
+        if (plan.version != 0U || plan.handlers != NULL || plan.handler_count != 0U) {
+            return 150 + (int)index;
+        }
     }
 
     return 0;
@@ -222,8 +297,8 @@ static int test_missing_handler_export_fixture_fails(void)
 
 static int test_failed_parse_rolls_back_plan_allocations(void)
 {
-    unsigned char json_storage[8192];
-    unsigned char arena_storage[8192];
+    unsigned char json_storage[TEST_JSON_SIZE];
+    unsigned char arena_storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
     SlBytes json = {0};
     SlPlan plan = {0};
@@ -237,153 +312,48 @@ static int test_failed_parse_rolls_back_plan_allocations(void)
     if (read_fixture("tests/golden/plan/missing-handler-export.plan.json", json_storage,
                      sizeof(json_storage), &json) != 0)
     {
-        return 43;
+        return 200;
     }
 
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
-        return 44;
+        return 201;
     }
 
     used_before = sl_arena_used(&arena);
     status = sl_plan_parse_json(&arena, json, NULL, &plan, NULL);
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
-        return 45;
+        return 202;
     }
 
     used_after_no_diag = sl_arena_used(&arena);
     if (used_after_no_diag != used_before || plan.handlers != NULL || plan.handler_count != 0U) {
-        return 46;
+        return 203;
     }
 
     options.source_name = sl_str_from_cstr("tests/golden/plan/missing-handler-export.plan.json");
     status = sl_plan_parse_json(&arena, json, &options, &plan, &diag);
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
-        return 47;
+        return 204;
     }
 
     used_after_diag = sl_arena_used(&arena);
     if (used_after_diag <= used_after_no_diag) {
-        return 48;
+        return 205;
     }
 
     if (plan.handlers != NULL || plan.handler_count != 0U) {
-        return 49;
+        return 206;
     }
 
     if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
         !sl_str_equal(diag.message, sl_str_from_cstr("invalid handler export name")) ||
         !sl_str_equal(diag.primary_span.path, options.source_name))
     {
-        return 50;
+        return 207;
     }
 
     return 0;
-}
-
-static int test_missing_source_map_fixture_fails(void)
-{
-    unsigned char arena_storage[8192];
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    int status_code = parse_fixture("tests/golden/plan/missing-source-map.plan.json", &plan, &diag,
-                                    arena_storage, sizeof(arena_storage));
-
-    if (status_code != SL_STATUS_INVALID_ARGUMENT) {
-        return 45;
-    }
-
-    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
-        return 46;
-    }
-
-    return plan.handlers == NULL && plan.handler_count == 0U ? 0 : 47;
-}
-
-static int test_duplicate_handler_id_fixture_fails(void)
-{
-    unsigned char arena_storage[8192];
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    int status_code = parse_fixture("tests/golden/plan/duplicate-handler-id.plan.json", &plan,
-                                    &diag, arena_storage, sizeof(arena_storage));
-
-    if (status_code != SL_STATUS_INVALID_ARGUMENT) {
-        return 50;
-    }
-
-    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_DUPLICATE_HANDLER_ID) {
-        return 51;
-    }
-
-    return plan.handlers == NULL && plan.handler_count == 0U ? 0 : 52;
-}
-
-static int test_invalid_handler_id_fails(void)
-{
-    static const char json[] =
-        "{"
-        "\"schemaVersion\":1,"
-        "\"compilerVersion\":\"sloppyc-placeholder\","
-        "\"runtimeMinimumVersion\":\"0.1.0\","
-        "\"stdlibVersion\":\"0.1.0\","
-        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
-        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
-        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
-        "\"hash\":\"test-only\"},"
-        "\"handlers\":[{\"id\":0,\"exportName\":\"__sloppy_handler_0\","
-        "\"displayName\":\"Home\"}]"
-        "}";
-    unsigned char arena_storage[8192];
-    SlArena arena = {0};
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    SlStatus status;
-
-    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
-    if (!sl_status_is_ok(status)) {
-        return 55;
-    }
-
-    status = sl_plan_parse_json(&arena, bytes_from_cstr(json), NULL, &plan, &diag);
-    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
-        return 56;
-    }
-
-    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
-        return 57;
-    }
-
-    return plan.handlers == NULL && plan.handler_count == 0U ? 0 : 58;
-}
-
-static int test_malformed_json_fails(void)
-{
-    unsigned char arena_storage[4096];
-    SlArena arena = {0};
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    SlPlanParseOptions options = {0};
-    SlStatus status;
-
-    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
-    if (!sl_status_is_ok(status)) {
-        return 60;
-    }
-
-    options.source_name = sl_str_from_cstr("embedded-malformed.plan.json");
-    status = sl_plan_parse_json(&arena, bytes_from_cstr("{\"schemaVersion\": 1,"), &options, &plan,
-                                &diag);
-
-    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
-        return 61;
-    }
-
-    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_MALFORMED_JSON) {
-        return 62;
-    }
-
-    return plan.handlers == NULL && plan.handler_count == 0U ? 0 : 63;
 }
 
 static int test_wrong_handler_id_type_fails(void)
@@ -401,7 +371,7 @@ static int test_wrong_handler_id_type_fails(void)
         "\"handlers\":[{\"id\":\"1\",\"exportName\":\"__sloppy_handler_1\","
         "\"displayName\":\"Home\"}]"
         "}";
-    unsigned char arena_storage[8192];
+    unsigned char arena_storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
     SlPlan plan = {0};
     SlDiag diag = {0};
@@ -409,92 +379,16 @@ static int test_wrong_handler_id_type_fails(void)
 
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
-        return 70;
+        return 220;
     }
 
     status = sl_plan_parse_json(&arena, bytes_from_cstr(json), NULL, &plan, &diag);
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
-        return 71;
+        return 221;
     }
 
     if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
-        return 72;
-    }
-
-    return 0;
-}
-
-static int test_empty_handlers_fails(void)
-{
-    static const char json[] =
-        "{"
-        "\"schemaVersion\":1,"
-        "\"compilerVersion\":\"sloppyc-placeholder\","
-        "\"runtimeMinimumVersion\":\"0.1.0\","
-        "\"stdlibVersion\":\"0.1.0\","
-        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
-        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
-        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
-        "\"hash\":\"test-only\"},"
-        "\"handlers\":[]"
-        "}";
-    unsigned char arena_storage[8192];
-    SlArena arena = {0};
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    SlStatus status;
-
-    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
-    if (!sl_status_is_ok(status)) {
-        return 80;
-    }
-
-    status = sl_plan_parse_json(&arena, bytes_from_cstr(json), NULL, &plan, &diag);
-    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
-        return 81;
-    }
-
-    if (diag.severity != SL_DIAG_SEVERITY_ERROR || diag.code != SL_DIAG_INVALID_PLAN_FIELD) {
-        return 82;
-    }
-
-    return 0;
-}
-
-static int test_unknown_fields_are_ignored(void)
-{
-    static const char json[] =
-        "{"
-        "\"schemaVersion\":1,"
-        "\"compilerVersion\":\"sloppyc-placeholder\","
-        "\"runtimeMinimumVersion\":\"0.1.0\","
-        "\"stdlibVersion\":\"0.1.0\","
-        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\",\"extra\":true},"
-        "\"bundle\":{\"path\":\".sloppy/app.js\",\"id\":\"app-js-test\",\"hash\":\"test-only\"},"
-        "\"sourceMap\":{\"path\":\".sloppy/app.js.map\",\"id\":\"app-js-map-test\","
-        "\"hash\":\"test-only\"},"
-        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
-        "\"displayName\":\"Home\",\"future\":\"ignored\"}],"
-        "\"futureSection\":{\"ok\":true}"
-        "}";
-    unsigned char arena_storage[8192];
-    SlArena arena = {0};
-    SlPlan plan = {0};
-    SlDiag diag = {0};
-    SlStatus status;
-
-    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
-    if (!sl_status_is_ok(status)) {
-        return 90;
-    }
-
-    status = sl_plan_parse_json(&arena, bytes_from_cstr(json), NULL, &plan, &diag);
-    if (expect_status(status, SL_STATUS_OK) != 0) {
-        return 91;
-    }
-
-    if (plan.handler_count != 1U || diag.code != SL_DIAG_NONE) {
-        return 92;
+        return 222;
     }
 
     return 0;
@@ -509,25 +403,25 @@ static int test_invalid_arguments(void)
 
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
-        return 100;
+        return 230;
     }
 
     if (expect_status(sl_plan_parse_json(NULL, bytes_from_cstr("{}"), NULL, &plan, NULL),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
-        return 101;
+        return 231;
     }
 
     if (expect_status(sl_plan_parse_json(&arena, sl_bytes_empty(), NULL, &plan, NULL),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
-        return 102;
+        return 232;
     }
 
     if (expect_status(sl_plan_parse_json(&arena, bytes_from_cstr("{}"), NULL, NULL, NULL),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
-        return 103;
+        return 233;
     }
 
     return 0;
@@ -537,22 +431,12 @@ int main(void)
 {
     int result = 0;
 
-    result = test_parse_minimal_valid_fixture();
+    result = test_valid_fixture_matrix();
     if (result != 0) {
         return result;
     }
 
-    result = test_invalid_version_fixture_fails();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_missing_bundle_fixture_fails();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_missing_handler_export_fixture_fails();
+    result = test_invalid_fixture_matrix();
     if (result != 0) {
         return result;
     }
@@ -562,37 +446,7 @@ int main(void)
         return result;
     }
 
-    result = test_missing_source_map_fixture_fails();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_duplicate_handler_id_fixture_fails();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_invalid_handler_id_fails();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_malformed_json_fails();
-    if (result != 0) {
-        return result;
-    }
-
     result = test_wrong_handler_id_type_fails();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_empty_handlers_fails();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_unknown_fields_are_ignored();
     if (result != 0) {
         return result;
     }
