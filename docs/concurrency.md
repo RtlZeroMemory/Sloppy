@@ -109,6 +109,11 @@ rule at the C boundary but does not create threads, enforce owner identity, init
 isolate, or provide cross-thread queues. Those checks land with later V8 bridge and event
 loop tasks.
 
+TASK 07.C creates a V8 isolate/context for the opt-in smoke bridge and enters it only on the
+calling thread. It still does not create workers, event-loop queues, or owner-thread
+enforcement. Callers must treat the engine as single-thread-owned until the later bridge and
+event-loop tasks add explicit checks.
+
 ## Request Lifecycle With Async Handler
 
 1. Socket receives bytes.

@@ -76,6 +76,11 @@ creating the `Sloppy::V8` interface target. The exact V8 version, artifact sourc
 checksum manifest, and source-build workflow are still deferred. CMake must not download
 V8 or hardcode machine-local SDK paths.
 
+TASK 07.C uses that opt-in target to compile the minimal bridge under `src/engine/v8/` when
+V8 is enabled. Default builds still do not require the SDK. V8 tests are registered only
+after the SDK gate succeeds, so CI can keep the non-V8 path green without local V8
+artifacts.
+
 SQLite may be consumed through vcpkg, a static build, or a bundled source strategy once the
 provider implementation phase begins. libpq may be a vcpkg/build dependency, but release
 packaging needs an explicit DLL strategy. SQL Server support depends on Microsoft ODBC

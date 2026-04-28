@@ -44,10 +44,13 @@
 - Exact V8 source-build workflow, GN args, and SDK packaging matrix are future work.
 - Exact V8 dynamic DLL copy/package rules are future work.
 - Exact final V8 library list is future work beyond the TASK 07.A minimal family checks.
-- V8-backed `SlEngine` creation is future TASK 07.C work; TASK 07.B returns unsupported.
+- V8-backed `SlEngine` creation now exists only for the TASK 07.C smoke path; app bundle
+  loading and handler-ID execution remain future work.
 - `SlEngine` owner-thread checks are future bridge/event-loop work.
-- Real `sl_engine_call_handler` execution, result conversion, and exception mapping are
-  future EPIC-07 work.
+- Real `sl_engine_call_handler` execution and plan handler-ID mapping are future EPIC-08/09
+  work.
+- Full V8 exception mapping is future TASK 07.D work; TASK 07.C reports basic failures.
+- ESM/module loading and resolver behavior are future work.
 
 ## Cleanup candidates
 

@@ -3,7 +3,8 @@
 ## Status
 
 SDK detection implemented for TASK 07.A. TASK 07.B adds the engine-neutral C ABI and noop
-engine stub. Runtime V8 bridge code is still planned / not implemented yet.
+engine stub. TASK 07.C adds the first V8-backed smoke path when the build is explicitly
+configured with `SLOPPY_ENABLE_V8=ON` and a valid SDK.
 
 ## Purpose
 
@@ -22,21 +23,23 @@ Implemented now:
 - create/destroy/info lifecycle shape;
 - `SlEngineHandlerCall`, `SlEngineResult`, and `sl_engine_call_handler`;
 - noop engine creation for `SL_ENGINE_KIND_NONE`;
-- deterministic unsupported behavior for V8 creation and noop handler calls.
+- deterministic unsupported behavior for noop handler calls and V8-disabled builds;
+- V8 isolate/context creation and destruction in `src/engine/v8/`;
+- classic script source evaluation through `sl_engine_eval_source`;
+- zero-argument global function calls through `sl_engine_call_function0`;
+- copied string results through `SlEngineResult`.
 
 Later scope:
 
-- V8-backed bridge implementation behind the existing ABI;
-- isolate/context lifecycle;
-- handler calls;
-- exceptions;
+- handler-ID dispatch from Sloppy Plan metadata;
+- exception mapping skeleton;
 - promise settlement.
 
 ## Non-goals
 
-No HTTP, compiler extraction, public JS API bootstrap, V8 initialization, isolate/context
-creation, module loading, handler execution, or JavaScript execution in the current
-TASK 07.A/07.B implementation state.
+No HTTP, compiler extraction, public JS API bootstrap, module loading, ESM resolver, app
+plan handler execution, handler table registration, async/promise model, workers,
+inspector, snapshots, Node compatibility, or package-manager behavior.
 
 ## Public/Internal API
 
@@ -50,9 +53,15 @@ Current behavior:
 - `SL_ENGINE_KIND_NONE` creates an arena-backed noop engine;
 - `sl_engine_destroy(NULL)` is allowed;
 - `sl_engine_info` returns stable noop metadata for active noop engines;
-- `SL_ENGINE_KIND_V8` returns `SL_STATUS_UNSUPPORTED` until real bridge work lands;
+- `SL_ENGINE_KIND_V8` creates a V8 isolate/context only when V8 is enabled at configure
+  time; otherwise it returns `SL_STATUS_UNSUPPORTED`;
+- `sl_engine_eval_source` evaluates borrowed classic JavaScript source strings in the
+  engine context, using `source_name` only as a diagnostic label;
+- `sl_engine_call_function0` looks up a named global function, calls it with no arguments,
+  and copies a string return value into the caller-provided arena;
 - `sl_engine_call_handler` exists as the future handler dispatch shape but returns
-  `SL_STATUS_UNSUPPORTED` for the noop engine and can emit `SL_DIAG_UNSUPPORTED_ENGINE`.
+  `SL_STATUS_UNSUPPORTED` for the noop engine and remains unsupported for V8 until handler
+  registration/plan mapping lands.
 
 Build options:
 
@@ -66,8 +75,14 @@ Default foundation builds and CI do not require V8.
 ## Ownership/Lifetime Rules
 
 The noop engine is allocated from the caller-provided arena and owns no external resources.
-Callers must destroy it before resetting that arena. Future V8 handles are bridge-owned. JS
-never receives raw native pointers.
+The V8 engine wrapper is arena-backed, while V8 isolate/context resources are bridge-owned
+and released by `sl_engine_destroy`. Callers must destroy an engine before resetting the
+arena that backs the opaque handle.
+
+`sl_engine_call_function0` copies supported string results into the caller-provided result
+arena. Returned `SlStr` views remain valid until that arena is reset or its backing storage
+ends. No V8 handle or raw native pointer escapes the bridge, and JS never receives raw
+native pointers.
 
 ## Invariants
 
@@ -75,8 +90,12 @@ One V8 isolate has one owning JS thread.
 
 V8 headers and `v8::*` types may appear only below `src/engine/v8/`.
 
-The current ABI is not thread-safe. Owner-thread enforcement is documented at the boundary
-and remains deferred until later bridge tasks.
+The current ABI is not thread-safe. TASK 07.C creates and enters the isolate on the calling
+thread and documents the owner-thread rule, but does not enforce cross-thread entry yet.
+Owner-thread checks remain deferred until later bridge/event-loop tasks.
+
+V8 requires process-wide platform initialization. TASK 07.C keeps that state private to
+`src/engine/v8/`, reference-counted by live V8 engines, and hidden from the C runtime.
 
 Expected SDK layout:
 
@@ -96,8 +115,9 @@ deferred.
 ## Diagnostics
 
 Current engine diagnostics include `SLOPPY_E_UNSUPPORTED_ENGINE` for unsupported noop
-handler execution. Future bridge diagnostics cover initialization, thrown exception,
-rejected promise, and handler mismatch failures.
+operations and unsupported result types. V8 compile/evaluation failure, missing global
+function, and thrown functions return failure without crashing and currently use
+`SLOPPY_E_INTERNAL`; TASK 07.D owns fuller exception mapping.
 
 ## Tests
 
@@ -110,11 +130,14 @@ Current checks:
   pieces;
 - C standards scanner rejects V8 headers and `v8::` references outside `src/engine/v8/`.
 - `core.engine.abi` covers noop create/info/destroy, invalid options, V8 unsupported
-  creation, noop handler-call unsupported behavior, and invalid handler-call arguments.
+  creation in non-V8 builds, noop handler-call unsupported behavior, noop eval/call
+  unsupported behavior, and invalid handler-call arguments.
+- `engine.v8.smoke` is registered only when V8 is enabled and covers classic script
+  evaluation, global function call returning `sloppy-ok`, missing function failure, and
+  thrown function failure.
 
 Later checks:
 
-- bridge smoke;
 - thrown exception diagnostic;
 - wrong-thread checks.
 
