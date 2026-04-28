@@ -246,6 +246,10 @@ compiler changes and run as part of quality gates.
 CMake must configure and build with the Windows preset. CTest must pass and include smoke
 coverage for both `sloppy` and `sloppyc` while the project is in placeholder phase.
 
+V8 remains an opt-in build gate. Default and CI builds leave the V8 bridge disabled and do
+not require a V8 SDK. A manual V8-enabled configure must fail clearly when
+`SLOPPY_V8_ROOT` is empty or does not contain the documented SDK layout.
+
 Phase 1 CTest expectations:
 
 - `core.status.*`;

@@ -2,7 +2,8 @@
 
 ## Active debt
 
-- V8 SDK workflow is placeholder.
+- V8 SDK fetch/source-build workflow is placeholder; TASK 07.A validates existing SDK roots
+  only.
 - Sanitizer coverage is incomplete on Windows.
 - No real runtime features yet.
 
@@ -39,6 +40,10 @@
 - Plan route/service/module/data provider/capability/permission sections are future work.
 - Plan route/service/module/data provider/capability/permission golden fixtures are future
   work and should be added only when those sections are implemented.
+- Exact V8 SDK source, version pin, checksum manifest, and update cadence are future work.
+- Exact V8 source-build workflow, GN args, and SDK packaging matrix are future work.
+- Exact V8 dynamic DLL copy/package rules are future work.
+- Exact final V8 library list is future work beyond the TASK 07.A minimal family checks.
 
 ## Cleanup candidates
 

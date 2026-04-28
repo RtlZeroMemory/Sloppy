@@ -26,7 +26,7 @@ This document covers:
 
 The foundation phase does not implement:
 
-- V8 integration;
+- V8 runtime integration;
 - HTTP or routing;
 - app module execution;
 - SQLite, PostgreSQL, or SQL Server;
@@ -38,6 +38,8 @@ The foundation phase does not implement:
 
 The repository is in foundation/spec/tooling phase. The placeholder `sloppy` and `sloppyc`
 CLIs exist only to prove toolchain wiring. They are not runtime or compiler implementations.
+TASK 07.A adds optional V8 SDK detection for future bridge work, but no V8 runtime code is
+implemented and normal builds do not require V8.
 
 ## Future Phase
 

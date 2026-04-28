@@ -56,6 +56,26 @@ Do not outsource:
 V8 is special and is not managed by vcpkg initially. It should be consumed as a verified SDK
 through Sloppy tooling so normal contributors do not need to build V8 from source.
 
+TASK 07.A adds the first phase-gated V8 SDK detection path. V8 remains optional for normal
+foundation builds and CI. V8 validation runs only when requested with
+`-DSLOPPY_ENABLE_V8=ON` or `-DSLOPPY_ENGINE=v8`. In that mode `SLOPPY_V8_ROOT` must point
+to a prebuilt SDK root with this minimal Windows layout:
+
+```text
+<SLOPPY_V8_ROOT>/
+  include/v8.h
+  include/libplatform/libplatform.h
+  lib/v8.lib or lib/v8_monolith*.lib
+  lib/v8_libplatform*.lib
+  lib/v8_libbase*.lib
+  bin/  # optional runtime DLLs for dynamic SDKs
+```
+
+CMake validates the headers, `lib/` directory, and the documented library families before
+creating the `Sloppy::V8` interface target. The exact V8 version, artifact source,
+checksum manifest, and source-build workflow are still deferred. CMake must not download
+V8 or hardcode machine-local SDK paths.
+
 SQLite may be consumed through vcpkg, a static build, or a bundled source strategy once the
 provider implementation phase begins. libpq may be a vcpkg/build dependency, but release
 packaging needs an explicit DLL strategy. SQL Server support depends on Microsoft ODBC
@@ -127,5 +147,6 @@ A dependency can be added when:
 ## Open Questions
 
 - Exact V8 SDK version pinning and update cadence.
+- Exact Sloppy V8 SDK prebuilt source, manifest, and checksum policy.
 - Exact sqlite packaging strategy.
 - Whether PostgreSQL libpq comes from vcpkg or provider package tooling.
