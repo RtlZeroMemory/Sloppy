@@ -75,9 +75,10 @@ Default foundation builds and CI do not require V8.
 ## Ownership/Lifetime Rules
 
 The noop engine is allocated from the caller-provided arena and owns no external resources.
-The V8 engine wrapper is arena-backed, while V8 isolate/context resources are bridge-owned
-and released by `sl_engine_destroy`. Callers must destroy an engine before resetting the
-arena that backs the opaque handle.
+The V8 engine wrapper is arena-backed only after V8 isolate/context creation succeeds, so
+failed creates do not consume caller arena capacity. V8 isolate/context resources are
+bridge-owned and released by `sl_engine_destroy`. Callers must destroy an engine before
+resetting the arena that backs the opaque handle.
 
 `sl_engine_call_function0` copies supported string results into the caller-provided result
 arena. Returned `SlStr` views remain valid until that arena is reset or its backing storage
@@ -94,8 +95,10 @@ The current ABI is not thread-safe. TASK 07.C creates and enters the isolate on 
 thread and documents the owner-thread rule, but does not enforce cross-thread entry yet.
 Owner-thread checks remain deferred until later bridge/event-loop tasks.
 
-V8 requires process-wide platform initialization. TASK 07.C keeps that state private to
-`src/engine/v8/`, reference-counted by live V8 engines, and hidden from the C runtime.
+V8 requires process-wide platform initialization. TASK 07.C initializes that state once,
+keeps it private to `src/engine/v8/`, and intentionally leaves it alive for process
+lifetime. Per-engine destroy releases isolates and contexts only. A future explicit runtime
+shutdown task owns any decision to call `v8::V8::Dispose()` / `DisposePlatform()`.
 
 Expected SDK layout:
 
@@ -134,7 +137,7 @@ Current checks:
   unsupported behavior, and invalid handler-call arguments.
 - `engine.v8.smoke` is registered only when V8 is enabled and covers classic script
   evaluation, global function call returning `sloppy-ok`, missing function failure, and
-  thrown function failure.
+  thrown function failure, and create/destroy/create lifecycle behavior.
 
 Later checks:
 

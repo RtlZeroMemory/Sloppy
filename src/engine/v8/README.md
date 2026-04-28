@@ -20,6 +20,9 @@ Rules:
 - Native handles exposed to JS must flow through resource IDs with generation checks.
 - No ESM/module resolver, Sloppy Plan handler execution, event loop, workers, inspector,
   snapshots, Node compatibility, or package-manager behavior belongs in TASK 07.C.
+- Process-wide V8 platform state is initialized once and intentionally kept alive for the
+  process lifetime until a future explicit runtime shutdown task decides disposal policy.
+- `sl_engine_destroy` releases per-engine isolate/context state only.
 
 Expected SDK layout:
 

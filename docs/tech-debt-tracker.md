@@ -46,6 +46,8 @@
 - Exact final V8 library list is future work beyond the TASK 07.A minimal family checks.
 - V8-backed `SlEngine` creation now exists only for the TASK 07.C smoke path; app bundle
   loading and handler-ID execution remain future work.
+- Explicit V8 process shutdown policy is future work; TASK 07.C keeps process-wide V8
+  platform state alive after first initialization and releases only per-engine isolates.
 - `SlEngine` owner-thread checks are future bridge/event-loop work.
 - Real `sl_engine_call_handler` execution and plan handler-ID mapping are future EPIC-08/09
   work.

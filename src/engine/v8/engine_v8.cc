@@ -13,8 +13,8 @@
  * - result strings are copied out of V8 before returning to C;
  * - the bridge is single-threaded by contract and does not implement workers or owner
  *   enforcement yet;
- * - V8's required process-wide platform state is reference-counted and private to this
- *   module.
+ * - V8's required process-wide platform state is initialized once, kept for process
+ *   lifetime, and private to this module until an explicit runtime shutdown task exists.
  *
  * Tests: tests/unit/engine/test_v8_smoke.c when SLOPPY_ENABLE_V8 is enabled.
  */
@@ -40,7 +40,7 @@ struct SlV8Engine
 
 std::mutex g_v8_platform_mutex;
 std::unique_ptr<v8::Platform> g_v8_platform;
-size_t g_v8_platform_refs = 0U;
+bool g_v8_platform_initialized = false;
 
 SlStr sl_v8_literal(const char* ptr, size_t length)
 {
@@ -185,7 +185,7 @@ SlStatus sl_v8_platform_acquire(void)
 {
     std::lock_guard<std::mutex> lock(g_v8_platform_mutex);
 
-    if (g_v8_platform_refs == 0U) {
+    if (!g_v8_platform_initialized) {
         v8::V8::InitializeICUDefaultLocation(nullptr);
         v8::V8::InitializeExternalStartupData(nullptr);
         g_v8_platform = v8::platform::NewDefaultPlatform();
@@ -195,26 +195,10 @@ SlStatus sl_v8_platform_acquire(void)
 
         v8::V8::InitializePlatform(g_v8_platform.get());
         v8::V8::Initialize();
+        g_v8_platform_initialized = true;
     }
 
-    g_v8_platform_refs += 1U;
     return sl_status_ok();
-}
-
-void sl_v8_platform_release(void)
-{
-    std::lock_guard<std::mutex> lock(g_v8_platform_mutex);
-
-    if (g_v8_platform_refs == 0U) {
-        return;
-    }
-
-    g_v8_platform_refs -= 1U;
-    if (g_v8_platform_refs == 0U) {
-        v8::V8::Dispose();
-        v8::V8::DisposePlatform();
-        g_v8_platform.reset();
-    }
 }
 
 SlV8Engine* sl_v8_backend(SlEngine* engine)
@@ -236,6 +220,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     SlEngine* engine = nullptr;
     SlV8Engine* backend = nullptr;
     SlStatus status;
+    SlArenaMark mark = {0};
 
     (void)options;
 
@@ -245,27 +230,21 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
 
     *out_engine = nullptr;
 
+    mark = sl_arena_mark(arena);
+
     status = sl_v8_platform_acquire();
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_arena_alloc(arena, sizeof(SlEngine), alignof(SlEngine), &engine_memory);
-    if (!sl_status_is_ok(status)) {
-        sl_v8_platform_release();
-        return status;
-    }
-
     backend = new (std::nothrow) SlV8Engine();
     if (backend == nullptr) {
-        sl_v8_platform_release();
         return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
 
     backend->allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (backend->allocator == nullptr) {
         delete backend;
-        sl_v8_platform_release();
         return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
 
@@ -275,7 +254,6 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     if (backend->isolate == nullptr) {
         delete backend->allocator;
         delete backend;
-        sl_v8_platform_release();
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
@@ -284,6 +262,20 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         v8::HandleScope handle_scope(backend->isolate);
         v8::Local<v8::Context> context = v8::Context::New(backend->isolate);
         backend->context.Reset(backend->isolate, context);
+    }
+
+    status = sl_arena_alloc(arena, sizeof(SlEngine), alignof(SlEngine), &engine_memory);
+    if (!sl_status_is_ok(status)) {
+        backend->context.Reset();
+        backend->isolate->Dispose();
+        delete backend->allocator;
+        delete backend;
+        SlStatus reset_status = sl_arena_reset_to(arena, mark);
+        if (!sl_status_is_ok(reset_status)) {
+            return reset_status;
+        }
+
+        return status;
     }
 
     engine = static_cast<SlEngine*>(engine_memory);
@@ -314,7 +306,6 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
 
         delete backend->allocator;
         delete backend;
-        sl_v8_platform_release();
     }
 }
 

@@ -171,6 +171,36 @@ static int test_throwing_function_fails_without_crash(void)
     return 0;
 }
 
+static int test_create_destroy_create_reuses_process_platform(void)
+{
+    unsigned char engine_storage[8192];
+    SlArena engine_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* first = NULL;
+    SlEngine* second = NULL;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0) {
+        return 30;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &first), SL_STATUS_OK) != 0 ||
+        first == NULL)
+    {
+        return 31;
+    }
+
+    sl_engine_destroy(first);
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &second), SL_STATUS_OK) != 0 ||
+        second == NULL)
+    {
+        return 32;
+    }
+
+    sl_engine_destroy(second);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -185,5 +215,10 @@ int main(void)
         return result;
     }
 
-    return test_throwing_function_fails_without_crash();
+    result = test_throwing_function_fails_without_crash();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_create_destroy_create_reuses_process_platform();
 }

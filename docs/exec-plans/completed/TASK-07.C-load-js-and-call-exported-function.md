@@ -54,11 +54,15 @@ See PR body for exact command outcomes.
 - Added `sl_engine_eval_source` and `sl_engine_call_function0` as smoke APIs rather than
   forcing handler IDs before TASK 08.
 - Used classic script/global function semantics only; ESM and module loading are deferred.
+- Kept process-wide V8 platform state alive for process lifetime; per-engine destroy
+  releases isolate/context resources only.
 
 ## Progress Log
 
 - Branch created from fresh `origin/main`.
 - ABI, bridge implementation, V8-gated test, docs, and debt notes updated.
+- Review fixes added for process-lifetime V8 platform state and failed-create arena
+  behavior.
 
 ## Risks
 
