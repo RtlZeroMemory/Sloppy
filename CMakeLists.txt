@@ -74,7 +74,12 @@ if(SLOPPY_ENABLE_V8)
     sloppy_require_v8_path("include/libplatform/libplatform.h" "include/libplatform/libplatform.h")
     sloppy_require_v8_path("lib" "lib directory")
 
-    file(GLOB SLOPPY_V8_CORE_LIBS CONFIGURE_DEPENDS "${SLOPPY_V8_ROOT}/lib/v8*.lib")
+    file(
+        GLOB
+        SLOPPY_V8_CORE_LIBS
+        CONFIGURE_DEPENDS
+        "${SLOPPY_V8_ROOT}/lib/v8.lib"
+        "${SLOPPY_V8_ROOT}/lib/v8_monolith*.lib")
     file(
         GLOB
         SLOPPY_V8_PLATFORM_LIBS
@@ -83,7 +88,10 @@ if(SLOPPY_ENABLE_V8)
     file(GLOB SLOPPY_V8_BASE_LIBS CONFIGURE_DEPENDS "${SLOPPY_V8_ROOT}/lib/v8_libbase*.lib")
 
     if(NOT SLOPPY_V8_CORE_LIBS)
-        message(FATAL_ERROR "V8 bridge: enabled but no v8*.lib files were found under ${SLOPPY_V8_ROOT}/lib.")
+        message(
+            FATAL_ERROR
+                "V8 bridge: enabled but no core V8 library was found under ${SLOPPY_V8_ROOT}/lib.\n"
+                "Expected v8.lib or v8_monolith*.lib; support libraries alone are not sufficient.")
     endif()
     if(NOT SLOPPY_V8_PLATFORM_LIBS)
         message(

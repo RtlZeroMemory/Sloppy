@@ -119,8 +119,13 @@ foundation builds require V8.
 - `.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root V:\Slop\missing-v8-sdk`: failed as
   expected with a missing SDK root diagnostic.
 - `.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root build\v8-fake-sdk`: passed.
+- `.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root build\v8-no-core-sdk`: failed as
+  expected with `lib/v8.lib or lib/v8_monolith*.lib` missing, proving platform/base
+  support libraries cannot satisfy the core V8 library check.
 - Isolated V8-enabled CMake configure with `SLOPPY_V8_ROOT=V:\Slop\missing-v8-sdk` failed
   as expected with `V8 bridge: enabled but SLOPPY_V8_ROOT is not a directory`.
+- Isolated V8-enabled CMake configure against `build\v8-no-core-sdk` failed as expected
+  with `V8 bridge: enabled but no core V8 library was found`.
 - Isolated V8-enabled CMake configure against a fake SDK layout under `build/` passed,
   proving the imported target wiring parses. An earlier attempt without importing the MSVC
   environment failed before project configure because the compiler could not link a test

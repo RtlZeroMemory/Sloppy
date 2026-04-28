@@ -65,7 +65,7 @@ to a prebuilt SDK root with this minimal Windows layout:
 <SLOPPY_V8_ROOT>/
   include/v8.h
   include/libplatform/libplatform.h
-  lib/v8*.lib
+  lib/v8.lib or lib/v8_monolith*.lib
   lib/v8_libplatform*.lib
   lib/v8_libbase*.lib
   bin/  # optional runtime DLLs for dynamic SDKs

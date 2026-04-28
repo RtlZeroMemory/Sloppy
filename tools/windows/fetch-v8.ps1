@@ -10,7 +10,7 @@ function Write-ExpectedLayout {
     Write-Host "Expected SLOPPY_V8_ROOT layout:"
     Write-Host "  include/v8.h"
     Write-Host "  include/libplatform/libplatform.h"
-    Write-Host "  lib/v8*.lib"
+    Write-Host "  lib/v8.lib or lib/v8_monolith*.lib"
     Write-Host "  lib/v8_libplatform*.lib"
     Write-Host "  lib/v8_libbase*.lib"
     Write-Host "  bin/  # optional runtime DLLs for dynamic SDKs"
@@ -46,8 +46,14 @@ function Test-V8SdkLayout {
         if (-not (Test-Path -LiteralPath $libDir -PathType Container)) {
             $missing.Add("lib/")
         } else {
+            $coreLibraries = @()
+            $coreLibraries += @(Get-ChildItem -LiteralPath $libDir -Filter "v8.lib" -File -ErrorAction SilentlyContinue)
+            $coreLibraries += @(Get-ChildItem -LiteralPath $libDir -Filter "v8_monolith*.lib" -File -ErrorAction SilentlyContinue)
+            if ($coreLibraries.Count -eq 0) {
+                $missing.Add("lib/v8.lib or lib/v8_monolith*.lib")
+            }
+
             $libraryPatterns = @(
-                "v8*.lib",
                 "v8_libplatform*.lib",
                 "v8_libbase*.lib"
             )
