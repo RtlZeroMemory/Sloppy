@@ -123,7 +123,7 @@ SlStatus status = sl_status_ok();
 
 resource = acquire();
 if (!resource) {
-    status = sl_status_make(SL_STATUS_OUT_OF_MEMORY, "...");
+    status = sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     goto cleanup;
 }
 

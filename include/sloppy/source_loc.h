@@ -19,7 +19,11 @@ typedef struct SlSourceLoc
     const char* function;
 } SlSourceLoc;
 
+#ifdef __cplusplus
+#define SL_SOURCE_LOC_CURRENT (SlSourceLoc{__FILE__, static_cast<unsigned int>(__LINE__), __func__})
+#else
 #define SL_SOURCE_LOC_CURRENT ((SlSourceLoc){__FILE__, (unsigned int)__LINE__, __func__})
+#endif
 #define SL_SOURCE_LOC SL_SOURCE_LOC_CURRENT
 
 SlSourceLoc sl_source_loc_unknown(void);

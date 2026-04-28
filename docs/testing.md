@@ -91,6 +91,7 @@ tests/unit/core/
   test_bytes.c
   test_checked_math.c
   test_assert.c
+  test_source_loc_cpp.cpp
 tests/unit/platform/
   test_platform_boundary_docs.c   # only if useful; scanner remains script-based
 tests/diagnostics/

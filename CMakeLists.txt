@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.25)
 
 project(Sloppy VERSION 0.0.0 LANGUAGES C)
 
+include(CheckLanguage)
+check_language(CXX)
+if(CMAKE_CXX_COMPILER)
+    enable_language(CXX)
+endif()
+
 set(SLOPPY_ENABLE_ASSERTS_DEFAULT ON)
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(SLOPPY_ENABLE_ASSERTS_DEFAULT OFF)
@@ -41,6 +47,17 @@ set(
     src/core/string.c
     src/core/bytes.c
     src/core/checked_math.c)
+
+set(
+    SLOPPY_C_LINT_SOURCES
+    src/main.c
+    ${SLOPPY_CORE_SOURCES}
+    tests/unit/core/test_status.c
+    tests/unit/core/test_source_loc.c
+    tests/unit/core/test_string.c
+    tests/unit/core/test_bytes.c
+    tests/unit/core/test_checked_math.c
+    tests/unit/core/test_assert.c)
 
 add_library(sloppy_core STATIC ${SLOPPY_CORE_SOURCES})
 target_include_directories(sloppy_core PUBLIC "${PROJECT_SOURCE_DIR}/include")
@@ -134,7 +151,12 @@ file(
     "${PROJECT_SOURCE_DIR}/src/*.h"
     "${PROJECT_SOURCE_DIR}/src/*.cc"
     "${PROJECT_SOURCE_DIR}/src/*.cpp"
-    "${PROJECT_SOURCE_DIR}/src/*.hpp")
+    "${PROJECT_SOURCE_DIR}/src/*.hpp"
+    "${PROJECT_SOURCE_DIR}/tests/*.c"
+    "${PROJECT_SOURCE_DIR}/tests/*.h"
+    "${PROJECT_SOURCE_DIR}/tests/*.cc"
+    "${PROJECT_SOURCE_DIR}/tests/*.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/*.hpp")
 
 if(CLANG_FORMAT_EXECUTABLE)
     add_custom_target(
@@ -152,16 +174,11 @@ else()
 endif()
 
 if(CLANG_TIDY_EXECUTABLE)
+    list(TRANSFORM SLOPPY_C_LINT_SOURCES PREPEND "${PROJECT_SOURCE_DIR}/")
     add_custom_target(
         sloppy_clang_tidy
-        COMMAND
-            "${CLANG_TIDY_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/src/main.c"
-            "${PROJECT_SOURCE_DIR}/src/core/status.c"
-            "${PROJECT_SOURCE_DIR}/src/core/source_loc.c"
-            "${PROJECT_SOURCE_DIR}/src/core/string.c"
-            "${PROJECT_SOURCE_DIR}/src/core/bytes.c"
-            "${PROJECT_SOURCE_DIR}/src/core/checked_math.c" -p "${CMAKE_BINARY_DIR}"
-            "--warnings-as-errors=*"
+        COMMAND "${CLANG_TIDY_EXECUTABLE}" ${SLOPPY_C_LINT_SOURCES} -p "${CMAKE_BINARY_DIR}"
+                "--warnings-as-errors=*"
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
         COMMENT "Running clang-tidy"
         VERBATIM)
@@ -194,6 +211,14 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
     sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
+
+    if(CMAKE_CXX_COMPILER)
+        add_executable(core_source_loc_cpp_syntax tests/unit/core/test_source_loc_cpp.cpp)
+        target_include_directories(
+            core_source_loc_cpp_syntax PRIVATE "${PROJECT_SOURCE_DIR}/include")
+        target_compile_features(core_source_loc_cpp_syntax PRIVATE cxx_std_17)
+        add_test(NAME core.source_loc.cpp_syntax COMMAND core_source_loc_cpp_syntax)
+    endif()
 
     add_test(NAME sloppy.cli.version COMMAND sloppy --version)
     set_tests_properties(sloppy.cli.version PROPERTIES PASS_REGULAR_EXPRESSION "Sloppy")

@@ -440,7 +440,7 @@ SlStatus sl_example_make(SlThing **out) {
 
     thing = sl_alloc_thing();
     if (thing == NULL) {
-        status = sl_status_make(SL_STATUS_OUT_OF_MEMORY);
+        status = sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
         goto cleanup;
     }
 

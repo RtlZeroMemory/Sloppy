@@ -95,7 +95,8 @@ function Invoke-FormatCheck {
     if ($null -ne $clangFormat) {
         $paths = @(
             (Join-Path $Root "include"),
-            (Join-Path $Root "src")
+            (Join-Path $Root "src"),
+            (Join-Path $Root "tests")
         )
 
         $files = Get-ChildItem -Path $paths -Recurse -File |
@@ -229,12 +230,23 @@ function Invoke-Lint {
 
             Write-Warning "$message Skipping local C/C++ lint."
         } else {
-            Invoke-Native $clangTidy @(
-                (Join-Path $Root "src/main.c"),
-                "-p",
-                $BuildDir,
-                "--warnings-as-errors=*"
+            $lintFiles = @(
+                (Join-Path $Root "src/main.c")
             )
+
+            $lintFiles += Get-ChildItem -Path (Join-Path $Root "src/core") -Filter "*.c" -File |
+                Select-Object -ExpandProperty FullName
+
+            $testCorePath = Join-Path $Root "tests/unit/core"
+            if (Test-Path -LiteralPath $testCorePath) {
+                $lintFiles += Get-ChildItem -Path $testCorePath -Filter "*.c" -File |
+                    Select-Object -ExpandProperty FullName
+            }
+
+            $args = @()
+            $args += $lintFiles
+            $args += @("-p", $BuildDir, "--warnings-as-errors=*")
+            Invoke-Native $clangTidy $args
         }
     }
 
