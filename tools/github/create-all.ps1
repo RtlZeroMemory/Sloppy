@@ -5,18 +5,22 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$applyArgs = @()
-if ($Apply) { $applyArgs += "-Apply" }
-$forceArgs = @()
-if ($ForceLabels) { $forceArgs += "-Force" }
+$commonParams = @{
+    Repo = $Repo
+}
+if ($Apply) { $commonParams.Apply = $true }
+
+$labelParams = @{}
+foreach ($key in $commonParams.Keys) { $labelParams[$key] = $commonParams[$key] }
+if ($ForceLabels) { $labelParams.Force = $true }
 
 & (Join-Path $PSScriptRoot "validate-issue-data.ps1")
 if (-not $?) {
     throw "GitHub issue metadata validation failed. No GitHub data was changed."
 }
 
-& (Join-Path $PSScriptRoot "create-labels.ps1") -Repo $Repo @applyArgs @forceArgs
-& (Join-Path $PSScriptRoot "create-milestones.ps1") -Repo $Repo @applyArgs
-& (Join-Path $PSScriptRoot "create-issues.ps1") -Repo $Repo @applyArgs
+& (Join-Path $PSScriptRoot "create-labels.ps1") @labelParams
+& (Join-Path $PSScriptRoot "create-milestones.ps1") @commonParams
+& (Join-Path $PSScriptRoot "create-issues.ps1") @commonParams
 
 if (-not $Apply) { Write-Host "Dry run complete. Pass -Apply to mutate GitHub." }
