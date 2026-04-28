@@ -405,6 +405,9 @@ SlStr sl_diag_code_name(SlDiagCode code)
                                sizeof("SLOPPY_E_DUPLICATE_HANDLER_ID") - 1U);
     case SL_DIAG_MALFORMED_JSON:
         return sl_diag_literal("SLOPPY_E_MALFORMED_JSON", sizeof("SLOPPY_E_MALFORMED_JSON") - 1U);
+    case SL_DIAG_UNSUPPORTED_ENGINE:
+        return sl_diag_literal("SLOPPY_E_UNSUPPORTED_ENGINE",
+                               sizeof("SLOPPY_E_UNSUPPORTED_ENGINE") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

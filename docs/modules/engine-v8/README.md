@@ -2,8 +2,8 @@
 
 ## Status
 
-SDK detection implemented for TASK 07.A. Runtime bridge code is still planned / not
-implemented yet.
+SDK detection implemented for TASK 07.A. TASK 07.B adds the engine-neutral C ABI and noop
+engine stub. Runtime V8 bridge code is still planned / not implemented yet.
 
 ## Purpose
 
@@ -17,10 +17,16 @@ Implemented now:
 - `SLOPPY_V8_ROOT` cache path;
 - imported `Sloppy::V8` interface target after SDK validation succeeds;
 - Windows helper validation through `tools/windows/fetch-v8.ps1 -ValidateOnly`.
+- `include/sloppy/engine.h` with opaque `SlEngine`;
+- `SlEngineOptions`, `SlEngineInfo`, and explicit engine kind values;
+- create/destroy/info lifecycle shape;
+- `SlEngineHandlerCall`, `SlEngineResult`, and `sl_engine_call_handler`;
+- noop engine creation for `SL_ENGINE_KIND_NONE`;
+- deterministic unsupported behavior for V8 creation and noop handler calls.
 
 Later scope:
 
-- bridge ABI;
+- V8-backed bridge implementation behind the existing ABI;
 - isolate/context lifecycle;
 - handler calls;
 - exceptions;
@@ -29,12 +35,24 @@ Later scope:
 ## Non-goals
 
 No HTTP, compiler extraction, public JS API bootstrap, V8 initialization, isolate/context
-creation, module loading, handler execution, or JavaScript execution in TASK 07.A.
+creation, module loading, handler execution, or JavaScript execution in the current
+TASK 07.A/07.B implementation state.
 
 ## Public/Internal API
 
-Runtime-visible APIs must be C-shaped and engine-neutral. V8 implementation details stay
-under `src/engine/v8/`.
+Runtime-visible APIs are C-shaped and engine-neutral through `include/sloppy/engine.h`.
+`SlEngine` is opaque to callers. Public structs use Sloppy primitives (`SlStatus`,
+`SlDiag`, `SlStr`, `SlArena`, and `SlHandlerId`) and do not expose C++ or V8 types. V8
+implementation details stay under `src/engine/v8/`.
+
+Current behavior:
+
+- `SL_ENGINE_KIND_NONE` creates an arena-backed noop engine;
+- `sl_engine_destroy(NULL)` is allowed;
+- `sl_engine_info` returns stable noop metadata for active noop engines;
+- `SL_ENGINE_KIND_V8` returns `SL_STATUS_UNSUPPORTED` until real bridge work lands;
+- `sl_engine_call_handler` exists as the future handler dispatch shape but returns
+  `SL_STATUS_UNSUPPORTED` for the noop engine and can emit `SL_DIAG_UNSUPPORTED_ENGINE`.
 
 Build options:
 
@@ -47,13 +65,18 @@ Default foundation builds and CI do not require V8.
 
 ## Ownership/Lifetime Rules
 
-V8 handles are bridge-owned. JS never receives raw native pointers.
+The noop engine is allocated from the caller-provided arena and owns no external resources.
+Callers must destroy it before resetting that arena. Future V8 handles are bridge-owned. JS
+never receives raw native pointers.
 
 ## Invariants
 
 One V8 isolate has one owning JS thread.
 
 V8 headers and `v8::*` types may appear only below `src/engine/v8/`.
+
+The current ABI is not thread-safe. Owner-thread enforcement is documented at the boundary
+and remains deferred until later bridge tasks.
 
 Expected SDK layout:
 
@@ -72,7 +95,9 @@ deferred.
 
 ## Diagnostics
 
-Bridge initialization, thrown exception, rejected promise, and handler mismatch diagnostics.
+Current engine diagnostics include `SLOPPY_E_UNSUPPORTED_ENGINE` for unsupported noop
+handler execution. Future bridge diagnostics cover initialization, thrown exception,
+rejected promise, and handler mismatch failures.
 
 ## Tests
 
@@ -84,6 +109,8 @@ Current checks:
 - `tools/windows/fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>` reports missing layout
   pieces;
 - C standards scanner rejects V8 headers and `v8::` references outside `src/engine/v8/`.
+- `core.engine.abi` covers noop create/info/destroy, invalid options, V8 unsupported
+  creation, noop handler-call unsupported behavior, and invalid handler-call arguments.
 
 Later checks:
 

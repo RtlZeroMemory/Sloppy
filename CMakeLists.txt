@@ -129,7 +129,8 @@ set(
     src/core/scope.c
     src/core/plan.c
     src/core/plan_parse.c
-    src/core/diagnostics.c)
+    src/core/diagnostics.c
+    src/engine/engine.c)
 
 set(
     SLOPPY_C_LINT_SOURCES
@@ -144,6 +145,7 @@ set(
     tests/unit/core/test_scope.c
     tests/unit/core/test_plan.c
     tests/unit/core/test_plan_parse.c
+    tests/unit/core/test_engine.c
     tests/unit/core/test_diagnostics.c
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c)
@@ -308,6 +310,7 @@ if(SLOPPY_ENABLE_TESTS)
         core_plan_parse_json core.plan.parse_json tests/unit/core/test_plan_parse.c)
     set_tests_properties(
         core.plan.parse_json PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(core_engine_abi core.engine.abi tests/unit/core/test_engine.c)
     sloppy_add_c_unit_test(
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
     set_tests_properties(

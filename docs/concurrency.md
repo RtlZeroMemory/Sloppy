@@ -104,6 +104,11 @@ runtime. Native worker pool threads must not call JS handlers. Cross-thread comm
 uses runtime queues/completion messages. Future workers use separate isolates. Any
 exception must be owned and reported on the JS thread/engine bridge.
 
+The current `SlEngine` ABI is not thread-safe. TASK 07.B documents the future owner-thread
+rule at the C boundary but does not create threads, enforce owner identity, initialize a V8
+isolate, or provide cross-thread queues. Those checks land with later V8 bridge and event
+loop tasks.
+
 ## Request Lifecycle With Async Handler
 
 1. Socket receives bytes.

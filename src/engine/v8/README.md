@@ -2,8 +2,9 @@
 
 This directory is reserved for the isolated C++ V8 bridge.
 
-TASK 07.A adds only SDK detection and build-option plumbing. It does not initialize V8,
-include V8 headers, call V8 APIs, load JavaScript, or expose a runtime bridge.
+TASK 07.A adds only SDK detection and build-option plumbing. TASK 07.B adds the
+engine-neutral C ABI outside this directory plus a noop engine stub. It does not initialize
+V8, include V8 headers, call V8 APIs, load JavaScript, or execute handlers.
 
 Rules:
 

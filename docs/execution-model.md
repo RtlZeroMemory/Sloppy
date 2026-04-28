@@ -37,7 +37,10 @@ This document does not implement:
 
 ## Current Phase
 
-Only placeholder CLIs exist. The execution model is specified but not implemented.
+Only placeholder CLIs exist. The execution model is specified but not implemented. The
+engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call shapes,
+but the only implemented backend is a noop engine. Handler calls return unsupported until
+the V8 bridge execution tasks land.
 
 ## Future Phase
 
@@ -75,6 +78,7 @@ TypeScript source
   -> sloppy runtime loads app.plan.json
   -> runtime validates plan compatibility
   -> runtime builds native host graph
+  -> runtime creates an opaque SlEngine through include/sloppy/engine.h
   -> V8 bridge loads app.js
   -> JS startup registers handler functions
   -> runtime dispatches requests/jobs to handlers by numeric handler ID
@@ -246,6 +250,11 @@ Before HTTP exists, the synthetic execution flow is:
 5. call handler ID directly;
 6. assert result descriptor;
 7. cleanup scope/resources.
+
+The C-side handler-call ABI for this future path is already shaped as
+`sl_engine_call_handler(SlEngine*, SlEngineHandlerCall*, SlEngineResult*, SlDiag*)`.
+TASK 07.B deliberately implements that entry point as unsupported for the noop engine; it
+does not load modules, invoke exports, convert JavaScript values, or run `app.js`.
 
 ## Async And Promise Lifecycle
 
