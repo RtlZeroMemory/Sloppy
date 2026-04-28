@@ -10,7 +10,7 @@ ready.
 | C standards | Yellow | Standards exist and scanner begins enforcement. | Add fixtures and tighten allocator rules after allocator modules land. |
 | Platform isolation | Yellow | Scanner and docs exist. | Add scanner self-tests and future Unix CI. |
 | Build tooling | Yellow | Windows workflow and CI skeleton exist. | Add more script tests and Unix presets later. |
-| Testing | Yellow | Smoke and structural checks exist. | Add C unit framework and golden/snapshot harnesses. |
+| Testing | Yellow | Smoke, structural checks, and initial core C unit tests exist. | Add richer C test reporting if needed and golden/snapshot harnesses. |
 | Testing intent model | Yellow | Strategy now defines tests-as-documented-intent. | Require implementation PRs to tie tests to source docs and add reviewer enforcement. |
 | User-facing docs | Yellow | Planned public docs skeleton exists and marks examples as not implemented. | Fill pages as public features land and add example tests. |
 | Module docs | Yellow | Module README skeletons exist with required headings. | Keep module docs updated with implemented behavior and strengthen freshness checks. |

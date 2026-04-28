@@ -1,12 +1,14 @@
 # Unit Tests
 
-Planned C unit tests live here. munit is the expected C test framework, but it is not
-vendored during the foundation phase.
+C unit tests live here and run through CTest.
+
+The initial core tests are dependency-free C executables that return nonzero on failure.
+munit remains a possible future framework if richer C test reporting becomes worthwhile.
 
 Early targets:
 
-- status and diagnostics primitives;
-- string and buffer primitives;
+- status and core primitives;
+- string, byte, and buffer primitives;
 - allocator behavior;
 - resource table lifetime rules;
 - platform helpers.
