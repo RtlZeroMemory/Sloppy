@@ -28,7 +28,6 @@ This document covers:
 
 The foundation phase does not implement:
 
-- diagnostic formatter;
 - source map parser;
 - JSON diagnostic output;
 - localization;
@@ -36,7 +35,18 @@ The foundation phase does not implement:
 
 ## Current Phase
 
-Only the `SlStatus` placeholder exists. Diagnostics are specified but not implemented.
+TASK 04.A implements the first diagnostic core:
+
+- severity enum;
+- small enum-backed diagnostic code model with stable string names;
+- user/app source spans with 1-based line and column when present;
+- bounded related spans and hints;
+- arena-copying diagnostic builder;
+- deterministic plain-text renderer;
+- synthetic golden/snapshot tests.
+
+This is not the final diagnostics system. The text format is a foundation test contract,
+not a released CLI output contract.
 
 ## Future Phase
 
@@ -46,38 +56,32 @@ hard-to-debug failures.
 
 ## Data Model
 
-Planned diagnostic fields:
+Implemented foundation fields:
 
-- stable code, such as `SLP_SERVICE_MISSING`;
+- stable code, such as `SLOPPY_E_MISSING_SERVICE`;
 - severity;
-- short title;
 - primary message;
-- primary source location;
+- optional primary source span;
 - related locations;
-- code frame;
 - hint;
-- suggested fix;
-- subsystem;
-- machine-readable metadata;
-- redaction classification.
+- placeholder redacted text when the caller knows a value is secret.
 
-Conceptual C shape, not final ABI:
+Deferred fields include title, code frames, structured fixes, subsystem, metadata, JSON,
+and redaction classification.
+
+Implemented C shape, simplified:
 
 ```c
-typedef enum SlDiagnosticSeverity {
-    SL_DIAGNOSTIC_NOTE,
-    SL_DIAGNOSTIC_WARNING,
-    SL_DIAGNOSTIC_ERROR,
-    SL_DIAGNOSTIC_FATAL
-} SlDiagnosticSeverity;
-
-typedef struct SlDiagnostic {
-    SlStr code;
-    SlDiagnosticSeverity severity;
+typedef struct SlDiag {
+    SlDiagSeverity severity;
+    SlDiagCode code;
     SlStr message;
-    SlSourceLoc primary;
-    /* related locations, notes, hints, and metadata come later */
-} SlDiagnostic;
+    SlSourceSpan primary_span;
+    SlDiagRelated related[SL_DIAG_MAX_RELATED];
+    size_t related_count;
+    SlStr hints[SL_DIAG_MAX_HINTS];
+    size_t hint_count;
+} SlDiag;
 ```
 
 ## Severity Levels
@@ -92,8 +96,24 @@ Warnings must not be used to hide correctness failures.
 
 ## Stable Codes
 
-Diagnostic codes are public tooling contracts. Once released, changing a code requires an
-ADR or documented migration.
+Diagnostic codes are public tooling contracts once released. Before public CLI/API release,
+TASK 04.A uses a small enum plus string mapping to avoid free-form strings spreading
+through the C core.
+
+Implemented foundation codes:
+
+- `SLOPPY_E_INVALID_ARGUMENT`;
+- `SLOPPY_E_OUT_OF_MEMORY`;
+- `SLOPPY_E_OVERFLOW`;
+- `SLOPPY_E_INVALID_PLAN_VERSION`;
+- `SLOPPY_E_MISSING_SERVICE`;
+- `SLOPPY_E_PERMISSION_DENIED`;
+- `SLOPPY_E_INTERNAL`.
+
+`SLOPPY_NONE` is available for no-diagnostic cases and `SLOPPY_E_UNKNOWN` is returned for
+unknown enum values.
+
+Once released, changing a code requires an ADR or documented migration.
 
 Code families should be grouped by subsystem:
 
@@ -109,7 +129,7 @@ Code families should be grouped by subsystem:
 
 ## Source Locations And Code Frames
 
-Source locations may refer to:
+Source spans may refer to:
 
 - TypeScript source;
 - generated JavaScript;
@@ -118,14 +138,20 @@ Source locations may refer to:
 - environment variables by key;
 - platform/tooling paths.
 
-When generated artifacts are involved, diagnostics should prefer original TypeScript source
-via source maps and include generated locations as secondary details.
+`SlSourceSpan` is a borrowed source/file name plus optional 1-based line, 1-based column,
+and optional length. It is distinct from `SlSourceLoc`, which describes C source call
+sites.
 
-Code frames should be concise and deterministic for snapshot tests.
+When generated artifacts are involved later, diagnostics should prefer original TypeScript
+source via source maps and include generated locations as secondary details.
+
+Code frames should be concise and deterministic for snapshot tests. Code frames are
+deferred; TASK 04.A renders only `path:line:column` and optional length.
 
 ## Related Spans
 
-Related spans are required for diagnostics that involve relationships:
+Related spans are bounded to `SL_DIAG_MAX_RELATED` in TASK 04.A and are required for
+diagnostics that involve relationships:
 
 - duplicate route: first declaration and duplicate declaration;
 - module cycle: every module edge in cycle;
@@ -134,7 +160,8 @@ Related spans are required for diagnostics that involve relationships:
 
 ## Hints And Fixes
 
-A hint explains direction. A fix shows concrete code or command when safe.
+Hints are bounded to `SL_DIAG_MAX_HINTS` in TASK 04.A. A hint explains direction. A future
+structured fix shows concrete code or command when safe.
 
 Rules:
 
@@ -369,11 +396,14 @@ Diagnostic tests must include:
 - snapshot text output;
 - stable code verification;
 - severity verification;
-- source location and code frame rendering;
+- source span rendering;
 - related spans;
 - JSON output later;
 - redaction behavior;
 - source map fallback behavior.
+
+TASK 04.A implements snapshot text, stable code, severity, source span, related span, hint,
+and placeholder redaction tests. JSON, source maps, and code frames remain deferred.
 
 ## Quality Gates
 
@@ -384,11 +414,12 @@ Diagnostic tests must include:
 
 ## Development Tasks
 
-1. Define diagnostic code naming policy.
-2. Add `SlSourceLoc` and diagnostic structs.
-3. Add formatter for plain text output.
-4. Add snapshot harness.
-5. Add examples from this document as fixtures.
+1. Define diagnostic code naming policy. Done for the foundation enum/string mapping.
+2. Add user/app source span and diagnostic structs. Done as `SlSourceSpan` and `SlDiag`.
+3. Add formatter for plain text output. Done for deterministic foundation text.
+4. Add snapshot harness. Done with CTest fixture comparisons.
+5. Add examples from this document as fixtures. Started with missing service and invalid
+   plan version.
 6. Add JSON output only after plain text stabilizes.
 7. Add source map mapping after compiler artifacts exist.
 

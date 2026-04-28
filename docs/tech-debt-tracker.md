@@ -20,6 +20,13 @@
 - Public docs example test runner is future.
 - Golden update workflow is future.
 - Docs link checker is future.
+- Diagnostics JSON output is future.
+- Diagnostics source-frame rendering is future.
+- Diagnostics source-map integration is future.
+- Diagnostics localization is future.
+- Diagnostics structured fixes/metadata are future.
+- Diagnostics redaction policy is future; TASK 04.A only provides an explicit
+  `<redacted>` placeholder helper.
 
 ## Cleanup candidates
 
@@ -53,6 +60,7 @@
 - Docs drift checks for roadmap/source-doc links.
 - Public docs example tests once public API exists.
 - Golden update intent check once golden harnesses exist.
+- Diagnostic snapshot update intent check once more diagnostic fixtures exist.
 - Complexity warnings for one-call-site abstractions and high nesting if a reliable scanner
   becomes practical.
 

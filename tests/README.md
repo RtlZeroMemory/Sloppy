@@ -2,8 +2,9 @@
 
 This directory is the home for Sloppy's test suites.
 
-No runtime feature tests exist yet because the repository is in the foundation phase. The
-initial CMake test gate only verifies that the placeholder `sloppy` CLI runs.
+No runtime feature tests exist yet because the repository is in the foundation phase. CMake
+now registers placeholder CLI smoke tests plus focused C unit tests for core primitives and
+diagnostics foundation behavior.
 
 Future suites:
 

@@ -1,0 +1,9 @@
+error SLOPPY_E_MISSING_SERVICE: service not registered
+
+  at src/users.ts:12:7
+
+  related:
+    src/app.ts:4:1: service registration happens here
+
+  help:
+    Register service "data.main" before building the app.

@@ -1,0 +1,6 @@
+error SLOPPY_E_INVALID_PLAN_VERSION: app.plan.json schema version is not supported
+
+  at app.plan.json:1:1
+
+  help:
+    Rebuild the app with a compatible sloppyc version.

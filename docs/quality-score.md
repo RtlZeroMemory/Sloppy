@@ -16,7 +16,7 @@ ready.
 | Module docs | Yellow | Module README skeletons exist with required headings. | Keep module docs updated with implemented behavior and strengthen freshness checks. |
 | Simplicity / anti-overengineering | Yellow | C standards and review playbook now define anti-overengineering rules; warning scanner is informational. | Enforce through reviews, add examples as patterns appear, and promote reliable checks. |
 | Comment quality / code rationale | Yellow | C standards and review playbook now require useful rationale, ownership, lifetime, and invariant comments without AI-noise. | Enforce through reviews, add examples from repeated findings, and consider lightweight warning scans later. |
-| Diagnostics | Yellow | Specs exist, implementation is future. | Implement diagnostic primitives and golden tests. |
+| Diagnostics | Yellow | Initial severity, code, source span, builder, text renderer, and snapshot fixtures exist. | Add source frames, JSON output, source maps, and redaction policy when their phases start. |
 | Developer ergonomics | Yellow | Product API direction is documented. | Validate with compiler/runtime fixtures later. |
 | Modularity | Yellow | Module architecture is documented. | Add plan/module extraction tests in later phases. |
 | Data providers | Yellow | Provider model is documented. | Add provider tasks/tests when provider phases begin. |

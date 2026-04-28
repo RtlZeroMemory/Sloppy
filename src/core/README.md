@@ -10,6 +10,8 @@ Implemented TASK 02.A primitives:
 - checked `size_t` add/multiply helpers;
 - internal assertion macros;
 - caller-backed `SlArena` allocation, mark/reset, and high-water stats.
+- TASK 04.A diagnostic severity/code model, source spans, bounded related spans/hints,
+  arena-copying builder, and deterministic text renderer.
 
 No app-host runtime feature code exists here yet. Add modules only after their ownership,
 tests, diagnostics, and public headers are specified.
