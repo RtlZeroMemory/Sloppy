@@ -8,7 +8,8 @@ Implemented TASK 02.A primitives:
 - `SlSourceLoc`;
 - borrowed `SlStr` and `SlBytes` views;
 - checked `size_t` add/multiply helpers;
-- internal assertion macros.
+- internal assertion macros;
+- caller-backed `SlArena` allocation, mark/reset, and high-water stats.
 
 No app-host runtime feature code exists here yet. Add modules only after their ownership,
 tests, diagnostics, and public headers are specified.

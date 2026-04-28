@@ -20,14 +20,14 @@
 #define SL_ASSERT(expr)                                                                            \
     do {                                                                                           \
         if (!(expr)) {                                                                             \
-            abort();                                                                               \
+            exit(EXIT_FAILURE);                                                                    \
         }                                                                                          \
     } while (0)
 #define SL_ASSERT_MSG(expr, msg)                                                                   \
     do {                                                                                           \
         if (!(expr)) {                                                                             \
             (void)(msg);                                                                           \
-            abort();                                                                               \
+            exit(EXIT_FAILURE);                                                                    \
         }                                                                                          \
     } while (0)
 #define SL_UNREACHABLE() SL_ASSERT_MSG(0, "unreachable")

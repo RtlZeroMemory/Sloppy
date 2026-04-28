@@ -30,8 +30,9 @@ This document does not implement allocators, arenas, resource tables, or JS bind
 ## Current Phase
 
 The core foundation now implements `SlStatus`, `SlSourceLoc`, borrowed `SlStr`, borrowed
-`SlBytes`, checked `size_t` arithmetic, and assertion macros. `SlBuf`, string builders,
-arenas, allocator modules, and resource primitives are not implemented yet.
+`SlBytes`, checked `size_t` arithmetic, assertion macros, and a caller-backed `SlArena`.
+`SlBuf`, string builders, allocator modules, and resource primitives are not implemented
+yet.
 
 ## Future Phase
 
@@ -87,6 +88,22 @@ Planned arenas:
 
 Arenas are deliberate, not universal. Independently closed resources must not be stored only
 in arenas.
+
+Implemented TASK 03.A arena behavior:
+
+- `SlArena` is initialized over caller-provided memory and never owns or frees that memory;
+- zero-capacity arenas are valid but cannot allocate;
+- allocations require nonzero size and nonzero power-of-two alignment;
+- zero-size allocations fail with `SL_STATUS_INVALID_ARGUMENT`;
+- allocation checks alignment padding, size addition, and final offsets with checked
+  arithmetic;
+- marks capture the current offset and can reset allocations above that mark;
+- full reset returns used bytes to zero and preserves high-water statistics;
+- marks carry a generation counter and marks captured before a full reset are rejected in
+  all builds;
+- assert-enabled builds poison allocated and reset memory ranges with simple byte patterns;
+- arenas are not thread-safe unless externally synchronized;
+- arena-backed data must not cross async boundaries unless the arena outlives the operation.
 
 ## Ownership Rules
 
@@ -232,9 +249,9 @@ Each primitive needs tests:
 - Add checked math helpers. Done for `size_t` add/multiply in TASK 02.A.
 - Add `SlStr` and tests. Done for borrowed views in TASK 02.A.
 - Add `SlBytes` and tests. Done for borrowed views in TASK 02.A.
+- Add arena skeleton. Done as a caller-backed `SlArena` in TASK 03.A.
 - Add `SlBuf` and tests.
 - Add allocator interface with a default bootstrap allocator.
-- Add arena skeleton.
 - Add debug allocation tags.
 - Add resource ID layout proposal before resource table implementation.
 
