@@ -105,6 +105,7 @@ tests/unit/core/
   test_arena.c
   test_scope.c
   test_loop.c
+  test_async.c
   test_plan.c
   test_plan_parse.c
   test_diagnostics.c
