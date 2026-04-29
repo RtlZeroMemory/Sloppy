@@ -103,15 +103,18 @@ The compiler extraction MVP extracts:
 - literal `app.mapGet(pattern, handler)` routes;
 - simple `const group = app.mapGroup(prefix)` followed by `group.mapGet(child, handler)`;
 - optional `.withName("Route.Name")` route names;
-- handlers that are inline function/arrow expressions returning `Results.text(...)` or
-  `Results.json(...)`;
+- zero-argument handlers that are inline function/arrow expressions returning
+  `Results.text(...)` or `Results.json(...)`;
+- result arguments that are inline JSON-safe literals, arrays, or object literals;
 - source ranges for copied handler bodies.
 
 Extraction must be deterministic. Import order must not silently decide module ordering.
 
 Unsupported input fails with diagnostics. The MVP rejects dynamic route strings, computed
 method names, multiple app objects, missing default export, unsupported handler shapes,
-dynamic imports, package resolution, broad module graphs, and top-level control flow.
+handlers with parameters, handlers that close over source-file bindings, TypeScript input
+or TypeScript-only handler syntax, dynamic imports, package resolution, broad module
+graphs, and top-level control flow.
 
 ## Static Mode
 
@@ -132,9 +135,10 @@ Dynamic behavior must not silently weaken static plan guarantees.
 
 ## Official TypeScript Checking
 
-Oxc handles parsing/transform/extraction. Official type checking through `tsgo` or `tsc` is
-planned later. Sloppy should not claim TypeScript type compatibility from its extractor
-alone.
+The compiler extraction MVP is JavaScript-input-only. Oxc is used for parsing and narrow
+AST extraction, but the MVP does not lower TypeScript syntax into generated JavaScript.
+Official type checking through `tsgo` or `tsc` is planned later. Sloppy should not claim
+TypeScript type compatibility from its extractor alone.
 
 ## Source Map Requirements
 
@@ -272,7 +276,7 @@ Golden files are public contract tests. Updating them requires review.
 
 ### Phase A: Placeholder
 
-Current state. CLI help/version and unit tests only.
+Historical bootstrap phase. CLI help/version and unit tests only.
 
 Acceptance:
 

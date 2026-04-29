@@ -4,8 +4,16 @@ Status: compiler extraction MVP input.
 
 This example is the first Sloppy source shape that `sloppyc build` can compile:
 
+From the repository root:
+
 ```powershell
 cargo run --manifest-path compiler/Cargo.toml -- build examples/compiler-hello/app.js --out .sloppy
+```
+
+From this example directory:
+
+```powershell
+cargo run --manifest-path ..\..\compiler\Cargo.toml -- build app.js --out .sloppy
 ```
 
 The command emits:

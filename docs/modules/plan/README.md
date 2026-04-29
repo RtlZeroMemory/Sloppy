@@ -37,12 +37,10 @@ Future scope:
 
 ## Non-goals
 
-No file I/O, route model, service model, module model, data provider model,
-permission/capability model, source map parser, hash verification, HTTP, V8 execution,
-native route table construction, service model, module model, data provider model,
-permission/capability model, source map parser, hash verification, HTTP, V8 execution,
-JSON serialization inside the C runtime, streaming parser, schema framework, plugin
-validator, or package-manager behavior.
+No file I/O, native route table construction, service model, module model, data provider
+model, permission/capability model, source map parser, hash verification, HTTP, V8
+execution, JSON serialization inside the C runtime, streaming parser, schema framework,
+plugin validator, or package-manager behavior.
 
 TASK 14 exposes bootstrap module debug metadata through `app.__debug().modules`, but this
 is not parsed by the native plan loader and is not emitted as `app.plan.json`.

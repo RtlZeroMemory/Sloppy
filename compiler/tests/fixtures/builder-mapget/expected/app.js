@@ -5,7 +5,8 @@ const Results = Object.freeze({
   },
   json(value, options) {
     void options;
-    return JSON.stringify(value);
+    const encoded = JSON.stringify(value);
+    return encoded === undefined ? String(value) : encoded;
   },
 });
 

@@ -7,8 +7,9 @@ use std::{
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, BindingPattern, CallExpression, Expression, ExpressionStatement,
-    ImportDeclarationSpecifier, Statement,
+    Argument, ArrayExpressionElement, BindingPattern, CallExpression, Expression,
+    ExpressionStatement, ImportDeclarationSpecifier, ObjectPropertyKind, PropertyKey, PropertyKind,
+    Statement,
 };
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
@@ -116,6 +117,7 @@ struct ExtractedApp {
 struct AppState {
     sloppy_imported: bool,
     results_imported: bool,
+    unsupported_import_alias: bool,
     app_vars: BTreeSet<String>,
     builder_vars: BTreeSet<String>,
     group_vars: BTreeMap<String, String>,
@@ -128,6 +130,7 @@ impl AppState {
         Self {
             sloppy_imported: false,
             results_imported: false,
+            unsupported_import_alias: false,
             app_vars: BTreeSet::new(),
             builder_vars: BTreeSet::new(),
             group_vars: BTreeMap::new(),
@@ -261,10 +264,21 @@ fn build(input: &Path, out_dir: &Path) -> Result<(), Box<BuildFailure>> {
 }
 
 fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
+    if has_typescript_extension(path) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT",
+            "compiler extraction MVP accepts JavaScript input only",
+        )
+        .with_path(path)
+        .with_hint(
+            "Use a .js/.mjs source file and omit TypeScript-only handler syntax for this MVP.",
+        ));
+    }
+
     let source_type = SourceType::from_path(path).map_err(|_| {
         Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_INPUT",
-            "compiler input must use a JavaScript or TypeScript file extension",
+            "compiler input must use a JavaScript file extension",
         )
         .with_path(path)
     })?;
@@ -304,12 +318,21 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
     }
 
     if !state.sloppy_imported || !state.results_imported {
+        let hint = if state.unsupported_import_alias {
+            "Import without aliases: import { Sloppy, Results } from \"sloppy\";"
+        } else {
+            "Use: import { Sloppy, Results } from \"sloppy\";"
+        };
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_IMPORT",
-            "input must import Sloppy and Results from \"sloppy\"",
+            if state.unsupported_import_alias {
+                "input must import Sloppy and Results from \"sloppy\" without aliases"
+            } else {
+                "input must import Sloppy and Results from \"sloppy\""
+            },
         )
         .with_path(path)
-        .with_hint("Use: import { Sloppy, Results } from \"sloppy\";"));
+        .with_hint(hint));
     }
 
     let Some(default_export) = state.default_export else {
@@ -385,6 +408,9 @@ fn extract_import(state: &mut AppState, import: &oxc_ast::ast::ImportDeclaration
             if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
                 let imported = specifier.imported.name().as_str();
                 let local = specifier.local.name.as_str();
+                if matches!(imported, "Sloppy" | "Results") && imported != local {
+                    state.unsupported_import_alias = true;
+                }
                 if imported == "Sloppy" && local == "Sloppy" {
                     state.sloppy_imported = true;
                 }
@@ -542,14 +568,8 @@ fn unsupported_map_get_diagnostic(
         .and_then(|argument| handler_from_argument(argument, source))
         .is_none()
     {
-        return Some(
-            Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_HANDLER",
-                "route handler must be a simple function returning Results.text(...) or Results.json(...)",
-            )
-            .with_path(path)
-            .with_span(call.span),
-        );
+        let handler_argument = call.arguments.get(1)?;
+        return Some(handler_diagnostic(path, handler_argument, call.span));
     }
 
     None
@@ -698,7 +718,10 @@ fn string_argument<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
 fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
-            if !handler_body_is_supported_arrow(function) {
+            if function_has_parameters(&function.params)
+                || arrow_has_typescript_syntax(function)
+                || !handler_body_is_supported_arrow(function)
+            {
                 return None;
             }
             Some(Handler {
@@ -707,7 +730,10 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
             })
         }
         Argument::FunctionExpression(function) => {
-            if !handler_body_is_supported_function(function) {
+            if function_has_parameters(&function.params)
+                || function_has_typescript_syntax(function)
+                || !handler_body_is_supported_function(function)
+            {
                 return None;
             }
             Some(Handler {
@@ -716,6 +742,198 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
             })
         }
         _ => None,
+    }
+}
+
+fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span) -> Diagnostic {
+    let (code, message, hint) = match argument {
+        Argument::ArrowFunctionExpression(function) => {
+            if function_has_parameters(&function.params) {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
+                    "route handlers compiled by this MVP must not declare parameters",
+                    Some("The current runtime invokes compiled handlers with zero arguments."),
+                )
+            } else if arrow_has_typescript_syntax(function) {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER",
+                    "TypeScript handler syntax is not supported by the compiler extraction MVP",
+                    Some("Use JavaScript handler syntax until TypeScript lowering is implemented."),
+                )
+            } else if handler_result_uses_unsupported_values_arrow(function) {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE",
+                    "route handler result arguments must be inline JSON-safe values",
+                    Some("Use literals, arrays, and object literals instead of closed-over bindings."),
+                )
+            } else {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_HANDLER",
+                    "route handler must be a simple function returning Results.text(...) or Results.json(...)",
+                    None,
+                )
+            }
+        }
+        Argument::FunctionExpression(function) => {
+            if function_has_parameters(&function.params) {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
+                    "route handlers compiled by this MVP must not declare parameters",
+                    Some("The current runtime invokes compiled handlers with zero arguments."),
+                )
+            } else if function_has_typescript_syntax(function) {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER",
+                    "TypeScript handler syntax is not supported by the compiler extraction MVP",
+                    Some("Use JavaScript handler syntax until TypeScript lowering is implemented."),
+                )
+            } else if handler_result_uses_unsupported_values_function(function) {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE",
+                    "route handler result arguments must be inline JSON-safe values",
+                    Some("Use literals, arrays, and object literals instead of closed-over bindings."),
+                )
+            } else {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_HANDLER",
+                    "route handler must be a simple function returning Results.text(...) or Results.json(...)",
+                    None,
+                )
+            }
+        }
+        _ => (
+            "SLOPPYC_E_UNSUPPORTED_HANDLER",
+            "route handler must be an inline function or arrow expression",
+            None,
+        ),
+    };
+
+    let mut diagnostic = Diagnostic::new(code, message)
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or(fallback_span));
+    if let Some(hint) = hint {
+        diagnostic = diagnostic.with_hint(hint);
+    }
+    diagnostic
+}
+
+fn has_typescript_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "ts" | "tsx" | "mts" | "cts"
+            )
+        })
+}
+
+fn function_has_parameters(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
+    !parameters.items.is_empty() || parameters.rest.is_some()
+}
+
+fn arrow_has_typescript_syntax(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
+    function.type_parameters.is_some()
+        || function.return_type.is_some()
+        || parameters_have_typescript_syntax(&function.params)
+}
+
+fn function_has_typescript_syntax(function: &oxc_ast::ast::Function<'_>) -> bool {
+    function.type_parameters.is_some()
+        || function.this_param.is_some()
+        || function.return_type.is_some()
+        || parameters_have_typescript_syntax(&function.params)
+}
+
+fn parameters_have_typescript_syntax(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
+    parameters.items.iter().any(|parameter| {
+        parameter.type_annotation.is_some()
+            || parameter.optional
+            || parameter.accessibility.is_some()
+            || parameter.readonly
+            || parameter.r#override
+    }) || parameters
+        .rest
+        .as_ref()
+        .is_some_and(|rest| rest.type_annotation.is_some())
+}
+
+fn handler_result_uses_unsupported_values_arrow(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+) -> bool {
+    if function.expression {
+        return function
+            .body
+            .statements
+            .first()
+            .and_then(expression_statement_result_call)
+            .is_some_and(|call| !results_call_arguments_are_supported(call));
+    }
+
+    function
+        .body
+        .statements
+        .first()
+        .and_then(return_statement_result_call)
+        .is_some_and(|call| !results_call_arguments_are_supported(call))
+}
+
+fn handler_result_uses_unsupported_values_function(function: &oxc_ast::ast::Function<'_>) -> bool {
+    let Some(body) = &function.body else {
+        return false;
+    };
+    body.statements
+        .first()
+        .and_then(return_statement_result_call)
+        .is_some_and(|call| !results_call_arguments_are_supported(call))
+}
+
+fn argument_span(argument: &Argument<'_>) -> Option<Span> {
+    match argument {
+        Argument::SpreadElement(node) => Some(node.span),
+        Argument::BooleanLiteral(node) => Some(node.span),
+        Argument::NullLiteral(node) => Some(node.span),
+        Argument::NumericLiteral(node) => Some(node.span),
+        Argument::BigIntLiteral(node) => Some(node.span),
+        Argument::RegExpLiteral(node) => Some(node.span),
+        Argument::StringLiteral(node) => Some(node.span),
+        Argument::TemplateLiteral(node) => Some(node.span),
+        Argument::Identifier(node) => Some(node.span),
+        Argument::MetaProperty(node) => Some(node.span),
+        Argument::Super(node) => Some(node.span),
+        Argument::ArrayExpression(node) => Some(node.span),
+        Argument::ArrowFunctionExpression(node) => Some(node.span),
+        Argument::AssignmentExpression(node) => Some(node.span),
+        Argument::AwaitExpression(node) => Some(node.span),
+        Argument::BinaryExpression(node) => Some(node.span),
+        Argument::CallExpression(node) => Some(node.span),
+        Argument::ChainExpression(node) => Some(node.span),
+        Argument::ClassExpression(node) => Some(node.span),
+        Argument::ConditionalExpression(node) => Some(node.span),
+        Argument::FunctionExpression(node) => Some(node.span),
+        Argument::ImportExpression(node) => Some(node.span),
+        Argument::LogicalExpression(node) => Some(node.span),
+        Argument::NewExpression(node) => Some(node.span),
+        Argument::ObjectExpression(node) => Some(node.span),
+        Argument::ParenthesizedExpression(node) => Some(node.span),
+        Argument::SequenceExpression(node) => Some(node.span),
+        Argument::TaggedTemplateExpression(node) => Some(node.span),
+        Argument::ThisExpression(node) => Some(node.span),
+        Argument::UnaryExpression(node) => Some(node.span),
+        Argument::UpdateExpression(node) => Some(node.span),
+        Argument::YieldExpression(node) => Some(node.span),
+        Argument::PrivateInExpression(node) => Some(node.span),
+        Argument::JSXElement(node) => Some(node.span),
+        Argument::JSXFragment(node) => Some(node.span),
+        Argument::TSAsExpression(node) => Some(node.span),
+        Argument::TSSatisfiesExpression(node) => Some(node.span),
+        Argument::TSTypeAssertion(node) => Some(node.span),
+        Argument::TSNonNullExpression(node) => Some(node.span),
+        Argument::TSInstantiationExpression(node) => Some(node.span),
+        Argument::V8IntrinsicExpression(node) => Some(node.span),
+        Argument::ComputedMemberExpression(node) => Some(node.span),
+        Argument::StaticMemberExpression(node) => Some(node.span),
+        Argument::PrivateFieldExpression(node) => Some(node.span),
     }
 }
 
@@ -756,29 +974,144 @@ fn handler_body_is_supported_function(function: &oxc_ast::ast::Function<'_>) -> 
 }
 
 fn return_statement_returns_supported_result(statement: &Statement<'_>) -> bool {
-    let Statement::ReturnStatement(return_statement) = statement else {
-        return false;
-    };
-    let Some(argument) = &return_statement.argument else {
-        return false;
-    };
-    is_results_call(argument, "text") || is_results_call(argument, "json")
+    return_statement_result_call(statement).is_some_and(results_call_arguments_are_supported)
 }
 
 fn expression_statement_is_supported_result(statement: &Statement<'_>) -> bool {
-    let Statement::ExpressionStatement(expression_statement) = statement else {
-        return false;
-    };
-    is_results_call(&expression_statement.expression, "text")
-        || is_results_call(&expression_statement.expression, "json")
+    expression_statement_result_call(statement).is_some_and(results_call_arguments_are_supported)
 }
 
-fn is_results_call(expression: &Expression<'_>, method: &str) -> bool {
-    let Expression::CallExpression(call) = expression else {
-        return false;
+fn return_statement_result_call<'a>(
+    statement: &'a Statement<'a>,
+) -> Option<&'a CallExpression<'a>> {
+    let Statement::ReturnStatement(return_statement) = statement else {
+        return None;
     };
-    static_member_name(&call.callee)
-        .is_some_and(|(object, property)| object == "Results" && property == method)
+    let argument = return_statement.argument.as_ref()?;
+    result_call(argument)
+}
+
+fn expression_statement_result_call<'a>(
+    statement: &'a Statement<'a>,
+) -> Option<&'a CallExpression<'a>> {
+    let Statement::ExpressionStatement(expression_statement) = statement else {
+        return None;
+    };
+    result_call(&expression_statement.expression)
+}
+
+fn result_call<'a>(expression: &'a Expression<'a>) -> Option<&'a CallExpression<'a>> {
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    if static_member_name(&call.callee).is_some_and(|(object, property)| {
+        object == "Results" && matches!(property, "text" | "json")
+    }) {
+        Some(call)
+    } else {
+        None
+    }
+}
+
+fn results_call_arguments_are_supported(call: &CallExpression<'_>) -> bool {
+    matches!(call.arguments.len(), 1 | 2)
+        && call
+            .arguments
+            .iter()
+            .all(argument_is_inline_json_safe_value)
+}
+
+fn argument_is_inline_json_safe_value(argument: &Argument<'_>) -> bool {
+    match argument {
+        Argument::StringLiteral(_)
+        | Argument::NumericLiteral(_)
+        | Argument::BooleanLiteral(_)
+        | Argument::NullLiteral(_) => true,
+        Argument::ArrayExpression(array) => array
+            .elements
+            .iter()
+            .all(array_element_is_inline_json_safe_value),
+        Argument::ObjectExpression(object) => {
+            object.properties.iter().all(|property| match property {
+                ObjectPropertyKind::ObjectProperty(property) => {
+                    property.kind == PropertyKind::Init
+                        && !property.method
+                        && !property.shorthand
+                        && !property.computed
+                        && property_key_is_inline_json_safe(&property.key)
+                        && expression_is_inline_json_safe_value(&property.value)
+                }
+                ObjectPropertyKind::SpreadProperty(_) => false,
+            })
+        }
+        _ => false,
+    }
+}
+
+fn array_element_is_inline_json_safe_value(element: &ArrayExpressionElement<'_>) -> bool {
+    match element {
+        ArrayExpressionElement::StringLiteral(_)
+        | ArrayExpressionElement::NumericLiteral(_)
+        | ArrayExpressionElement::BooleanLiteral(_)
+        | ArrayExpressionElement::NullLiteral(_) => true,
+        ArrayExpressionElement::ArrayExpression(array) => array
+            .elements
+            .iter()
+            .all(array_element_is_inline_json_safe_value),
+        ArrayExpressionElement::ObjectExpression(object) => {
+            object.properties.iter().all(|property| match property {
+                ObjectPropertyKind::ObjectProperty(property) => {
+                    property.kind == PropertyKind::Init
+                        && !property.method
+                        && !property.shorthand
+                        && !property.computed
+                        && property_key_is_inline_json_safe(&property.key)
+                        && expression_is_inline_json_safe_value(&property.value)
+                }
+                ObjectPropertyKind::SpreadProperty(_) => false,
+            })
+        }
+        _ => false,
+    }
+}
+
+fn expression_is_inline_json_safe_value(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_) => true,
+        Expression::ArrayExpression(array) => array
+            .elements
+            .iter()
+            .all(array_element_is_inline_json_safe_value),
+        Expression::ObjectExpression(object) => {
+            object.properties.iter().all(|property| match property {
+                ObjectPropertyKind::ObjectProperty(property) => {
+                    property.kind == PropertyKind::Init
+                        && !property.method
+                        && !property.shorthand
+                        && !property.computed
+                        && property_key_is_inline_json_safe(&property.key)
+                        && expression_is_inline_json_safe_value(&property.value)
+                }
+                ObjectPropertyKind::SpreadProperty(_) => false,
+            })
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_json_safe_value(&parenthesized.expression)
+        }
+        _ => false,
+    }
+}
+
+fn property_key_is_inline_json_safe(key: &PropertyKey<'_>) -> bool {
+    matches!(
+        key,
+        PropertyKey::StaticIdentifier(_)
+            | PropertyKey::StringLiteral(_)
+            | PropertyKey::NumericLiteral(_)
+    )
 }
 
 fn source_slice(source: &str, span: Span) -> Option<String> {
@@ -933,7 +1266,8 @@ fn emit_app_js(app: &ExtractedApp) -> String {
     output.push_str("  },\n");
     output.push_str("  json(value, options) {\n");
     output.push_str("    void options;\n");
-    output.push_str("    return JSON.stringify(value);\n");
+    output.push_str("    const encoded = JSON.stringify(value);\n");
+    output.push_str("    return encoded === undefined ? String(value) : encoded;\n");
     output.push_str("  },\n");
     output.push_str("});\n\n");
 
@@ -967,7 +1301,7 @@ fn emit_source_map() -> String {
 fn line_column(source: &str, offset: u32) -> (usize, usize) {
     let target = usize::try_from(offset).unwrap_or(source.len());
     let mut line = 1;
-    let mut column = 1;
+    let mut last_newline_byte = 0usize;
 
     for (index, character) in source.char_indices() {
         if index >= target {
@@ -975,12 +1309,11 @@ fn line_column(source: &str, offset: u32) -> (usize, usize) {
         }
         if character == '\n' {
             line += 1;
-            column = 1;
-        } else {
-            column += 1;
+            last_newline_byte = index + 1;
         }
     }
 
+    let column = target.saturating_sub(last_newline_byte) + 1;
     (line, column)
 }
 
@@ -1183,11 +1516,19 @@ export default app;
     #[test]
     fn rejected_fixture_diagnostics_stay_current() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        for fixture_name in ["unsupported-dynamic-route", "missing-app", "multiple-apps"] {
+        for (fixture_name, input_name) in [
+            ("unsupported-dynamic-route", "input.js"),
+            ("unsupported-handler-parameter", "input.js"),
+            ("unsupported-handler-capture", "input.js"),
+            ("unsupported-typescript-handler", "input.ts"),
+            ("unsupported-import-alias", "input.js"),
+            ("missing-app", "input.js"),
+            ("multiple-apps", "input.js"),
+        ] {
             let fixture = root
                 .join("tests/fixtures")
                 .join(fixture_name)
-                .join("input.js");
+                .join(input_name);
             let source = fs::read_to_string(&fixture).expect("fixture input should exist");
             let diagnostic = extract(&fixture, &source).expect_err("fixture should be rejected");
             let expected = fs::read_to_string(

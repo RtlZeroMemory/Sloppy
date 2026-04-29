@@ -135,7 +135,9 @@ static int create_v8_engine(SlArena* engine_arena, SlEngine** out_engine)
     return expect_status(sl_engine_create(&options, engine_arena, out_engine), SL_STATUS_OK);
 }
 
-static int test_handwritten_plan_and_app_call_handler_1(void)
+static int run_artifact_handler_text(const char* plan_path, const char* app_path,
+                                     const char* source_name, SlHandlerId handler_id,
+                                     const char* expected_text)
 {
     unsigned char engine_storage[TEST_ARENA_SIZE];
     unsigned char plan_storage[TEST_ARENA_SIZE];
@@ -155,23 +157,24 @@ static int test_handwritten_plan_and_app_call_handler_1(void)
         return 1;
     }
 
-    if (load_handwritten_plan(&plan_arena, &plan, &diag) != 0 ||
-        create_v8_engine(&engine_arena, &engine) != 0 || eval_handwritten_app(engine, &diag) != 0)
+    if (load_plan_from_path(plan_path, &plan_arena, &plan, &diag) != 0 ||
+        create_v8_engine(&engine_arena, &engine) != 0 ||
+        eval_app_from_path(app_path, source_name, engine, &diag) != 0)
     {
         sl_engine_destroy(engine);
         return 2;
     }
 
-    if (expect_status(
-            sl_runtime_contract_call_handler(engine, &result_arena, &plan, 1U, &result, &diag),
-            SL_STATUS_OK) != 0)
+    if (expect_status(sl_runtime_contract_call_handler(engine, &result_arena, &plan, handler_id,
+                                                       &result, &diag),
+                      SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 3;
     }
 
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("sloppy-ok")))
+        !sl_str_equal(result.text, sl_str_from_cstr(expected_text)))
     {
         sl_engine_destroy(engine);
         return 4;
@@ -181,53 +184,18 @@ static int test_handwritten_plan_and_app_call_handler_1(void)
     return 0;
 }
 
+static int test_handwritten_plan_and_app_call_handler_1(void)
+{
+    return run_artifact_handler_text("tests/integration/execution/handwritten_smoke/app.plan.json",
+                                     "tests/integration/execution/handwritten_smoke/app.js",
+                                     "handwritten_smoke/app.js", 1U, "sloppy-ok");
+}
+
 static int test_compiler_mvp_plan_and_app_call_handler_1(void)
 {
-    unsigned char engine_storage[TEST_ARENA_SIZE];
-    unsigned char plan_storage[TEST_ARENA_SIZE];
-    unsigned char result_storage[TEST_ARENA_SIZE];
-    SlArena engine_arena = {0};
-    SlArena plan_arena = {0};
-    SlArena result_arena = {0};
-    SlEngine* engine = NULL;
-    SlPlan plan = {0};
-    SlEngineResult result = {0};
-    SlDiag diag = {0};
-
-    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
-        init_arena(&plan_arena, plan_storage, sizeof(plan_storage)) != 0 ||
-        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
-    {
-        return 1;
-    }
-
-    if (load_plan_from_path("tests/integration/execution/compiler_mvp/app.plan.json", &plan_arena,
-                            &plan, &diag) != 0 ||
-        create_v8_engine(&engine_arena, &engine) != 0 ||
-        eval_app_from_path("tests/integration/execution/compiler_mvp/app.js", "compiler_mvp/app.js",
-                           engine, &diag) != 0)
-    {
-        sl_engine_destroy(engine);
-        return 2;
-    }
-
-    if (expect_status(
-            sl_runtime_contract_call_handler(engine, &result_arena, &plan, 1U, &result, &diag),
-            SL_STATUS_OK) != 0)
-    {
-        sl_engine_destroy(engine);
-        return 3;
-    }
-
-    if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("Hello from Sloppy")))
-    {
-        sl_engine_destroy(engine);
-        return 4;
-    }
-
-    sl_engine_destroy(engine);
-    return 0;
+    return run_artifact_handler_text("tests/integration/execution/compiler_mvp/app.plan.json",
+                                     "tests/integration/execution/compiler_mvp/app.js",
+                                     "compiler_mvp/app.js", 1U, "Hello from Sloppy");
 }
 
 static int test_missing_handler_id_returns_diagnostic(void)
