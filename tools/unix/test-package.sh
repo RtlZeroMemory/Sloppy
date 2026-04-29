@@ -79,14 +79,18 @@ trap cleanup EXIT
 
 tar -xzf "$package_path" -C "$temp_root"
 
-root_count=0
+top_level_count=0
 package_root=""
-while IFS= read -r -d '' root_candidate; do
-  root_count=$((root_count + 1))
-  package_root="$root_candidate"
-done < <(find "$temp_root" -mindepth 1 -maxdepth 1 -type d -print0)
-if [[ "$root_count" -ne 1 ]]; then
-  echo "Package smoke expected exactly one archive root directory, found $root_count." >&2
+while IFS= read -r -d '' top_level_entry; do
+  top_level_count=$((top_level_count + 1))
+  package_root="$top_level_entry"
+done < <(find "$temp_root" -mindepth 1 -maxdepth 1 -print0)
+if [[ "$top_level_count" -ne 1 ]]; then
+  echo "Package smoke expected exactly one top-level archive entry, found $top_level_count." >&2
+  exit 1
+fi
+if [[ ! -d "$package_root" ]]; then
+  echo "Package smoke expected the top-level archive entry to be a directory." >&2
   exit 1
 fi
 manifest_path="$package_root/manifest.json"
