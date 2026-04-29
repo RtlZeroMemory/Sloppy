@@ -718,7 +718,7 @@ fn string_argument<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
 fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
-            if function_has_too_many_parameters(&function.params)
+            if handler_parameters_are_unsupported(&function.params)
                 || arrow_has_typescript_syntax(function)
                 || !handler_body_is_supported_arrow(function)
             {
@@ -730,7 +730,7 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
             })
         }
         Argument::FunctionExpression(function) => {
-            if function_has_too_many_parameters(&function.params)
+            if handler_parameters_are_unsupported(&function.params)
                 || function_has_typescript_syntax(function)
                 || !handler_body_is_supported_function(function)
             {
@@ -748,11 +748,11 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
 fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span) -> Diagnostic {
     let (code, message, hint) = match argument {
         Argument::ArrowFunctionExpression(function) => {
-            if function_has_too_many_parameters(&function.params) {
+            if handler_parameters_are_unsupported(&function.params) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                    "route handlers compiled by this MVP may declare at most one context parameter",
-                    Some("The current runtime passes one request context argument."),
+                    "route handlers compiled by this MVP may declare zero parameters or one simple context parameter",
+                    Some("The current runtime passes one plain request context object."),
                 )
             } else if arrow_has_typescript_syntax(function) {
                 (
@@ -775,11 +775,11 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             }
         }
         Argument::FunctionExpression(function) => {
-            if function_has_too_many_parameters(&function.params) {
+            if handler_parameters_are_unsupported(&function.params) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                    "route handlers compiled by this MVP may declare at most one context parameter",
-                    Some("The current runtime passes one request context argument."),
+                    "route handlers compiled by this MVP may declare zero parameters or one simple context parameter",
+                    Some("The current runtime passes one plain request context object."),
                 )
             } else if function_has_typescript_syntax(function) {
                 (
@@ -828,8 +828,17 @@ fn has_typescript_extension(path: &Path) -> bool {
         })
 }
 
-fn function_has_too_many_parameters(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
-    parameters.items.len() > 1 || parameters.rest.is_some()
+fn handler_parameters_are_unsupported(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
+    if parameters.items.len() > 1 || parameters.rest.is_some() {
+        return true;
+    }
+
+    let Some(parameter) = parameters.items.first() else {
+        return false;
+    };
+
+    parameter.initializer.is_some()
+        || !matches!(parameter.pattern, BindingPattern::BindingIdentifier(_))
 }
 
 fn arrow_has_typescript_syntax(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
@@ -1603,6 +1612,31 @@ export default app;
         let diagnostic = extract(std::path::Path::new("app.js"), source)
             .expect_err("captured member expression should fail");
         assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+    }
+
+    #[test]
+    fn rejects_destructured_or_default_handler_parameters() {
+        for source in [
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", ({ route }) => Results.json({ id: route.id }));
+export default app;
+"#,
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", ([ctx]) => Results.json({ id: ctx.route.id }));
+export default app;
+"#,
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/", (ctx = {}) => Results.json({ id: ctx.route.id }));
+export default app;
+"#,
+        ] {
+            let diagnostic = extract(std::path::Path::new("app.js"), source)
+                .expect_err("unsupported handler parameter should fail");
+            assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS");
+        }
     }
 
     #[test]

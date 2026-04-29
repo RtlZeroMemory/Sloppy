@@ -93,7 +93,8 @@ Compiler extraction MVP:
 - supports `app.mapGet("/literal", () => Results.json(...))`;
 - supports `const group = app.mapGroup("/prefix"); group.mapGet("/child", handler)`;
 - supports `.withName("Route.Name")`;
-- allows compiled handlers to declare zero parameters or one request context parameter;
+- allows compiled handlers to declare zero parameters or one simple identifier request
+  context parameter;
 - supports inline JSON-safe literals, arrays, object literals, and simple context property
   reads such as `route.id` and `query.q` in result arguments;
 - assigns handler IDs from `1` in source order;

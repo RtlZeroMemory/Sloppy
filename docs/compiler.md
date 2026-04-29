@@ -104,9 +104,9 @@ The compiler extraction MVP extracts:
 - literal `app.mapGet(pattern, handler)` routes;
 - simple `const group = app.mapGroup(prefix)` followed by `group.mapGet(child, handler)`;
 - optional `.withName("Route.Name")` route names;
-- zero-argument handlers or one-argument context handlers that are inline function/arrow
-  expressions returning `Results.text(...)`, `Results.json(...)`, `Results.ok(...)`, or
-  `Results.noContent()`;
+- zero-argument handlers or one-argument context handlers whose single parameter is a
+  simple identifier and whose body is an inline function/arrow expression returning
+  `Results.text(...)`, `Results.json(...)`, `Results.ok(...)`, or `Results.noContent()`;
 - result arguments that are inline JSON-safe literals, arrays, object literals, or simple
   request-context property reads such as `route.id` and `query.q`;
 - source ranges for copied handler bodies.
@@ -115,10 +115,10 @@ Extraction must be deterministic. Import order must not silently decide module o
 
 Unsupported input fails with diagnostics. The MVP rejects dynamic route strings, computed
 method names, multiple app objects, missing default export, unsupported handler shapes,
-handlers with more than one parameter, handlers whose one parameter is not the supported
-request-context binding shape, handlers that close over source-file bindings, TypeScript
-input or TypeScript-only handler syntax, dynamic imports, package resolution, broad module
-graphs, and top-level control flow.
+handlers with more than one parameter, destructured/default/rest handler parameters,
+handlers that close over source-file bindings, TypeScript input or TypeScript-only handler
+syntax, dynamic imports, package resolution, broad module graphs, and top-level control
+flow.
 
 ## Static Mode
 
