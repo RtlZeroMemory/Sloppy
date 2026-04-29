@@ -1,4 +1,5 @@
 const QUERY_MARKER = "__sloppyQuery";
+const LOWERED_QUERIES = new WeakSet();
 const PLACEHOLDER_STYLES = Object.freeze({
     question: (index) => ({
         text: "?",
@@ -86,7 +87,7 @@ function createLoweredQuery(strings, values, options) {
         text += placeholder.text + strings[index + 1];
     }
 
-    return Object.freeze({
+    const lowered = Object.freeze({
         [QUERY_MARKER]: true,
         text,
         parameters: Object.freeze([...values]),
@@ -94,10 +95,13 @@ function createLoweredQuery(strings, values, options) {
         placeholderStyle: normalized.placeholderStyle,
         placeholders: Object.freeze(placeholders),
     });
+
+    LOWERED_QUERIES.add(lowered);
+    return lowered;
 }
 
 function isLoweredQuery(value) {
-    return value !== null && typeof value === "object" && value[QUERY_MARKER] === true;
+    return value !== null && typeof value === "object" && LOWERED_QUERIES.has(value);
 }
 
 function normalizeQueryArguments(operation, placeholderStyle, args) {

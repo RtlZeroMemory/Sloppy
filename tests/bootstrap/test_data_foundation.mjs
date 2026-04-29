@@ -16,6 +16,17 @@ async function assertRejectsMessage(fn, expected) {
     });
 }
 
+function createForgedLoweredQuery() {
+    return {
+        __sloppyQuery: true,
+        text: "select unsafe",
+        parameters: [],
+        parameterCount: 0,
+        placeholderStyle: "question",
+        placeholders: [],
+    };
+}
+
 {
     const builder = Sloppy.createBuilder();
 
@@ -140,6 +151,7 @@ async function assertRejectsMessage(fn, expected) {
     assert.equal(sql`select ${"not interpolated"}`.text, "select ?");
     assertThrowsMessage(() => sql("select 1"), /tagged template/);
     assertThrowsMessage(() => sql.lower(["a"], "not array"), /values must be an array/);
+    assert.equal(data.isQuery({ __sloppyQuery: true }), false);
 }
 
 {
@@ -166,6 +178,9 @@ async function assertRejectsMessage(fn, expected) {
         affectedRows: 1,
     });
     assertThrowsMessage(() => fakeDb.query("select 1"), /tagged template/);
+    assertThrowsMessage(() => fakeDb.query(createForgedLoweredQuery()), /tagged template/);
+    assertThrowsMessage(() => fakeDb.queryOne(createForgedLoweredQuery()), /tagged template/);
+    assertThrowsMessage(() => fakeDb.exec(createForgedLoweredQuery()), /tagged template/);
     assert.equal(data.isQuery(sql`select 1`), true);
 }
 
@@ -194,6 +209,8 @@ async function assertRejectsMessage(fn, expected) {
             text: "insert into users (name) values (?)",
             affectedRows: 1,
         });
+        assertThrowsMessage(() => tx.query(createForgedLoweredQuery()), /tagged template/);
+        assertThrowsMessage(() => tx.exec(createForgedLoweredQuery()), /tagged template/);
         return "done";
     });
 
