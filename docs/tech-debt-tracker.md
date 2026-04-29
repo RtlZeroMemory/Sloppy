@@ -17,16 +17,18 @@ state and an honest public-alpha path.
 - V8 module loading and bootstrap runtime: load `stdlib/sloppy` reliably, define the bare
   import story, load app module entrypoint, bind intrinsics, and reject unsupported module
   shapes with diagnostics.
-- V8 SDK distribution/release packaging: decide linked/bundled strategy, manifest,
-  checksums, dynamic library copy policy, and release validation.
+- V8 runtime bundling hardening: EPIC-25 documents the SDK/runtime split and excludes SDK
+  headers/libs from packages, but exact dynamic runtime file lists, hosted prebuilt SDK
+  source, and V8-enabled package validation remain open.
 - Capability enforcement: declared capabilities must gate provider/filesystem/network
   access before public docs imply a security model.
 - Live DB test infrastructure for PostgreSQL and SQL Server: opt-in local env vars are not
   enough for release confidence.
 - Cross-platform CI: Linux clang/gcc, macOS clang, Windows clang-cl, and explicit
   V8/provider-gated matrix behavior.
-- Release packaging: Windows zip, Linux tar, macOS tar, checksums, install smoke, and
-  outside-checkout validation.
+- Cross-platform release validation: EPIC-25 adds local Windows ZIP tooling, Unix TAR
+  tooling, checksums, and outside-checkout ZIP smoke, but Linux/macOS package execution and
+  CI validation remain open.
 - Public alpha docs/examples: at least one executable hello and one executable SQLite demo
   must run through the real Sloppy toolchain, not Node/static checks.
 
@@ -88,8 +90,8 @@ state and an honest public-alpha path.
 - Cross-platform SQL Server support versus Windows-first ODBC-only policy.
 - Filesystem/network capability semantics: path normalization, symlinks, config/env
   access, and honest non-sandboxing language.
-- Release packaging format and dependency story for V8, libpq, SQLite, ODBC, and future
-  stdlib assets.
+- Runtime dependency packaging story for dynamic V8, libpq, SQLite, ODBC, and future
+  provider/runtime assets.
 
 ## Nice Later
 
@@ -142,3 +144,6 @@ state and an honest public-alpha path.
 - Added the EPIC-22 dev-only `sloppy run --artifacts` MVP with V8-required startup,
   GET route dispatch, `--once` test mode, tiny local HTTP serving, and clear non-V8
   diagnostics.
+- Added EPIC-25 experimental local packaging with Windows ZIP creation, Unix TAR staging,
+  package manifests, SHA256 checksums, V8 SDK exclusion policy, and outside-checkout ZIP
+  smoke validation.

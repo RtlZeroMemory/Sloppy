@@ -133,6 +133,10 @@ Current tests:
 - C standards scanner;
 - JS/TS standards scanner;
 - Rust standards scanner.
+- experimental package smoke through `tools/windows/test-package.ps1`, which extracts a
+  ZIP outside the checkout, runs `sloppy`/`sloppyc` version and help commands, verifies
+  stdlib assets, validates manifest fields, checks excluded local/build directories, and
+  verifies `SHA256SUMS.txt` when present.
 
 When V8 is explicitly enabled and a valid SDK is configured, CTest also registers
 `engine.v8.smoke`. That test evaluates classic JavaScript source, calls a named global
@@ -165,6 +169,16 @@ Tests are invoked through:
 .\tools\windows\check-rust-standards.ps1
 cargo test --manifest-path compiler/Cargo.toml
 ```
+
+Packaging smoke:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration Release
+.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+```
+
+The package smoke must not require V8, live databases, a running HTTP server, admin
+privileges, global PATH mutation, or package-manager behavior.
 
 PostgreSQL live provider tests are gated by environment variable and are skipped by default:
 

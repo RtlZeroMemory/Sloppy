@@ -870,4 +870,9 @@ endif()
 
 install(TARGETS sloppy RUNTIME DESTINATION bin)
 install(DIRECTORY "${SLOPPY_BOOTSTRAP_SOURCE_DIR}" DESTINATION "lib/sloppy/bootstrap")
-# TODO: install sloppyc after the compiler packaging and artifact layout are defined.
+install(DIRECTORY "${SLOPPY_BOOTSTRAP_SOURCE_DIR}" DESTINATION "lib/sloppy/stdlib")
+if(SLOPPY_BUILD_COMPILER AND CARGO_EXECUTABLE)
+    set(SLOPPYC_INSTALL_PATH
+        "${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
+    install(PROGRAMS "${SLOPPYC_INSTALL_PATH}" DESTINATION bin OPTIONAL)
+endif()

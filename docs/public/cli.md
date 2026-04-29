@@ -25,6 +25,17 @@ The other commands inspect plan-compatible metadata JSON only. They do not compi
 run handlers, start an HTTP server, enter V8, connect to live databases, or execute
 arbitrary application code.
 
+Package creation is currently a repository tool, not a `sloppy` CLI command:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration Release
+.\tools\windows\package.ps1 -Configuration Release -Smoke
+.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+```
+
+Packages are experimental development artifacts. They are not public releases, installers,
+signed/notarized artifacts, package-manager integrations, or auto-updaters.
+
 ## run
 
 Supported forms:

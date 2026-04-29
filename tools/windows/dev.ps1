@@ -174,6 +174,7 @@ function Invoke-ArtifactHygieneCheck {
     }
 
     $artifactPatterns = @(
+        "^artifacts/",
         "^build/",
         "^compiler/target/",
         "^target/",
@@ -201,7 +202,7 @@ function Invoke-ArtifactHygieneCheck {
         throw "Generated/ignored artifacts are staged: $($badStaged -join ', ')"
     }
 
-    $trackedArtifacts = & $git ls-files -- build compiler/target target .sdeps .sloppy "*.exe" "*.pdb" "*.zip" "*.7z" "*.tar.gz"
+    $trackedArtifacts = & $git ls-files -- artifacts build compiler/target target .sdeps .sloppy "*.exe" "*.pdb" "*.zip" "*.7z" "*.tar.gz"
     if ($LASTEXITCODE -ne 0) {
         throw "git ls-files artifact check failed with exit code $LASTEXITCODE"
     }

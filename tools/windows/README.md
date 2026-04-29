@@ -16,3 +16,16 @@ needed:
 ```
 
 The root `tools/*.ps1` files forward here for compatibility.
+
+Experimental local packaging lives here too:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration Release
+.\tools\windows\package.ps1 -Configuration Release -Smoke
+.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+```
+
+The package script stages a ZIP under ignored `artifacts/packages/`, writes
+`SHA256SUMS.txt`, and can smoke-test the extracted archive outside the checkout. It does
+not install anything, mutate PATH, fetch V8, include a V8 SDK, sign artifacts, or create a
+public release.

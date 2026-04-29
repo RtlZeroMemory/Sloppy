@@ -23,18 +23,23 @@ It covers:
 
 ## Non-Goals
 
-The foundation phase does not:
+The packaging foundation does not:
 
 - build V8;
 - fetch V8;
-- package releases;
+- publish public releases;
+- sign or notarize artifacts;
+- build installers;
+- add Homebrew, Scoop, WinGet, MSI/MSIX, or other package-manager behavior;
+- add auto-update behavior;
 - add runtime dependencies before their documented phase;
-- add Linux/macOS presets that must pass today.
+- add Linux/macOS CI or presets that must pass today.
 
 ## Current Phase
 
-The project builds a placeholder `sloppy` executable and a placeholder Rust `sloppyc`
-binary. The default CMake project uses C only. V8 is not required.
+The project builds the `sloppy` runtime CLI and Rust `sloppyc` compiler CLI. EPIC-21 added
+the compiler extraction MVP, and EPIC-22 added the dev-only `sloppy run --artifacts` path
+for V8-enabled builds. V8 is still not required for default builds.
 
 EPIC-20 also builds `sloppy_bench`, a native benchmark executable for manual performance
 validation. It is not installed or packaged as a user-facing CLI surface.
@@ -44,10 +49,16 @@ TASK 07.C compiles the V8 bridge and V8-gated smoke test only when V8 is explici
 and the SDK gate passes. TASK 10.B adds required vcpkg manifest dependencies for yyjson,
 llhttp, and libuv in the normal non-V8 build.
 
+EPIC-25 adds the first local package layout and smoke tooling. These packages are
+experimental development artifacts, not public release artifacts. They prove that the
+current runtime CLI, compiler CLI, bootstrap stdlib assets, manifest, and checksum can be
+staged into one archive and smoke-tested outside the checkout.
+
 ## Future Phase
 
-Future phases add V8 SDK discovery, runtime dependencies, install layout, release staging,
-and platform-specific presets for Linux/macOS.
+Future phases add public release hardening, cross-platform CI validation, signed/notarized
+artifacts, installers, and package-manager integrations after the local package contract is
+stable.
 
 ## Public API Shape
 
@@ -59,6 +70,16 @@ Supported build commands today:
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
 ```
+
+Packaging commands:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration Release
+.\tools\windows\package.ps1 -Configuration Release -Smoke
+.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+```
+
+The root `tools\package.ps1` wrapper forwards to `tools\windows\package.ps1`.
 
 Benchmark wrapper:
 
@@ -116,7 +137,8 @@ PostgreSQL build and distribution notes:
 - Default tests do not require a running PostgreSQL server.
 - Live PostgreSQL tests run only when `SLOPPY_POSTGRES_TEST_URL` is set.
 - Release packaging still needs an explicit libpq DLL/shared-library copy and license
-  strategy; do not assume a system-global PostgreSQL installation will be present.
+  strategy before packaged PostgreSQL runtime support can be claimed; do not assume a
+  system-global PostgreSQL installation will be present.
 
 SQL Server build and distribution notes:
 
@@ -195,6 +217,22 @@ The CMake gate validates both SDK layout and `share/sloppy-v8-sdk.json` before c
 revision and ABI flags that CMake applies to the bridge compile. V8 headers/types remain
 isolated to `src/engine/v8/`.
 
+Distribution policy:
+
+- source builds use an ignored local V8 SDK under `.sdeps/v8/<platform-arch>` or an
+  explicit `SLOPPY_V8_ROOT`;
+- end-user packages should not require users to install the V8 SDK;
+- release packages should eventually link V8 statically/monolithically when practical;
+- bundled runtime DLL/shared libraries are the fallback for dynamic V8 builds;
+- the repository and packages must not include V8 SDK headers, import libraries, source
+  trees, or build outputs;
+- `tools/windows/package.ps1` excludes `.sdeps/` and records `containsV8Sdk: false` in the
+  package manifest;
+- `-IncludeV8Runtime` may copy only dynamic runtime files from a V8 SDK `bin/` directory
+  into `lib/sloppy/engines/v8/`; it must not copy SDK headers or import libraries;
+- the default package is non-V8 unless the built `sloppy` executable was linked against V8
+  and any required dynamic runtime files were explicitly included.
+
 ## Tool Layout
 
 ```text
@@ -205,13 +243,16 @@ tools/
     fetch-v8.ps1
     build-v8.ps1
     package.ps1
+    test-package.ps1
     check-platform-boundaries.ps1
   unix/
     README.md
+    package.sh
 ```
 
-Root `tools/*.ps1` scripts are compatibility forwarders. Future Bash scripts belong under
-`tools/unix/`.
+Root `tools/*.ps1` scripts are compatibility forwarders. Unix shell scripts live under
+`tools/unix/`; the Unix package script is present but remains unvalidated by Windows-only
+default gates until EPIC-26 adds Linux/macOS CI.
 
 ## Internal Architecture
 
@@ -239,31 +280,45 @@ Future release flow:
 4. stage install layout;
 5. collect licenses and manifests;
 6. create ZIP;
-7. verify ZIP in a clean directory.
+7. write checksum;
+8. verify ZIP in a clean directory outside the checkout.
 
 ## Install Layout
 
-Future install layout:
+Local archive layout:
 
 ```text
-prefix/
+sloppy-<version>-<platform>-<arch>/
   bin/
-    sloppy.exe
-    sloppyc.exe
-  lib/sloppy/
-    engines/
-    bootstrap/
-      sloppy/
-  include/
+    sloppy.exe or sloppy
+    sloppyc.exe or sloppyc
+    # Windows packages also include required native runtime DLLs from vcpkg
+  lib/
     sloppy/
+      stdlib/
+        sloppy/
+          index.js
+          app.js
+          results.js
+          schema.js
+          data.js
+          internal/intrinsics.js
+          bootstrap.manifest.json
+      engines/
+        v8/
+          # optional runtime DLLs/shared libraries only, never SDK headers/libs
   share/sloppy/
+    examples/      # only when requested
     licenses/
     schemas/
-    docs/
+  README.md
+  LICENSE
+  THIRD_PARTY_NOTICES.md
+  manifest.json
 ```
 
-The exact layout may change before release packaging, but binaries and support data should
-be separated cleanly.
+`SHA256SUMS.txt` is written next to the archive, not inside it. Packages are created under
+`artifacts/packages/`, which is ignored.
 
 TASK 11.A starts the bootstrap support-data layout. Source assets live in
 `stdlib/sloppy/`, the normal build copies them to
@@ -271,21 +326,48 @@ TASK 11.A starts the bootstrap support-data layout. Source assets live in
 `<prefix>/lib/sloppy/bootstrap/sloppy/`. The copy is plain file staging: no Node, npm,
 bundler, transpiler, or package-manager metadata is involved.
 
+EPIC-25 package staging copies the source-controlled stdlib assets into
+`lib/sloppy/stdlib/sloppy/` inside the archive. Windows packages also copy runtime DLLs
+restored by vcpkg from the build tree into `bin/` so `sloppy.exe` starts outside the
+checkout. Database drivers such as Microsoft ODBC Driver for SQL Server are not installed
+or bundled. CMake install now stages `sloppy`, the bootstrap stdlib support path, the
+package stdlib path, and the CMake-built `sloppyc` debug target when it exists. Final
+release install formalization is still deferred; `tools/windows/package.ps1` owns the
+reviewable Release archive layout and copies the Release `sloppyc` binary from Cargo
+output.
+
 ## Release ZIP Layout
 
 First distribution target:
 
 ```text
-sloppy-x.y.z-windows-x64/
-  bin/sloppy.exe
-  bin/sloppyc.exe
-  lib/sloppy/
+sloppy-0.0.0-dev-windows-x64/
+  bin/
+    sloppy.exe
+    sloppyc.exe
+  lib/sloppy/stdlib/sloppy/
   share/sloppy/licenses/
   README.md
+  LICENSE
+  THIRD_PARTY_NOTICES.md
+  manifest.json
 ```
 
-Scoop and winget come after the ZIP contract is stable. Homebrew comes after Linux/macOS
+`manifest.json` records the package name, version, platform, arch, configuration, commit,
+tool names, stdlib/example/native-runtime/V8-runtime inclusion booleans, and experimental
+notes. If git commit detection is unavailable, tooling writes `unknown`.
+
+The Windows ZIP script creates this layout and a sibling `SHA256SUMS.txt`. Scoop, WinGet,
+MSI/MSIX, signing, notarization, installers, auto-update, and public release automation are
+future work. Homebrew or other Unix package-manager integration comes after Linux/macOS
 support is real.
+
+## Linux/macOS TAR Layout
+
+`tools/unix/package.sh` stages the same layout and writes a `.tar.gz` archive plus
+`SHA256SUMS.txt` when run on Linux or macOS with suitable build tools. This path is simple
+and intentionally not claimed as validated by the Windows-only default gate. EPIC-26 owns
+CI validation for Linux/macOS packages.
 
 ## Source Archive Hygiene
 
@@ -336,6 +418,8 @@ Build scripts should fail with clear messages:
 - missing MSVC/Windows SDK environment;
 - missing or invalid V8 SDK when V8 is explicitly enabled;
 - unsupported preset;
+- missing package inputs;
+- missing checksum inputs;
 - generated artifact accidentally tracked.
 
 ## Testing Requirements
@@ -348,20 +432,23 @@ Build/tooling tests currently include:
 - lint;
 - artifact hygiene;
 - platform-boundary scanner.
+- Windows package smoke from an extracted archive outside the checkout.
 
-Future packaging tests should unpack a release ZIP and run `sloppy --version` and
-`sloppyc --version`.
+Package smoke unpacks the ZIP under the system temp directory, runs `sloppy --version`,
+`sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies stdlib assets and
+manifest fields, checks excluded directories are absent, and verifies `SHA256SUMS.txt`
+when it is present. It does not require V8, live databases, a running server, admin
+privileges, or global PATH mutation.
 
 ## Implementation Tasks
 
 - Keep root wrappers forwarding to `tools/windows`.
-- Add Unix scripts only when Linux/macOS build path exists.
-- Add V8 SDK manifest format.
-- Add package staging directory.
-- Add release ZIP script.
-- Add install tests.
+- Keep the package staging directory under ignored `artifacts/packages/`.
+- Keep manifest fields small and deterministic.
+- Keep Windows ZIP packaging in `tools/windows/package.ps1`.
+- Keep outside-checkout ZIP smoke in `tools/windows/test-package.ps1`.
+- Keep Linux/macOS TAR packaging in `tools/unix/package.sh` until CI validates it.
 - Add packaging CI job after binaries become real.
-- Add clean review archive helper later if repeated manual packaging becomes error-prone.
 - Add Linux/macOS presets only when platform code and CI can honestly support them.
 
 ## Acceptance Criteria
@@ -373,14 +460,21 @@ Build/distribution foundation is accepted when:
 - dependency manifest has no premature runtime dependencies;
 - tool layout separates Windows and future Unix scripts;
 - generated artifacts are ignored and untracked;
-- packaging policy excludes VCS internals and local build output.
+- packaging policy excludes VCS internals and local build output;
+- package archives include `sloppy`, `sloppyc`, stdlib assets, README, LICENSE, and
+  manifest;
+- Windows package archives include vcpkg runtime DLLs needed for the tools to start
+  outside the checkout;
+- package archives exclude `.git/`, `.sdeps/`, build directories, Cargo targets, V8 SDK
+  headers/import libraries, and local IDE files;
+- package tooling writes a SHA256 checksum;
+- outside-checkout package smoke passes for available CLI commands.
 - docs explain root wrapper and `tools/windows` policy consistently;
 - review/source archive hygiene is documented before release packaging exists.
 
 ## Open Questions
 
-- Exact V8 SDK update cadence.
-- Exact verified prebuilt V8 SDK source and checksum format.
 - Whether release ZIP includes debug symbols separately.
-- Whether `sloppyc` is installed by CMake or packaged by Cargo first.
-- Exact Linux/macOS preset timing.
+- Exact V8 SDK update cadence and verified prebuilt SDK source.
+- Whether CMake install should own the final package layout instead of script staging.
+- Exact Linux/macOS preset and CI timing.

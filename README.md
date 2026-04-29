@@ -35,15 +35,18 @@ must not include OS-specific headers.
 
 ## What Does Not Work Yet
 
-- No real `sloppyc` extraction from application TypeScript.
-- No `app.plan.json` emission from public API source.
-- No `sloppy run`.
+- No broad `sloppyc` extraction from application TypeScript beyond the current tiny
+  compiler MVP shape.
+- No `app.plan.json` emission from the full public API surface.
+- No source-input `sloppy run`; the dev-only run path currently loads prebuilt artifacts.
 - No production HTTP server, response writer, request body parser, or request context.
 - No V8 ESM/bootstrap module loading or runtime intrinsics.
 - No JavaScript-to-native database bridge or JS-visible native resource IDs.
 - No package-manager behavior and no Node compatibility goal.
 - No capability enforcement yet; current capability data is metadata only.
-- No release packages, checksums, installers, or public alpha distribution.
+- No public alpha distribution, installers, signing/notarization, package-manager
+  integration, or auto-update. Experimental local ZIP/TAR package tooling exists only to
+  validate the current artifact layout.
 - No public performance comparison claims.
 
 ## Example Shape
@@ -72,10 +75,10 @@ minimal plan loader, V8 smoke, handwritten execution, concurrency skeletons, HTT
 foundation, bootstrap stdlib/app-host ergonomics, modules, data/provider foundations,
 metadata CLI tools, and benchmarks.
 
-The next proposed batch starts with compiler extraction and a dev-only executable path:
+The next proposed batch continues from the compiler extraction and dev-only executable path:
 
-- EPIC-21 Compiler Extraction MVP.
-- EPIC-22 Sloppy Run MVP.
+- EPIC-21 Compiler Extraction MVP. Done.
+- EPIC-22 Sloppy Run MVP. Done.
 - EPIC-23 HTTP Response Writer and Request Context.
 - EPIC-24 V8 Module Loading and Bootstrap Runtime.
 - EPIC-25 Release Packaging and Distribution.
@@ -120,6 +123,16 @@ cargo test --manifest-path compiler/Cargo.toml
 
 Run these from a shell with the MSVC and Windows SDK developer environment initialized.
 The in-repo Windows wrapper attempts to import/supplement that environment where possible.
+
+Experimental local package smoke:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration Release -Smoke
+```
+
+This creates an ignored archive under `artifacts/packages/`, writes `SHA256SUMS.txt`, and
+extracts the ZIP outside the checkout to run basic `sloppy` and `sloppyc` CLI smoke checks.
+It is not a public release workflow.
 
 ## V8 And Providers
 

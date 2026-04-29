@@ -100,6 +100,17 @@ Benchmark workflow for performance-validation tasks:
 
 Do not report Debug or smoke output as meaningful performance data.
 
+Packaging workflow for EPIC-25 and later package changes:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration Release
+.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+```
+
+The package smoke must extract outside the checkout, run basic CLI commands, verify stdlib
+assets and manifest fields, and verify the checksum file. It is a local artifact smoke, not
+a reproducible public-release claim.
+
 ## Local Versus CI Behavior
 
 Locally, missing optional quality tools may print a clear skip warning. In CI, missing
@@ -188,6 +199,7 @@ one", "set variable", or "return result", but humans decide context.
 
 Never stage or track:
 
+- `artifacts/`;
 - `build/`;
 - `compiler/target/`;
 - `target/`;

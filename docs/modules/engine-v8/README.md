@@ -173,6 +173,23 @@ public functions such as `v8::platform::NewDefaultPlatform`.
 
 Exact prebuilt artifact hosting, checksum policy, and update cadence remain deferred.
 
+## Distribution Policy
+
+The V8 SDK is a build-time input, not a package payload. Source builds use a local ignored
+SDK under `.sdeps/v8/<platform-arch>` or an explicit `SLOPPY_V8_ROOT`. The repository must
+not commit V8 headers, import libraries, source trees, or build outputs.
+
+End-user packages should not require a V8 SDK installation. The preferred release strategy
+is static/monolithic V8 linking when practical. If a dynamic V8 build is used instead, the
+package may include only the runtime DLL/shared-library files needed to run the `sloppy`
+executable, staged under `lib/sloppy/engines/v8/`. It must not include SDK headers, import
+libraries, depot_tools checkouts, GN/Ninja build trees, or `.sdeps/`.
+
+The current default local package is non-V8 and records `containsV8Runtime: false` and
+`containsV8Sdk: false` in `manifest.json`. `tools/windows/package.ps1 -IncludeV8Runtime`
+is intentionally gated on an explicit SDK root and copies only dynamic runtime files from
+`bin/`; monolithic/static SDK library content is never copied into packages.
+
 ## Diagnostics
 
 Current engine diagnostics include `SLOPPY_E_UNSUPPORTED_ENGINE` for unsupported noop
@@ -246,4 +263,4 @@ provided.
 ## Open Questions
 
 - Exact prebuilt V8 SDK hosting and checksum format.
-- Dynamic runtime DLL packaging rules.
+- Exact dynamic runtime DLL/shared-library list for non-monolithic release builds.

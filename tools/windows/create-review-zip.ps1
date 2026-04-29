@@ -20,6 +20,7 @@ try {
 
     $excludedPatterns = @(
         "^\.git/",
+        "^artifacts/",
         "^build/",
         "^compiler/target/",
         "^target/",
