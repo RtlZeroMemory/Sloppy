@@ -50,6 +50,7 @@ target/
 *.temp
 
 # Logs and temporary artifacts
+artifacts/
 logs/
 *.log
 *.trace

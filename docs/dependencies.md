@@ -94,12 +94,30 @@ V8 is enabled. Default builds still do not require the SDK. V8 tests are registe
 after the SDK gate succeeds, so CI can keep the non-V8 path green without local V8
 artifacts.
 
+EPIC-25 distribution policy separates build-time SDKs from runtime packages:
+
+- source builds may use `.sdeps/v8/<platform-arch>` or an explicit `SLOPPY_V8_ROOT`;
+- release packages must not require end users to install a V8 SDK;
+- SDK headers, import libraries, source trees, and build outputs are never committed and
+  are not copied by package scripts;
+- static/monolithic V8 linking is preferred when practical because it keeps runtime
+  archives simple;
+- dynamic runtime DLL/shared-library bundling is the fallback, and only runtime files from
+  an SDK `bin/` directory may be copied into `lib/sloppy/engines/v8/`;
+- default local packages record `containsV8Sdk: false` and are non-V8 unless a V8-linked
+  executable plus required runtime files are explicitly staged.
+
 SQLite and libpq are consumed through vcpkg manifest mode for their provider implementation
 phases. libpq release packaging still needs an explicit DLL strategy. SQL Server support
 uses the platform ODBC headers/libraries discovered by CMake and depends on Microsoft ODBC
 Driver availability for live connections. The native SQL Server doctor helper detects
 driver-manager availability, missing/invalid driver names, and redacted connection
 configuration issues ahead of a future CLI `sloppy doctor`.
+
+EPIC-25 Windows local packages copy the runtime DLLs restored by vcpkg into `bin/` so the
+CLI tools can start after extraction outside the checkout. This is local package smoke
+plumbing, not a complete public release dependency policy. Database drivers, V8 SDK files,
+and package-manager prerequisites are not installed or bundled.
 
 All dependencies need explicit ownership, update, security, license, and test strategy
 before they become required in the default build.
@@ -369,6 +387,7 @@ A dependency can be added when:
 
 - Exact V8 SDK update cadence.
 - Exact Sloppy V8 SDK prebuilt source and checksum policy.
-- Exact sqlite packaging strategy.
-- Exact libpq DLL/shared-library packaging strategy.
+- Complete sqlite runtime packaging and notice strategy.
+- Complete libpq DLL/shared-library packaging and notice strategy.
+- Exact dynamic V8 runtime file list for non-monolithic builds.
 - Whether default CI should eventually use a documented PostgreSQL service/container.

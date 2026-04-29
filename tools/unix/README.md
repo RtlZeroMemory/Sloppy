@@ -1,6 +1,14 @@
 # Unix Tools
 
-Future Linux/macOS shell tooling belongs here.
+Linux/macOS shell tooling belongs here.
 
-No Unix developer scripts are implemented in the foundation phase. Linux and macOS remain
-architectural targets from the beginning.
+`package.sh` is the first experimental TAR packaging path:
+
+```sh
+tools/unix/package.sh --configuration Release
+```
+
+It stages the same local archive layout as the Windows ZIP script and writes a `.tar.gz`
+plus `SHA256SUMS.txt` under ignored `artifacts/packages/`. This script is intentionally
+simple and is not yet validated by default Windows gates or cross-platform CI. EPIC-26 owns
+Linux/macOS CI validation.
