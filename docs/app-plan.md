@@ -41,7 +41,9 @@ route binding table.
 EPIC-24 keeps Plan v1's handler schema stable but changes V8 execution from named global
 lookup to runtime-owned registration. Generated app artifacts call
 `__sloppy_register_handler(id, handler)`, and `sloppy run` validates that each plan handler
-ID has a registered callable before accepting requests or running `--once`.
+ID has a registered callable before accepting requests or running `--once`. Generated apps
+also keep the legacy `globalThis.__sloppy_handler_<id>` export so no-context
+runtime-contract callers continue to use the plan's `exportName` contract explicitly.
 
 ## Public API Shape
 

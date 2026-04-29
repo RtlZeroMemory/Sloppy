@@ -186,9 +186,11 @@ runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler MVP recog
 the public bare import `import { Sloppy, Results } from "sloppy";` as input syntax. EPIC-24
 rewrites that import away in generated `app.js`: the artifact reads `Results` from
 `globalThis.__sloppy_runtime`, which is installed by the runtime-loaded bootstrap asset,
-and registers generated handler functions through
-`__sloppy_register_handler(handlerId, handler)`. The compiler does not load stdlib assets
-itself and does not imply Node or npm compatibility.
+assigns each generated handler to its legacy `globalThis.__sloppy_handler_<id>` export name,
+and registers that same function through `__sloppy_register_handler(handlerId, handler)`.
+The legacy global keeps the no-context runtime-contract ABI explicit while the registered
+handler table is the EPIC-24 dispatch path. The compiler does not load stdlib assets itself
+and does not imply Node or npm compatibility.
 `examples/hello/app.js` therefore uses a relative source import from
 `stdlib/sloppy/index.js`; that example remains a bootstrap API-shape example. The
 compiler-owned runnable artifact example is `examples/compiler-hello/`.

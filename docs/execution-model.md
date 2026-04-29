@@ -190,9 +190,11 @@ does not type-check. `sloppy check` later uses the official TypeScript checker t
 
 Current EPIC-21/22/23/24 behavior covers the first executable compiler-to-runtime path for
 one source file when V8 is enabled. The generated `app.js` is still a classic script, but it
-expects bootstrap runtime state from `globalThis.__sloppy_runtime` and calls
-`__sloppy_register_handler(N, handler)`. The runtime does not resolve Node packages, npm
-packages, arbitrary bare specifiers, dynamic imports, or user source module graphs.
+expects bootstrap runtime state from `globalThis.__sloppy_runtime`, assigns legacy
+`globalThis.__sloppy_handler_<id>` exports for the no-context contract, and calls
+`__sloppy_register_handler(N, handler)` for the registered-handler table. The runtime does
+not resolve Node packages, npm packages, arbitrary bare specifiers, dynamic imports, or user
+source module graphs.
 
 ## Artifact Boundary
 

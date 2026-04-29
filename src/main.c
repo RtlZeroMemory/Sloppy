@@ -197,8 +197,8 @@ static void sl_cli_print_help(void)
     (void)printf("Usage:\n");
     (void)printf("  sloppy --help\n");
     (void)printf("  sloppy --version\n");
-    (void)printf("  sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]\n");
-    (void)printf("  sloppy run --artifacts <dir> [--stdlib <dir>] [--once METHOD TARGET]\n");
+    (void)printf("  sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]\n");
+    (void)printf("             [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
     (void)printf("  sloppy routes --plan <path> [--format text|json]\n");
     (void)printf("  sloppy doctor [--plan <path>] [--format text|json]\n");
     (void)printf("  sloppy audit --plan <path> [--format text|json]\n");
@@ -212,9 +212,8 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "run") == 0) {
-        (void)printf("Usage: sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]\n");
-        (void)printf(
-            "       sloppy run --artifacts <dir> [--stdlib <dir>] [--once METHOD TARGET]\n");
+        (void)printf("Usage: sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]\n");
+        (void)printf("                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
         (void)printf("\n");
         (void)printf("Dev-only MVP. Requires a V8-enabled build and .sloppy-style artifacts.\n");
         return;
@@ -1321,7 +1320,7 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
 
     status = sl_engine_validate_registered_handlers(app->engine, &app->plan, &diag);
     if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: app module did not register required handlers: ", &diag);
+        sl_run_print_diag("sloppy run: registered handler validation failed: ", &diag);
         return 1;
     }
 

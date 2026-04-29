@@ -1379,9 +1379,12 @@ fn emit_app_js(app: &ExtractedApp) -> String {
 
     for (index, route) in app.routes.iter().enumerate() {
         let id = index + 1;
-        output.push_str(&format!("globalThis.__sloppy_register_handler({id}, "));
+        output.push_str(&format!("globalThis.__sloppy_handler_{id} = "));
         output.push_str(&route.handler.source);
-        output.push_str(");\n");
+        output.push_str(";\n");
+        output.push_str(&format!(
+            "globalThis.__sloppy_register_handler({id}, globalThis.__sloppy_handler_{id});\n"
+        ));
     }
 
     output

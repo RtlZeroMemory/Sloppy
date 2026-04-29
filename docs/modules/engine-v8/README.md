@@ -45,7 +45,8 @@ Implemented now:
   and invokes it through the engine boundary;
 - V8-gated handwritten artifact integration fixtures under
   `tests/integration/execution/handwritten_smoke/`.
-- compiler-generated `app.js` artifacts call `__sloppy_register_handler(N, handler)`;
+- compiler-generated `app.js` artifacts assign legacy `globalThis.__sloppy_handler_<id>`
+  globals and call `__sloppy_register_handler(N, handler)`;
 - the classic bootstrap runtime asset at `stdlib/sloppy/internal/runtime-classic.js`
   installs the current V8-runnable `Results.*` descriptor helpers on
   `globalThis.__sloppy_runtime`;
@@ -282,8 +283,9 @@ Current engine diagnostics include `SLOPPY_E_UNSUPPORTED_ENGINE` for unsupported
 operations, `SLOPPY_E_ENGINE_COMPILE_ERROR` for V8 syntax/compile failures,
 `SLOPPY_E_ENGINE_EXCEPTION` for thrown eval/function exceptions, and
 `SLOPPY_E_ENGINE_CALL_ERROR` for missing/non-callable smoke globals, missing registered
-handlers, intrinsic misuse surfaced through V8 exception diagnostics, duplicate handler
-registration, and unsupported smoke result types.
+handlers, and unsupported smoke result types. Eval-time intrinsic failures such as invalid
+`__sloppy_register_handler(...)` arguments or duplicate handler registration are reported
+as `SL_DIAG_ENGINE_EXCEPTION` because they are raised while evaluating the app module.
 
 The mapping is intentionally basic. It captures V8 exception message text, generated
 source/resource name when available, 1-based line and column when V8 reports them, and a

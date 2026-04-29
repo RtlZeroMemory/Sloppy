@@ -4,4 +4,5 @@ if (__sloppyRuntime === undefined) {
 }
 const { Results } = __sloppyRuntime;
 
-globalThis.__sloppy_register_handler(1, () => Results.json({ ok: true }));
+globalThis.__sloppy_handler_1 = () => Results.json({ ok: true });
+globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);

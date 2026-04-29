@@ -230,20 +230,41 @@ static int test_compiler_mvp_plan_and_app_call_handler_1(void)
     }
 
     if (expect_status(sl_engine_validate_registered_handlers(engine, &plan, &diag), SL_STATUS_OK) !=
-            0 ||
-        expect_status(sl_runtime_contract_call_handler_with_context(engine, &result_arena, &plan,
-                                                                    1U, &context, &result, &diag),
-                      SL_STATUS_OK) != 0)
+        0)
     {
         sl_engine_destroy(engine);
         return 3;
+    }
+
+    if (expect_status(
+            sl_runtime_contract_call_handler(engine, &result_arena, &plan, 1U, &result, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 4;
     }
 
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(result.text, sl_str_from_cstr("Hello from Sloppy")))
     {
         sl_engine_destroy(engine);
-        return 4;
+        return 5;
+    }
+
+    result = (SlEngineResult){0};
+    if (expect_status(sl_runtime_contract_call_handler_with_context(engine, &result_arena, &plan,
+                                                                    1U, &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 6;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("Hello from Sloppy")))
+    {
+        sl_engine_destroy(engine);
+        return 7;
     }
 
     sl_engine_destroy(engine);

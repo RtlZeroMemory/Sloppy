@@ -8,8 +8,8 @@ inspection, local readiness checks, audit findings, and OpenAPI skeleton generat
 Implemented commands:
 
 ```powershell
-sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]
-sloppy run --artifacts <dir> [--stdlib <dir>] [--once METHOD TARGET]
+sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]
+           [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]
 sloppy routes --plan <path> [--format text|json]
 sloppy doctor [--plan <path>] [--format text|json]
 sloppy audit --plan <path> [--format text|json]
