@@ -2,7 +2,7 @@
 
 ## Status
 
-Planned / not implemented yet.
+Bootstrap stdlib layout exists; app-host behavior is planned / not implemented yet.
 
 ## Purpose
 
@@ -20,7 +20,10 @@ No Node compatibility by default and no raw primitive-first public app model.
 
 ## Public/Internal API
 
-Future TypeScript `Sloppy`, `Results`, builder, app, and module APIs.
+`stdlib/sloppy/index.js` now re-exports placeholder `Sloppy` and `Results` modules for the
+future public `"sloppy"` facade. The exports are empty frozen objects. Builders, app graph
+freeze, `Sloppy.create`, `app.mapGet`, route registration, and result helpers remain future
+work.
 
 ## Ownership/Lifetime Rules
 
@@ -36,15 +39,18 @@ Missing service, duplicate route, invalid lifetime, missing config, and module g
 
 ## Tests
 
-Public API examples, plan fixtures, diagnostics snapshots, and integration smoke once
-features exist.
+CTest registers `bootstrap.stdlib.assets` to verify the source bootstrap files and copied
+build-tree assets exist. Public API examples, plan fixtures, diagnostics snapshots, and
+integration smoke come later once behavior exists.
 
 ## Source Docs
 
 - `docs/developer-ergonomics.md`;
 - `docs/modularity.md`;
 - `docs/app-plan.md`;
-- `docs/testing-strategy.md`.
+- `docs/testing-strategy.md`;
+- `docs/build-and-distribution.md`;
+- `stdlib/sloppy/README.md`.
 
 ## Open Questions
 

@@ -2,6 +2,10 @@
 
 Status: Planned / not implemented yet.
 
+Bootstrap status: `stdlib/sloppy/app.js` now exports a placeholder frozen `Sloppy` object
+for layout purposes only. `Sloppy.create`, builders, graph freeze, `app.mapGet`, and
+`app.run` are not implemented yet.
+
 Purpose: explain the future builder/app model, graph freeze, startup validation, and how
 Sloppy differs from raw runtime callbacks.
 

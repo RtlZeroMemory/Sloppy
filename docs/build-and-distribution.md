@@ -218,7 +218,8 @@ prefix/
     sloppyc.exe
   lib/sloppy/
     engines/
-    stdlib/
+    bootstrap/
+      sloppy/
   include/
     sloppy/
   share/sloppy/
@@ -229,6 +230,12 @@ prefix/
 
 The exact layout may change before release packaging, but binaries and support data should
 be separated cleanly.
+
+TASK 11.A starts the bootstrap support-data layout. Source assets live in
+`stdlib/sloppy/`, the normal build copies them to
+`<build>/lib/sloppy/bootstrap/sloppy/`, and CMake install places them under
+`<prefix>/lib/sloppy/bootstrap/sloppy/`. The copy is plain file staging: no Node, npm,
+bundler, transpiler, or package-manager metadata is involved.
 
 ## Release ZIP Layout
 

@@ -202,10 +202,14 @@ Current checks:
 - `http.dispatch.execution` is registered only when V8 is enabled and covers synthetic
   in-memory GET dispatch from parsed HTTP request head through a manual route binding to a
   numeric handler ID, plus missing JavaScript function and throwing handler diagnostics.
+- `bootstrap.stdlib.assets` runs in the default CTest suite and verifies the placeholder
+  bootstrap stdlib source files and copied build-tree assets exist. It does not execute
+  JavaScript or load modules.
 
 Later checks:
 
 - wrong-thread checks.
+- bootstrap stdlib loading and intrinsic binding.
 
 ## Source Docs
 

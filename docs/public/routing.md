@@ -2,6 +2,10 @@
 
 Status: Planned / not implemented yet.
 
+Bootstrap status: the stdlib layout exists, but no public route API exists yet.
+`app.mapGet`, route groups, handler registration, and compiler extraction remain future
+work.
+
 Purpose: document future `app.mapGet`, `app.mapPost`, route groups, route parameters,
 metadata, and route diagnostics.
 

@@ -71,6 +71,11 @@ matches the parsed path with the existing route matcher, validates the handler I
 the parsed plan, and invokes the existing runtime-contract/engine boundary. It still does
 not implement TCP sockets, a real HTTP server, response writing, body parsing, request
 contexts, middleware, public TypeScript API, plan route sections, or compiler extraction.
+TASK 11.A adds the source-controlled bootstrap stdlib layout under `stdlib/sloppy/` and
+copies it into the build tree at `lib/sloppy/bootstrap/sloppy/`. The modules are placeholder
+ES modules only: they expose empty frozen `Sloppy` and `Results` objects plus an internal
+intrinsics placeholder. They do not implement `Results.text/json`, `Sloppy.create`,
+`app.mapGet`, compiler import rewriting, runtime intrinsic binding, or module resolution.
 
 ## Future Phase
 
@@ -185,6 +190,8 @@ There is no Rust/C FFI in the current architecture. Artifacts are the boundary:
 ## JavaScript Bootstrap Responsibilities
 
 The bootstrap stdlib is future generated or bundled JavaScript loaded before app code.
+TASK 11.A establishes the source layout as `stdlib/sloppy/` and the staged package/runtime
+support layout as `lib/sloppy/bootstrap/sloppy/`.
 
 It will own:
 
@@ -197,6 +204,8 @@ It will own:
 - ergonomic JS objects over native request/resource IDs.
 
 The bootstrap stdlib must not bypass the runtime's permission/resource model.
+The current checked-in modules are placeholders that reserve boundaries only. Public API
+behavior and intrinsic binding must be added by later task-specific PRs.
 
 ## App Host Responsibilities
 
@@ -244,6 +253,7 @@ src/platform/            platform abstraction backends
 src/engine/v8/           isolated C++ V8 bridge
 src/modules/             future module graph runtime support
 src/data/                future data provider runtime support
+stdlib/sloppy/           bootstrap JavaScript stdlib source layout
 compiler/                Rust sloppyc project
 docs/                    engineering specifications
 adr/                     architecture decision records

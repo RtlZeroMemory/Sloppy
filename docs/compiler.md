@@ -161,6 +161,11 @@ See also `docs/execution-model.md`. Dev and production paths must use the same a
 architecture: `app.js`, `app.js.map`, and `app.plan.json`. `sloppy run` may add caching and
 watching, but it must not invent a separate runtime-only discovery model.
 
+The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is staged for
+runtime/package use under `lib/sloppy/bootstrap/sloppy/`. Compiler import rewriting from
+the public `"sloppy"` specifier to those bootstrap modules is future work; the current
+compiler placeholder does not read or emit stdlib assets.
+
 ## Internal Architecture
 
 Planned Rust modules:

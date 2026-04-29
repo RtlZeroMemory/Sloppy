@@ -85,6 +85,9 @@ handler ID. A manual borrowed route binding table maps a parsed `SlRoutePattern`
 the parsed plan, and calls the existing runtime-contract helper. It is still in-memory test
 dispatch only: no TCP server, sockets, response writer, body parsing, request context,
 middleware, public TypeScript API, compiler extraction, or plan routes section exists.
+TASK 11.A adds only the bootstrap stdlib file layout. The runtime does not load these
+modules yet, and the V8 bridge does not bind intrinsics or resolve ESM imports from this
+directory.
 
 ## Current Handwritten Milestone
 
@@ -269,6 +272,10 @@ Handler table consistency checks:
 - unexpected handler IDs are rejected or warned according to mode;
 - registered handler callable type is verified by the engine bridge;
 - user-facing handler name is carried only for diagnostics/tooling.
+
+TASK 11.A reserves `stdlib/sloppy/internal/intrinsics.js` as the future import boundary for
+runtime-provided registration and host intrinsics. That file currently exports an empty
+frozen placeholder object; no registration intrinsic exists yet.
 
 ## Request Execution Flow
 
