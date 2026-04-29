@@ -2589,12 +2589,25 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
                                   "duplicate capability token", "capabilities", findings);
             }
         }
-        if (sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "database") &&
-            !sl_cli_span_empty(metadata->capabilities[outer].provider) &&
-            sl_cli_find_provider(metadata, metadata->capabilities[outer].provider) == NULL)
+        if (sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "database")) {
+            if (sl_cli_span_empty(metadata->capabilities[outer].provider)) {
+                sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_REQUIRED",
+                                  "database capability is missing required provider reference",
+                                  "capabilities", findings);
+            }
+            else if (sl_cli_find_provider(metadata, metadata->capabilities[outer].provider) == NULL)
+            {
+                sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_MISSING",
+                                  "database capability references an undeclared provider",
+                                  "capabilities", findings);
+            }
+        }
+        else if ((sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "filesystem") ||
+                  sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "network")) &&
+                 !sl_cli_span_empty(metadata->capabilities[outer].provider))
         {
-            sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_MISSING",
-                              "database capability references an undeclared provider",
+            sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_FORBIDDEN",
+                              "filesystem/network capabilities must not declare providers",
                               "capabilities", findings);
         }
         if (sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "filesystem")) {

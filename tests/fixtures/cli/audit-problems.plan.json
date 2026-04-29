@@ -69,9 +69,15 @@
       "provider": "data.main"
     },
     {
+      "token": "data.no_provider",
+      "kind": "database",
+      "access": "read"
+    },
+    {
       "token": "files.uploads",
       "kind": "filesystem",
-      "access": "read"
+      "access": "read",
+      "provider": "data.main"
     },
     {
       "token": "net.admin",

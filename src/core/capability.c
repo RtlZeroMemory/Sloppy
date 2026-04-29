@@ -49,6 +49,40 @@ static SlCapabilityAccess sl_capability_access_from_plan(SlStr access)
     return SL_CAPABILITY_ACCESS_UNKNOWN;
 }
 
+static bool sl_capability_token_syntax_valid(SlStr token)
+{
+    size_t index = 0U;
+
+    if (sl_str_is_empty(token)) {
+        return false;
+    }
+
+    for (index = 0U; index < token.length; index += 1U) {
+        char ch = token.ptr[index];
+        bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                  (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-';
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool sl_capability_shape_valid(const SlPlanCapability* capability)
+{
+    if (capability == NULL || !sl_capability_token_syntax_valid(capability->token) ||
+        sl_str_is_empty(capability->kind) || sl_str_is_empty(capability->access) ||
+        !sl_plan_capability_kind_supported(capability->kind) ||
+        !sl_plan_capability_access_supported(capability->kind, capability->access))
+    {
+        return false;
+    }
+    if (sl_capability_kind_is(capability, "database")) {
+        return !sl_str_is_empty(capability->provider);
+    }
+    return sl_str_is_empty(capability->provider);
+}
+
 static SlStr sl_capability_operation_name(SlCapabilityOperation operation)
 {
     switch (operation) {
@@ -197,12 +231,15 @@ static SlStatus sl_capability_check_common(const SlCapabilityRegistry* registry,
     }
 
     status = sl_capability_registry_find(registry, token, &capability);
-    if (!sl_status_is_ok(status)) {
+    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
         return sl_capability_denied(
             diag_arena, out_diag, token, sl_str_from_cstr(kind), operation, sl_str_empty(),
             sl_str_empty(),
             sl_capability_literal("capability access denied: missing capability",
                                   sizeof("capability access denied: missing capability") - 1U));
+    }
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
     if (capability == NULL) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
@@ -229,12 +266,22 @@ static SlStatus sl_capability_check_common(const SlCapabilityRegistry* registry,
 
 SlStatus sl_capability_registry_init_from_plan(const SlPlan* plan, SlCapabilityRegistry* out)
 {
+    size_t index = 0U;
+
     if (out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = (SlCapabilityRegistry){0};
     if (plan == NULL || (plan->capability_count > 0U && plan->capabilities == NULL)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (sl_plan_has_duplicate_capability_tokens(plan)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (index = 0U; index < plan->capability_count; index += 1U) {
+        if (!sl_capability_shape_valid(&plan->capabilities[index])) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
     }
     out->capabilities = plan->capabilities;
     out->capability_count = plan->capability_count;

@@ -79,7 +79,7 @@ No native pointer is exposed to JavaScript and no fake SQL Server success is rep
 stdlib.
 
 MAIN1-10 adds the runtime capability registry used by future provider bridge calls.
-Database provider access policy is token based: read operations require `read` or
+Database provider access policy is token-based: read operations require `read` or
 `readwrite`, write operations require `write` or `readwrite`, and a declared provider token
 must match the provider boundary being called. These hooks deny before provider work when
 called by a bridge or native host boundary. The existing direct native provider APIs remain

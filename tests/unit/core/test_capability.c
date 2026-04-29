@@ -30,20 +30,46 @@ static bool diag_has_hint(const SlDiag* diag, const char* expected)
     return false;
 }
 
+static bool str_contains_cstr(SlStr haystack, const char* needle)
+{
+    SlStr expected = sl_str_from_cstr(needle);
+    size_t index = 0U;
+    size_t needle_index = 0U;
+
+    if (haystack.ptr == NULL || needle == NULL || expected.length == 0U ||
+        expected.length > haystack.length)
+    {
+        return false;
+    }
+    for (index = 0U; index <= haystack.length - expected.length; index += 1U) {
+        bool matches = true;
+        for (needle_index = 0U; needle_index < expected.length; needle_index += 1U) {
+            if (haystack.ptr[index + needle_index] != expected.ptr[needle_index]) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static bool diag_mentions_secret(const SlDiag* diag)
 {
     size_t index = 0U;
-    SlStr secret = sl_str_from_cstr("secret");
-    SlStr password = sl_str_from_cstr("password");
 
     if (diag == NULL) {
         return false;
     }
-    if (sl_str_equal(diag->message, secret) || sl_str_equal(diag->message, password)) {
+    if (str_contains_cstr(diag->message, "secret") || str_contains_cstr(diag->message, "password"))
+    {
         return true;
     }
     for (index = 0U; index < diag->hint_count; index += 1U) {
-        if (sl_str_equal(diag->hints[index], secret) || sl_str_equal(diag->hints[index], password))
+        if (str_contains_cstr(diag->hints[index], "secret") ||
+            str_contains_cstr(diag->hints[index], "password"))
         {
             return true;
         }
@@ -225,6 +251,11 @@ static int test_wrong_kind_and_skeleton_checks(void)
     {
         return 35;
     }
+    status = sl_capability_check_filesystem(&registry, &arena, sl_str_empty(),
+                                            SL_CAPABILITY_OPERATION_READ, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 36;
+    }
     return 0;
 }
 
@@ -259,6 +290,51 @@ static int test_denied_check_precedes_provider_work(void)
     return 0;
 }
 
+static int test_registry_rejects_invalid_shapes(void)
+{
+    SlCapabilityRegistry registry = {0};
+    SlPlanCapability duplicate_caps[] = {
+        capability("data.main", "database", "read", "data.main"),
+        capability("data.main", "database", "write", "data.main"),
+    };
+    SlPlanCapability invalid_kind_caps[] = {
+        capability("data.main", "unknown", "read", "data.main"),
+    };
+    SlPlanCapability missing_provider_caps[] = {
+        capability("data.main", "database", "read", NULL),
+    };
+    SlPlanCapability forbidden_provider_caps[] = {
+        capability("files.assets", "filesystem", "read", "data.main"),
+    };
+    SlPlan duplicate_plan = {.capabilities = duplicate_caps, .capability_count = 2U};
+    SlPlan invalid_kind_plan = {.capabilities = invalid_kind_caps, .capability_count = 1U};
+    SlPlan missing_provider_plan = {.capabilities = missing_provider_caps, .capability_count = 1U};
+    SlPlan forbidden_provider_plan = {.capabilities = forbidden_provider_caps,
+                                      .capability_count = 1U};
+
+    if (expect_status(sl_capability_registry_init_from_plan(&duplicate_plan, &registry),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 50;
+    }
+    if (expect_status(sl_capability_registry_init_from_plan(&invalid_kind_plan, &registry),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 51;
+    }
+    if (expect_status(sl_capability_registry_init_from_plan(&missing_provider_plan, &registry),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 52;
+    }
+    if (expect_status(sl_capability_registry_init_from_plan(&forbidden_provider_plan, &registry),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 53;
+    }
+    return 0;
+}
+
 int main(void)
 {
     int result = test_registry_lookup();
@@ -277,5 +353,9 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_denied_check_precedes_provider_work();
+    result = test_denied_check_precedes_provider_work();
+    if (result != 0) {
+        return result;
+    }
+    return test_registry_rejects_invalid_shapes();
 }

@@ -43,8 +43,9 @@ The repo has a surprisingly broad foundation now, and it has the first dev-only 
 artifact path plus default hosted CI across Windows, Linux, and macOS. Public-alpha
 readiness is still red because the path is intentionally narrow: V8 validation is gated,
 source-input `sloppy run` is deferred, response/request handling is still dev-only,
-capability enforcement is missing, optional SDK/service validation remains separate, and
-release packaging is experimental.
+capability metadata now has native Plan/provider validation, an immutable runtime registry,
+and database policy check hooks, but JS-native bridge wiring, OS sandboxing, optional
+SDK/service validation, and release packaging remain separate or experimental.
 
 ROADMAP MAIN is the minimal verification path for the existing compiler-to-runtime work.
 ROADMAP MAIN.1 is the hardening path for alpha-production quality. Public alpha docs should

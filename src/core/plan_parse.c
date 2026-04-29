@@ -22,6 +22,7 @@
 #include "sloppy/route.h"
 
 #include <stdint.h>
+#include <string.h>
 #include <yyjson.h>
 
 typedef struct SlPlanParseContext
@@ -273,24 +274,51 @@ static SlStatus sl_plan_parse_require_object(SlPlanParseContext* ctx, yyjson_val
 
 static SlStatus sl_plan_parse_reject_secret_fields(SlPlanParseContext* ctx, yyjson_val* object)
 {
-    static const char* secret_fields[] = {"connectionString", "password", "pwd",
-                                          "secret",           "apiKey",   "accessToken"};
+    static const char* secret_fields[] = {"connectionstring", "password", "pwd",
+                                          "secret",           "apikey",   "accesstoken"};
+    yyjson_obj_iter iter;
+    yyjson_val* key = NULL;
+    char normalized[128];
     size_t index = 0U;
 
     if (ctx == NULL || object == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    for (index = 0U; index < sizeof(secret_fields) / sizeof(secret_fields[0]); index += 1U) {
-        if (yyjson_obj_get(object, secret_fields[index]) != NULL) {
-            return sl_plan_parse_field_diag(
-                ctx,
-                sl_plan_parse_literal("app plan contains secret-bearing field",
-                                      sizeof("app plan contains secret-bearing field") - 1U),
-                sl_plan_parse_literal(
-                    "store secret values outside app.plan.json and reference config keys instead",
-                    sizeof("store secret values outside app.plan.json and reference config keys "
-                           "instead") -
-                        1U));
+    iter = yyjson_obj_iter_with(object);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        SlStr raw = sl_str_from_parts(yyjson_get_str(key), yyjson_get_len(key));
+        size_t normalized_len = 0U;
+        size_t char_index = 0U;
+
+        for (char_index = 0U; char_index < raw.length && normalized_len < sizeof(normalized) - 1U;
+             char_index += 1U)
+        {
+            char ch = raw.ptr[char_index];
+            if (ch >= 'A' && ch <= 'Z') {
+                normalized[normalized_len] = (char)(ch - 'A' + 'a');
+                normalized_len += 1U;
+            }
+            else if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')) {
+                normalized[normalized_len] = ch;
+                normalized_len += 1U;
+            }
+        }
+        normalized[normalized_len] = '\0';
+
+        for (index = 0U; index < sizeof(secret_fields) / sizeof(secret_fields[0]); index += 1U) {
+            if (strcmp(normalized, secret_fields[index]) == 0) {
+                return sl_plan_parse_field_diag(
+                    ctx,
+                    sl_plan_parse_literal("app plan contains secret-bearing field",
+                                          sizeof("app plan contains secret-bearing field") - 1U),
+                    sl_plan_parse_literal(
+                        "store secret values outside app.plan.json and reference config keys "
+                        "instead",
+                        sizeof(
+                            "store secret values outside app.plan.json and reference config keys "
+                            "instead") -
+                            1U));
+            }
         }
     }
     return sl_status_ok();

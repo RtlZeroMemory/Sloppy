@@ -270,6 +270,8 @@ static int test_valid_fixture_matrix(void)
                 sl_str_from_cstr("tests/golden/plan/valid-capability-skeletons.plan.json")) &&
             (plan.capability_count != 2U ||
              !sl_str_equal(plan.capabilities[0].kind, sl_str_from_cstr("filesystem")) ||
+             !sl_str_equal(plan.capabilities[0].access, sl_str_from_cstr("readwrite")) ||
+             !sl_str_equal(plan.capabilities[1].kind, sl_str_from_cstr("network")) ||
              !sl_str_equal(plan.capabilities[1].access, sl_str_from_cstr("connect-listen"))))
         {
             return 68 + (int)index;
