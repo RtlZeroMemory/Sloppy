@@ -4,7 +4,7 @@ const PostgresModule = Sloppy.module("data.postgres")
     .capabilities((caps) => {
         caps.addDatabase("data.main", {
             provider: "postgres",
-            connectionString: "postgres://localhost/sloppy_test",
+            configKey: "SLOPPY_POSTGRES_TEST_URL",
             access: "readwrite",
         });
     })
@@ -24,8 +24,11 @@ const lowered = sql.lower(["select id, name from users where name = ", ""], ["Ad
 });
 
 async function insertUser(db, name) {
-    await db.exec`insert into users (name) values (${name})`;
-    return db.queryOne`select id, name from users where name = ${name}`;
+    return db.queryOne`
+        insert into users (name)
+        values (${name})
+        returning id, name
+    `;
 }
 
 async function renameUser(db, id, name) {

@@ -262,23 +262,6 @@ Tests:
   parameter binding, unsupported parameter diagnostics, commit/rollback, nested transaction
   rejection, transaction use after complete, SQL diagnostics, and invalid open diagnostics.
 
-## Acceptance Criteria For Adding A Dependency
-
-A dependency can be added when:
-
-- the roadmap epic for that dependency has started;
-- docs explain why the dependency is needed;
-- build and packaging impact is documented;
-- license/security/update ownership is documented;
-- tests cover the dependency boundary;
-- CI behavior is clear when the dependency is unavailable;
-- the dependency does not define Sloppy's public product model.
-
-## Open Questions
-
-- Exact V8 SDK update cadence.
-- Exact Sloppy V8 SDK prebuilt source and checksum policy.
-- Exact sqlite packaging strategy.
 ### libpq
 
 `libpq` is added in EPIC-17 through vcpkg manifest mode as the PostgreSQL client library.
@@ -320,7 +303,22 @@ Tests:
 - `tests/unit/data/test_postgres.c` covers redaction, invalid options, use after close,
   doctor diagnostics, and env-gated live connection/query/transaction/pool behavior.
 
-Open questions:
+## Acceptance Criteria For Adding A Dependency
 
+A dependency can be added when:
+
+- the roadmap epic for that dependency has started;
+- docs explain why the dependency is needed;
+- build and packaging impact is documented;
+- license/security/update ownership is documented;
+- tests cover the dependency boundary;
+- CI behavior is clear when the dependency is unavailable;
+- the dependency does not define Sloppy's public product model.
+
+## Open Questions
+
+- Exact V8 SDK update cadence.
+- Exact Sloppy V8 SDK prebuilt source and checksum policy.
+- Exact sqlite packaging strategy.
 - Exact libpq DLL/shared-library packaging strategy.
 - Whether default CI should eventually use a documented PostgreSQL service/container.

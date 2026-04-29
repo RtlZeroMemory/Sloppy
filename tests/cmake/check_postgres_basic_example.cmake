@@ -9,15 +9,19 @@ endforeach()
 
 file(READ "${example_app}" app_text)
 foreach(required_pattern IN ITEMS
-    "Sloppy.module(\"data.postgres\")"
+    "Sloppy.module"
+    "data.postgres"
     "provider: \"postgres\""
-    "connectionString: \"postgres://localhost/sloppy_test\""
+    "configKey:"
+    "SLOPPY_POSTGRES_TEST_URL"
+    "connectionString:"
     "data.postgres.open"
     "maxConnections: 2"
     "placeholderStyle: data.postgres.placeholderStyle"
-    "db.transaction(async (tx)"
-    "tx.exec`"
-    "tx.queryOne`")
+    "db.transaction("
+    "returning id, name"
+    "tx.exec"
+    "tx.queryOne")
     string(FIND "${app_text}" "${required_pattern}" match_index)
     if(match_index EQUAL -1)
         message(FATAL_ERROR "PostgreSQL example missing pattern: ${required_pattern}")

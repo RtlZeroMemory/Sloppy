@@ -191,6 +191,14 @@ function createForgedLoweredQuery() {
         data.postgres.redactConnectionString("host=localhost password=secret user=ada"),
         "host=localhost password=<redacted> user=ada",
     );
+    assert.equal(
+        data.postgres.redactConnectionString("host=localhost Password='secret value' user=ada"),
+        "host=localhost Password=<redacted> user=ada",
+    );
+    assert.equal(
+        data.postgres.redactConnectionString("password='secret\\' value' user=ada"),
+        "password=<redacted> user=ada",
+    );
     assertThrowsMessage(() => data.postgres.open({}), /connectionString must be a non-empty string/);
     assertThrowsMessage(() => data.postgres.open({
         connectionString: "postgres://localhost/sloppy",
@@ -360,13 +368,13 @@ function createForgedLoweredQuery() {
         .capabilities((caps) => {
             caps.addDatabase("data.main", {
                 provider: "postgres",
-                connectionString: "postgres://localhost/sloppy_test",
+                configKey: "SLOPPY_POSTGRES_TEST_URL",
                 access: "readwrite",
             });
         })
         .services((services) => {
             services.addSingleton("data.main", () => data.postgres.open({
-                connectionString: "postgres://localhost/sloppy_test",
+                connectionString: "postgres://ada:secret@localhost/sloppy_test",
                 maxConnections: 2,
             }));
         });
@@ -376,7 +384,8 @@ function createForgedLoweredQuery() {
         .build();
 
     assert.equal(app.capabilities.get("data.main").provider, "postgres");
-    assert.equal(app.capabilities.get("data.main").metadata.connectionString, "postgres://localhost/sloppy_test");
+    assert.equal(app.capabilities.get("data.main").metadata.configKey, "SLOPPY_POSTGRES_TEST_URL");
+    assert.equal(app.capabilities.get("data.main").metadata.connectionString, undefined);
     assert.deepEqual(app.__debug().modules[0].services, ["data.main"]);
-    assertThrowsMessage(() => app.services.get("data.main"), /postgres provider native bridge unavailable/);
+    assertThrowsMessage(() => app.services.get("data.main"), /ada:<redacted>@localhost/);
 }

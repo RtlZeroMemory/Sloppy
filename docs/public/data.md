@@ -59,7 +59,7 @@ const PostgresModule = Sloppy.module("data.postgres")
   .capabilities(caps => {
     caps.addDatabase("data.main", {
       provider: "postgres",
-      connectionString: "postgres://localhost/sloppy_test",
+      configKey: "SLOPPY_POSTGRES_TEST_URL",
       access: "readwrite",
     });
   })

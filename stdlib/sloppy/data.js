@@ -161,7 +161,10 @@ function validateSqliteOpenOptions(options) {
 
 function redactConnectionString(value) {
     return value
-        .replace(/(password=)[^&\s]*/gi, "$1<redacted>")
+        .replace(
+            /(^|[\s&])(password=)(?:'(?:\\.|[^'])*'|"(?:\\.|[^"])*"|[^\s&]*)/gi,
+            (_match, prefix, key) => `${prefix}${key}<redacted>`,
+        )
         .replace(/(postgres(?:ql)?:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi, "$1<redacted>$2");
 }
 

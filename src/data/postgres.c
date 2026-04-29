@@ -23,6 +23,7 @@
 #include "sloppy/checked_math.h"
 
 #include <libpq-fe.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -194,6 +195,42 @@ static bool sl_pg_has_case_insensitive_at(SlStr text, size_t index, const char* 
     return true;
 }
 
+static size_t sl_pg_redact_keyword_value(char* dst, size_t length, size_t value_start)
+{
+    size_t cursor = value_start;
+    char quote = '\0';
+
+    if (cursor >= length) {
+        return cursor;
+    }
+    if (dst[cursor] == '\'' || dst[cursor] == '"') {
+        quote = dst[cursor];
+        dst[cursor] = '*';
+        cursor += 1U;
+        while (cursor < length) {
+            const bool escaped = dst[cursor] == '\\';
+
+            if (!escaped && dst[cursor] == quote) {
+                dst[cursor] = '*';
+                cursor += 1U;
+                return cursor;
+            }
+            dst[cursor] = '*';
+            cursor += 1U;
+            if (escaped && cursor < length) {
+                dst[cursor] = '*';
+                cursor += 1U;
+            }
+        }
+        return cursor;
+    }
+    while (cursor < length && dst[cursor] != ' ' && dst[cursor] != '\t' && dst[cursor] != '&') {
+        dst[cursor] = '*';
+        cursor += 1U;
+    }
+    return cursor;
+}
+
 SlStatus sl_postgres_redact_connection_string(SlArena* arena, SlStr connection_string, SlStr* out)
 {
     void* ptr = NULL;
@@ -216,12 +253,8 @@ SlStatus sl_postgres_redact_connection_string(SlArena* arena, SlStr connection_s
 
     for (index = 0U; index < connection_string.length; index += 1U) {
         if (sl_pg_has_case_insensitive_at(connection_string, index, "password=")) {
-            size_t cursor = index + sizeof("password=") - 1U;
-
-            while (cursor < connection_string.length && dst[cursor] != ' ' && dst[cursor] != '&') {
-                dst[cursor] = '*';
-                cursor += 1U;
-            }
+            index = sl_pg_redact_keyword_value(dst, connection_string.length,
+                                               index + sizeof("password=") - 1U);
         }
         if (index + 3U < connection_string.length && connection_string.ptr[index] == ':' &&
             connection_string.ptr[index + 1U] == '/' && connection_string.ptr[index + 2U] == '/')
@@ -346,7 +379,12 @@ SlStatus sl_postgres_open(SlArena* diag_arena, const SlPostgresOpenOptions* opti
     if (options->access != SL_POSTGRES_ACCESS_READ &&
         options->access != SL_POSTGRES_ACCESS_READWRITE)
     {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        return sl_pg_diag(diag_arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
+                          sl_pg_literal("postgres provider access option is invalid",
+                                        sizeof("postgres provider access option is invalid") - 1U),
+                          sl_pg_literal("operation: open", sizeof("operation: open") - 1U), NULL,
+                          sl_str_empty(), sl_str_empty(),
+                          sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
 
     *out_connection = (SlPostgresConnection){0};
@@ -566,16 +604,18 @@ static SlStatus sl_pg_copy_value(SlArena* arena, PGresult* result, int row, int 
         return sl_status_ok();
     }
     if (oid == SL_PG_OID_INT2 || oid == SL_PG_OID_INT4 || oid == SL_PG_OID_INT8) {
+        errno = 0;
         integer = strtoll(text.ptr, &end, 10);
-        if (end != text.ptr) {
+        if (errno == 0 && end == text.ptr + text.length) {
             out->kind = SL_POSTGRES_VALUE_INTEGER;
             out->value.integer = (int64_t)integer;
             return sl_status_ok();
         }
     }
     if (oid == SL_PG_OID_FLOAT4 || oid == SL_PG_OID_FLOAT8 || oid == SL_PG_OID_NUMERIC) {
+        errno = 0;
         number = strtod(text.ptr, &end);
-        if (end != text.ptr) {
+        if (errno == 0 && end == text.ptr + text.length) {
             out->kind = SL_POSTGRES_VALUE_FLOAT;
             out->value.number = number;
             return sl_status_ok();
@@ -707,28 +747,70 @@ SlStatus sl_postgres_query(SlArena* arena, SlPostgresConnection* connection, SlS
     return status;
 }
 
+static SlStatus sl_pg_materialize_first_row(SlArena* arena, PGresult* result,
+                                            SlPostgresQueryOneResult* out_result)
+{
+    const size_t row_count = (size_t)PQntuples(result);
+    const size_t column_count = (size_t)PQnfields(result);
+    void* ptr = NULL;
+    SlPostgresValue* values = NULL;
+    size_t alloc_size = 0U;
+    SlStatus status;
+
+    if (arena == NULL || result == NULL || out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_result = (SlPostgresQueryOneResult){0};
+    status = sl_pg_copy_columns(arena, result, column_count, &out_result->column_names);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    out_result->column_count = column_count;
+    if (row_count == 0U) {
+        return sl_status_ok();
+    }
+    if (column_count > 0U) {
+        status = sl_checked_mul_size(column_count, sizeof(SlPostgresValue), &alloc_size);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_arena_alloc(arena, alloc_size, _Alignof(SlPostgresValue), &ptr);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        values = (SlPostgresValue*)ptr;
+        for (size_t column = 0U; column < column_count; column += 1U) {
+            status = sl_pg_copy_value(arena, result, 0, (int)column, &values[column]);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+    }
+    out_result->found = true;
+    out_result->values = values;
+    return sl_status_ok();
+}
+
 SlStatus sl_postgres_query_one(SlArena* arena, SlPostgresConnection* connection, SlStr sql,
                                const SlPostgresParam* params, size_t param_count,
                                SlPostgresQueryOneResult* out_result, SlDiag* out_diag)
 {
-    SlPostgresResult rows = {0};
-    SlPostgresQueryOptions options = {.max_rows = 1U};
+    PGresult* result = NULL;
     SlStatus status;
 
     if (out_result == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    *out_result = (SlPostgresQueryOneResult){0};
     status =
-        sl_postgres_query(arena, connection, sql, params, param_count, &options, &rows, out_diag);
+        sl_pg_exec_params(arena, connection, sql, params, param_count,
+                          sl_pg_literal("operation: queryOne", sizeof("operation: queryOne") - 1U),
+                          PGRES_TUPLES_OK, &result, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    out_result->found = rows.row_count > 0U;
-    out_result->column_count = rows.column_count;
-    out_result->column_names = rows.column_names;
-    out_result->values = rows.row_count > 0U ? rows.rows[0].values : NULL;
-    return sl_status_ok();
+    status = sl_pg_materialize_first_row(arena, result, out_result);
+    PQclear(result);
+    return status;
 }
 
 SlStatus sl_postgres_transaction_begin(SlArena* arena, SlPostgresConnection* connection,
@@ -779,10 +861,13 @@ SlStatus sl_postgres_transaction_commit(SlArena* arena, SlPostgresTransaction* t
     }
     status = sl_postgres_exec(arena, tx->connection, sl_pg_literal("COMMIT", sizeof("COMMIT") - 1U),
                               NULL, 0U, &result, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     tx->connection->transaction_active = false;
     tx->connection = NULL;
     tx->active = false;
-    return status;
+    return sl_status_ok();
 }
 
 SlStatus sl_postgres_transaction_rollback(SlArena* arena, SlPostgresTransaction* tx,
@@ -800,10 +885,13 @@ SlStatus sl_postgres_transaction_rollback(SlArena* arena, SlPostgresTransaction*
     status =
         sl_postgres_exec(arena, tx->connection, sl_pg_literal("ROLLBACK", sizeof("ROLLBACK") - 1U),
                          NULL, 0U, &result, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     tx->connection->transaction_active = false;
     tx->connection = NULL;
     tx->active = false;
-    return status;
+    return sl_status_ok();
 }
 
 SlStatus sl_postgres_transaction_exec(SlArena* arena, SlPostgresTransaction* tx, SlStr sql,
@@ -846,9 +934,13 @@ SlStatus sl_postgres_transaction_query_one(SlArena* arena, SlPostgresTransaction
 SlStatus sl_postgres_pool_open(SlArena* arena, const SlPostgresPoolOptions* options,
                                SlPostgresPool* out_pool, SlDiag* out_diag)
 {
+    SlStatus status;
+
     if (out_pool == NULL || options == NULL || !sl_pg_str_valid(options->connection_string) ||
         sl_str_is_empty(options->connection_string) || options->max_connections == 0U ||
-        options->max_connections > SL_POSTGRES_MAX_POOL_CONNECTIONS)
+        options->max_connections > SL_POSTGRES_MAX_POOL_CONNECTIONS ||
+        (options->access != SL_POSTGRES_ACCESS_READ &&
+         options->access != SL_POSTGRES_ACCESS_READWRITE))
     {
         return sl_pg_diag(
             arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
@@ -858,7 +950,15 @@ SlStatus sl_postgres_pool_open(SlArena* arena, const SlPostgresPoolOptions* opti
             sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
     *out_pool = (SlPostgresPool){0};
-    out_pool->connection_string = options->connection_string;
+    status = sl_pg_copy_str(arena, options->connection_string, &out_pool->connection_string);
+    if (!sl_status_is_ok(status)) {
+        return sl_pg_diag(
+            arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
+            sl_pg_literal("postgres provider pool connection string copy failed",
+                          sizeof("postgres provider pool connection string copy failed") - 1U),
+            sl_pg_literal("operation: pool.open", sizeof("operation: pool.open") - 1U), NULL,
+            sl_str_empty(), sl_str_empty(), status);
+    }
     out_pool->access = options->access;
     out_pool->max_connections = options->max_connections;
     return sl_status_ok();
@@ -908,7 +1008,7 @@ SlStatus sl_postgres_pool_release(SlPostgresPool* pool, SlPostgresConnection* co
     }
     for (size_t index = 0U; index < pool->open_count; index += 1U) {
         if (&pool->connections[index] == connection) {
-            if (pool->idle[index]) {
+            if (pool->idle[index] || !connection->open || connection->transaction_active) {
                 return sl_status_from_code(SL_STATUS_INVALID_STATE);
             }
             pool->idle[index] = true;
