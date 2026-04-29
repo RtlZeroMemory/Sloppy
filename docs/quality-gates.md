@@ -21,13 +21,15 @@ testing philosophy in `docs/testing-strategy.md`.
 Current gates cover placeholder C/Rust builds, formatting, linting, CTest, cargo tests,
 artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS standards
 scanning, Rust standards scanning, and a lightweight docs freshness structure check.
+Default CI now runs Windows clang-cl, Linux clang, Linux gcc, and macOS clang non-V8 gates.
 Benchmark list/smoke checks may run as correctness smoke, but performance deltas are not a
 normal hard gate yet.
 
 ## Future Phase
 
 Future gates add sanitizers, fuzzing, diagnostics snapshots, compiler goldens, benchmarks,
-Linux/macOS jobs, docs link checking, public example tests, and packaging verification.
+docs link checking, public example tests, broader package verification, and optional live
+provider service jobs.
 
 ## Public API Shape
 
@@ -135,12 +137,19 @@ CI behavior:
 
 ## CI Gates
 
-Current CI should run:
+Default CI runs a required non-V8 matrix:
+
+- Windows clang-cl through `windows-dev`;
+- Linux clang through `linux-clang`;
+- Linux gcc through `linux-gcc`;
+- macOS clang through `macos-clang`.
+
+Each required job should run:
 
 - checkout;
-- MSVC developer environment setup;
+- platform toolchain setup;
 - Rust setup;
-- bootstrap;
+- vcpkg bootstrap/restore;
 - generated artifact tracking check;
 - CMake configure with `SLOPPY_ENABLE_WERROR=ON`;
 - CMake build;
@@ -149,8 +158,25 @@ Current CI should run:
 - cargo fmt;
 - cargo clippy;
 - cargo test;
-- format-check;
-- lint.
+- platform/C standards scanners appropriate to the runner.
+
+The Windows job remains the full local-gate mirror and runs `tools/windows/dev.ps1`
+`format-check` and `lint`, including C, JS/TS, Rust, docs freshness, and artifact-hygiene
+scanners. Linux/macOS jobs run direct CMake/Cargo commands plus POSIX platform and C
+standards scanners. They do not require PowerShell-only Windows wrapper behavior.
+
+Optional/gated jobs:
+
+- V8 validation is manual through `workflow_dispatch`. It requires an explicit
+  `enable_v8=true` input and a runner-local `v8_root` path. If no SDK path is supplied or
+  the path is absent, the job reports that V8 validation was skipped/not configured and
+  does not pretend to run V8 tests. When configured, it validates the SDK, configures
+  `windows-relwithdebinfo` with `SLOPPY_ENABLE_V8=ON`, builds, and runs the V8-enabled
+  CTest suite.
+- Live PostgreSQL and SQL Server provider tests remain opt-in through
+  `SLOPPY_POSTGRES_TEST_URL` and `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`. Default CI
+  prints provider gate status and runs non-live provider tests; it does not require live
+  services or secrets.
 
 ## Documentation Freshness
 
@@ -260,7 +286,9 @@ It warns on raw `malloc`, `free`, `realloc`, and `calloc` outside allocator path
 become more useful after allocator modules exist.
 
 The scanner runs from `tools/windows/dev.ps1 lint`, so CI executes it through the lint step.
-Local failures should be fixed or documented before review.
+Local failures should be fixed or documented before review. POSIX CI also runs
+`tools/unix/check-c-standards.sh` so Linux/macOS can enforce OS-header and V8-boundary
+rules without routing through the Windows PowerShell wrapper.
 
 ## C/C++ Formatting And Linting
 
@@ -359,8 +387,9 @@ explicit future flags or environment gates.
 - diagnostics snapshot tests;
 - compiler golden tests;
 - benchmark trend checks;
-- Linux/macOS platform jobs;
-- packaging smoke tests.
+- packaging smoke tests;
+- optional live PostgreSQL/SQL Server service jobs;
+- V8 SDK cache or prebuilt artifact setup for the manual V8 job.
 
 Future sanitizer/fuzz gates should begin as opt-in local commands, then become CI jobs once
 they are stable enough not to create noisy false failures.

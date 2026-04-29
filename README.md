@@ -19,6 +19,7 @@ must not include OS-specific headers.
 ## What Works Today
 
 - Windows CMake/Ninja/Cargo developer workflow through `tools/windows`.
+- Default hosted CI for Windows clang-cl, Linux clang/gcc, and macOS clang non-V8 builds.
 - Portable C core primitives: status, source locations, strings, bytes, checked math,
   assertions, `SlArena`, diagnostics, plan parsing, scope cleanup, loop/async/worker-pool
   skeletons, route parsing, HTTP request-head parsing, and synthetic dispatch helpers.
@@ -81,8 +82,9 @@ The next proposed batch continues from the compiler extraction and dev-only exec
 - EPIC-22 Sloppy Run MVP. Done.
 - EPIC-23 HTTP Response Writer and Request Context.
 - EPIC-24 V8 Module Loading and Bootstrap Runtime.
-- EPIC-25 Release Packaging and Distribution.
-- EPIC-26 Cross-platform CI Expansion.
+- EPIC-25 Release Packaging and Distribution. Done.
+- EPIC-26 Cross-platform CI Expansion. Done for default non-V8 CI; optional V8 and live
+  provider service hardening remain gated follow-ups.
 - EPIC-27 Runtime Security / Capabilities Enforcement.
 - EPIC-28 Public Alpha Docs and Examples.
 
@@ -138,11 +140,13 @@ It is not a public release workflow.
 
 Default builds leave V8 disabled. Passing default CTest does not prove the V8 bridge or
 handwritten V8 execution path passed. V8 work must be validated with an approved SDK and
-reported separately.
+reported separately. The GitHub Actions V8 job is manual and reports skipped/not configured
+unless a runner-local SDK path is supplied.
 
 PostgreSQL and SQL Server live tests are also gated. Default tests cover non-live/provider
 diagnostic behavior; they do not prove a live database server path unless the relevant
-environment variables were configured and reported.
+environment variables were configured and reported. Linux/macOS default CI does not make
+SQL Server ODBC live execution mandatory.
 
 ## Agent-First Development
 

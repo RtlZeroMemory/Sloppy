@@ -137,11 +137,17 @@ descriptors through the native response writer. Source input handoff, production
 hardening, request bodies, middleware, hot reload, package-manager behavior, and Node
 compatibility remain out of scope.
 
+EPIC-26 adds default non-V8 CI gates for Windows clang-cl, Linux clang/gcc, and macOS
+clang, plus optional/manual V8 validation and explicit provider gate reporting. These jobs
+prove the current portable non-V8 foundation across hosted OS runners; they do not prove
+V8 SDK execution or live database services unless those optional gates are configured and
+reported separately.
+
 ## Future Phase
 
 The next implementation batch should connect the remaining bootstrap and productionization
 pieces around the smallest compiler-to-runtime path: V8 module/bootstrap loading,
-packaging, cross-platform CI, capability enforcement, and public alpha docs. See
+capability enforcement, package hardening, and public alpha docs. See
 `docs/project/next-roadmap.md`.
 
 ## System Shape

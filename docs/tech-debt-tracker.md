@@ -25,8 +25,9 @@ state and an honest public-alpha path.
   access before public docs imply a security model.
 - Live DB test infrastructure for PostgreSQL and SQL Server: opt-in local env vars are not
   enough for release confidence.
-- Cross-platform CI: Linux clang/gcc, macOS clang, Windows clang-cl, and explicit
-  V8/provider-gated matrix behavior.
+- Cross-platform CI hardening: default Linux clang/gcc, macOS clang, Windows clang-cl, and
+  explicit V8/provider-gated reporting exist; remaining work is V8 SDK cache/prebuilt
+  setup, optional live provider service jobs, sanitizer/fuzz jobs, and package smoke.
 - Cross-platform release validation: EPIC-25 adds local Windows ZIP tooling, Unix TAR
   tooling, checksums, and outside-checkout ZIP smoke, but Linux/macOS package execution and
   CI validation remain open.
@@ -150,3 +151,6 @@ state and an honest public-alpha path.
 - Added EPIC-25 experimental local packaging with Windows ZIP creation, Unix TAR staging,
   package manifests, SHA256 checksums, V8 SDK exclusion policy, and outside-checkout ZIP
   smoke validation.
+- Added EPIC-26 default cross-platform CI with Windows clang-cl, Linux clang/gcc, macOS
+  clang, POSIX standards scanners, optional/manual V8 validation, and explicit provider
+  gate reporting.

@@ -114,10 +114,23 @@ Driver availability for live connections. The native SQL Server doctor helper de
 driver-manager availability, missing/invalid driver names, and redacted connection
 configuration issues ahead of a future CLI `sloppy doctor`.
 
+Default CI restores the vcpkg manifest dependencies on Windows, Linux, and macOS, but it
+does not install live database servers or vendor database credentials. SQLite is exercised
+in-memory by default. PostgreSQL live tests run only when `SLOPPY_POSTGRES_TEST_URL` is set.
+SQL Server live tests run only when `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set and a
+runner has ODBC support and a reachable server/driver. Linux/macOS default jobs configure
+`SLOPPY_ENABLE_SQLSERVER=OFF` and verify the unavailable/stub path rather than pretending a
+SQL Server driver exists.
+
 EPIC-25 Windows local packages copy the runtime DLLs restored by vcpkg into `bin/` so the
 CLI tools can start after extraction outside the checkout. This is local package smoke
 plumbing, not a complete public release dependency policy. Database drivers, V8 SDK files,
 and package-manager prerequisites are not installed or bundled.
+
+The optional V8 CI job is manual and gated. It requires a runner-local preinstalled SDK
+path through the `v8_root` workflow input. If that path is not supplied or does not exist,
+the job reports skipped/not configured and does not claim V8 validation. Required CI keeps
+`SLOPPY_ENABLE_V8=OFF`.
 
 All dependencies need explicit ownership, update, security, license, and test strategy
 before they become required in the default build.

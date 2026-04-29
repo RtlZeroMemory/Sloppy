@@ -111,6 +111,20 @@ The current source-built Windows SDK is a release/RelWithDebInfo SDK. Do not lin
 the Debug CRT build. Use `windows-relwithdebinfo` for local V8 execution tests unless a
 separate matching Debug V8 SDK is built and packaged.
 
+CI behavior:
+
+- required pull-request CI leaves V8 disabled on Windows, Linux, and macOS;
+- optional V8 validation is available only through manual `workflow_dispatch`;
+- the manual job requires `enable_v8=true` plus a runner-local `v8_root` input pointing to
+  a preinstalled SDK;
+- if the SDK path is empty or absent, the job reports skipped/not configured and does not
+  claim V8 configure/build/test coverage;
+- when configured, the job runs `tools/windows/fetch-v8.ps1 -ValidateOnly`, configures
+  `windows-relwithdebinfo` with `SLOPPY_ENABLE_V8=ON`, builds, and runs CTest.
+
+Passing required CI does not prove V8 execution. Report V8-enabled results separately from
+default gate results.
+
 ## Ownership/Lifetime Rules
 
 The noop engine is allocated from the caller-provided arena and owns no external resources.

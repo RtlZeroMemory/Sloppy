@@ -144,6 +144,19 @@ pool state behavior. When `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set it co
 through ODBC and covers parameterized exec/query/queryOne, transactions, rollback, invalid
 SQL diagnostics, and tiny pool acquire/release.
 
+CI provider reporting:
+
+- default CI prints whether live provider gates are skipped or enabled before CTest runs;
+- SQLite in-memory tests run by default;
+- PostgreSQL non-live diagnostics run by default, while live PostgreSQL tests require
+  `SLOPPY_POSTGRES_TEST_URL`;
+- Windows default CI builds the SQL Server ODBC provider and runs non-live diagnostics;
+- Linux/macOS default CI configures `SLOPPY_ENABLE_SQLSERVER=OFF`, reports SQL Server ODBC
+  execution as unavailable for those jobs, and verifies the stub/unavailable behavior
+  instead of requiring a driver;
+- live SQL Server tests require `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` and an explicit
+  driver/server environment. Secrets must not be printed.
+
 EPIC-20 does not add default database benchmarks. SQLite, PostgreSQL, and SQL Server
 benchmarking remains deferred until each benchmark can be clearly labeled as either a
 local microbenchmark or an env-gated live benchmark, with secrets redacted and no claims

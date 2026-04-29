@@ -279,6 +279,10 @@ Acceptance criteria:
 
 Summary: prove the cross-platform-by-design claim with real gates.
 
+Status: implemented for required non-V8 hosted CI. Windows clang-cl, Linux clang/gcc, and
+macOS clang gates exist. Optional V8 and live provider validation are reported separately
+and remain gated by explicit SDK/service configuration.
+
 Goal: add Linux and macOS CI jobs alongside Windows and make optional V8/provider gates
 explicit.
 
