@@ -48,8 +48,9 @@ Current tests:
   and `sloppy openapi` over deterministic metadata fixtures under `tests/fixtures/cli/`;
 - CTest failure smoke for missing CLI metadata paths;
 - CTest default process tests for `sloppy run` help text, missing artifacts, missing
-  `app.plan.json`, malformed plans, source-input handoff deferral, and the clear
-  V8-disabled failure message;
+  `app.plan.json`, malformed plans, invalid artifact paths, hash mismatches, missing source
+  map artifacts, runtime compatibility mismatches, source-input handoff deferral, and the
+  clear V8-disabled failure message;
 - CTest docs/static check `docs.main_contract`, which verifies the MAIN hello command
   sequence, evidence caveats, source-input deferral, V8-gated wording, and Node/npm/package
   non-goals remain present in the source docs;
@@ -58,7 +59,7 @@ Current tests:
   the EPIC-21 compiler extraction fixtures;
 - Rust compiler golden tests for `hello-mapget`, `builder-mapget`, `grouped-route`,
   `results-json`, and `function-handler` deterministic `app.plan.json`, `app.js`, and
-  `app.js.map` outputs;
+  `app.js.map` outputs, including deterministic `sha256:` artifact hashes;
 - Rust compiler repeatability coverage for `examples/compiler-hello/app.js`, which builds
   the canonical MAIN fixture twice and verifies byte-identical artifacts, stable handler
   IDs, and no checkout-local path or volatility marker text;
@@ -820,6 +821,9 @@ Plan loader phase:
 - parser tests once the parser exists;
 - diagnostics checks;
 - malformed JSON tests.
+- route/provider/capability section fixtures for native Plan v1 alpha validation;
+- supported artifact-path tests for missing files, hash mismatch, and compatibility
+  mismatch before V8/user-code execution.
 
 V8 smoke phase:
 

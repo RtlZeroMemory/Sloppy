@@ -30,13 +30,15 @@ typedef uint32_t SlHandlerId;
 /*
  * Sloppy Plan v1 is the minimal native representation of `app.plan.json`.
  *
- * This header defines the borrowed, allocation-free runtime contract shape only. TASK 06.B
- * owns JSON parsing, copied storage, validation diagnostics, file I/O, hash verification,
- * and loader lifetime management.
+ * This header defines the borrowed, allocation-free runtime contract shape only.
+ * sl_plan_parse_json owns JSON parsing, copied storage, and validation diagnostics.
+ * Artifact file I/O and hash verification stay with the loader path that has artifact
+ * bytes available.
  *
  * All SlStr fields below are borrowed views. They do not require NUL termination and remain
- * valid only for the caller-documented plan lifetime. The handler array is borrowed and
- * caller-owned; SlPlan never allocates, copies, or frees it.
+ * valid only for the caller-documented plan lifetime. The handler, route, provider, and
+ * capability arrays are borrowed and caller-owned; SlPlan never allocates, copies, or frees
+ * them.
  */
 typedef struct SlPlanTarget
 {
@@ -65,6 +67,30 @@ typedef struct SlPlanHandler
     SlStr display_name;
 } SlPlanHandler;
 
+typedef struct SlPlanRoute
+{
+    SlStr method;
+    SlStr pattern;
+    SlHandlerId handler_id;
+    SlStr name;
+} SlPlanRoute;
+
+typedef struct SlPlanDataProvider
+{
+    SlStr token;
+    SlStr provider;
+    SlStr capability;
+    SlStr service;
+} SlPlanDataProvider;
+
+typedef struct SlPlanCapability
+{
+    SlStr token;
+    SlStr kind;
+    SlStr access;
+    SlStr provider;
+} SlPlanCapability;
+
 typedef struct SlPlan
 {
     uint32_t version;
@@ -76,6 +102,12 @@ typedef struct SlPlan
     SlPlanSourceMap source_map;
     const SlPlanHandler* handlers;
     size_t handler_count;
+    const SlPlanRoute* routes;
+    size_t route_count;
+    const SlPlanDataProvider* data_providers;
+    size_t data_provider_count;
+    const SlPlanCapability* capabilities;
+    size_t capability_count;
 } SlPlan;
 
 /*
@@ -91,6 +123,10 @@ typedef struct SlPlanParseOptions
 
 bool sl_plan_version_supported(uint32_t version);
 bool sl_handler_id_valid(SlHandlerId id);
+bool sl_plan_route_method_supported(SlStr method);
+bool sl_plan_provider_supported(SlStr provider);
+bool sl_plan_capability_kind_supported(SlStr kind);
+bool sl_plan_capability_access_supported(SlStr kind, SlStr access);
 
 /*
  * Finds a handler by numeric runtime dispatch ID.
@@ -110,6 +146,10 @@ SlStatus sl_plan_find_handler_by_id(const SlPlan* plan, SlHandlerId id, const Sl
  * table diagnostic.
  */
 bool sl_plan_has_duplicate_handler_ids(const SlPlan* plan);
+bool sl_plan_has_duplicate_routes(const SlPlan* plan);
+bool sl_plan_has_duplicate_route_names(const SlPlan* plan);
+bool sl_plan_has_duplicate_data_provider_tokens(const SlPlan* plan);
+bool sl_plan_has_duplicate_capability_tokens(const SlPlan* plan);
 
 /*
  * Parses and validates minimal Sloppy Plan v1 JSON from caller-provided bytes.

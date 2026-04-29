@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": { "platform": "windows-x64", "engine": "v8" },
+  "bundle": { "path": ".sloppy/app.js", "id": "app-js-test", "hash": "test-only" },
+  "sourceMap": { "path": ".sloppy/app.js.map", "id": "app-js-map-test", "hash": "test-only" },
+  "handlers": [{ "id": 1, "exportName": "__sloppy_handler_1", "displayName": "Home" }],
+  "capabilities": [
+    { "token": "data.main", "kind": "database", "access": "read" },
+    { "token": "data.main", "kind": "database", "access": "write" }
+  ]
+}

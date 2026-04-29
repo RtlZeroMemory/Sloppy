@@ -37,6 +37,9 @@ Implemented bootstrap API:
 - `data.sqlserver` provider metadata, ODBC `?` placeholder style, redaction and doctor
   helpers, and `data.sqlserver.open(options)` as the future stdlib entry point. It
   validates options and fails honestly until the native bridge exists.
+- Plan v1 alpha `dataProviders` and `capabilities` sections can describe provider and
+  authority metadata for startup validation/audit. This metadata is not provider opening or
+  access enforcement.
 
 Implemented native SQLite API:
 

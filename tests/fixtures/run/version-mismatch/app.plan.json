@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "compilerVersion": "sloppyc-0.8.0-compiler-extraction-mvp",
-  "runtimeMinimumVersion": "0.1.0",
+  "runtimeMinimumVersion": "9.9.9",
   "stdlibVersion": "0.1.0",
   "target": {
     "platform": "windows-x64",
@@ -9,19 +9,19 @@
   },
   "bundle": {
     "path": "app.js",
-    "id": "missing-handler-app-js",
-    "hash": "sha256:5a07e68911d634fad48f0660e0b6474e976614d9859a1f214d1137becc7d1272"
+    "id": "version-mismatch-app-js",
+    "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
   },
   "sourceMap": {
     "path": "app.js.map",
-    "id": "missing-handler-app-js-map",
-    "hash": "sha256:b001f62fcf8732a996cf447dfc0c741180411d92fafb9e130057904908d09d2b"
+    "id": "version-mismatch-app-js-map",
+    "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
   },
   "handlers": [
     {
       "id": 1,
       "exportName": "__sloppy_handler_1",
-      "displayName": "Missing.Handler"
+      "displayName": "GET /"
     }
   ],
   "routes": [
@@ -29,7 +29,7 @@
       "method": "GET",
       "pattern": "/",
       "handlerId": 1,
-      "name": "Missing.Handler"
+      "name": null
     }
   ]
 }

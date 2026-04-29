@@ -28,6 +28,10 @@ Implemented behavior:
 - `app.capabilities.has(token)`, `get(token)`, and `list()` expose frozen debug metadata.
 - database capability metadata currently stores `token`, `kind`, `provider`, `access`,
   `module`, and copied options.
+- Plan v1 alpha can carry metadata-only `capabilities` entries with `token`, `kind`,
+  `access`, and an optional provider token reference. The native parser validates token
+  syntax, supported kinds/access values, duplicate tokens, and provider references when the
+  section is present.
 - SQLite examples may include `path: ":memory:"` in copied metadata. This is provider
   metadata only today; runtime permission enforcement and file database policy are still
   deferred.
@@ -47,6 +51,7 @@ Not implemented yet:
 - no OS sandboxing;
 - no user prompts or grant sources;
 - no JavaScript database provider access checks.
+- no provider access enforcement from Plan capability metadata yet.
 
 Related internal docs: `docs/modularity.md`, `docs/data-providers.md`,
 `docs/diagnostics.md`.

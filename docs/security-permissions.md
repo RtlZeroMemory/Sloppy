@@ -44,6 +44,9 @@ EPIC-15 implements a bootstrap JavaScript capability metadata skeleton for datab
 capabilities only, and EPIC-19 adds metadata-only `sloppy audit` fixture output.
 Permissions, filesystem/network capabilities, runtime enforcement, OS sandboxing, grants,
 and security-grade audit behavior remain future work.
+MAIN1-02 adds native Plan v1 alpha parsing and validation for metadata-only
+`dataProviders` and `capabilities` sections. This makes the plan shape auditable and
+startup-validated, but it still does not enforce provider, filesystem, or network access.
 
 ## Future Phase
 
@@ -132,7 +135,8 @@ Database providers contribute capabilities:
 - lifetime;
 - permissions required by routes/modules.
 
-Plan entries must reference config keys, not connection string values.
+Plan entries must reference config keys, provider tokens, or already-redacted placeholders,
+not connection string values. Raw secrets do not belong in `app.plan.json`.
 
 Current bootstrap metadata does not open databases, validate config keys, or enforce access.
 It exists so future provider modules, plan extraction, and audit tooling have a tested API

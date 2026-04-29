@@ -9,12 +9,12 @@ typedef struct ValidFixtureCase
 {
     const char* path;
     size_t handler_count;
-    SlHandlerId first_handler_id;
     const char* first_export_name;
     const char* first_display_name;
-    SlHandlerId second_handler_id;
     const char* second_export_name;
     const char* second_display_name;
+    SlHandlerId first_handler_id;
+    SlHandlerId second_handler_id;
 } ValidFixtureCase;
 
 typedef struct InvalidFixtureCase
@@ -185,12 +185,18 @@ static int expect_handler(const SlPlan* plan, SlHandlerId id, const char* export
 static int test_valid_fixture_matrix(void)
 {
     static const ValidFixtureCase cases[] = {
-        {"tests/golden/plan/valid-minimal.plan.json", 1U, 1U, "__sloppy_handler_1", "Home", 0U,
-         NULL, NULL},
-        {"tests/golden/plan/valid-multiple-handlers.plan.json", 2U, 1U, "__sloppy_handler_1",
-         "Home", 2U, "__sloppy_handler_2", "Health"},
-        {"tests/golden/plan/unknown-future-field.plan.json", 1U, 1U, "__sloppy_handler_1", "Home",
-         0U, NULL, NULL}};
+        {"tests/golden/plan/valid-minimal.plan.json", 1U, "__sloppy_handler_1", "Home", NULL, NULL,
+         1U, 0U},
+        {"tests/golden/plan/valid-multiple-handlers.plan.json", 2U, "__sloppy_handler_1", "Home",
+         "__sloppy_handler_2", "Health", 1U, 2U},
+        {"tests/golden/plan/unknown-future-field.plan.json", 1U, "__sloppy_handler_1", "Home", NULL,
+         NULL, 1U, 0U},
+        {"tests/golden/plan/valid-route-section.plan.json", 1U, "__sloppy_handler_1", "Home", NULL,
+         NULL, 1U, 0U},
+        {"tests/golden/plan/valid-provider-section.plan.json", 1U, "__sloppy_handler_1", "Home",
+         NULL, NULL, 1U, 0U},
+        {"tests/golden/plan/valid-capability-section.plan.json", 1U, "__sloppy_handler_1", "Home",
+         NULL, NULL, 1U, 0U}};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
@@ -228,6 +234,35 @@ static int test_valid_fixture_matrix(void)
         if (diag.code != SL_DIAG_NONE) {
             return 60 + (int)index;
         }
+
+        if (sl_str_equal(sl_str_from_cstr(cases[index].path),
+                         sl_str_from_cstr("tests/golden/plan/valid-route-section.plan.json")) &&
+            (plan.route_count != 1U ||
+             !sl_str_equal(plan.routes[0].pattern, sl_str_from_cstr("/users/{id:int}")) ||
+             plan.routes[0].handler_id != 1U ||
+             !sl_str_equal(plan.routes[0].name, sl_str_from_cstr("Users.Get"))))
+        {
+            return 65 + (int)index;
+        }
+
+        if (sl_str_equal(sl_str_from_cstr(cases[index].path),
+                         sl_str_from_cstr("tests/golden/plan/valid-provider-section.plan.json")) &&
+            (plan.data_provider_count != 1U ||
+             !sl_str_equal(plan.data_providers[0].token, sl_str_from_cstr("data.main")) ||
+             !sl_str_equal(plan.data_providers[0].provider, sl_str_from_cstr("sqlite"))))
+        {
+            return 66 + (int)index;
+        }
+
+        if (sl_str_equal(
+                sl_str_from_cstr(cases[index].path),
+                sl_str_from_cstr("tests/golden/plan/valid-capability-section.plan.json")) &&
+            (plan.capability_count != 1U ||
+             !sl_str_equal(plan.capabilities[0].kind, sl_str_from_cstr("database")) ||
+             !sl_str_equal(plan.capabilities[0].access, sl_str_from_cstr("readwrite"))))
+        {
+            return 67 + (int)index;
+        }
     }
 
     return 0;
@@ -261,7 +296,27 @@ static int test_invalid_fixture_matrix(void)
         {"tests/golden/plan/empty-handler-export.plan.json", SL_STATUS_INVALID_ARGUMENT,
          SL_DIAG_INVALID_PLAN_FIELD, "invalid handler export name"},
         {"tests/golden/plan/wrong-field-type.plan.json", SL_STATUS_INVALID_ARGUMENT,
-         SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type"}};
+         SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type"},
+        {"tests/golden/plan/invalid-route-method.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "unsupported app plan route method"},
+        {"tests/golden/plan/invalid-route-pattern.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_ROUTE_PATTERN, "invalid app plan route pattern"},
+        {"tests/golden/plan/missing-route-handler.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "app plan route references missing handler"},
+        {"tests/golden/plan/duplicate-route.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "duplicate app plan route"},
+        {"tests/golden/plan/duplicate-route-name.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "duplicate app plan route name"},
+        {"tests/golden/plan/invalid-provider-kind.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "unsupported app plan provider"},
+        {"tests/golden/plan/duplicate-provider-token.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "duplicate app plan provider token"},
+        {"tests/golden/plan/invalid-capability-kind.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "unsupported app plan capability kind"},
+        {"tests/golden/plan/invalid-capability-access.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "unsupported app plan capability access"},
+        {"tests/golden/plan/duplicate-capability-token.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "duplicate app plan capability token"}};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
@@ -287,7 +342,11 @@ static int test_invalid_fixture_matrix(void)
             return 130 + (int)index;
         }
 
-        if (plan.version != 0U || plan.handlers != NULL || plan.handler_count != 0U) {
+        if (plan.version != 0U || plan.handlers != NULL || plan.handler_count != 0U ||
+            plan.routes != NULL || plan.route_count != 0U || plan.data_providers != NULL ||
+            plan.data_provider_count != 0U || plan.capabilities != NULL ||
+            plan.capability_count != 0U)
+        {
             return 150 + (int)index;
         }
     }

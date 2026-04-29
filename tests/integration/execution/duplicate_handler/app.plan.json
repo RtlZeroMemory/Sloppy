@@ -10,12 +10,12 @@
   "bundle": {
     "path": "app.js",
     "id": "duplicate-handler-app-js",
-    "hash": "test-only"
+    "hash": "sha256:f876cd4a5b8a42160d0b4d1f110846b4af2a0e274f02f99a451ab79b830b671c"
   },
   "sourceMap": {
     "path": "app.js.map",
     "id": "duplicate-handler-app-js-map",
-    "hash": "test-only"
+    "hash": "sha256:b001f62fcf8732a996cf447dfc0c741180411d92fafb9e130057904908d09d2b"
   },
   "handlers": [
     {
