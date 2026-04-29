@@ -40,9 +40,10 @@ The foundation phase does not implement:
 ## Current Phase
 
 `src/data/` is a placeholder. No data provider dependencies are present.
-The EPIC-14 module skeleton can register fake JavaScript services from modules, but it does
-not implement data providers, database modules, provider resources, or provider plan
-entries.
+The EPIC-15 bootstrap stdlib adds the first JavaScript-only data/capabilities foundation:
+database capability metadata, query template lowering, a fake data provider contract for
+tests/examples, and transaction callback semantics. It does not implement real providers,
+database connections, provider resources, or native provider plan entries.
 
 ## Future Phase Order
 
@@ -154,6 +155,19 @@ Common API rules:
 - unsupported parameter types produce diagnostics before unsafe coercion;
 - result shape must be stable enough for plan/tooling docs before release.
 
+Current bootstrap behavior:
+
+- `sql` lowers tagged templates to frozen descriptors with `text`, `parameters`,
+  `parameterCount`, `placeholderStyle`, and `placeholders`.
+- `data.lowerQueryTemplate(strings, values, { placeholderStyle })` supports `question`,
+  `postgres`, and `named`.
+- `data.createFakeProvider(...)` creates a JS-only provider for tests/examples.
+- fake providers expose `query`, `queryOne`, `exec`, and `transaction`.
+- fake provider methods accept tagged templates or already-lowered query objects.
+- fake transactions commit when the callback resolves, roll back when it throws/rejects,
+  reject nested transactions, and reject use after close.
+- the fake provider never opens a database and never executes SQL.
+
 Transaction example:
 
 ```ts
@@ -219,6 +233,21 @@ Placeholder formats:
 - SQL Server/ODBC: `?` in positional order for the common lowering path.
 
 Raw SQL may exist later only under an explicitly unsafe name, such as `db.rawUnsafe(...)`.
+
+The EPIC-15 bootstrap lowering descriptor is:
+
+```js
+{
+  __sloppyQuery: true,
+  text: "select id from users where id = ?",
+  parameters: [id],
+  parameterCount: 1,
+  placeholderStyle: "question",
+  placeholders: [{ index: 0, text: "?", name: null, position: 1 }]
+}
+```
+
+Values are never interpolated into `text` by the blessed template path.
 
 ## Provider-Specific APIs
 

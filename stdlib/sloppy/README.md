@@ -10,6 +10,7 @@ Source layout:
 ```text
 stdlib/sloppy/
   index.js
+  data.js
   results.js
   schema.js
   app.js
@@ -26,17 +27,19 @@ lib/sloppy/bootstrap/sloppy/
 ```
 
 The current modules implement the first app-host foundation and developer ergonomics
-facade. `index.js` re-exports frozen `Sloppy`, `Results`, and `schema` objects. The
+facade. `index.js` re-exports frozen `Sloppy`, `data`, `sql`, `Results`, and `schema` objects. The
 implemented `Results.*` helpers return plain frozen descriptor objects. `schema` exposes a
 small validation skeleton for string, number, boolean, and object shapes.
-`Sloppy.createBuilder()` exposes minimal config, logging, and services builders;
+`sql` and `data` expose the bootstrap query-template lowering and fake-provider contract.
+`Sloppy.createBuilder()` exposes minimal config, logging, capabilities, and services builders;
 `Sloppy.module(...)` creates bootstrap app module definitions; `builder.addModule(...)`
 registers them; `builder.build()` freezes builder mutation and returns an in-memory app
 object. `Sloppy.create()` remains supported as a default builder plus `build()`.
 
 The current app object supports `app.mapGet(...)`, `app.mapGroup(...)`, route registration
 storage, route metadata storage, `.withName(...)`, structural `app.freeze()`,
-`app.isFrozen()`, `app.config`, `app.log`, `app.services`, `app.__getRoutes()`, and
+`app.isFrozen()`, `app.config`, `app.log`, `app.capabilities`, `app.services`,
+`app.__getRoutes()`, and
 `app.__debug().modules` for bootstrap tests/debugging.
 
 Not implemented here:
@@ -45,6 +48,8 @@ Not implemented here:
 - handler registration;
 - compiler extraction or `app.plan.json` emission;
 - HTTP server behavior or response writing;
+- real SQLite, PostgreSQL, or SQL Server providers;
+- database connections or SQL execution;
 - nested route groups, middleware, automatic validation/request binding, module package
   loading, or native plugins;
 - config files, environment variables, command-line config, or secret managers;

@@ -40,7 +40,8 @@ Implemented behavior:
   `app.__debug().modules[].services`.
 - `builder.build()` freezes further service registration.
 - `app.services.get(token)` resolves through a short-lived scope.
-- `app.services.createScope()` returns a scope with `scope.get(token)`.
+- `app.services.createScope()` returns a scope with `scope.get(token)` and
+  `scope.capabilities`.
 
 The current scope object is a tiny resolution context only. It is not a real request
 lifetime and it does not own disposal.
@@ -49,9 +50,13 @@ lifetime and it does not own disposal.
 the current bootstrap handler context shape. This is still JavaScript-only route snapshot
 behavior, not native request-scope DI.
 
+`examples/data-foundation/app.js` shows a fake data provider registered as the
+`data.main` service alongside matching database capability metadata. This service is still
+an ordinary bootstrap singleton; it does not open a database connection.
+
 Not implemented yet: request-scoped lifetimes, disposal hooks, async factories, service
-dependency graph validation, service cycle diagnostics, typed tokens, decorators,
-capabilities, native service graph validation, and real plan emission.
+dependency graph validation, service cycle diagnostics, typed tokens, decorators, native
+service graph validation, and real plan emission.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/diagnostics.md`.

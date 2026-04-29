@@ -50,9 +50,12 @@ the fuller bounded `Results.*` helper set, a small `schema` validation skeleton,
 TASK 14.A/14.B/14.C/14.D adds the same kind of bootstrap-only module skeleton:
 `Sloppy.module(...)`, `builder.addModule(...)`, dependency graph ordering, services/routes
 phase execution, module attribution, module debug metadata, and module graph errors.
+TASK 15.A/15.B/15.C/15.D adds database capability metadata, the module capabilities phase,
+query template lowering, the common fake-provider data API shape, and transaction callback
+semantics for tests/examples.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan, serve HTTP, perform compiler extraction, validate requests, load module packages, or
-integrate native modules.
+integrate native modules or real database providers.
 `examples/hello/` demonstrates the checked-in bootstrap API shape through a relative import
 from `stdlib/sloppy/index.js` because the public bare `"sloppy"` specifier remains future
 compiler/runtime behavior.
@@ -413,6 +416,22 @@ Rules:
 - provider-specific APIs are allowed under provider namespaces;
 - Sloppy does not pretend every SQL dialect is identical;
 - diagnostics redact secrets and point to provider setup fixes.
+
+Current TASK 15 bootstrap behavior:
+
+- `builder.capabilities.addDatabase(...)` and module `.capabilities(...)` store database
+  capability metadata.
+- `sql` and `data.lowerQueryTemplate(...)` lower query templates to descriptors that keep
+  text and parameters separate.
+- placeholder styles supported today are `question`, `postgres`, and `named`.
+- `data.createFakeProvider(...)` provides `query`, `queryOne`, `exec`, and `transaction`
+  for tests/examples.
+- transactions commit on resolved callbacks and roll back on thrown/rejected callbacks.
+- nested transactions and use after closed transaction scopes fail.
+
+Still not implemented: real SQLite/PostgreSQL/SQL Server providers, database connections,
+SQL execution, migrations, pooling, native provider scheduling, permission enforcement, and
+compiler extraction of template literals.
 
 ## Diagnostics As Product UX
 

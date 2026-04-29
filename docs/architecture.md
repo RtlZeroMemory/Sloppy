@@ -103,6 +103,13 @@ storage for validation shapes, and `examples/ergonomics/`. It still does not imp
 compiler extraction, plan emission, native HTTP serving, middleware, modules, OpenAPI,
 request parsing, automatic validation responses, or route params in native JavaScript
 contexts.
+TASK 15.A/15.B/15.C/15.D adds the JavaScript-only data/capabilities foundation on top of
+the bootstrap app-host/module skeleton: database capability metadata, module capability
+phase attribution, query template lowering, a fake data provider contract for tests and
+examples, transaction callback semantics, and `examples/data-foundation/`. It still does
+not implement real SQLite/PostgreSQL/SQL Server providers, database connections, SQL
+execution, native provider resources, permission enforcement, compiler template
+extraction, or app-plan data provider emission.
 
 ## Future Phase
 

@@ -61,6 +61,12 @@ Current tests:
   dependency order, missing dependency/cycle/duplicate diagnostics, phase failure context,
   route/service attribution, and module debug metadata. This is test infrastructure only
   and is not a Node compatibility claim;
+- optional CTest executable check `bootstrap.stdlib.data_foundation` when `node` is
+  available, which imports the ESM stdlib and verifies database capability metadata, query
+  template lowering, fake data provider query/queryOne/exec behavior, transaction
+  commit/rollback behavior, rejected async callback rollback, nested transaction rejection,
+  use after closed transaction scope, and module/service integration. This is test
+  infrastructure only and is not a Node compatibility claim;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
   hello example files exist, use the current relative stdlib import, use
   `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
@@ -73,6 +79,11 @@ Current tests:
   EPIC-14 module example files exist, use the current relative stdlib import, demonstrate
   module dependencies, services, routes, metadata, and builder registration, and honestly
   document that the example is not runnable through `sloppy run` yet;
+- CTest structural check `examples.data_foundation.api_shape`, which statically verifies
+  the EPIC-15 data foundation example files exist, use the current relative stdlib import,
+  demonstrate database capability metadata, fake data provider service registration, query
+  template lowering, transaction skeleton usage, and honestly document that the example is
+  not runnable and has no real database provider yet;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -349,6 +360,18 @@ ordering, module diagnostics, phase error context, route/service attribution, an
 debug metadata. It does not add package-manager behavior, npm dependencies, runtime module
 loading, or a Node compatibility promise.
 
+EPIC-15 adds a third optional executable ESM smoke test:
+
+```text
+tests/bootstrap/test_data_foundation.mjs
+```
+
+CMake registers it as `bootstrap.stdlib.data_foundation` only when `node` is available. It
+verifies documented bootstrap behavior for capability metadata, query template lowering,
+fake data providers, transaction callback behavior, and module/service integration. It does
+not add package-manager behavior, npm dependencies, database connections, SQL execution, or
+a Node compatibility promise.
+
 TASK 11.D adds the first public example structural check:
 
 ```text
@@ -382,6 +405,18 @@ tests/cmake/check_modules_basic_example.cmake
 
 It verifies the current module API shape without claiming compiler extraction, real data
 providers, HTTP serving, package loading, or runtime execution.
+
+EPIC-15 adds the first data foundation example structural check:
+
+```text
+examples/data-foundation/app.js
+examples/data-foundation/README.md
+tests/cmake/check_data_foundation_example.cmake
+```
+
+It verifies the current data/capability API shape without claiming compiler extraction,
+real database providers, database connections, SQL execution, HTTP serving, package
+loading, or runtime execution.
 
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 

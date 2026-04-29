@@ -21,7 +21,7 @@ No Node compatibility by default and no raw primitive-first public app model.
 
 ## Public/Internal API
 
-`stdlib/sloppy/index.js` now re-exports frozen `Sloppy` and `Results` modules for the
+`stdlib/sloppy/index.js` now re-exports frozen `Sloppy`, `data`, `sql`, `Results`, and `schema` modules for the
 future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally small:
 
 - `Results.text(...)`, `Results.json(...)`, and the EPIC-13 status/problem helper set
@@ -33,16 +33,21 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
   providers overriding earlier keys;
 - `builder.logging.setMinimumLevel(...)` and `builder.logging.addMemorySink()` configure a
   deterministic memory logger with no timestamps;
+- `builder.capabilities.addDatabase(...)` registers database capability metadata;
 - `builder.services.addSingleton(...)` and `builder.services.addTransient(...)` register
   string-token services;
 - `Sloppy.module(name)` creates a bootstrap app module definition with dependencies,
-  services, routes, and simple metadata;
+  capabilities, services, routes, and simple metadata;
 - `builder.addModule(module)` registers a module definition, freezes further module
   mutation, validates duplicate module names, and participates in `builder.build()`;
 - `builder.build()` freezes builder mutation and creates a frozen JavaScript app facade;
 - `builder.build()` resolves module dependencies, detects missing dependencies and cycles,
-  runs module services before module routes in dependency order, and attaches module debug
-  metadata;
+  runs module capabilities before services before routes in dependency order, and attaches
+  module debug metadata;
+- `sql` lowers tagged SQL templates to query descriptors without interpolating values into
+  SQL text;
+- `data.createFakeProvider(...)` exposes the JS-only fake provider contract for
+  tests/examples;
 - `Sloppy.create()` remains supported as a default builder plus `build()`;
 - `app.mapGet(pattern, handler)` stores an in-memory GET route registration;
 - `app.mapGet(pattern, metadata, handler)` stores route metadata such as validation
@@ -54,6 +59,9 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
 - `app.isFrozen()` reports app freeze state;
 - route handlers invoked through snapshots receive a minimal `{ services, config, log }`
   context;
+- service factory scopes expose `scope.capabilities` for bootstrap capability metadata
+  lookup;
+- `app.capabilities.has/get/list` exposes frozen capability metadata;
 - `app.__getRoutes()` returns frozen route snapshots for bootstrap tests/debugging.
 - `app.__debug().modules`, `app.__getModuleGraph()`, and
   `app.__getPlanContributions().modules` return bootstrap-only module debug metadata.
@@ -63,15 +71,17 @@ from `stdlib/sloppy/index.js`. The example documents the future bare `"sloppy"` 
 `sloppy run` workflow as planned behavior only.
 
 Native app graph validation, `app.run`, `app.listen`, `app.build`, compiler extraction,
-automatic `app.plan.json` emission, HTTP server behavior, nested route groups, module
-package loading, native plugins, middleware, automatic validation/request binding, config
-file/env providers, console/file/native logging sinks, request-scoped service lifetimes,
-disposal hooks, async factories, and typed service tokens remain future work.
+automatic `app.plan.json` emission, HTTP server behavior, real data providers, database
+connections, SQL execution, nested route groups, module package loading, native plugins,
+middleware, automatic validation/request binding, config file/env providers, console/file/native
+logging sinks, request-scoped service lifetimes, disposal hooks, async factories, and typed
+service tokens remain future work.
 
 ## Ownership/Lifetime Rules
 
 Current service lifetimes are JavaScript-only singleton and transient registrations.
-Future real request scopes and service lifetimes must be explicit and plan-visible.
+Capability metadata is copied and frozen for debug/introspection. Future real request
+scopes, service lifetimes, and capability enforcement must be explicit and plan-visible.
 
 ## Invariants
 
@@ -81,12 +91,14 @@ run in static plan mode.
 ## Diagnostics
 
 Implemented bootstrap errors are thrown JavaScript `Error`/`TypeError` values for invalid
-config keys, invalid log levels, duplicate/missing service tokens, invalid routes, invalid
-route groups, invalid result status/header options, invalid schemas, duplicate module
-names, invalid module objects, missing module dependencies, module dependency cycles, phase
-callback failures, and mutation after freeze. Native diagnostics for missing service,
-duplicate route, invalid lifetime, missing config, validation failure, and module graph
-errors remain future work.
+config keys, invalid log levels, duplicate/missing service tokens, invalid capability
+tokens, duplicate/missing capabilities, invalid database capability metadata, invalid query
+template usage, fake data provider missing methods, transaction misuse, invalid routes,
+invalid route groups, invalid result status/header options, invalid schemas, duplicate
+module names, invalid module objects, missing module dependencies, module dependency
+cycles, phase callback failures, and mutation after freeze. Native diagnostics for missing
+service, duplicate route, invalid lifetime, missing config, validation failure, provider
+driver/config failures, and module graph errors remain future work.
 
 ## Tests
 
@@ -103,6 +115,10 @@ exists in the V8 bridge.
 module API shape, builder integration, dependency ordering, missing dependency and cycle
 errors, duplicate module names, phase failure context, route/service attribution, and
 module debug metadata.
+`bootstrap.stdlib.data_foundation` executes the ESM stdlib with Node when available and
+covers database capability metadata, query template lowering, fake data provider methods,
+transaction commit/rollback behavior, nested transaction rejection, use after close, and
+module/service integration.
 CTest also registers `examples.hello.api_shape` to statically check that the hello example
 files exist, use the current stdlib import path, use `Sloppy.createBuilder`, `builder.build`,
 `app.mapGet`, `Results.text`, and avoid package-manager scope.
@@ -111,6 +127,9 @@ result helpers, schema metadata, and honest non-runnable status text.
 `examples.modules_basic.api_shape` statically checks the EPIC-14 module example for module
 dependencies, service/route contributions, builder registration, and honest non-runnable
 status text.
+`examples.data_foundation.api_shape` statically checks the EPIC-15 data/capabilities
+example for capability declaration, fake data service registration, query template usage,
+transaction skeleton usage, and honest non-runnable/no-real-provider status text.
 
 ## Source Docs
 

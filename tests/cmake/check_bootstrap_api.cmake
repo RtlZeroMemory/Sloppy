@@ -1,9 +1,10 @@
 set(results_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/results.js")
 set(schema_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/schema.js")
+set(data_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/data.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${app_source}" "${index_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${app_source}" "${index_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -11,6 +12,7 @@ endforeach()
 
 file(READ "${results_source}" results_js)
 file(READ "${schema_source}" schema_js)
+file(READ "${data_source}" data_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
 
@@ -65,10 +67,32 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "function sql(strings, ...values)"
+        "createFakeProvider"
+        "lowerQueryTemplate"
+        "__sloppyQuery"
+        "placeholderStyle"
+        "question"
+        "postgres"
+        "named"
+        "transaction(callback)"
+        "nested transactions are not supported yet"
+        "transaction scope is closed"
+        "fake data provider method missing"
+        "tagged template")
+    require_substring("${data_js}" "${required_pattern}" "data.js is missing expected API shape pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "createBuilder()"
         "module: createModule"
         "dependsOn(...names)"
+        "capabilities(callback)"
         "addModule(module)"
+        "addDatabase(token, options)"
+        "capability token already declared"
+        "capability token is not declared"
+        "capabilities,"
         "resolveModuleOrder"
         "module dependency missing"
         "module dependency cycle detected"
@@ -105,7 +129,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Sloppy }" "export { Results }" "export { schema }")
+foreach(required_pattern IN ITEMS "export { Sloppy }" "export { data, sql }" "export { Results }" "export { schema }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

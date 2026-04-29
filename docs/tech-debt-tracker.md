@@ -35,14 +35,18 @@
   route groups, route metadata storage, `Sloppy.create`,
   `Sloppy.createBuilder`, builder build/freeze behavior, structural `app.freeze`, object
   config, memory logging, string-token singleton/transient services, in-memory
-  `app.mapGet` facade behavior, and the EPIC-14 bootstrap `Sloppy.module` /
+  `app.mapGet` facade behavior, the EPIC-14 bootstrap `Sloppy.module` /
   `builder.addModule` skeleton with dependency ordering, services/routes phases,
-  attribution, and module debug metadata. It still has no handler registration, runtime
-  intrinsic binding, module resolver, compiler import rewriting, package-manager behavior,
-  native app-host validation, app run/listen, HTTP response conversion, automatic
-  validation, or `app.plan.json` emission yet.
+  attribution, and module debug metadata, and the EPIC-15 data/capabilities foundation with
+  database capability metadata, query template lowering, fake data providers, and
+  transaction callback semantics. It still has no handler registration, runtime intrinsic
+  binding, module resolver, compiler import rewriting, package-manager behavior, native
+  app-host validation, app run/listen, HTTP response conversion, automatic validation,
+  real database providers, database connections, SQL execution, or `app.plan.json` emission
+  yet.
 - `examples/hello/` and `examples/ergonomics/` exist as static bootstrap API-shape
   examples. `examples/modules-basic/` exists as a static bootstrap module API-shape
+  example. `examples/data-foundation/` exists as a static data/capabilities API-shape
   example. They are not compiled by `sloppyc`, do not emit `app.plan.json`, do not run
   through `sloppy run`, and are not served by an HTTP server.
 
@@ -163,6 +167,14 @@
   plugin modules are future work.
 - Data provider modules are future work; the modules-basic example uses only fake
   in-memory JavaScript services.
+- Real SQLite provider implementation is future EPIC-16 work; the current fake data
+  provider is only for tests/examples and does not execute SQL.
+- PostgreSQL and SQL Server providers are future work.
+- Database connection pooling, cancellation/deadline propagation, isolation levels,
+  savepoints, parameter type mapping, raw SQL escape hatch, array expansion, migration
+  story, and provider-specific quoting remain future data-provider work.
+- Capability enforcement, filesystem capabilities, network capabilities, permission grants,
+  `sloppy audit`, and app-plan data provider/capability emission remain future work.
 - Compiler import rewriting for `"sloppy"` is future work.
 - Runtime intrinsic binding for `stdlib/sloppy/internal/intrinsics.js` is future work.
 

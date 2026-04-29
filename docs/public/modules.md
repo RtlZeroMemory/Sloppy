@@ -10,6 +10,12 @@ Implemented bootstrap API example:
 
 ```ts
 const DataModule = Sloppy.module("data")
+  .capabilities(caps => {
+    caps.addDatabase("data.main", {
+      provider: "sqlite",
+      access: "readwrite",
+    });
+  })
   .services(services => {
     services.addSingleton("data.users", () => new Map());
   });
@@ -45,6 +51,7 @@ Implemented behavior:
 - Module names must be lowercase identifiers that start with a lowercase letter and then
   contain only lowercase letters, digits, dots, or hyphens.
 - `.dependsOn(...names)` declares required module names.
+- `.capabilities(fn)` registers a capabilities phase callback.
 - `.services(fn)` registers a services phase callback.
 - `.routes(fn)` registers a routes phase callback.
 - `.metadata(key, value)` stores simple custom debug metadata.
@@ -55,9 +62,11 @@ Implemented behavior:
 - Duplicate module names fail when added to one builder.
 - `builder.build()` resolves the module dependency graph before running module phases.
 - Missing dependencies and dependency cycles fail with useful JavaScript errors.
-- Services run for all modules in dependency order before routes run for all modules.
+- Capability phases run for all modules in dependency order before services, and services
+  run before routes.
 - Independent modules keep builder insertion order.
-- Module-created services and routes are attributed with the contributing module name.
+- Module-created capabilities, services, and routes are attributed with the contributing
+  module name.
 - `app.__debug().modules`, `app.__getModuleGraph()`, and
   `app.__getPlanContributions().modules` expose bootstrap-only module debug metadata.
 
@@ -65,13 +74,14 @@ Debug module entries currently include:
 
 ```js
 {
-  name: "users",
-  dependencies: ["data"],
-  order: 1,
-  contributes: ["services", "routes", "metadata"],
-  services: ["users.message"],
-  routes: ["GET /users/{id:int}"],
-  metadata: { area: "users" }
+  name: "data",
+  dependencies: [],
+  order: 0,
+  contributes: ["capabilities", "services"],
+  capabilities: ["data.main"],
+  services: ["data.users"],
+  routes: [],
+  metadata: {}
 }
 ```
 
@@ -80,7 +90,7 @@ dependency names, phase names, and a short fix hint where practical.
 
 Not implemented yet: compiler extraction, automatic `app.plan.json` emission, native
 runtime module loading, module package distribution, native plugins, optional
-dependencies, version ranges, data providers, middleware, route filters, hot reload, and
-dynamic module loading after build.
+dependencies, version ranges, real data providers, middleware, route filters, hot reload,
+and dynamic module loading after build.
 
 Related internal docs: `docs/modularity.md`, `docs/app-plan.md`.
