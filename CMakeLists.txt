@@ -713,6 +713,12 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy.cli.routes_json tests/golden/cli/routes-json.json routes --plan
         tests/fixtures/cli/route-metadata.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.routes_compiler_text tests/golden/cli/routes-compiler-text.txt routes --plan
+        compiler/tests/fixtures/grouped-route/expected/app.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.routes_compiler_json tests/golden/cli/routes-compiler-json.json routes --plan
+        compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.doctor_text tests/golden/cli/doctor-text.txt doctor --plan
         tests/fixtures/cli/doctor.plan.json --format text)
     sloppy_add_cli_golden_test(
@@ -724,6 +730,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_json tests/golden/cli/audit-json.json audit --plan
         tests/fixtures/cli/audit-problems.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_clean_text tests/golden/cli/audit-clean-text.txt audit --plan
+        tests/fixtures/cli/route-metadata.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_clean_json tests/golden/cli/audit-clean-json.json audit --plan
+        tests/fixtures/cli/route-metadata.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)
@@ -750,7 +762,7 @@ if(SLOPPY_ENABLE_TESTS)
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
             "-DSLOPPY_CLI_ARGS=openapi;--plan;tests/fixtures/cli/malformed-route.plan.json"
-            "-DSLOPPY_EXPECTED_ERROR=malformed route pattern" -P
+            "-DSLOPPY_EXPECTED_ERROR=invalid app plan route pattern" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.cli.openapi_malformed_route
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")

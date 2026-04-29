@@ -55,9 +55,12 @@ compatibility, but runnable artifact apps must provide route metadata.
 ## Public API Shape
 
 The plan is not normally user-authored. It is a public compatibility contract for `sloppyc`,
-`sloppy`, diagnostics tools, and future package tooling. Users may inspect plan-compatible
+`sloppy`, diagnostics tools, and future package tooling. Users may inspect artifact
 metadata through `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi`, and
 may execute EPIC-21 artifacts through `sloppy run --artifacts` in V8-enabled dev builds.
+Routes, doctor, and OpenAPI introspection validate the file with the native Plan v1 parser
+before reporting metadata; audit remains a bounded metadata checker that can inspect
+deliberately invalid problem fixtures without running user code.
 
 ## Versioning Rules
 
@@ -198,7 +201,8 @@ section is present:
 TASK 10.C synthetic HTTP dispatch tests still build a manual borrowed table, but the
 compiler/runtime artifact path now owns its GET route mapping through `app.plan.json`.
 EPIC-19 CLI introspection can read route metadata from plan-compatible JSON
-fixtures/artifacts.
+fixtures/artifacts. MAIN1-11 hardens the route, doctor, and OpenAPI commands so artifact
+metadata is validated by the native Plan v1 parser before output is produced.
 EPIC-21 compiler output uses the same plan-compatible metadata idea for extracted routes:
 each MVP route entry records `method`, `pattern`, `handlerId`, and `name`. Handler IDs
 start at `1` and are assigned in source order after route group prefix composition.
@@ -496,6 +500,8 @@ Future plan validation must check:
 - data provider tokens match services/capabilities;
 - permissions reference known capabilities;
 - schema references point to known schemas;
+- request/response schemas are emitted only after a scoped compiler/runtime task produces
+  real schema references;
 - unsupported dynamic mode is rejected unless explicitly enabled;
 - source map presence follows target mode policy;
 - no secret values are embedded in plan config.

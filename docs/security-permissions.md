@@ -209,6 +209,13 @@ sloppy audit --plan app.plan.json
 Current fixture-driven output can list static metadata from an app plan. It does not
 compile source files, execute user handlers, or enforce permissions.
 
+MAIN1-11 hardens the alpha audit scope without turning it into a full policy engine. Audit
+may report missing route handlers, duplicate route metadata, missing provider capability
+references, capability/provider mismatches, insufficient provider access metadata, and
+filesystem/network skeleton notes from plan metadata. It still does not claim live provider
+reachability, auth/RBAC/security-scheme generation, OS sandboxing, or runtime permission
+success.
+
 Planned hardened output:
 
 - module list;

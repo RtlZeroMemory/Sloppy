@@ -4,33 +4,42 @@
     "title": "Sloppy API",
     "version": "0.0.0"
   },
+  "x-sloppy-openapi-policy": {
+    "status": "route-skeleton",
+    "schemas": "omitted-deferred",
+    "requestBodies": "omitted-deferred",
+    "securitySchemes": "omitted-deferred"
+  },
   "paths": {
     "/": {
       "get": {
         "operationId": "Hello.Index",
+        "x-sloppy-route-skeleton": true,
         "parameters": [],
         "responses": {
-          "200": { "description": "OK" }
+          "200": { "description": "response schema deferred" }
         }
       }
     },
     "/users/{id}": {
       "get": {
         "operationId": "Users.Get",
+        "x-sloppy-route-skeleton": true,
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
         "responses": {
-          "200": { "description": "OK" }
+          "200": { "description": "response schema deferred" }
         }
-      },
-      "post": {
+      }
+    },
+    "/users/create": {
+      "get": {
         "operationId": "Users.Create",
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
-        ],
+        "x-sloppy-route-skeleton": true,
+        "parameters": [],
         "responses": {
-          "200": { "description": "OK" }
+          "200": { "description": "response schema deferred" }
         }
       }
     }

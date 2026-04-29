@@ -98,7 +98,7 @@ state and an honest public-alpha path.
   constraints, nested route groups, and ambiguity diagnostics beyond MAIN1-04's
   literal-before-parameter precedence policy.
 - Full OpenAPI generation, request/response schema emission, examples, and security
-  schemes.
+  schemes. MAIN1-11 emits only a route skeleton and marks schemas/security as deferred.
 - Full validation engine behavior: body/query/headers/route binding, automatic problem
   responses, coercion, arrays, unions, and custom refinements.
 - Production database features: migrations, isolation levels, savepoints, blob/date/json

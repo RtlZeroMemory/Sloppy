@@ -65,5 +65,10 @@ Provider enforcement note: native check hooks deny before provider work when a c
 them. The JavaScript SQLite bridge remains the follow-up integration point if MAIN1-08 has
 not yet landed in the branch being reviewed.
 
+CLI audit note: `sloppy audit` is metadata-only. It can flag missing or mismatched
+provider/capability metadata and filesystem/network skeleton capabilities, but it does not
+execute handlers, open providers, contact live services, generate auth/security OpenAPI
+schemes, or prove OS sandboxing.
+
 Related internal docs: `docs/modularity.md`, `docs/data-providers.md`,
 `docs/diagnostics.md`.

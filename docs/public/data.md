@@ -177,7 +177,8 @@ Not implemented yet:
 CLI status:
 
 - `sloppy doctor` can report deterministic provider readiness metadata supplied through
-  `doctorChecks`;
+  `doctorChecks` and reports whether provider/capability metadata is present in a
+  native-validated plan;
 - live PostgreSQL and SQL Server checks are not run by default and remain opt-in future CLI
   work;
 - default CI and package smoke do not prove live database availability, SQL Server driver
