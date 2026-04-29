@@ -1,0 +1,7 @@
+Sloppy Audit
+
+[error] SLOPPY_AUDIT_DUPLICATE_ROUTE_NAME duplicate route name (routes)
+[error] SLOPPY_AUDIT_DUPLICATE_ROUTE duplicate route method and pattern (routes)
+[error] SLOPPY_AUDIT_MISSING_HANDLER route references a missing handler id (routes)
+[error] SLOPPY_AUDIT_MISSING_MODULE_DEPENDENCY module dependency is missing (modules)
+[warn] SLOPPY_AUDIT_PROVIDER_INCOMPLETE provider metadata is missing token, provider, or service (dataProviders)

@@ -112,6 +112,12 @@ provider `sqlserver`, operation, ODBC diagnostic records where available, and re
 connection configuration for open/doctor failures. Passwords, `PWD`, and access-token
 fields must not appear in diagnostics.
 
+`sloppy doctor` can surface deterministic provider readiness metadata through CLI
+`doctorChecks`, and it redacts connection-string-like secrets before printing. It does not
+run live PostgreSQL or SQL Server checks by default. Future provider doctor CLI work should
+reuse the native PostgreSQL and SQL Server doctor helpers behind explicit opt-in flags or
+environment gates.
+
 ## Tests
 
 `bootstrap.stdlib.data_foundation` executes the ESM stdlib with Node when available and

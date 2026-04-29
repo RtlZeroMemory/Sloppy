@@ -273,7 +273,13 @@ Phase 1 CTest expectations:
 - `core.bytes.*`;
 - `core.checked_math.*`;
 - `core.scope.*`;
-- existing CLI smoke remains.
+- existing CLI smoke remains;
+- CLI introspection output changes include deterministic process-level golden tests over
+  metadata fixtures.
+
+CLI introspection tests must not require handler execution, HTTP server startup, V8
+execution, or live database servers by default. Live provider checks must stay behind
+explicit future flags or environment gates.
 
 ## Future Gates
 

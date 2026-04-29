@@ -1,0 +1,29 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "Hello.Index",
+        "parameters": [],
+        "responses": {
+          "200": { "description": "OK" }
+        }
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "operationId": "Users.Get",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "OK" }
+        }
+      }
+    }
+  }
+}

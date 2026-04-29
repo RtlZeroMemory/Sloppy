@@ -382,6 +382,7 @@ endif()
 
 add_executable(sloppy src/main.c)
 target_link_libraries(sloppy PRIVATE sloppy_core)
+target_link_libraries(sloppy PRIVATE yyjson::yyjson)
 target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy PRIVATE c_std_17)
 
@@ -647,6 +648,47 @@ if(SLOPPY_ENABLE_TESTS)
                 "${PROJECT_SOURCE_DIR}/tests/scripts/test_bench_wrapper_json.ps1" -RepoRoot
                 "${PROJECT_SOURCE_DIR}")
     endif()
+
+    function(sloppy_add_cli_golden_test test_name expected_file)
+        add_test(
+            NAME ${test_name}
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_EXPECTED=${PROJECT_SOURCE_DIR}/${expected_file}"
+                "-DSLOPPY_CLI_ARGS=${ARGN}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_output.cmake")
+        set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    endfunction()
+
+    sloppy_add_cli_golden_test(
+        sloppy.cli.routes_text tests/golden/cli/routes-text.txt routes --plan
+        tests/fixtures/cli/route-metadata.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.routes_json tests/golden/cli/routes-json.json routes --plan
+        tests/fixtures/cli/route-metadata.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_text tests/golden/cli/doctor-text.txt doctor --plan
+        tests/fixtures/cli/doctor.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_json tests/golden/cli/doctor-json.json doctor --plan
+        tests/fixtures/cli/doctor.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_text tests/golden/cli/audit-text.txt audit --plan
+        tests/fixtures/cli/audit-problems.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_json tests/golden/cli/audit-json.json audit --plan
+        tests/fixtures/cli/audit-problems.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
+        tests/fixtures/cli/route-metadata.plan.json)
+
+    add_test(
+        NAME sloppy.cli.missing_metadata
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=routes;--plan;tests/fixtures/cli/missing.plan.json" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.missing_metadata PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
         NAME bootstrap.stdlib.assets

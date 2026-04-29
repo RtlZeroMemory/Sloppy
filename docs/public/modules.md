@@ -137,4 +137,8 @@ runtime module loading, module package distribution, native plugins, optional
 dependencies, version ranges, JavaScript-to-native SQLite/PostgreSQL/SQL Server calls,
 middleware, route filters, hot reload, and dynamic module loading after build.
 
+CLI status: `sloppy audit --plan <path>` can inspect interim `modules` metadata for missing
+dependencies and direct dependency cycles. This uses metadata fixtures/artifacts only; it
+does not execute module phase callbacks or extract modules from source code.
+
 Related internal docs: `docs/modularity.md`, `docs/app-plan.md`.

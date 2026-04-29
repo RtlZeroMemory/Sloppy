@@ -37,8 +37,8 @@ output, or provide the final handler registration protocol.
 ## Public API Shape
 
 The plan is not normally user-authored. It is a public compatibility contract for `sloppyc`,
-`sloppy`, diagnostics tools, and future package tooling. Users may inspect it through future
-commands such as `sloppy audit`, `sloppy routes`, and `sloppy doctor`.
+`sloppy`, diagnostics tools, and future package tooling. Users may inspect plan-compatible
+metadata through `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi`.
 
 ## Versioning Rules
 
@@ -150,6 +150,9 @@ TASK 10.C deliberately keeps route bindings outside `app.plan.json`: synthetic H
 dispatch tests build a manual borrowed table that maps GET route patterns to numeric
 handler IDs. The helper validates the matched handler ID against the existing Plan handler
 table before engine entry. A future plan routes section will own this mapping.
+EPIC-19 CLI introspection can read an interim `routes` metadata section in plan-compatible
+JSON fixtures/artifacts, but the native Plan v1 parser still does not own or validate that
+section.
 
 Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
 and `{name:int}`. Query strings, catch-all parameters, optional segments, regex
