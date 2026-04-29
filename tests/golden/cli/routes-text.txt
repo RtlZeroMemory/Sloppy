@@ -1,0 +1,4 @@
+METHOD  PATTERN              HANDLER  NAME
+GET     /                    1        Hello.Index
+GET     /users/{id:int}      2        Users.Get
+POST    /users/{id:int}      3        Users.Create

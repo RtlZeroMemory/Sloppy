@@ -32,6 +32,7 @@ Future scope:
 - hash/source map checks;
 - native host graph construction;
 - real module section parsing and validation.
+- real route/module/provider metadata sections for CLI introspection.
 
 ## Non-goals
 
@@ -45,6 +46,10 @@ is not parsed by the native plan loader and is not emitted as `app.plan.json`.
 EPIC-15 exposes bootstrap capability debug metadata through
 `app.__getPlanContributions().capabilities`, but this is not parsed by the native plan
 loader and is not emitted as `app.plan.json`.
+EPIC-19 CLI introspection reads plan-compatible JSON files with optional interim `routes`,
+`modules`, `dataProviders`, and `doctorChecks` sections. Those sections are for metadata
+fixtures/artifacts only until the compiler and app host emit real Plan sections. The CLI
+does not execute application code to discover that metadata.
 
 ## Public/Internal API
 
@@ -198,6 +203,10 @@ Fixture files:
 Fixture conventions live in `tests/golden/plan/README.md`. Valid fixtures use the
 `valid-*.plan.json` prefix. Invalid fixtures name the rejected condition directly and must
 be added to the parser fixture matrix when introduced.
+
+EPIC-19 adds CLI metadata fixtures under `tests/fixtures/cli/`. These are not native Plan
+parser fixtures; they are plan-compatible introspection inputs used by process-level
+`sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi` golden tests.
 
 ## Source Docs
 

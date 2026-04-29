@@ -1,0 +1,7 @@
+{
+  "routes": [
+    { "method": "GET", "pattern": "/", "handlerId": 1, "name": "Hello.Index", "module": "hello" },
+    { "method": "GET", "pattern": "/users/{id:int}", "handlerId": 2, "name": "Users.Get", "module": "users" },
+    { "method": "POST", "pattern": "/users/{id:int}", "handlerId": 3, "name": "Users.Create", "module": "users" }
+  ]
+}

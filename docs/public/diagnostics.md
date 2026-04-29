@@ -55,4 +55,17 @@ Not implemented yet: stable native diagnostic codes for module errors, source sp
 source maps, rendered code frames, JSON diagnostic output, redaction enforcement, runtime
 startup diagnostics for module graphs, and compiler extraction diagnostics.
 
+## CLI Diagnostics
+
+The initial `sloppy doctor` and `sloppy audit` commands produce deterministic text output
+and machine-readable JSON output from metadata. They do not run app code or connect to live
+providers by default.
+
+`sloppy doctor` redacts connection-string-like secret fields such as `password`, `pwd`,
+`token`, and `secret` before printing check messages. Provider checks that require live
+servers or machine-local drivers remain opt-in future work.
+
+`sloppy audit` emits fixed finding records with `severity`, stable `code`, `message`, and
+`path` fields. The implemented rules are intentionally small and metadata-only.
+
 Related internal docs: `docs/diagnostics.md`, `docs/modularity.md`.

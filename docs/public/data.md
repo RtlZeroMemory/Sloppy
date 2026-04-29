@@ -139,4 +139,14 @@ Not implemented yet:
 - no public file database policy beyond the native provider accepting SQLite paths;
 - no compiler extraction of JavaScript template literals.
 
+CLI status:
+
+- `sloppy doctor` can report deterministic provider readiness metadata supplied through
+  `doctorChecks`;
+- live PostgreSQL and SQL Server checks are not run by default and remain opt-in future CLI
+  work;
+- doctor output redacts connection-string-like secrets before printing;
+- `sloppy audit` can flag incomplete `dataProviders` metadata, but it does not enforce
+  permissions or validate real provider reachability yet.
+
 Related internal docs: `docs/data-providers.md`, `docs/concurrency.md`.

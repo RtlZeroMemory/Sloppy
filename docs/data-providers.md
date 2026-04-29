@@ -769,6 +769,11 @@ Acceptance:
 - `sloppy doctor` can report SQLite/PostgreSQL/SQL Server availability once CLI exists;
 - diagnostics are redacted and actionable.
 
+EPIC-19 starts the CLI side with deterministic metadata-driven `doctorChecks` and output
+redaction. It does not connect to live providers or enumerate machine-local SQL Server
+drivers by default. Future provider doctor checks should reuse the native PostgreSQL and
+SQL Server helper APIs behind explicit opt-in flags or environment gates.
+
 ### Phase G: Data Provider Plan Integration
 
 Tasks:

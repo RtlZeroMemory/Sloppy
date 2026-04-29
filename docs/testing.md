@@ -43,6 +43,9 @@ Current tests:
   diagnostics foundation behavior, and assertion macro compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
+- CTest process-level golden tests for `sloppy routes`, `sloppy doctor`, `sloppy audit`,
+  and `sloppy openapi` over deterministic metadata fixtures under `tests/fixtures/cli/`;
+- CTest failure smoke for missing CLI metadata paths;
 - CTest smoke for `sloppyc --version`;
 - CTest smoke for `sloppy_bench --list` and `sloppy_bench --smoke --format json`, which
   verifies the benchmark harness starts, exposes named benchmarks, and emits the versioned
@@ -240,6 +243,14 @@ tests/golden/plan/
   missing-handler-export.plan.json
   empty-handler-export.plan.json
   wrong-field-type.plan.json
+tests/golden/cli/
+  routes-text.txt
+  routes-json.json
+  doctor-text.txt
+  doctor-json.json
+  audit-text.txt
+  audit-json.json
+  openapi.json
 tests/golden/compiler/
   README.md
 ```

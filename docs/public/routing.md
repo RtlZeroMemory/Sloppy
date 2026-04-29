@@ -73,5 +73,16 @@ duplicate/ambiguity diagnostics, compiler extraction, automatic `app.plan.json` 
 native route table construction, HTTP server behavior, route dispatch integration, and
 route/module extraction.
 
+## CLI Introspection
+
+`sloppy routes --plan <path>` can print route metadata from a plan-compatible metadata
+fixture or artifact. This is inspection-only: it does not execute handlers, start HTTP,
+enter V8, or build a production native route table. Until compiler/app-host emission grows a
+real Plan route section, the command reads the documented interim `routes` metadata section.
+
+`sloppy openapi --plan <path>` uses the same route metadata to emit a minimal OpenAPI
+skeleton. It converts Sloppy route parameters such as `{id}` and `{id:int}` into OpenAPI
+path parameters, but it does not generate schemas or request/response bodies.
+
 Related internal docs: `docs/developer-ergonomics.md`, `docs/app-plan.md`,
 `docs/execution-model.md`.

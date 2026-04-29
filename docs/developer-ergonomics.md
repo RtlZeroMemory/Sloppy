@@ -38,7 +38,8 @@ Sloppy ergonomics are not:
 
 ## Current Phase
 
-The repository contains placeholder CLIs and a source-controlled bootstrap stdlib layout.
+The repository contains metadata-only CLI introspection commands and a source-controlled
+bootstrap stdlib layout.
 TASK 11.B/11.C added the first tiny public JavaScript facade inside that stdlib:
 `Results.text(...)`, `Results.json(...)`, `Sloppy.create()`, and `app.mapGet(...)`.
 TASK 12.A/12.B/12.C/12.D extends that facade with the first app-host foundation skeleton:
@@ -56,6 +57,9 @@ semantics for tests/examples.
 EPIC-16 adds native SQLite provider execution in C tests and exposes `data.sqlite` as the
 future stdlib entry point; JavaScript-to-native database calls are still deferred until
 runtime intrinsics exist.
+EPIC-19 adds `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi` over
+plan-compatible metadata fixtures/artifacts. These commands do not compile apps, run
+handlers, start HTTP, enter V8, or run live provider checks by default.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan, serve HTTP, perform compiler extraction, validate requests, load module packages, or
 integrate native modules or call real database providers from JavaScript.
@@ -486,7 +490,10 @@ Diagnostic acceptance criteria:
 
 ## Sloppy Plan-Powered Tooling
 
-Future CLI ergonomics should be powered by `app.plan.json`.
+CLI ergonomics should be powered by `app.plan.json`. The current native Plan parser still
+knows only the minimal handler-oriented Plan v1 schema, so EPIC-19 reads documented interim
+metadata sections from plan-compatible JSON files until compiler/app-host emission catches
+up.
 
 | Command | Purpose | Planned output | Plan sections |
 | --- | --- | --- | --- |
@@ -500,6 +507,19 @@ Future CLI ergonomics should be powered by `app.plan.json`.
 | `sloppy check` | Type and plan validation | diagnostics | compiler graph, plan metadata |
 | `sloppy build` | Emit artifacts | `.sloppy/` output | all artifact sections |
 | `sloppy run` | Build/cache/run | runtime startup diagnostics | all artifact sections |
+
+Implemented EPIC-19 command scope:
+
+- `sloppy routes` prints method, pattern, handler ID, route name, and module from metadata;
+- `sloppy doctor` prints safe deterministic checks and redacts connection-string-like
+  secrets;
+- `sloppy audit` runs a small fixed metadata rule set for duplicate routes, missing
+  handlers, module dependency problems, and incomplete provider metadata;
+- `sloppy openapi` emits a minimal OpenAPI 3.0.3 skeleton with path parameters and
+  placeholder `200` responses.
+
+These commands deliberately avoid handler execution, HTTP server startup, V8 app loading,
+app compilation/extraction, package-manager behavior, and live DB checks by default.
 
 ## Low-Level Style Vs Sloppy Style
 

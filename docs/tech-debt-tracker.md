@@ -61,6 +61,11 @@
   example. `examples/data-foundation/` exists as a static data/capabilities API-shape
   example. They are not compiled by `sloppyc`, do not emit `app.plan.json`, do not run
   through `sloppy run`, and are not served by an HTTP server.
+- `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi` exist as
+  metadata-only CLI introspection commands over plan-compatible JSON fixtures/artifacts.
+  They do not compile apps, execute handlers, start HTTP, enter V8, or run live provider
+  checks by default. Real compiler/app-host metadata emission, richer provider checks,
+  fuller audit rules, and full OpenAPI schema generation remain future work.
 
 ## Deferred decisions
 
@@ -194,6 +199,12 @@
   `sloppy audit`, and app-plan data provider/capability emission remain future work.
 - Compiler import rewriting for `"sloppy"` is future work.
 - Runtime intrinsic binding for `stdlib/sloppy/internal/intrinsics.js` is future work.
+- Real app metadata extraction for CLI introspection is future work.
+- Full OpenAPI schema/request/response generation is future work.
+- Richer `sloppy audit` rules, source mapping, and authority-flow reporting are future
+  work.
+- CLI output polish, including stable lower-level diagnostic rendering and optional live
+  provider checks behind explicit flags, is future work.
 
 ## Cleanup candidates
 

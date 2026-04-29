@@ -1,0 +1,9 @@
+{
+  "findings": [
+    { "severity": "error", "code": "SLOPPY_AUDIT_DUPLICATE_ROUTE_NAME", "message": "duplicate route name", "path": "routes" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_DUPLICATE_ROUTE", "message": "duplicate route method and pattern", "path": "routes" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_MISSING_HANDLER", "message": "route references a missing handler id", "path": "routes" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_MISSING_MODULE_DEPENDENCY", "message": "module dependency is missing", "path": "modules" },
+    { "severity": "warn", "code": "SLOPPY_AUDIT_PROVIDER_INCOMPLETE", "message": "provider metadata is missing token, provider, or service", "path": "dataProviders" }
+  ]
+}
