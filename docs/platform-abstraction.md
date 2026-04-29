@@ -40,7 +40,9 @@ The repository has:
 - `src/platform/` directory skeleton;
 - `src/platform/common/`, `win32/`, `posix/`, `linux/`, and `macos/` README files;
 - `tools/windows/check-platform-boundaries.ps1`;
+- `tools/unix/check-platform-boundaries.sh`;
 - lint integration for the scanner.
+- default CI gates on Windows, Linux, and macOS for non-V8 builds.
 
 ## Future Phase
 
@@ -269,16 +271,17 @@ Platform abstraction tests should include:
 
 ## Build Expectations
 
-Windows presets exist first. Linux and macOS presets are expected later:
+Windows presets exist first. Linux and macOS presets now back default CI:
 
-- `linux-dev`;
-- `linux-release`;
-- `linux-asan`;
-- `macos-dev`;
-- `macos-release`.
+- `linux-clang`;
+- `linux-gcc`;
+- `macos-clang`.
 
-CMake should not bake Windows-only assumptions into core targets. Platform selection should
-be explicit and visible.
+These presets are intentionally small Debug non-V8 gates. They prove the portable core,
+compiler, default provider tests, and static boundaries on hosted runners. They do not
+claim V8 SDK validation, live database services, release package smoke, sanitizers, or
+full platform feature parity. CMake should not bake Windows-only assumptions into core
+targets. Platform selection should be explicit and visible.
 
 ## Tooling
 
@@ -316,6 +319,7 @@ Examples:
 ## Quality Gates
 
 - platform-boundary scanner passes;
+- Windows/Linux/macOS default CI passes for non-V8 builds;
 - CMake build does not require platform-specific source outside selected backend;
 - core code uses Sloppy abstractions, not OS APIs;
 - docs update whenever a new platform abstraction category is introduced.

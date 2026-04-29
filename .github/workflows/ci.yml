@@ -4,10 +4,28 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      enable_v8:
+        description: "Run the optional V8 SDK gate."
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      v8_root:
+        description: "Absolute path to a preinstalled Windows V8 SDK on the runner."
+        required: false
+        default: ""
+        type: string
+
+env:
+  VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
 
 jobs:
   windows:
-    name: Windows foundation
+    name: Windows clang-cl
     runs-on: windows-latest
 
     steps:
@@ -27,6 +45,29 @@ jobs:
             choco install ninja -y --no-progress
           }
 
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            vcpkg_installed
+          key: windows-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
+          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          }
+          git -C $vcpkgRoot fetch origin
+          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - name: Toolchain bootstrap
         shell: pwsh
         run: .\tools\windows\bootstrap.ps1
@@ -34,7 +75,7 @@ jobs:
       - name: Check tracked generated artifacts
         shell: pwsh
         run: |
-          $tracked = git ls-files -- build compiler/target target .sdeps .sloppy "*.exe" "*.pdb" "*.zip" "*.7z" "*.tar.gz"
+          $tracked = git ls-files -- build compiler/target target .sdeps .sloppy vcpkg_installed artifacts "*.exe" "*.pdb" "*.zip" "*.7z" "*.tar.gz"
           if ($tracked) {
             Write-Error "Generated artifacts are tracked:`n$($tracked -join "`n")"
           }
@@ -46,6 +87,24 @@ jobs:
       - name: Build
         shell: pwsh
         run: .\tools\windows\dev.ps1 build -Preset windows-dev
+
+      - name: Provider gate report
+        shell: pwsh
+        run: |
+          Write-Host "Provider gate report:"
+          Write-Host "- default SQLite provider tests: run in-memory through CTest."
+          Write-Host "- default PostgreSQL provider tests: run non-live diagnostics through CTest."
+          if ([string]::IsNullOrWhiteSpace($env:SLOPPY_POSTGRES_TEST_URL)) {
+            Write-Host "- live PostgreSQL provider tests: skipped because SLOPPY_POSTGRES_TEST_URL is not set."
+          } else {
+            Write-Host "- live PostgreSQL provider tests: enabled because SLOPPY_POSTGRES_TEST_URL is set."
+          }
+          Write-Host "- default SQL Server provider tests: run ODBC diagnostics through CTest."
+          if ([string]::IsNullOrWhiteSpace($env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING)) {
+            Write-Host "- live SQL Server provider tests: skipped because SLOPPY_SQLSERVER_TEST_CONNECTION_STRING is not set."
+          } else {
+            Write-Host "- live SQL Server provider tests: enabled because SLOPPY_SQLSERVER_TEST_CONNECTION_STRING is set."
+          }
 
       - name: Test
         shell: pwsh
@@ -71,6 +130,229 @@ jobs:
         shell: pwsh
         run: .\tools\windows\dev.ps1 format-check -Preset windows-dev
 
-      - name: Lint including C standards scanner
+      - name: Lint including standards scanners
         shell: pwsh
         run: .\tools\windows\dev.ps1 lint -Preset windows-dev
+
+  unix:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux clang
+            runner: ubuntu-latest
+            preset: linux-clang
+            cc: clang
+            cxx: clang++
+            install: sudo apt-get update && sudo apt-get install -y build-essential clang cmake ninja-build pkg-config curl zip unzip tar autoconf automake libtool bison flex
+          - name: Linux gcc
+            runner: ubuntu-latest
+            preset: linux-gcc
+            cc: gcc
+            cxx: g++
+            install: sudo apt-get update && sudo apt-get install -y build-essential gcc g++ cmake ninja-build pkg-config curl zip unzip tar autoconf automake libtool bison flex
+          - name: macOS clang
+            runner: macos-latest
+            preset: macos-clang
+            cc: clang
+            cxx: clang++
+            install: brew install cmake ninja pkg-config autoconf automake libtool
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install host dependencies
+        shell: bash
+        run: ${{ matrix.install }}
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            vcpkg_installed
+          key: ${{ runner.os }}-${{ matrix.preset }}-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          vcpkg_root="$PWD/.sdeps/vcpkg"
+          if [ ! -d "$vcpkg_root" ]; then
+            mkdir -p "$(dirname "$vcpkg_root")"
+            git clone https://github.com/microsoft/vcpkg.git "$vcpkg_root"
+          fi
+          git -C "$vcpkg_root" fetch origin
+          git -C "$vcpkg_root" checkout "$VCPKG_COMMIT"
+          if [ ! -x "$vcpkg_root/vcpkg" ]; then
+            "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+
+      - name: Check tracked generated artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked="$(git ls-files -- build compiler/target target .sdeps .sloppy vcpkg_installed artifacts '*.exe' '*.pdb' '*.zip' '*.7z' '*.tar.gz')"
+          if [ -n "$tracked" ]; then
+            printf 'Generated artifacts are tracked:\n%s\n' "$tracked" >&2
+            exit 1
+          fi
+
+      - name: Configure
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          set -euo pipefail
+          cmake --preset "${{ matrix.preset }}" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DSLOPPY_ENABLE_WERROR=ON \
+            -DSLOPPY_ENABLE_V8=OFF \
+            -DSLOPPY_ENGINE=none
+
+      - name: Build
+        shell: bash
+        run: cmake --build --preset "${{ matrix.preset }}"
+
+      - name: Provider gate report
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Provider gate report:"
+          echo "- default SQLite provider tests: run in-memory through CTest."
+          echo "- default PostgreSQL provider tests: run non-live diagnostics through CTest."
+          if [ -z "${SLOPPY_POSTGRES_TEST_URL:-}" ]; then
+            echo "- live PostgreSQL provider tests: skipped because SLOPPY_POSTGRES_TEST_URL is not set."
+          else
+            echo "- live PostgreSQL provider tests: enabled because SLOPPY_POSTGRES_TEST_URL is set."
+          fi
+          echo "- default SQL Server provider tests: run stub/unavailable diagnostics with SLOPPY_ENABLE_SQLSERVER=OFF on this platform."
+          if [ -z "${SLOPPY_SQLSERVER_TEST_CONNECTION_STRING:-}" ]; then
+            echo "- live SQL Server provider tests: skipped because SLOPPY_SQLSERVER_TEST_CONNECTION_STRING is not set."
+          else
+            echo "- live SQL Server provider tests: configured, but SQL Server ODBC execution requires an explicit SQL Server-enabled job."
+          fi
+
+      - name: Test
+        shell: bash
+        run: ctest --preset "${{ matrix.preset }}" --output-on-failure
+
+      - name: Build sloppyc directly
+        shell: bash
+        run: cargo build --manifest-path compiler/Cargo.toml
+
+      - name: Rust format
+        shell: bash
+        run: cargo fmt --manifest-path compiler/Cargo.toml -- --check
+
+      - name: Rust clippy
+        shell: bash
+        run: cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
+
+      - name: Rust tests
+        shell: bash
+        run: cargo test --manifest-path compiler/Cargo.toml
+
+      - name: POSIX standards checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/unix/check-platform-boundaries.sh
+          tools/unix/check-c-standards.sh
+
+  optional-v8:
+    name: Optional V8 validation
+    runs-on: windows-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.enable_v8 == 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check V8 SDK gate
+        id: v8
+        shell: pwsh
+        run: |
+          $v8Root = "${{ inputs.v8_root }}"
+          if ([string]::IsNullOrWhiteSpace($v8Root)) {
+            Write-Host "::notice title=Optional V8 validation skipped::No v8_root workflow input was supplied. This job did not run V8 configure/build/tests."
+            "configured=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          if (-not (Test-Path -LiteralPath $v8Root -PathType Container)) {
+            Write-Host "::notice title=Optional V8 validation skipped::The supplied v8_root does not exist on this runner: $v8Root"
+            "configured=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
+          "SLOPPY_V8_ROOT=$v8Root" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "configured=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Setup MSVC developer environment
+        if: steps.v8.outputs.configured == 'true'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Setup Rust
+        if: steps.v8.outputs.configured == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Ensure Ninja
+        if: steps.v8.outputs.configured == 'true'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+
+      - name: Cache vcpkg
+        if: steps.v8.outputs.configured == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            vcpkg_installed
+          key: windows-v8-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Bootstrap vcpkg
+        if: steps.v8.outputs.configured == 'true'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
+          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          }
+          git -C $vcpkgRoot fetch origin
+          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Validate V8 SDK
+        if: steps.v8.outputs.configured == 'true'
+        shell: pwsh
+        run: .\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root $env:SLOPPY_V8_ROOT
+
+      - name: Configure V8 build
+        if: steps.v8.outputs.configured == 'true'
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -CMakeArgs "-DSLOPPY_ENABLE_V8=ON","-DSLOPPY_V8_ROOT=$env:SLOPPY_V8_ROOT","-DSLOPPY_ENABLE_WERROR=ON"
+
+      - name: Build V8 build
+        if: steps.v8.outputs.configured == 'true'
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+
+      - name: Test V8 build
+        if: steps.v8.outputs.configured == 'true'
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo

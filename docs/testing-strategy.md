@@ -187,6 +187,11 @@ Structural tests enforce:
 - no unreviewed `unwrap`/`expect`/panic-style shortcuts in production Rust compiler code;
 - future raw allocation restrictions.
 
+Cross-platform CI is also a boundary test. Required Windows, Linux, and macOS jobs prove
+the default non-V8 runtime/compiler/test surface on each runner. Optional V8 and live
+provider jobs must be reported separately from required default CI, because skipped V8 SDKs
+or missing database connection environment variables do not prove those paths.
+
 ## Benchmarks
 
 Benchmarks validate performance claims. They do not replace correctness tests.

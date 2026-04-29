@@ -137,6 +137,10 @@ Current tests:
   ZIP outside the checkout, runs `sloppy`/`sloppyc` version and help commands, verifies
   stdlib assets, validates manifest fields, checks excluded local/build directories, and
   verifies `SHA256SUMS.txt` when present.
+- CI provider gate reporting, which prints whether default provider tests run, whether
+  PostgreSQL and SQL Server live tests are skipped or enabled by environment variables,
+  and whether SQL Server ODBC execution is unavailable on the current non-Windows default
+  job.
 
 When V8 is explicitly enabled and a valid SDK is configured, CTest also registers
 `engine.v8.smoke`. That test evaluates classic JavaScript source, calls a named global
@@ -170,6 +174,22 @@ Tests are invoked through:
 cargo test --manifest-path compiler/Cargo.toml
 ```
 
+Linux/macOS default CI uses direct CMake/Cargo commands rather than the Windows wrapper:
+
+```sh
+cmake --preset linux-clang -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" -DSLOPPY_ENABLE_WERROR=ON
+cmake --build --preset linux-clang
+ctest --preset linux-clang --output-on-failure
+cargo fmt --manifest-path compiler/Cargo.toml -- --check
+cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
+cargo test --manifest-path compiler/Cargo.toml
+tools/unix/check-platform-boundaries.sh
+tools/unix/check-c-standards.sh
+```
+
+Use `linux-gcc` for the Linux gcc job and `macos-clang` for the macOS job. These jobs are
+default non-V8 gates and do not require live databases.
+
 Packaging smoke:
 
 ```powershell
@@ -197,6 +217,18 @@ $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Ser
 
 Do not paste credentials into PR bodies or diagnostics. Use a redacted connection string
 when reporting live test commands.
+
+CI reporting distinguishes provider coverage as follows:
+
+- SQLite default/in-memory provider tests run in default CTest.
+- PostgreSQL non-live diagnostics run in default CTest; live libpq coverage runs only when
+  `SLOPPY_POSTGRES_TEST_URL` is set.
+- SQL Server default diagnostics run on Windows with ODBC enabled. Linux/macOS default
+  jobs configure `SLOPPY_ENABLE_SQLSERVER=OFF` and cover the unavailable/stub behavior;
+  live ODBC coverage runs only in an explicit SQL Server-enabled environment with
+  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`.
+- CI logs must say when a live provider gate was skipped because the environment was
+  missing. A skipped live provider gate is not a default CI failure.
 
 Benchmark commands are manual/local performance-validation tools:
 

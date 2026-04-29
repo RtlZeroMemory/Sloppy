@@ -242,8 +242,9 @@ is:
 
 1. EPIC-23 HTTP Response Writer and Request Context.
 2. EPIC-24 V8 Module Loading and Bootstrap Runtime.
-3. EPIC-25 Release Packaging and Distribution.
-4. EPIC-26 Cross-platform CI Expansion.
+3. EPIC-25 Release Packaging and Distribution. Done for experimental local packages.
+4. EPIC-26 Cross-platform CI Expansion. Done for required non-V8 hosted CI; optional V8
+   SDK setup, live provider services, and package smoke remain follow-ups.
 5. EPIC-27 Runtime Security / Capabilities Enforcement.
 6. EPIC-28 Public Alpha Docs and Examples.
 

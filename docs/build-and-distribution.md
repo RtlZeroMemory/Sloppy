@@ -33,7 +33,7 @@ The packaging foundation does not:
 - add Homebrew, Scoop, WinGet, MSI/MSIX, or other package-manager behavior;
 - add auto-update behavior;
 - add runtime dependencies before their documented phase;
-- add Linux/macOS CI or presets that must pass today.
+- make V8 or live database services mandatory in default CI.
 
 ## Current Phase
 
@@ -54,11 +54,16 @@ experimental development artifacts, not public release artifacts. They prove tha
 current runtime CLI, compiler CLI, bootstrap stdlib assets, manifest, and checksum can be
 staged into one archive and smoke-tested outside the checkout.
 
+EPIC-26 adds hosted default non-V8 CI gates for Windows clang-cl, Linux clang, Linux gcc,
+and macOS clang. It also adds a manual optional V8 workflow path and explicit provider
+gate reporting. Default CI still does not prove V8 execution, live PostgreSQL, live SQL
+Server, or package-manager distribution.
+
 ## Future Phase
 
-Future phases add public release hardening, cross-platform CI validation, signed/notarized
-artifacts, installers, and package-manager integrations after the local package contract is
-stable.
+Future phases add public release hardening, signed/notarized artifacts, installers,
+package smoke in hosted CI, and package-manager integrations after the local package
+contract is stable.
 
 ## Public API Shape
 
@@ -104,18 +109,16 @@ Current presets:
 - `windows-dev`;
 - `windows-release`;
 - `windows-relwithdebinfo`;
-- `windows-asan`.
+- `windows-asan`;
+- `linux-clang`;
+- `linux-gcc`;
+- `macos-clang`.
 
-Future presets:
-
-- `linux-dev`;
-- `linux-release`;
-- `linux-asan`;
-- `macos-dev`;
-- `macos-release`.
-
-Future presets should not be added as fake green jobs. They should become active when the
-platform implementation layer can support them.
+The Linux/macOS presets are default non-V8 CI presets. They disable SQL Server ODBC by
+default because the current SQL Server provider is Windows-first for live ODBC execution
+and non-Windows jobs should cover unavailable/stub behavior rather than require a driver.
+They are not release/package presets and should not be used to claim V8 or live database
+coverage.
 
 ## vcpkg Policy
 
@@ -162,7 +165,7 @@ Build options:
 - `SLOPPY_V8_ROOT` is required only when V8 is enabled.
 
 When V8 is disabled, configure prints `V8 bridge: disabled` and normal configure/build/test
-gates continue without a V8 SDK. CI uses this default non-V8 path.
+gates continue without a V8 SDK. Required CI uses this default non-V8 path.
 
 When V8 is enabled and `SLOPPY_V8_ROOT` is empty or invalid, CMake configure fails before
 any bridge code is compiled. When the SDK is valid, CMake compiles
@@ -233,6 +236,17 @@ Distribution policy:
 - the default package is non-V8 unless the built `sloppy` executable was linked against V8
   and any required dynamic runtime files were explicitly included.
 
+CI policy:
+
+- required pull-request CI does not fetch, build, or require V8;
+- manual `workflow_dispatch` can run the optional V8 validation job;
+- the optional job requires `enable_v8=true` and a runner-local `v8_root` pointing to a
+  preinstalled SDK;
+- if no SDK path is supplied or the path does not exist, the job reports skipped/not
+  configured and does not claim V8 validation;
+- when configured, the job validates the SDK, configures `windows-relwithdebinfo` with
+  `SLOPPY_ENABLE_V8=ON`, builds, and runs CTest.
+
 ## Tool Layout
 
 ```text
@@ -247,12 +261,14 @@ tools/
     check-platform-boundaries.ps1
   unix/
     README.md
+    check-c-standards.sh
+    check-platform-boundaries.sh
     package.sh
 ```
 
 Root `tools/*.ps1` scripts are compatibility forwarders. Unix shell scripts live under
-`tools/unix/`; the Unix package script is present but remains unvalidated by Windows-only
-default gates until EPIC-26 adds Linux/macOS CI.
+`tools/unix/`; Linux/macOS CI currently uses the Unix standards scanners and direct
+CMake/Cargo commands. The Unix package script is still not part of default required CI.
 
 ## Internal Architecture
 
@@ -366,8 +382,9 @@ support is real.
 
 `tools/unix/package.sh` stages the same layout and writes a `.tar.gz` archive plus
 `SHA256SUMS.txt` when run on Linux or macOS with suitable build tools. This path is simple
-and intentionally not claimed as validated by the Windows-only default gate. EPIC-26 owns
-CI validation for Linux/macOS packages.
+and intentionally not part of the required EPIC-26 default gate yet. Linux/macOS configure,
+build, test, Cargo, and standards checks are validated by CI; package smoke remains a
+separate follow-up.
 
 ## Source Archive Hygiene
 
@@ -432,6 +449,7 @@ Build/tooling tests currently include:
 - lint;
 - artifact hygiene;
 - platform-boundary scanner.
+- Linux/macOS POSIX platform and C standards scanners in CI.
 - Windows package smoke from an extracted archive outside the checkout.
 
 Package smoke unpacks the ZIP under the system temp directory, runs `sloppy --version`,
@@ -447,9 +465,10 @@ privileges, or global PATH mutation.
 - Limit manifest fields to small deterministic package metadata.
 - Use `tools/windows/package.ps1` for Windows ZIP creation and checksum generation.
 - Validate Windows archives with `tools/windows/test-package.ps1` outside the checkout.
-- Keep Linux/macOS TAR packaging in `tools/unix/package.sh` until CI validates it.
+- Keep Linux/macOS TAR packaging in `tools/unix/package.sh` until package CI validates it.
 - Add packaging CI job after binaries become real.
-- Add Linux/macOS presets only when platform code and CI can honestly support them.
+- Keep Linux/macOS presets limited to honest non-V8 default validation until release,
+  sanitizer, or package-smoke jobs are separately scoped.
 
 ## Acceptance Criteria
 
@@ -458,7 +477,7 @@ Build/distribution foundation is accepted when:
 - Windows preset configures/builds/tests;
 - V8 is optional for foundation build;
 - dependency manifest has no premature runtime dependencies;
-- tool layout separates Windows and future Unix scripts;
+- tool layout separates Windows and Unix scripts;
 - generated artifacts are ignored and untracked;
 - packaging policy excludes VCS internals and local build output;
 - package archives include `sloppy`, `sloppyc`, stdlib assets, README, LICENSE, and

@@ -7,12 +7,14 @@ Status key:
 - Red: not ready for public alpha use.
 
 This score separates "implemented" from "validated". Default gates are not V8-enabled
-gates, and default provider tests are not live database tests.
+gates, and default provider tests are not live database tests. Cross-platform default CI
+proves the non-V8 path across hosted Windows, Linux, and macOS runners; it still does not
+prove optional SDK/service paths.
 
 | Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
 | --- | --- | --- | --- | --- | --- |
 | Native C safety | Yellow | Core primitives, checked math, arena, diagnostics, plan parser, HTTP parser, providers, and boundary-oriented tests. | CTest, warnings, format, lint, C standards scanner, platform scanner. | Sanitizers, fuzzing, allocator/resource misuse checks, and deeper cleanup/leak checks are incomplete. | Add sanitizer/fuzz gates, resource table tests, allocator checks, and scanner fixtures. |
-| Platform boundaries | Yellow | `src/platform/*` structure, platform docs, scanner, and platform time abstraction. | Lint checks common forbidden OS headers outside platform directories. | Linux/macOS CI and scanner self-tests are missing. | Add scanner fixtures, Unix CI jobs, and documented platform API categories. |
+| Platform boundaries | Yellow | `src/platform/*` structure, platform docs, Windows/POSIX scanners, platform time abstraction, and default Windows/Linux/macOS CI. | Lint checks common forbidden OS headers outside platform directories; POSIX CI runs shell scanners. | Scanner self-tests, sanitizer/fuzz platform jobs, and richer platform API categories are missing. | Add scanner fixtures, sanitizer/fuzz jobs, and documented platform API categories. |
 | Docs freshness | Yellow | Source docs, public docs, module docs, ADRs, quality score, and tech-debt tracker exist. | Lightweight docs freshness structure check. | Semantic stale-doc detection and link checking are not implemented. | Add link checker and targeted semantic checks for examples/API claims. |
 | Language standards | Green | C/C++, JS/TS, and Rust standards docs exist with operational skill summaries and review checklists. | `dev.ps1 lint` runs C standards, JS/TS standards, Rust standards, platform, docs freshness, and artifact hygiene checks. | The JS/TS scanner is structural rather than parser-based; deeper Rust lint config is intentionally minimal. | Add parser-based JS linting and stronger Rust lint configuration only after the compiler/tooling scope justifies them. |
 | Tests as intent | Yellow | Testing strategy requires docs-as-intent; many modules have tests tied to docs. | CTest/cargo gates plus golden fixtures. | Some structural/example checks are static because runtime execution is not available. | Keep tests tied to source docs and replace static checks with runtime checks when features exist. |
@@ -25,17 +27,18 @@ gates, and default provider tests are not live database tests.
 | Data providers | Yellow | Native SQLite, PostgreSQL, and SQL Server provider boundaries plus bootstrap data API/fake provider. | SQLite live-in-memory tests; PostgreSQL/SQL Server default non-live tests; redaction and option tests. | PostgreSQL and SQL Server live tests require env vars; JS-to-native bridge, resource IDs, pooling, async offload, and capability enforcement are missing. | Add JS-native resource bridge, live test infrastructure, pooling hardening, async strategy, and capability policy. |
 | CLI | Yellow | Metadata-only `routes`, `doctor`, `audit`, and `openapi` commands. | Golden process tests over fixtures. | Commands do not compile, run handlers, start HTTP, enter V8, or run live provider checks. | Wire to compiler/app-host metadata and add opt-in live diagnostics. |
 | Benchmarks | Yellow | `sloppy_bench`, route/parser/handler/synthetic dispatch scenarios, JSON/text output, wrapper. | List/smoke CTest checks. | No performance regression gate; no real HTTP/V8/JSON/live DB/external comparisons. | Add release benchmark methodology, trend tracking, real paths, and only then external comparisons. |
-| Cross-platform readiness | Red | Cross-platform layout and platform boundary policy exist. | Windows-first gates only. | Linux/macOS CI, Unix tool wrappers, provider matrices, and package smoke tests are absent. | Add EPIC-26 CI expansion before public alpha claims. |
+| Cross-platform readiness | Yellow | Cross-platform layout, platform boundary policy, Linux clang/gcc CI, macOS clang CI, Windows clang-cl CI, and POSIX standards scanners exist. | Required default CI proves non-V8 configure/build/test, Cargo gates, artifact hygiene, and boundary scans on Windows, Linux, and macOS. | V8 CI is manual/gated, live provider services are opt-in, package smoke is not required on Linux/macOS, and sanitizer/fuzz matrices are absent. | Add V8 SDK caching/prebuilt setup, optional live provider service jobs, Linux/macOS package smoke, and sanitizer/fuzz gates before stronger public-alpha claims. |
 | Distribution readiness | Yellow | Experimental local package layout, Windows ZIP tooling, Unix TAR script, manifest, checksums, stdlib inclusion, V8 SDK exclusion policy, and outside-checkout ZIP smoke exist. | Windows package creation and package smoke can validate `sloppy --version`, `sloppyc --version`, stdlib assets, manifest fields, excluded directories, and SHA256SUMS locally. | Linux/macOS packaging is not CI-validated yet; dynamic V8 runtime bundling, libpq/runtime DLL strategy, signing/notarization, installers, package-manager distribution, reproducibility hardening, and public release automation remain deferred. | Add EPIC-26 cross-platform CI package validation, V8 runtime bundling hardening, provider runtime dependency strategy, signing/notarization, and package-manager work only when scoped. |
 | Security / capability model | Red | Capability metadata and audit concepts exist. | Some metadata/audit fixture checks. | No runtime enforcement, filesystem/network policy, provider access policy, or permission gate. | Implement EPIC-27 enforcement and diagnostics before public alpha. |
 
 ## Current Summary
 
 The repo has a surprisingly broad foundation now, and it has the first dev-only executable
-artifact path. Public-alpha readiness is still red because the path is intentionally narrow:
-V8 validation is gated, source-input `sloppy run` is deferred, response/request handling is
-limited to the EPIC-23 dev-only artifact path, and capability enforcement, cross-platform
-CI, and release packaging remain open.
+artifact path plus default hosted CI across Windows, Linux, and macOS. Public-alpha
+readiness is still red because the path is intentionally narrow: V8 validation is gated,
+source-input `sloppy run` is deferred, response/request handling is limited to the EPIC-23
+dev-only artifact path, and capability enforcement, optional SDK/service validation, and
+release packaging remain open.
 
 ## Gate Interpretation
 
@@ -47,6 +50,15 @@ Passing the default Windows gates means:
 - V8-enabled tests did not necessarily run;
 - PostgreSQL and SQL Server live tests did not necessarily run;
 - benchmark smoke ran only as harness correctness, not as performance evidence.
+
+Passing the default cross-platform CI additionally means:
+
+- non-V8 CMake configure/build/CTest passed on Windows clang-cl, Linux clang, Linux gcc,
+  and macOS clang;
+- Cargo build/fmt/clippy/test passed on those hosted runners;
+- POSIX C/platform standards scans passed on Linux/macOS;
+- provider live tests were either explicitly enabled by environment or reported as
+  skipped. It does not mean live PostgreSQL, live SQL Server, or V8 validation ran.
 
 Do not convert default-gate success into claims about V8, live databases, HTTP throughput,
 public package usability, or production readiness.
