@@ -81,6 +81,13 @@ run/build/freeze semantics, HTTP serving, modules, services, middleware, or vali
 TASK 11.D adds `examples/hello/` as a static bootstrap API-shape example that uses a
 relative import from `stdlib/sloppy/index.js`. It is not compiler output and is not a
 runnable HTTP app.
+TASK 12.A/12.B/12.C/12.D adds the first bootstrap app-host foundation skeleton:
+`Sloppy.createBuilder()`, `builder.build()`, structural `app.freeze()`, object-backed
+config, deterministic memory logging, and string-token singleton/transient services. It is
+still JavaScript-only bootstrap state. It does not implement native app-host validation,
+`app.run`/`app.listen`, compiler extraction, `app.plan.json` emission, HTTP serving,
+modules, middleware, validation, data providers, config file/env providers, native logging,
+or real request-scoped service lifetimes.
 
 ## Future Phase
 
@@ -209,10 +216,10 @@ It will own:
 - ergonomic JS objects over native request/resource IDs.
 
 The bootstrap stdlib must not bypass the runtime's permission/resource model.
-The current checked-in modules provide only the bounded TASK 11.B/11.C public API shape.
-They deliberately stay as plain JavaScript descriptors and in-memory route registrations
-until compiler extraction, runtime intrinsic binding, and app-host graph freeze land in
-later task-specific PRs.
+The current checked-in modules provide the bounded TASK 11.B/11.C public API shape plus
+the TASK 12 app-host foundation skeleton. They deliberately stay as plain JavaScript
+descriptors and in-memory registrations until compiler extraction, runtime intrinsic
+binding, native app-host validation, and plan emission land in later task-specific PRs.
 
 ## App Host Responsibilities
 

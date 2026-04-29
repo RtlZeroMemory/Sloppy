@@ -47,11 +47,18 @@ Current tests:
 - CTest structural check `bootstrap.stdlib.assets`, which verifies the bootstrap stdlib
   source files exist and were copied to the build output support-data layout;
 - CTest structural check `bootstrap.stdlib.api_shape`, which statically verifies the tiny
-  bootstrap API source shape for `Results.text/json`, `Sloppy.create`, `app.mapGet`,
-  `.withName`, route snapshots, index exports, and absence of deferred app-host APIs;
+  bootstrap API source shape for `Results.text/json`, `Sloppy.create`,
+  `Sloppy.createBuilder`, builder config/logging/services, `app.mapGet`, `.withName`,
+  `app.freeze`, route snapshots, index exports, and absence of deferred app-host APIs;
+- optional CTest executable check `bootstrap.stdlib.app_host_foundation` when `node` is
+  available, which imports the ESM stdlib and verifies builder freeze, config behavior,
+  logging memory sinks, services singleton/transient behavior, route handler context, and
+  app freeze behavior. This is test infrastructure only and is not a Node compatibility
+  claim;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
-  hello example files exist, use the current relative stdlib import, use `Sloppy.create`,
-  `app.mapGet`, and `Results.text`, and do not introduce package-manager scope;
+  hello example files exist, use the current relative stdlib import, use
+  `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
+  introduce package-manager scope;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -293,7 +300,8 @@ numeric handler ID through the parsed plan, and invokes the existing runtime-con
 helper. It still does not start sockets, write responses, parse bodies, build request
 contexts, run middleware, or exercise public TypeScript APIs.
 
-TASK 11.B/11.C adds the first non-executing bootstrap stdlib API-shape check:
+TASK 11.B/11.C adds the first non-executing bootstrap stdlib API-shape check, and
+TASK 12.A/12.B/12.C/12.D expands it for the app-host foundation skeleton:
 
 ```text
 tests/cmake/check_bootstrap_api.cmake
@@ -302,6 +310,18 @@ tests/cmake/check_bootstrap_api.cmake
 It is intentionally static because the current V8 bridge smoke path evaluates classic
 scripts only and does not load ESM modules from `stdlib/sloppy/`. A future module-loading
 task should replace or supplement this with executable bootstrap stdlib tests.
+
+TASK 12 also adds an optional executable ESM smoke test:
+
+```text
+tests/bootstrap/test_app_host_foundation.mjs
+```
+
+CMake registers it as `bootstrap.stdlib.app_host_foundation` only when `node` is available.
+It verifies documented bootstrap behavior for builder/app freeze, config, logging,
+services, route context, and `Sloppy.create()` consistency. It does not add package-manager
+behavior, npm dependencies, or a Node compatibility promise. V8-backed ESM bootstrap tests
+remain future work.
 
 TASK 11.D adds the first public example structural check:
 

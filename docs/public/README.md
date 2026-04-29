@@ -1,6 +1,6 @@
 # Public Documentation
 
-Status: Partially implemented bootstrap API; runtime execution planned.
+Status: Bootstrap app-host skeleton implemented; runtime execution planned.
 
 This directory is for user/developer-facing documentation: how people will use Sloppy to
 build applications. It is distinct from internal architecture/spec docs under `docs/`.

@@ -35,6 +35,7 @@ set(
 find_program(CARGO_EXECUTABLE cargo)
 find_program(CLANG_FORMAT_EXECUTABLE clang-format)
 find_program(CLANG_TIDY_EXECUTABLE clang-tidy)
+find_program(NODE_EXECUTABLE node)
 
 if(SLOPPY_ENABLE_TESTS OR SLOPPY_ENABLE_V8)
     include(CheckLanguage)
@@ -578,6 +579,13 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.hello.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_hello_example.cmake")
+
+    if(NODE_EXECUTABLE)
+        add_test(
+            NAME bootstrap.stdlib.app_host_foundation
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_app_host_foundation.mjs")
+    endif()
 
     if(CARGO_EXECUTABLE)
         add_test(

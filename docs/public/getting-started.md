@@ -1,7 +1,6 @@
 # Getting Started
 
-Status: Partially implemented bootstrap API; hello example exists; runtime execution
-planned.
+Status: Bootstrap app-host skeleton implemented; runtime execution planned.
 
 Purpose: introduce the future Sloppy developer workflow from app source to build artifacts
 to runtime execution.
@@ -11,15 +10,21 @@ Current bootstrap API shape:
 ```ts
 import { Sloppy, Results } from "sloppy";
 
-const app = Sloppy.create();
+const builder = Sloppy.createBuilder();
 
-app.mapGet("/", () => Results.text("Sloppy is alive"));
+builder.services.addSingleton("message", () => "Sloppy is alive");
+
+const app = builder.build();
+
+app.mapGet("/", ({ services }) => Results.text(services.get("message")));
 ```
 
-`Sloppy.create()`, `app.mapGet(...)`, and `Results.text(...)` now exist in the bootstrap
-stdlib, but `app.run()` does not. The example remains aspirational as a runnable
-application until compiler extraction, `app.plan.json` emission, app host run/build/freeze,
-and HTTP server behavior land.
+`Sloppy.createBuilder()`, `builder.build()`, `Sloppy.create()`, `app.mapGet(...)`,
+`app.freeze()`, `Results.text(...)`, object-backed config, memory logging, and
+string-token singleton/transient services now exist in the bootstrap stdlib. `app.run()`
+and `app.listen()` do not. The example remains aspirational as a runnable application until
+compiler extraction, `app.plan.json` emission, native app-host validation, and HTTP server
+behavior land.
 
 The first checked-in example lives at `examples/hello/`. It uses the current source stdlib
 path because compiler/runtime support for the bare `"sloppy"` import is not implemented:

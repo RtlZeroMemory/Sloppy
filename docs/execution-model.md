@@ -92,6 +92,12 @@ modules, the V8 bridge does not bind intrinsics or resolve ESM imports from this
 directory, and `app.mapGet` does not produce `app.plan.json`. TASK 11.D adds
 `examples/hello/` as a static API-shape example using the source stdlib; it does not change
 runtime startup or execution behavior.
+TASK 12.A/12.B/12.C/12.D adds a JavaScript-only app-host foundation skeleton in the same
+bootstrap stdlib: `Sloppy.createBuilder()`, `builder.build()`, structural `app.freeze()`,
+object config, memory logging, and string-token singleton/transient services. Route
+handlers invoked through bootstrap route snapshots can receive `{ services, config, log }`
+for tests/examples. This still does not change runtime startup, native HTTP dispatch,
+compiler extraction, or plan emission behavior.
 
 ## Current Handwritten Milestone
 

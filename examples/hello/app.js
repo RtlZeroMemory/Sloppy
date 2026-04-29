@@ -1,8 +1,17 @@
 import { Sloppy, Results } from "../../stdlib/sloppy/index.js";
 
-const app = Sloppy.create();
+const builder = Sloppy.createBuilder();
 
-app.mapGet("/", () => Results.text("Hello from Sloppy"))
+builder.config.addObject({
+    "app.name": "hello",
+});
+
+builder.logging.addMemorySink();
+builder.services.addSingleton("message", () => "Hello from Sloppy");
+
+const app = builder.build();
+
+app.mapGet("/", ({ services }) => Results.text(services.get("message")))
     .withName("Hello.Index");
 
 export default app;
