@@ -31,6 +31,9 @@ Implemented behavior:
 - SQLite examples may include `path: ":memory:"` in copied metadata. This is provider
   metadata only today; runtime permission enforcement and file database policy are still
   deferred.
+- PostgreSQL examples may include `connectionString` in copied metadata. Diagnostics and
+  PR notes must redact credentials; runtime network permission enforcement is still
+  deferred.
 
 Not implemented yet:
 

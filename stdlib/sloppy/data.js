@@ -159,6 +159,40 @@ function validateSqliteOpenOptions(options) {
     });
 }
 
+function redactConnectionString(value) {
+    return value
+        .replace(/(password=)[^&\s]*/gi, "$1<redacted>")
+        .replace(/(postgres(?:ql)?:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi, "$1<redacted>$2");
+}
+
+function validatePostgresOpenOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy postgres.open options must be a plain object.");
+    }
+
+    if (typeof options.connectionString !== "string" || options.connectionString.length === 0) {
+        throw new TypeError("Sloppy postgres.open connectionString must be a non-empty string.");
+    }
+
+    const access = options.access ?? "readwrite";
+    if (access !== "read" && access !== "readwrite") {
+        throw new TypeError("Sloppy postgres.open access must be read or readwrite.");
+    }
+
+    const maxConnections = options.maxConnections ?? 1;
+    if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 16) {
+        throw new TypeError("Sloppy postgres.open maxConnections must be an integer from 1 to 16.");
+    }
+
+    return Object.freeze({
+        provider: "postgres",
+        connectionString: redactConnectionString(options.connectionString),
+        access,
+        maxConnections,
+        placeholderStyle: "postgres",
+    });
+}
+
 function missingProviderMethod(method) {
     throw new Error(`sloppy: fake data provider method missing
 
@@ -185,9 +219,33 @@ Fix:
   Register SQLite as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);
 }
 
+function createPostgresUnavailableError(operation, options) {
+    const safeOptions = validatePostgresOpenOptions(options);
+    return new Error(`sloppy: postgres provider native bridge unavailable
+
+Provider:
+  postgres
+
+Operation:
+  ${operation}
+
+Connection:
+  ${safeOptions.connectionString}
+
+Reason:
+  The native PostgreSQL provider exists for C/runtime tests, but stdlib-to-native database intrinsics are not wired yet.
+
+Fix:
+  Register PostgreSQL as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);
+}
+
 function openSqlite(options) {
     validateSqliteOpenOptions(options);
     throw createSqliteUnavailableError("open");
+}
+
+function openPostgres(options) {
+    throw createPostgresUnavailableError("open", options);
 }
 
 const sqlite = Object.freeze({
@@ -209,6 +267,30 @@ const sqlite = Object.freeze({
         return Object.freeze({
             provider: "sqlite",
             placeholderStyle: "question",
+            nativeStdlibBridge: false,
+        });
+    },
+});
+
+const postgres = Object.freeze({
+    provider: "postgres",
+    placeholderStyle: "postgres",
+    supports: Object.freeze({
+        connectionString: true,
+        queryTemplates: true,
+        parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
+        transactions: true,
+        pooling: "skeleton",
+        migrations: false,
+        orm: false,
+        nativeStdlibBridge: false,
+    }),
+    open: openPostgres,
+    redactConnectionString,
+    __debug() {
+        return Object.freeze({
+            provider: "postgres",
+            placeholderStyle: "postgres",
             nativeStdlibBridge: false,
         });
     },
@@ -418,4 +500,5 @@ export const data = Object.freeze({
     lowerQueryTemplate: createLoweredQuery,
     isQuery: isLoweredQuery,
     sqlite,
+    postgres,
 });

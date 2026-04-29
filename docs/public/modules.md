@@ -50,6 +50,25 @@ builder
 const app = builder.build();
 ```
 
+PostgreSQL uses the same module phase shape with provider-specific metadata:
+
+```ts
+const PostgresModule = Sloppy.module("data.postgres")
+  .capabilities(caps => {
+    caps.addDatabase("data.main", {
+      provider: "postgres",
+      connectionString: "postgres://localhost/sloppy_test",
+      access: "readwrite",
+    });
+  })
+  .services(services => {
+    services.addSingleton("data.main", () => data.postgres.open({
+      connectionString: "postgres://localhost/sloppy_test",
+      maxConnections: 2,
+    }));
+  });
+```
+
 Implemented behavior:
 
 - `Sloppy.module(name)` creates a declarative module object.
@@ -95,7 +114,7 @@ dependency names, phase names, and a short fix hint where practical.
 
 Not implemented yet: compiler extraction, automatic `app.plan.json` emission, native
 runtime module loading, module package distribution, native plugins, optional
-dependencies, version ranges, JavaScript-to-native SQLite calls, middleware, route filters,
-hot reload, and dynamic module loading after build.
+dependencies, version ranges, JavaScript-to-native SQLite/PostgreSQL calls, middleware,
+route filters, hot reload, and dynamic module loading after build.
 
 Related internal docs: `docs/modularity.md`, `docs/app-plan.md`.

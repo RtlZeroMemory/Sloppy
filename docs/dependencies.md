@@ -48,7 +48,7 @@ Do not outsource:
 - llhttp: future HTTP/1 parser;
 - yyjson: current Plan v1 JSON parser and future config parser candidate;
 - sqlite3: current first-class native SQLite integration;
-- libpq: future PostgreSQL provider backend;
+- libpq: current PostgreSQL provider backend;
 - Microsoft ODBC Driver for SQL Server / ODBC API: future SQL Server provider backend on
   Windows;
 - munit: future C unit test framework;
@@ -93,10 +93,10 @@ V8 is enabled. Default builds still do not require the SDK. V8 tests are registe
 after the SDK gate succeeds, so CI can keep the non-V8 path green without local V8
 artifacts.
 
-SQLite is consumed through vcpkg manifest mode for the provider implementation phase. libpq
-may be a vcpkg/build dependency, but release packaging needs an explicit DLL strategy. SQL
-Server support depends on Microsoft ODBC Driver availability on Windows; `sloppy doctor`
-should later detect whether the external driver is installed and usable.
+SQLite and libpq are consumed through vcpkg manifest mode for their provider implementation
+phases. libpq release packaging still needs an explicit DLL strategy. SQL Server support
+depends on Microsoft ODBC Driver availability on Windows; `sloppy doctor` should later
+detect whether the external driver is installed and usable.
 
 All dependencies need explicit ownership, update, security, license, and test strategy
 before they become required in the default build.
@@ -279,4 +279,48 @@ A dependency can be added when:
 - Exact V8 SDK update cadence.
 - Exact Sloppy V8 SDK prebuilt source and checksum policy.
 - Exact sqlite packaging strategy.
-- Whether PostgreSQL libpq comes from vcpkg or provider package tooling.
+### libpq
+
+`libpq` is added in EPIC-17 through vcpkg manifest mode as the PostgreSQL client library.
+
+Why it is used:
+
+- PostgreSQL support should use the supported client library instead of a custom wire
+  protocol;
+- parameter binding, server authentication, connection-string parsing, and result
+  lifetimes are specialized provider concerns;
+- Sloppy keeps the native API as `SlPostgresConnection`, `SlPostgresParam`,
+  `SlPostgresResult`, `SlPostgresPool`, `SlStatus`, and `SlDiag`, so libpq types do not
+  leak through generic data headers.
+
+Build wiring:
+
+- `vcpkg.json` lists `libpq`;
+- CMake uses `find_package(PostgreSQL REQUIRED)`;
+- `sloppy_core` links `PostgreSQL::PostgreSQL`;
+- libpq is part of the default dependency restore/build path.
+
+Ownership and lifetime:
+
+- `src/data/postgres.c` is the only Sloppy source file that includes `libpq-fe.h`;
+- `SlPostgresConnection` is caller-owned and closes deterministically through
+  `sl_postgres_close`;
+- `PGresult` values are cleared on every path;
+- rows, column names, text values, and diagnostics are copied into caller-provided arenas;
+- JavaScript sees only the stdlib `data.postgres` shape today, never a native pointer.
+
+License/update/security:
+
+- libpq is consumed from the pinned vcpkg baseline;
+- broader update, CVE, and release packaging policy remain lightweight until release
+  packaging begins.
+
+Tests:
+
+- `tests/unit/data/test_postgres.c` covers redaction, invalid options, use after close,
+  doctor diagnostics, and env-gated live connection/query/transaction/pool behavior.
+
+Open questions:
+
+- Exact libpq DLL/shared-library packaging strategy.
+- Whether default CI should eventually use a documented PostgreSQL service/container.

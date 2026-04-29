@@ -6,9 +6,9 @@
   checksums, and update cadence are still deferred.
 - Sanitizer coverage is incomplete on Windows.
 - Runtime execution is still limited to handwritten V8 smoke artifacts; no HTTP app host,
-  compiler output loader, or public TypeScript API exists yet. A native SQLite provider
-  exists, but it is synchronous and not yet integrated with JS resource IDs, app-host
-  disposal, permissions, app-plan entries, or worker-pool execution.
+  compiler output loader, or public TypeScript API exists yet. Native SQLite and
+  PostgreSQL providers exist, but they are synchronous and not yet integrated with JS
+  resource IDs, app-host disposal, permissions, app-plan entries, or worker-pool execution.
 - `SlLoop` exists only as a caller-backed, single-threaded completion queue skeleton; it has
   no libuv/backend integration, OS wakeup mechanism, cross-thread posting, or owner-thread
   enforcement yet.
@@ -49,6 +49,10 @@
 - The native SQLite provider exists and is covered by C tests, but it is synchronous and
   not yet connected to JS resource IDs, app-host service disposal, permission enforcement,
   app-plan provider entries, or worker-pool/off-thread execution.
+- The native PostgreSQL provider exists and is covered by default non-live C tests plus
+  `SLOPPY_POSTGRES_TEST_URL` gated live tests, but it is synchronous and not yet connected
+  to JS resource IDs, app-host service disposal, permission enforcement, app-plan provider
+  entries, or worker-pool/off-thread execution. Its pool is a bounded skeleton only.
 - `examples/hello/` and `examples/ergonomics/` exist as static bootstrap API-shape
   examples. `examples/modules-basic/` exists as a static bootstrap module API-shape
   example. `examples/data-foundation/` exists as a static data/capabilities API-shape
@@ -174,11 +178,11 @@
   in-memory JavaScript services.
 - JavaScript-to-native SQLite provider binding is future work; the current native provider
   executes SQL in C tests and the fake data provider remains for JS tests/examples.
-- PostgreSQL and SQL Server providers are future work.
-- Database connection pooling, migrations, file DB capability policy, blob support,
-  async worker offload, cancellation/deadline propagation, isolation levels, savepoints,
-  array expansion, raw SQL escape hatch, and provider-specific quoting remain future
-  data-provider work.
+- SQL Server provider is future work.
+- Production database connection pooling, migrations, file DB capability policy, blob
+  support, async worker offload, cancellation/deadline propagation, isolation levels,
+  savepoints, PostgreSQL TLS/options hardening, JSON/array support, raw SQL escape hatch,
+  and provider-specific quoting remain future data-provider work.
 - Capability enforcement, filesystem capabilities, network capabilities, permission grants,
   `sloppy audit`, and app-plan data provider/capability emission remain future work.
 - Compiler import rewriting for `"sloppy"` is future work.

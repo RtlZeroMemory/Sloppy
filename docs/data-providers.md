@@ -30,9 +30,8 @@ This document covers:
 The foundation phase does not implement:
 
 - JavaScript-to-native SQLite resource/intrinsic integration;
-- libpq;
 - ODBC;
-- connection pools;
+- production connection pools;
 - SQL parsing;
 - provider plugin ABI;
 - runnable database JS API.
@@ -53,11 +52,24 @@ the intended public entry point, but that function fails honestly until the runt
 stdlib-to-native intrinsic/resource bridge. No native pointer is exposed to JavaScript and
 no fake SQLite success is reported by the stdlib.
 
+EPIC-17 adds the second real provider boundary: native C PostgreSQL support backed by
+libpq from the repo-approved vcpkg manifest. The native provider opens connection strings,
+executes parameterized `$1` queries, materializes small result sets, supports explicit
+transactions, redacts connection strings in diagnostics, and exposes a tiny bounded pool
+skeleton. Live PostgreSQL execution is opt-in through `SLOPPY_POSTGRES_TEST_URL`; default
+tests do not require a running server.
+
+The JavaScript stdlib exposes `data.postgres` metadata and `data.postgres.open(options)` as
+the intended public entry point, but that function fails honestly until the runtime has a
+stdlib-to-native intrinsic/resource bridge. No native pointer is exposed to JavaScript and
+no fake PostgreSQL success is reported by the stdlib.
+
 ## Future Phase Order
 
 1. SQLite first, built-in/static provider. Native C provider implemented; JavaScript bridge
    deferred.
-2. PostgreSQL second, via libpq.
+2. PostgreSQL second, via libpq. Native C provider implemented; JavaScript bridge
+   deferred.
 3. SQL Server third, via Microsoft ODBC Driver and ODBC API on Windows.
 4. Dynamic provider ABI later.
 
@@ -75,8 +87,8 @@ tests/golden/data/
 tests/integration/data/
 ```
 
-SQLite now owns `src/data/sqlite.c`. Do not add PostgreSQL, SQL Server, or generic provider
-framework directories before their phase.
+SQLite now owns `src/data/sqlite.c`. PostgreSQL now owns `src/data/postgres.c`. Do not add
+SQL Server or generic provider framework directories before their phase.
 
 ## Internal Architecture
 
@@ -118,21 +130,37 @@ sl_sqlite_query(arena, &db, sql, params, param_count, NULL, &rows, diag);
 sl_sqlite_close(&db);
 ```
 
-PostgreSQL:
+PostgreSQL stdlib shape:
 
 ```ts
-import { postgres } from "sloppy:data/postgres";
+import { Sloppy, data } from "sloppy";
 
-builder.addModule(
-  postgres.module({
-    token: "data.main",
-    connectionString: builder.config.require("DATABASE_URL"),
-    pool: {
-      min: 1,
-      max: 20,
-    },
+const PostgresModule = Sloppy.module("data.postgres")
+  .capabilities(caps => {
+    caps.addDatabase("data.main", {
+      provider: "postgres",
+      connectionString: "postgres://localhost/sloppy_test",
+      access: "readwrite",
+    });
   })
-);
+  .services(services => {
+    services.addSingleton("data.main", () => data.postgres.open({
+      connectionString: "postgres://localhost/sloppy_test",
+      maxConnections: 2,
+    }));
+  });
+```
+
+Native C test shape:
+
+```c
+SlPostgresConnection db = {0};
+SlPostgresOpenOptions options =
+    sl_postgres_open_options_connection_string(connection_string);
+sl_postgres_open(arena, &options, &db, diag);
+sl_postgres_exec(arena, &db, sql, params, param_count, &exec_result, diag);
+sl_postgres_query(arena, &db, sql, params, param_count, NULL, &rows, diag);
+sl_postgres_close(&db);
 ```
 
 SQL Server:
@@ -198,8 +226,12 @@ Current bootstrap behavior:
 - the fake provider never opens a database and never executes SQL.
 - `data.sqlite.open(options)` validates SQLite options and then reports that the native
   stdlib bridge is unavailable.
+- `data.postgres.open(options)` validates PostgreSQL connection string options, redacts
+  credentials, and then reports that the native stdlib bridge is unavailable.
 - native SQLite provider tests use the same `?` placeholder lowering contract at the C
   boundary.
+- native PostgreSQL provider tests use the same `$1`, `$2`, ... placeholder lowering
+  contract at the C boundary.
 
 Native SQLite behavior:
 
@@ -213,6 +245,24 @@ Native SQLite behavior:
 - unsupported parameter kinds fail before unsafe coercion;
 - nested transactions are rejected for now;
 - statements are finalized on all paths and close is deterministic.
+
+Native PostgreSQL behavior:
+
+- supported connection path: connection string;
+- `PQconnectdb`, `PQstatus`, `PQerrorMessage`, `PQfinish`, and `PQexecParams` are used
+  behind the provider boundary;
+- `exec` returns affected row count when libpq command status reports one;
+- `query` returns arena-owned rows with stable column names and values;
+- `queryOne` returns the first row or `found = false`;
+- parameters support null, text, integer, float, and boolean without SQL interpolation;
+- `$1`, `$2`, ... placeholders are the provider's query-template style;
+- unsupported parameter kinds fail before unsafe coercion;
+- nested transactions are rejected for now;
+- `BEGIN`, `COMMIT`, and `ROLLBACK` implement transactions;
+- pool support is intentionally tiny: bounded max connection count, acquire/release,
+  close-all, no waiting queue, no health checks, no background threads, no idle pruning,
+  and no thread-safety contract;
+- `PGresult` values are cleared on every path and connections close deterministically.
 
 Transaction example:
 

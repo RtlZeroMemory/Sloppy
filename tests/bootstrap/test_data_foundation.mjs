@@ -173,6 +173,35 @@ function createForgedLoweredQuery() {
 }
 
 {
+    assert.equal(data.postgres.provider, "postgres");
+    assert.equal(data.postgres.placeholderStyle, "postgres");
+    assert.equal(data.postgres.supports.connectionString, true);
+    assert.equal(data.postgres.supports.transactions, true);
+    assert.equal(data.postgres.supports.pooling, "skeleton");
+    assert.equal(data.postgres.supports.nativeStdlibBridge, false);
+    assert.equal(data.postgres.__debug().nativeStdlibBridge, false);
+    assert.equal(sql.lower(["a ", " b ", " c"], ["x", "y"], {
+        placeholderStyle: data.postgres.placeholderStyle,
+    }).text, "a $1 b $2 c");
+    assert.equal(
+        data.postgres.redactConnectionString("postgres://ada:secret@localhost/db"),
+        "postgres://ada:<redacted>@localhost/db",
+    );
+    assert.equal(
+        data.postgres.redactConnectionString("host=localhost password=secret user=ada"),
+        "host=localhost password=<redacted> user=ada",
+    );
+    assertThrowsMessage(() => data.postgres.open({}), /connectionString must be a non-empty string/);
+    assertThrowsMessage(() => data.postgres.open({
+        connectionString: "postgres://localhost/sloppy",
+        access: "admin",
+    }), /access must be read or readwrite/);
+    assertThrowsMessage(() => data.postgres.open({
+        connectionString: "postgres://ada:secret@localhost/sloppy",
+    }), /postgres provider native bridge unavailable[\s\S]*postgres:\/\/ada:<redacted>@localhost/);
+}
+
+{
     const received = [];
     const fakeDb = data.createFakeProvider({
         query(lowered) {
@@ -324,4 +353,30 @@ function createForgedLoweredQuery() {
     assert.equal(app.capabilities.get("data.main").metadata.path, ":memory:");
     assert.deepEqual(app.__debug().modules[0].services, ["data.main"]);
     assertThrowsMessage(() => app.services.get("data.main"), /native bridge unavailable/);
+}
+
+{
+    const PostgresModule = Sloppy.module("data.postgres")
+        .capabilities((caps) => {
+            caps.addDatabase("data.main", {
+                provider: "postgres",
+                connectionString: "postgres://localhost/sloppy_test",
+                access: "readwrite",
+            });
+        })
+        .services((services) => {
+            services.addSingleton("data.main", () => data.postgres.open({
+                connectionString: "postgres://localhost/sloppy_test",
+                maxConnections: 2,
+            }));
+        });
+
+    const app = Sloppy.createBuilder()
+        .addModule(PostgresModule)
+        .build();
+
+    assert.equal(app.capabilities.get("data.main").provider, "postgres");
+    assert.equal(app.capabilities.get("data.main").metadata.connectionString, "postgres://localhost/sloppy_test");
+    assert.deepEqual(app.__debug().modules[0].services, ["data.main"]);
+    assertThrowsMessage(() => app.services.get("data.main"), /postgres provider native bridge unavailable/);
 }
