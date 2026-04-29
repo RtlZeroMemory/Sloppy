@@ -60,9 +60,13 @@ runtime intrinsics exist.
 EPIC-19 adds `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi` over
 plan-compatible metadata fixtures/artifacts. These commands do not compile apps, run
 handlers, start HTTP, enter V8, or run live provider checks by default.
+EPIC-21 adds the compiler extraction MVP. `sloppyc build` can parse one tiny public API
+source file with the bare `"sloppy"` import, extract literal `mapGet` routes and simple
+route groups, assign stable handler IDs, and emit deterministic `app.plan.json`, `app.js`,
+and placeholder `app.js.map` artifacts.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
-Plan, serve HTTP, perform compiler extraction, validate requests, load module packages, or
-integrate native modules or call real database providers from JavaScript.
+Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
+modules or call real database providers from JavaScript.
 `examples/hello/` demonstrates the checked-in bootstrap API shape through a relative import
 from `stdlib/sloppy/index.js` because the public bare `"sloppy"` specifier remains future
 compiler/runtime behavior.
@@ -138,6 +142,10 @@ examples/hello/
 
 That example is static bootstrap validation only. It is not compiled by `sloppyc`, does not
 emit `app.plan.json`, and does not serve HTTP.
+
+EPIC-21 adds `examples/compiler-hello/` as the compiler input example. It uses
+`import { Sloppy, Results } from "sloppy";`, can be compiled with `sloppyc build`, and
+documents that serving the result is EPIC-22.
 
 ## Builder/App Shape
 

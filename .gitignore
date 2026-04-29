@@ -33,6 +33,9 @@ target/
 *.idb
 *.exp
 *.map
+!compiler/tests/fixtures/**/expected/*.js.map
+!examples/**/expected/*.js.map
+!tests/integration/**/*.js.map
 *.pch
 *.gch
 *.dSYM/

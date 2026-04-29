@@ -2,7 +2,7 @@
 
 ## Status
 
-Partially implemented through TASK 06.C.
+Partially implemented through TASK 06.C and compiler-emitted MVP artifacts.
 
 ## Purpose
 
@@ -23,7 +23,8 @@ Implemented now:
 - minimal Plan v1 shape validation;
 - arena-owned parsed plan storage;
 - basic diagnostics for invalid plan JSON and validation failures;
-- documented golden plan fixture matrix.
+- documented golden plan fixture matrix;
+- compiler-emitted minimal Plan v1 JSON plus an interim `routes` metadata section.
 
 Future scope:
 
@@ -32,14 +33,14 @@ Future scope:
 - hash/source map checks;
 - native host graph construction;
 - real module section parsing and validation.
-- real route/module/provider metadata sections for CLI introspection.
+- native route/module/provider metadata parsing and validation.
 
 ## Non-goals
 
-No file I/O, route model, service model, module model, data provider model,
-permission/capability model, source map parser, hash verification, HTTP, V8 execution,
-compiler extraction, JSON serialization, streaming parser, schema framework, plugin
-validator, or package-manager behavior.
+No file I/O, native route table construction, service model, module model, data provider
+model, permission/capability model, source map parser, hash verification, HTTP, V8
+execution, JSON serialization inside the C runtime, streaming parser, schema framework,
+plugin validator, or package-manager behavior.
 
 TASK 14 exposes bootstrap module debug metadata through `app.__debug().modules`, but this
 is not parsed by the native plan loader and is not emitted as `app.plan.json`.
@@ -50,6 +51,9 @@ EPIC-19 CLI introspection reads plan-compatible JSON files with optional interim
 `modules`, `dataProviders`, and `doctorChecks` sections. Those sections are for metadata
 fixtures/artifacts only until the compiler and app host emit real Plan sections. The CLI
 does not execute application code to discover that metadata.
+EPIC-21 `sloppyc build` emits the first real compiler-owned `routes` metadata section with
+`method`, `pattern`, `handlerId`, and `name`. The native Plan parser still treats that
+section as an unknown field and does not validate route-handler relationships.
 
 ## Public/Internal API
 
@@ -116,6 +120,9 @@ Future loader invariants:
 - TASK 10.C synthetic HTTP dispatch keeps route bindings manual and outside `SlPlan`; the
   dispatch helper only validates that a matched binding's numeric handler ID exists in this
   handler table before entering the engine.
+- EPIC-21 compiler output assigns handler IDs starting at `1` in source order and emits
+  global handler names matching `__sloppy_handler_N` for the current classic-script smoke
+  convention.
 
 Parser validation rules:
 

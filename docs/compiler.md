@@ -14,43 +14,53 @@ golden tests, implementation phases, and acceptance criteria.
 
 ## Non-Goals
 
-The current compiler skeleton does not:
+The compiler extraction MVP does not:
 
-- parse TypeScript;
-- depend on Oxc;
-- emit JavaScript;
-- emit source maps;
-- emit a Sloppy Plan;
-- call into C runtime code;
+- perform full TypeScript type checking;
+- bundle module graphs;
+- resolve npm packages or implement package-manager behavior;
+- assume Node compatibility;
+- execute application JavaScript during compilation;
+- extract services, data providers, modules, middleware, or validation schemas;
+- implement `sloppy run`, HTTP serving, `app.run`, or V8 bootstrap module loading;
 - expose Rust/C FFI.
 
 ## Current Phase
 
-`compiler/` is a Rust CLI placeholder. It prints help/version and has small argument tests.
-Dependencies are intentionally empty.
+`compiler/` contains the EPIC-21 compiler extraction MVP. `sloppyc build <input.js> --out
+<directory>` parses one source file with Oxc, extracts a deliberately narrow Sloppy app
+shape, and emits deterministic artifacts:
+
+- `app.plan.json`;
+- `app.js`;
+- `app.js.map`.
+
+If EPIC-21 GitHub issues are absent, this implementation follows
+`docs/project/next-roadmap.md` as the source of truth for the post-roadmap plan.
 
 ## Future Phase
 
-The compiler grows in slices:
+The compiler grows from this MVP in later slices:
 
-1. fake plan emitter;
-2. one-route extractor;
-3. source map and JS emission;
-4. module extraction;
-5. data provider extraction;
+1. richer route and app-host metadata;
+2. source-map fidelity;
+3. module extraction;
+4. data provider extraction;
+5. V8 bootstrap module loading handoff;
 6. official TypeScript checking integration.
 
 ## Public API Shape
 
-Current placeholder:
+Current MVP:
 
 ```powershell
 sloppyc --help
 sloppyc --version
+sloppyc build examples/compiler-hello/app.js --out .sloppy
 ```
 
-Future public commands are expected to include build/check-oriented flows, but exact syntax
-is deferred.
+The build command writes only inside the requested output directory. It creates the output
+directory when needed and rejects output paths containing `..`.
 
 ## Why Rust
 
@@ -59,9 +69,9 @@ memory safety for complex graph processing, and direct access to Oxc. The runtim
 
 ## Why Oxc
 
-Oxc is planned as the primary parser, transformer, and app-plan extraction substrate. It is
-not added yet because the foundation phase should keep the compiler build small and avoid
-pretending extraction exists before its tests and schemas exist.
+Oxc is the parser for the compiler extraction MVP. The MVP uses Oxc for syntax parsing and
+explicit AST extraction. It does not run arbitrary JavaScript, invoke Node, resolve
+packages, or perform full TypeScript semantic checking.
 
 ## No Rust/C FFI For Now
 
@@ -76,36 +86,35 @@ compiler output testable with golden files.
 
 ## Compiler Phases
 
-Target phases:
+MVP phases:
 
-1. project discovery;
-2. parse TypeScript;
-3. resolve imports;
-4. transform TypeScript to JavaScript;
-5. extract app graph metadata;
-6. validate static plan restrictions;
-7. run official TypeScript checker later;
-8. emit artifacts;
-9. produce diagnostics.
+1. parse one input file;
+2. validate the supported import and app factory shape;
+3. extract literal `mapGet` routes and handlers;
+4. assign stable numeric handler IDs in source order;
+5. emit `app.plan.json`, `app.js`, and a placeholder `app.js.map`;
+6. produce structured compiler diagnostics for unsupported syntax.
 
 ## App Graph Extraction
 
-The compiler extracts:
+The compiler extraction MVP extracts:
 
-- modules;
-- routes;
-- route groups;
-- handlers;
-- services;
-- middleware;
-- endpoint filters;
-- result filters;
-- capabilities;
-- permissions;
-- data provider registrations;
-- source locations.
+- one app object from `Sloppy.create()` or `Sloppy.createBuilder()` plus `builder.build()`;
+- literal `app.mapGet(pattern, handler)` routes;
+- simple `const group = app.mapGroup(prefix)` followed by `group.mapGet(child, handler)`;
+- optional `.withName("Route.Name")` route names;
+- zero-argument handlers that are inline function/arrow expressions returning
+  `Results.text(...)` or `Results.json(...)`;
+- result arguments that are inline JSON-safe literals, arrays, or object literals;
+- source ranges for copied handler bodies.
 
 Extraction must be deterministic. Import order must not silently decide module ordering.
+
+Unsupported input fails with diagnostics. The MVP rejects dynamic route strings, computed
+method names, multiple app objects, missing default export, unsupported handler shapes,
+handlers with parameters, handlers that close over source-file bindings, TypeScript input
+or TypeScript-only handler syntax, dynamic imports, package resolution, broad module
+graphs, and top-level control flow.
 
 ## Static Mode
 
@@ -126,14 +135,15 @@ Dynamic behavior must not silently weaken static plan guarantees.
 
 ## Official TypeScript Checking
 
-Oxc handles parsing/transform/extraction. Official type checking through `tsgo` or `tsc` is
-planned later. Sloppy should not claim TypeScript type compatibility from its extractor
-alone.
+The compiler extraction MVP is JavaScript-input-only. Oxc is used for parsing and narrow
+AST extraction, but the MVP does not lower TypeScript syntax into generated JavaScript.
+Official type checking through `tsgo` or `tsc` is planned later. Sloppy should not claim
+TypeScript type compatibility from its extractor alone.
 
 ## Source Map Requirements
 
-Compiler output must include source maps once JavaScript emission exists. Source maps must
-support:
+The MVP emits a deterministic placeholder `app.js.map` because Plan v1 currently requires a
+`sourceMap` section. It does not claim source fidelity. Real source maps must later support:
 
 - runtime exception diagnostics;
 - plan extraction diagnostics;
@@ -143,16 +153,16 @@ support:
 
 ## Public CLI Shape
 
-Placeholder today:
+Current commands:
 
 ```powershell
 cargo run --manifest-path compiler/Cargo.toml -- --help
 cargo run --manifest-path compiler/Cargo.toml -- --version
+cargo run --manifest-path compiler/Cargo.toml -- build examples/compiler-hello/app.js --out .sloppy
 ```
 
 Future commands:
 
-- `sloppyc build`;
 - `sloppyc check`;
 - `sloppyc emit-plan`;
 - `sloppyc explain`.
@@ -162,12 +172,15 @@ architecture: `app.js`, `app.js.map`, and `app.plan.json`. `sloppy run` may add 
 watching, but it must not invent a separate runtime-only discovery model.
 
 The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is staged for
-runtime/package use under `lib/sloppy/bootstrap/sloppy/`. Compiler import rewriting from
-the public `"sloppy"` specifier to those bootstrap modules is future work; the current
-compiler placeholder does not read or emit stdlib assets.
+runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler MVP recognizes only
+the public bare import `import { Sloppy, Results } from "sloppy";` as input syntax. It does
+not emit or load stdlib assets; generated `app.js` includes a tiny compiler-owned
+`Results.text/json` shim that returns strings compatible with the current V8
+global-function smoke path until EPIC-24 owns real bootstrap module loading and EPIC-23
+owns response descriptor conversion.
 `examples/hello/app.js` therefore uses a relative source import from
-`stdlib/sloppy/index.js`; that example is not compiler input, compiler output, or proof of
-bare import support.
+`stdlib/sloppy/index.js`; that example remains a bootstrap API-shape example. The
+compiler-owned runnable artifact example is `examples/compiler-hello/`.
 The bootstrap stdlib now also contains the EPIC-14 JavaScript-only `Sloppy.module(...)`
 and `builder.addModule(...)` skeleton. The compiler still does not extract modules, sort
 module graphs, or emit module plan entries.
@@ -182,33 +195,30 @@ EPIC-17 and EPIC-18 add native PostgreSQL and SQL Server provider tests plus
 `data.postgres` and `data.sqlserver` stdlib shapes, but the compiler still does not extract
 provider modules, emit data provider plan entries, lower application template literals into
 native provider calls, or produce metadata for live provider checks.
-EPIC-19 CLI introspection currently reads interim plan-compatible metadata sections from
-fixtures/artifacts; the compiler does not emit that metadata yet. EPIC-20 benchmarks
-measure current native foundations only and do not imply compiler output exists.
-`examples/ergonomics/app.js` follows the same rule for the EPIC-13 route group, result
-helper, and schema skeleton API shape. The compiler still does not extract route groups,
-schemas, services, or any `app.plan.json` metadata from these examples.
+EPIC-19 CLI introspection reads interim plan-compatible metadata sections from
+fixtures/artifacts. The compiler MVP now emits a narrow `routes` metadata section in
+`app.plan.json` for EPIC-22 tooling and route handoff; the native Plan v1 parser still
+ignores unknown sections and does not validate or build a route table from it. EPIC-20
+benchmarks measure current native foundations only and do not imply compiler output
+performance.
+`examples/ergonomics/app.js` follows the same static-example rule for the broader EPIC-13
+route group, result helper, and schema skeleton API shape. The compiler MVP extracts only
+the tiny route group shape covered by compiler fixtures; it still does not extract schemas,
+services, modules, or data providers from those broader examples.
 
 ## Internal Architecture
 
-Planned Rust modules:
+Current Rust layout:
 
 ```text
 compiler/src/
   main.rs
-  cli.rs
-  project.rs
-  parser.rs
-  resolver.rs
-  transform.rs
-  extract/
-  plan/
-  diagnostics/
-  emit/
-  golden/
+  sloppyc.rs
+compiler/tests/fixtures/
 ```
 
-Do not create these modules until their first tests exist.
+Keep the implementation direct until more than one real compiler slice needs additional
+module boundaries.
 
 ## Data Structures And Schemas
 
@@ -228,8 +238,8 @@ The JSON schema remains the runtime contract.
 TASK 06.A defines the first minimal runtime contract shape for handwritten plan fixtures:
 `schemaVersion`, `compilerVersion`, `runtimeMinimumVersion`, `stdlibVersion`,
 `target.platform`, `target.engine`, bundle path/id/hash, source map path/id/hash, and
-handler id/exportName/displayName entries. The compiler placeholder does not emit those
-artifacts yet.
+handler id/exportName/displayName entries. The compiler MVP emits those fields plus an
+unknown-to-native `routes` metadata section for current CLI/future runtime integration.
 
 ## Lifecycle Flow
 
@@ -247,15 +257,18 @@ Compiler lifecycle target:
 
 ## Golden Test Requirements
 
-Golden tests should cover:
+Golden tests cover:
 
-- fake plan output;
-- one-route extraction;
-- generated handler IDs;
-- diagnostics;
-- source map snippets;
-- module ordering;
-- data provider plan contribution.
+- `hello-mapget`;
+- `builder-mapget`;
+- `grouped-route`;
+- unsupported dynamic route diagnostics;
+- missing app/default export diagnostics;
+- multiple app diagnostics;
+- deterministic generated `app.plan.json` and `app.js`.
+
+Future golden tests should add source-map fidelity, module ordering, and data provider plan
+contribution only when those features exist.
 
 Golden files are public contract tests. Updating them requires review.
 
@@ -263,7 +276,7 @@ Golden files are public contract tests. Updating them requires review.
 
 ### Phase A: Placeholder
 
-Current state. CLI help/version and unit tests only.
+Historical bootstrap phase. CLI help/version and unit tests only.
 
 Acceptance:
 
