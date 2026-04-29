@@ -200,6 +200,7 @@ function createFakeProvider(definition = {}) {
 
     const events = [];
     const placeholderStyle = definition.placeholderStyle ?? "question";
+    let transactionActive = false;
     validatePlaceholderStyle(placeholderStyle);
 
     const backend = {
@@ -249,18 +250,29 @@ function createFakeProvider(definition = {}) {
             throw new TypeError("Sloppy data transaction callback must be a function.");
         }
 
-        events.push("begin");
+        if (transactionActive) {
+            throw new Error(`sloppy: nested transactions are not supported yet
 
-        if (typeof transactionHooks.begin === "function") {
-            await transactionHooks.begin();
-        } else if (typeof definition.transaction === "function") {
-            await definition.transaction("begin");
+Operation:
+  transaction
+
+Fix:
+  Use the transaction object passed to the current callback, or start a new transaction after it settles.`);
         }
 
+        transactionActive = true;
+        events.push("begin");
+
         const state = createTransactionState(backend);
-        const tx = createTransactionProvider(state, placeholderStyle);
 
         try {
+            if (typeof transactionHooks.begin === "function") {
+                await transactionHooks.begin();
+            } else if (typeof definition.transaction === "function") {
+                await definition.transaction("begin");
+            }
+
+            const tx = createTransactionProvider(state, placeholderStyle);
             const result = await callback(tx);
 
             state.closed = true;
@@ -284,6 +296,8 @@ function createFakeProvider(definition = {}) {
             }
 
             throw error;
+        } finally {
+            transactionActive = false;
         }
     }
 

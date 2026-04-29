@@ -221,6 +221,18 @@ function createForgedLoweredQuery() {
         await tx.transaction(async () => {});
     }), /nested transactions/);
     assert.deepEqual(fakeDb.__debug().events, ["begin", "commit", "begin", "rollback"]);
+
+    await assertRejectsMessage(() => fakeDb.transaction(async () => {
+        await fakeDb.transaction(async () => {});
+    }), /nested transactions/);
+    assert.deepEqual(fakeDb.__debug().events, [
+        "begin",
+        "commit",
+        "begin",
+        "rollback",
+        "begin",
+        "rollback",
+    ]);
 }
 
 {

@@ -79,6 +79,10 @@ function validateModulePhaseCallback(callback, phase) {
     if (typeof callback !== "function") {
         throw new TypeError(`Sloppy module ${phase} phase callback must be a function.`);
     }
+
+    if (callback.constructor?.name === "AsyncFunction") {
+        throw new TypeError(`Sloppy module ${phase} phase callback must be synchronous.`);
+    }
 }
 
 function validatePattern(pattern) {
@@ -1042,7 +1046,13 @@ function resolveModuleOrder(moduleStates) {
 
 function runModulePhase(state, phase, callback, target) {
     try {
-        return callback(target);
+        const result = callback(target);
+
+        if (result !== null && typeof result === "object" && typeof result.then === "function") {
+            throw new TypeError(`Sloppy module ${phase} phase callback must be synchronous.`);
+        }
+
+        return result;
     } catch (error) {
         throw createModulePhaseError(state.name, phase, error);
     }

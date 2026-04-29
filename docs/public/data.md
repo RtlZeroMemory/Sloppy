@@ -19,7 +19,7 @@ const fakeDb = data.createFakeProvider({
   },
 });
 
-const user = await db.queryOne`
+const user = await fakeDb.queryOne`
   select id, name
   from users
   where id = ${route.id}

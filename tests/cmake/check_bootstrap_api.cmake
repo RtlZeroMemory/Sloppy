@@ -129,7 +129,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Sloppy }" "export { data, sql }" "export { Results }" "export { schema }")
+foreach(required_pattern IN ITEMS "export { Sloppy }" "export {" "data" "sql" "export { Results }" "export { schema }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

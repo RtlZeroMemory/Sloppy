@@ -141,10 +141,11 @@ Phase rules:
 Current bootstrap TASK 14 phases are intentionally smaller:
 
 1. dependency resolution / graph validation;
-2. services callbacks for each module in dependency order;
-3. routes callbacks for each module in dependency order;
-4. debug metadata assembly for module names, dependencies, services, routes, and custom
-   metadata.
+2. capabilities callbacks for each module in dependency order;
+3. services callbacks for each module in dependency order;
+4. routes callbacks for each module in dependency order;
+5. debug metadata assembly for module names, dependencies, capabilities, services, routes,
+   and custom metadata.
 
 Config, permissions, middleware, filters, jobs, health checks, validation freeze, and native
 graph freeze are future phases. Capabilities exist only as bootstrap metadata today.
