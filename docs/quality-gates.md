@@ -177,6 +177,9 @@ Optional/gated jobs:
   `SLOPPY_POSTGRES_TEST_URL` and `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`. Default CI
   prints provider gate status and runs non-live provider tests; it does not require live
   services or secrets.
+- Live provider CTests must be registered as separate optional gates and use skip code `77`
+  for not-configured environments. A skipped live provider test is a reported skip, not a
+  pass claim.
 
 ## Documentation Freshness
 

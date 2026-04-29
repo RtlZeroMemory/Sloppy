@@ -144,16 +144,19 @@ commit/rollback, nested transaction rejection, transaction use after complete, i
 missing table diagnostics, and invalid open diagnostics.
 
 `data.postgres.provider` is a native CTest target that links libpq and covers redaction,
-option validation, use after close, doctor diagnostics, and skipped-by-default live
-coverage. When `SLOPPY_POSTGRES_TEST_URL` is set it connects with libpq and covers
-parameterized exec/query/queryOne, transactions, rollback, and tiny pool acquire/release.
+option validation, use after close, doctor diagnostics, and non-live pool lifecycle
+coverage. `data.postgres.live_provider` is a separate opt-in CTest target. When
+`SLOPPY_POSTGRES_TEST_URL` is unset CTest marks it skipped; when configured, it connects
+with libpq and covers parameterized exec/query/queryOne, transactions, rollback, and tiny
+pool acquire/release.
 
 `data.sqlserver.provider` is a native CTest target that uses ODBC when
 `SLOPPY_ENABLE_SQLSERVER` is enabled and covers redaction, driver-name extraction,
 missing-driver diagnostics, option validation, use after close, unsupported values, and
-pool state behavior. When `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set it connects
-through ODBC and covers parameterized exec/query/queryOne, transactions, rollback, invalid
-SQL diagnostics, and tiny pool acquire/release.
+pool lifecycle behavior. `data.sqlserver.live_provider` is a separate opt-in CTest target.
+When `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is unset CTest marks it skipped; when
+configured, it connects through ODBC and covers parameterized exec/query/queryOne,
+transactions, rollback, invalid SQL diagnostics, and tiny pool acquire/release.
 
 CI provider reporting:
 
@@ -167,6 +170,8 @@ CI provider reporting:
   instead of requiring a driver;
 - live SQL Server tests require `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` and an explicit
   driver/server environment. Secrets must not be printed.
+- live provider open failures print only a category such as dependency/driver missing,
+  service unreachable, credentials rejected, or test failure.
 
 EPIC-20 does not add default database benchmarks. SQLite, PostgreSQL, and SQL Server
 benchmarking remains deferred until each benchmark can be clearly labeled as either a

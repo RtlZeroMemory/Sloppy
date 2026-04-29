@@ -95,15 +95,17 @@ Current tests:
   nested transaction rejection, transaction use after complete, invalid SQL/missing table
   diagnostics, unsupported parameter diagnostics, and invalid open diagnostics;
 - CTest unit test `data.postgres.provider`, which links libpq and verifies PostgreSQL
-  option validation, connection-string redaction, doctor diagnostics, and use-after-close
-  behavior. Live connection/query/transaction/pool coverage is opt-in and runs only when
-  `SLOPPY_POSTGRES_TEST_URL` is set;
+  option validation, connection-string redaction, doctor diagnostics, use-after-close
+  behavior, and non-live pool lifecycle behavior. CTest `data.postgres.live_provider`
+  covers live connection/query/transaction/pool behavior only when
+  `SLOPPY_POSTGRES_TEST_URL` is set; otherwise it is reported as skipped;
 - CTest unit test `data.sqlserver.provider`, which uses ODBC when
   `SLOPPY_ENABLE_SQLSERVER` is enabled and verifies SQL Server option validation,
   connection-string redaction, driver-name parsing, missing-driver diagnostics,
   use-after-close behavior, unsupported parameter diagnostics, and tiny pool state
-  behavior. Live connection/query/transaction/pool coverage is opt-in and runs only when
-  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set;
+  behavior. CTest `data.sqlserver.live_provider` covers live
+  connection/query/transaction/pool behavior only when
+  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set; otherwise it is reported as skipped;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
   hello example files exist, use the current relative stdlib import, use
   `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
@@ -219,7 +221,7 @@ privileges, global PATH mutation, or package-manager behavior.
 PostgreSQL live provider tests are gated by environment variable and are skipped by default:
 
 ```powershell
-$env:SLOPPY_POSTGRES_TEST_URL="postgres://postgres:postgres@localhost:5432/sloppy_test"
+$env:SLOPPY_POSTGRES_TEST_URL="postgres://sloppy_test:<password>@localhost:5432/sloppy_test"
 .\tools\windows\dev.ps1 test
 ```
 
@@ -231,6 +233,11 @@ $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Ser
 .\tools\windows\dev.ps1 test
 ```
 
+The live provider CTests use CTest skip code `77` when the required environment variable is
+not configured. When configured but failing, they print only a redacted category:
+dependency/driver missing where applicable, service unreachable, credentials rejected, or
+test failure.
+
 Do not paste credentials into PR bodies or diagnostics. Use a redacted connection string
 when reporting live test commands.
 
@@ -238,11 +245,11 @@ CI reporting distinguishes provider coverage as follows:
 
 - SQLite default/in-memory provider tests run in default CTest.
 - PostgreSQL non-live diagnostics run in default CTest; live libpq coverage runs only when
-  `SLOPPY_POSTGRES_TEST_URL` is set.
+  `SLOPPY_POSTGRES_TEST_URL` is set and is otherwise reported as a skipped CTest.
 - SQL Server default diagnostics run on Windows with ODBC enabled. Linux/macOS default
   jobs configure `SLOPPY_ENABLE_SQLSERVER=OFF` and cover the unavailable/stub behavior;
   live ODBC coverage runs only in an explicit SQL Server-enabled environment with
-  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`.
+  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` and is otherwise reported as a skipped CTest.
 - CI logs must say when a live provider gate was skipped because the environment was
   missing. A skipped live provider gate is not a default CI failure.
 

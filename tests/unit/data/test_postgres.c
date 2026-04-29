@@ -39,6 +39,63 @@ static bool diag_has_hint(const SlDiag* diag, const char* expected)
     return false;
 }
 
+static bool diag_contains_text(const SlDiag* diag, const char* expected)
+{
+    const size_t expected_length = strlen(expected);
+
+    if (diag == NULL) {
+        return false;
+    }
+    if (diag->message.ptr != NULL) {
+        for (size_t offset = 0U; offset + expected_length <= diag->message.length; offset += 1U) {
+            if (memcmp(diag->message.ptr + offset, expected, expected_length) == 0) {
+                return true;
+            }
+        }
+    }
+    for (size_t index = 0U; index < diag->hint_count; index += 1U) {
+        SlStr hint = diag->hints[index];
+        for (size_t offset = 0U; offset + expected_length <= hint.length; offset += 1U) {
+            if (memcmp(hint.ptr + offset, expected, expected_length) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static const char* classify_live_open_failure(const SlDiag* diag)
+{
+    if (diag_contains_text(diag, "password authentication failed") ||
+        diag_contains_text(diag, "authentication failed") ||
+        diag_contains_text(diag, "no password supplied"))
+    {
+        return "credentials rejected";
+    }
+    if (diag_contains_text(diag, "Connection refused") ||
+        diag_contains_text(diag, "could not connect") || diag_contains_text(diag, "timeout") ||
+        diag_contains_text(diag, "No such file") ||
+        diag_contains_text(diag, "could not translate host name"))
+    {
+        return "service unreachable";
+    }
+    return "test failure";
+}
+
+static void report_live_provider_not_configured(const char* provider, const char* env_var)
+{
+    printf("SKIP: live %s provider tests are not configured; set %s to enable them. Secret "
+           "values are never printed.\n",
+           provider, env_var);
+}
+
+static void report_live_provider_open_failure(const char* provider, const SlDiag* diag)
+{
+    printf("FAIL: live %s provider open failed; category: %s. Diagnostics are redacted and "
+           "connection strings are not printed.\n",
+           provider, classify_live_open_failure(diag));
+}
+
 static SlPostgresParam text_param(const char* text)
 {
     SlPostgresParam param;
@@ -183,6 +240,42 @@ static int test_invalid_options_and_use_after_close(void)
     return 0;
 }
 
+static int test_pool_lifecycle_without_live_connection(void)
+{
+    SlPostgresPool pool = {0};
+    SlPostgresConnection foreign = {.open = true};
+
+    pool.open_count = 1U;
+    pool.max_connections = 1U;
+    pool.connections[0].open = true;
+    pool.connections[0].transaction_active = true;
+
+    if (expect_status(sl_postgres_pool_release(&pool, &pool.connections[0]),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 70;
+    }
+    pool.connections[0].transaction_active = false;
+    if (expect_status(sl_postgres_pool_release(&pool, &foreign), SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 71;
+    }
+    if (expect_status(sl_postgres_pool_release(&pool, &pool.connections[0]), SL_STATUS_OK) != 0) {
+        return 72;
+    }
+    if (expect_status(sl_postgres_pool_release(&pool, &pool.connections[0]),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 73;
+    }
+    pool.connections[0].open = false;
+    if (expect_status(sl_postgres_pool_close(&pool), SL_STATUS_OK) != 0 ||
+        expect_status(sl_postgres_pool_close(&pool), SL_STATUS_OK) != 0)
+    {
+        return 74;
+    }
+    return 0;
+}
+
 static int test_transaction_failure_keeps_state(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -235,15 +328,17 @@ static int open_live(SlArena* arena, SlPostgresConnection* connection)
 {
     const char* url = getenv("SLOPPY_POSTGRES_TEST_URL");
     SlPostgresOpenOptions options;
+    SlDiag diag = {0};
     SlStatus status;
 
     if (url == NULL || url[0] == '\0') {
-        printf("SKIP: SLOPPY_POSTGRES_TEST_URL not set; live PostgreSQL tests disabled.\n");
+        report_live_provider_not_configured("PostgreSQL", "SLOPPY_POSTGRES_TEST_URL");
         return 77;
     }
     options = sl_postgres_open_options_connection_string(sl_str_from_cstr(url));
-    status = sl_postgres_open(arena, &options, connection, NULL);
+    status = sl_postgres_open(arena, &options, connection, &diag);
     if (expect_status(status, SL_STATUS_OK) != 0) {
+        report_live_provider_open_failure("PostgreSQL", &diag);
         return 1;
     }
     return 0;
@@ -392,8 +487,8 @@ static int test_live_pool(void)
         return 50;
     }
     if (url == NULL || url[0] == '\0') {
-        printf("SKIP: SLOPPY_POSTGRES_TEST_URL not set; live PostgreSQL pool tests disabled.\n");
-        return 0;
+        report_live_provider_not_configured("PostgreSQL pool", "SLOPPY_POSTGRES_TEST_URL");
+        return 77;
     }
     char copied_url[512];
     if (strlen(url) >= sizeof(copied_url)) {
@@ -403,6 +498,8 @@ static int test_live_pool(void)
     options = sl_postgres_pool_options_connection_string(sl_str_from_cstr(copied_url), 2U);
     status = sl_postgres_pool_open(&arena, &options, &pool, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0) {
+        printf("FAIL: live PostgreSQL pool open failed; category: test failure. Diagnostics are "
+               "redacted and connection strings are not printed.\n");
         return 51;
     }
     (void)memset(copied_url, 'x', strlen(copied_url));
@@ -439,10 +536,13 @@ static int test_live_pool(void)
         (void)sl_postgres_pool_close(&pool);
         return 58;
     }
-    return expect_status(sl_postgres_pool_close(&pool), SL_STATUS_OK) == 0 ? 0 : 55;
+    return expect_status(sl_postgres_pool_close(&pool), SL_STATUS_OK) == 0 &&
+                   expect_status(sl_postgres_pool_close(&pool), SL_STATUS_OK) == 0
+               ? 0
+               : 55;
 }
 
-int main(void)
+static int run_default_tests(void)
 {
     int result = test_redaction_and_doctor();
     if (result != 0) {
@@ -460,9 +560,22 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    result = test_live_query_exec_and_transactions();
+    return test_pool_lifecycle_without_live_connection();
+}
+
+static int run_live_tests(void)
+{
+    int result = test_live_query_exec_and_transactions();
     if (result != 0) {
         return result;
     }
     return test_live_pool();
+}
+
+int main(int argc, char** argv)
+{
+    if (argc > 1 && strcmp(argv[1], "--live") == 0) {
+        return run_live_tests();
+    }
+    return run_default_tests();
 }

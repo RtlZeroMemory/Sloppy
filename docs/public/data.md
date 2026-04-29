@@ -111,9 +111,10 @@ Implemented behavior:
   stdlib entry point.
 - native C SQLite tests execute real SQLite against `:memory:` databases.
 - native C PostgreSQL tests execute live libpq coverage only when `SLOPPY_POSTGRES_TEST_URL`
-  is set.
+  is set; otherwise the separate live CTest is reported as skipped.
 - native C SQL Server tests execute live ODBC coverage only when
-  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set.
+  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set; otherwise the separate live CTest is
+  reported as skipped.
 - native SQLite supports `exec`, `query`, `queryOne`, primitive parameter binding, and
   transactions.
 - native PostgreSQL supports connection-string open/close, `exec`, `query`, `queryOne`,
@@ -145,6 +146,8 @@ CLI status:
   `doctorChecks`;
 - live PostgreSQL and SQL Server checks are not run by default and remain opt-in future CLI
   work;
+- default CI and package smoke do not prove live database availability, SQL Server driver
+  installation, or JS-to-native provider execution;
 - doctor output redacts connection-string-like secrets before printing;
 - `sloppy audit` can flag incomplete `dataProviders` metadata, but it does not enforce
   permissions or validate real provider reachability yet.
