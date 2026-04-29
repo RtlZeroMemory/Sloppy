@@ -1,124 +1,334 @@
 {
   "schema": "sloppy-roadmap-main-staged-issues-v1",
-  "status": "review-required-before-mutation",
-  "note": "Staged issue data for ROADMAP MAIN. This file is intentionally dry-run only until docs/project/current-issue-state-audit.md and docs/project/main-main1-issue-cleanup-plan.md are reviewed. It avoids EPIC-21 through EPIC-26 duplicate implementation tasks.",
+  "status": "applied-after-review",
+  "note": "Issue data for ROADMAP MAIN. Created as GitHub issues #167-#179 after explicit approval. Cleanup tracking issues #169 and #177-#179 were closed as completed after the approved cleanup was applied. It avoids EPIC-21 through EPIC-26 duplicate implementation tasks.",
   "milestone": "0.8 Planning / Consolidation",
   "epics": [
     {
       "title": "EPIC MAIN-01: Executable Artifact-Path Alpha Verification",
-      "labels": ["type:epic", "area:testing", "area:compiler", "area:engine-v8", "area:http", "priority:p1", "risk:high", "status:needs-review"],
+      "labels": [
+        "type:epic",
+        "area:testing",
+        "area:compiler",
+        "area:engine-v8",
+        "area:http",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
       "summary": "Verify the minimal supported alpha path: sloppyc build, V8-enabled sloppy run --artifacts, GET dispatch, and supported HTTP responses.",
       "goal": "Prove the already-landed EPIC-21 through EPIC-24 pieces work as one minimal end-to-end alpha workflow without recreating those implementation tasks.",
-      "sourceDocs": ["docs/project/roadmap-main.md", "docs/project/main-main1-scope.md", "docs/compiler.md", "docs/public/cli.md", "docs/public/getting-started.md"],
-      "nonGoals": ["No broad compiler syntax expansion.", "No source-input sloppy run handoff.", "No production HTTP server.", "No GitHub issue mutation."]
+      "sourceDocs": [
+        "docs/project/roadmap-main.md",
+        "docs/project/main-main1-scope.md",
+        "docs/compiler.md",
+        "docs/public/cli.md",
+        "docs/public/getting-started.md"
+      ],
+      "nonGoals": [
+        "No broad compiler syntax expansion.",
+        "No source-input sloppy run handoff.",
+        "No production HTTP server.",
+        "No GitHub issue mutation."
+      ]
     },
     {
       "title": "EPIC MAIN-02: MAIN Evidence and Gate Report",
-      "labels": ["type:epic", "area:testing", "area:ci", "area:docs", "priority:p1", "risk:medium", "status:needs-review"],
+      "labels": [
+        "type:epic",
+        "area:testing",
+        "area:ci",
+        "area:docs",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review"
+      ],
       "summary": "Lock the evidence model for default, V8-gated, package, provider, and benchmark claims.",
       "goal": "Ensure MAIN validation language reports exactly what each command proves and does not turn default non-V8 success into V8/live-provider success.",
-      "sourceDocs": ["docs/project/roadmap-main.md", "docs/quality-gates.md", "docs/quality-score.md", "README.md"],
-      "nonGoals": ["No new CI service matrix.", "No V8 SDK distribution.", "No public release automation."]
+      "sourceDocs": [
+        "docs/project/roadmap-main.md",
+        "docs/quality-gates.md",
+        "docs/quality-score.md",
+        "README.md"
+      ],
+      "nonGoals": [
+        "No new CI service matrix.",
+        "No V8 SDK distribution.",
+        "No public release automation."
+      ]
     },
     {
       "title": "EPIC MAIN-03: Issue Cleanup Application Readiness",
-      "labels": ["type:epic", "area:harness", "area:docs", "priority:p1", "risk:medium", "status:needs-review"],
+      "labels": [
+        "type:epic",
+        "area:harness",
+        "area:docs",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review"
+      ],
       "summary": "Prepare the tracker for MAIN.1 by reviewing stale parent EPICs, stale generated data, and public-doc deferral recommendations.",
       "goal": "Approve an issue cleanup plan before mutating GitHub or creating any fresh MAIN/MAIN.1 issues.",
-      "sourceDocs": ["docs/project/current-issue-state-audit.md", "docs/project/main-main1-issue-cleanup-plan.md", "docs/project/issue-workflow.md"],
-      "nonGoals": ["No issue mutation inside the planning PR.", "No automatic issue creation.", "No closing issues without human approval."]
+      "sourceDocs": [
+        "docs/project/current-issue-state-audit.md",
+        "docs/project/main-main1-issue-cleanup-plan.md",
+        "docs/project/issue-workflow.md"
+      ],
+      "nonGoals": [
+        "No issue mutation inside the planning PR.",
+        "No automatic issue creation.",
+        "No closing issues without human approval."
+      ]
     }
   ],
   "tasks": [
     {
       "title": "TASK MAIN-01.A: Define Supported MAIN Hello Contract",
       "parentEpic": "EPIC MAIN-01: Executable Artifact-Path Alpha Verification",
-      "labels": ["type:task", "area:docs", "area:compiler", "priority:p1", "risk:medium", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:task",
+        "area:docs",
+        "area:compiler",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Document the exact tiny source shape and artifact contract supported by ROADMAP MAIN.",
       "goal": "Make the MAIN hello workflow unambiguous before adding or changing tests.",
-      "scope": ["Define the supported source shape.", "Define expected artifacts.", "List unsupported source shapes and runtime behavior."],
-      "testsRequired": ["Docs/static checks.", "git diff --check."]
+      "scope": [
+        "Define the supported source shape.",
+        "Define expected artifacts.",
+        "List unsupported source shapes and runtime behavior."
+      ],
+      "testsRequired": [
+        "Docs/static checks.",
+        "git diff --check."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-01.B: Verify Deterministic MAIN Artifact Emission",
       "parentEpic": "EPIC MAIN-01: Executable Artifact-Path Alpha Verification",
-      "labels": ["type:task", "area:compiler", "area:testing", "priority:p1", "risk:medium", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:task",
+        "area:compiler",
+        "area:testing",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Verify sloppyc emits deterministic app.plan.json, app.js, and app.js.map for the MAIN hello contract.",
       "goal": "Protect the already-implemented compiler MVP as the stable MAIN artifact producer.",
-      "scope": ["Use existing compiler fixtures where possible.", "Avoid expanding compiler syntax.", "Update goldens only for intentional contract changes."],
-      "testsRequired": ["cargo test --manifest-path compiler/Cargo.toml", "CTest compiler extraction if touched."]
+      "scope": [
+        "Use existing compiler fixtures where possible.",
+        "Avoid expanding compiler syntax.",
+        "Update goldens only for intentional contract changes."
+      ],
+      "testsRequired": [
+        "cargo test --manifest-path compiler/Cargo.toml",
+        "CTest compiler extraction if touched."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-01.C: Verify V8-Gated MAIN Run Once",
       "parentEpic": "EPIC MAIN-01: Executable Artifact-Path Alpha Verification",
-      "labels": ["type:task", "area:engine-v8", "area:http", "area:testing", "priority:p1", "risk:high", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:task",
+        "area:engine-v8",
+        "area:http",
+        "area:testing",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Verify a V8-enabled sloppy run --artifacts --once GET / returns the expected MAIN hello HTTP response.",
       "goal": "Prove the minimal runtime path through V8, handler registration, dispatch, and response writing.",
-      "scope": ["Use the current classic bootstrap runtime.", "Report V8 SDK availability honestly.", "Do not claim default non-V8 gates prove this task."],
-      "testsRequired": ["V8-enabled configure/build/test when SDK is available.", "Default non-V8 diagnostic test if behavior changes."]
+      "scope": [
+        "Use the current classic bootstrap runtime.",
+        "Report V8 SDK availability honestly.",
+        "Do not claim default non-V8 gates prove this task."
+      ],
+      "testsRequired": [
+        "V8-enabled configure/build/test when SDK is available.",
+        "Default non-V8 diagnostic test if behavior changes."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-01.D: Verify Unsupported MAIN Paths Fail Clearly",
       "parentEpic": "EPIC MAIN-01: Executable Artifact-Path Alpha Verification",
-      "labels": ["type:task", "area:cli", "area:diagnostics", "area:testing", "priority:p1", "risk:medium", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:task",
+        "area:cli",
+        "area:diagnostics",
+        "area:testing",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Verify unsupported source-input run and non-V8 run paths fail clearly instead of faking success.",
       "goal": "Keep MAIN honest about source handoff and V8 requirements.",
-      "scope": ["Confirm source-input sloppy run remains explicitly deferred.", "Confirm non-V8 run diagnostics remain clear.", "Document any command not run."],
-      "testsRequired": ["CTest CLI failure checks if touched.", "git diff --check."]
+      "scope": [
+        "Confirm source-input sloppy run remains explicitly deferred.",
+        "Confirm non-V8 run diagnostics remain clear.",
+        "Document any command not run."
+      ],
+      "testsRequired": [
+        "CTest CLI failure checks if touched.",
+        "git diff --check."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-02.A: Document Default Non-V8 Evidence",
       "parentEpic": "EPIC MAIN-02: MAIN Evidence and Gate Report",
-      "labels": ["type:docs", "area:testing", "area:ci", "priority:p1", "risk:medium", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:docs",
+        "area:testing",
+        "area:ci",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Document what default Windows and hosted CI gates prove.",
       "goal": "Prevent default gate success from being reported as V8, live provider, or package-release success.",
-      "scope": ["Update gate interpretation docs.", "Reference required commands.", "Keep caveats concrete."],
-      "testsRequired": ["Docs/static checks.", "git diff --check."]
+      "scope": [
+        "Update gate interpretation docs.",
+        "Reference required commands.",
+        "Keep caveats concrete."
+      ],
+      "testsRequired": [
+        "Docs/static checks.",
+        "git diff --check."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-02.B: Document V8 and Package Evidence",
       "parentEpic": "EPIC MAIN-02: MAIN Evidence and Gate Report",
-      "labels": ["type:docs", "area:engine-v8", "area:ci", "priority:p1", "risk:medium", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:docs",
+        "area:engine-v8",
+        "area:ci",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Document which commands prove V8-enabled MAIN execution and experimental package smoke.",
       "goal": "Keep V8 and package validation separate from default CI in PR and roadmap language.",
-      "scope": ["List V8-enabled commands.", "List package smoke commands.", "State what remains unproven."],
-      "testsRequired": ["Docs/static checks.", "git diff --check."]
+      "scope": [
+        "List V8-enabled commands.",
+        "List package smoke commands.",
+        "State what remains unproven."
+      ],
+      "testsRequired": [
+        "Docs/static checks.",
+        "git diff --check."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-02.C: Document Live Provider and Benchmark Non-Claims",
       "parentEpic": "EPIC MAIN-02: MAIN Evidence and Gate Report",
-      "labels": ["type:docs", "area:data", "area:performance", "priority:p2", "risk:medium", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:docs",
+        "area:data",
+        "area:performance",
+        "priority:p2",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Document that MAIN does not prove live providers or performance claims by default.",
       "goal": "Avoid public alpha readiness claims based on skipped live provider tests or benchmark smoke.",
-      "scope": ["Clarify live provider opt-in behavior.", "Clarify benchmark smoke is harness correctness.", "Avoid external comparisons."],
-      "testsRequired": ["Docs/static checks.", "git diff --check."]
+      "scope": [
+        "Clarify live provider opt-in behavior.",
+        "Clarify benchmark smoke is harness correctness.",
+        "Avoid external comparisons."
+      ],
+      "testsRequired": [
+        "Docs/static checks.",
+        "git diff --check."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-03.A: Review Stale Parent EPIC Closure List",
       "parentEpic": "EPIC MAIN-03: Issue Cleanup Application Readiness",
-      "labels": ["type:docs", "area:harness", "priority:p1", "risk:medium", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:docs",
+        "area:harness",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Review stale parent EPICs with closed children before any GitHub mutation.",
       "goal": "Approve or revise the closure recommendations in current-issue-state-audit.md.",
-      "scope": ["Review #3, #7-#21, #126-#129.", "Check evidence against merged PRs.", "Do not mutate GitHub."],
-      "testsRequired": ["Read-only gh issue/pr commands."]
+      "scope": [
+        "Review #3, #7-#21, #126-#129.",
+        "Check evidence against merged PRs.",
+        "Do not mutate GitHub."
+      ],
+      "testsRequired": [
+        "Read-only gh issue/pr commands."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-03.B: Review EPIC-28 Public Docs Deferral",
       "parentEpic": "EPIC MAIN-03: Issue Cleanup Application Readiness",
-      "labels": ["type:docs", "area:docs", "priority:p1", "risk:medium", "status:needs-review", "size:bounded"],
+      "labels": [
+        "type:docs",
+        "area:docs",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
       "summary": "Review whether EPIC-28 should be re-scoped behind MAIN.1 hardening.",
       "goal": "Keep public alpha docs from overclaiming runtime, security, package, or data readiness.",
-      "scope": ["Review #131 and #157-#161.", "Decide what stays open, blocked, or deferred.", "Do not generate marketing docs."],
-      "testsRequired": ["Docs/static checks.", "git diff --check."]
+      "scope": [
+        "Review #131 and #157-#161.",
+        "Decide what stays open, blocked, or deferred.",
+        "Do not generate marketing docs."
+      ],
+      "testsRequired": [
+        "Docs/static checks.",
+        "git diff --check."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     },
     {
       "title": "TASK MAIN-03.C: Apply Approved Issue Cleanup",
       "parentEpic": "EPIC MAIN-03: Issue Cleanup Application Readiness",
-      "labels": ["type:task", "area:harness", "priority:p1", "risk:medium", "status:blocked", "size:bounded"],
+      "labels": [
+        "type:task",
+        "area:harness",
+        "priority:p1",
+        "risk:medium",
+        "status:blocked",
+        "size:bounded"
+      ],
       "summary": "Apply approved close/relabel actions after human review.",
       "goal": "Clean stale GitHub state without closing or relabeling issues prematurely.",
-      "scope": ["Execute only approved commands.", "Leave a concrete comment on every mutation.", "Do not create new roadmap issues in the same pass unless approved."],
-      "testsRequired": ["gh issue list before and after.", "Manual verification of issue state."]
+      "scope": [
+        "Execute only approved commands.",
+        "Leave a concrete comment on every mutation.",
+        "Do not create new roadmap issues in the same pass unless approved."
+      ],
+      "testsRequired": [
+        "gh issue list before and after.",
+        "Manual verification of issue state."
+      ],
+      "milestone": "0.8 Planning / Consolidation"
     }
   ]
 }

@@ -1,9 +1,20 @@
 # MAIN and MAIN.1 Issue Cleanup Plan
 
-Status: dry-run/manual plan only.
+Status: applied after explicit user approval on 2026-04-29.
 
-This document intentionally does not mutate GitHub. Run commands only after human review.
-Commands are shown as comments or examples.
+This document records the cleanup commands and review logic used for the MAIN/MAIN.1
+issue refresh. The commands are kept as audit evidence; do not re-run them unless the
+current GitHub issue state is re-checked first.
+
+Applied outcome:
+
+- closed stale completed parent EPICs #1, #3, #7-#21, and #126-#129;
+- closed stale/superseded tasks #22-#25 and #27;
+- closed old generated EPIC-27/EPIC-28 issue sets #130-#131 and #152-#161 as superseded
+  by MAIN.1 issue data;
+- created ROADMAP MAIN issues #167-#179;
+- created ROADMAP MAIN.1 issues #180-#239;
+- closed already-applied cleanup tracking issues #169 and #177-#179 as completed.
 
 ## Parent EPICs Recommended To Close As Completed
 
