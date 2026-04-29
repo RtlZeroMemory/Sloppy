@@ -44,6 +44,8 @@ Current tests:
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
+- CTest structural check `bootstrap.stdlib.assets`, which verifies the bootstrap stdlib
+  source files exist and were copied to the build output support-data layout;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.

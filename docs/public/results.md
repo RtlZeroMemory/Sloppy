@@ -2,6 +2,10 @@
 
 Status: Planned / not implemented yet.
 
+Bootstrap status: `stdlib/sloppy/results.js` now exports a placeholder frozen `Results`
+object for layout purposes only. `Results.text`, `Results.json`, and the other result
+helpers are not implemented yet.
+
 Purpose: document future `Results.*` helpers and how handler return values become native
 response descriptors.
 

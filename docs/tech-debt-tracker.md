@@ -31,6 +31,10 @@
   precedence, plan route section, route params in handler context, HTTP response writer,
   request context, middleware, TCP server, sockets, body parsing, public TypeScript API, or
   compiler extraction yet.
+- The bootstrap stdlib exists only as source/build/install layout with placeholder modules.
+  It has no `Results.text/json`, `Sloppy.create`, `app.mapGet`, handler registration,
+  runtime intrinsic binding, module resolver, compiler import rewriting, or package-manager
+  behavior yet.
 
 ## Deferred decisions
 
@@ -120,6 +124,11 @@
 - HTTP percent decoding is future work.
 - Public `app.mapGet` route API integration is future work.
 - Route OpenAPI metadata and validation/schema integration are future work.
+- TASK 11.B owns `Results.text/json`.
+- TASK 11.C owns `Sloppy.create` and `app.mapGet` conceptual API behavior.
+- TASK 11.D owns the first hello example.
+- Compiler import rewriting for `"sloppy"` is future work.
+- Runtime intrinsic binding for `stdlib/sloppy/internal/intrinsics.js` is future work.
 
 ## Cleanup candidates
 

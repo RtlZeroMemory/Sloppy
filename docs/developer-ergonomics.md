@@ -81,6 +81,21 @@ Acceptance criteria for this API shape:
 - handler receives a typed context only when it asks for one;
 - emitted plan contains one route and one handler ID.
 
+TASK 11.A creates the bootstrap source layout that will eventually provide the `"sloppy"`
+module:
+
+```text
+stdlib/sloppy/
+  index.js
+  app.js
+  results.js
+  internal/intrinsics.js
+```
+
+Those files are placeholders only. They reserve the module boundaries for `Sloppy`,
+`Results`, and future runtime intrinsics, but they do not implement `Sloppy.create`,
+`app.mapGet`, route registration, or any `Results.*` helpers.
+
 ## Builder/App Shape
 
 Structured apps use the builder:

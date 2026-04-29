@@ -21,6 +21,16 @@ set_property(CACHE SLOPPY_ENGINE PROPERTY STRINGS "v8" "none")
 set(SLOPPY_V8_ROOT "" CACHE PATH "Path to a prebuilt V8 SDK root.")
 set(SLOPPY_V8_EXPECTED_REVISION "7221f49fdb6c89cce6be08005732ebcab3c45b38")
 set(SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION "af4386908c3762433d412689038de6e6333f5921")
+set(SLOPPY_BOOTSTRAP_SOURCE_DIR "${PROJECT_SOURCE_DIR}/stdlib/sloppy")
+set(SLOPPY_BOOTSTRAP_BUILD_DIR "${CMAKE_BINARY_DIR}/lib/sloppy/bootstrap/sloppy")
+set(
+    SLOPPY_BOOTSTRAP_ASSETS
+    README.md
+    app.js
+    bootstrap.manifest.json
+    index.js
+    results.js
+    internal/intrinsics.js)
 
 find_program(CARGO_EXECUTABLE cargo)
 find_program(CLANG_FORMAT_EXECUTABLE clang-format)
@@ -333,6 +343,23 @@ target_link_libraries(sloppy PRIVATE sloppy_core)
 target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy PRIVATE c_std_17)
 
+set(SLOPPY_BOOTSTRAP_OUTPUTS "")
+foreach(bootstrap_asset IN LISTS SLOPPY_BOOTSTRAP_ASSETS)
+    set(bootstrap_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/${bootstrap_asset}")
+    set(bootstrap_output "${SLOPPY_BOOTSTRAP_BUILD_DIR}/${bootstrap_asset}")
+    get_filename_component(bootstrap_output_dir "${bootstrap_output}" DIRECTORY)
+    add_custom_command(
+        OUTPUT "${bootstrap_output}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${bootstrap_output_dir}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${bootstrap_source}" "${bootstrap_output}"
+        DEPENDS "${bootstrap_source}"
+        COMMENT "Copying bootstrap stdlib asset ${bootstrap_asset}"
+        VERBATIM)
+    list(APPEND SLOPPY_BOOTSTRAP_OUTPUTS "${bootstrap_output}")
+endforeach()
+
+add_custom_target(sloppy_bootstrap_assets ALL DEPENDS ${SLOPPY_BOOTSTRAP_OUTPUTS})
+
 function(sloppy_apply_warnings target_name)
     if(MSVC)
         target_compile_options(${target_name} PRIVATE /W4)
@@ -535,6 +562,13 @@ if(SLOPPY_ENABLE_TESTS)
     add_test(NAME sloppy.cli.help COMMAND sloppy --help)
     set_tests_properties(sloppy.cli.help PROPERTIES PASS_REGULAR_EXPRESSION "Foundation build")
 
+    add_test(
+        NAME bootstrap.stdlib.assets
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_BOOTSTRAP_SOURCE_DIR=${SLOPPY_BOOTSTRAP_SOURCE_DIR}"
+            "-DSLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_bootstrap_assets.cmake")
+
     if(CARGO_EXECUTABLE)
         add_test(
             NAME sloppyc.cli.version
@@ -561,4 +595,5 @@ if(SLOPPY_BUILD_COMPILER)
 endif()
 
 install(TARGETS sloppy RUNTIME DESTINATION bin)
+install(DIRECTORY "${SLOPPY_BOOTSTRAP_SOURCE_DIR}" DESTINATION "lib/sloppy/bootstrap")
 # TODO: install sloppyc after the compiler packaging and artifact layout are defined.

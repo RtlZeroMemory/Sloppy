@@ -1,0 +1,11 @@
+{
+  "name": "sloppy-bootstrap-stdlib",
+  "stdlibVersion": "0.1.0",
+  "status": "placeholder",
+  "modules": [
+    "sloppy/index.js",
+    "sloppy/results.js",
+    "sloppy/app.js",
+    "sloppy/internal/intrinsics.js"
+  ]
+}
