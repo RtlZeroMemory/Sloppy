@@ -1,0 +1,5 @@
+{
+  "routes": [
+    { "method": "GET", "pattern": "/users/{id:int}", "handlerId": 1, "name": "Users.Get", "module": "", "sourceOrder": 0 }
+  ]
+}

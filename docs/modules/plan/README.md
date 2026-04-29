@@ -59,8 +59,11 @@ EPIC-15 exposes bootstrap capability debug metadata through
 `app.__getPlanContributions().capabilities`, but this is not parsed by the native plan
 loader and is not emitted as `app.plan.json`.
 EPIC-19 CLI introspection reads plan-compatible JSON files with optional `routes`,
-`modules`, `dataProviders`, `capabilities`, and `doctorChecks` sections. The CLI does not
-execute application code to discover that metadata.
+`modules`, `dataProviders`, `capabilities`, and `doctorChecks` sections. MAIN1-11 makes
+`routes`, `doctor`, and `openapi` validate their input with `sl_plan_parse_json` before
+emitting metadata-derived output. `audit` remains metadata-only and does not execute
+application code, but it can inspect intentionally problematic fixtures to report multiple
+bounded alpha findings.
 EPIC-21 `sloppyc build` emits the first real compiler-owned `routes` metadata section with
 `method`, `pattern`, `handlerId`, and `name`. MAIN1-02 makes that section a
 native-validated Plan v1 alpha contract. `dataProviders` and `capabilities` are also

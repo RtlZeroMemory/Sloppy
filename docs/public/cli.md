@@ -23,9 +23,12 @@ and writes HTTP/1.1 responses through the native response writer. It requires a 
 build. Source input handoff to `sloppyc` is deferred; use `sloppyc build ... --out <dir>`
 first, then run the emitted artifact directory.
 
-The other commands inspect plan-compatible metadata JSON only. They do not compile apps,
-run handlers, start an HTTP server, enter V8, connect to live databases, or execute
-arbitrary application code.
+The other commands inspect `app.plan.json` artifact metadata only. `routes`, `doctor`, and
+`openapi` first validate the file through the native Plan v1 parser, then read the same
+metadata sections that compiler artifacts carry. `audit` uses the same metadata shape but
+is intentionally able to inspect problem fixtures so it can report multiple alpha audit
+findings in one run. None of these commands compile apps, run handlers, start an HTTP
+server, enter V8, connect to live databases, or execute arbitrary application code.
 
 Package creation is currently a repository tool, not a `sloppy` CLI command:
 
@@ -117,24 +120,29 @@ optional interim CLI metadata sections:
 - `dataProviders`: provider token, provider name, and matching service token;
 - `doctorChecks`: deterministic check records used by tests or safe metadata producers.
 
-The native Plan parser still owns only the minimal handler-oriented Plan v1 schema. The CLI
-metadata sections are an interim fixture/artifact shape until compiler/app-host plan
-emission grows real route, module, provider, and doctor metadata.
+The native Plan parser owns the minimal Plan v1 schema plus alpha route/provider/capability
+sections. CLI tests still keep additional fixture-only `modules` and `doctorChecks`
+metadata for deterministic audit and doctor coverage until compiler/app-host emission grows
+those sections.
 
 ## routes
 
-`sloppy routes` prints the route table from metadata in deterministic method/pattern order.
-Text output includes method, pattern, handler ID, and name. JSON output returns a
-`routes` array with method, pattern, `handlerId`, name, and module.
+`sloppy routes` validates the plan, then prints route metadata in deterministic
+method/pattern order. Text output includes source order, method, pattern, handler ID, and
+name. JSON output returns a `routes` array with method, pattern, `handlerId`, name, module,
+and `sourceOrder`.
 
 Empty route tables are valid and print only the text header or an empty JSON array.
 Malformed metadata and missing paths fail with stderr diagnostics.
 
 ## doctor
 
-`sloppy doctor` prints safe local readiness checks. The default check reports bootstrap
-stdlib assets. When `--plan` is supplied, the command reports that metadata parsing
-succeeded and includes any deterministic `doctorChecks` from the metadata file.
+`sloppy doctor` prints evidence-aware local readiness checks. It checks the build-layout
+bootstrap runtime asset, reports whether this binary was compiled with the V8 bridge,
+states that live provider checks are not configured by default, and warns that local CLI
+checks are not package release readiness. When `--plan` is supplied, the command validates
+the file through the native Plan v1 parser and reports route/provider/capability metadata
+presence before including deterministic `doctorChecks` from the metadata file.
 
 Live provider checks are not run by default. Provider availability that requires external
 servers, credentials, or machine-local drivers must stay opt-in in later CLI work.
@@ -156,14 +164,15 @@ source-doc updates.
 
 ## openapi
 
-`sloppy openapi` emits a minimal OpenAPI 3.0.3 JSON skeleton from route metadata. It sets
-default `info.title` and `info.version`, writes paths and methods, uses route names as
-`operationId`, converts `{id}` and `{id:int}` path parameters, and emits a placeholder
-`200` response.
+`sloppy openapi` emits a minimal OpenAPI 3.0.3 route skeleton from validated route
+metadata. It sets default `info.title` and `info.version`, marks
+`x-sloppy-openapi-policy.status` as `route-skeleton`, writes paths and methods, uses route
+names as `operationId`, converts `{id}` and `{id:int}` path parameters, and describes the
+default response as schema-deferred.
 
-It does not generate schemas, request bodies, validation metadata, examples, security
-schemes, or OpenAPI validation. `--output <path>` writes the JSON to a file; otherwise the
-command writes stdout.
+It does not generate fake schemas, request bodies, validation metadata, examples, security
+schemes, database/provider schemas, or OpenAPI validation. `--output <path>` writes the JSON
+to a file; otherwise the command writes stdout.
 
 Benchmarks are currently exposed through `tools/windows/bench.ps1` and the native
 `sloppy_bench` CMake target, not through the public `sloppy` CLI.

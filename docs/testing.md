@@ -47,8 +47,11 @@ Current tests:
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest process-level golden tests for `sloppy routes`, `sloppy doctor`, `sloppy audit`,
-  and `sloppy openapi` over deterministic metadata fixtures under `tests/fixtures/cli/`;
+  and `sloppy openapi` over deterministic metadata fixtures under `tests/fixtures/cli/`
+  plus compiler-generated artifact plans under `compiler/tests/fixtures/*/expected/`;
 - CTest failure smoke for missing CLI metadata paths;
+- CTest failure smoke for invalid route metadata rejected through native Plan validation
+  before OpenAPI output;
 - CTest default process tests for `sloppy run` help text, missing artifacts, missing
   `app.plan.json`, malformed plans, invalid artifact paths, hash mismatches, missing source
   map artifacts, runtime compatibility mismatches, source-input handoff deferral, and the

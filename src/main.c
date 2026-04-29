@@ -71,6 +71,7 @@ typedef struct SlCliRoute
     SlCliSpan name;
     SlCliSpan module;
     SlCliSpan capability;
+    size_t source_order;
 } SlCliRoute;
 
 typedef struct SlCliHandler
@@ -154,6 +155,11 @@ static SlCliSpan sl_cli_span_cstr(const char* text)
 static SlStr sl_cli_span_str(SlCliSpan span)
 {
     return sl_str_from_parts(span.ptr, span.length);
+}
+
+static SlCliSpan sl_cli_span_from_str(SlStr str)
+{
+    return (SlCliSpan){str.ptr, str.length};
 }
 
 static bool sl_cli_span_empty(SlCliSpan span)
@@ -791,6 +797,7 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
         route.module = sl_cli_json_span(value, "module");
         route.capability = sl_cli_json_span(value, "capability");
         route.handler_id = sl_cli_json_handler_id(value);
+        route.source_order = metadata->route_count;
 
         if (sl_cli_span_empty(route.method) || sl_cli_span_empty(route.pattern) ||
             route.handler_id == SL_HANDLER_ID_INVALID)
@@ -970,7 +977,30 @@ static int sl_cli_parse_doctor_checks(yyjson_val* root, SlCliMetadata* metadata)
     return 0;
 }
 
-static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, yyjson_doc** out_doc,
+static int sl_cli_validate_native_plan(const char* path, SlBytes json, SlArena* arena)
+{
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlPlanParseOptions options = {sl_str_from_cstr(path)};
+    SlStatus status = sl_plan_parse_json(arena, json, &options, &plan, &diag);
+
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy: invalid app plan metadata: ");
+        if (!sl_str_is_empty(diag.message)) {
+            sl_cli_write_span(stderr, sl_cli_span_from_str(diag.message));
+        }
+        else {
+            sl_cli_write_cstr(stderr, "native Plan v1 validation failed");
+        }
+        sl_cli_write_cstr(stderr, "\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, SlArena* plan_arena,
+                                bool validate_native_plan, yyjson_doc** out_doc,
                                 SlCliMetadata* out_metadata)
 {
     SlBytes json = {0};
@@ -978,6 +1008,10 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, y
     yyjson_val* root = NULL;
 
     if (sl_cli_read_file(path, json_storage, SL_CLI_FILE_MAX_BYTES, &json) != 0) {
+        return 1;
+    }
+
+    if (validate_native_plan && sl_cli_validate_native_plan(path, json, plan_arena) != 0) {
         return 1;
     }
 
@@ -2298,6 +2332,8 @@ static void sl_cli_sort_routes(SlCliMetadata* metadata)
 static int sl_cli_command_routes(const SlCliOptions* options)
 {
     unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
+    unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
+    SlArena plan_arena;
     yyjson_doc* doc = NULL;
     SlCliMetadata metadata = {0};
     size_t index = 0U;
@@ -2306,7 +2342,15 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         sl_cli_write_cstr(stderr, "sloppy routes: --plan <path> is required\n");
         return 1;
     }
-    if (sl_cli_load_metadata(options->plan_path, json_storage, &doc, &metadata) != 0) {
+    if (!sl_status_is_ok(
+            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))))
+    {
+        sl_cli_write_cstr(stderr, "sloppy routes: failed to initialize plan validation arena\n");
+        return 1;
+    }
+    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
+                             &metadata) != 0)
+    {
         if (doc != NULL) {
             yyjson_doc_free(doc);
         }
@@ -2326,17 +2370,22 @@ static int sl_cli_command_routes(const SlCliOptions* options)
             sl_cli_json_escape(stdout, route->name);
             (void)printf(", \"module\": ");
             sl_cli_json_escape(stdout, route->module);
+            (void)printf(", \"sourceOrder\": %zu", route->source_order);
             (void)printf(" }");
         }
         (void)printf("\n  ]\n}\n");
     }
     else {
-        (void)printf("METHOD  PATTERN              HANDLER  NAME\n");
+        (void)printf("ORDER  METHOD  PATTERN              HANDLER  NAME\n");
+        if (metadata.route_count == 0U) {
+            (void)printf("No routes.\n");
+        }
         for (index = 0U; index < metadata.route_count; index += 1U) {
             SlCliRoute* route = &metadata.routes[index];
-            (void)printf("%-6.*s  %-19.*s  %-7u  %.*s\n", (int)route->method.length,
-                         route->method.ptr, (int)route->pattern.length, route->pattern.ptr,
-                         route->handler_id, (int)route->name.length, route->name.ptr);
+            (void)printf("%-5zu  %-6.*s  %-19.*s  %-7u  %.*s\n", route->source_order,
+                         (int)route->method.length, route->method.ptr, (int)route->pattern.length,
+                         route->pattern.ptr, route->handler_id, (int)route->name.length,
+                         route->name.ptr);
         }
     }
 
@@ -2368,16 +2417,111 @@ static void sl_cli_doctor_emit_json(SlCliSpan id, SlCliSpan status, SlCliSpan me
     (void)printf(" }");
 }
 
+static bool sl_cli_path_exists(const char* path)
+{
+    FILE* file = NULL;
+
+    if (path == NULL || path[0] == '\0') {
+        return false;
+    }
+#ifdef _MSC_VER
+    if (fopen_s(&file, path, "rb") != 0) {
+        file = NULL;
+    }
+#else
+    file = fopen(path, "rb");
+#endif
+    if (file == NULL) {
+        return false;
+    }
+    (void)fclose(file);
+    return true;
+}
+
+static void sl_cli_doctor_emit(const SlCliOptions* options, SlCliSpan id, SlCliSpan status,
+                               SlCliSpan message, bool* emitted)
+{
+    if (options->format == SL_CLI_FORMAT_JSON) {
+        sl_cli_doctor_emit_json(id, status, message, *emitted);
+        *emitted = true;
+        return;
+    }
+
+    sl_cli_doctor_emit_text(id, status, message);
+}
+
+static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options,
+                                             const SlCliMetadata* metadata, bool* emitted)
+{
+    sl_cli_doctor_emit(options, sl_cli_span_cstr("app.plan.routes"),
+                       metadata->route_count > 0U ? sl_cli_span_cstr("ok")
+                                                  : sl_cli_span_cstr("warn"),
+                       metadata->route_count > 0U ? sl_cli_span_cstr("route metadata present")
+                                                  : sl_cli_span_cstr("no route metadata present"),
+                       emitted);
+    sl_cli_doctor_emit(
+        options, sl_cli_span_cstr("app.plan.providers"),
+        metadata->provider_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
+        metadata->provider_count > 0U ? sl_cli_span_cstr("provider metadata present")
+                                      : sl_cli_span_cstr("provider metadata not present"),
+        emitted);
+    sl_cli_doctor_emit(
+        options, sl_cli_span_cstr("app.plan.capabilities"),
+        metadata->capability_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
+        metadata->capability_count > 0U ? sl_cli_span_cstr("capability metadata present")
+                                        : sl_cli_span_cstr("capability metadata not present"),
+        emitted);
+}
+
+static void sl_cli_doctor_emit_environment(const SlCliOptions* options, bool* emitted)
+{
+    const char* bootstrap_asset = SLOPPY_BOOTSTRAP_BUILD_DIR "/internal/runtime-classic.js";
+
+    sl_cli_doctor_emit(options, sl_cli_span_cstr("bootstrap.assets"),
+                       sl_cli_path_exists(bootstrap_asset) ? sl_cli_span_cstr("ok")
+                                                           : sl_cli_span_cstr("warn"),
+                       sl_cli_path_exists(bootstrap_asset)
+                           ? sl_cli_span_cstr("bootstrap runtime asset found")
+                           : sl_cli_span_cstr("bootstrap runtime asset not found in build layout"),
+                       emitted);
+#ifdef SLOPPY_ENABLE_V8_BRIDGE
+    sl_cli_doctor_emit(
+        options, sl_cli_span_cstr("engine.v8"), sl_cli_span_cstr("ok"),
+        sl_cli_span_cstr("V8 bridge compiled; runtime success still requires V8 tests"), emitted);
+#else
+    sl_cli_doctor_emit(
+        options, sl_cli_span_cstr("engine.v8"), sl_cli_span_cstr("warn"),
+        sl_cli_span_cstr("V8 bridge disabled in this build; V8 runtime tests not run"), emitted);
+#endif
+    sl_cli_doctor_emit(
+        options, sl_cli_span_cstr("providers.live"), sl_cli_span_cstr("warn"),
+        sl_cli_span_cstr(
+            "live provider checks are not configured by default and no live DB was contacted"),
+        emitted);
+    sl_cli_doctor_emit(options, sl_cli_span_cstr("package.runtime"), sl_cli_span_cstr("warn"),
+                       sl_cli_span_cstr("local CLI checks do not prove package release readiness"),
+                       emitted);
+}
+
 static int sl_cli_command_doctor(const SlCliOptions* options)
 {
     unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
+    unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
+    SlArena plan_arena;
     yyjson_doc* doc = NULL;
     SlCliMetadata metadata = {0};
     size_t index = 0U;
     bool emitted = false;
 
-    if (options->plan_path != NULL &&
-        sl_cli_load_metadata(options->plan_path, json_storage, &doc, &metadata) != 0)
+    if (!sl_status_is_ok(
+            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))))
+    {
+        sl_cli_write_cstr(stderr, "sloppy doctor: failed to initialize plan validation arena\n");
+        return 1;
+    }
+
+    if (options->plan_path != NULL && sl_cli_load_metadata(options->plan_path, json_storage,
+                                                           &plan_arena, true, &doc, &metadata) != 0)
     {
         if (doc != NULL) {
             yyjson_doc_free(doc);
@@ -2387,34 +2531,33 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
 
     if (options->format == SL_CLI_FORMAT_JSON) {
         (void)printf("{\n  \"checks\": [");
-        sl_cli_doctor_emit_json(sl_cli_span_cstr("bootstrap.assets"), sl_cli_span_cstr("ok"),
-                                sl_cli_span_cstr("bootstrap assets found"), false);
-        emitted = true;
+        sl_cli_doctor_emit_environment(options, &emitted);
         if (options->plan_path != NULL) {
-            sl_cli_doctor_emit_json(sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
-                                    sl_cli_span_cstr("app plan metadata parsed"), emitted);
-            emitted = true;
+            sl_cli_doctor_emit(options, sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
+                               sl_cli_span_cstr("app plan parsed by native Plan v1 parser"),
+                               &emitted);
+            sl_cli_doctor_emit_plan_metadata(options, &metadata, &emitted);
         }
         for (index = 0U; index < metadata.doctor_check_count; index += 1U) {
-            sl_cli_doctor_emit_json(metadata.doctor_checks[index].id,
-                                    metadata.doctor_checks[index].status,
-                                    metadata.doctor_checks[index].message, emitted);
-            emitted = true;
+            sl_cli_doctor_emit(options, metadata.doctor_checks[index].id,
+                               metadata.doctor_checks[index].status,
+                               metadata.doctor_checks[index].message, &emitted);
         }
         (void)printf("\n  ]\n}\n");
     }
     else {
         (void)printf("Sloppy Doctor\n\n");
-        sl_cli_doctor_emit_text(sl_cli_span_cstr("bootstrap.assets"), sl_cli_span_cstr("ok"),
-                                sl_cli_span_cstr("bootstrap assets found"));
+        sl_cli_doctor_emit_environment(options, &emitted);
         if (options->plan_path != NULL) {
-            sl_cli_doctor_emit_text(sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
-                                    sl_cli_span_cstr("app plan metadata parsed"));
+            sl_cli_doctor_emit(options, sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
+                               sl_cli_span_cstr("app plan parsed by native Plan v1 parser"),
+                               &emitted);
+            sl_cli_doctor_emit_plan_metadata(options, &metadata, &emitted);
         }
         for (index = 0U; index < metadata.doctor_check_count; index += 1U) {
-            sl_cli_doctor_emit_text(metadata.doctor_checks[index].id,
-                                    metadata.doctor_checks[index].status,
-                                    metadata.doctor_checks[index].message);
+            sl_cli_doctor_emit(options, metadata.doctor_checks[index].id,
+                               metadata.doctor_checks[index].status,
+                               metadata.doctor_checks[index].message, &emitted);
         }
     }
 
@@ -2642,7 +2785,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
         sl_cli_write_cstr(stderr, "sloppy audit: --plan <path> is required\n");
         return 1;
     }
-    if (sl_cli_load_metadata(options->plan_path, json_storage, &doc, &metadata) != 0) {
+    if (sl_cli_load_metadata(options->plan_path, json_storage, NULL, false, &doc, &metadata) != 0) {
         if (doc != NULL) {
             yyjson_doc_free(doc);
         }
@@ -2800,11 +2943,12 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliRoute* route)
     sl_cli_json_escape_lower(out, route->method);
     sl_cli_write_cstr(out, ": {\n        \"operationId\": ");
     sl_cli_json_escape(out, route->name);
+    sl_cli_write_cstr(out, ",\n        \"x-sloppy-route-skeleton\": true");
     sl_cli_write_cstr(out, ",\n        \"parameters\": ");
     sl_cli_openapi_parameters(out, route->pattern);
     sl_cli_write_cstr(out, ",\n"
                            "        \"responses\": {\n"
-                           "          \"200\": { \"description\": \"OK\" }\n"
+                           "          \"200\": { \"description\": \"response schema deferred\" }\n"
                            "        }\n"
                            "      }");
 }
@@ -2845,6 +2989,12 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
                            "    \"title\": \"Sloppy API\",\n"
                            "    \"version\": \"0.0.0\"\n"
                            "  },\n"
+                           "  \"x-sloppy-openapi-policy\": {\n"
+                           "    \"status\": \"route-skeleton\",\n"
+                           "    \"schemas\": \"omitted-deferred\",\n"
+                           "    \"requestBodies\": \"omitted-deferred\",\n"
+                           "    \"securitySchemes\": \"omitted-deferred\"\n"
+                           "  },\n"
                            "  \"paths\": {");
     for (index = 0U; index < metadata->route_count; index += 1U) {
         if (sl_cli_openapi_path_seen(openapi_paths, index)) {
@@ -2862,6 +3012,8 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
 static int sl_cli_command_openapi(const SlCliOptions* options)
 {
     unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
+    unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
+    SlArena plan_arena;
     yyjson_doc* doc = NULL;
     SlCliMetadata metadata = {0};
     char path_buffers[SL_CLI_MAX_ROUTES][512];
@@ -2870,6 +3022,12 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
 
     if (options->plan_path == NULL) {
         sl_cli_write_cstr(stderr, "sloppy openapi: --plan <path> is required\n");
+        return 1;
+    }
+    if (!sl_status_is_ok(
+            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))))
+    {
+        sl_cli_write_cstr(stderr, "sloppy openapi: failed to initialize plan validation arena\n");
         return 1;
     }
     if (options->output_path != NULL) {
@@ -2886,7 +3044,9 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
             return 1;
         }
     }
-    if (sl_cli_load_metadata(options->plan_path, json_storage, &doc, &metadata) != 0) {
+    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
+                             &metadata) != 0)
+    {
         if (doc != NULL) {
             yyjson_doc_free(doc);
         }

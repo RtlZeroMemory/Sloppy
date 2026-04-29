@@ -43,8 +43,8 @@
       "module": "users"
     },
     {
-      "method": "POST",
-      "pattern": "/users/{id:int}",
+      "method": "GET",
+      "pattern": "/users/create",
       "handlerId": 3,
       "name": "Users.Create",
       "module": "users"
