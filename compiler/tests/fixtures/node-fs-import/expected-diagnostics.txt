@@ -1,2 +1,6 @@
 <compiler>/tests/fixtures/node-fs-import/input.js:2:16: SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER: unsupported import specifier "node:fs"
+  --> <compiler>/tests/fixtures/node-fs-import/input.js:2:16
+   |
+2 | import fs from "node:fs";
+   |                ^^^^^^^^^
 hint: Only the public bare import "sloppy" is accepted; Sloppy does not implement Node or npm resolution.

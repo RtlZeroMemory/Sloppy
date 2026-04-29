@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_INVALID_ROUTE_PATTERN","severity":"error","message":"unsupported \"dynamic\" route\npattern","primary":{"file":"app.js","line":5,"column":12,"span":9},"related":[{"message":"route registration happens here","span":{"file":"routes.js","line":2,"column":1}}],"hints":["use app.mapGet(\"/users/{id:int}\", handler)"]}

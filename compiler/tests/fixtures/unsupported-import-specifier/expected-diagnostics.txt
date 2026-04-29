@@ -1,2 +1,6 @@
 <compiler>/tests/fixtures/unsupported-import-specifier/input.js:2:21: SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER: unsupported import specifier "express"
+  --> <compiler>/tests/fixtures/unsupported-import-specifier/input.js:2:21
+   |
+2 | import express from "express";
+   |                     ^^^^^^^^^
 hint: Only the public bare import "sloppy" is accepted; Sloppy does not implement Node or npm resolution.

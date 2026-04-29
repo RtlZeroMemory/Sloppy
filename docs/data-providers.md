@@ -595,6 +595,12 @@ Plans reference config keys, not secret values.
 
 Diagnostics must be actionable and redact secrets.
 
+Provider diagnostics may name the provider, operation, driver/dependency category, and
+configuration key. They must not print full secret-bearing connection strings, passwords,
+access tokens, or environment variable values. PostgreSQL and SQL Server keep
+provider-specific connection-string redaction in their diagnostic paths and should use the
+shared diagnostic redaction helper only as an additional guard for generic text.
+
 SQL Server missing driver:
 
 ```text

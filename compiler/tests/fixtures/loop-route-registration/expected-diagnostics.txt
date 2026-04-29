@@ -1,2 +1,6 @@
 <compiler>/tests/fixtures/loop-route-registration/input.js:6:1: SLOPPYC_E_UNSUPPORTED_LOOP_ROUTE_REGISTRATION: loop-based route registration is not supported
+  --> <compiler>/tests/fixtures/loop-route-registration/input.js:6:1
+   |
+6 | for (const route of routes) {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 hint: List compiler-extracted routes as explicit top-level mapGet calls.

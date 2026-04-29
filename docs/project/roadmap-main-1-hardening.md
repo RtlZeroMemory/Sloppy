@@ -202,6 +202,8 @@ Existing issue references: EPIC-24 tasks #137-#141 are closed.
 Goal: make diagnostics usable for alpha developers and tools.
 
 Why it exists: text diagnostics exist, but JSON/source frames/source maps are unfinished.
+Current MAIN1-06 issue scope covers JSON diagnostics, source-frame rendering, and redaction
+audit. V8 exception source-map remapping remains owned by MAIN1-05.
 
 Prerequisites: compiler/runtime error paths identified.
 
@@ -209,15 +211,15 @@ Task breakdown:
 
 - MAIN1-06.A: JSON diagnostic renderer.
 - MAIN1-06.B: source-frame renderer and snapshot fixtures.
-- MAIN1-06.C: source-map remapping for compiler/V8 failures.
-- MAIN1-06.D: redaction policy coverage across CLI/providers/runtime.
+- MAIN1-06.C: redaction policy coverage across CLI/providers/runtime.
 
 Non-goals: localization or broad fix-it framework.
 
 Files likely touched: `include/sloppy/diagnostics.h`, `src/core/diagnostics.c`,
 `tests/golden/diagnostics/`, `docs/diagnostics.md`.
 
-Tests required: golden snapshots, redaction tests, CLI JSON tests.
+Tests required: golden snapshots, redaction tests, JSON renderer tests, and compiler
+diagnostic fixture tests.
 
 Acceptance criteria: alpha errors can be read by humans and tools without leaking secrets.
 
@@ -225,9 +227,10 @@ Risk: medium.
 
 Suggested PR grouping: JSON, source frames, redaction.
 
-Advanced features included: source-map handoff.
+Advanced features included: machine-readable JSON diagnostics and source-frame rendering.
 
-Deferred items: localization.
+Deferred items: localization, CLI-wide diagnostic format flag, richer compiler spans, and
+MAIN1-05 V8 exception source-map remapping.
 
 Existing issue references: #34 remains open.
 

@@ -44,6 +44,10 @@ fixture. Repeated builds of that source must produce byte-identical `app.plan.js
 `app.js`, and `app.js.map` output with stable handler IDs and without absolute local paths,
 timestamps, random IDs, or checkout-specific path text.
 
+Compiler diagnostics render a single-line source frame when the extractor already has a
+source span and source text. This is a renderer improvement only; it does not broaden the
+supported syntax matrix, change extraction behavior, or claim source-map fidelity.
+
 If EPIC-21 GitHub issues are absent, this implementation follows
 `docs/project/next-roadmap.md` as the source of truth for the post-roadmap plan.
 
@@ -410,6 +414,11 @@ Compiler diagnostics must include:
 - optional related locations;
 - suggested fix where safe;
 - generated artifact context when relevant.
+
+For current `sloppyc` fixture failures, diagnostics with source spans include a
+deterministic single-line source frame. Diagnostics without spans still render the stable
+path/summary fallback. Richer spans, related compiler locations, and V8/source-map
+exception remapping remain future work.
 
 ## Testing Requirements
 
