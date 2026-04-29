@@ -96,7 +96,12 @@ function validateShape(shape) {
             throw new TypeError("Sloppy schema.object keys must be non-empty strings.");
         }
 
-        if (value === null || typeof value !== "object" || typeof value.validate !== "function") {
+        if (
+            value === null ||
+            typeof value !== "object" ||
+            typeof value.validate !== "function" ||
+            typeof value.__validateAtPath !== "function"
+        ) {
             throw new TypeError(`Sloppy schema.object field '${key}' must be a schema.`);
         }
     }

@@ -13,6 +13,15 @@ function resolveStatus(options) {
     return status;
 }
 
+function isPlainObject(value) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return false;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+}
+
 function copyHeaders(options) {
     const headers = options?.headers;
 
@@ -20,7 +29,7 @@ function copyHeaders(options) {
         return undefined;
     }
 
-    if (headers === null || typeof headers !== "object" || Array.isArray(headers)) {
+    if (!isPlainObject(headers)) {
         throw new TypeError("Sloppy Results headers must be a plain object when provided.");
     }
 

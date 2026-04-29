@@ -161,6 +161,7 @@ function assertThrowsMessage(fn, expected) {
         "x-test": "1",
     });
     assertThrowsMessage(() => Results.ok("bad", { status: 99 }), /status/);
+    assertThrowsMessage(() => Results.ok("bad", { headers: new Map() }), /plain object/);
 }
 
 {
@@ -206,4 +207,8 @@ function assertThrowsMessage(fn, expected) {
     ]);
     assert.equal(User.metadata.shape.name.kind, "string");
     assertThrowsMessage(() => schema.object({ bad: {} }), /must be a schema/);
+    assertThrowsMessage(
+        () => schema.object({ bad: { validate() { return { ok: true }; } } }),
+        /must be a schema/,
+    );
 }
