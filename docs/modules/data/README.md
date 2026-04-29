@@ -2,9 +2,9 @@
 
 ## Status
 
-Bootstrap data/capabilities foundation implemented. Native SQLite and PostgreSQL providers
-are implemented for C/runtime tests; JavaScript stdlib-to-native database intrinsics are
-still planned / not implemented yet.
+Bootstrap data/capabilities foundation implemented. Native SQLite, PostgreSQL, and SQL
+Server providers are implemented for C/runtime tests; JavaScript stdlib-to-native database
+intrinsics are still planned / not implemented yet.
 
 ## Purpose
 
@@ -34,6 +34,9 @@ Implemented bootstrap API:
 - `data.postgres` provider metadata, `$1` placeholder style, redaction helper, and
   `data.postgres.open(options)` as the future stdlib entry point. It validates options and
   fails honestly until the native bridge exists.
+- `data.sqlserver` provider metadata, ODBC `?` placeholder style, redaction and doctor
+  helpers, and `data.sqlserver.open(options)` as the future stdlib entry point. It
+  validates options and fails honestly until the native bridge exists.
 
 Implemented native SQLite API:
 
@@ -53,22 +56,37 @@ Implemented native PostgreSQL API:
 - transaction begin/commit/rollback plus transaction-scoped exec/query/queryOne helpers;
 - a tiny bounded pool with acquire/release and immediate pool-exhausted diagnostics.
 
+Implemented native SQL Server API:
+
+- `include/sloppy/data_sqlserver.h` and `src/data/sqlserver.c`;
+- caller-owned `SlSqlServerConnection`, `SlSqlServerTransaction`, and `SlSqlServerPool`
+  wrappers;
+- ODBC connection-string open/close through the platform driver manager;
+- `sl_sqlserver_exec`, `sl_sqlserver_query`, and `sl_sqlserver_query_one`;
+- transaction begin/commit/rollback through ODBC autocommit and `SQLEndTran`;
+- a tiny bounded pool with acquire/release and immediate pool-exhausted diagnostics;
+- connection-string redaction, driver-name extraction, and missing-driver doctor
+  diagnostics.
+
 ## Ownership/Lifetime Rules
 
 Current fake providers own only JavaScript test/example callbacks and debug event arrays.
 Fake transactions close their transaction object after commit/rollback and reject use after
-close. Native SQLite and PostgreSQL connections are caller-owned C wrappers and must be
-closed deterministically through `sl_sqlite_close` or `sl_postgres_close`; SQLite prepared
-statements are finalized on every path and PostgreSQL `PGresult` values are cleared on
-every path. Future JS-visible real connections, statements, pools, and transactions are
-resource-table-owned and scoped explicitly.
+close. Native SQLite, PostgreSQL, and SQL Server connections are caller-owned C wrappers
+and must be closed deterministically through `sl_sqlite_close`, `sl_postgres_close`, or
+`sl_sqlserver_close`; SQLite prepared statements are finalized on every path, PostgreSQL
+`PGresult` values are cleared on every path, and SQL Server ODBC statement/connection/
+environment handles are freed on every path. Future JS-visible real connections,
+statements, pools, and transactions are resource-table-owned and scoped explicitly.
 
 ## Invariants
 
 Template query APIs parameterize by default. Lowered query descriptors preserve text and
 parameters separately. Native SQLite accepts the existing `?` placeholder lowering path.
 Native PostgreSQL accepts the existing `postgres` lowering path with `$1`, `$2`, and so on.
-Both bind `null`, text, integer, float, and boolean values without interpolation.
+Native SQL Server accepts the existing `question` lowering path with `?` placeholders for
+ODBC prepared statements. All implemented native providers bind `null`, text, integer,
+float, and boolean values without interpolation.
 Provider-specific APIs stay namespaced.
 
 ## Diagnostics
@@ -87,6 +105,12 @@ Native PostgreSQL diagnostics use `SL_DIAG_POSTGRES_PROVIDER_ERROR`,
 provider `postgres`, operation, libpq error text where available, and redacted connection
 configuration for open/doctor failures. Passwords and URI credentials must not appear in
 diagnostics.
+
+Native SQL Server diagnostics use `SL_DIAG_SQLSERVER_PROVIDER_ERROR`,
+`SL_DIAG_SQLSERVER_POOL_EXHAUSTED`, and `SL_DIAG_DATABASE_UNSUPPORTED_VALUE`. They include
+provider `sqlserver`, operation, ODBC diagnostic records where available, and redacted
+connection configuration for open/doctor failures. Passwords, `PWD`, and access-token
+fields must not appear in diagnostics.
 
 ## Tests
 
@@ -107,6 +131,13 @@ option validation, use after close, doctor diagnostics, and skipped-by-default l
 coverage. When `SLOPPY_POSTGRES_TEST_URL` is set it connects with libpq and covers
 parameterized exec/query/queryOne, transactions, rollback, and tiny pool acquire/release.
 
+`data.sqlserver.provider` is a native CTest target that uses ODBC when
+`SLOPPY_ENABLE_SQLSERVER` is enabled and covers redaction, driver-name extraction,
+missing-driver diagnostics, option validation, use after close, unsupported values, and
+pool state behavior. When `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set it connects
+through ODBC and covers parameterized exec/query/queryOne, transactions, rollback, invalid
+SQL diagnostics, and tiny pool acquire/release.
+
 ## Source Docs
 
 - `docs/data-providers.md`;
@@ -118,4 +149,5 @@ parameterized exec/query/queryOne, transactions, rollback, and tiny pool acquire
 ## Open Questions
 
 - Exact row/result JS shape once native stdlib intrinsics exist.
-- Exact app-host disposal/resource-table shape for PostgreSQL pool and connection handles.
+- Exact app-host disposal/resource-table shape for PostgreSQL and SQL Server pool and
+  connection handles.

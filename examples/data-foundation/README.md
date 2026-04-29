@@ -24,7 +24,8 @@ What does not work yet:
 - there is no real HTTP server;
 - the real SQLite provider is covered by native C tests, but this example still uses a fake
   JavaScript provider;
-- there is no PostgreSQL or SQL Server provider yet;
+- PostgreSQL and SQL Server have separate provider examples, but this example deliberately
+  stays on the fake JavaScript provider;
 - no database connection is opened;
 - no SQL is executed;
 - filesystem and network capabilities are not enforced;
@@ -32,5 +33,5 @@ What does not work yet:
   work;
 - the future bare `"sloppy"` import is planned only.
 
-See `examples/sqlite-basic/` for the SQLite provider registration shape. PostgreSQL and SQL
-Server providers come later.
+See `examples/sqlite-basic/`, `examples/postgres-basic/`, and `examples/sqlserver-basic/`
+for provider registration shapes.

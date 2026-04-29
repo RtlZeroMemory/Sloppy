@@ -93,18 +93,39 @@ function Get-SlVisualStudioInstallPath {
     return $null
 }
 
+function Add-SlVisualStudioToolPath {
+    param(
+        [string]$InstallPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InstallPath)) {
+        return
+    }
+
+    $vcTools = Get-SlLatestDirectoryName -Path (Join-Path $InstallPath "VC/Tools/MSVC")
+    if ($null -eq $vcTools) {
+        return
+    }
+
+    Add-SlPathEntries -Name "PATH" -Entries @(
+        (Join-Path $vcTools "bin/Hostx64/x64")
+    )
+}
+
 function Import-SlVisualStudioEnvironment {
     $originalPath = $env:PATH
+    $existingInstallPath = Get-SlVisualStudioInstallPath
 
     if ((Test-SlEnvFile -EnvValue $env:INCLUDE -FileName "stdio.h") -and
         (Test-SlEnvFile -EnvValue $env:LIB -FileName "kernel32.lib") -and
         ((Test-SlEnvFile -EnvValue $env:LIB -FileName "msvcrt.lib") -or
             (Test-SlEnvFile -EnvValue $env:LIB -FileName "msvcrtd.lib")))
     {
+        Add-SlVisualStudioToolPath -InstallPath $existingInstallPath
         return
     }
 
-    $installPath = Get-SlVisualStudioInstallPath
+    $installPath = $existingInstallPath
     if ([string]::IsNullOrWhiteSpace($installPath)) {
         throw "Visual Studio with C++ tools was not found. Install MSVC C++ build tools or run from a Developer PowerShell."
     }
@@ -129,6 +150,7 @@ function Import-SlVisualStudioEnvironment {
     if (-not [string]::IsNullOrWhiteSpace($originalPath)) {
         Add-SlPathEntries -Name "PATH" -Entries ($originalPath.Split(';'))
     }
+    Add-SlVisualStudioToolPath -InstallPath $installPath
 
     $vcTools = Get-SlLatestDirectoryName -Path (Join-Path $installPath "VC/Tools/MSVC")
     $sdkIncludeRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/Include"

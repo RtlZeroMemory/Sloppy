@@ -77,6 +77,12 @@ Current tests:
   option validation, connection-string redaction, doctor diagnostics, and use-after-close
   behavior. Live connection/query/transaction/pool coverage is opt-in and runs only when
   `SLOPPY_POSTGRES_TEST_URL` is set;
+- CTest unit test `data.sqlserver.provider`, which uses ODBC when
+  `SLOPPY_ENABLE_SQLSERVER` is enabled and verifies SQL Server option validation,
+  connection-string redaction, driver-name parsing, missing-driver diagnostics,
+  use-after-close behavior, unsupported parameter diagnostics, and tiny pool state
+  behavior. Live connection/query/transaction/pool coverage is opt-in and runs only when
+  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
   hello example files exist, use the current relative stdlib import, use
   `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
@@ -103,6 +109,11 @@ Current tests:
   demonstrate PostgreSQL capability/service registration through `data.postgres`, show
   `$1` placeholder lowering and transaction usage, and honestly document the live-server
   and stdlib-bridge limitations;
+- CTest structural check `examples.sqlserver_basic.api_shape`, which statically verifies
+  the EPIC-18 SQL Server example files exist, use the current relative stdlib import,
+  demonstrate SQL Server capability/service registration through `data.sqlserver`, show
+  ODBC `?` placeholder lowering, doctor diagnostics, transaction usage, and honestly
+  document the live-server/driver and stdlib-bridge limitations;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -140,6 +151,14 @@ PostgreSQL live provider tests are gated by environment variable and are skipped
 
 ```powershell
 $env:SLOPPY_POSTGRES_TEST_URL="postgres://postgres:postgres@localhost:5432/sloppy_test"
+.\tools\windows\dev.ps1 test
+```
+
+SQL Server live provider tests are gated by environment variable and are skipped by
+default:
+
+```powershell
+$env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;UID=sa;PWD=<secret>;TrustServerCertificate=yes;"
 .\tools\windows\dev.ps1 test
 ```
 

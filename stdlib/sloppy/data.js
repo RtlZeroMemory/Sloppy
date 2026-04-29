@@ -196,6 +196,55 @@ function validatePostgresOpenOptions(options) {
     });
 }
 
+function redactOdbcConnectionString(value) {
+    return value.replace(
+        /(^|;)(password|pwd|access token|accesstoken)=({(?:}}|[^}])*}|[^;]*)/gi,
+        (_match, prefix, key) => `${prefix}${key}=<redacted>`,
+    );
+}
+
+function extractOdbcDriverName(connectionString) {
+    const match = /(?:^|;)driver=({(?:}}|[^}])*}|[^;]*)/i.exec(connectionString);
+
+    if (!match) {
+        return "";
+    }
+    const value = match[1];
+    if (value.startsWith("{") && value.endsWith("}")) {
+        return value.slice(1, -1).replaceAll("}}", "}");
+    }
+    return value;
+}
+
+function validateSqlServerOpenOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy sqlserver.open options must be a plain object.");
+    }
+
+    if (typeof options.connectionString !== "string" || options.connectionString.length === 0) {
+        throw new TypeError("Sloppy sqlserver.open connectionString must be a non-empty string.");
+    }
+
+    const access = options.access ?? "readwrite";
+    if (access !== "read" && access !== "readwrite") {
+        throw new TypeError("Sloppy sqlserver.open access must be read or readwrite.");
+    }
+
+    const maxConnections = options.maxConnections ?? 1;
+    if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 16) {
+        throw new TypeError("Sloppy sqlserver.open maxConnections must be an integer from 1 to 16.");
+    }
+
+    return Object.freeze({
+        provider: "sqlserver",
+        connectionString: redactOdbcConnectionString(options.connectionString),
+        driver: extractOdbcDriverName(options.connectionString),
+        access,
+        maxConnections,
+        placeholderStyle: "question",
+    });
+}
+
 function missingProviderMethod(method) {
     throw new Error(`sloppy: fake data provider method missing
 
@@ -242,6 +291,26 @@ Fix:
   Register PostgreSQL as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);
 }
 
+function createSqlServerUnavailableError(operation, options) {
+    const safeOptions = validateSqlServerOpenOptions(options);
+    return new Error(`sloppy: sqlserver provider native bridge unavailable
+
+Provider:
+  sqlserver
+
+Operation:
+  ${operation}
+
+Connection:
+  ${safeOptions.connectionString}
+
+Reason:
+  The native SQL Server provider exists for C/runtime tests through ODBC, but stdlib-to-native database intrinsics are not wired yet.
+
+Fix:
+  Register SQL Server as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);
+}
+
 function openSqlite(options) {
     validateSqliteOpenOptions(options);
     throw createSqliteUnavailableError("open");
@@ -249,6 +318,34 @@ function openSqlite(options) {
 
 function openPostgres(options) {
     throw createPostgresUnavailableError("open", options);
+}
+
+function openSqlServer(options) {
+    throw createSqlServerUnavailableError("open", options);
+}
+
+function doctorSqlServer(options = {}) {
+    const connectionString = typeof options.connectionString === "string"
+        ? options.connectionString
+        : "";
+    const driver = connectionString.length > 0 ? extractOdbcDriverName(connectionString) : "";
+
+    return Object.freeze({
+        ok: false,
+        provider: "sqlserver",
+        driverManager: "native-check-unavailable",
+        driver: driver.length > 0 ? "unchecked" : "unknown",
+        message: "Native SQL Server doctor diagnostics are available in the C provider tests until the stdlib bridge lands.",
+        connectionString: connectionString.length > 0
+            ? redactOdbcConnectionString(connectionString)
+            : undefined,
+        hints: Object.freeze([
+            "install Microsoft ODBC Driver 18 for SQL Server",
+            "check driver name",
+            "check connection string",
+            "use TrustServerCertificate=yes for local dev only when appropriate",
+        ]),
+    });
 }
 
 const sqlite = Object.freeze({
@@ -294,6 +391,32 @@ const postgres = Object.freeze({
         return Object.freeze({
             provider: "postgres",
             placeholderStyle: "postgres",
+            nativeStdlibBridge: false,
+        });
+    },
+});
+
+const sqlserver = Object.freeze({
+    provider: "sqlserver",
+    placeholderStyle: "question",
+    supports: Object.freeze({
+        connectionString: true,
+        odbc: true,
+        queryTemplates: true,
+        parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
+        transactions: true,
+        pooling: "skeleton",
+        migrations: false,
+        orm: false,
+        nativeStdlibBridge: false,
+    }),
+    open: openSqlServer,
+    doctor: doctorSqlServer,
+    redactConnectionString: redactOdbcConnectionString,
+    __debug() {
+        return Object.freeze({
+            provider: "sqlserver",
+            placeholderStyle: "question",
             nativeStdlibBridge: false,
         });
     },
@@ -504,4 +627,5 @@ export const data = Object.freeze({
     isQuery: isLoweredQuery,
     sqlite,
     postgres,
+    sqlserver,
 });

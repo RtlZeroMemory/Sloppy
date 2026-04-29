@@ -22,7 +22,7 @@ What does not work yet:
 - this example does not emit `app.plan.json`;
 - there is no real HTTP server yet;
 - the stdlib cannot call the native SQLite provider until runtime intrinsics are added;
-- no PostgreSQL or SQL Server provider is implemented;
+- PostgreSQL and SQL Server providers are covered by their own examples and native C tests;
 - no ORM, migrations, connection pooling, async worker offload, cancellation, deadline, or
   blob support is implemented;
 - the future bare `"sloppy"` import is planned only.

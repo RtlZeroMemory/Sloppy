@@ -178,11 +178,13 @@
   in-memory JavaScript services.
 - JavaScript-to-native SQLite provider binding is future work; the current native provider
   executes SQL in C tests and the fake data provider remains for JS tests/examples.
-- SQL Server provider is future work.
-- Production database connection pooling, migrations, file DB capability policy, blob
+- SQL Server provider exists as a synchronous ODBC native provider with a tiny bounded pool
+  skeleton and env-gated live tests, but JavaScript-to-native binding remains future work.
+- Production database connection pooling, migrations, file DB capability policy, blob/date
   support, async worker offload, cancellation/deadline propagation, isolation levels,
-  savepoints, PostgreSQL TLS/options hardening, JSON/array support, raw SQL escape hatch,
-  and provider-specific quoting remain future data-provider work.
+  savepoints, PostgreSQL and SQL Server TLS/options hardening, SQL Server TVP/bulk support,
+  JSON/array support, raw SQL escape hatch, and provider-specific quoting remain future
+  data-provider work.
 - Capability enforcement, filesystem capabilities, network capabilities, permission grants,
   `sloppy audit`, and app-plan data provider/capability emission remain future work.
 - Compiler import rewriting for `"sloppy"` is future work.

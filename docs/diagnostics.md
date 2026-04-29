@@ -121,6 +121,10 @@ Implemented foundation codes:
 - `SLOPPY_E_HTTP_ROUTE_NOT_FOUND`;
 - `SLOPPY_E_SQLITE_PROVIDER`;
 - `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`;
+- `SLOPPY_E_POSTGRES_PROVIDER`;
+- `SLOPPY_E_POSTGRES_POOL_EXHAUSTED`;
+- `SLOPPY_E_SQLSERVER_PROVIDER`;
+- `SLOPPY_E_SQLSERVER_POOL_EXHAUSTED`;
 - `SLOPPY_E_MISSING_SERVICE`;
 - `SLOPPY_E_PERMISSION_DENIED`;
 - `SLOPPY_E_INTERNAL`.
@@ -292,7 +296,15 @@ Data provider diagnostics:
 - transaction misuse.
 - native SQLite provider failures use `SLOPPY_E_SQLITE_PROVIDER` with provider, operation,
   SQLite error text when available, and SQL text without parameter values;
-- unsupported SQLite parameter kinds use `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`.
+- native PostgreSQL provider failures use `SLOPPY_E_POSTGRES_PROVIDER` with provider,
+  operation, libpq error text where available, and redacted connection configuration for
+  open/doctor failures;
+- native SQL Server provider failures use `SLOPPY_E_SQLSERVER_PROVIDER` with provider,
+  operation, ODBC diagnostic records where available, and redacted connection
+  configuration for open/doctor failures;
+- native PostgreSQL and SQL Server pool exhaustion use provider-specific pool-exhausted
+  diagnostics;
+- unsupported database parameter kinds use `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`.
 
 Permissions diagnostics:
 

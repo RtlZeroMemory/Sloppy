@@ -1,7 +1,7 @@
 # Data
 
-Status: Bootstrap data/capabilities foundation plus native SQLite and PostgreSQL providers
-implemented.
+Status: Bootstrap data/capabilities foundation plus native SQLite, PostgreSQL, and SQL
+Server providers implemented.
 
 Purpose: document future data provider modules, query templates, transactions, and
 provider-specific limitations.
@@ -71,6 +71,28 @@ const PostgresModule = Sloppy.module("data.postgres")
   });
 ```
 
+SQL Server bootstrap service shape:
+
+```ts
+import { Sloppy, data } from "sloppy";
+
+const SqlServerModule = Sloppy.module("data.sqlserver")
+  .capabilities(caps => {
+    caps.addDatabase("data.main", {
+      provider: "sqlserver",
+      configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
+      access: "readwrite",
+    });
+  })
+  .services(services => {
+    services.addSingleton("data.main", () => data.sqlserver.open({
+      connectionString:
+        "Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;Trusted_Connection=yes;TrustServerCertificate=yes;",
+      maxConnections: 2,
+    }));
+  });
+```
+
 Implemented behavior:
 
 - `sql` lowers tagged templates to frozen query descriptors.
@@ -84,13 +106,21 @@ Implemented behavior:
   entry point.
 - `data.postgres` exposes PostgreSQL provider metadata, `$1` placeholder style, connection
   string redaction, and `open(options)` as the future stdlib entry point.
+- `data.sqlserver` exposes SQL Server provider metadata, ODBC `?` placeholder style,
+  connection string redaction, a doctor helper shape, and `open(options)` as the future
+  stdlib entry point.
 - native C SQLite tests execute real SQLite against `:memory:` databases.
 - native C PostgreSQL tests execute live libpq coverage only when `SLOPPY_POSTGRES_TEST_URL`
   is set.
+- native C SQL Server tests execute live ODBC coverage only when
+  `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set.
 - native SQLite supports `exec`, `query`, `queryOne`, primitive parameter binding, and
   transactions.
 - native PostgreSQL supports connection-string open/close, `exec`, `query`, `queryOne`,
   primitive parameter binding, a tiny bounded pool skeleton, diagnostics, and transactions.
+- native SQL Server supports ODBC connection-string open/close, `exec`, `query`,
+  `queryOne`, primitive parameter binding through ODBC, a tiny bounded pool skeleton,
+  missing-driver diagnostics, redaction, and transactions.
 - provider methods accept tagged templates or already-lowered query objects.
 - `queryOne` uses a supplied handler or falls back to the first row returned by `query`.
 - `transaction(callback)` passes a transaction object with `query`, `queryOne`, and `exec`,
@@ -102,7 +132,8 @@ Not implemented yet:
   options and fails with an honest bridge-unavailable error in the stdlib;
 - no JavaScript-to-native PostgreSQL intrinsic bridge yet, so `data.postgres.open(...)`
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
-- no SQL Server provider;
+- no JavaScript-to-native SQL Server intrinsic bridge yet, so `data.sqlserver.open(...)`
+  validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
 - no SQL parser, ORM, migrations, production pooling, cancellation, isolation levels, or
   native SQL execution from JavaScript;
 - no public file database policy beyond the native provider accepting SQLite paths;

@@ -30,7 +30,6 @@ This document covers:
 The foundation phase does not implement:
 
 - JavaScript-to-native SQLite resource/intrinsic integration;
-- ODBC;
 - production connection pools;
 - SQL parsing;
 - provider plugin ABI;
@@ -64,13 +63,29 @@ the intended public entry point, but that function fails honestly until the runt
 stdlib-to-native intrinsic/resource bridge. No native pointer is exposed to JavaScript and
 no fake PostgreSQL success is reported by the stdlib.
 
+EPIC-18 adds the third real provider boundary: native C SQL Server support backed by the
+platform ODBC driver manager and Microsoft ODBC Driver for SQL Server on Windows. The native
+provider opens ODBC connection strings, executes parameterized `?` queries, materializes
+small result sets, supports explicit transactions through ODBC autocommit/SQLEndTran,
+redacts connection strings in diagnostics, exposes missing-driver doctor diagnostics, and
+provides a tiny bounded pool skeleton. Live SQL Server execution is opt-in through
+`SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`; default tests do not require a running SQL
+Server instance or installed SQL Server ODBC driver.
+
+The JavaScript stdlib exposes `data.sqlserver` metadata, `data.sqlserver.open(options)`,
+redaction, and a small `doctor(options)` shape as the intended public entry point, but
+`open` fails honestly until the runtime has a stdlib-to-native intrinsic/resource bridge.
+No native pointer is exposed to JavaScript and no fake SQL Server success is reported by the
+stdlib.
+
 ## Future Phase Order
 
 1. SQLite first, built-in/static provider. Native C provider implemented; JavaScript bridge
    deferred.
 2. PostgreSQL second, via libpq. Native C provider implemented; JavaScript bridge
    deferred.
-3. SQL Server third, via Microsoft ODBC Driver and ODBC API on Windows.
+3. SQL Server third, via Microsoft ODBC Driver and ODBC API on Windows. Native C provider
+   implemented; JavaScript bridge deferred.
 4. Dynamic provider ABI later.
 
 ## File And Module Layout
@@ -87,8 +102,9 @@ tests/golden/data/
 tests/integration/data/
 ```
 
-SQLite now owns `src/data/sqlite.c`. PostgreSQL now owns `src/data/postgres.c`. Do not add
-SQL Server or generic provider framework directories before their phase.
+SQLite now owns `src/data/sqlite.c`. PostgreSQL now owns `src/data/postgres.c`. SQL Server
+now owns `src/data/sqlserver.c`. Do not add a generic provider framework directory before
+its phase.
 
 ## Internal Architecture
 
@@ -163,17 +179,38 @@ sl_postgres_query(arena, &db, sql, params, param_count, NULL, &rows, diag);
 sl_postgres_close(&db);
 ```
 
-SQL Server:
+SQL Server stdlib shape:
 
 ```ts
-import { sqlserver } from "sloppy:data/sqlserver";
+import { Sloppy, data } from "sloppy";
 
-builder.addModule(
-  sqlserver.module({
-    token: "data.main",
-    connectionString: builder.config.require("SQLSERVER_CONNECTION"),
+const SqlServerModule = Sloppy.module("data.sqlserver")
+  .capabilities(caps => {
+    caps.addDatabase("data.main", {
+      provider: "sqlserver",
+      configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
+      access: "readwrite",
+    });
   })
-);
+  .services(services => {
+    services.addSingleton("data.main", () => data.sqlserver.open({
+      connectionString:
+        "Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;Trusted_Connection=yes;TrustServerCertificate=yes;",
+      maxConnections: 2,
+    }));
+  });
+```
+
+Native C test shape:
+
+```c
+SlSqlServerConnection db = {0};
+SlSqlServerOpenOptions options =
+    sl_sqlserver_open_options_connection_string(connection_string);
+sl_sqlserver_open(arena, &options, &db, diag);
+sl_sqlserver_exec(arena, &db, sql, params, param_count, &exec_result, diag);
+sl_sqlserver_query(arena, &db, sql, params, param_count, NULL, &rows, diag);
+sl_sqlserver_close(&db);
 ```
 
 Route usage:
@@ -228,10 +265,17 @@ Current bootstrap behavior:
   stdlib bridge is unavailable.
 - `data.postgres.open(options)` validates PostgreSQL connection string options, redacts
   credentials, and then reports that the native stdlib bridge is unavailable.
+- `data.sqlserver.open(options)` validates SQL Server ODBC connection string options,
+  redacts `PWD`, `Password`, and access tokens, and then reports that the native stdlib
+  bridge is unavailable.
+- `data.sqlserver.doctor(options)` returns a small bridge-unavailable doctor object in
+  JavaScript; native C tests cover real ODBC driver-manager/driver detection.
 - native SQLite provider tests use the same `?` placeholder lowering contract at the C
   boundary.
 - native PostgreSQL provider tests use the same `$1`, `$2`, ... placeholder lowering
   contract at the C boundary.
+- native SQL Server provider tests use the same `?` placeholder lowering contract at the C
+  boundary.
 
 Native SQLite behavior:
 
@@ -263,6 +307,28 @@ Native PostgreSQL behavior:
   close-all, no waiting queue, no health checks, no background threads, no idle pruning,
   and no thread-safety contract;
 - `PGresult` values are cleared on every path and connections close deterministically.
+
+Native SQL Server behavior:
+
+- supported connection path: ODBC connection string;
+- ODBC support is optional/gated by `SLOPPY_ENABLE_SQLSERVER`, defaulting on for Windows and
+  off elsewhere;
+- `SQLAllocHandle`, `SQLDriverConnect`, `SQLPrepare`, `SQLBindParameter`, `SQLExecute`,
+  `SQLFetch`, `SQLGetData`, `SQLGetDiagRec`, `SQLEndTran`, `SQLDisconnect`, and
+  `SQLFreeHandle` are used behind the provider boundary;
+- `exec` returns affected row count when ODBC reports one;
+- `query` returns arena-owned rows with stable column names and values;
+- `queryOne` returns the first row or `found = false`;
+- parameters support null, text, integer, float, and boolean without SQL interpolation;
+- `?` placeholders are the provider's query-template style;
+- unsupported parameter kinds fail before unsafe coercion once a statement can be prepared;
+- nested transactions are rejected for now;
+- transactions disable autocommit, commit/rollback through `SQLEndTran`, and restore
+  autocommit before the transaction handle is closed;
+- pool support is intentionally tiny: bounded max connection count, acquire/release,
+  close-all, no waiting queue, no health checks, no background threads, no idle pruning,
+  and no thread-safety contract;
+- ODBC statement, connection, and environment handles close deterministically.
 
 Transaction example:
 
@@ -551,9 +617,10 @@ error[SLOPPY_E_DATABASE_UNSUPPORTED_VALUE]: unsupported sqlite parameter value
 ## Distribution Implications
 
 SQLite is consumed through the repo-approved vcpkg manifest as `sqlite3` and linked through
-the vcpkg CMake target. PostgreSQL requires libpq DLL strategy. SQL Server depends on
-Microsoft ODBC Driver presence on Windows. `sloppy doctor` should detect missing drivers
-and incomplete config.
+the vcpkg CMake target. PostgreSQL requires libpq DLL strategy. SQL Server uses system ODBC
+headers/libraries discovered by CMake and depends on Microsoft ODBC Driver presence for live
+use. `sloppy doctor` should later surface the same missing-driver and incomplete-config
+checks currently covered by the native SQL Server doctor helper.
 
 ## Security Rules
 
@@ -667,20 +734,22 @@ Acceptance:
 
 ### Phase D: SQL Server Provider
 
-Tasks:
+Implemented:
 
-- add ODBC integration intentionally;
-- use Microsoft ODBC Driver on Windows;
-- implement driver detection;
-- lower placeholders to `?`;
-- add env-gated integration tests;
-- add `sloppy doctor` provider checks later.
+- ODBC integration is isolated in `src/data/sqlserver.c`;
+- Windows builds enable `SLOPPY_ENABLE_SQLSERVER` by default and link system ODBC;
+- non-Windows/default-disabled builds keep stubs that report unavailable ODBC support;
+- Microsoft ODBC Driver detection is implemented through the native doctor helper;
+- placeholders lower to `?`;
+- default non-live tests cover redaction, missing-driver diagnostics, invalid options,
+  pool state, and stdlib API shape;
+- live tests are gated by `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`.
 
 Acceptance:
 
 - missing Microsoft ODBC Driver diagnostic matches this spec;
 - configured integration test can query SQL Server;
-- provider code stays behind platform/provider boundaries.
+- provider code stays behind provider-specific ODBC boundaries.
 
 ### Phase E: Dynamic Provider ABI
 

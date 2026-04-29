@@ -65,6 +65,12 @@ with an honest bridge-unavailable error if resolved from JavaScript. Native Post
 execution is covered by C tests, with live database coverage gated by
 `SLOPPY_POSTGRES_TEST_URL`.
 
+`examples/sqlserver-basic/app.js` shows the intended SQL Server service registration
+through `data.sqlserver.open({ connectionString, maxConnections })`. That factory
+currently fails with an honest bridge-unavailable error if resolved from JavaScript. Native
+SQL Server execution is covered by C tests, with live ODBC coverage gated by
+`SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`.
+
 Not implemented yet: request-scoped lifetimes, disposal hooks, async factories, service
 dependency graph validation, service cycle diagnostics, typed tokens, decorators, native
 service graph validation, and real plan emission.

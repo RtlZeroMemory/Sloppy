@@ -15,6 +15,15 @@ option(SLOPPY_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer where supported." 
 option(SLOPPY_ENABLE_TSAN "Enable ThreadSanitizer where supported." OFF)
 option(SLOPPY_BUILD_COMPILER "Add the sloppyc Rust compiler target when Cargo is available." ON)
 option(SLOPPY_ENABLE_V8 "Enable the phase-gated V8 bridge SDK integration." OFF)
+if(WIN32)
+    set(SLOPPY_ENABLE_SQLSERVER_DEFAULT ON)
+else()
+    set(SLOPPY_ENABLE_SQLSERVER_DEFAULT OFF)
+endif()
+option(
+    SLOPPY_ENABLE_SQLSERVER
+    "Enable the phase-gated SQL Server provider ODBC integration."
+    ${SLOPPY_ENABLE_SQLSERVER_DEFAULT})
 
 set(SLOPPY_ENGINE "none" CACHE STRING "JavaScript engine backend for this build.")
 set_property(CACHE SLOPPY_ENGINE PROPERTY STRINGS "v8" "none")
@@ -244,6 +253,12 @@ find_package(llhttp CONFIG REQUIRED)
 find_package(libuv CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(PostgreSQL REQUIRED)
+if(SLOPPY_ENABLE_SQLSERVER)
+    find_package(ODBC REQUIRED)
+    message(STATUS "SQL Server provider: enabled through ODBC")
+else()
+    message(STATUS "SQL Server provider: disabled; ODBC-backed calls report unavailable")
+endif()
 
 if(TARGET llhttp::llhttp_static)
     set(SLOPPY_LLHTTP_TARGET llhttp::llhttp_static)
@@ -283,6 +298,7 @@ set(
     src/core/runtime_contract.c
     src/core/diagnostics.c
     src/data/postgres.c
+    src/data/sqlserver.c
     src/data/sqlite.c
     src/engine/engine.c)
 
@@ -313,6 +329,7 @@ set(
     tests/unit/core/test_engine.c
     tests/unit/core/test_diagnostics.c
     tests/unit/data/test_postgres.c
+    tests/unit/data/test_sqlserver.c
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c
     tests/unit/data/test_sqlite.c)
@@ -336,6 +353,11 @@ target_link_libraries(
             ${SLOPPY_LIBUV_TARGET}
             PostgreSQL::PostgreSQL
             unofficial::sqlite3::sqlite3)
+
+if(SLOPPY_ENABLE_SQLSERVER)
+    target_compile_definitions(sloppy_core PUBLIC SLOPPY_ENABLE_SQLSERVER_PROVIDER=1)
+    target_link_libraries(sloppy_core PRIVATE ODBC::ODBC)
+endif()
 
 if(SLOPPY_ENABLE_V8)
     target_compile_features(sloppy_core PRIVATE cxx_std_20)
@@ -548,6 +570,8 @@ if(SLOPPY_ENABLE_TESTS)
         core.diagnostics.foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(
         data_postgres_provider data.postgres.provider tests/unit/data/test_postgres.c)
+    sloppy_add_c_unit_test(
+        data_sqlserver_provider data.sqlserver.provider tests/unit/data/test_sqlserver.c)
     sloppy_add_c_unit_test(data_sqlite_provider data.sqlite.provider tests/unit/data/test_sqlite.c)
     sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
 
@@ -612,6 +636,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.postgres_basic.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_postgres_basic_example.cmake")
+    add_test(
+        NAME examples.sqlserver_basic.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlserver_basic_example.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

@@ -59,11 +59,11 @@ foreach(required_pattern IN ITEMS
         "does not emit `app.plan.json`"
         "there is no real HTTP server"
         "real SQLite provider is covered by native C tests"
-        "no PostgreSQL or SQL Server provider yet"
+        "PostgreSQL and SQL Server have separate provider examples"
         "no database connection is opened"
         "no SQL is executed"
         "filesystem and network capabilities are not enforced"
-        "examples/sqlite-basic/"
+        "examples/sqlserver-basic/"
         "future bare `\"sloppy\"` import is planned only")
     require_substring(
         "${example_readme_md}" "${required_pattern}"

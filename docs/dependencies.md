@@ -14,7 +14,8 @@ platform-boundary expectations, and acceptance criteria for adding a new depende
 
 The foundation phase did not add V8, Oxc, sqlite, libpq, ODBC, TLS, compression, or other
 runtime dependencies before their relevant phases. libuv and llhttp are now allowed for the
-HTTP router foundation slice started by TASK 10.B.
+HTTP router foundation slice started by TASK 10.B. ODBC is allowed for EPIC-18 SQL Server
+provider work and remains isolated to that provider boundary.
 
 Use dependencies for:
 
@@ -49,7 +50,7 @@ Do not outsource:
 - yyjson: current Plan v1 JSON parser and future config parser candidate;
 - sqlite3: current first-class native SQLite integration;
 - libpq: current PostgreSQL provider backend;
-- Microsoft ODBC Driver for SQL Server / ODBC API: future SQL Server provider backend on
+- Microsoft ODBC Driver for SQL Server / ODBC API: current SQL Server provider backend on
   Windows;
 - munit: future C unit test framework;
 - future TLS, crypto, and compression dependencies as requirements become concrete.
@@ -95,8 +96,10 @@ artifacts.
 
 SQLite and libpq are consumed through vcpkg manifest mode for their provider implementation
 phases. libpq release packaging still needs an explicit DLL strategy. SQL Server support
-depends on Microsoft ODBC Driver availability on Windows; `sloppy doctor` should later
-detect whether the external driver is installed and usable.
+uses the platform ODBC headers/libraries discovered by CMake and depends on Microsoft ODBC
+Driver availability for live connections. The native SQL Server doctor helper detects
+driver-manager availability, missing/invalid driver names, and redacted connection
+configuration issues ahead of a future CLI `sloppy doctor`.
 
 All dependencies need explicit ownership, update, security, license, and test strategy
 before they become required in the default build.
@@ -302,6 +305,53 @@ Tests:
 
 - `tests/unit/data/test_postgres.c` covers redaction, invalid options, use after close,
   doctor diagnostics, and env-gated live connection/query/transaction/pool behavior.
+
+### ODBC / SQL Server
+
+EPIC-18 adds SQL Server through ODBC without vendoring or installing any SQL Server driver
+binaries.
+
+Why it is used:
+
+- SQL Server support should use the platform driver-manager model instead of a custom wire
+  protocol;
+- the Microsoft ODBC Driver owns SQL Server authentication, TLS negotiation, connection
+  string interpretation, and protocol details;
+- Sloppy keeps the native API as `SlSqlServerConnection`, `SlSqlServerParam`,
+  `SlSqlServerResult`, `SlSqlServerPool`, `SlStatus`, and `SlDiag`, so ODBC handles do not
+  leak through generic data headers or JavaScript.
+
+Build wiring:
+
+- `SLOPPY_ENABLE_SQLSERVER` defaults to `ON` on Windows and `OFF` elsewhere;
+- when enabled, CMake uses `find_package(ODBC REQUIRED)` and links `ODBC::ODBC`;
+- when disabled, the provider symbols remain available as stubs that report ODBC support
+  unavailable;
+- the Microsoft ODBC Driver for SQL Server is a runtime prerequisite for live use and is
+  not downloaded, installed, or vendored by Sloppy.
+
+Ownership and lifetime:
+
+- `src/data/sqlserver.c` is the only Sloppy source file that includes ODBC headers;
+- `SlSqlServerConnection` is caller-owned and closes deterministically through
+  `sl_sqlserver_close`;
+- `SQLHSTMT`, `SQLHDBC`, and `SQLHENV` handles are freed on every path;
+- rows, column names, text values, and diagnostics are copied into caller-provided arenas;
+- JavaScript sees only the stdlib `data.sqlserver` shape today, never a native pointer.
+
+License/update/security:
+
+- OS ODBC headers/libraries are toolchain/platform components;
+- Microsoft ODBC Driver license/update/CVE handling belongs to the local runtime
+  environment until release packaging policy is defined;
+- diagnostics and docs must redact `PWD`, `Password`, and access-token connection string
+  fields.
+
+Tests:
+
+- `tests/unit/data/test_sqlserver.c` covers redaction, driver-name parsing, missing-driver
+  diagnostics, invalid options, use after close, unsupported values, pool state behavior,
+  and env-gated live ODBC connection/query/transaction/pool behavior.
 
 ## Acceptance Criteria For Adding A Dependency
 

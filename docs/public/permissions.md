@@ -10,11 +10,11 @@ Implemented database capability metadata example:
 ```ts
 const DataModule = Sloppy.module("data")
   .capabilities(caps => {
-caps.addDatabase("data.main", {
-  provider: "sqlite",
-  path: ":memory:",
-  access: "readwrite",
-});
+    caps.addDatabase("data.main", {
+      provider: "sqlite",
+      path: ":memory:",
+      access: "readwrite",
+    });
   });
 ```
 
@@ -35,6 +35,10 @@ Implemented behavior:
   as `connectionString`. Use a secret-store reference, config key, or already-redacted
   placeholder before metadata is persisted or displayed. Diagnostics and PR notes must
   also redact credentials; runtime network permission enforcement is still deferred.
+- SQL Server follows the same secret rule: database capability metadata should prefer a
+  config key such as `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` over storing an ODBC
+  connection string. Diagnostics and PR notes must redact `PWD`, `Password`, and access
+  token fields. Runtime network permission enforcement is still deferred.
 
 Not implemented yet:
 
