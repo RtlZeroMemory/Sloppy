@@ -17,6 +17,10 @@ const app = Sloppy.create();
 app.mapGet("/", () => Results.text("ok"));
 ```
 
+The checked-in `examples/hello/app.js` uses the same API shape with a relative import from
+`stdlib/sloppy/index.js`. That relative import is current repository reality; the public
+bare import `"sloppy"` remains future compiler/runtime module-resolution work.
+
 `Sloppy.create()` does not build or freeze a native app graph yet. It returns a frozen
 JavaScript app facade backed by an internal route array.
 

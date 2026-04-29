@@ -206,6 +206,8 @@ Current checks:
   stdlib source files and copied build-tree assets exist. `bootstrap.stdlib.api_shape`
   statically checks the tiny TASK 11.B/11.C JavaScript API shape. These checks do not
   execute JavaScript or load ESM modules.
+- `examples.hello.api_shape` runs in the default CTest suite and statically checks the
+  first hello example. It also does not execute JavaScript or load ESM modules.
 
 Later checks:
 

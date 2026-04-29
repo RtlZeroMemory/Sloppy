@@ -43,6 +43,9 @@ TASK 11.B/11.C adds the first tiny public JavaScript facade inside that stdlib:
 `Results.text(...)`, `Results.json(...)`, `Sloppy.create()`, and `app.mapGet(...)`.
 This facade is in-memory and conceptual only. It does not run an app, emit a Sloppy Plan,
 serve HTTP, perform compiler extraction, validate requests, or integrate modules/services.
+TASK 11.D adds `examples/hello/` as the first checked-in bootstrap API-shape example. It
+uses a relative import from `stdlib/sloppy/index.js` because the public bare `"sloppy"`
+specifier remains future compiler/runtime behavior.
 
 ## Future Phase
 
@@ -99,6 +102,17 @@ TASK 11.B/11.C turns the first two placeholders into a minimal implemented API s
 `Results.text`, `Results.json`, `Sloppy.create`, `app.mapGet`, `.withName`, and
 `app.__getRoutes()` for tests/debugging. `Sloppy.create()` is not yet equivalent to a
 native default builder plus `build()`; that remains future app-host work.
+
+TASK 11.D adds the first checked-in tiny app example:
+
+```text
+examples/hello/
+  README.md
+  app.js
+```
+
+That example is static bootstrap validation only. It is not compiled by `sloppyc`, does not
+emit `app.plan.json`, and does not serve HTTP.
 
 ## Builder/App Shape
 

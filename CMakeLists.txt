@@ -574,6 +574,10 @@ if(SLOPPY_ENABLE_TESTS)
             "${CMAKE_COMMAND}" "-DSLOPPY_BOOTSTRAP_SOURCE_DIR=${SLOPPY_BOOTSTRAP_SOURCE_DIR}"
             "-DSLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_bootstrap_api.cmake")
+    add_test(
+        NAME examples.hello.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_hello_example.cmake")
 
     if(CARGO_EXECUTABLE)
         add_test(

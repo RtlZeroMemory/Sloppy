@@ -15,6 +15,10 @@ Implemented bootstrap API example:
 app.mapGet("/hello", () => Results.text("hello")).withName("Hello");
 ```
 
+`examples/hello/app.js` records a conceptual `GET /` route named `Hello.Index` through the
+current in-memory bootstrap facade. The route is not extracted into a Sloppy Plan and is
+not connected to native HTTP dispatch yet.
+
 `app.mapGet(pattern, handler)` currently:
 
 - requires `pattern` to be a non-empty string starting with `/`;

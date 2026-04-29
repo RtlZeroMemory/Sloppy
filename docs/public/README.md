@@ -1,6 +1,6 @@
 # Public Documentation
 
-Status: Planned / not implemented yet.
+Status: Partially implemented bootstrap API; runtime execution planned.
 
 This directory is for user/developer-facing documentation: how people will use Sloppy to
 build applications. It is distinct from internal architecture/spec docs under `docs/`.
@@ -22,3 +22,8 @@ Current files:
 
 Examples in this directory are planned API examples unless the page explicitly says the
 feature is implemented.
+
+Checked-in examples:
+
+- `examples/hello/`: current bootstrap API-shape example using the source stdlib through a
+  relative import. It is not a `sloppy run` app yet.

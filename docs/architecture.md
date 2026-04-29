@@ -78,6 +78,9 @@ first tiny ES module facade there: frozen `Results` helpers for text/json descri
 `app.__getRoutes()` for bootstrap tests/debugging. It does not implement compiler import
 rewriting, `app.plan.json` emission, runtime intrinsic binding, module resolution, app
 run/build/freeze semantics, HTTP serving, modules, services, middleware, or validation.
+TASK 11.D adds `examples/hello/` as a static bootstrap API-shape example that uses a
+relative import from `stdlib/sloppy/index.js`. It is not compiler output and is not a
+runnable HTTP app.
 
 ## Future Phase
 
