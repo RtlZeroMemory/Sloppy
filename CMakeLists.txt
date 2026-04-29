@@ -243,6 +243,7 @@ find_package(yyjson CONFIG REQUIRED)
 find_package(llhttp CONFIG REQUIRED)
 find_package(libuv CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
+find_package(PostgreSQL REQUIRED)
 
 if(TARGET llhttp::llhttp_static)
     set(SLOPPY_LLHTTP_TARGET llhttp::llhttp_static)
@@ -281,6 +282,7 @@ set(
     src/core/plan_parse.c
     src/core/runtime_contract.c
     src/core/diagnostics.c
+    src/data/postgres.c
     src/data/sqlite.c
     src/engine/engine.c)
 
@@ -310,6 +312,7 @@ set(
     tests/unit/core/test_runtime_contract.c
     tests/unit/core/test_engine.c
     tests/unit/core/test_diagnostics.c
+    tests/unit/data/test_postgres.c
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c
     tests/unit/data/test_sqlite.c)
@@ -331,6 +334,7 @@ target_link_libraries(
     PRIVATE yyjson::yyjson
             ${SLOPPY_LLHTTP_TARGET}
             ${SLOPPY_LIBUV_TARGET}
+            PostgreSQL::PostgreSQL
             unofficial::sqlite3::sqlite3)
 
 if(SLOPPY_ENABLE_V8)
@@ -542,6 +546,8 @@ if(SLOPPY_ENABLE_TESTS)
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
     set_tests_properties(
         core.diagnostics.foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(
+        data_postgres_provider data.postgres.provider tests/unit/data/test_postgres.c)
     sloppy_add_c_unit_test(data_sqlite_provider data.sqlite.provider tests/unit/data/test_sqlite.c)
     sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
 
@@ -602,6 +608,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.sqlite_basic.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlite_basic_example.cmake")
+    add_test(
+        NAME examples.postgres_basic.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_postgres_basic_example.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

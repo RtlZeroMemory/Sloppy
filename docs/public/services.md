@@ -59,6 +59,12 @@ an ordinary bootstrap singleton; it does not open a database connection.
 bridge-unavailable error if resolved from JavaScript. Native SQLite execution is covered by
 C tests until stdlib-to-native intrinsics exist.
 
+`examples/postgres-basic/app.js` shows the intended PostgreSQL service registration through
+`data.postgres.open({ connectionString, maxConnections })`. That factory currently fails
+with an honest bridge-unavailable error if resolved from JavaScript. Native PostgreSQL
+execution is covered by C tests, with live database coverage gated by
+`SLOPPY_POSTGRES_TEST_URL`.
+
 Not implemented yet: request-scoped lifetimes, disposal hooks, async factories, service
 dependency graph validation, service cycle diagnostics, typed tokens, decorators, native
 service graph validation, and real plan emission.

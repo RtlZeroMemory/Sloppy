@@ -31,6 +31,10 @@ Implemented behavior:
 - SQLite examples may include `path: ":memory:"` in copied metadata. This is provider
   metadata only today; runtime permission enforcement and file database policy are still
   deferred.
+- PostgreSQL copied metadata must not normalize or store credential-bearing fields such
+  as `connectionString`. Use a secret-store reference, config key, or already-redacted
+  placeholder before metadata is persisted or displayed. Diagnostics and PR notes must
+  also redact credentials; runtime network permission enforcement is still deferred.
 
 Not implemented yet:
 

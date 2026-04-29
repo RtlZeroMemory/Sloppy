@@ -73,6 +73,10 @@ Current tests:
   parameterized exec/query/queryOne, primitive type binding, transaction commit/rollback,
   nested transaction rejection, transaction use after complete, invalid SQL/missing table
   diagnostics, unsupported parameter diagnostics, and invalid open diagnostics;
+- CTest unit test `data.postgres.provider`, which links libpq and verifies PostgreSQL
+  option validation, connection-string redaction, doctor diagnostics, and use-after-close
+  behavior. Live connection/query/transaction/pool coverage is opt-in and runs only when
+  `SLOPPY_POSTGRES_TEST_URL` is set;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
   hello example files exist, use the current relative stdlib import, use
   `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
@@ -94,6 +98,11 @@ Current tests:
   EPIC-16 SQLite example files exist, use the current relative stdlib import, demonstrate
   SQLite capability/service registration through `data.sqlite`, and honestly document the
   native-provider/stdlib-bridge split;
+- CTest structural check `examples.postgres_basic.api_shape`, which statically verifies
+  the EPIC-17 PostgreSQL example files exist, use the current relative stdlib import,
+  demonstrate PostgreSQL capability/service registration through `data.postgres`, show
+  `$1` placeholder lowering and transaction usage, and honestly document the live-server
+  and stdlib-bridge limitations;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -126,6 +135,16 @@ Tests are invoked through:
 .\tools\windows\dev.ps1 lint
 cargo test --manifest-path compiler/Cargo.toml
 ```
+
+PostgreSQL live provider tests are gated by environment variable and are skipped by default:
+
+```powershell
+$env:SLOPPY_POSTGRES_TEST_URL="postgres://postgres:postgres@localhost:5432/sloppy_test"
+.\tools\windows\dev.ps1 test
+```
+
+Do not paste credentials into PR bodies or diagnostics. Use a redacted connection string
+when reporting live test commands.
 
 ## Test Layout
 

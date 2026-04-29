@@ -90,10 +90,20 @@ platform implementation layer can support them.
 vcpkg manifest mode is reserved for normal C dependencies. TASK 06.B introduces `yyjson`
 through the manifest for Plan JSON parsing. TASK 10.B introduces `llhttp` for HTTP/1
 request-head parsing and `libuv` for a dependency/link smoke ahead of the future event-loop
-backend.
+backend. EPIC-16 introduces `sqlite3` for the native SQLite provider. EPIC-17 introduces
+`libpq` for the native PostgreSQL provider.
 
-Do not add sqlite, libpq, ODBC, or other runtime dependencies until the relevant
-implementation phase. Do not add a second HTTP parser or a custom HTTP parser.
+Do not add ODBC or other runtime dependencies until the relevant implementation phase. Do
+not add a second HTTP parser or a custom HTTP parser.
+
+PostgreSQL build and distribution notes:
+
+- libpq is restored through the vcpkg manifest and linked through CMake's
+  `PostgreSQL::PostgreSQL` target.
+- Default tests do not require a running PostgreSQL server.
+- Live PostgreSQL tests run only when `SLOPPY_POSTGRES_TEST_URL` is set.
+- Release packaging still needs an explicit libpq DLL/shared-library copy and license
+  strategy; do not assume a system-global PostgreSQL installation will be present.
 
 ## V8 SDK Policy
 

@@ -440,6 +440,12 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_DATABASE_UNSUPPORTED_VALUE:
         return sl_diag_literal("SLOPPY_E_DATABASE_UNSUPPORTED_VALUE",
                                sizeof("SLOPPY_E_DATABASE_UNSUPPORTED_VALUE") - 1U);
+    case SL_DIAG_POSTGRES_PROVIDER_ERROR:
+        return sl_diag_literal("SLOPPY_E_POSTGRES_PROVIDER",
+                               sizeof("SLOPPY_E_POSTGRES_PROVIDER") - 1U);
+    case SL_DIAG_POSTGRES_POOL_EXHAUSTED:
+        return sl_diag_literal("SLOPPY_E_POSTGRES_POOL_EXHAUSTED",
+                               sizeof("SLOPPY_E_POSTGRES_POOL_EXHAUSTED") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }
