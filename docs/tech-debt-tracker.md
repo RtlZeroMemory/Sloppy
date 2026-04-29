@@ -31,8 +31,9 @@ state and an honest public-alpha path.
 - Cross-platform release validation: EPIC-25 adds local Windows ZIP tooling, Unix TAR
   tooling, checksums, and outside-checkout ZIP smoke, but Linux/macOS package execution and
   CI validation remain open.
-- Public alpha docs/examples: at least one executable hello and one executable SQLite demo
-  must run through the real Sloppy toolchain, not Node/static checks.
+- Public alpha docs/examples: at least one executable hello must run through the real
+  Sloppy toolchain, and the SQLite demo must either run through a real JS-native bridge or
+  be explicitly documented as deferred.
 
 ## Should Fix Soon
 
@@ -57,7 +58,8 @@ state and an honest public-alpha path.
 - Benchmark methodology hardening: release-only measured runs, local artifact policy,
   hardware/build metadata, and no external comparisons until comparable paths exist.
 - GitHub issue cleanup: close implemented child/parent issues, relabel deferred follow-ups,
-  and add EPIC-21 onward issues after the next roadmap is approved.
+  and create only deduped MAIN/MAIN.1 issues after the roadmap and cleanup plan are
+  approved. EPIC-21 through EPIC-26 implementation issues should not be recreated.
 
 ## Deferred By Design
 
@@ -121,8 +123,9 @@ state and an honest public-alpha path.
   after their scoped child tasks closed.
 - Decide whether to close or retitle legacy open tasks that are now superseded by
   EPIC-21 onward.
-- Update `tools/github/create-issues.ps1` with an explicit `-Input` parameter only after
-  the team wants alternate issue-data files to be first-class.
+- Review `docs/project/current-issue-state-audit.md` and
+  `docs/project/main-main1-issue-cleanup-plan.md`, then apply approved GitHub issue cleanup
+  separately.
 - Remove duplicate or contradictory "Current Phase" paragraphs as docs continue to evolve.
 
 ## Overengineering Watchlist

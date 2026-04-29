@@ -1,5 +1,19 @@
 # Next Roadmap: EPIC-23 Through EPIC-28
 
+Status: superseded as the active next-roadmap source by ROADMAP MAIN and ROADMAP MAIN.1.
+
+The EPIC-23 through EPIC-26 child tasks have now closed in GitHub and their implementation
+PRs have merged. This document is retained as historical context for that batch and for
+duplicate detection. Do not use `tools/github/next-roadmap-issues.json` to create fresh
+EPIC-23 through EPIC-26 issues. Use:
+
+- `docs/project/current-issue-state-audit.md`;
+- `docs/project/main-main1-scope.md`;
+- `docs/project/roadmap-main.md`;
+- `docs/project/roadmap-main-1-hardening.md`;
+- `tools/github/roadmap-main-issues.json`;
+- `tools/github/roadmap-main1-issues.json`.
+
 ## Purpose
 
 This document defines the remaining coherent roadmap batch after the EPIC-00 through
@@ -16,6 +30,14 @@ pretending Sloppy is production ready.
   issue in this ceremony pass.
 - EPIC-22 Sloppy Run MVP is complete and should not be recreated as a new GitHub issue in
   this ceremony pass.
+- EPIC-23 HTTP Response Writer and Request Context is complete for its scoped MVP and
+  should not be recreated as new GitHub issue work.
+- EPIC-24 V8 Module Loading and Bootstrap Runtime is complete for the classic bootstrap
+  runtime scope and should not be recreated as new GitHub issue work.
+- EPIC-25 Release Packaging and Distribution is complete for experimental local package
+  tooling and should not be recreated as new GitHub issue work.
+- EPIC-26 Cross-platform CI Expansion is complete for default non-V8 hosted CI and
+  explicit optional gate reporting and should not be recreated as new GitHub issue work.
 
 ## Non-Goals For The Batch
 
@@ -91,8 +113,9 @@ from `tools/github/next-roadmap-issues.json`.
 
 Summary: make the first dev-only executable app path.
 
-Goal: `sloppy run` builds or loads artifacts, starts a local single-process HTTP server,
-routes GET requests, calls a V8 handler, and returns text/json responses.
+Goal: `sloppy run --artifacts` loads artifacts, starts a local single-process HTTP server,
+routes GET requests, calls a V8 handler, and returns text/json responses. Source-input
+handoff to `sloppyc` remains deferred and is tracked by MAIN.1 hardening.
 
 Non-goals:
 
@@ -412,19 +435,23 @@ Acceptance criteria:
 
 ## Issue Generation Notes
 
-`tools/github/next-roadmap-issues.json` contains reviewed issue data for the remaining
-roadmap work. The GitHub issue scripts support an explicit `-Input` override, so EPIC-23
-onward issues can be validated, summarized, dry-run, and applied without copying entries
-into `tools/github/issues.json`.
+`tools/github/next-roadmap-issues.json` is now historical. It is useful for comparing the
+original EPIC-23 through EPIC-28 proposal against the live tracker, but it should not be
+applied because EPIC-23 through EPIC-26 already landed. Fresh staged issue data lives in
+`tools/github/roadmap-main-issues.json` and `tools/github/roadmap-main1-issues.json`.
 
 Dry-run before applying:
 
 ```powershell
-.\tools\github\validate-issue-data.ps1 -Input tools/github/next-roadmap-issues.json
-.\tools\github\dry-run-summary.ps1 -Input tools/github/next-roadmap-issues.json
-.\tools\github\create-issues.ps1 -Input tools/github/next-roadmap-issues.json -DryRun
+.\tools\github\validate-issue-data.ps1 -Input tools/github/roadmap-main-issues.json
+.\tools\github\dry-run-summary.ps1 -Input tools/github/roadmap-main-issues.json
+.\tools\github\create-issues.ps1 -Input tools/github/roadmap-main-issues.json -DryRun
+
+.\tools\github\validate-issue-data.ps1 -Input tools/github/roadmap-main1-issues.json
+.\tools\github\dry-run-summary.ps1 -Input tools/github/roadmap-main1-issues.json
+.\tools\github\create-issues.ps1 -Input tools/github/roadmap-main1-issues.json -DryRun
 ```
 
 Mutation remains explicit through `-Apply`, and issue creation skips exact-title matches
-instead of duplicating existing issues. EPIC-21 and EPIC-22 are already complete and are
-intentionally excluded from the next-roadmap issue input.
+instead of duplicating existing issues. Do not apply either staged file until the MAIN and
+MAIN.1 roadmaps and issue cleanup plan are reviewed.
