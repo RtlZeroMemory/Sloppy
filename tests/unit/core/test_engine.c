@@ -276,6 +276,95 @@ static int test_noop_eval_source_and_call_function_are_unsupported(void)
     return 0;
 }
 
+static int test_call_function_with_context_rejects_malformed_context(void)
+{
+    unsigned char storage[1024];
+    unsigned char result_storage[256];
+    SlArena arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = noop_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlHttpRequestHead request = {0};
+    SlRouteParam route_param = {0};
+    SlHttpQueryParam query_param = {0};
+    SlHttpRequestContext context = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 60;
+    }
+
+    if (expect_status(sl_engine_create(&options, &arena, &engine), SL_STATUS_OK) != 0) {
+        return 61;
+    }
+
+    request.method = SL_HTTP_METHOD_GET;
+    request.path = sl_str_from_cstr("/users/123");
+    request.raw_target = sl_str_from_cstr("/users/123?q=abc");
+    route_param.name = sl_str_from_cstr("id");
+    route_param.value = sl_str_from_cstr("123");
+    query_param.name = sl_str_from_cstr("q");
+    query_param.value = sl_str_from_cstr("abc");
+
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("handler"), NULL, &result, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 62;
+    }
+
+    context.request = NULL;
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("handler"), &context,
+                                                           &result, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 63;
+    }
+
+    context.request = &request;
+    context.route_param_count = 1U;
+    context.route_params = NULL;
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("handler"), &context,
+                                                           &result, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 64;
+    }
+
+    context.route_param_count = 0U;
+    context.route_params = &route_param;
+    context.query_param_count = 1U;
+    context.query_params = NULL;
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("handler"), &context,
+                                                           &result, NULL),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 65;
+    }
+
+    context.query_params = &query_param;
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("handler"), &context,
+                                                           &result, NULL),
+                      SL_STATUS_UNSUPPORTED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 66;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -310,5 +399,10 @@ int main(void)
         return result;
     }
 
-    return test_noop_eval_source_and_call_function_are_unsupported();
+    result = test_noop_eval_source_and_call_function_are_unsupported();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_call_function_with_context_rejects_malformed_context();
 }

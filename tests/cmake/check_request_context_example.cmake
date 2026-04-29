@@ -32,7 +32,7 @@ foreach(required IN ITEMS
         "dev-only"
         "route.id"
         "query.q"
-        "strings"
+        "receives `route.id` as the string"
         "last-wins"
         "body parsing"
         "not implemented")

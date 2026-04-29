@@ -240,9 +240,16 @@ SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* b
         }
     }
 
-    if (!sl_http_response_append_cstr(buffer, capacity, &length, "Content-Length: ") ||
-        !sl_http_response_append_uint(buffer, capacity, &length, body.length) ||
-        !sl_http_response_append_cstr(buffer, capacity, &length, "\r\n\r\n") ||
+    if (response->status != 204U) {
+        if (!sl_http_response_append_cstr(buffer, capacity, &length, "Content-Length: ") ||
+            !sl_http_response_append_uint(buffer, capacity, &length, body.length) ||
+            !sl_http_response_append_cstr(buffer, capacity, &length, "\r\n"))
+        {
+            return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        }
+    }
+
+    if (!sl_http_response_append_cstr(buffer, capacity, &length, "\r\n") ||
         !sl_http_response_append_bytes(buffer, capacity, &length, body))
     {
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);

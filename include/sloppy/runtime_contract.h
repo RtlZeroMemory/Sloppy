@@ -40,6 +40,13 @@ SlStatus sl_runtime_contract_call_handler(SlEngine* engine, SlArena* arena, cons
                                           SlHandlerId handler_id, SlEngineResult* out_result,
                                           SlDiag* out_diag);
 
+/*
+ * Executes the same plan handler lookup with one borrowed request context argument.
+ *
+ * `request_context` is required, is borrowed only for this call, and is not retained by the
+ * runtime contract or engine bridge. Its nested request, route parameter, and query
+ * parameter views must stay valid for the duration of the call.
+ */
 SlStatus sl_runtime_contract_call_handler_with_context(SlEngine* engine, SlArena* arena,
                                                        const SlPlan* plan, SlHandlerId handler_id,
                                                        const SlHttpRequestContext* request_context,

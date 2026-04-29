@@ -1377,7 +1377,9 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
         return response_bytes.length > (size_t)INT32_MAX ? -1 : (int)response_bytes.length;
     }
 
-    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED) {
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag.code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
+    {
         return sl_run_write_response(response, response_capacity, 405U, "text/plain; charset=utf-8",
                                      sl_str_from_cstr("Method Not Allowed\n"));
     }

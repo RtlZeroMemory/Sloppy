@@ -769,7 +769,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             } else {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER",
-                    "route handler must be a simple function returning Results.text(...) or Results.json(...)",
+                    "route handler must be a simple function returning Results.text(...), Results.json(...), Results.ok(...), or Results.noContent()",
                     None,
                 )
             }
@@ -796,7 +796,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             } else {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER",
-                    "route handler must be a simple function returning Results.text(...) or Results.json(...)",
+                    "route handler must be a simple function returning Results.text(...), Results.json(...), Results.ok(...), or Results.noContent()",
                     None,
                 )
             }
@@ -861,13 +861,14 @@ fn parameters_have_typescript_syntax(parameters: &oxc_ast::ast::FormalParameters
 fn handler_result_uses_unsupported_values_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
 ) -> bool {
+    let roots = function_parameter_roots(&function.params);
     if function.expression {
         return function
             .body
             .statements
             .first()
             .and_then(expression_statement_result_call)
-            .is_some_and(|call| !results_call_arguments_are_supported(call));
+            .is_some_and(|call| !results_call_arguments_are_supported(call, &roots));
     }
 
     function
@@ -875,17 +876,18 @@ fn handler_result_uses_unsupported_values_arrow(
         .statements
         .first()
         .and_then(return_statement_result_call)
-        .is_some_and(|call| !results_call_arguments_are_supported(call))
+        .is_some_and(|call| !results_call_arguments_are_supported(call, &roots))
 }
 
 fn handler_result_uses_unsupported_values_function(function: &oxc_ast::ast::Function<'_>) -> bool {
+    let roots = function_parameter_roots(&function.params);
     let Some(body) = &function.body else {
         return false;
     };
     body.statements
         .first()
         .and_then(return_statement_result_call)
-        .is_some_and(|call| !results_call_arguments_are_supported(call))
+        .is_some_and(|call| !results_call_arguments_are_supported(call, &roots))
 }
 
 fn argument_span(argument: &Argument<'_>) -> Option<Span> {
@@ -938,17 +940,16 @@ fn argument_span(argument: &Argument<'_>) -> Option<Span> {
 }
 
 fn handler_body_is_supported_arrow(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
+    let roots = function_parameter_roots(&function.params);
     if function.r#async {
         return false;
     }
 
     if function.expression {
         return function.body.statements.len() == 1
-            && function
-                .body
-                .statements
-                .first()
-                .is_some_and(expression_statement_is_supported_result);
+            && function.body.statements.first().is_some_and(|statement| {
+                expression_statement_is_supported_result(statement, &roots)
+            });
     }
 
     function.body.statements.len() == 1
@@ -956,10 +957,11 @@ fn handler_body_is_supported_arrow(function: &oxc_ast::ast::ArrowFunctionExpress
             .body
             .statements
             .first()
-            .is_some_and(return_statement_returns_supported_result)
+            .is_some_and(|statement| return_statement_returns_supported_result(statement, &roots))
 }
 
 fn handler_body_is_supported_function(function: &oxc_ast::ast::Function<'_>) -> bool {
+    let roots = function_parameter_roots(&function.params);
     if function.r#async || function.generator || function.body.is_none() {
         return false;
     }
@@ -970,15 +972,23 @@ fn handler_body_is_supported_function(function: &oxc_ast::ast::Function<'_>) -> 
         && body
             .statements
             .first()
-            .is_some_and(return_statement_returns_supported_result)
+            .is_some_and(|statement| return_statement_returns_supported_result(statement, &roots))
 }
 
-fn return_statement_returns_supported_result(statement: &Statement<'_>) -> bool {
-    return_statement_result_call(statement).is_some_and(results_call_arguments_are_supported)
+fn return_statement_returns_supported_result(
+    statement: &Statement<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
+    return_statement_result_call(statement)
+        .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots))
 }
 
-fn expression_statement_is_supported_result(statement: &Statement<'_>) -> bool {
-    expression_statement_result_call(statement).is_some_and(results_call_arguments_are_supported)
+fn expression_statement_is_supported_result(
+    statement: &Statement<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
+    expression_statement_result_call(statement)
+        .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots))
 }
 
 fn return_statement_result_call<'a>(
@@ -1005,7 +1015,7 @@ fn result_call<'a>(expression: &'a Expression<'a>) -> Option<&'a CallExpression<
         return None;
     };
     if static_member_name(&call.callee).is_some_and(|(object, property)| {
-        object == "Results" && matches!(property, "text" | "json")
+        object == "Results" && matches!(property, "text" | "json" | "ok" | "noContent")
     }) {
         Some(call)
     } else {
@@ -1013,15 +1023,33 @@ fn result_call<'a>(expression: &'a Expression<'a>) -> Option<&'a CallExpression<
     }
 }
 
-fn results_call_arguments_are_supported(call: &CallExpression<'_>) -> bool {
-    matches!(call.arguments.len(), 1 | 2)
+fn results_call_arguments_are_supported(
+    call: &CallExpression<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
+    let Some((object, property)) = static_member_name(&call.callee) else {
+        return false;
+    };
+    if object != "Results" {
+        return false;
+    }
+
+    if property == "noContent" {
+        return call.arguments.is_empty();
+    }
+
+    matches!(property, "text" | "json" | "ok")
+        && matches!(call.arguments.len(), 1 | 2)
         && call
             .arguments
             .iter()
-            .all(argument_is_inline_json_safe_value)
+            .all(|argument| argument_is_inline_json_safe_value(argument, allowed_roots))
 }
 
-fn argument_is_inline_json_safe_value(argument: &Argument<'_>) -> bool {
+fn argument_is_inline_json_safe_value(
+    argument: &Argument<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
     match argument {
         Argument::StringLiteral(_)
         | Argument::NumericLiteral(_)
@@ -1030,7 +1058,7 @@ fn argument_is_inline_json_safe_value(argument: &Argument<'_>) -> bool {
         Argument::ArrayExpression(array) => array
             .elements
             .iter()
-            .all(array_element_is_inline_json_safe_value),
+            .all(|element| array_element_is_inline_json_safe_value(element, allowed_roots)),
         Argument::ObjectExpression(object) => {
             object.properties.iter().all(|property| match property {
                 ObjectPropertyKind::ObjectProperty(property) => {
@@ -1039,20 +1067,25 @@ fn argument_is_inline_json_safe_value(argument: &Argument<'_>) -> bool {
                         && !property.shorthand
                         && !property.computed
                         && property_key_is_inline_json_safe(&property.key)
-                        && expression_is_inline_json_safe_value(&property.value)
+                        && expression_is_inline_json_safe_value(&property.value, allowed_roots)
                 }
                 ObjectPropertyKind::SpreadProperty(_) => false,
             })
         }
-        Argument::StaticMemberExpression(_) => true,
+        Argument::StaticMemberExpression(member) => {
+            static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
+        }
         Argument::ParenthesizedExpression(parenthesized) => {
-            expression_is_inline_json_safe_value(&parenthesized.expression)
+            expression_is_inline_json_safe_value(&parenthesized.expression, allowed_roots)
         }
         _ => false,
     }
 }
 
-fn array_element_is_inline_json_safe_value(element: &ArrayExpressionElement<'_>) -> bool {
+fn array_element_is_inline_json_safe_value(
+    element: &ArrayExpressionElement<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
     match element {
         ArrayExpressionElement::StringLiteral(_)
         | ArrayExpressionElement::NumericLiteral(_)
@@ -1061,7 +1094,7 @@ fn array_element_is_inline_json_safe_value(element: &ArrayExpressionElement<'_>)
         ArrayExpressionElement::ArrayExpression(array) => array
             .elements
             .iter()
-            .all(array_element_is_inline_json_safe_value),
+            .all(|element| array_element_is_inline_json_safe_value(element, allowed_roots)),
         ArrayExpressionElement::ObjectExpression(object) => {
             object.properties.iter().all(|property| match property {
                 ObjectPropertyKind::ObjectProperty(property) => {
@@ -1070,7 +1103,7 @@ fn array_element_is_inline_json_safe_value(element: &ArrayExpressionElement<'_>)
                         && !property.shorthand
                         && !property.computed
                         && property_key_is_inline_json_safe(&property.key)
-                        && expression_is_inline_json_safe_value(&property.value)
+                        && expression_is_inline_json_safe_value(&property.value, allowed_roots)
                 }
                 ObjectPropertyKind::SpreadProperty(_) => false,
             })
@@ -1079,7 +1112,10 @@ fn array_element_is_inline_json_safe_value(element: &ArrayExpressionElement<'_>)
     }
 }
 
-fn expression_is_inline_json_safe_value(expression: &Expression<'_>) -> bool {
+fn expression_is_inline_json_safe_value(
+    expression: &Expression<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
     match expression {
         Expression::StringLiteral(_)
         | Expression::NumericLiteral(_)
@@ -1088,7 +1124,7 @@ fn expression_is_inline_json_safe_value(expression: &Expression<'_>) -> bool {
         Expression::ArrayExpression(array) => array
             .elements
             .iter()
-            .all(array_element_is_inline_json_safe_value),
+            .all(|element| array_element_is_inline_json_safe_value(element, allowed_roots)),
         Expression::ObjectExpression(object) => {
             object.properties.iter().all(|property| match property {
                 ObjectPropertyKind::ObjectProperty(property) => {
@@ -1097,16 +1133,64 @@ fn expression_is_inline_json_safe_value(expression: &Expression<'_>) -> bool {
                         && !property.shorthand
                         && !property.computed
                         && property_key_is_inline_json_safe(&property.key)
-                        && expression_is_inline_json_safe_value(&property.value)
+                        && expression_is_inline_json_safe_value(&property.value, allowed_roots)
                 }
                 ObjectPropertyKind::SpreadProperty(_) => false,
             })
         }
         Expression::ParenthesizedExpression(parenthesized) => {
-            expression_is_inline_json_safe_value(&parenthesized.expression)
+            expression_is_inline_json_safe_value(&parenthesized.expression, allowed_roots)
         }
-        Expression::StaticMemberExpression(_) => true,
+        Expression::StaticMemberExpression(member) => {
+            static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
+        }
         _ => false,
+    }
+}
+
+fn function_parameter_roots(parameters: &oxc_ast::ast::FormalParameters<'_>) -> BTreeSet<String> {
+    let mut roots = BTreeSet::new();
+    for parameter in &parameters.items {
+        collect_binding_roots(&parameter.pattern, &mut roots);
+    }
+    roots
+}
+
+fn collect_binding_roots(binding: &BindingPattern<'_>, roots: &mut BTreeSet<String>) {
+    match binding {
+        BindingPattern::BindingIdentifier(identifier) => {
+            roots.insert(identifier.name.as_str().to_string());
+        }
+        BindingPattern::ObjectPattern(pattern) => {
+            for property in &pattern.properties {
+                collect_binding_roots(&property.value, roots);
+            }
+            if let Some(rest) = &pattern.rest {
+                collect_binding_roots(&rest.argument, roots);
+            }
+        }
+        BindingPattern::ArrayPattern(pattern) => {
+            for element in pattern.elements.iter().flatten() {
+                collect_binding_roots(element, roots);
+            }
+            if let Some(rest) = &pattern.rest {
+                collect_binding_roots(&rest.argument, roots);
+            }
+        }
+        BindingPattern::AssignmentPattern(pattern) => {
+            collect_binding_roots(&pattern.left, roots);
+        }
+    }
+}
+
+fn static_member_root_name<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
+    match expression {
+        Expression::Identifier(identifier) => Some(identifier.name.as_str()),
+        Expression::StaticMemberExpression(member) => static_member_root_name(&member.object),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            static_member_root_name(&parenthesized.expression)
+        }
+        _ => None,
     }
 }
 
@@ -1492,6 +1576,33 @@ export default app;
             diagnostic.code,
             "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
         );
+    }
+
+    #[test]
+    fn accepts_ok_and_no_content_result_helpers() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.mapGet("/ok", () => Results.ok({ ok: true }));
+app.mapGet("/empty", () => Results.noContent());
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+        assert_eq!(app.routes.len(), 2);
+        assert_eq!(app.routes[0].pattern, "/ok");
+        assert_eq!(app.routes[1].pattern, "/empty");
+    }
+
+    #[test]
+    fn rejects_member_expression_captures_outside_context_roots() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const config = { message: "captured" };
+app.mapGet("/", (ctx) => Results.json({ message: config.message, id: ctx.route.id }));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("captured member expression should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
     }
 
     #[test]

@@ -230,6 +230,9 @@ SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, 
     *out_result = (SlEngineResult){0};
 
     if (engine == NULL || !engine->active || arena == NULL || request_context == NULL ||
+        request_context->request == NULL ||
+        (request_context->route_param_count != 0U && request_context->route_params == NULL) ||
+        (request_context->query_param_count != 0U && request_context->query_params == NULL) ||
         !sl_engine_str_valid(function_name) || function_name.length == 0U)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);

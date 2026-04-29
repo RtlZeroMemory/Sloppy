@@ -1,6 +1,7 @@
 #include "sloppy/http_response.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 static int expect_true(bool condition)
@@ -47,8 +48,7 @@ static int test_json_200_exact_bytes(void)
 static int test_no_content_writes_no_body_or_content_type(void)
 {
     return expect_response(sl_http_response_text(204U, sl_str_from_cstr("ignored")),
-                           "HTTP/1.1 204 No Content\r\nConnection: close\r\nContent-Length: "
-                           "0\r\n\r\n");
+                           "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
 }
 
 static int test_statuses_and_content_length(void)
@@ -84,27 +84,40 @@ static int test_invalid_status_and_content_type_are_rejected(void)
                          SL_STATUS_INVALID_ARGUMENT);
 }
 
+static int run_test(const char* name, int (*test)(void))
+{
+    int result = test();
+
+    if (result != 0) {
+        fprintf_s(stderr, "FAIL: %s returned %d\n", name, result);
+    }
+
+    return result;
+}
+
 int main(void)
 {
-    int result = test_text_200_exact_bytes();
+    int result = run_test("test_text_200_exact_bytes", test_text_200_exact_bytes);
     if (result != 0) {
         return result;
     }
 
-    result = test_json_200_exact_bytes();
+    result = run_test("test_json_200_exact_bytes", test_json_200_exact_bytes);
     if (result != 0) {
         return result;
     }
 
-    result = test_no_content_writes_no_body_or_content_type();
+    result = run_test("test_no_content_writes_no_body_or_content_type",
+                      test_no_content_writes_no_body_or_content_type);
     if (result != 0) {
         return result;
     }
 
-    result = test_statuses_and_content_length();
+    result = run_test("test_statuses_and_content_length", test_statuses_and_content_length);
     if (result != 0) {
         return result;
     }
 
-    return test_invalid_status_and_content_type_are_rejected();
+    return run_test("test_invalid_status_and_content_type_are_rejected",
+                    test_invalid_status_and_content_type_are_rejected);
 }

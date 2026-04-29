@@ -115,8 +115,9 @@ Extraction must be deterministic. Import order must not silently decide module o
 
 Unsupported input fails with diagnostics. The MVP rejects dynamic route strings, computed
 method names, multiple app objects, missing default export, unsupported handler shapes,
-handlers with parameters, handlers that close over source-file bindings, TypeScript input
-or TypeScript-only handler syntax, dynamic imports, package resolution, broad module
+handlers with more than one parameter, handlers whose one parameter is not the supported
+request-context binding shape, handlers that close over source-file bindings, TypeScript
+input or TypeScript-only handler syntax, dynamic imports, package resolution, broad module
 graphs, and top-level control flow.
 
 ## Static Mode

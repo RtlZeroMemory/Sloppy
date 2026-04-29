@@ -400,6 +400,28 @@ bool sl_v8_set_object_property(v8::Isolate* isolate, v8::Local<v8::Context> cont
     return object->Set(context, key, value).FromMaybe(false);
 }
 
+SlStr sl_v8_request_method_name(SlHttpMethod method)
+{
+    switch (method) {
+    case SL_HTTP_METHOD_GET:
+        return sl_str_from_cstr("GET");
+    case SL_HTTP_METHOD_POST:
+        return sl_str_from_cstr("POST");
+    case SL_HTTP_METHOD_PUT:
+        return sl_str_from_cstr("PUT");
+    case SL_HTTP_METHOD_PATCH:
+        return sl_str_from_cstr("PATCH");
+    case SL_HTTP_METHOD_DELETE:
+        return sl_str_from_cstr("DELETE");
+    case SL_HTTP_METHOD_OPTIONS:
+        return sl_str_from_cstr("OPTIONS");
+    case SL_HTTP_METHOD_HEAD:
+        return sl_str_from_cstr("HEAD");
+    default:
+        return sl_str_empty();
+    }
+}
+
 bool sl_v8_make_context_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                const SlHttpRequestContext* request_context,
                                v8::Local<v8::Object>* out)
@@ -409,8 +431,13 @@ bool sl_v8_make_context_object(v8::Isolate* isolate, v8::Local<v8::Context> cont
     v8::Local<v8::Object> query = v8::Object::New(isolate);
     v8::Local<v8::Object> request = v8::Object::New(isolate);
     size_t index = 0U;
+    SlStr method = sl_str_empty();
 
     if (request_context == nullptr || request_context->request == nullptr || out == nullptr) {
+        return false;
+    }
+    method = sl_v8_request_method_name(request_context->request->method);
+    if (sl_str_is_empty(method)) {
         return false;
     }
 
@@ -438,7 +465,7 @@ bool sl_v8_make_context_object(v8::Isolate* isolate, v8::Local<v8::Context> cont
         }
     }
 
-    if (!sl_v8_set_string_property(isolate, context, request, "method", sl_str_from_cstr("GET")) ||
+    if (!sl_v8_set_string_property(isolate, context, request, "method", method) ||
         !sl_v8_set_string_property(isolate, context, request, "path",
                                    request_context->request->path) ||
         !sl_v8_set_string_property(isolate, context, request, "rawTarget",
