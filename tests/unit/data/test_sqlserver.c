@@ -87,6 +87,7 @@ static int test_redaction_driver_parse_and_doctor(void)
     SlArena arena = {0};
     SlStr redacted = {0};
     SlStr driver = {0};
+    SlStr oversized = {.ptr = "", .length = SIZE_MAX};
     SlDiag diag = {0};
     SlSqlServerDoctorResult doctor = {0};
     SlSqlServerOpenOptions options = sl_sqlserver_open_options_connection_string(sl_str_from_cstr(
@@ -111,9 +112,25 @@ static int test_redaction_driver_parse_and_doctor(void)
     {
         return 11;
     }
+    status = sl_sqlserver_redact_connection_string(
+        &arena,
+        sl_str_from_cstr("Driver = {ODBC Driver 18 for SQL Server};UID=sa;PWD = secret;Password "
+                         "={top;secret};Access Token = abc;Server=localhost"),
+        &redacted);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_str_equal(redacted,
+                         "Driver = {ODBC Driver 18 for SQL Server};UID=sa;PWD = "
+                         "******;Password =************;Access Token = ***;Server=localhost") != 0)
+    {
+        return 15;
+    }
+    status = sl_sqlserver_redact_connection_string(&arena, oversized, &redacted);
+    if (expect_status(status, SL_STATUS_OVERFLOW) != 0) {
+        return 16;
+    }
     status = sl_sqlserver_extract_driver_name(
         &arena,
-        sl_str_from_cstr("Server=localhost;Driver={ODBC Driver 18 for SQL Server};Database=x"),
+        sl_str_from_cstr("Server=localhost; Driver = {ODBC Driver 18 for SQL Server};Database=x"),
         &driver);
     if (expect_status(status, SL_STATUS_OK) != 0 ||
         expect_str_equal(driver, "ODBC Driver 18 for SQL Server") != 0)
@@ -148,6 +165,7 @@ static int test_invalid_options_and_use_after_close(void)
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
     SlSqlServerConnection connection = {0};
+    SlSqlServerConnection read_only = {.open = true, .access = SL_SQLSERVER_ACCESS_READ};
     SlSqlServerExecResult result = {0};
     SlSqlServerOpenOptions options = sl_sqlserver_open_options_connection_string(sl_str_empty());
     SlSqlServerPool pool = {0};
@@ -173,6 +191,13 @@ static int test_invalid_options_and_use_after_close(void)
         sl_status_code(status) != SL_STATUS_UNSUPPORTED)
     {
         return 22;
+    }
+    status = sl_sqlserver_exec(&arena, &read_only, sl_str_from_cstr("insert into t values (1)"),
+                               NULL, 0U, &result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED)
+    {
+        return 25;
     }
     options.connection_string = sl_str_from_cstr("Driver={x};Server=x");
     options.access = (SlSqlServerAccess)99;
@@ -255,6 +280,7 @@ static int test_live_query_exec_and_transactions(void)
     SlSqlServerParam rollback_params[] = {text_param("rollback"), bool_param(false)};
     SlSqlServerParam unsupported_param = {.kind = SL_SQLSERVER_PARAM_UNSUPPORTED};
     SlDiag diag = {0};
+    char long_alias_sql[180] = {0};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
     int open_result = 0;
 
@@ -311,6 +337,29 @@ static int test_live_query_exec_and_transactions(void)
         one.values[1].value.number > 1.26)
     {
         return close_and_return(&connection, 45);
+    }
+    status = sl_sqlserver_query_one(
+        &arena, &connection,
+        sl_str_from_cstr("select cast(replicate('x', 5000) as varchar(max)) as payload"), NULL, 0U,
+        &one, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found ||
+        one.values[0].kind != SL_SQLSERVER_VALUE_TEXT || one.values[0].value.text.length != 5000U ||
+        one.values[0].value.text.ptr[0] != 'x' || one.values[0].value.text.ptr[4999] != 'x')
+    {
+        return close_and_return(&connection, 53);
+    }
+    (void)memcpy(long_alias_sql, "select 1 as [", sizeof("select 1 as [") - 1U);
+    for (size_t index = sizeof("select 1 as [") - 1U; index < 141U; index += 1U) {
+        long_alias_sql[index] = 'a';
+    }
+    long_alias_sql[141] = ']';
+    long_alias_sql[142] = '\0';
+    status = sl_sqlserver_query_one(&arena, &connection, sl_str_from_cstr(long_alias_sql), NULL, 0U,
+                                    &one, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found || one.column_count != 1U ||
+        one.column_names[0].length != 128U)
+    {
+        return close_and_return(&connection, 54);
     }
     status = sl_sqlserver_transaction_begin(&arena, &connection, &tx, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0) {

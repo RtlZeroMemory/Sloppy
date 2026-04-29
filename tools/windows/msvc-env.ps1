@@ -99,17 +99,18 @@ function Add-SlVisualStudioToolPath {
     )
 
     if ([string]::IsNullOrWhiteSpace($InstallPath)) {
-        return
+        return $null
     }
 
     $vcTools = Get-SlLatestDirectoryName -Path (Join-Path $InstallPath "VC/Tools/MSVC")
     if ($null -eq $vcTools) {
-        return
+        return $null
     }
 
     Add-SlPathEntries -Name "PATH" -Entries @(
         (Join-Path $vcTools "bin/Hostx64/x64")
     )
+    return $vcTools
 }
 
 function Import-SlVisualStudioEnvironment {
@@ -121,7 +122,7 @@ function Import-SlVisualStudioEnvironment {
         ((Test-SlEnvFile -EnvValue $env:LIB -FileName "msvcrt.lib") -or
             (Test-SlEnvFile -EnvValue $env:LIB -FileName "msvcrtd.lib")))
     {
-        Add-SlVisualStudioToolPath -InstallPath $existingInstallPath
+        $null = Add-SlVisualStudioToolPath -InstallPath $existingInstallPath
         return
     }
 
@@ -150,9 +151,7 @@ function Import-SlVisualStudioEnvironment {
     if (-not [string]::IsNullOrWhiteSpace($originalPath)) {
         Add-SlPathEntries -Name "PATH" -Entries ($originalPath.Split(';'))
     }
-    Add-SlVisualStudioToolPath -InstallPath $installPath
-
-    $vcTools = Get-SlLatestDirectoryName -Path (Join-Path $installPath "VC/Tools/MSVC")
+    $vcTools = Add-SlVisualStudioToolPath -InstallPath $installPath
     $sdkIncludeRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/Include"
     $sdkLibRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/Lib"
     $sdkInclude = Get-SlLatestDirectoryName -Path $sdkIncludeRoot

@@ -46,6 +46,7 @@ typedef struct SlSqlServerConnection
     void* dbc_handle;
     bool open;
     bool transaction_active;
+    SlSqlServerAccess access;
 } SlSqlServerConnection;
 
 typedef enum SlSqlServerParamKind

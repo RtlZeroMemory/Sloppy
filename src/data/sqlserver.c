@@ -24,6 +24,7 @@
 
 #include <errno.h>
 #include <stddef.h>
+#include <string.h>
 #include <stdlib.h>
 
 #ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
@@ -95,12 +96,17 @@ static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
 {
     void* ptr = NULL;
     char* dst = NULL;
+    size_t alloc_size = 0U;
     SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_sqlsrv_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_arena_alloc(arena, src.length + 1U, 1U, &ptr);
+    status = sl_checked_add_size(src.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, 1U, &ptr);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -136,22 +142,43 @@ static bool sl_sqlsrv_has_case_insensitive_at(SlStr text, size_t index, const ch
     return true;
 }
 
-static bool sl_sqlsrv_is_secret_key(SlStr text, size_t index, size_t* out_value_start)
+static size_t sl_sqlsrv_skip_spaces(SlStr text, size_t index)
+{
+    while (index < text.length && (text.ptr[index] == ' ' || text.ptr[index] == '\t')) {
+        index += 1U;
+    }
+    return index;
+}
+
+static size_t sl_sqlsrv_trim_trailing_spaces(SlStr text, size_t start, size_t end)
+{
+    while (end > start && (text.ptr[end - 1U] == ' ' || text.ptr[end - 1U] == '\t')) {
+        end -= 1U;
+    }
+    return end;
+}
+
+static bool sl_sqlsrv_key_equal_ci(SlStr text, size_t start, size_t end, const char* key)
+{
+    size_t offset = 0U;
+
+    while (key[offset] != '\0') {
+        if (start + offset >= end ||
+            !sl_sqlsrv_ascii_equal_ci(text.ptr[start + offset], key[offset]))
+        {
+            return false;
+        }
+        offset += 1U;
+    }
+    return start + offset == end;
+}
+
+static bool sl_sqlsrv_is_secret_key(SlStr text, size_t key_start, size_t key_end)
 {
     static const char* keys[] = {"password", "pwd", "access token", "accesstoken"};
 
     for (size_t key_index = 0U; key_index < sizeof(keys) / sizeof(keys[0]); key_index += 1U) {
-        const char* key = keys[key_index];
-        size_t offset = 0U;
-
-        while (key[offset] != '\0' && index + offset < text.length &&
-               sl_sqlsrv_ascii_equal_ci(text.ptr[index + offset], key[offset]))
-        {
-            offset += 1U;
-        }
-        if (key[offset] == '\0' && index + offset < text.length && text.ptr[index + offset] == '=')
-        {
-            *out_value_start = index + offset + 1U;
+        if (sl_sqlsrv_key_equal_ci(text, key_start, key_end, keys[key_index])) {
             return true;
         }
     }
@@ -197,12 +224,17 @@ SlStatus sl_sqlserver_redact_connection_string(SlArena* arena, SlStr connection_
 {
     void* ptr = NULL;
     char* dst = NULL;
+    size_t alloc_size = 0U;
     SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_sqlsrv_str_valid(connection_string)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_arena_alloc(arena, connection_string.length + 1U, 1U, &ptr);
+    status = sl_checked_add_size(connection_string.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, 1U, &ptr);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -212,13 +244,37 @@ SlStatus sl_sqlserver_redact_connection_string(SlArena* arena, SlStr connection_
     }
     dst[connection_string.length] = '\0';
 
-    for (size_t index = 0U; index < connection_string.length; index += 1U) {
+    for (size_t index = 0U; index < connection_string.length;) {
+        size_t key_start = 0U;
+        size_t key_end = 0U;
         size_t value_start = 0U;
 
-        if ((index == 0U || connection_string.ptr[index - 1U] == ';') &&
-            sl_sqlsrv_is_secret_key(connection_string, index, &value_start))
+        while (index < connection_string.length && connection_string.ptr[index] == ';') {
+            index += 1U;
+        }
+        key_start = sl_sqlsrv_skip_spaces(connection_string, index);
+        index = key_start;
+        while (index < connection_string.length && connection_string.ptr[index] != '=' &&
+               connection_string.ptr[index] != ';')
         {
+            index += 1U;
+        }
+        if (index >= connection_string.length || connection_string.ptr[index] != '=') {
+            while (index < connection_string.length && connection_string.ptr[index] != ';') {
+                index += 1U;
+            }
+            continue;
+        }
+        key_end = sl_sqlsrv_trim_trailing_spaces(connection_string, key_start, index);
+        index += 1U;
+        value_start = sl_sqlsrv_skip_spaces(connection_string, index);
+        if (sl_sqlsrv_is_secret_key(connection_string, key_start, key_end)) {
             index = sl_sqlsrv_redact_odbc_value(dst, connection_string.length, value_start);
+        }
+        else {
+            while (index < connection_string.length && connection_string.ptr[index] != ';') {
+                index += 1U;
+            }
         }
     }
     *out = sl_str_from_parts(dst, connection_string.length);
@@ -235,13 +291,15 @@ SlStatus sl_sqlserver_extract_driver_name(SlArena* arena, SlStr connection_strin
     *out = sl_str_empty();
     while (index < connection_string.length) {
         size_t key_start = index;
+        size_t key_end = 0U;
         size_t value_start = 0U;
         size_t value_end = 0U;
 
         while (index < connection_string.length && connection_string.ptr[index] == ';') {
             index += 1U;
         }
-        key_start = index;
+        key_start = sl_sqlsrv_skip_spaces(connection_string, index);
+        index = key_start;
         while (index < connection_string.length && connection_string.ptr[index] != '=' &&
                connection_string.ptr[index] != ';')
         {
@@ -253,9 +311,8 @@ SlStatus sl_sqlserver_extract_driver_name(SlArena* arena, SlStr connection_strin
             }
             continue;
         }
-        if (index - key_start != sizeof("driver") - 1U ||
-            !sl_sqlsrv_has_case_insensitive_at(connection_string, key_start, "driver"))
-        {
+        key_end = sl_sqlsrv_trim_trailing_spaces(connection_string, key_start, index);
+        if (!sl_sqlsrv_key_equal_ci(connection_string, key_start, key_end, "driver")) {
             index += 1U;
             while (index < connection_string.length && connection_string.ptr[index] != ';') {
                 index += 1U;
@@ -263,6 +320,7 @@ SlStatus sl_sqlserver_extract_driver_name(SlArena* arena, SlStr connection_strin
             continue;
         }
         index += 1U;
+        index = sl_sqlsrv_skip_spaces(connection_string, index);
         value_start = index;
         if (index < connection_string.length && connection_string.ptr[index] == '{') {
             value_start = index + 1U;
@@ -289,6 +347,7 @@ SlStatus sl_sqlserver_extract_driver_name(SlArena* arena, SlStr connection_strin
                 index += 1U;
             }
             value_end = index;
+            value_end = sl_sqlsrv_trim_trailing_spaces(connection_string, value_start, value_end);
         }
         return sl_sqlsrv_copy_str(
             arena, sl_str_from_parts(connection_string.ptr + value_start, value_end - value_start),
@@ -330,10 +389,14 @@ static SlStatus sl_sqlsrv_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code
             return diag_status;
         }
     }
-    if (!sl_str_is_empty(hint_b) || !sl_str_is_empty(hint_c)) {
-        SlStr hint = !sl_str_is_empty(hint_b) ? hint_b : hint_c;
-
-        diag_status = sl_diag_builder_add_hint(&builder, hint);
+    if (!sl_str_is_empty(hint_b)) {
+        diag_status = sl_diag_builder_add_hint(&builder, hint_b);
+        if (!sl_status_is_ok(diag_status)) {
+            return diag_status;
+        }
+    }
+    if (!sl_str_is_empty(hint_c)) {
+        diag_status = sl_diag_builder_add_hint(&builder, hint_c);
         if (!sl_status_is_ok(diag_status)) {
             return diag_status;
         }
@@ -803,6 +866,7 @@ SlStatus sl_sqlserver_open(SlArena* diag_arena, const SlSqlServerOpenOptions* op
     SQLHDBC dbc = SQL_NULL_HDBC;
     char* connection_string = NULL;
     SlStr safe = sl_str_empty();
+    SlArenaMark mark;
     SQLRETURN rc;
     SlStatus status;
 
@@ -828,6 +892,7 @@ SlStatus sl_sqlserver_open(SlArena* diag_arena, const SlSqlServerOpenOptions* op
             sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
     *out_connection = (SlSqlServerConnection){0};
+    mark = sl_arena_mark(diag_arena);
     status = sl_sqlsrv_copy_cstr(diag_arena, options->connection_string, &connection_string);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -844,14 +909,31 @@ SlStatus sl_sqlserver_open(SlArena* diag_arena, const SlSqlServerOpenOptions* op
     }
     rc = SQLAllocHandle(SQL_HANDLE_DBC, env, &dbc);
     if (!sl_sqlsrv_success(rc)) {
-        SQLFreeHandle(SQL_HANDLE_ENV, env);
-        return sl_sqlsrv_diag_from_handle(
+        status = sl_sqlsrv_diag_from_handle(
             diag_arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
             sl_sqlsrv_literal("sqlserver provider connection handle allocation failed",
                               sizeof("sqlserver provider connection handle allocation failed") -
                                   1U),
             sl_sqlsrv_literal("operation: open", sizeof("operation: open") - 1U), SQL_HANDLE_ENV,
             env, safe, sl_str_empty(), sl_status_from_code(SL_STATUS_OUT_OF_MEMORY));
+        SQLFreeHandle(SQL_HANDLE_ENV, env);
+        return status;
+    }
+    rc = SQLSetConnectAttr(dbc, SQL_ATTR_ACCESS_MODE,
+                           (SQLPOINTER)(uintptr_t)(options->access == SL_SQLSERVER_ACCESS_READ
+                                                       ? SQL_MODE_READ_ONLY
+                                                       : SQL_MODE_READ_WRITE),
+                           0);
+    if (!sl_sqlsrv_success(rc)) {
+        status = sl_sqlsrv_diag_from_handle(
+            diag_arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
+            sl_sqlsrv_literal("sqlserver provider access mode setup failed",
+                              sizeof("sqlserver provider access mode setup failed") - 1U),
+            sl_sqlsrv_literal("operation: open", sizeof("operation: open") - 1U), SQL_HANDLE_DBC,
+            dbc, safe, sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+        SQLFreeHandle(SQL_HANDLE_DBC, dbc);
+        SQLFreeHandle(SQL_HANDLE_ENV, env);
+        return status;
     }
     rc = SQLDriverConnectA(dbc, NULL, (SQLCHAR*)connection_string, SQL_NTS, NULL, 0, NULL,
                            SQL_DRIVER_NOPROMPT);
@@ -877,6 +959,8 @@ SlStatus sl_sqlserver_open(SlArena* diag_arena, const SlSqlServerOpenOptions* op
     out_connection->dbc_handle = dbc;
     out_connection->open = true;
     out_connection->transaction_active = false;
+    out_connection->access = options->access;
+    (void)sl_arena_reset_to(diag_arena, mark);
     return sl_status_ok();
 }
 
@@ -906,11 +990,11 @@ static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSql
 {
     SQLSMALLINT bind_count = 0;
     SQLRETURN rc;
-    char* text_values[SL_SQLSERVER_MAX_PARAMS] = {0};
     SQLLEN indicators[SL_SQLSERVER_MAX_PARAMS] = {0};
     SQLBIGINT integers[SL_SQLSERVER_MAX_PARAMS] = {0};
     double numbers[SL_SQLSERVER_MAX_PARAMS] = {0};
     unsigned char booleans[SL_SQLSERVER_MAX_PARAMS] = {0};
+    char empty_text[1] = {0};
 
     if (param_count > SL_SQLSERVER_MAX_PARAMS || (param_count > 0U && params == NULL)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -934,23 +1018,24 @@ static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSql
             rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_VARCHAR, 1, 0,
                                   NULL, 0, &indicators[index]);
             break;
-        case SL_SQLSERVER_PARAM_TEXT:
+        case SL_SQLSERVER_PARAM_TEXT: {
+            SQLPOINTER value_ptr = empty_text;
+
             if (!sl_sqlsrv_str_valid(param->value.text)) {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
             if (param->value.text.length > 2147483647U) {
                 return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
             }
-            SlStatus copy_status =
-                sl_sqlsrv_copy_cstr(arena, param->value.text, &text_values[index]);
-            if (!sl_status_is_ok(copy_status)) {
-                return copy_status;
+            if (param->value.text.length > 0U) {
+                value_ptr = (SQLPOINTER)param->value.text.ptr;
             }
             indicators[index] = (SQLLEN)param->value.text.length;
-            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_WVARCHAR,
-                                  param->value.text.length, 0, text_values[index],
-                                  (SQLLEN)param->value.text.length + 1, &indicators[index]);
+            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_VARCHAR,
+                                  param->value.text.length, 0, value_ptr,
+                                  (SQLLEN)param->value.text.length, &indicators[index]);
             break;
+        }
         case SL_SQLSERVER_PARAM_INTEGER:
             integers[index] = (SQLBIGINT)param->value.integer;
             indicators[index] = 0;
@@ -1005,7 +1090,6 @@ static SlStatus sl_sqlsrv_prepare_execute(SlArena* arena, SlSqlServerConnection*
 {
     SQLHDBC dbc = sl_sqlsrv_dbc(connection);
     SQLHSTMT stmt = SQL_NULL_HSTMT;
-    char* sql_cstr = NULL;
     SQLRETURN rc;
     SlStatus status;
 
@@ -1019,9 +1103,8 @@ static SlStatus sl_sqlsrv_prepare_execute(SlArena* arena, SlSqlServerConnection*
     if (!sl_sqlsrv_str_valid(sql) || sl_str_is_empty(sql)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_sqlsrv_copy_cstr(arena, sql, &sql_cstr);
-    if (!sl_status_is_ok(status)) {
-        return status;
+    if (sql.length > 2147483647U) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
     }
     rc = SQLAllocHandle(SQL_HANDLE_STMT, dbc, &stmt);
     if (!sl_sqlsrv_success(rc)) {
@@ -1032,7 +1115,7 @@ static SlStatus sl_sqlsrv_prepare_execute(SlArena* arena, SlSqlServerConnection*
             operation, SQL_HANDLE_DBC, dbc, sl_str_empty(), sql,
             sl_status_from_code(SL_STATUS_OUT_OF_MEMORY));
     }
-    rc = SQLPrepareA(stmt, (SQLCHAR*)sql_cstr, SQL_NTS);
+    rc = SQLPrepareA(stmt, (SQLCHAR*)sql.ptr, (SQLINTEGER)sql.length);
     if (!sl_sqlsrv_success(rc)) {
         status = sl_sqlsrv_diag_from_handle(
             arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
@@ -1064,6 +1147,14 @@ SlStatus sl_sqlserver_exec(SlArena* arena, SlSqlServerConnection* connection, Sl
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_result = (SlSqlServerExecResult){0};
+    if (connection != NULL && connection->open && connection->access == SL_SQLSERVER_ACCESS_READ) {
+        return sl_sqlsrv_diag(
+            arena, out_diag, SL_DIAG_PERMISSION_DENIED,
+            sl_sqlsrv_literal("sqlserver provider read-only connection rejected exec",
+                              sizeof("sqlserver provider read-only connection rejected exec") - 1U),
+            sl_sqlsrv_literal("operation: exec", sizeof("operation: exec") - 1U), sql,
+            sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
+    }
     status = sl_sqlsrv_prepare_execute(
         arena, connection, sql, params, param_count,
         sl_sqlsrv_literal("operation: exec", sizeof("operation: exec") - 1U), &stmt, out_diag);
@@ -1119,6 +1210,9 @@ static SlStatus sl_sqlsrv_copy_columns(SlArena* arena, SQLHSTMT stmt, size_t col
         if (!sl_sqlsrv_success(rc)) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
+        if (rc == SQL_SUCCESS_WITH_INFO || name_length < 0 || (size_t)name_length >= sizeof(name)) {
+            return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        }
         status =
             sl_sqlsrv_copy_str(arena, sl_str_from_parts(name, (size_t)name_length), &names[index]);
         if (!sl_status_is_ok(status)) {
@@ -1159,6 +1253,89 @@ static bool sl_sqlsrv_type_is_float(SQLSMALLINT type)
            type == SQL_NUMERIC;
 }
 
+static size_t sl_sqlsrv_chunk_length(const char* buffer, size_t capacity)
+{
+    size_t length = 0U;
+
+    while (length < capacity && buffer[length] != '\0') {
+        length += 1U;
+    }
+    return length;
+}
+
+static SlStatus sl_sqlsrv_append_chunk(SlArena* arena, SlStr current, SlStr chunk, SlStr* out)
+{
+    void* ptr = NULL;
+    char* dst = NULL;
+    size_t length = 0U;
+    SlStatus status;
+
+    if (arena == NULL || out == NULL || !sl_sqlsrv_str_valid(current) ||
+        !sl_sqlsrv_str_valid(chunk))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_checked_add_size(current.length, chunk.length, &length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (length == 0U) {
+        *out = sl_str_empty();
+        return sl_status_ok();
+    }
+    status = sl_arena_alloc(arena, length, 1U, &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    dst = (char*)ptr;
+    if (current.length > 0U) {
+        memcpy(dst, current.ptr, current.length);
+    }
+    if (chunk.length > 0U) {
+        memcpy(dst + current.length, chunk.ptr, chunk.length);
+    }
+    *out = sl_str_from_parts(dst, length);
+    return sl_status_ok();
+}
+
+static SlStatus sl_sqlsrv_copy_streamed_text(SlArena* arena, SQLHSTMT stmt, size_t column,
+                                             char* first_buffer, size_t first_capacity,
+                                             SQLRETURN first_rc, SlSqlServerValue* out)
+{
+    SlStr text = sl_str_empty();
+    SQLRETURN rc = first_rc;
+    SlStatus status = sl_sqlsrv_append_chunk(
+        arena, text,
+        sl_str_from_parts(first_buffer, sl_sqlsrv_chunk_length(first_buffer, first_capacity)),
+        &text);
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    while (rc == SQL_SUCCESS_WITH_INFO) {
+        char buffer[4096] = {0};
+        SQLLEN indicator = 0;
+
+        rc = SQLGetData(stmt, (SQLUSMALLINT)(column + 1U), SQL_C_CHAR, buffer,
+                        (SQLLEN)sizeof(buffer), &indicator);
+        if (rc == SQL_NO_DATA) {
+            break;
+        }
+        if (!sl_sqlsrv_success(rc) || indicator == SQL_NULL_DATA) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        status = sl_sqlsrv_append_chunk(
+            arena, text, sl_str_from_parts(buffer, sl_sqlsrv_chunk_length(buffer, sizeof(buffer))),
+            &text);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    out->kind = SL_SQLSERVER_VALUE_TEXT;
+    out->value.text = text;
+    return sl_status_ok();
+}
+
 static SlStatus sl_sqlsrv_copy_value(SlArena* arena, SQLHSTMT stmt, size_t column,
                                      SlSqlServerValue* out)
 {
@@ -1181,10 +1358,13 @@ static SlStatus sl_sqlsrv_copy_value(SlArena* arena, SQLHSTMT stmt, size_t colum
         *out = (SlSqlServerValue){.kind = SL_SQLSERVER_VALUE_NULL};
         return sl_status_ok();
     }
-    if (rc == SQL_SUCCESS_WITH_INFO || !sl_sqlsrv_success(rc) || indicator == SQL_NO_TOTAL ||
+    if (!sl_sqlsrv_success(rc)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (rc == SQL_SUCCESS_WITH_INFO || indicator == SQL_NO_TOTAL ||
         indicator >= (SQLLEN)sizeof(buffer))
     {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return sl_sqlsrv_copy_streamed_text(arena, stmt, column, buffer, sizeof(buffer), rc, out);
     }
     if (type == SQL_BIT && indicator > 0) {
         out->kind = SL_SQLSERVER_VALUE_BOOL;
@@ -1501,12 +1681,23 @@ static SlStatus sl_sqlsrv_end_transaction(SlArena* arena, SlSqlServerTransaction
     }
     rc = SQLSetConnectAttr(dbc, SQL_ATTR_AUTOCOMMIT, (SQLPOINTER)SQL_AUTOCOMMIT_ON, 0);
     if (!sl_sqlsrv_success(rc)) {
-        return sl_sqlsrv_diag_from_handle(
+        SlSqlServerConnection* connection = tx->connection;
+        SlStatus status = sl_sqlsrv_diag_from_handle(
             arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
             sl_sqlsrv_literal("sqlserver provider failed to restore autocommit",
                               sizeof("sqlserver provider failed to restore autocommit") - 1U),
             operation, SQL_HANDLE_DBC, dbc, sl_str_empty(), sl_str_empty(),
             sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+
+        /*
+         * SQLEndTran already completed. If autocommit cannot be restored, the transaction
+         * object must be inactive and the connection must not return to the pool silently.
+         */
+        connection->transaction_active = false;
+        tx->connection = NULL;
+        tx->active = false;
+        (void)sl_sqlserver_close(connection);
+        return status;
     }
     tx->connection->transaction_active = false;
     tx->connection = NULL;

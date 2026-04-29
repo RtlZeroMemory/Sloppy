@@ -225,12 +225,17 @@ function createForgedLoweredQuery() {
         data.sqlserver.redactConnectionString("Driver={ODBC Driver 18 for SQL Server};UID=sa;PWD=secret;Password={top;secret};Access Token=abc"),
         "Driver={ODBC Driver 18 for SQL Server};UID=sa;PWD=<redacted>;Password=<redacted>;Access Token=<redacted>",
     );
+    assert.equal(
+        data.sqlserver.redactConnectionString("Driver = {ODBC Driver 18 for SQL Server};UID=sa;PWD = secret;Password ={top;secret};Access Token = abc"),
+        "Driver = {ODBC Driver 18 for SQL Server};UID=sa;PWD = <redacted>;Password =<redacted>;Access Token = <redacted>",
+    );
     const doctor = data.sqlserver.doctor({
-        connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;PWD=secret",
+        connectionString: "Driver = {ODBC Driver 18 for SQL Server};Server=localhost;PWD = secret",
     });
     assert.equal(doctor.ok, false);
     assert.equal(doctor.provider, "sqlserver");
     assert.equal(doctor.driverManager, "native-check-unavailable");
+    assert.equal(doctor.driver, "unchecked");
     assert.equal(doctor.connectionString.includes("secret"), false);
     assertThrowsMessage(() => data.sqlserver.open({}), /connectionString must be a non-empty string/);
     assertThrowsMessage(() => data.sqlserver.open({

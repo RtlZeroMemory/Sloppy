@@ -198,13 +198,14 @@ function validatePostgresOpenOptions(options) {
 
 function redactOdbcConnectionString(value) {
     return value.replace(
-        /(^|;)(password|pwd|access token|accesstoken)=({(?:}}|[^}])*}|[^;]*)/gi,
-        (_match, prefix, key) => `${prefix}${key}=<redacted>`,
+        /(^|;)(\s*)(password|pwd|access token|accesstoken)(\s*)=(\s*)({(?:}}|[^}])*}|[^;]*)/gi,
+        (_match, prefix, leading, key, beforeEquals, afterEquals) =>
+            `${prefix}${leading}${key}${beforeEquals}=${afterEquals}<redacted>`,
     );
 }
 
 function extractOdbcDriverName(connectionString) {
-    const match = /(?:^|;)driver=({(?:}}|[^}])*}|[^;]*)/i.exec(connectionString);
+    const match = /(?:^|;)\s*driver\s*=\s*({(?:}}|[^}])*}|[^;]*)/i.exec(connectionString);
 
     if (!match) {
         return "";
