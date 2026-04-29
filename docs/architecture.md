@@ -31,7 +31,8 @@ The current foundation/runtime-contract work still does not implement:
 - a production HTTP server, request body parser, middleware pipeline, or full framework
   request/response model;
 - native app module execution from a compiler-emitted plan;
-- JavaScript-to-native database resource/intrinsic integration;
+- JavaScript-to-native database resource/intrinsic integration outside the narrow
+  V8-gated SQLite bridge;
 - production Sloppy Plan loading from compiler output with compatibility/hash checks;
 - TypeScript compilation or app graph extraction;
 - native dynamic plugins.

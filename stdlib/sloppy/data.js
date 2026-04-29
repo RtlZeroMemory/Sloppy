@@ -264,8 +264,8 @@ function createSqliteConnection(nativeBridge, handle) {
                 return;
             }
 
-            nativeBridge.close(state.handle);
             state.closed = true;
+            nativeBridge.close(state.handle);
         },
 
         __debug() {
@@ -436,14 +436,16 @@ Fix:
 }
 
 function openSqlite(options) {
-    const safeOptions = validateSqliteOpenOptions(options);
+    const safeOptions = validateSqliteOpenOptions(
+        typeof options === "string" ? { path: options } : options,
+    );
     const nativeBridge = sqliteNativeBridge();
 
     if (nativeBridge === null) {
         throw createSqliteUnavailableError("open");
     }
 
-    return createSqliteConnection(nativeBridge, nativeBridge.open(safeOptions.path));
+    return createSqliteConnection(nativeBridge, nativeBridge.open(safeOptions));
 }
 
 function openPostgres(options) {
@@ -478,20 +480,28 @@ function doctorSqlServer(options = {}) {
     });
 }
 
+const sqliteSupports = {
+    memory: true,
+    file: true,
+    queryTemplates: true,
+    parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
+    transactions: true,
+    pooling: false,
+    migrations: false,
+    orm: false,
+};
+
+Object.defineProperty(sqliteSupports, "nativeStdlibBridge", {
+    enumerable: true,
+    get() {
+        return sqliteNativeBridge() !== null;
+    },
+});
+
 const sqlite = Object.freeze({
     provider: "sqlite",
     placeholderStyle: "question",
-    supports: Object.freeze({
-        memory: true,
-        file: true,
-        queryTemplates: true,
-        parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
-        transactions: true,
-        pooling: false,
-        migrations: false,
-        orm: false,
-        nativeStdlibBridge: sqliteNativeBridge() !== null,
-    }),
+    supports: Object.freeze(sqliteSupports),
     open: openSqlite,
     __debug() {
         return Object.freeze({

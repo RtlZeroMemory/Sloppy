@@ -113,8 +113,8 @@ Operation:
                     return;
                 }
 
-                bridge.close(state.handle);
                 state.closed = true;
+                bridge.close(state.handle);
             },
         });
     }
@@ -165,13 +165,20 @@ Operation:
             open(pathOrOptions) {
                 const databasePath =
                     typeof pathOrOptions === "string" ? pathOrOptions : pathOrOptions?.path;
+                const access = typeof pathOrOptions === "object" && pathOrOptions !== null
+                    ? pathOrOptions.access ?? "readwrite"
+                    : "readwrite";
 
                 if (typeof databasePath !== "string" || databasePath.length === 0) {
                     throw new TypeError("Sloppy sqlite.open path must be a non-empty string.");
                 }
 
+                if (access !== "read" && access !== "readwrite") {
+                    throw new TypeError("Sloppy sqlite.open access must be read or readwrite.");
+                }
+
                 const bridge = requireSqliteBridge();
-                return createSqliteConnection(bridge, bridge.open(databasePath));
+                return createSqliteConnection(bridge, bridge.open({ path: databasePath, access }));
             },
         }),
     });

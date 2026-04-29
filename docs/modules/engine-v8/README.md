@@ -102,7 +102,7 @@ Provider bridge code belongs in sibling V8 modules:
 Future PostgreSQL, SQL Server, and other native bridges should follow the same pattern:
 add an `intrinsics_<provider>.cc` file, register it from `intrinsics.cc`, keep public JS in
 the stdlib wrapper, and keep all V8/provider conversion code out of `engine_v8.cc`.
-Resource table ownership remains engine-level; provider modules only insert, lookup, and
+Resource table ownership remains engine-level; provider modules only insert, look up, and
 close their own resource kinds through the table.
 
 ## Public/Internal API

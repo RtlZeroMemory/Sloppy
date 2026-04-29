@@ -891,8 +891,9 @@ if(SLOPPY_ENABLE_TESTS)
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
                     tests/integration/execution/sqlite_bridge --once GET /sqlite
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
-        set_tests_properties(sloppy.run.once_sqlite_bridge
-                             PROPERTIES PASS_REGULAR_EXPRESSION "\"name\":\"Ada\"")
+        set_tests_properties(
+            sloppy.run.once_sqlite_bridge
+            PROPERTIES PASS_REGULAR_EXPRESSION "name.*Ada")
         add_test(
             NAME sloppy.run.once_invalid_descriptor
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts

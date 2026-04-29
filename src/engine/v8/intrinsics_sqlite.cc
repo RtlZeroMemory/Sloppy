@@ -103,6 +103,90 @@ bool sqlite_v8_value_to_std_string(v8::Isolate* isolate, v8::Local<v8::Value> va
     return true;
 }
 
+bool sqlite_v8_get_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                 v8::Local<v8::Object> object, const char* key, std::string* out)
+{
+    v8::Local<v8::String> local_key;
+    v8::Local<v8::Value> value;
+
+    if (out == nullptr ||
+        !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr(key), &local_key)) ||
+        !object->Get(context, local_key).ToLocal(&value))
+    {
+        return false;
+    }
+
+    return sqlite_v8_value_to_std_string(isolate, value, out);
+}
+
+bool sqlite_v8_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                          v8::Local<v8::Object> object, const char* key,
+                                          std::string* out, bool* present)
+{
+    v8::Local<v8::String> local_key;
+    v8::Local<v8::Value> value;
+
+    if (out == nullptr || present == nullptr ||
+        !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr(key), &local_key)) ||
+        !object->Get(context, local_key).ToLocal(&value))
+    {
+        return false;
+    }
+
+    if (value->IsUndefined() || value->IsNull()) {
+        *present = false;
+        out->clear();
+        return true;
+    }
+
+    *present = true;
+    return sqlite_v8_value_to_std_string(isolate, value, out);
+}
+
+bool sqlite_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                  v8::Local<v8::Value> value, std::string* path,
+                                  SlSqliteAccess* access)
+{
+    if (path == nullptr || access == nullptr) {
+        return false;
+    }
+
+    *access = SL_SQLITE_ACCESS_READWRITE;
+
+    if (sqlite_v8_value_to_std_string(isolate, value, path)) {
+        return !path->empty();
+    }
+
+    if (!value->IsObject()) {
+        return false;
+    }
+
+    v8::Local<v8::Object> object = value.As<v8::Object>();
+    if (!sqlite_v8_get_object_string(isolate, context, object, "path", path) || path->empty()) {
+        return false;
+    }
+
+    std::string access_text;
+    bool access_present = false;
+    if (!sqlite_v8_get_optional_object_string(isolate, context, object, "access", &access_text,
+                                              &access_present))
+    {
+        return false;
+    }
+
+    if (!access_present || access_text == "readwrite") {
+        *access = SL_SQLITE_ACCESS_READWRITE;
+        return true;
+    }
+
+    if (access_text == "read") {
+        *access = SL_SQLITE_ACCESS_READ;
+        return true;
+    }
+
+    return false;
+}
+
 bool sqlite_v8_get_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value, SlResourceId* out)
 {
@@ -380,9 +464,10 @@ void sqlite_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Local<v8::Object> handle;
 
     if (backend == nullptr || args.Length() != 1 ||
-        !sqlite_v8_value_to_std_string(isolate, args[0], &path) || path.empty())
+        !sqlite_v8_parse_open_options(isolate, context, args[0], &path, &options.access))
     {
-        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.open requires a non-empty path");
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.open requires a non-empty path "
+                                            "and optional read/readwrite access");
         return;
     }
 
@@ -398,7 +483,6 @@ void sqlite_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
 
     options.path = sl_str_from_parts(path.data(), path.size());
-    options.access = SL_SQLITE_ACCESS_READWRITE;
     SlStatus status = sl_sqlite_open(&arena, &options, connection, &diag);
     if (!sl_status_is_ok(status)) {
         delete connection;
@@ -432,6 +516,7 @@ void sqlite_v8_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     SlResourceId id = {};
     SlDiag diag = {};
+    void* ptr = nullptr;
 
     if (backend == nullptr || args.Length() != 1 ||
         !sqlite_v8_get_resource_id(isolate, context, args[0], &id))
@@ -441,7 +526,14 @@ void sqlite_v8_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    SlStatus status = sl_resource_table_close(&backend->resources, id, &diag);
+    SlStatus status = sl_resource_table_get(&backend->resources, id,
+                                            SL_RESOURCE_KIND_SQLITE_CONNECTION, &ptr, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite close failed", diag);
+        return;
+    }
+
+    status = sl_resource_table_close(&backend->resources, id, &diag);
     if (!sl_status_is_ok(status)) {
         sqlite_v8_throw_diag(isolate, "sqlite close failed", diag);
         return;

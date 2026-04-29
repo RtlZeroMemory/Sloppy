@@ -104,7 +104,7 @@ handles, `sqlite3*`, `sqlite3_stmt*`, `PGconn*`, `PGresult*`, or pointer-like na
 addresses to JavaScript. Every SQLite bridge entrypoint validates kind, generation, and
 live state before calling provider code. PostgreSQL and SQL Server JS bridges remain
 deferred. The V8 engine owns the resource table; provider intrinsic modules may insert,
-lookup, and close their own resource kinds through that table, but must not create separate
+look up, and close their own resource kinds through that table, but must not create separate
 handle registries.
 
 ## Invariants

@@ -34,10 +34,10 @@ objects. The implemented `Results.*` helpers return plain frozen descriptor obje
 shapes.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite.open(...)` returns a safe
-SQLite wrapper when the V8 runtime installs the native bridge; in bootstrap-only or non-V8
-contexts it reports bridge-unavailable. `data.postgres.open(...)` and
-`data.sqlserver.open(...)` are future stdlib entry points for native providers and still
-report bridge-unavailable until their own bridge modules exist.
+SQLite wrapper only when the V8 runtime installs the native SQLite bridge; in
+bootstrap-only or non-V8 contexts it reports bridge-unavailable. `data.postgres.open(...)`
+and `data.sqlserver.open(...)` are future stdlib entry points for native providers and
+still report bridge-unavailable until their own bridge modules exist.
 `Sloppy.createBuilder()` exposes minimal config, logging, capabilities, and services builders;
 `Sloppy.module(...)` creates bootstrap app module definitions; `builder.addModule(...)`
 registers them; `builder.build()` freezes builder mutation and returns an in-memory app
@@ -61,8 +61,10 @@ Not implemented here:
 - public handler registration APIs;
 - compiler extraction or `app.plan.json` emission;
 - HTTP server behavior or response writing;
-- JavaScript-to-native SQLite/PostgreSQL/SQL Server provider calls;
-- database connections or SQL execution from JavaScript;
+- JavaScript-to-native SQLite/PostgreSQL/SQL Server provider calls outside installed
+  native bridge modules;
+- database connections or SQL execution from JavaScript outside the V8-gated SQLite
+  bridge;
 - nested route groups, middleware, automatic validation/request binding, module package
   loading, or native plugins;
 - config files, environment variables, command-line config, or secret managers;

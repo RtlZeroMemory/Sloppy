@@ -197,7 +197,7 @@ Future JS/native bridges must use the resource table rather than inventing ad ho
 - MAIN1-08 SQLite bridge work consumes `SlResourceId`/`SlResourceTable`; it must not
   reinvent handle storage or expose SQLite pointers.
 - V8 owns the common resource table on the engine backend. Provider-specific bridge modules
-  under `src/engine/v8/intrinsics_<provider>.cc` may insert, lookup, and close their own
+  under `src/engine/v8/intrinsics_<provider>.cc` may insert, look up, and close their own
   resource kinds through that table, while `engine_v8.cc` remains provider-neutral.
 
 ## Async Lifetime Rules

@@ -106,8 +106,9 @@ Exists now: `SlScope` cleanup skeleton.
 
 Works now: scope cleanup ordering and lifecycle behavior are covered by default C tests.
 
-Not implemented: generation-counted resource table, JS-visible resource IDs, leak reports,
-kind validation, and resource cleanup callbacks through request/app scopes.
+Not implemented: leak reports and resource cleanup callbacks through request/app scopes.
+The generation-counted resource table exists, and MAIN1-08 adds the first V8-gated
+SQLite-only JS-visible resource IDs; general provider resource IDs remain deferred.
 
 ### Plan Loader
 
@@ -195,10 +196,10 @@ Works now: native provider C tests cover default non-live behavior; PostgreSQL a
 Server live execution is opt-in through environment variables. JavaScript examples still
 use fake providers or bridge-unavailable paths.
 
-Deferred: capability enforcement, filesystem/network capabilities, JS-visible native
-resource IDs, app-plan provider/capability sections, production pooling, async offload,
-cancellation, migrations, file DB policy, TLS/options hardening, and provider package
-distribution.
+Deferred: capability enforcement, filesystem/network capabilities, general JS-visible
+native resource IDs beyond the V8-gated SQLite bridge, app-plan provider/capability
+sections, production pooling, async offload, cancellation, migrations, file DB policy,
+TLS/options hardening, and provider package distribution.
 
 ### CLI Introspection
 
