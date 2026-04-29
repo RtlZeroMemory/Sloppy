@@ -54,6 +54,9 @@ integration, and async backend behavior is still future work. V8 Promise integra
 deferred but required: Sloppy cannot claim async handler support until returned Promises
 settle through the runtime, microtasks have an explicit owner-thread policy, request scopes
 survive pending Promise work, and rejected Promises produce deterministic diagnostics.
+The same is true for cancellation tokens, deadline hooks, bounded queues, and backpressure:
+they are not implemented in the current skeleton, but they are foundational requirements
+for the first real async/HTTP runtime rather than later product polish.
 
 ## Core Decision
 
@@ -188,7 +191,8 @@ The queue semantics are:
 This is intentionally not a real OS event loop. libuv integration, IOCP/epoll/kqueue,
 timers, sockets, HTTP, thread-safe posting, worker pools, V8 Promise integration,
 microtask draining, request lifecycle, cancellation tokens, deadlines, and backpressure are
-deferred.
+not implemented in the skeleton. The real async foundation must include cancellation,
+deadlines, and backpressure from the beginning of implementation.
 
 ## Current SlAsync Settlement Skeleton Semantics
 
@@ -422,9 +426,10 @@ app-host level:
 - Phase 4: Handwritten handler execution.
 - Phase 5: Async Promise settlement model.
 - Phase 6: Native worker pool abstraction.
-- Phase 7: DB provider async strategy.
-- Phase 8: HTTP integration with request scopes.
-- Phase 9: Cancellation/deadlines/backpressure.
+- Phase 7: DB provider async strategy with cancellation-aware operation boundaries.
+- Phase 8: HTTP integration with request scopes, cancellation, deadlines, and backpressure.
+- Phase 9: Hardening for provider-specific cancellation, deadline policy, and overload
+  diagnostics.
 - Phase 10: Multiple workers/isolates.
 
 ## Testing Requirements
@@ -434,7 +439,7 @@ app-host level:
   tests later. Those tests are required when async handler support is implemented, including
   fulfilled Promise responses, rejected Promise diagnostics, owner-thread continuation, and
   request-scope cleanup after settlement.
-- Cancellation cleanup tests later.
+- Cancellation cleanup tests are required with the first real async/HTTP implementation.
 - Worker pool no-V8-entry tests later.
 - Resource leak tests.
 - Async DB transaction rollback tests.

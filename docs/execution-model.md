@@ -446,7 +446,8 @@ Future Promise lifecycle requirements:
 - cleanup runs exactly once;
 - rejected promises become diagnostics;
 - microtask draining is controlled by the V8 bridge;
-- cancellation semantics are specified in `docs/concurrency.md` and implemented later.
+- cancellation semantics are specified in `docs/concurrency.md` and required with the first
+  real async/HTTP implementation.
 
 Current native skeleton:
 

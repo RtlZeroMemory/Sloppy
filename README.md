@@ -26,10 +26,18 @@ must not include OS-specific headers.
 - Optional V8 bridge smoke when a valid V8 SDK is configured; default builds do not require
   or validate V8.
 - Minimal handwritten `app.plan.json` plus `app.js` execution smoke in V8-enabled builds.
+- Narrow compiler artifact path: `sloppyc build` can emit deterministic artifacts for the
+  current supported source shape, and `sloppy run --artifacts` can execute selected
+  V8-gated conformance fixtures.
 - Bootstrap ESM stdlib with `Sloppy`, `Results`, `schema`, `data`, builder/app skeletons,
   route groups, modules, config/logging/services, fake data providers, and examples.
+- Dev-only HTTP response/context path for current compiler artifacts: route/query/request
+  context, result descriptor conversion, and response writing for the narrow supported
+  path.
 - Native SQLite, PostgreSQL, and SQL Server provider boundaries with C tests. PostgreSQL and
   SQL Server live tests are opt-in through environment variables.
+- V8-gated SQLite JavaScript bridge through resource IDs. SQLite capability enforcement is
+  still a remaining foundation blocker.
 - Metadata-only CLI introspection: `sloppy routes`, `sloppy doctor`, `sloppy audit`, and
   `sloppy openapi`.
 - Benchmark harness for current foundations. Smoke/list checks are not performance claims.
@@ -40,11 +48,15 @@ must not include OS-specific headers.
   compiler MVP shape.
 - No `app.plan.json` emission from the full public API surface.
 - No source-input `sloppy run`; the dev-only run path currently loads prebuilt artifacts.
-- No production HTTP server, response writer, request body parser, or request context.
-- No V8 ESM/bootstrap module loading or runtime intrinsics.
-- No JavaScript-to-native database bridge or JS-visible native resource IDs.
+- No production HTTP server or full framework HTTP runtime. Request body parsing, headers in
+  handler context, multipart/file upload, middleware, and production hardening remain
+  unimplemented.
+- No final V8 ESM module graph or async Promise/microtask handler support.
+- No JavaScript-to-native PostgreSQL or SQL Server bridge. SQLite is the only current
+  V8-gated JS/native bridge, and it still needs capability-policy enforcement.
 - No package-manager behavior and no Node compatibility goal.
-- No capability enforcement yet; current capability data is metadata only.
+- No OS sandbox. Native capability metadata/check hooks exist, but bridge enforcement is not
+  complete until real SQLite access calls the policy hook.
 - No public alpha distribution, installers, signing/notarization, package-manager
   integration, or auto-update. Experimental local ZIP/TAR package tooling exists only to
   validate the current artifact layout.
@@ -76,10 +88,17 @@ minimal plan loader, V8 smoke, handwritten execution, concurrency skeletons, HTT
 foundation, bootstrap stdlib/app-host ergonomics, modules, data/provider foundations,
 metadata CLI tools, and benchmarks.
 
-The EPIC-21 through EPIC-26 batch has now produced the compiler MVP, dev-only artifact run
-path, HTTP response/request-context MVP, classic bootstrap runtime handoff, experimental
-local packaging, and default non-V8 hosted CI. The issue tracker still needs cleanup:
-several parent EPICs remain open after their child tasks closed.
+The EPIC-21 through EPIC-26 batch produced the compiler MVP, dev-only artifact run path,
+HTTP response/request-context MVP, classic bootstrap runtime handoff, experimental local
+packaging, and default non-V8 hosted CI. MAIN and MAIN.1 then hardened the narrow path
+through PRs #240-#255.
+
+The next strategic phase is Slop Engine foundation completion, not public alpha docs and
+not benchmark marketing. The foundation blockers are compiler breadth for supported apps,
+real V8 Promise/microtask handling, full framework HTTP API runtime, SQLite end-to-end with
+capability enforcement, lifecycle/resource cleanup, conformance examples, and packaged
+runtime evidence. PostgreSQL and SQL Server JS bridges are deferred until SQLite and the
+engine foundation are solid.
 
 The current planning docs split the next work into:
 
@@ -87,13 +106,19 @@ The current planning docs split the next work into:
   `sloppyc build` plus `sloppy run --artifacts` alpha path, without recreating completed
   EPIC-21 through EPIC-26 work.
 - [ROADMAP MAIN.1](docs/project/roadmap-main-1-hardening.md): hardening skeleton/MVP
-  systems to alpha-production quality.
+  systems to alpha-production quality. This is now historical input to the ENGINE roadmap.
+- [Slop Engine final shape](docs/project/slop-engine-final-shape.md): intended engine and
+  framework foundation before higher-level framework perks.
+- [Slop Engine layered roadmap](docs/project/slop-engine-layered-roadmap.md): Layer 0
+  cleanup through Layer 10 public alpha readiness gate.
 
-EPIC-27 capability enforcement belongs in MAIN.1. EPIC-28 public alpha docs are deferred
-until the MAIN path and relevant MAIN.1 hardening gates are true or explicitly deferred.
+Public alpha docs remain blocked until the Slop Engine foundation examples and evidence
+gates pass or are explicitly deferred with honest exclusions. Benchmarks remain non-claim
+evidence only.
 
 See [docs/roadmap.md](docs/roadmap.md),
 [docs/project/current-issue-state-audit.md](docs/project/current-issue-state-audit.md),
+[docs/project/strategic-current-state-audit.md](docs/project/strategic-current-state-audit.md),
 and [docs/project/main-main1-scope.md](docs/project/main-main1-scope.md).
 
 ## Core Specs
