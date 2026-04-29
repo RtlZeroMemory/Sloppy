@@ -624,6 +624,59 @@ static int test_duplicate_registered_handler_fails_during_eval(void)
     return 0;
 }
 
+static int test_failed_eval_rolls_back_registered_handlers(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 105;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 106;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-rollback-register.js"),
+                                  sl_str_from_cstr("__sloppy_register_handler(1, () => "
+                                                   "\"stale\"); throw new Error(\"boom\");"),
+                                  &diag),
+            SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 107;
+    }
+
+    if (expect_status(sl_engine_call_registered_handler_with_context(engine, &result_arena, 1U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 108;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
+        expect_str_contains(diag.message, sl_str_from_cstr("unregistered handler ID 1")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 109;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_intrinsic_misuse_fails_during_eval(void)
 {
     unsigned char engine_storage[8192];
@@ -758,6 +811,11 @@ int main(void)
     }
 
     result = test_duplicate_registered_handler_fails_during_eval();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_failed_eval_rolls_back_registered_handlers();
     if (result != 0) {
         return result;
     }

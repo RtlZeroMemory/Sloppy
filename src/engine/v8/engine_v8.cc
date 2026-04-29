@@ -39,6 +39,7 @@ struct SlV8Engine
     v8::Isolate* isolate = nullptr;
     v8::Global<v8::Context> context;
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
+    std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
 };
 
 std::mutex g_v8_platform_mutex;
@@ -633,14 +634,22 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
         return;
     }
 
-    if (backend->handlers.find(handler_id) != backend->handlers.end()) {
+    if (backend->pending_handlers == nullptr) {
+        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8Literal(
+            isolate, "__sloppy_register_handler is only valid during app evaluation")));
+        return;
+    }
+
+    if (backend->handlers.find(handler_id) != backend->handlers.end() ||
+        backend->pending_handlers->find(handler_id) != backend->pending_handlers->end())
+    {
         isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8Literal(
             isolate, "__sloppy_register_handler duplicate handler ID")));
         return;
     }
 
-    backend->handlers.emplace(handler_id,
-                              v8::Global<v8::Function>(isolate, handler_value.As<v8::Function>()));
+    backend->pending_handlers->emplace(
+        handler_id, v8::Global<v8::Function>(isolate, handler_value.As<v8::Function>()));
     args.GetReturnValue().Set(v8::Undefined(isolate));
 }
 
@@ -847,6 +856,7 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
     v8::ScriptCompiler::Source script_source(source_string, origin);
     v8::MaybeLocal<v8::Script> maybe_script = v8::ScriptCompiler::Compile(context, &script_source);
     v8::Local<v8::Script> script;
+    std::unordered_map<uint32_t, v8::Global<v8::Function>> pending_handlers;
     if (!maybe_script.ToLocal(&script)) {
         return sl_v8_write_exception_diag(
             engine, out_diag, SL_DIAG_ENGINE_COMPILE_ERROR, SL_STATUS_INVALID_STATE, isolate,
@@ -858,7 +868,9 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
                     1U));
     }
 
+    backend->pending_handlers = &pending_handlers;
     if (script->Run(context).IsEmpty()) {
+        backend->pending_handlers = nullptr;
         return sl_v8_write_exception_diag(
             engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,
             try_catch, source_name, "JavaScript evaluation failed",
@@ -867,6 +879,11 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
                 sizeof("Generated JavaScript locations are reported without source-map "
                        "remapping.") -
                     1U));
+    }
+    backend->pending_handlers = nullptr;
+
+    for (auto& entry : pending_handlers) {
+        backend->handlers.emplace(entry.first, std::move(entry.second));
     }
 
     return sl_status_ok();

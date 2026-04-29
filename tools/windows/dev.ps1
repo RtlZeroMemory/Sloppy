@@ -213,25 +213,25 @@ function Invoke-Configure {
         Remove-BuildDirectory -Path $BuildDir
     }
 
-    $args = @("--preset", $Preset)
+    $cmakeConfigureArgs = @("--preset", $Preset)
     if (-not (Test-Path -LiteralPath $cachePath)) {
-        $args += "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain"
+        $cmakeConfigureArgs += "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain"
     }
     $hasV8Selection = $EnableV8 -or @($CMakeArgs | Where-Object {
         $_ -match "^-DSLOPPY_(ENABLE_V8|ENGINE|V8_ROOT)="
     }).Count -gt 0
     if (-not $hasV8Selection) {
-        $args += @("-DSLOPPY_ENGINE=none", "-DSLOPPY_ENABLE_V8=OFF")
+        $cmakeConfigureArgs += @("-DSLOPPY_ENGINE=none", "-DSLOPPY_ENABLE_V8=OFF")
     }
     if ($CMakeArgs.Count -gt 0) {
-        $args += $CMakeArgs
+        $cmakeConfigureArgs += $CMakeArgs
     }
     if ($EnableV8) {
         $resolvedV8Root = Resolve-V8Root
-        $args += @("-DSLOPPY_ENABLE_V8=ON", "-DSLOPPY_V8_ROOT=$resolvedV8Root")
+        $cmakeConfigureArgs += @("-DSLOPPY_ENABLE_V8=ON", "-DSLOPPY_V8_ROOT=$resolvedV8Root")
     }
 
-    Invoke-Native "cmake" $args
+    Invoke-Native "cmake" $cmakeConfigureArgs
 }
 
 function Invoke-Build {
