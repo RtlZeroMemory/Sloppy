@@ -109,6 +109,9 @@ Implemented behavior:
 - `data.sqlserver` exposes SQL Server provider metadata, ODBC `?` placeholder style,
   connection string redaction, a doctor helper shape, and `open(options)` as the future
   stdlib entry point.
+- Plan v1 alpha can carry metadata-only `dataProviders` entries with a token, provider
+  kind (`sqlite`, `postgres`, or `sqlserver`), optional service token, and optional
+  capability token reference.
 - native C SQLite tests execute real SQLite against `:memory:` databases.
 - native C PostgreSQL tests execute live libpq coverage only when `SLOPPY_POSTGRES_TEST_URL`
   is set; otherwise the separate live CTest is reported as skipped.
@@ -135,6 +138,7 @@ Not implemented yet:
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
 - no JavaScript-to-native SQL Server intrinsic bridge yet, so `data.sqlserver.open(...)`
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
+- no provider access enforcement from plan metadata yet;
 - no SQL parser, ORM, migrations, production pooling, cancellation, isolation levels, or
   native SQL execution from JavaScript;
 - no public file database policy beyond the native provider accepting SQLite paths;

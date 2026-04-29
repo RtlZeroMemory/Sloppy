@@ -981,6 +981,7 @@ typedef struct SlRunApp
     SlArena route_arena;
     SlArena engine_arena;
     SlPlan plan;
+    SlBytes app_js_bytes;
     SlEngine* engine;
     SlRunRoute routes[SL_CLI_MAX_ROUTES];
     SlHttpRouteBinding bindings[SL_CLI_MAX_ROUTES];
@@ -1129,6 +1130,189 @@ static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size
         "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ");
 }
 
+typedef struct SlRunSha256
+{
+    uint32_t state[8];
+    uint64_t bit_count;
+    unsigned char buffer[64];
+    size_t buffer_len;
+} SlRunSha256;
+
+static uint32_t sl_run_rotr32(uint32_t value, uint32_t shift)
+{
+    return (value >> shift) | (value << (32U - shift));
+}
+
+static void sl_run_sha256_transform(SlRunSha256* ctx, const unsigned char block[64])
+{
+    static const uint32_t k[64] = {
+        UINT32_C(0x428a2f98), UINT32_C(0x71374491), UINT32_C(0xb5c0fbcf), UINT32_C(0xe9b5dba5),
+        UINT32_C(0x3956c25b), UINT32_C(0x59f111f1), UINT32_C(0x923f82a4), UINT32_C(0xab1c5ed5),
+        UINT32_C(0xd807aa98), UINT32_C(0x12835b01), UINT32_C(0x243185be), UINT32_C(0x550c7dc3),
+        UINT32_C(0x72be5d74), UINT32_C(0x80deb1fe), UINT32_C(0x9bdc06a7), UINT32_C(0xc19bf174),
+        UINT32_C(0xe49b69c1), UINT32_C(0xefbe4786), UINT32_C(0x0fc19dc6), UINT32_C(0x240ca1cc),
+        UINT32_C(0x2de92c6f), UINT32_C(0x4a7484aa), UINT32_C(0x5cb0a9dc), UINT32_C(0x76f988da),
+        UINT32_C(0x983e5152), UINT32_C(0xa831c66d), UINT32_C(0xb00327c8), UINT32_C(0xbf597fc7),
+        UINT32_C(0xc6e00bf3), UINT32_C(0xd5a79147), UINT32_C(0x06ca6351), UINT32_C(0x14292967),
+        UINT32_C(0x27b70a85), UINT32_C(0x2e1b2138), UINT32_C(0x4d2c6dfc), UINT32_C(0x53380d13),
+        UINT32_C(0x650a7354), UINT32_C(0x766a0abb), UINT32_C(0x81c2c92e), UINT32_C(0x92722c85),
+        UINT32_C(0xa2bfe8a1), UINT32_C(0xa81a664b), UINT32_C(0xc24b8b70), UINT32_C(0xc76c51a3),
+        UINT32_C(0xd192e819), UINT32_C(0xd6990624), UINT32_C(0xf40e3585), UINT32_C(0x106aa070),
+        UINT32_C(0x19a4c116), UINT32_C(0x1e376c08), UINT32_C(0x2748774c), UINT32_C(0x34b0bcb5),
+        UINT32_C(0x391c0cb3), UINT32_C(0x4ed8aa4a), UINT32_C(0x5b9cca4f), UINT32_C(0x682e6ff3),
+        UINT32_C(0x748f82ee), UINT32_C(0x78a5636f), UINT32_C(0x84c87814), UINT32_C(0x8cc70208),
+        UINT32_C(0x90befffa), UINT32_C(0xa4506ceb), UINT32_C(0xbef9a3f7), UINT32_C(0xc67178f2)};
+    uint32_t w[64];
+    uint32_t a = ctx->state[0];
+    uint32_t b = ctx->state[1];
+    uint32_t c = ctx->state[2];
+    uint32_t d = ctx->state[3];
+    uint32_t e = ctx->state[4];
+    uint32_t f = ctx->state[5];
+    uint32_t g = ctx->state[6];
+    uint32_t h = ctx->state[7];
+    size_t index = 0U;
+
+    for (index = 0U; index < 16U; index += 1U) {
+        size_t offset = index * 4U;
+        w[index] = ((uint32_t)block[offset] << 24U) | ((uint32_t)block[offset + 1U] << 16U) |
+                   ((uint32_t)block[offset + 2U] << 8U) | (uint32_t)block[offset + 3U];
+    }
+    for (index = 16U; index < 64U; index += 1U) {
+        uint32_t s0 = sl_run_rotr32(w[index - 15U], 7U) ^ sl_run_rotr32(w[index - 15U], 18U) ^
+                      (w[index - 15U] >> 3U);
+        uint32_t s1 = sl_run_rotr32(w[index - 2U], 17U) ^ sl_run_rotr32(w[index - 2U], 19U) ^
+                      (w[index - 2U] >> 10U);
+        w[index] = w[index - 16U] + s0 + w[index - 7U] + s1;
+    }
+
+    for (index = 0U; index < 64U; index += 1U) {
+        uint32_t s1 = sl_run_rotr32(e, 6U) ^ sl_run_rotr32(e, 11U) ^ sl_run_rotr32(e, 25U);
+        uint32_t ch = (e & f) ^ ((~e) & g);
+        uint32_t temp1 = h + s1 + ch + k[index] + w[index];
+        uint32_t s0 = sl_run_rotr32(a, 2U) ^ sl_run_rotr32(a, 13U) ^ sl_run_rotr32(a, 22U);
+        uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+        uint32_t temp2 = s0 + maj;
+
+        h = g;
+        g = f;
+        f = e;
+        e = d + temp1;
+        d = c;
+        c = b;
+        b = a;
+        a = temp1 + temp2;
+    }
+
+    ctx->state[0] += a;
+    ctx->state[1] += b;
+    ctx->state[2] += c;
+    ctx->state[3] += d;
+    ctx->state[4] += e;
+    ctx->state[5] += f;
+    ctx->state[6] += g;
+    ctx->state[7] += h;
+}
+
+static void sl_run_sha256_init(SlRunSha256* ctx)
+{
+    *ctx = (SlRunSha256){0};
+    ctx->state[0] = UINT32_C(0x6a09e667);
+    ctx->state[1] = UINT32_C(0xbb67ae85);
+    ctx->state[2] = UINT32_C(0x3c6ef372);
+    ctx->state[3] = UINT32_C(0xa54ff53a);
+    ctx->state[4] = UINT32_C(0x510e527f);
+    ctx->state[5] = UINT32_C(0x9b05688c);
+    ctx->state[6] = UINT32_C(0x1f83d9ab);
+    ctx->state[7] = UINT32_C(0x5be0cd19);
+}
+
+static void sl_run_sha256_update(SlRunSha256* ctx, const unsigned char* bytes, size_t length)
+{
+    size_t index = 0U;
+
+    ctx->bit_count += (uint64_t)length * 8U;
+    while (index < length) {
+        size_t available = 64U - ctx->buffer_len;
+        size_t chunk = length - index < available ? length - index : available;
+        for (size_t chunk_index = 0U; chunk_index < chunk; chunk_index += 1U) {
+            ctx->buffer[ctx->buffer_len + chunk_index] = bytes[index + chunk_index];
+        }
+        ctx->buffer_len += chunk;
+        index += chunk;
+        if (ctx->buffer_len == 64U) {
+            sl_run_sha256_transform(ctx, ctx->buffer);
+            ctx->buffer_len = 0U;
+        }
+    }
+}
+
+static void sl_run_sha256_finish(SlRunSha256* ctx, unsigned char out[32])
+{
+    uint64_t bit_count = ctx->bit_count;
+    size_t index = 0U;
+
+    ctx->buffer[ctx->buffer_len] = 0x80U;
+    ctx->buffer_len += 1U;
+    if (ctx->buffer_len > 56U) {
+        while (ctx->buffer_len < 64U) {
+            ctx->buffer[ctx->buffer_len] = 0U;
+            ctx->buffer_len += 1U;
+        }
+        sl_run_sha256_transform(ctx, ctx->buffer);
+        ctx->buffer_len = 0U;
+    }
+    while (ctx->buffer_len < 56U) {
+        ctx->buffer[ctx->buffer_len] = 0U;
+        ctx->buffer_len += 1U;
+    }
+    for (index = 0U; index < 8U; index += 1U) {
+        ctx->buffer[63U - index] = (unsigned char)(bit_count >> (index * 8U));
+    }
+    sl_run_sha256_transform(ctx, ctx->buffer);
+
+    for (index = 0U; index < 8U; index += 1U) {
+        size_t out_index = index * 4U;
+        out[out_index] = (unsigned char)(ctx->state[index] >> 24U);
+        out[out_index + 1U] = (unsigned char)(ctx->state[index] >> 16U);
+        out[out_index + 2U] = (unsigned char)(ctx->state[index] >> 8U);
+        out[out_index + 3U] = (unsigned char)ctx->state[index];
+    }
+}
+
+static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
+{
+    static const char hex[] = "0123456789abcdef";
+    unsigned char digest[32];
+    char actual[71];
+    SlRunSha256 ctx;
+    size_t index = 0U;
+
+    if (expected.length != 71U || expected.ptr == NULL ||
+        memcmp(expected.ptr, "sha256:", sizeof("sha256:") - 1U) != 0)
+    {
+        return false;
+    }
+
+    sl_run_sha256_init(&ctx);
+    sl_run_sha256_update(&ctx, bytes.ptr, bytes.length);
+    sl_run_sha256_finish(&ctx, digest);
+
+    actual[0] = 's';
+    actual[1] = 'h';
+    actual[2] = 'a';
+    actual[3] = '2';
+    actual[4] = '5';
+    actual[5] = '6';
+    actual[6] = ':';
+    for (index = 0U; index < sizeof(digest); index += 1U) {
+        actual[7U + (index * 2U)] = hex[(digest[index] >> 4U) & 0x0FU];
+        actual[7U + (index * 2U) + 1U] = hex[digest[index] & 0x0FU];
+    }
+
+    return memcmp(expected.ptr, actual, sizeof(actual)) == 0;
+}
+
 static void sl_run_print_diag(const char* prefix, const SlDiag* diag)
 {
     sl_cli_write_cstr(stderr, prefix);
@@ -1176,21 +1360,33 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
         sl_cli_write_cstr(stderr, "sloppy run: app.plan.json target.engine must be v8\n");
         return 1;
     }
+    if (!sl_str_equal(app->plan.target.platform,
+                      sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64)))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: app.plan.json target.platform is unsupported\n");
+        return 1;
+    }
+    if (!sl_str_equal(app->plan.runtime_min_version,
+                      sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0)))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: unsupported app.plan.json runtimeMinimumVersion\n");
+        return 1;
+    }
 
     return 0;
 }
 
-static int sl_run_prepare_routes(SlRunApp* app, const SlCliMetadata* metadata)
+static int sl_run_prepare_routes(SlRunApp* app)
 {
     size_t index = 0U;
     size_t count = 0U;
 
-    for (index = 0U; index < metadata->route_count; index += 1U) {
-        const SlCliRoute* route = &metadata->routes[index];
+    for (index = 0U; index < app->plan.route_count; index += 1U) {
+        const SlPlanRoute* route = &app->plan.routes[index];
         const SlPlanHandler* handler = NULL;
         SlStatus status;
 
-        if (!sl_cli_span_equal_cstr(route->method, "GET")) {
+        if (!sl_str_equal(route->method, sl_str_from_cstr("GET"))) {
             continue;
         }
 
@@ -1201,11 +1397,11 @@ static int sl_run_prepare_routes(SlRunApp* app, const SlCliMetadata* metadata)
             return 1;
         }
 
-        status = sl_route_pattern_parse(&app->route_arena, sl_cli_span_str(route->pattern),
+        status = sl_route_pattern_parse(&app->route_arena, route->pattern,
                                         &app->routes[count].pattern, NULL);
         if (!sl_status_is_ok(status)) {
             sl_cli_write_cstr(stderr, "sloppy run: route metadata contains an invalid pattern: ");
-            sl_cli_write_span(stderr, route->pattern);
+            sl_cli_write_span(stderr, sl_run_str_span(route->pattern));
             sl_cli_write_cstr(stderr, "\n");
             return 1;
         }
@@ -1225,27 +1421,6 @@ static int sl_run_prepare_routes(SlRunApp* app, const SlCliMetadata* metadata)
 
     app->dispatch_table.routes = app->bindings;
     app->dispatch_table.route_count = count;
-    return 0;
-}
-
-static int sl_run_load_routes(SlRunApp* app, const char* plan_path)
-{
-    yyjson_doc* doc = NULL;
-    SlCliMetadata metadata = {0};
-
-    if (sl_cli_load_metadata(plan_path, app->metadata_json_storage, &doc, &metadata) != 0) {
-        if (doc != NULL) {
-            yyjson_doc_free(doc);
-        }
-        return 1;
-    }
-
-    if (sl_run_prepare_routes(app, &metadata) != 0) {
-        yyjson_doc_free(doc);
-        return 1;
-    }
-
-    yyjson_doc_free(doc);
     return 0;
 }
 
@@ -1287,7 +1462,6 @@ static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
 
 static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char* app_js_path)
 {
-    SlBytes js = {0};
     SlStr source = {0};
     SlEngineOptions options = sl_run_v8_options();
     SlDiag diag = {0};
@@ -1307,11 +1481,7 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
         return 1;
     }
 
-    if (sl_run_read_file(app_js_path, app->app_js_storage, sizeof(app->app_js_storage), &js) != 0) {
-        return 1;
-    }
-
-    source = sl_str_from_parts((const char*)js.ptr, js.length);
+    source = sl_str_from_parts((const char*)app->app_js_bytes.ptr, app->app_js_bytes.length);
     status = sl_engine_eval_source(app->engine, sl_str_from_cstr(app_js_path), source, &diag);
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: failed to evaluate app.js: ", &diag);
@@ -1331,6 +1501,9 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
 {
     char plan_path[1024];
     char app_js_path[1024];
+    char source_map_path[1024];
+    SlBytes app_js = {0};
+    SlBytes source_map = {0};
 
     if (artifacts_path == NULL || app == NULL) {
         return 1;
@@ -1352,7 +1525,7 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
         return 1;
     }
 
-    if (sl_run_load_plan(app, plan_path) != 0 || sl_run_load_routes(app, plan_path) != 0) {
+    if (sl_run_load_plan(app, plan_path) != 0 || sl_run_prepare_routes(app) != 0) {
         return 1;
     }
 
@@ -1362,6 +1535,33 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
         sl_cli_write_cstr(stderr, "sloppy run: invalid bundle path in app.plan.json\n");
         return 1;
     }
+
+    if (!sl_run_join_path(source_map_path, sizeof(source_map_path), artifacts_path,
+                          sl_run_str_span(app->plan.source_map.path)))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid source map path in app.plan.json\n");
+        return 1;
+    }
+
+    if (sl_run_read_file(app_js_path, app->app_js_storage, sizeof(app->app_js_storage), &app_js) !=
+        0)
+    {
+        return 1;
+    }
+    if (sl_run_read_file(source_map_path, app->metadata_json_storage,
+                         sizeof(app->metadata_json_storage), &source_map) != 0)
+    {
+        return 1;
+    }
+    if (!sl_run_hash_matches(app->plan.bundle.hash, app_js)) {
+        sl_cli_write_cstr(stderr, "sloppy run: bundle hash mismatch in app.plan.json\n");
+        return 1;
+    }
+    if (!sl_run_hash_matches(app->plan.source_map.hash, source_map)) {
+        sl_cli_write_cstr(stderr, "sloppy run: source map hash mismatch in app.plan.json\n");
+        return 1;
+    }
+    app->app_js_bytes = app_js;
 
     return sl_run_load_engine(app, stdlib_path, app_js_path);
 }

@@ -14,6 +14,7 @@ use oxc_ast::ast::{
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 const COMPILER_VERSION: &str = "sloppyc-0.8.0-compiler-extraction-mvp";
 const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
@@ -526,6 +527,16 @@ fn extract_expression_statement(
         .with_span(statement.span));
     };
 
+    if !route_pattern_supported(&full_pattern) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN",
+            "route pattern is outside the Plan v1 alpha route syntax",
+        )
+        .with_path(path)
+        .with_span(statement.span)
+        .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
+    }
+
     state.routes.push(Route {
         method: "GET",
         pattern: full_pattern,
@@ -820,6 +831,35 @@ fn string_argument<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
         Argument::StringLiteral(literal) => Some(literal.value.as_str()),
         _ => None,
     }
+}
+
+fn route_pattern_supported(pattern: &str) -> bool {
+    if pattern == "/" {
+        return true;
+    }
+    if !pattern.starts_with('/') || pattern.ends_with('/') || pattern.contains("//") {
+        return false;
+    }
+    pattern.split('/').skip(1).all(route_segment_supported)
+}
+
+fn route_segment_supported(segment: &str) -> bool {
+    if segment.is_empty() {
+        return false;
+    }
+    if !(segment.starts_with('{') || segment.ends_with('}')) {
+        return true;
+    }
+    if !segment.starts_with('{') || !segment.ends_with('}') {
+        return false;
+    }
+    let inner = &segment[1..segment.len() - 1];
+    let (name, kind) = inner.split_once(':').unwrap_or((inner, "str"));
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        && matches!(kind, "str" | "int")
 }
 
 fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handler> {
@@ -1353,7 +1393,7 @@ fn write_artifacts(out_dir: &Path, app: &ExtractedApp) -> Result<(), Diagnostic>
 
     let app_js = emit_app_js(app);
     let source_map = emit_source_map();
-    let plan = emit_plan(app)?;
+    let plan = emit_plan(app, &sha256_hex(&app_js), &sha256_hex(&source_map))?;
 
     write_artifact(out_dir, "app.js", &app_js)?;
     write_artifact(out_dir, "app.js.map", &source_map)?;
@@ -1410,7 +1450,21 @@ fn validate_output_dir(out_dir: &Path) -> Result<(), Diagnostic> {
     Ok(())
 }
 
-fn emit_plan(app: &ExtractedApp) -> Result<String, Diagnostic> {
+fn sha256_hex(contents: &str) -> String {
+    let digest = Sha256::digest(contents.as_bytes());
+    let mut output = String::with_capacity("sha256:".len() + 64);
+    output.push_str("sha256:");
+    for byte in digest {
+        output.push_str(&format!("{byte:02x}"));
+    }
+    output
+}
+
+fn emit_plan(
+    app: &ExtractedApp,
+    bundle_hash: &str,
+    source_map_hash: &str,
+) -> Result<String, Diagnostic> {
     let handlers = app
         .routes
         .iter()
@@ -1452,12 +1506,12 @@ fn emit_plan(app: &ExtractedApp) -> Result<String, Diagnostic> {
         "bundle": {
             "path": "app.js",
             "id": "compiler-mvp-app-js",
-            "hash": "sha256-compiler-mvp-placeholder"
+            "hash": bundle_hash
         },
         "sourceMap": {
             "path": "app.js.map",
             "id": "compiler-mvp-app-js-map",
-            "hash": "sha256-compiler-mvp-placeholder"
+            "hash": source_map_hash
         },
         "handlers": handlers,
         "routes": routes
@@ -1776,7 +1830,11 @@ export default app;
             .expect("expected app.js should exist");
             assert_eq!(emitted_js, expected_js, "{fixture_name} app.js");
 
-            let emitted_plan = super::emit_plan(&app).expect("plan should emit");
+            let emitted_source_map = super::emit_source_map();
+            let emitted_js_hash = super::sha256_hex(&emitted_js);
+            let emitted_map_hash = super::sha256_hex(&emitted_source_map);
+            let emitted_plan = super::emit_plan(&app, &emitted_js_hash, &emitted_map_hash)
+                .expect("plan should emit");
             let expected_plan = fs::read_to_string(
                 root.join("tests/fixtures")
                     .join(fixture_name)
@@ -1785,7 +1843,6 @@ export default app;
             .expect("expected app.plan.json should exist");
             assert_eq!(emitted_plan, expected_plan, "{fixture_name} app.plan.json");
 
-            let emitted_source_map = super::emit_source_map();
             let expected_source_map = fs::read_to_string(
                 root.join("tests/fixtures")
                     .join(fixture_name)

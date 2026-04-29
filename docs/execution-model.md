@@ -135,11 +135,12 @@ EPIC-22 adds the first dev-only run path for those artifacts. EPIC-23 extends it
 first real response/request boundary. EPIC-24 loads the classic bootstrap runtime asset
 before the generated app artifact and validates runtime-owned handler registrations.
 `sloppy run --artifacts <dir>` loads `app.plan.json`, reads the compiler-emitted `routes`
-metadata, evaluates bootstrap runtime plus `app.js` in a V8-enabled build, dispatches GET
-request paths through the native route matcher, passes a minimal `{ route, query, request
-}` context to the handler, converts supported `Results.*` descriptors, writes a
-deterministic HTTP/1.1 response, and closes the connection. The deterministic
-`--once METHOD TARGET` mode performs the same dispatch without opening a socket.
+metadata through the native Plan parser, verifies referenced artifact hashes before V8 is
+created, evaluates bootstrap runtime plus `app.js` in a V8-enabled build, dispatches GET
+request paths through the native route matcher, passes a minimal `{ route, query, request }`
+context to the handler, converts supported `Results.*` descriptors, writes a deterministic
+HTTP/1.1 response, and closes the connection. The deterministic `--once METHOD TARGET`
+mode performs the same dispatch without opening a socket.
 
 ## Current Handwritten Milestone
 
@@ -205,8 +206,8 @@ source module graphs.
 - `app.plan.json`: host graph contract.
 
 The MVP source map is a deterministic placeholder with no source mappings. It exists
-because the current minimal Plan v1 contract requires `sourceMap` fields. Source-map
-fidelity is deferred.
+because Plan v1 requires `sourceMap` fields. MAIN1-02 verifies the source-map artifact hash
+when the run path loads artifacts, but source-map fidelity is still deferred.
 
 The plan is authority for the native host graph. The bundle provides executable handler
 functions. Both must agree at startup.
@@ -275,14 +276,15 @@ Current EPIC-22/23/24 `sloppy run` flow:
 
 1. accept an artifact directory through `--artifacts <dir>` or positional `<artifact-dir>`;
 2. load `<dir>/app.plan.json` through the native Plan parser;
-3. read the interim `routes` metadata from the same JSON file;
-4. parse GET route patterns into a borrowed dev dispatch table;
-5. create a V8 engine, load the configured bootstrap stdlib root, and evaluate
+3. validate parsed Plan route/provider/capability metadata where those sections are present;
+4. parse Plan GET route patterns into a borrowed dev dispatch table;
+5. read `bundle.path` and `sourceMap.path` and verify their `sha256:` hashes;
+6. create a V8 engine, load the configured bootstrap stdlib root, and evaluate
    `internal/runtime-classic.js`;
-6. evaluate the artifact `app.js` and validate all plan handler IDs were registered;
-7. either dispatch one synthetic `--once METHOD TARGET` request or start a local
+7. evaluate the artifact `app.js` and validate all plan handler IDs were registered;
+8. either dispatch one synthetic `--once METHOD TARGET` request or start a local
    `127.0.0.1:5173` dev server by default;
-8. parse request heads, route GET paths, call handlers by numeric ID with route/query
+9. parse request heads, route GET paths, call handlers by numeric ID with route/query
    context, convert supported descriptors, write a native HTTP response, and close the
    connection.
 
@@ -564,9 +566,10 @@ Startup must validate:
 
 TASK 06.A implements the borrowed native struct shape and small handler/version helpers for
 this contract. TASK 06.B parses caller-provided Plan v1 JSON bytes into arena-owned
-`SlPlan` storage and validates the minimal handwritten shape. It does not load files,
-verify runtime compatibility, verify hashes, load bundles, or perform startup consistency
-checks beyond the parser's shape rules.
+`SlPlan` storage and validates the minimal handwritten shape. MAIN1-02 adds native route,
+data provider, and capability metadata validation when those sections are present, and the
+supported artifact run path verifies runtime compatibility and artifact hashes where bytes
+are available. Provider/capability entries remain metadata-only and are not enforcement.
 
 Mismatch fails before serving work.
 

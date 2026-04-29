@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256-compiler-mvp-placeholder",
+    "hash": "sha256:c6652c1386f64f49d9f9c4ff4a76104777644aecbd6c4ece8a3091fc9c6f6b45",
     "id": "compiler-mvp-app-js",
     "path": "app.js"
   },
@@ -23,7 +23,7 @@
   "runtimeMinimumVersion": "0.1.0",
   "schemaVersion": 1,
   "sourceMap": {
-    "hash": "sha256-compiler-mvp-placeholder",
+    "hash": "sha256:d12ed083a2040a2b479c50b3aa9050263e770438ac90a94db322c928dece70d6",
     "id": "compiler-mvp-app-js-map",
     "path": "app.js.map"
   },

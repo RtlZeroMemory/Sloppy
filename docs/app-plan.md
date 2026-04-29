@@ -30,14 +30,10 @@ TASK 06.B implements JSON parsing and minimal shape validation for handwritten P
 bytes. The parser exposes an arena-owned `SlPlan` and handler table to later runtime work.
 TASK 08.A adds a V8-gated handwritten smoke path that parses an `app.plan.json` fixture,
 evaluates handwritten `app.js`, maps handler ID `1` to the plan `exportName`, and invokes
-that global JavaScript function through the engine boundary. The runtime still does not
-load production plans from disk, build routes, verify hashes, run HTTP, execute compiler
-output, or provide the final handler registration protocol.
+that global JavaScript function through the engine boundary.
 EPIC-21 adds the first `sloppyc build` compiler output. The emitted `app.plan.json`
-matches the required minimal handler/bundle/source-map fields and includes a narrow
-`routes` metadata section for EPIC-22 handoff. The current native Plan v1 parser still
-ignores that unknown section, while `sloppy run` reads it directly to build a dev-only GET
-route binding table.
+matches the required minimal handler/bundle/source-map fields and includes route metadata
+for EPIC-22 handoff.
 MAIN-01 locks `examples/compiler-hello/app.js` as the canonical verification fixture for
 that contract: the emitted plan references `app.js`, `app.js.map`, handler ID `1`, and a
 single `GET /` route bound to that handler. The plan remains deterministic and does not
@@ -48,6 +44,12 @@ lookup to runtime-owned registration. Generated app artifacts call
 ID has a registered callable before accepting requests or running `--once`. Generated apps
 also keep the legacy `globalThis.__sloppy_handler_<id>` export so no-context
 runtime-contract callers continue to use the plan's `exportName` contract explicitly.
+MAIN1-02 hardens that contract for alpha startup validation: the native parser now owns the
+Plan v1 alpha `routes`, `dataProviders`, and `capabilities` sections when present, and the
+supported `sloppy run --artifacts` path verifies `sha256:` hashes for `app.js` and
+`app.js.map` before creating the V8 engine. Minimal handler-only Plan v1 fixtures still
+parse for backward compatibility, but any present hardened section must satisfy its
+validation rules.
 
 ## Public API Shape
 
@@ -79,6 +81,12 @@ The implemented native C shape in `include/sloppy/plan.h` is deliberately small:
 - `bundle.path`, `bundle.id`, and `bundle.hash`;
 - `sourceMap.path`, `sourceMap.id`, and `sourceMap.hash`;
 - `handlers[].id`, `handlers[].exportName`, and `handlers[].displayName`.
+- optional `routes[].method`, `routes[].pattern`, `routes[].handlerId`, and
+  `routes[].name`;
+- optional `dataProviders[].token`, `dataProviders[].provider`, `dataProviders[].service`,
+  and `dataProviders[].capability`;
+- optional `capabilities[].token`, `capabilities[].kind`, `capabilities[].access`, and
+  `capabilities[].provider`.
 
 All native `SlStr` fields are borrowed views in the struct model. Manually constructed
 plans borrow caller-owned storage. `sl_plan_parse_json` copies JSON strings and handler
@@ -150,33 +158,37 @@ not parse a `modules` section, and the compiler still does not emit one.
 
 Native route table input:
 
-- route ID;
 - method;
 - path pattern;
 - handler ID;
-- group metadata;
-- filters;
-- middleware references;
-- permissions;
-- source location.
+- optional name.
 
 TASK 10.A implements the native parser/matcher for the initial route path pattern subset
-that future plan `routes[].path` values can reuse. The current Plan v1 parser still does
-not parse a `routes` section, validate route-handler relationships, or build a route table.
-TASK 10.C deliberately keeps route bindings outside `app.plan.json`: synthetic HTTP
-dispatch tests build a manual borrowed table that maps GET route patterns to numeric
-handler IDs. The helper validates the matched handler ID against the existing Plan handler
-table before engine entry. A future plan routes section will own this mapping.
-EPIC-19 CLI introspection can read an interim `routes` metadata section in plan-compatible
-JSON fixtures/artifacts, but the native Plan v1 parser still does not own or validate that
-section.
+that plan `routes[].pattern` values reuse. MAIN1-02 promotes the compiler-emitted route
+metadata into a Plan v1 alpha section. The native parser validates each route entry when the
+section is present:
+
+- `method` is required and must be `GET` in the alpha contract;
+- `pattern` is required and must parse with the native route pattern parser;
+- `handlerId` is required and must reference a declared `handlers[].id`;
+- duplicate `method` + `pattern` pairs are rejected;
+- duplicate non-empty route names are rejected;
+- array order is preserved and remains the deterministic dispatch order for the supported
+  dev-only path.
+
+TASK 10.C synthetic HTTP dispatch tests still build a manual borrowed table, but the
+compiler/runtime artifact path now owns its GET route mapping through `app.plan.json`.
+EPIC-19 CLI introspection can read route metadata from plan-compatible JSON
+fixtures/artifacts.
 EPIC-21 compiler output uses the same plan-compatible metadata idea for extracted routes:
 each MVP route entry records `method`, `pattern`, `handlerId`, and `name`. Handler IDs
 start at `1` and are assigned in source order after route group prefix composition.
 EPIC-22 `sloppy run` consumes those route entries for dev-only GET dispatch and validates
 that each referenced handler ID exists in the parsed minimal Plan handler table before
 serving requests. EPIC-23 uses the same route entries to materialize route params into the
-handler request context; the native Plan parser still does not own a real route section.
+handler request context; MAIN1-02 moves the route section validation into the native Plan
+parser but does not broaden route precedence, HTTP runtime behavior, middleware, or
+non-GET compiler extraction.
 
 Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
 and `{name:int}`. Query strings are parsed from request targets by EPIC-23 request context
@@ -235,15 +247,21 @@ Database provider registrations:
 - required driver/package metadata;
 - health check metadata.
 
-EPIC-15 exposes bootstrap-only `app.__getPlanContributions().capabilities` metadata for
-declared capabilities. It does not emit or parse real `dataProviders` plan entries.
-EPIC-16 adds the native SQLite provider and `data.sqlite` stdlib shape, but it still does
-not emit or parse real `dataProviders` plan entries.
-EPIC-17 and EPIC-18 add native PostgreSQL and SQL Server providers plus
-`data.postgres`/`data.sqlserver` stdlib shapes, but they also do not emit or parse real
-`dataProviders` plan entries. EPIC-19 CLI introspection can read interim `dataProviders`
-metadata from plan-compatible fixtures/artifacts for doctor/audit output, but the native
-Plan v1 parser does not own that section.
+MAIN1-02 implements a minimal metadata-only native `dataProviders` section. Provider
+entries may carry:
+
+- `token`, required;
+- `provider`, required and limited to `sqlite`, `postgres`, or `sqlserver`;
+- optional `service`;
+- optional `capability`, which must reference `capabilities[].token` when present.
+
+Tokens must be non-empty and may contain letters, digits, `.`, `_`, and `-`. Duplicate
+provider tokens are rejected. Plan files must reference config keys or redacted placeholders
+only; raw connection strings and other secrets do not belong in plan metadata.
+
+This section is parseable and validated metadata only. MAIN1-02 does not open providers,
+perform driver checks, enforce provider access policy, or implement any JavaScript-to-native
+provider bridge.
 
 ### capabilities
 
@@ -256,8 +274,20 @@ Capability declarations:
 - config key references;
 - path policy where applicable.
 
-EPIC-15 implements database capability metadata only in the JavaScript bootstrap facade.
-The native Plan v1 parser still does not parse a `capabilities` section.
+MAIN1-02 implements a minimal metadata-only native `capabilities` section. Capability
+entries may carry:
+
+- `token`, required;
+- `kind`, required and limited to `database`, `filesystem`, or `network`;
+- `access`, required and validated for the kind;
+- optional `provider`, which must reference `dataProviders[].token` when present.
+
+Database access values are `read`, `write`, `readwrite`, or `connect`; filesystem access
+values are `read`, `write`, or `readwrite`; network access values are `connect` or
+`listen`. Duplicate capability tokens are rejected.
+
+Capabilities are not enforced by this PR. They are startup/audit metadata for future
+MAIN1-10 enforcement and must not be described as a sandbox or permission gate yet.
 
 ### permissions
 
@@ -346,9 +376,9 @@ Current handwritten fixture shape:
 
 ## Future Full Plan
 
-Later schema phases may add routes, modules, services, middleware, filters, schemas, data
-providers, capabilities, permissions, diagnostics metadata, and build cache metadata. Those
-sections are intentionally absent from TASK 06.A.
+Later schema phases may add modules, services, middleware, filters, schemas, permissions,
+diagnostics metadata, and build cache metadata beyond the MAIN1-02 route/provider/capability
+alpha sections.
 
 Illustrative future shape, not implemented:
 
@@ -401,11 +431,19 @@ Current TASK 06.B parser validation checks, with TASK 06.C golden fixture covera
 - every handler has nonzero unsigned integer `id`;
 - handler IDs are unique;
 - every handler has non-empty string `exportName` and `displayName`;
+- when `routes` is present, it is an array of GET route entries with valid native route
+  patterns, valid handler references, unique method/pattern pairs, and unique non-empty
+  names;
+- when `dataProviders` is present, it is an array with valid unique tokens and supported
+  provider values (`sqlite`, `postgres`, `sqlserver`);
+- when `capabilities` is present, it is an array with valid unique tokens, supported kinds,
+  supported access values for each kind, and valid provider references when used;
 - malformed JSON fails with a diagnostic rather than crashing.
 
 Current TASK 06.B parser validation deliberately does not check target compatibility,
-runtime minimum version compatibility, stdlib availability, bundle hash contents, source map
-hash contents, or any future route/module/service/provider sections.
+runtime minimum version compatibility, stdlib availability, bundle hash contents, or source
+map hash contents. MAIN1-02 checks runtime compatibility and artifact hashes in the
+supported `sloppy run --artifacts` execution path where artifact bytes are available.
 
 Future plan validation must check:
 
@@ -415,7 +453,6 @@ Future plan validation must check:
 - bundle and source map fields are present;
 - module dependency graph has no cycles;
 - module order is deterministic;
-- route IDs are unique;
 - handler IDs are unique;
 - every route handler ID exists;
 - every expected handler export/registration name is present during startup;
@@ -444,6 +481,14 @@ Runtime rejects a plan when:
 - bundle hash does not match;
 - expected handler table is not registered.
 
+MAIN1-02 implements the supported-path subset for `sloppy run --artifacts`: schema version
+1, `target.platform == "windows-x64"`, `target.engine == "v8"`, and
+`runtimeMinimumVersion == "0.1.0"` are required today. The run path reads the referenced
+`bundle.path` and `sourceMap.path`, rejects missing files, and verifies `sha256:` hashes
+before evaluating bootstrap or user JavaScript. These hashes detect artifact drift between
+plan and files; they are not a security trust boundary and do not replace signing or
+package provenance.
+
 ## Compiler Emission Rules
 
 `sloppyc` must:
@@ -455,6 +500,11 @@ Runtime rejects a plan when:
 - emit source map links;
 - validate static plan restrictions before writing success artifacts;
 - produce golden-testable output.
+
+MAIN1-02 compiler output emits deterministic `sha256:` hashes for `app.js` and
+`app.js.map`, keeps artifact paths relative, emits the hardened route section, and still
+does not emit provider/capability sections because the compiler cannot extract those source
+shapes yet.
 
 ## Error And Diagnostic Behavior
 

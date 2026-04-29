@@ -21,39 +21,41 @@ Implemented now:
 - valid and invalid handwritten plan fixtures;
 - JSON parsing from caller-provided bytes with `yyjson`;
 - minimal Plan v1 shape validation;
+- native Plan v1 alpha route, data provider, and capability metadata validation when those
+  sections are present;
 - arena-owned parsed plan storage;
 - basic diagnostics for invalid plan JSON and validation failures;
 - documented golden plan fixture matrix;
-- compiler-emitted minimal Plan v1 JSON plus an interim `routes` metadata section.
+- compiler-emitted minimal Plan v1 JSON plus a native-validated `routes` section;
+- supported-path `sloppy run --artifacts` hash and compatibility checks for `app.js` and
+  `app.js.map`.
 
 Future scope:
 
 - file-based loading;
-- runtime compatibility checks;
-- hash/source map checks;
 - native host graph construction;
-- real module section parsing and validation.
-- native route/module/provider metadata parsing and validation.
+- real module section parsing and validation;
+- provider access enforcement and JS-to-native provider bridges.
 
 ## Non-goals
 
-No file I/O, native route table construction, service model, module model, data provider
-model, permission/capability model, source map parser, hash verification, HTTP, V8
-execution, JSON serialization inside the C runtime, streaming parser, schema framework,
-plugin validator, or package-manager behavior.
+No general file I/O API, production route table construction, service model, module model,
+provider opening, permission enforcement, source map parser, HTTP runtime broadening, V8
+execution changes, JSON serialization inside the C runtime, streaming parser, schema
+framework, plugin validator, or package-manager behavior.
 
 TASK 14 exposes bootstrap module debug metadata through `app.__debug().modules`, but this
 is not parsed by the native plan loader and is not emitted as `app.plan.json`.
 EPIC-15 exposes bootstrap capability debug metadata through
 `app.__getPlanContributions().capabilities`, but this is not parsed by the native plan
 loader and is not emitted as `app.plan.json`.
-EPIC-19 CLI introspection reads plan-compatible JSON files with optional interim `routes`,
-`modules`, `dataProviders`, and `doctorChecks` sections. Those sections are for metadata
-fixtures/artifacts only until the compiler and app host emit real Plan sections. The CLI
-does not execute application code to discover that metadata.
+EPIC-19 CLI introspection reads plan-compatible JSON files with optional `routes`,
+`modules`, `dataProviders`, and `doctorChecks` sections. The CLI does not execute
+application code to discover that metadata.
 EPIC-21 `sloppyc build` emits the first real compiler-owned `routes` metadata section with
-`method`, `pattern`, `handlerId`, and `name`. The native Plan parser still treats that
-section as an unknown field and does not validate route-handler relationships.
+`method`, `pattern`, `handlerId`, and `name`. MAIN1-02 makes that section a
+native-validated Plan v1 alpha contract. `dataProviders` and `capabilities` are also
+native-validated when present, but remain metadata-only.
 
 ## Public/Internal API
 
@@ -116,10 +118,10 @@ Future loader invariants:
 
 - unsupported schema versions and malformed plans fail before runtime work is served;
 - unknown fields are allowed and ignored for forward compatibility;
-- bundle/source-map hash verification is a later validation task.
-- TASK 10.C synthetic HTTP dispatch keeps route bindings manual and outside `SlPlan`; the
-  dispatch helper only validates that a matched binding's numeric handler ID exists in this
-  handler table before entering the engine.
+- `sloppy run --artifacts` verifies `sha256:` bundle/source-map hashes before creating V8
+  when artifact bytes are available.
+- TASK 10.C synthetic HTTP dispatch keeps route bindings manual, while compiler artifacts
+  use native-validated `SlPlan.routes`.
 - EPIC-21/24 compiler output assigns handler IDs starting at `1` in source order and emits
   classic-script handlers that register those IDs through `__sloppy_register_handler`.
 
@@ -136,7 +138,13 @@ Parser validation rules:
 - `handlers` is required and must be a non-empty array;
 - every handler must have a nonzero unsigned integer `id`;
 - handler IDs must be unique;
-- every handler must have non-empty string `exportName` and `displayName`.
+- every handler must have non-empty string `exportName` and `displayName`;
+- `routes`, when present, must contain GET route entries with valid native patterns,
+  declared handler references, unique method/pattern pairs, and unique non-empty names;
+- `dataProviders`, when present, must contain unique valid tokens and supported provider
+  values;
+- `capabilities`, when present, must contain unique valid tokens, supported kind/access
+  pairs, and valid provider references when used.
 
 Known fields with the wrong JSON type fail validation. Unknown top-level and nested fields
 are ignored.
@@ -224,7 +232,5 @@ parser fixtures; they are plan-compatible introspection inputs used by process-l
 
 ## Open Questions
 
-- Exact hash verification policy.
-- Runtime compatibility policy for target platform, target engine, runtime minimum version,
-  and stdlib version.
+- Exact future source-map parsing policy.
 - JSON pointer/source-frame diagnostic strategy.

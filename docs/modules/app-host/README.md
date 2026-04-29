@@ -83,6 +83,8 @@ package loading, native plugins,
 middleware, automatic validation/request binding, config file/env providers, console/file/native
 logging sinks, request-scoped service lifetimes, disposal hooks, async factories, and typed
 service tokens remain future work.
+MAIN1-02 validates compiler-emitted route/provider/capability plan metadata, but it does
+not make the bootstrap app host emit plans or enforce provider/capability access.
 
 ## Ownership/Lifetime Rules
 

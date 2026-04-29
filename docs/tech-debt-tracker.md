@@ -56,8 +56,10 @@ state and an honest public-alpha path.
 - Request body parsing skeleton with explicit limits and unsupported-content diagnostics.
 - JSON serialization strategy for `Results.json`, including supported values, errors,
   redaction, and benchmark plan.
-- Plan route/module/provider/capability sections with golden fixtures and native startup
-  validation.
+- Plan module/service sections and broader native app-host startup validation beyond the
+  MAIN1-02 route/provider/capability metadata contract.
+- Provider/capability enforcement that turns MAIN1-02 metadata into denied-operation
+  behavior and diagnostics.
 - Source map strategy for compiler output and V8 exception remapping.
 - Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
   drain behavior beyond the current idempotent close, thread-safety contract, and richer

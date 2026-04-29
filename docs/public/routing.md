@@ -99,7 +99,7 @@ Compiler extraction MVP:
   reads such as `route.id` and `query.q` in result arguments;
 - assigns handler IDs from `1` in source order;
 - emits route metadata into `app.plan.json` as `method`, `pattern`, `handlerId`, and
-  `name`;
+  `name`, and the native Plan parser now validates that route metadata;
 - rejects dynamic route strings, computed method names, unsupported handler bodies,
   TypeScript input, closed-over source-file bindings, conditional route registration,
   loops, modules, middleware, and package resolution.
@@ -112,6 +112,8 @@ Dev-only run behavior:
 - reads the compiler-emitted `routes` metadata section from `app.plan.json`;
 - supports GET route bindings only;
 - parses each route pattern with the existing native route parser;
+- rejects malformed route sections, duplicate method/pattern pairs, duplicate non-empty
+  route names, and missing handler references during plan startup validation;
 - matches incoming request paths with strict trailing-slash behavior;
 - resolves the matched route to a numeric handler ID and validates that ID against the
   parsed Plan handler table before entering V8;
@@ -129,8 +131,7 @@ headers in context, and route/module extraction beyond the tiny compiler MVP sha
 fixture or artifact, including the narrow route metadata emitted by the compiler MVP. This
 is inspection-only: it does not execute handlers, start HTTP, enter V8, or build a
 production native route table. `sloppy run --artifacts <dir>` also reads the documented
-interim `routes` metadata section for dev-only GET dispatch until native Plan parsing grows
-a real route section.
+Plan v1 alpha `routes` section for dev-only GET dispatch.
 
 `sloppy openapi --plan <path>` uses the same route metadata to emit a minimal OpenAPI
 skeleton. It converts Sloppy route parameters such as `{id}` and `{id:int}` into OpenAPI

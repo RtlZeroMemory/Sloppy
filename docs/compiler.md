@@ -43,6 +43,9 @@ MAIN-01 uses `examples/compiler-hello/app.js` as the canonical artifact-path ver
 fixture. Repeated builds of that source must produce byte-identical `app.plan.json`,
 `app.js`, and `app.js.map` output with stable handler IDs and without absolute local paths,
 timestamps, random IDs, or checkout-specific path text.
+MAIN1-02 replaces placeholder artifact hashes with deterministic `sha256:` hashes. The
+compiler computes those hashes from the emitted `app.js` and `app.js.map` bytes before
+writing `app.plan.json`, preserving relative artifact paths and repeated-build identity.
 
 If EPIC-21 GitHub issues are absent, this implementation follows
 `docs/project/next-roadmap.md` as the source of truth for the post-roadmap plan.
@@ -103,7 +106,8 @@ MVP phases:
 4. assign stable numeric handler IDs in source order;
 5. rewrite the public `"sloppy"` import into the internal bootstrap runtime handoff;
 6. emit `app.plan.json`, `app.js`, and a placeholder `app.js.map`;
-7. produce structured compiler diagnostics for unsupported syntax.
+7. hash the emitted app and source-map artifacts into the plan;
+8. produce structured compiler diagnostics for unsupported syntax.
 
 ## App Graph Extraction
 
@@ -160,7 +164,9 @@ TypeScript type compatibility from its extractor alone.
 ## Source Map Requirements
 
 The MVP emits a deterministic placeholder `app.js.map` because Plan v1 currently requires a
-`sourceMap` section. It does not claim source fidelity. Real source maps must later support:
+`sourceMap` section. MAIN1-02 hashes that placeholder source-map artifact so plan/runtime
+drift is detectable, but it still does not claim source fidelity. Real source maps must
+later support:
 
 - runtime exception diagnostics;
 - plan extraction diagnostics;
@@ -217,10 +223,9 @@ EPIC-17 and EPIC-18 add native PostgreSQL and SQL Server provider tests plus
 provider modules, emit data provider plan entries, lower application template literals into
 native provider calls, or produce metadata for live provider checks.
 EPIC-19 CLI introspection reads interim plan-compatible metadata sections from
-fixtures/artifacts. The compiler MVP now emits a narrow `routes` metadata section in
-`app.plan.json` for CLI tooling and EPIC-22 route handoff; the native Plan v1 parser still
-ignores unknown sections, while `sloppy run` reads this metadata directly for dev-only GET
-dispatch. EPIC-20 benchmarks measure current native foundations only and do not imply
+fixtures/artifacts. The compiler MVP now emits the native-validated Plan v1 alpha `routes`
+section in `app.plan.json` for CLI tooling and dev-only GET dispatch. EPIC-20 benchmarks
+measure current native foundations only and do not imply
 compiler output performance.
 `examples/ergonomics/app.js` follows the same static-example rule for the broader EPIC-13
 route group, result helper, and schema skeleton API shape. The compiler MVP extracts only
@@ -259,8 +264,10 @@ The JSON schema remains the runtime contract.
 TASK 06.A defines the first minimal runtime contract shape for handwritten plan fixtures:
 `schemaVersion`, `compilerVersion`, `runtimeMinimumVersion`, `stdlibVersion`,
 `target.platform`, `target.engine`, bundle path/id/hash, source map path/id/hash, and
-handler id/exportName/displayName entries. The compiler MVP emits those fields plus an
-unknown-to-native `routes` metadata section for current CLI/future runtime integration.
+handler id/exportName/displayName entries. MAIN1-02 makes the compiler MVP emit those fields
+with deterministic `sha256:` artifact hashes plus the native-validated Plan v1 alpha
+`routes` section. Provider and capability sections are not emitted yet because the
+supported source syntax does not extract provider/capability declarations.
 
 ## Lifecycle Flow
 

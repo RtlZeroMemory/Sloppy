@@ -1,13 +1,13 @@
 {
   "bundle": {
-    "hash": "sha256:ed8cdd4f626856a8d5b036bafc810477977602dd59525699a72414b56f3406a6",
-    "id": "request-context-app-js",
+    "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "id": "hash-mismatch-app-js",
     "path": "app.js"
   },
-  "compilerVersion": "sloppyc-0.8.0-request-context",
+  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-mvp",
   "handlers": [
     {
-      "displayName": "GET /users/{id:int}",
+      "displayName": "GET /",
       "exportName": "__sloppy_handler_1",
       "id": 1
     }
@@ -16,15 +16,15 @@
     {
       "handlerId": 1,
       "method": "GET",
-      "name": "Users.Get",
-      "pattern": "/users/{id:int}"
+      "name": null,
+      "pattern": "/"
     }
   ],
   "runtimeMinimumVersion": "0.1.0",
   "schemaVersion": 1,
   "sourceMap": {
-    "hash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
-    "id": "request-context-app-js-map",
+    "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "id": "hash-mismatch-app-js-map",
     "path": "app.js.map"
   },
   "stdlibVersion": "0.1.0",
