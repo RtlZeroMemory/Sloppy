@@ -24,8 +24,8 @@
 - `SlHttpRequestHead` exists only as a complete-buffer HTTP/1 request-head parser over
   llhttp. It has no streaming parser API, body parsing, chunked transfer handling,
   keep-alive state, TCP server, socket I/O, response writer, request pipeline, route
-  dispatch, middleware, public TypeScript API, query parsing, percent decoding, or V8/app
-  host integration yet.
+  dispatch, middleware, public TypeScript API, asterisk-form/absolute-form target handling,
+  query parsing, percent decoding, or V8/app host integration yet.
 
 ## Deferred decisions
 
@@ -106,6 +106,7 @@
 - HTTP keep-alive state is future work.
 - HTTP response writing is future work.
 - HTTP route dispatch from parsed request head to handler ID is future TASK 10.C work.
+- HTTP asterisk-form and absolute-form request target policy is future work.
 - HTTP query parsing is future work.
 - HTTP percent decoding is future work.
 - Public `app.mapGet` route API integration is future work.

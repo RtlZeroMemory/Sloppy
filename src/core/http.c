@@ -33,6 +33,7 @@ typedef struct SlHttpParseContext
     bool saw_header_value;
     bool headers_complete;
     bool request_complete;
+    SlStatus callback_status;
     SlDiagCode diag_code;
     SlStr diag_message;
     SlStr diag_hint;
@@ -179,11 +180,22 @@ static int sl_http_status_to_llhttp(SlStatus status)
     return HPE_USER;
 }
 
+static void sl_http_record_callback_status(SlHttpParseContext* ctx, SlStatus status)
+{
+    if (ctx != NULL && sl_status_is_ok(ctx->callback_status)) {
+        ctx->callback_status = status;
+    }
+}
+
 static int sl_http_on_url(llhttp_t* parser, const char* at, size_t length)
 {
     SlHttpParseContext* ctx = (SlHttpParseContext*)parser->data;
     SlStatus status = sl_http_append_str(ctx->arena, ctx->raw_target, sl_str_from_parts(at, length),
                                          &ctx->raw_target);
+    if (!sl_status_is_ok(status)) {
+        sl_http_record_callback_status(ctx, status);
+    }
+
     return sl_status_is_ok(status) ? HPE_OK : sl_http_status_to_llhttp(status);
 }
 
@@ -195,12 +207,17 @@ static int sl_http_on_header_field(llhttp_t* parser, const char* at, size_t leng
     if (ctx->saw_header_value) {
         status = sl_http_finish_current_header(ctx);
         if (!sl_status_is_ok(status)) {
+            sl_http_record_callback_status(ctx, status);
             return sl_http_status_to_llhttp(status);
         }
     }
 
     status = sl_http_append_str(ctx->arena, ctx->current_header_name, sl_str_from_parts(at, length),
                                 &ctx->current_header_name);
+    if (!sl_status_is_ok(status)) {
+        sl_http_record_callback_status(ctx, status);
+    }
+
     return sl_status_is_ok(status) ? HPE_OK : sl_http_status_to_llhttp(status);
 }
 
@@ -212,6 +229,10 @@ static int sl_http_on_header_value(llhttp_t* parser, const char* at, size_t leng
     ctx->saw_header_value = true;
     status = sl_http_append_str(ctx->arena, ctx->current_header_value,
                                 sl_str_from_parts(at, length), &ctx->current_header_value);
+    if (!sl_status_is_ok(status)) {
+        sl_http_record_callback_status(ctx, status);
+    }
+
     return sl_status_is_ok(status) ? HPE_OK : sl_http_status_to_llhttp(status);
 }
 
@@ -221,6 +242,7 @@ static int sl_http_on_headers_complete(llhttp_t* parser)
     SlStatus status = sl_http_finish_current_header(ctx);
 
     if (!sl_status_is_ok(status)) {
+        sl_http_record_callback_status(ctx, status);
         return sl_http_status_to_llhttp(status);
     }
 
@@ -358,6 +380,10 @@ static SlStatus sl_http_parse_with_llhttp(SlHttpParseContext* ctx, SlBytes bytes
                                            : SL_STATUS_INVALID_ARGUMENT);
         }
 
+        if (!sl_status_is_ok(ctx->callback_status)) {
+            return ctx->callback_status;
+        }
+
         return sl_http_set_error(
             ctx, SL_DIAG_INVALID_HTTP_REQUEST,
             sl_http_literal("malformed HTTP request", sizeof("malformed HTTP request") - 1U),
@@ -406,6 +432,15 @@ static SlStatus sl_http_validate_parsed_request(SlHttpParseContext* ctx, const l
                                 1U));
     }
 
+    if (ctx->raw_target.ptr[0] != '/') {
+        return sl_http_set_error(
+            ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_http_literal("HTTP request target must be an absolute path",
+                            sizeof("HTTP request target must be an absolute path") - 1U),
+            sl_http_literal("origin-form request targets must start with /",
+                            sizeof("origin-form request targets must start with /") - 1U));
+    }
+
     method = sl_http_method_from_llhttp((llhttp_method_t)parser->method);
     if (method == SL_HTTP_METHOD_UNKNOWN) {
         return sl_http_set_error(
@@ -450,6 +485,7 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
     max_headers = options == NULL ? SL_HTTP_DEFAULT_MAX_HEADERS : options->max_headers;
     ctx.arena = arena;
     ctx.max_headers = max_headers;
+    ctx.callback_status = sl_status_ok();
     ctx.diag_code = SL_DIAG_NONE;
 
     status = sl_http_prepare_headers(arena, max_headers, &ctx.headers);

@@ -230,14 +230,22 @@ find_package(yyjson CONFIG REQUIRED)
 find_package(llhttp CONFIG REQUIRED)
 find_package(libuv CONFIG REQUIRED)
 
-if(TARGET llhttp::llhttp)
-    set(SLOPPY_LLHTTP_TARGET llhttp::llhttp)
-elseif(TARGET llhttp::llhttp_static)
+if(TARGET llhttp::llhttp_static)
     set(SLOPPY_LLHTTP_TARGET llhttp::llhttp_static)
+elseif(TARGET llhttp::llhttp)
+    set(SLOPPY_LLHTTP_TARGET llhttp::llhttp)
 elseif(TARGET llhttp)
     set(SLOPPY_LLHTTP_TARGET llhttp)
 else()
     message(FATAL_ERROR "llhttp dependency was found, but no known CMake target is available.")
+endif()
+
+if(TARGET libuv::uv_a)
+    set(SLOPPY_LIBUV_TARGET libuv::uv_a)
+elseif(TARGET libuv::uv)
+    set(SLOPPY_LIBUV_TARGET libuv::uv)
+else()
+    message(FATAL_ERROR "libuv dependency was found, but neither libuv::uv_a nor libuv::uv is available.")
 endif()
 
 set(
@@ -303,7 +311,7 @@ target_link_libraries(
     sloppy_core
     PRIVATE yyjson::yyjson
             ${SLOPPY_LLHTTP_TARGET}
-            $<IF:$<TARGET_EXISTS:libuv::uv_a>,libuv::uv_a,libuv::uv>)
+            ${SLOPPY_LIBUV_TARGET})
 
 if(SLOPPY_ENABLE_V8)
     target_compile_features(sloppy_core PRIVATE cxx_std_20)

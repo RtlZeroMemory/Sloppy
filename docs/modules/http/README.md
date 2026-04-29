@@ -96,7 +96,7 @@ Paths passed to the matcher must start with `/` and must not include a query str
 
 The HTTP parser accepts a complete HTTP/1.x request head in one `SlBytes` buffer. It does
 not expose streaming state. It rejects malformed input, incomplete input, missing HTTP
-versions, unsupported methods, empty request targets, and header counts above
+versions, unsupported methods, empty/non-path request targets, and header counts above
 `max_headers`. When parse options are omitted, `SL_HTTP_DEFAULT_MAX_HEADERS` is used. A
 zero header limit allows requests with no headers and rejects the first parsed header.
 
@@ -104,8 +104,9 @@ Supported method mapping is intentionally small: GET, POST, PUT, DELETE, PATCH, 
 and HEAD. Other llhttp methods fail as unsupported for this skeleton.
 
 `raw_target` stores the request target exactly as reported by llhttp. `path` stores the
-portion before `?`. Query parsing, percent decoding, URL normalization, host validation,
-and absolute-form target policy are deferred.
+portion before `?`. TASK 10.B only accepts origin-form path targets that start with `/`;
+asterisk-form and absolute-form targets are rejected before returning success. Query
+parsing, percent decoding, URL normalization, and host validation are deferred.
 
 ## Ownership/Lifetime Rules
 

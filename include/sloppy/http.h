@@ -62,8 +62,8 @@ typedef struct SlHttpParseOptions
  * line and headers ending in CRLF CRLF. Parsed strings and the header array are arena-owned.
  * `options` may be NULL, in which case SL_HTTP_DEFAULT_MAX_HEADERS is used. A zero
  * max_headers value permits no headers. Header overflow, malformed input, incomplete input,
- * empty request targets, and unsupported methods fail with SlStatus and, when supplied,
- * an arena-owned diagnostic.
+ * empty/non-path request targets, and unsupported methods fail with SlStatus and, when
+ * supplied, an arena-owned diagnostic.
  *
  * The parser stores `raw_target` exactly as llhttp reports it. `path` is the portion before
  * `?`; query parsing and percent decoding are intentionally deferred.
