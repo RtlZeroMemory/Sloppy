@@ -1,0 +1,51 @@
+#ifndef SLOPPY_HTTP_CONTEXT_H
+#define SLOPPY_HTTP_CONTEXT_H
+
+#include "sloppy/arena.h"
+#include "sloppy/http.h"
+#include "sloppy/route.h"
+#include "sloppy/status.h"
+#include "sloppy/string.h"
+
+#include <stddef.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct SlHttpQueryParam
+{
+    SlStr name;
+    SlStr value;
+} SlHttpQueryParam;
+
+typedef struct SlHttpQuery
+{
+    SlHttpQueryParam* params;
+    size_t param_count;
+} SlHttpQuery;
+
+typedef struct SlHttpRequestContext
+{
+    const SlHttpRequestHead* request;
+    const SlRouteParam* route_params;
+    size_t route_param_count;
+    const SlHttpQueryParam* query_params;
+    size_t query_param_count;
+} SlHttpRequestContext;
+
+/*
+ * Parses the query component of an origin-form raw target.
+ *
+ * The parser supports `key=value` pairs split on `&`, empty values, repeated keys, `%XX`
+ * percent decoding, and `+` as a space. Repeated keys use last-wins semantics by replacing
+ * the earlier value for the same decoded key. Invalid percent escapes fail instead of being
+ * silently preserved.
+ */
+SlStatus sl_http_query_parse(SlArena* arena, SlStr raw_target, SlHttpQuery* out_query);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

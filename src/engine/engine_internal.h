@@ -32,6 +32,10 @@ SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name, SlStr sou
                                   SlDiag* out_diag);
 SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena, SlStr function_name,
                                      SlEngineResult* out_result, SlDiag* out_diag);
+SlStatus sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena,
+                                                 SlStr function_name,
+                                                 const SlHttpRequestContext* request_context,
+                                                 SlEngineResult* out_result, SlDiag* out_diag);
 #endif
 
 #ifdef __cplusplus

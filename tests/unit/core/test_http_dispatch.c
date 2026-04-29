@@ -87,7 +87,7 @@ static int test_get_missing_route_fails_cleanly(void)
     SlHttpDispatchTable table = {0};
     SlPlanHandler handler = {0};
     SlPlan plan = one_handler_plan(&handler);
-    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
 
     if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
@@ -187,7 +187,7 @@ static int test_missing_plan_handler_fails_before_engine_call(void)
     SlHttpDispatchTable table = {0};
     SlPlanHandler handler = {0};
     SlPlan plan = one_handler_plan(&handler);
-    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
 
     if (init_arena(&arena, storage, sizeof(storage)) != 0 ||

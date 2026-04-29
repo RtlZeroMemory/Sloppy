@@ -104,18 +104,21 @@ The compiler extraction MVP extracts:
 - literal `app.mapGet(pattern, handler)` routes;
 - simple `const group = app.mapGroup(prefix)` followed by `group.mapGet(child, handler)`;
 - optional `.withName("Route.Name")` route names;
-- zero-argument handlers that are inline function/arrow expressions returning
-  `Results.text(...)` or `Results.json(...)`;
-- result arguments that are inline JSON-safe literals, arrays, or object literals;
+- zero-argument handlers or one-argument context handlers whose single parameter is a
+  simple identifier and whose body is an inline function/arrow expression returning
+  `Results.text(...)`, `Results.json(...)`, `Results.ok(...)`, or `Results.noContent()`;
+- result arguments that are inline JSON-safe literals, arrays, object literals, or simple
+  request-context property reads such as `route.id` and `query.q`;
 - source ranges for copied handler bodies.
 
 Extraction must be deterministic. Import order must not silently decide module ordering.
 
 Unsupported input fails with diagnostics. The MVP rejects dynamic route strings, computed
 method names, multiple app objects, missing default export, unsupported handler shapes,
-handlers with parameters, handlers that close over source-file bindings, TypeScript input
-or TypeScript-only handler syntax, dynamic imports, package resolution, broad module
-graphs, and top-level control flow.
+handlers with more than one parameter, destructured/default/rest handler parameters,
+handlers that close over source-file bindings, TypeScript input or TypeScript-only handler
+syntax, dynamic imports, package resolution, broad module graphs, and top-level control
+flow.
 
 ## Static Mode
 
@@ -177,9 +180,8 @@ The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is stage
 runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler MVP recognizes only
 the public bare import `import { Sloppy, Results } from "sloppy";` as input syntax. It does
 not emit or load stdlib assets; generated `app.js` includes a tiny compiler-owned
-`Results.text/json` shim that returns strings compatible with the current V8
-global-function smoke path until EPIC-24 owns real bootstrap module loading and EPIC-23
-owns response descriptor conversion.
+`Results.text/json/ok/noContent` shim that returns descriptor objects for the EPIC-23
+response conversion path until EPIC-24 owns real bootstrap module loading.
 `examples/hello/app.js` therefore uses a relative source import from
 `stdlib/sloppy/index.js`; that example remains a bootstrap API-shape example. The
 compiler-owned runnable artifact example is `examples/compiler-hello/`.

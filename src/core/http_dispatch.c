@@ -7,7 +7,7 @@
  *
  * Safety invariants:
  * - route bindings and parsed patterns are borrowed for the call only;
- * - route params are matched only to prove route-pattern integration and are not retained;
+ * - route params and query params are materialized into the dispatch arena for one call;
  * - missing plan handlers fail before entering the engine boundary;
  * - no socket, libuv loop, response writer, request context, middleware, OS API, V8 type,
  *   or public TypeScript API is introduced here.
@@ -16,6 +16,7 @@
  */
 #include "sloppy/http_dispatch.h"
 
+#include "sloppy/http_context.h"
 #include "sloppy/runtime_contract.h"
 
 static SlStr sl_http_dispatch_literal(const char* ptr, size_t length)
@@ -111,15 +112,19 @@ static SlStatus sl_http_dispatch_missing_handler(SlArena* arena, SlDiag* out_dia
 static SlStatus sl_http_dispatch_find_route(SlArena* arena,
                                             const SlHttpDispatchTable* dispatch_table,
                                             const SlHttpRequestHead* request,
-                                            const SlHttpRouteBinding** out_binding)
+                                            const SlHttpRouteBinding** out_binding,
+                                            SlRouteMatch* out_match)
 {
     size_t index = 0U;
 
-    if (arena == NULL || dispatch_table == NULL || request == NULL || out_binding == NULL) {
+    if (arena == NULL || dispatch_table == NULL || request == NULL || out_binding == NULL ||
+        out_match == NULL)
+    {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     *out_binding = NULL;
+    *out_match = (SlRouteMatch){0};
     for (index = 0U; index < dispatch_table->route_count; index += 1U) {
         const SlHttpRouteBinding* binding = &dispatch_table->routes[index];
         SlRouteMatch match = {0};
@@ -140,6 +145,7 @@ static SlStatus sl_http_dispatch_find_route(SlArena* arena,
 
         if (match.matched) {
             *out_binding = binding;
+            *out_match = match;
             return sl_status_ok();
         }
     }
@@ -154,6 +160,9 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
 {
     const SlHttpRouteBinding* binding = NULL;
     const SlPlanHandler* handler = NULL;
+    SlRouteMatch route_match = {0};
+    SlHttpQuery query = {0};
+    SlHttpRequestContext request_context = {0};
     SlStatus status;
 
     if (out_diag != NULL) {
@@ -182,7 +191,7 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding);
+    status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding, &route_match);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -200,6 +209,25 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
         return status;
     }
 
-    return sl_runtime_contract_call_handler(engine, arena, plan, binding->handler_id, out_result,
-                                            out_diag);
+    status = sl_http_query_parse(arena, request->raw_target, &query);
+    if (!sl_status_is_ok(status)) {
+        return sl_http_dispatch_write_diag(
+            arena, out_diag, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_http_dispatch_literal("HTTP query string is malformed",
+                                     sizeof("HTTP query string is malformed") - 1U),
+            sl_http_dispatch_literal("Percent escapes in query strings must use two hex digits.",
+                                     sizeof("Percent escapes in query strings must use two hex "
+                                            "digits.") -
+                                         1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    request_context.request = request;
+    request_context.route_params = route_match.params;
+    request_context.route_param_count = route_match.param_count;
+    request_context.query_params = query.params;
+    request_context.query_param_count = query.param_count;
+
+    return sl_runtime_contract_call_handler_with_context(engine, arena, plan, binding->handler_id,
+                                                         &request_context, out_result, out_diag);
 }

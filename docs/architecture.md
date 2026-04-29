@@ -27,7 +27,8 @@ This document covers:
 The current foundation/runtime-contract work still does not implement:
 
 - production V8 runtime startup with ESM module loading and bootstrap intrinsics;
-- a production HTTP server, full response writer, request body parser, or request context;
+- a production HTTP server, request body parser, middleware pipeline, or full framework
+  request/response model;
 - native app module execution from a compiler-emitted plan;
 - JavaScript-to-native database resource/intrinsic integration;
 - production Sloppy Plan loading from compiler output with compatibility/hash checks;
@@ -128,18 +129,19 @@ noop dispatch, and synthetic GET dispatch. Benchmark smoke/list checks are corre
 smoke only and are not performance claims.
 EPIC-21 adds the compiler extraction MVP for one tiny source file and emits deterministic
 `app.plan.json`, `app.js`, and placeholder source-map artifacts. EPIC-22 adds the first
-dev-only `sloppy run --artifacts` path: V8-enabled builds can load those artifacts, parse
-GET route metadata, start a tiny local libuv HTTP server or `--once` synthetic dispatch,
-call handlers through the runtime-contract path, and return minimal text/JSON-compatible
-responses. Source input handoff, production server hardening, request contexts, body
-parsing, middleware, hot reload, package-manager behavior, and Node compatibility remain
-out of scope.
+dev-only `sloppy run --artifacts` path. EPIC-23 extends that path so V8-enabled builds can
+load those artifacts, parse GET route metadata, materialize route/query/request context,
+start a tiny local libuv HTTP server or `--once` synthetic dispatch, call handlers through
+the runtime-contract path, and serialize supported text/JSON/empty/problem result
+descriptors through the native response writer. Source input handoff, production server
+hardening, request bodies, middleware, hot reload, package-manager behavior, and Node
+compatibility remain out of scope.
 
 ## Future Phase
 
-The next implementation batch should connect the smallest compiler-to-runtime path:
-compiler extraction, `sloppy run`, HTTP response/request context, V8 module/bootstrap
-loading, packaging, cross-platform CI, capability enforcement, and public alpha docs. See
+The next implementation batch should connect the remaining bootstrap and productionization
+pieces around the smallest compiler-to-runtime path: V8 module/bootstrap loading,
+packaging, cross-platform CI, capability enforcement, and public alpha docs. See
 `docs/project/next-roadmap.md`.
 
 ## System Shape

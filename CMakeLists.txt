@@ -291,7 +291,9 @@ set(
     src/core/async.c
     src/core/worker_pool.c
     src/core/http.c
+    src/core/http_context.c
     src/core/http_dispatch.c
+    src/core/http_response.c
     src/core/route.c
     src/core/plan.c
     src/core/plan_parse.c
@@ -327,7 +329,9 @@ set(
     tests/unit/core/test_async.c
     tests/unit/core/test_worker_pool.c
     tests/unit/core/test_http.c
+    tests/unit/core/test_http_context.c
     tests/unit/core/test_http_dispatch.c
+    tests/unit/core/test_http_response.c
     tests/unit/core/test_route.c
     tests/unit/core/test_plan.c
     tests/unit/core/test_plan_parse.c
@@ -563,7 +567,11 @@ if(SLOPPY_ENABLE_TESTS)
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
     sloppy_add_c_unit_test(
+        core_http_context core.http.context tests/unit/core/test_http_context.c)
+    sloppy_add_c_unit_test(
         core_http_dispatch core.http.dispatch tests/unit/core/test_http_dispatch.c)
+    sloppy_add_c_unit_test(
+        core_http_response core.http.response tests/unit/core/test_http_response.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
     sloppy_add_c_unit_test(core_plan_contract core.plan.contract tests/unit/core/test_plan.c)
     set_tests_properties(core.plan.contract PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
@@ -781,6 +789,22 @@ if(SLOPPY_ENABLE_TESTS)
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(sloppy.run.once_unsupported_method
                              PROPERTIES PASS_REGULAR_EXPRESSION "405 Method Not Allowed")
+        add_test(
+            NAME sloppy.run.once_request_context
+            COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
+                    tests/integration/execution/request_context --once GET /users/123?q=abc
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(
+            sloppy.run.once_request_context
+            PROPERTIES PASS_REGULAR_EXPRESSION
+                       "\"id\":\"123\".*\"q\":\"abc\".*\"path\":\"/users/123\"")
+        add_test(
+            NAME sloppy.run.once_invalid_descriptor
+            COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
+                    tests/integration/execution/invalid_descriptor --once GET /
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(sloppy.run.once_invalid_descriptor
+                             PROPERTIES PASS_REGULAR_EXPRESSION "500 Internal Server Error")
     endif()
 
     add_test(
@@ -823,6 +847,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.sqlserver_basic.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlserver_basic_example.cmake")
+    add_test(
+        NAME examples.request_context.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_request_context_example.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

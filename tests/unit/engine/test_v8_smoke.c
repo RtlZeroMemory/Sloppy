@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 static int expect_true(bool condition)
 {
@@ -41,9 +42,35 @@ static int expect_str_contains(SlStr haystack, SlStr needle)
     return 1;
 }
 
+static int expect_bytes_equal(SlBytes actual, const char* expected)
+{
+    size_t expected_length = strlen(expected);
+
+    return expect_true(actual.length == expected_length && actual.ptr != NULL &&
+                       memcmp(actual.ptr, expected, expected_length) == 0);
+}
+
 static int init_arena(SlArena* arena, unsigned char* storage, size_t storage_size)
 {
     return expect_status(sl_arena_init(arena, storage, storage_size), SL_STATUS_OK);
+}
+
+static SlHttpRequestHead test_request(SlHttpMethod method)
+{
+    SlHttpRequestHead request = {0};
+
+    request.method = method;
+    request.path = sl_str_from_cstr("/users/123");
+    request.raw_target = sl_str_from_cstr("/users/123?q=abc");
+    return request;
+}
+
+static SlHttpRequestContext test_request_context(const SlHttpRequestHead* request)
+{
+    SlHttpRequestContext context = {0};
+
+    context.request = request;
+    return context;
 }
 
 static SlEngineOptions v8_options(void)
@@ -157,7 +184,7 @@ static int test_missing_function_returns_diagnostic(void)
     SlArena result_arena = {0};
     SlEngineOptions options = v8_options();
     SlEngine* engine = NULL;
-    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
 
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
@@ -376,6 +403,139 @@ static int test_create_destroy_create_reuses_process_platform(void)
     return 0;
 }
 
+static int test_request_context_reports_actual_method(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_POST);
+    SlHttpRequestContext context = test_request_context(&request);
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 70;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 71;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-context-method.js"),
+                          sl_str_from_cstr("globalThis.sloppy_context = function (ctx) { return "
+                                           "{ __sloppyResult: true, kind: \"json\", status: 200, "
+                                           "contentType: \"application/json; charset=utf-8\", "
+                                           "body: { method: ctx.request.method } }; };"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 72;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_context"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 73;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "{\"method\":\"POST\"}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 74;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_missing_json_body_serializes_as_null(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 80;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 81;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-json-null.js"),
+                          sl_str_from_cstr("globalThis.sloppy_missing_body = function () { return "
+                                           "{ __sloppyResult: true, kind: \"json\", status: 200, "
+                                           "contentType: \"application/json; charset=utf-8\" }; };"
+                                           "globalThis.sloppy_undefined_body = function () { "
+                                           "return { __sloppyResult: true, kind: \"json\", "
+                                           "status: 200, contentType: "
+                                           "\"application/json; charset=utf-8\", body: undefined "
+                                           "}; };"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 82;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_missing_body"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 83;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "null") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 84;
+    }
+
+    result = (SlEngineResult){0};
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("sloppy_undefined_body"),
+                          &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 85;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "null") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 86;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -410,5 +570,15 @@ int main(void)
         return result;
     }
 
-    return test_create_destroy_create_reuses_process_platform();
+    result = test_create_destroy_create_reuses_process_platform();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_context_reports_actual_method();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_missing_json_body_serializes_as_null();
 }

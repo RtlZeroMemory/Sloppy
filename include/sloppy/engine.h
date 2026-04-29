@@ -3,6 +3,8 @@
 
 #include "sloppy/arena.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/http_context.h"
+#include "sloppy/http_response.h"
 #include "sloppy/plan.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -67,6 +69,7 @@ typedef struct SlEngineResult
 {
     SlEngineResultKind kind;
     SlStr text;
+    SlHttpResponse response;
 } SlEngineResult;
 
 /*
@@ -128,6 +131,18 @@ SlStatus sl_engine_eval_source(SlEngine* engine, SlStr source_name, SlStr source
  */
 SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr function_name,
                                   SlEngineResult* out_result, SlDiag* out_diag);
+
+/*
+ * Calls a global JavaScript handler with one request context argument.
+ *
+ * The request context is borrowed for the duration of the call. The bridge materializes a
+ * plain JS object with `route`, `query`, and `request` fields and never exposes native
+ * pointers or handles. On success, supported `Results.*` descriptors and the plain-string
+ * compatibility fallback are converted into `out_result->response`.
+ */
+SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr function_name,
+                                              const SlHttpRequestContext* request_context,
+                                              SlEngineResult* out_result, SlDiag* out_diag);
 
 /*
  * Calls a handler by numeric Sloppy Plan handler ID.

@@ -219,6 +219,44 @@ SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr functi
 #endif
 }
 
+SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr function_name,
+                                              const SlHttpRequestContext* request_context,
+                                              SlEngineResult* out_result, SlDiag* out_diag)
+{
+    if (out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_result = (SlEngineResult){0};
+
+    if (engine == NULL || !engine->active || arena == NULL || request_context == NULL ||
+        request_context->request == NULL ||
+        (request_context->route_param_count != 0U && request_context->route_params == NULL) ||
+        (request_context->query_param_count != 0U && request_context->query_params == NULL) ||
+        !sl_engine_str_valid(function_name) || function_name.length == 0U)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (engine->kind != SL_ENGINE_KIND_V8) {
+        return sl_engine_write_unsupported_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("engine request context calls require V8",
+                              sizeof("engine request context calls require V8") - 1U),
+            sl_engine_literal("Configure with SLOPPY_ENABLE_V8=ON and a valid V8 SDK.",
+                              sizeof("Configure with SLOPPY_ENABLE_V8=ON and a valid V8 SDK.") -
+                                  1U));
+    }
+
+#if defined(SLOPPY_ENABLE_V8_BRIDGE)
+    return sl_engine_v8_call_function_with_context(engine, arena, function_name, request_context,
+                                                   out_result, out_diag);
+#else
+    (void)out_diag;
+    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+#endif
+}
+
 SlStatus sl_engine_call_handler(SlEngine* engine, const SlEngineHandlerCall* call,
                                 SlEngineResult* out_result, SlDiag* out_diag)
 {

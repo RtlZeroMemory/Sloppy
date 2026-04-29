@@ -9,6 +9,8 @@ exception-to-`SlDiag` mapping skeleton for that smoke path. TASK 08.A adds the f
 handwritten `app.plan.json` + `app.js` execution smoke through the V8 bridge.
 EPIC-21 compiler output deliberately targets the same classic-script global-function shape
 for now. EPIC-22 `sloppy run` requires this V8-enabled path to execute compiler artifacts.
+EPIC-23 extends the bridge with a narrow handler call that materializes one plain request
+context object and converts supported result descriptors into native response descriptors.
 
 ## Purpose
 
@@ -31,7 +33,9 @@ Implemented now:
 - V8 isolate/context creation and destruction in `src/engine/v8/`;
 - classic script source evaluation through `sl_engine_eval_source`;
 - zero-argument global function calls through `sl_engine_call_function0`;
-- copied string results through `SlEngineResult`.
+- one-argument handler calls through `sl_engine_call_function_with_context`;
+- copied plain-string compatibility results and supported `Results.*` descriptor responses
+  through `SlEngineResult`.
 - basic exception diagnostics for compile/eval/call failures.
 - `sl_runtime_contract_call_handler` maps a parsed plan handler ID to a named JS global
   and invokes it through the engine boundary;
@@ -40,7 +44,11 @@ Implemented now:
 - compiler-generated `app.js` artifacts can define `globalThis.__sloppy_handler_N`
   functions that match the current runtime-contract lookup shape.
 - `sloppy run --artifacts <dir>` creates a V8 engine, evaluates the artifact `app.js`, and
-  dispatches matched GET routes through `sl_runtime_contract_call_handler`.
+  dispatches matched GET routes through the runtime-contract helper with an EPIC-23
+  request context argument;
+- supported handler return values are plain strings or `Results.text/json/ok/noContent`
+  and `problem` descriptors. Unsupported descriptor kinds and malformed descriptors fail
+  safely with diagnostics.
 
 Later scope:
 
@@ -50,10 +58,10 @@ Later scope:
 
 ## Non-goals
 
-No public JS API bootstrap module loading, ESM resolver, full app host, request context,
-handler table registration, V8 Promise integration, microtask policy, workers, inspector,
-snapshots, Node compatibility, or package-manager behavior. EPIC-22 HTTP usage is limited
-to the dev-only CLI path and does not make this bridge a production server boundary.
+No public JS API bootstrap module loading, ESM resolver, full app host, handler table
+registration, V8 Promise integration, microtask policy, workers, inspector, snapshots,
+Node compatibility, or package-manager behavior. EPIC-22/23 HTTP usage is limited to the
+dev-only CLI path and does not make this bridge a production server boundary.
 
 ## Public/Internal API
 
@@ -72,13 +80,19 @@ Current behavior:
 - `sl_engine_eval_source` evaluates borrowed classic JavaScript source strings in the
   engine context, using `source_name` as the generated JavaScript diagnostic label;
 - `sl_engine_call_function0` looks up a named global function, calls it with no arguments,
-  and copies a string return value into the caller-provided arena;
+  and copies a plain string return value into the caller-provided arena for compatibility
+  smoke paths;
+- `sl_engine_call_function_with_context` looks up a named global function, materializes one
+  plain request context object, and converts supported `Results.*` descriptors into native
+  response descriptors;
 - `sl_runtime_contract_call_handler` looks up a handler ID in `SlPlan`, validates the
-  export name, and calls the named global through `sl_engine_call_function0`;
+  export name, and calls the named global with no arguments;
+- `sl_runtime_contract_call_handler_with_context` performs the same plan lookup and calls
+  the named global with the EPIC-23 request context;
 - EPIC-21 generated `app.js` uses classic-script `globalThis.__sloppy_handler_N`
-  assignments plus a tiny compiler-generated `Results.text/json` shim that returns strings
-  for the current engine result boundary until EPIC-24 owns stdlib bootstrap module loading
-  and EPIC-23 owns descriptor conversion;
+  assignments plus a tiny compiler-generated `Results.text/json/ok/noContent` shim that
+  returns descriptors for the EPIC-23 response conversion path until EPIC-24 owns stdlib
+  bootstrap module loading;
 - `sloppy run` fails clearly with "requires V8-enabled build" when this bridge is not
   compiled in;
 - `sl_engine_call_handler` exists as a future engine-owned handler dispatch shape but
@@ -105,10 +119,12 @@ failed creates do not consume caller arena capacity. V8 isolate/context resource
 bridge-owned and released by `sl_engine_destroy`. Callers must destroy an engine before
 resetting the arena that backs the opaque handle.
 
-`sl_engine_call_function0` copies supported string results into the caller-provided result
-arena. Returned `SlStr` views remain valid until that arena is reset or its backing storage
-ends. No V8 handle or raw native pointer escapes the bridge, and JS never receives raw
-native pointers.
+`sl_engine_call_function0` copies supported plain-string compatibility results into the
+caller-provided result arena. `sl_engine_call_function_with_context` copies supported
+descriptor response bodies into that same result arena and borrows the native request
+context only while constructing the JS argument. Returned views remain valid until that
+arena is reset or its backing storage ends. No V8 handle or raw native pointer escapes the
+bridge, and JS never receives raw native pointers.
 
 Diagnostics produced by the V8 bridge are built through `SlDiagBuilder` in the engine
 arena. Exception message text, generated source names, hints, and bounded stack summaries

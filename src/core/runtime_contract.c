@@ -47,18 +47,18 @@ static SlStatus sl_runtime_write_diag(SlArena* arena, SlDiag* out_diag, SlDiagCo
     return sl_status_from_code(status_code);
 }
 
-SlStatus sl_runtime_contract_call_handler(SlEngine* engine, SlArena* arena, const SlPlan* plan,
-                                          SlHandlerId handler_id, SlEngineResult* out_result,
-                                          SlDiag* out_diag)
+static SlStatus sl_runtime_resolve_handler(SlEngine* engine, SlArena* arena, const SlPlan* plan,
+                                           SlHandlerId handler_id,
+                                           const SlPlanHandler** out_handler, SlDiag* out_diag)
 {
     const SlPlanHandler* handler = NULL;
     SlStatus status;
 
-    if (out_result == NULL) {
+    if (out_handler == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    *out_result = (SlEngineResult){0};
+    *out_handler = NULL;
 
     if (engine == NULL || arena == NULL || plan == NULL || !sl_handler_id_valid(handler_id)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -103,5 +103,62 @@ SlStatus sl_runtime_contract_call_handler(SlEngine* engine, SlArena* arena, cons
             SL_STATUS_INVALID_STATE);
     }
 
+    *out_handler = handler;
+    return sl_status_ok();
+}
+
+SlStatus sl_runtime_contract_call_handler(SlEngine* engine, SlArena* arena, const SlPlan* plan,
+                                          SlHandlerId handler_id, SlEngineResult* out_result,
+                                          SlDiag* out_diag)
+{
+    const SlPlanHandler* handler = NULL;
+    SlStatus status;
+
+    if (out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_result = (SlEngineResult){0};
+
+    status = sl_runtime_resolve_handler(engine, arena, plan, handler_id, &handler, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (handler == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
     return sl_engine_call_function0(engine, arena, handler->export_name, out_result, out_diag);
+}
+
+SlStatus sl_runtime_contract_call_handler_with_context(SlEngine* engine, SlArena* arena,
+                                                       const SlPlan* plan, SlHandlerId handler_id,
+                                                       const SlHttpRequestContext* request_context,
+                                                       SlEngineResult* out_result, SlDiag* out_diag)
+{
+    const SlPlanHandler* handler = NULL;
+    SlStatus status;
+
+    if (out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_result = (SlEngineResult){0};
+
+    if (request_context == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_runtime_resolve_handler(engine, arena, plan, handler_id, &handler, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (handler == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    return sl_engine_call_function_with_context(engine, arena, handler->export_name,
+                                                request_context, out_result, out_diag);
 }

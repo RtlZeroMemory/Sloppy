@@ -164,12 +164,14 @@ each MVP route entry records `method`, `pattern`, `handlerId`, and `name`. Handl
 start at `1` and are assigned in source order after route group prefix composition.
 EPIC-22 `sloppy run` consumes those route entries for dev-only GET dispatch and validates
 that each referenced handler ID exists in the parsed minimal Plan handler table before
-serving requests.
+serving requests. EPIC-23 uses the same route entries to materialize route params into the
+handler request context; the native Plan parser still does not own a real route section.
 
 Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
-and `{name:int}`. Query strings, catch-all parameters, optional segments, regex
-constraints, route groups, method matching, route precedence, percent decoding,
-OpenAPI metadata, and validation metadata remain future work.
+and `{name:int}`. Query strings are parsed from request targets by EPIC-23 request context
+code, not route patterns. Catch-all parameters, optional segments, regex constraints,
+route groups, method matching beyond GET dev dispatch, route precedence, OpenAPI metadata,
+and validation metadata remain future work.
 
 ### handlers
 

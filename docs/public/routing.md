@@ -1,13 +1,14 @@
 # Routing
 
-Status: Bootstrap `mapGet`, route group shape, compiler extraction MVP, and dev-only GET
-artifact routing implemented.
+Status: Bootstrap `mapGet`, route group shape, compiler extraction MVP, dev-only GET
+artifact routing, and minimal route/query request context implemented.
 
 Bootstrap status: `Sloppy.create()` and `Sloppy.createBuilder().build()` return an
 in-memory app facade with `app.mapGet(...)` and `app.mapGroup(...)`. Compiler-emitted
 `mapGet` metadata can now be consumed by `sloppy run --artifacts` for GET-only dev
-dispatch. Bootstrap route snapshots, module-contributed routes, request contexts, and
-route params in JavaScript remain future work.
+dispatch. Matched route params and query params are passed to V8 handlers in a minimal
+request context. Bootstrap route snapshots and module-contributed routes remain
+JavaScript-only until later compiler/runtime work.
 
 Purpose: document current `app.mapGet`, route snapshots, handler context, and future route
 features.
@@ -52,10 +53,25 @@ without an explicit context:
 }
 ```
 
-This context exists only for bootstrap tests and examples. `route` is currently an empty
-object unless a test or caller supplies an explicit context. Native dev dispatch can match
-route parameters to select a handler, but it still does not materialize route params into
-the JavaScript handler context.
+Native dev dispatch passes this implemented EPIC-23 runtime context to compiled handlers:
+
+```js
+{
+  route: { id: "123" },
+  query: { q: "abc" },
+  request: {
+    method: "GET",
+    path: "/users/123",
+    rawTarget: "/users/123?q=abc"
+  }
+}
+```
+
+Route params and query values are strings. `{id:int}` validates the path segment but does
+not coerce `route.id` to a number. Query parsing splits on `&`, splits key/value on the
+first `=`, allows empty values, uses last-wins for repeated keys, decodes `%XX`, and treats
+`+` as a space. Invalid percent escapes fail safely. Request body parsing and headers in
+context are not implemented.
 
 Route groups:
 
@@ -77,10 +93,10 @@ Compiler extraction MVP:
 - supports `app.mapGet("/literal", () => Results.json(...))`;
 - supports `const group = app.mapGroup("/prefix"); group.mapGet("/child", handler)`;
 - supports `.withName("Route.Name")`;
-- requires compiled handlers to declare zero parameters because the current runtime calls
-  handler exports with zero arguments;
-- requires handler result arguments in compiled routes to be inline JSON-safe literals,
-  arrays, or object literals;
+- allows compiled handlers to declare zero parameters or one simple identifier request
+  context parameter;
+- supports inline JSON-safe literals, arrays, object literals, and simple context property
+  reads such as `route.id` and `query.q` in result arguments;
 - assigns handler IDs from `1` in source order;
 - emits route metadata into `app.plan.json` as `method`, `pattern`, `handlerId`, and
   `name`;
@@ -96,11 +112,13 @@ Dev-only run behavior:
 - matches incoming request paths with strict trailing-slash behavior;
 - resolves the matched route to a numeric handler ID and validates that ID against the
   parsed Plan handler table before entering V8;
-- returns `404` when no GET route matches and `405` for unsupported methods.
+- returns `404` when no GET route matches and `405` for unsupported methods;
+- returns safe dev `500` responses for handler exceptions or malformed/unsupported result
+  descriptors.
 
 Not implemented yet: `mapPost`, nested groups, middleware, filters, automatic validation,
-production route table construction, route precedence optimization, route params in handler
-context, and route/module extraction beyond the tiny compiler MVP shape above.
+production route table construction, route precedence optimization, request body parsing,
+headers in context, and route/module extraction beyond the tiny compiler MVP shape above.
 
 ## CLI Introspection
 

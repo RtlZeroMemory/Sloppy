@@ -53,7 +53,7 @@ static int test_missing_handler_id_returns_diagnostic_without_v8(void)
     SlEngine* engine = NULL;
     SlPlanHandler handler = {0};
     SlPlan plan = one_handler_plan(&handler);
-    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
 
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||

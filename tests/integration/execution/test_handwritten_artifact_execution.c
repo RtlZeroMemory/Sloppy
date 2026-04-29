@@ -123,12 +123,6 @@ static int eval_app_from_path(const char* path, const char* source_name, SlEngin
         SL_STATUS_OK);
 }
 
-static int eval_handwritten_app(SlEngine* engine, SlDiag* out_diag)
-{
-    return eval_app_from_path("tests/integration/execution/handwritten_smoke/app.js",
-                              "handwritten_smoke/app.js", engine, out_diag);
-}
-
 static int create_v8_engine(SlArena* engine_arena, SlEngine** out_engine)
 {
     SlEngineOptions options = v8_options();
@@ -208,7 +202,7 @@ static int test_missing_handler_id_returns_diagnostic(void)
     SlArena result_arena = {0};
     SlEngine* engine = NULL;
     SlPlan plan = {0};
-    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
 
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
