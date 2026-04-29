@@ -46,6 +46,9 @@ Current tests:
 - CTest smoke for `sloppyc --version`;
 - CTest structural check `bootstrap.stdlib.assets`, which verifies the bootstrap stdlib
   source files exist and were copied to the build output support-data layout;
+- CTest structural check `bootstrap.stdlib.api_shape`, which statically verifies the tiny
+  bootstrap API source shape for `Results.text/json`, `Sloppy.create`, `app.mapGet`,
+  `.withName`, route snapshots, index exports, and absence of deferred app-host APIs;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -286,6 +289,16 @@ It parses an in-memory HTTP GET request head, matches a manual route binding, re
 numeric handler ID through the parsed plan, and invokes the existing runtime-contract
 helper. It still does not start sockets, write responses, parse bodies, build request
 contexts, run middleware, or exercise public TypeScript APIs.
+
+TASK 11.B/11.C adds the first non-executing bootstrap stdlib API-shape check:
+
+```text
+tests/cmake/check_bootstrap_api.cmake
+```
+
+It is intentionally static because the current V8 bridge smoke path evaluates classic
+scripts only and does not load ESM modules from `stdlib/sloppy/`. A future module-loading
+task should replace or supplement this with executable bootstrap stdlib tests.
 
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 

@@ -1,6 +1,6 @@
 # Sloppy Bootstrap Stdlib
 
-Status: Bootstrap layout only.
+Status: Bootstrap API shape.
 
 This directory is the source-controlled bootstrap standard library layout for the future
 public Sloppy TypeScript API facade.
@@ -24,16 +24,18 @@ Build and install layout:
 lib/sloppy/bootstrap/sloppy/
 ```
 
-The current modules are placeholders. `index.js` re-exports empty frozen `Sloppy` and
-`Results` objects so future compiler and runtime work has a stable module boundary to grow
-from. `internal/intrinsics.js` reserves the internal bootstrap boundary for future
-runtime-provided intrinsic bindings.
+The current modules implement the first tiny public API facade. `index.js` re-exports
+frozen `Sloppy` and `Results` objects. `Results.text(...)` and `Results.json(...)` return
+plain frozen descriptor objects. `Sloppy.create()` returns an in-memory app object with
+`app.mapGet(...)`, route registration storage, `.withName(...)`, and `app.__getRoutes()`
+for bootstrap tests/debugging.
 
 Not implemented here:
 
-- `Results.text` or `Results.json`;
-- `Sloppy.create`;
-- `app.mapGet`;
+- `app.run`, `app.listen`, `app.build`, or app graph freeze;
 - handler registration;
+- compiler extraction or `app.plan.json` emission;
+- HTTP server behavior or response writing;
+- route groups, middleware, validation, modules, services, config, or logging;
 - runtime intrinsic binding;
 - module resolution or compiler import rewriting.

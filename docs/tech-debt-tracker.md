@@ -31,10 +31,10 @@
   precedence, plan route section, route params in handler context, HTTP response writer,
   request context, middleware, TCP server, sockets, body parsing, public TypeScript API, or
   compiler extraction yet.
-- The bootstrap stdlib exists only as source/build/install layout with placeholder modules.
-  It has no `Results.text/json`, `Sloppy.create`, `app.mapGet`, handler registration,
-  runtime intrinsic binding, module resolver, compiler import rewriting, or package-manager
-  behavior yet.
+- The bootstrap stdlib now has tiny `Results.text/json`, `Sloppy.create`, and
+  in-memory `app.mapGet` facade behavior. It still has no handler registration, runtime
+  intrinsic binding, module resolver, compiler import rewriting, package-manager behavior,
+  app host build/freeze/run, HTTP response conversion, or `app.plan.json` emission yet.
 
 ## Deferred decisions
 
@@ -122,11 +122,17 @@
 - HTTP asterisk-form and absolute-form request target policy is future work.
 - HTTP query parsing is future work.
 - HTTP percent decoding is future work.
-- Public `app.mapGet` route API integration is future work.
+- Public `app.mapGet` native route/API integration beyond in-memory registration is future
+  work.
 - Route OpenAPI metadata and validation/schema integration are future work.
-- TASK 11.B owns `Results.text/json`.
-- TASK 11.C owns `Sloppy.create` and `app.mapGet` conceptual API behavior.
+- Executable ESM/V8 tests for `stdlib/sloppy` are future work; TASK 11.B/11.C adds only a
+  static CTest API-shape check because current V8 smoke execution does not load ESM
+  modules.
 - TASK 11.D owns the first hello example.
+- `app.run`, `app.listen`, `app.build`, `app.freeze`, and app graph freeze are future
+  app-host work.
+- Automatic compiler extraction and `app.plan.json` emission from `app.mapGet` are future
+  work.
 - Compiler import rewriting for `"sloppy"` is future work.
 - Runtime intrinsic binding for `stdlib/sloppy/internal/intrinsics.js` is future work.
 

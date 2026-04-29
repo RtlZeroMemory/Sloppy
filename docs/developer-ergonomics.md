@@ -38,8 +38,11 @@ Sloppy ergonomics are not:
 
 ## Current Phase
 
-The repository contains placeholder CLIs and specifications only. No public TypeScript API,
-route mapping, validation, modules, or data provider behavior is implemented yet.
+The repository contains placeholder CLIs and a source-controlled bootstrap stdlib layout.
+TASK 11.B/11.C adds the first tiny public JavaScript facade inside that stdlib:
+`Results.text(...)`, `Results.json(...)`, `Sloppy.create()`, and `app.mapGet(...)`.
+This facade is in-memory and conceptual only. It does not run an app, emit a Sloppy Plan,
+serve HTTP, perform compiler extraction, validate requests, or integrate modules/services.
 
 ## Future Phase
 
@@ -92,9 +95,10 @@ stdlib/sloppy/
   internal/intrinsics.js
 ```
 
-Those files are placeholders only. They reserve the module boundaries for `Sloppy`,
-`Results`, and future runtime intrinsics, but they do not implement `Sloppy.create`,
-`app.mapGet`, route registration, or any `Results.*` helpers.
+TASK 11.B/11.C turns the first two placeholders into a minimal implemented API shape:
+`Results.text`, `Results.json`, `Sloppy.create`, `app.mapGet`, `.withName`, and
+`app.__getRoutes()` for tests/debugging. `Sloppy.create()` is not yet equivalent to a
+native default builder plus `build()`; that remains future app-host work.
 
 ## Builder/App Shape
 
@@ -147,7 +151,9 @@ Native TASK 10.A route pattern support is intentionally smaller than the final p
 shown above. The implemented C parser/matcher supports only `/`, static segments,
 `{name}`, `{name:str}`, and `{name:int}`. It does not implement route groups, method
 matching, route precedence, percent decoding, query string matching, HTTP serving,
-`app.mapGet`, middleware, validation, or OpenAPI metadata yet.
+middleware, validation, or OpenAPI metadata yet. TASK 11.C's JavaScript `app.mapGet`
+stores conceptual in-memory registrations only and is not connected to that native route
+foundation or `app.plan.json` emission yet.
 
 Route groups contribute:
 
@@ -186,6 +192,18 @@ Internal architecture expectation:
 - V8 bridge converts descriptors into native response results;
 - native fast paths handle text, JSON, no-content, and common status responses;
 - unsupported result shapes produce diagnostics with handler name and source location.
+
+Current TASK 11.B descriptor helpers:
+
+- `Results.text(body, options?)` returns a frozen descriptor with `__sloppyResult: true`,
+  `kind: "text"`, `status`, `body: String(body)`, and
+  `contentType: "text/plain; charset=utf-8"`;
+- `Results.json(value, options?)` returns a frozen descriptor with `__sloppyResult: true`,
+  `kind: "json"`, `status`, `body: value`, and
+  `contentType: "application/json; charset=utf-8"`;
+- `options.status` defaults to `200` and must be an integer from 100 to 999;
+- JSON serialization, response writing, headers, streaming, content negotiation, and
+  native descriptor conversion remain future work.
 
 ## Validation As Route Shape
 

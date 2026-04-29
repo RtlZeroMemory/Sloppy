@@ -2,7 +2,8 @@
 
 ## Status
 
-Bootstrap stdlib layout exists; app-host behavior is planned / not implemented yet.
+Bootstrap stdlib layout and tiny in-memory app facade exist; full app-host behavior is
+planned / not implemented yet.
 
 ## Purpose
 
@@ -20,10 +21,19 @@ No Node compatibility by default and no raw primitive-first public app model.
 
 ## Public/Internal API
 
-`stdlib/sloppy/index.js` now re-exports placeholder `Sloppy` and `Results` modules for the
-future public `"sloppy"` facade. The exports are empty frozen objects. Builders, app graph
-freeze, `Sloppy.create`, `app.mapGet`, route registration, and result helpers remain future
-work.
+`stdlib/sloppy/index.js` now re-exports frozen `Sloppy` and `Results` modules for the
+future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally tiny:
+
+- `Results.text(...)` and `Results.json(...)` create frozen plain descriptors;
+- `Sloppy.create()` creates a frozen JavaScript app facade;
+- `app.mapGet(pattern, handler)` stores an in-memory GET route registration;
+- `.withName(name)` stores a route name;
+- `app.__getRoutes()` returns frozen route snapshots for bootstrap tests/debugging.
+
+Builders, native app graph freeze, startup validation, `app.run`, `app.listen`,
+`app.build`, `app.freeze`, compiler extraction, automatic `app.plan.json` emission, HTTP
+server behavior, route groups, modules, services, middleware, validation, config, and
+logging remain future work.
 
 ## Ownership/Lifetime Rules
 
@@ -40,8 +50,10 @@ Missing service, duplicate route, invalid lifetime, missing config, and module g
 ## Tests
 
 CTest registers `bootstrap.stdlib.assets` to verify the source bootstrap files and copied
-build-tree assets exist. Public API examples, plan fixtures, diagnostics snapshots, and
-integration smoke come later once behavior exists.
+build-tree assets exist. CTest also registers `bootstrap.stdlib.api_shape` to statically
+check the implemented bootstrap API names, descriptor fields, route registration shape, and
+absence of future app-host APIs. Executable ESM/V8 stdlib tests, plan fixtures, diagnostics
+snapshots, and full integration smoke remain future work once module loading exists.
 
 ## Source Docs
 
