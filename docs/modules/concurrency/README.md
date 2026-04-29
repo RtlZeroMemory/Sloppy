@@ -29,6 +29,9 @@ Implemented now:
 Future scope still includes real event-loop backends, real worker threads, V8 Promise
 integration, microtask draining, request lifetime, cancellation tokens, deadlines,
 backpressure, and thread-safe posting.
+Cancellation tokens, deadline hooks, bounded queues, and backpressure are future only in
+the sense that the current skeleton does not implement them yet; they are required
+foundation for the first real async/HTTP runtime, not optional polish.
 
 ## Non-goals
 
@@ -151,7 +154,8 @@ only and do not emit diagnostics. `SlAsync` may borrow an existing diagnostic fo
 rejected/cancelled settlement, but it does not build, copy, render, or own diagnostics.
 Worker-pool submission reports invalid arguments, unsupported mode, fixed-record capacity,
 and loop post failures through `SlStatus`. V8 Promise rejection, route/request-aware
-cancellation, overload, and wrong-thread diagnostics remain later work.
+cancellation, overload, and wrong-thread diagnostics remain required follow-up work for the
+real async foundation.
 
 ## Tests
 

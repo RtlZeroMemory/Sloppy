@@ -104,6 +104,7 @@ function Get-IssueBody {
     $acceptance = if ($null -ne $Item.acceptanceCriteria) { @($Item.acceptanceCriteria) } else { @("The issue scope is implemented or documented as spec-only.", "Tests/checks pass or failures are reported honestly.", "Docs/ADRs are updated if behavior or architecture changes.", "The resulting PR is a bounded coherent review unit.") }
     $reviewerChecklist = if ($null -ne $Item.reviewerChecklist) { @($Item.reviewerChecklist) } else { @("Check source-doc compliance.", "Check non-goals and scope creep.", "Check tests and quality gates.", "Check platform/V8/C/Rust/JS standards boundaries as applicable.") }
     $suggestedPrSize = if (-not [string]::IsNullOrWhiteSpace([string]$Item.suggestedPrSize)) { @($Item.suggestedPrSize) } else { @("size:bounded") }
+    $recommendedPrGrouping = if ($null -ne $Item.recommendedPrGrouping) { @($Item.recommendedPrGrouping) } else { @("Prefer grouping this issue with related tasks into a mid-large bounded-context PR when ownership, docs, tests, and risk are shared.") }
 
     foreach ($section in @(
         @("Milestone", @($Item.milestone)),
@@ -118,7 +119,8 @@ function Get-IssueBody {
         @("Acceptance Criteria", $acceptance),
         @("Reviewer Checklist", $reviewerChecklist),
         @("Suggested Labels", @($Item.labels)),
-        @("Suggested PR Size", $suggestedPrSize)
+        @("Suggested PR Size", $suggestedPrSize),
+        @("Recommended PR Grouping", $recommendedPrGrouping)
     )) {
         $heading = $section[0]
         $values = @($section[1])

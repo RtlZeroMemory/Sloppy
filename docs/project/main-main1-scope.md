@@ -1,9 +1,20 @@
 # MAIN and MAIN.1 Scope
 
-Status: locked planning taxonomy for the alpha path.
+Status: historical planning taxonomy for the narrow alpha path.
 
 This document defines the scope labels used by the MAIN and MAIN.1 roadmaps. It does not
 implement runtime/compiler/provider behavior and does not mutate GitHub issues.
+
+2026-04-29 update: MAIN and MAIN.1 remain useful evidence and vocabulary, but the active
+strategic plan has moved to Slop Engine foundation completion:
+
+- `docs/project/slop-engine-final-shape.md`;
+- `docs/project/slop-engine-layered-roadmap.md`;
+- `docs/project/strategic-current-state-audit.md`.
+
+Public alpha docs stay blocked until the ENGINE layers pass or are explicitly deferred.
+PostgreSQL/SQL Server JS bridges, benchmark claims, package-manager behavior, Node
+compatibility, and production HTTP server breadth are not immediate foundation blockers.
 
 ## Taxonomy
 

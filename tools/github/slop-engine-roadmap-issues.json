@@ -1,0 +1,2912 @@
+{
+  "schema": "sloppy-engine-roadmap-staged-issues-v1",
+  "status": "review-only",
+  "note": "Strategic Slop Engine roadmap issue data. Existing completed/superseded MAIN and MAIN1 issues were closed during PR #256 follow-up; validate and dry-run this file before applying new ENGINE issue creation.",
+  "prStrategy": "Issues are planning atoms, not automatic one-PR-per-task instructions. Prefer mid-large bounded-context PR chunks that group several related tasks when docs, tests, and ownership can move together. Split only at strong ownership, risk, or review-size boundaries.",
+  "milestone": "0.8 Planning / Consolidation",
+  "epics": [
+    {
+      "title": "EPIC ENGINE-00: Roadmap Activation and Project Hygiene",
+      "labels": [
+        "type:epic",
+        "area:harness",
+        "area:docs",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review"
+      ],
+      "summary": "Verify the post-cleanup issue set, activate ENGINE roadmap tracking, and keep project state aligned with the strategic docs.",
+      "goal": "Start engine-foundation implementation from a clean project picture after the completed/superseded MAIN and MAIN1 cleanup.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-01: Final Framework Contract",
+      "labels": [
+        "type:epic",
+        "area:ts-api",
+        "area:http",
+        "area:data",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Finalize the core JS API, Results API, request context, data API, async policy, cancellation/deadline policy, resource limits, and HTTP support matrix.",
+      "goal": "Lock the contracts before implementation broadens, including the primitive infrastructure required for scalable async and HTTP paths.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-02: Compiler Full Supported App Pipeline",
+      "labels": [
+        "type:epic",
+        "area:compiler",
+        "area:plan",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Make the compiler emit all route, handler, async, SQLite, capability, artifact, and source-map metadata needed for realistic supported apps.",
+      "goal": "Supported Sloppy apps compile into deterministic artifacts the runtime can execute and diagnose.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-03: V8 Async Runtime",
+      "labels": [
+        "type:epic",
+        "area:engine-v8",
+        "area:concurrency",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Implement Promise return support, microtask policy, owner-thread continuation, cancellation propagation, bounded queues, async diagnostics, and pending async shutdown behavior.",
+      "goal": "Async handlers become real instead of rejected, fake-success, or unbounded toy paths.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-04: HTTP API Runtime",
+      "labels": [
+        "type:epic",
+        "area:http",
+        "area:app-host",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Complete the framework HTTP runtime for realistic APIs: methods, headers, bodies, JSON/text policy, serialization, errors, and localhost lifecycle.",
+      "goal": "HTTP supports realistic API building blocks without claiming production server breadth.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-05: SQLite End-to-End",
+      "labels": [
+        "type:epic",
+        "area:sqlite",
+        "area:data",
+        "area:engine-v8",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Make SQLite work from public JS handler code through the native provider with resource ownership and conformance.",
+      "goal": "SQLite becomes the core database proof before PostgreSQL or SQL Server JS bridges.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-06: Capability Enforcement Completion",
+      "labels": [
+        "type:epic",
+        "area:data",
+        "area:plan",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Wire capability checks into real SQLite bridge paths and keep security docs honest about non-sandbox limits.",
+      "goal": "Capabilities deny real provider access, not only metadata fixtures.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-07: App Host Lifecycle Completion",
+      "labels": [
+        "type:epic",
+        "area:app-host",
+        "area:resource",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Complete app/request scope lifecycle, cleanup, shutdown diagnostics, and resource ownership for supported paths.",
+      "goal": "Resources are cleaned up deterministically across success, failure, async, and shutdown.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-08: Diagnostics and Source Mapping Completion",
+      "labels": [
+        "type:epic",
+        "area:diagnostics",
+        "area:compiler",
+        "area:engine-v8",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Complete compiler/runtime/V8 source maps, async error diagnostics, JSON surfaces, and redaction audit.",
+      "goal": "Errors are useful, stable, source-aware where claimed, and safe to print.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-09: End-to-End Example Apps",
+      "labels": [
+        "type:epic",
+        "area:testing",
+        "area:docs",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Add executable foundation examples for hello, request context, async, JSON body, SQLite users API, denied capability, and unsupported behavior.",
+      "goal": "Examples prove realistic API apps through the real compiler/runtime path.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-10: Engine Conformance and Packaged Runtime Evidence",
+      "labels": [
+        "type:epic",
+        "area:testing",
+        "area:ci",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Prove V8-gated conformance and packaged local runtime smoke outside the checkout.",
+      "goal": "Evidence gates show exactly what default, V8, package, provider, and benchmark checks prove.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    },
+    {
+      "title": "EPIC ENGINE-11: Public Alpha Readiness Gate",
+      "labels": [
+        "type:epic",
+        "type:docs",
+        "area:docs",
+        "area:testing",
+        "priority:p2",
+        "risk:medium",
+        "status:blocked"
+      ],
+      "summary": "Keep public alpha docs blocked until engine foundation layers pass or are honestly deferred.",
+      "goal": "Public docs describe executable verified workflows only.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Treat this EPIC as a parent outcome; implementation should land through mid-large bounded-context PR chunks.",
+        "Keep claims tied to executable evidence and explicit gates.",
+        "Preserve hard boundaries from AGENTS.md and relevant module docs."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
+        "Split only when ownership, risk, or review size makes one chunk hard to validate."
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "title": "TASK ENGINE-00.A: Verify Post-Cleanup Issue Set",
+      "parentEpic": "EPIC ENGINE-00: Roadmap Activation and Project Hygiene",
+      "labels": [
+        "type:docs",
+        "area:harness",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Verify that only genuinely unfinished pre-ENGINE issues remain open after PR #256 cleanup.",
+      "goal": "The issue tracker has no completed MAIN/MAIN1 parent or superseded benchmark/public-alpha noise before ENGINE issues are created.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Deliver this issue as part of its recommended bounded-context chunk.",
+        "Keep implementation/docs/tests aligned with the final-shape and layered-roadmap docs."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk 0 - Project hygiene: verify cleanup and create approved ENGINE issues in one tracker-maintenance pass."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-00.B: Activate ENGINE Project Tracking",
+      "parentEpic": "EPIC ENGINE-00: Roadmap Activation and Project Hygiene",
+      "labels": [
+        "type:task",
+        "area:harness",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Create/attach the approved ENGINE issues, labels, milestones, and project-board fields without duplicating old work.",
+      "goal": "The ENGINE roadmap becomes the active development tracker with parent/child links and clean statuses.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Deliver this issue as part of its recommended bounded-context chunk.",
+        "Keep implementation/docs/tests aligned with the final-shape and layered-roadmap docs."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk 0 - Project hygiene: verify cleanup and create approved ENGINE issues in one tracker-maintenance pass."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-00.C: Record Deferred Benchmark and Public Docs Policy",
+      "parentEpic": "EPIC ENGINE-00: Roadmap Activation and Project Hygiene",
+      "labels": [
+        "type:docs",
+        "area:docs",
+        "area:performance",
+        "priority:p2",
+        "risk:low",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Keep benchmark/public-alpha deferral policy visible after the old issues are closed.",
+      "goal": "No public-doc or benchmark issue appears to outrank core engine foundation blockers.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Deliver this issue as part of its recommended bounded-context chunk.",
+        "Keep implementation/docs/tests aligned with the final-shape and layered-roadmap docs."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk 0 - Project hygiene: verify cleanup and create approved ENGINE issues in one tracker-maintenance pass."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-01.A: Final JS App and Results API Contract",
+      "parentEpic": "EPIC ENGINE-01: Final Framework Contract",
+      "labels": [
+        "type:docs",
+        "area:ts-api",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Define the core app, route registration, request context, and Results helper contract.",
+      "goal": "Compiler/runtime/framework work share one supported API target.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Lock the final contract before implementation broadens.",
+        "Define supported, rejected, and deferred behavior for this contract surface.",
+        "Map the contract to implementation-layer tests and non-goals."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk A - Contract lock: ENGINE-01.A through ENGINE-01.D in one contract PR."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-01.B: Final Async and Microtask Policy",
+      "parentEpic": "EPIC ENGINE-01: Final Framework Contract",
+      "labels": [
+        "type:docs",
+        "area:concurrency",
+        "area:engine-v8",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Define Promise return, microtask drain, request retention, cancellation, rejection, bounded queue, and shutdown policy.",
+      "goal": "Async handler implementation has a real contract with cancellation and no fake-success path.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Lock the final contract before implementation broadens.",
+        "Define supported, rejected, and deferred behavior for this contract surface.",
+        "Map the contract to implementation-layer tests and non-goals."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk A - Contract lock: ENGINE-01.A through ENGINE-01.D in one contract PR."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-01.C: Final HTTP and SQLite Support Matrix",
+      "parentEpic": "EPIC ENGINE-01: Final Framework Contract",
+      "labels": [
+        "type:docs",
+        "area:http",
+        "area:sqlite",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Define supported HTTP methods, body/header policy, timeout/backpressure behavior, result serialization, and SQLite foundation API.",
+      "goal": "Realistic API examples have a bounded target before implementation starts.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Lock the final contract before implementation broadens.",
+        "Define supported, rejected, and deferred behavior for this contract surface.",
+        "Map the contract to implementation-layer tests and non-goals."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk A - Contract lock: ENGINE-01.A through ENGINE-01.D in one contract PR."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-01.D: Foundation Cancellation, Limits, and Backpressure Contract",
+      "parentEpic": "EPIC ENGINE-01: Final Framework Contract",
+      "labels": [
+        "type:docs",
+        "area:concurrency",
+        "area:http",
+        "area:resource",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Define cancellation tokens, deadline hooks, bounded queues/buffers, resource budgets, and backpressure behavior shared by async, HTTP, SQLite, and lifecycle paths.",
+      "goal": "Foundational primitives are scalable enough to build on without retrofitting cancellation or limits later.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Lock the final contract before implementation broadens.",
+        "Define supported, rejected, and deferred behavior for this contract surface.",
+        "Map the contract to implementation-layer tests and non-goals."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk A - Contract lock: ENGINE-01.A through ENGINE-01.D in one contract PR."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-02.A: Non-GET Route Method Extraction",
+      "parentEpic": "EPIC ENGINE-02: Compiler Full Supported App Pipeline",
+      "labels": [
+        "type:task",
+        "area:compiler",
+        "area:http",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Extract supported non-GET route registrations into Plan route metadata.",
+      "goal": "Compiler artifacts can drive realistic API method dispatch.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make compiler output complete enough for realistic supported apps.",
+        "Keep generated artifacts deterministic.",
+        "Rejected source shapes must not emit success artifacts."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Compiler cargo tests and golden fixtures.",
+        "Conformance compile/reject fixtures where applicable.",
+        "cargo fmt/clippy/test for compiler changes.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk B - Compiler and Plan pipeline: ENGINE-02.A through ENGINE-02.D together unless source-map risk dominates."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-02.B: Async Handler Extraction",
+      "parentEpic": "EPIC ENGINE-02: Compiler Full Supported App Pipeline",
+      "labels": [
+        "type:task",
+        "area:compiler",
+        "area:concurrency",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Support or explicitly reject async handler shapes according to the final async contract.",
+      "goal": "Async examples compile only when runtime semantics are real.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make compiler output complete enough for realistic supported apps.",
+        "Keep generated artifacts deterministic.",
+        "Rejected source shapes must not emit success artifacts."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Compiler cargo tests and golden fixtures.",
+        "Conformance compile/reject fixtures where applicable.",
+        "cargo fmt/clippy/test for compiler changes.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk B - Compiler and Plan pipeline: ENGINE-02.A through ENGINE-02.D together unless source-map risk dominates."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-02.C: Provider and Capability Plan Emission",
+      "parentEpic": "EPIC ENGINE-02: Compiler Full Supported App Pipeline",
+      "labels": [
+        "type:task",
+        "area:compiler",
+        "area:plan",
+        "area:data",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Emit SQLite provider/capability metadata needed by runtime enforcement.",
+      "goal": "SQLite app artifacts carry the metadata the native host enforces.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make compiler output complete enough for realistic supported apps.",
+        "Keep generated artifacts deterministic.",
+        "Rejected source shapes must not emit success artifacts."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Compiler cargo tests and golden fixtures.",
+        "Conformance compile/reject fixtures where applicable.",
+        "cargo fmt/clippy/test for compiler changes.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk B - Compiler and Plan pipeline: ENGINE-02.A through ENGINE-02.D together unless source-map risk dominates."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-02.D: Real Compiler Source Maps",
+      "parentEpic": "EPIC ENGINE-02: Compiler Full Supported App Pipeline",
+      "labels": [
+        "type:task",
+        "area:compiler",
+        "area:diagnostics",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Replace placeholder maps with source maps useful for runtime diagnostics.",
+      "goal": "Runtime errors can map to author source where docs claim they do.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make compiler output complete enough for realistic supported apps.",
+        "Keep generated artifacts deterministic.",
+        "Rejected source shapes must not emit success artifacts."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Compiler cargo tests and golden fixtures.",
+        "Conformance compile/reject fixtures where applicable.",
+        "cargo fmt/clippy/test for compiler changes.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk B - Compiler and Plan pipeline: ENGINE-02.A through ENGINE-02.D together unless source-map risk dominates."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-03.A: Promise Return Settlement",
+      "parentEpic": "EPIC ENGINE-03: V8 Async Runtime",
+      "labels": [
+        "type:task",
+        "area:engine-v8",
+        "area:concurrency",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Convert returned Promises into fulfilled/rejected handler outcomes.",
+      "goal": "Async handlers no longer fail by design and never succeed as unresolved Promise objects.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Implement real Promise settlement and microtask policy.",
+        "Carry cancellation, deadlines, bounded queues, and cleanup through async runtime primitives.",
+        "Keep V8 owner-thread rules explicit and tested."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "V8-gated runtime/conformance tests where execution is claimed.",
+        "Default non-V8 gates must report V8 work as skipped/not configured, not passed.",
+        "Async diagnostics tests for rejection, cancellation, and overflow.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk C - V8 async runtime: ENGINE-03.A through ENGINE-03.D, with ENGINE-08.B when diagnostics move with async."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-03.B: Microtask and Owner-Thread Policy",
+      "parentEpic": "EPIC ENGINE-03: V8 Async Runtime",
+      "labels": [
+        "type:task",
+        "area:engine-v8",
+        "area:concurrency",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Implement explicit microtask draining and owner-thread continuation policy.",
+      "goal": "V8 async work resumes only on the owning engine thread.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Implement real Promise settlement and microtask policy.",
+        "Carry cancellation, deadlines, bounded queues, and cleanup through async runtime primitives.",
+        "Keep V8 owner-thread rules explicit and tested."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "V8-gated runtime/conformance tests where execution is claimed.",
+        "Default non-V8 gates must report V8 work as skipped/not configured, not passed.",
+        "Async diagnostics tests for rejection, cancellation, and overflow.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk C - V8 async runtime: ENGINE-03.A through ENGINE-03.D, with ENGINE-08.B when diagnostics move with async."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-03.C: Async Error Diagnostics and Cleanup",
+      "parentEpic": "EPIC ENGINE-03: V8 Async Runtime",
+      "labels": [
+        "type:test",
+        "area:diagnostics",
+        "area:engine-v8",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Cover rejected Promise diagnostics and request cleanup after async settlement or cancellation.",
+      "goal": "Rejected and cancelled async handlers are observable, safe, and leak-free.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Implement real Promise settlement and microtask policy.",
+        "Carry cancellation, deadlines, bounded queues, and cleanup through async runtime primitives.",
+        "Keep V8 owner-thread rules explicit and tested."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "V8-gated runtime/conformance tests where execution is claimed.",
+        "Default non-V8 gates must report V8 work as skipped/not configured, not passed.",
+        "Async diagnostics tests for rejection, cancellation, and overflow.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk C - V8 async runtime: ENGINE-03.A through ENGINE-03.D, with ENGINE-08.B when diagnostics move with async."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-03.D: Cancellation, Deadline, and Backpressure Runtime Primitives",
+      "parentEpic": "EPIC ENGINE-03: V8 Async Runtime",
+      "labels": [
+        "type:task",
+        "area:concurrency",
+        "area:engine-v8",
+        "area:resource",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Wire request cancellation tokens, deadline hooks, bounded completion queues, and overflow diagnostics through async runtime primitives.",
+      "goal": "Async infrastructure rejects or cancels work predictably instead of growing without bound.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Implement real Promise settlement and microtask policy.",
+        "Carry cancellation, deadlines, bounded queues, and cleanup through async runtime primitives.",
+        "Keep V8 owner-thread rules explicit and tested."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "V8-gated runtime/conformance tests where execution is claimed.",
+        "Default non-V8 gates must report V8 work as skipped/not configured, not passed.",
+        "Async diagnostics tests for rejection, cancellation, and overflow.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk C - V8 async runtime: ENGINE-03.A through ENGINE-03.D, with ENGINE-08.B when diagnostics move with async."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-04.A: HTTP Method Dispatch Completion",
+      "parentEpic": "EPIC ENGINE-04: HTTP API Runtime",
+      "labels": [
+        "type:task",
+        "area:http",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Support the final API method set through native route dispatch.",
+      "goal": "POST/PUT/PATCH/DELETE apps can execute when compiler metadata exists.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Complete the framework HTTP runtime for realistic local APIs.",
+        "Include methods, headers, JSON/text body policy, limits, cancellation/backpressure, result serialization, and error contract.",
+        "Stay below production server scope."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "HTTP parser/dispatch/response CTest coverage.",
+        "Conformance examples when compiler/runtime path exists.",
+        "Limit, cancellation, and error-contract tests.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk D - HTTP API runtime: ENGINE-04.A through ENGINE-04.C in one large-coherent HTTP PR if reviewable."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-04.B: Headers and Body Policy",
+      "parentEpic": "EPIC ENGINE-04: HTTP API Runtime",
+      "labels": [
+        "type:task",
+        "area:http",
+        "area:diagnostics",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Implement request headers, JSON/text body parsing, header/body limits, timeout hooks, cancellation signal, backpressure behavior, and unsupported body diagnostics.",
+      "goal": "Realistic JSON API handlers have bounded request input behavior and predictable overload rejection.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Complete the framework HTTP runtime for realistic local APIs.",
+        "Include methods, headers, JSON/text body policy, limits, cancellation/backpressure, result serialization, and error contract.",
+        "Stay below production server scope."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "HTTP parser/dispatch/response CTest coverage.",
+        "Conformance examples when compiler/runtime path exists.",
+        "Limit, cancellation, and error-contract tests.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk D - HTTP API runtime: ENGINE-04.A through ENGINE-04.C in one large-coherent HTTP PR if reviewable."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-04.C: Result Serialization and Error Contract",
+      "parentEpic": "EPIC ENGINE-04: HTTP API Runtime",
+      "labels": [
+        "type:task",
+        "area:http",
+        "area:ts-api",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Complete supported result serialization and framework error responses.",
+      "goal": "Handlers produce deterministic HTTP responses for success and failure.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Complete the framework HTTP runtime for realistic local APIs.",
+        "Include methods, headers, JSON/text body policy, limits, cancellation/backpressure, result serialization, and error contract.",
+        "Stay below production server scope."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "HTTP parser/dispatch/response CTest coverage.",
+        "Conformance examples when compiler/runtime path exists.",
+        "Limit, cancellation, and error-contract tests.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk D - HTTP API runtime: ENGINE-04.A through ENGINE-04.C in one large-coherent HTTP PR if reviewable."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-05.A: SQLite Capability-Wired Open and Use",
+      "parentEpic": "EPIC ENGINE-05: SQLite End-to-End",
+      "labels": [
+        "type:task",
+        "area:sqlite",
+        "area:data",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Require and enforce SQLite capability metadata and cancellation checks when opening/using a JS bridge connection.",
+      "goal": "SQLite access is permission-enforced and cancellation-aware before provider work runs.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make SQLite work through public JS handler code and native provider execution.",
+        "Wire capability enforcement before provider work runs.",
+        "Define cleanup, cancellation, transactions/prepared statement scope, and file DB policy honestly."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "SQLite native and V8-gated bridge tests where applicable.",
+        "Denied capability conformance.",
+        "Users API example through real supported path.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk E - SQLite and capabilities: ENGINE-05.A through ENGINE-05.C plus ENGINE-06.A together when possible; ENGINE-06.B may follow as CLI evidence."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-05.B: SQLite Transactions and Prepared Statement Decision",
+      "parentEpic": "EPIC ENGINE-05: SQLite End-to-End",
+      "labels": [
+        "type:docs",
+        "area:sqlite",
+        "area:data",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Decide initial transaction and prepared-statement scope for foundation examples.",
+      "goal": "SQLite API surface is useful without drifting into ORM/migration work.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make SQLite work through public JS handler code and native provider execution.",
+        "Wire capability enforcement before provider work runs.",
+        "Define cleanup, cancellation, transactions/prepared statement scope, and file DB policy honestly."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "SQLite native and V8-gated bridge tests where applicable.",
+        "Denied capability conformance.",
+        "Users API example through real supported path.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk E - SQLite and capabilities: ENGINE-05.A through ENGINE-05.C plus ENGINE-06.A together when possible; ENGINE-06.B may follow as CLI evidence."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-05.C: SQLite Users API Example",
+      "parentEpic": "EPIC ENGINE-05: SQLite End-to-End",
+      "labels": [
+        "type:test",
+        "area:sqlite",
+        "area:testing",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Add an executable SQLite users API conformance example.",
+      "goal": "SQLite is proven through public JS handler code and native provider execution.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make SQLite work through public JS handler code and native provider execution.",
+        "Wire capability enforcement before provider work runs.",
+        "Define cleanup, cancellation, transactions/prepared statement scope, and file DB policy honestly."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "SQLite native and V8-gated bridge tests where applicable.",
+        "Denied capability conformance.",
+        "Users API example through real supported path.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk E - SQLite and capabilities: ENGINE-05.A through ENGINE-05.C plus ENGINE-06.A together when possible; ENGINE-06.B may follow as CLI evidence."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-06.A: Denied Capability Conformance",
+      "parentEpic": "EPIC ENGINE-06: Capability Enforcement Completion",
+      "labels": [
+        "type:test",
+        "area:data",
+        "area:testing",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Prove denied SQLite capability access fails before provider work.",
+      "goal": "Security docs can point to executable denial evidence.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make SQLite work through public JS handler code and native provider execution.",
+        "Wire capability enforcement before provider work runs.",
+        "Define cleanup, cancellation, transactions/prepared statement scope, and file DB policy honestly."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "SQLite native and V8-gated bridge tests where applicable.",
+        "Denied capability conformance.",
+        "Users API example through real supported path.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk E - SQLite and capabilities: ENGINE-05.A through ENGINE-05.C plus ENGINE-06.A together when possible; ENGINE-06.B may follow as CLI evidence."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-06.B: Capability Audit and Doctor Evidence",
+      "parentEpic": "EPIC ENGINE-06: Capability Enforcement Completion",
+      "labels": [
+        "type:task",
+        "area:cli",
+        "area:data",
+        "priority:p2",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Expose metadata and enforcement status through audit/doctor without live provider overclaims.",
+      "goal": "CLI evidence aligns with real enforcement points.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Make SQLite work through public JS handler code and native provider execution.",
+        "Wire capability enforcement before provider work runs.",
+        "Define cleanup, cancellation, transactions/prepared statement scope, and file DB policy honestly."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "SQLite native and V8-gated bridge tests where applicable.",
+        "Denied capability conformance.",
+        "Users API example through real supported path.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk E - SQLite and capabilities: ENGINE-05.A through ENGINE-05.C plus ENGINE-06.A together when possible; ENGINE-06.B may follow as CLI evidence."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-07.A: Request Scope Resource Cleanup",
+      "parentEpic": "EPIC ENGINE-07: App Host Lifecycle Completion",
+      "labels": [
+        "type:task",
+        "area:app-host",
+        "area:resource",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Clean request-owned resources across success, handler failure, rejected Promise, cancellation, limit rejection, and unsupported request paths.",
+      "goal": "Request lifecycle is deterministic and leak-resistant.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Complete app/request lifecycle, resource cleanup, shutdown, and diagnostics for supported paths.",
+        "Map errors to source where claimed and keep JSON diagnostics stable.",
+        "Cleanup must run on success, error, cancellation, unsupported request, and shutdown."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Lifecycle cleanup and leak-oriented tests where possible.",
+        "Diagnostic JSON/source-map tests where claimed.",
+        "V8-gated tests for V8-specific diagnostics.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk F - Lifecycle and diagnostics: ENGINE-07.A/B with ENGINE-08.A/B split only if source-map/V8 risk is too broad."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-07.B: App Startup Shutdown Lifecycle",
+      "parentEpic": "EPIC ENGINE-07: App Host Lifecycle Completion",
+      "labels": [
+        "type:task",
+        "area:app-host",
+        "area:resource",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Define and implement startup/shutdown cleanup, graceful drain, force-cancel, resource-budget, and diagnostics behavior for app-owned resources.",
+      "goal": "App host lifecycle is solid and bounded before public examples grow.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Complete app/request lifecycle, resource cleanup, shutdown, and diagnostics for supported paths.",
+        "Map errors to source where claimed and keep JSON diagnostics stable.",
+        "Cleanup must run on success, error, cancellation, unsupported request, and shutdown."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Lifecycle cleanup and leak-oriented tests where possible.",
+        "Diagnostic JSON/source-map tests where claimed.",
+        "V8-gated tests for V8-specific diagnostics.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk F - Lifecycle and diagnostics: ENGINE-07.A/B with ENGINE-08.A/B split only if source-map/V8 risk is too broad."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-08.A: Runtime Source Map Remapping",
+      "parentEpic": "EPIC ENGINE-08: Diagnostics and Source Mapping Completion",
+      "labels": [
+        "type:task",
+        "area:diagnostics",
+        "area:engine-v8",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Use compiler source maps to map V8/runtime diagnostics back to author source where claimed.",
+      "goal": "Source-map claims become real evidence, not hash-only validation.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Complete app/request lifecycle, resource cleanup, shutdown, and diagnostics for supported paths.",
+        "Map errors to source where claimed and keep JSON diagnostics stable.",
+        "Cleanup must run on success, error, cancellation, unsupported request, and shutdown."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Lifecycle cleanup and leak-oriented tests where possible.",
+        "Diagnostic JSON/source-map tests where claimed.",
+        "V8-gated tests for V8-specific diagnostics.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk F - Lifecycle and diagnostics: ENGINE-07.A/B with ENGINE-08.A/B split only if source-map/V8 risk is too broad."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-08.B: Async Diagnostic JSON Surfaces",
+      "parentEpic": "EPIC ENGINE-08: Diagnostics and Source Mapping Completion",
+      "labels": [
+        "type:task",
+        "area:diagnostics",
+        "area:concurrency",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Expose rejected Promise, cancellation, timeout, overflow, and async runtime failures through stable human and JSON diagnostics.",
+      "goal": "Async failures are machine-readable, route-aware, and limit-aware.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Complete app/request lifecycle, resource cleanup, shutdown, and diagnostics for supported paths.",
+        "Map errors to source where claimed and keep JSON diagnostics stable.",
+        "Cleanup must run on success, error, cancellation, unsupported request, and shutdown."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Lifecycle cleanup and leak-oriented tests where possible.",
+        "Diagnostic JSON/source-map tests where claimed.",
+        "V8-gated tests for V8-specific diagnostics.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk F - Lifecycle and diagnostics: ENGINE-07.A/B with ENGINE-08.A/B split only if source-map/V8 risk is too broad."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-09.A: Foundation Example Set",
+      "parentEpic": "EPIC ENGINE-09: End-to-End Example Apps",
+      "labels": [
+        "type:test",
+        "area:testing",
+        "area:docs",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Add hello, request context, async, cancellation, JSON body, SQLite users API, denied capability, and unsupported examples.",
+      "goal": "Every foundation workflow has executable or explicitly rejected evidence, including cancellation cleanup evidence.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Prove realistic foundation examples through the real compiler/runtime path.",
+        "Separate default, V8-gated, package, provider, and benchmark evidence.",
+        "Keep examples out of public-alpha posture until evidence passes."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Conformance compile/run/reject tests.",
+        "Package smoke outside checkout for supported paths.",
+        "Evidence report validation.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk G - Examples and evidence: ENGINE-09 with ENGINE-10 after implementation layers pass; split packaging only if CI/package noise is high."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-09.B: Example Documentation Reality Pass",
+      "parentEpic": "EPIC ENGINE-09: End-to-End Example Apps",
+      "labels": [
+        "type:docs",
+        "area:docs",
+        "area:testing",
+        "priority:p1",
+        "risk:medium",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Label public/static examples according to real compiler/runtime support.",
+      "goal": "No example appears executable unless conformance proves it.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Prove realistic foundation examples through the real compiler/runtime path.",
+        "Separate default, V8-gated, package, provider, and benchmark evidence.",
+        "Keep examples out of public-alpha posture until evidence passes."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Conformance compile/run/reject tests.",
+        "Package smoke outside checkout for supported paths.",
+        "Evidence report validation.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk G - Examples and evidence: ENGINE-09 with ENGINE-10 after implementation layers pass; split packaging only if CI/package noise is high."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-10.A: V8-Gated Foundation Conformance",
+      "parentEpic": "EPIC ENGINE-10: Engine Conformance and Packaged Runtime Evidence",
+      "labels": [
+        "type:test",
+        "area:engine-v8",
+        "area:testing",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Run foundation examples, cancellation paths, and limit behavior through V8-gated conformance and report skipped/not-configured states honestly.",
+      "goal": "Executable engine claims come only from V8-enabled evidence that includes foundational cancellation and overload paths.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Prove realistic foundation examples through the real compiler/runtime path.",
+        "Separate default, V8-gated, package, provider, and benchmark evidence.",
+        "Keep examples out of public-alpha posture until evidence passes."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Conformance compile/run/reject tests.",
+        "Package smoke outside checkout for supported paths.",
+        "Evidence report validation.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk G - Examples and evidence: ENGINE-09 with ENGINE-10 after implementation layers pass; split packaging only if CI/package noise is high."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-10.B: Packaged Runtime Outside-Checkout Smoke",
+      "parentEpic": "EPIC ENGINE-10: Engine Conformance and Packaged Runtime Evidence",
+      "labels": [
+        "type:tooling",
+        "area:ci",
+        "area:testing",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Prove packaged `sloppyc build` and `sloppy run --artifacts` outside the checkout.",
+      "goal": "Package evidence proves the supported runtime path, not only CLI help/version.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Prove realistic foundation examples through the real compiler/runtime path.",
+        "Separate default, V8-gated, package, provider, and benchmark evidence.",
+        "Keep examples out of public-alpha posture until evidence passes."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Conformance compile/run/reject tests.",
+        "Package smoke outside checkout for supported paths.",
+        "Evidence report validation.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk G - Examples and evidence: ENGINE-09 with ENGINE-10 after implementation layers pass; split packaging only if CI/package noise is high."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-11.A: Public Alpha Readiness Checklist",
+      "parentEpic": "EPIC ENGINE-11: Public Alpha Readiness Gate",
+      "labels": [
+        "type:docs",
+        "area:docs",
+        "area:testing",
+        "priority:p2",
+        "risk:medium",
+        "status:blocked",
+        "size:bounded"
+      ],
+      "summary": "Define the checklist public docs must pass after Layers 1-9.",
+      "goal": "Public alpha docs stay blocked until evidence exists.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Confirm public docs describe only executable verified workflows or explicit deferrals.",
+        "Audit public claims for benchmark, security, provider, Node/npm, and production HTTP overclaims.",
+        "Keep launch/marketing docs out of scope."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk H - Public alpha gate: ENGINE-11.A and ENGINE-11.B as one docs-only gate after Layers 1-9 pass."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-11.B: Public Non-Claims Review",
+      "parentEpic": "EPIC ENGINE-11: Public Alpha Readiness Gate",
+      "labels": [
+        "type:docs",
+        "area:docs",
+        "area:performance",
+        "priority:p2",
+        "risk:low",
+        "status:blocked",
+        "size:bounded"
+      ],
+      "summary": "Review public docs for marketing, benchmark, security, provider, Node/npm, and production HTTP overclaims.",
+      "goal": "Public docs remain honest and evidence-backed.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/project/strategic-system-audit.md",
+        "docs/project/strategic-current-state-audit.md",
+        "docs/roadmap.md",
+        "docs/quality-gates.md",
+        "docs/testing-strategy.md",
+        "docs/documentation-policy.md"
+      ],
+      "scope": [
+        "Confirm public docs describe only executable verified workflows or explicit deferrals.",
+        "Audit public claims for benchmark, security, provider, Node/npm, and production HTTP overclaims.",
+        "Keep launch/marketing docs out of scope."
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public alpha docs or marketing claims before the ENGINE evidence gate.",
+        "No benchmark claims from smoke/list checks.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite foundation is excellent.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Implement only the issue scope and its recommended bounded-context chunk.",
+        "Update docs/ADRs when behavior, architecture, public API, diagnostics, workflow, or evidence changes.",
+        "Add or update tests for documented intent.",
+        "Keep implemented/deferred boundaries explicit."
+      ],
+      "testsRequired": [
+        "Task-appropriate docs/static checks.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Keep the PR as a mid-large bounded context when related tasks share ownership and tests.",
+        "Run the canonical Windows workflow or explain any unavailable gate.",
+        "Report default, V8-gated, live-provider, package, and benchmark evidence separately.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript."
+      ],
+      "acceptanceCriteria": [
+        "Supported behavior is documented as supported, deferred, or rejected.",
+        "Tests verify documented intent, not accidental implementation details.",
+        "Docs and issue scope stay aligned with implementation.",
+        "The PR remains a coherent bounded context, not a one-line trickle task or an unreviewable mega-PR."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk H - Public alpha gate: ENGINE-11.A and ENGINE-11.B as one docs-only gate after Layers 1-9 pass."
+      ]
+    }
+  ]
+}

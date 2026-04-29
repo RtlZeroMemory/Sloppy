@@ -4,6 +4,31 @@ This tracker records real deferred work after the EPIC-00 through EPIC-20 roadma
 It is not a wishlist for random expansion; items here are known gaps between current repo
 state and an honest public-alpha path.
 
+## Strategic Engine Foundation Blockers
+
+These blockers now define the next Slop Engine phase. They supersede treating benchmark
+methodology, public alpha docs, PostgreSQL JS bridge work, or SQL Server JS bridge work as
+immediate product blockers:
+
+- Compiler support for realistic supported Sloppy apps: async handlers, non-GET route
+  methods, SQLite/data metadata, capability metadata, and real source maps.
+- V8 async runtime: Promise return support, microtask policy, owner-thread continuation,
+  cancellation-token propagation, bounded completion queues, rejected Promise diagnostics,
+  and request-scope retention until settlement.
+- Framework HTTP API runtime: method dispatch, headers in context, JSON/text body policy,
+  header/body limits, request cancellation signal, timeout hooks, backpressure behavior,
+  result serialization, and error response contract.
+- SQLite end-to-end: public JS handler path through native provider, capability enforcement,
+  cancellation-aware operation boundaries, app/request ownership, transactions/prepared
+  statement decision, and executable users API conformance.
+- Capability/security integration: bridge enforcement before provider work and no OS
+  sandbox claims.
+- App-host lifecycle/resource completion: app/request cleanup, cancellation lifecycle,
+  graceful drain/force-cancel shutdown behavior, lifecycle diagnostics, bounded resource
+  budgets, and leak checks where possible.
+- Conformance/examples/packaging evidence: realistic examples and packaged runtime smoke
+  outside the checkout before public alpha docs.
+
 ## Must Fix Before Public Alpha
 
 - Public API to plan emission beyond EPIC-21: bootstrap module/service/data metadata must
@@ -25,7 +50,8 @@ state and an honest public-alpha path.
   owner-thread, lifecycle, generated-source diagnostic, and Promise-rejection policies, but
   does not add full async JavaScript. Promise support is deferred, not optional: before
   Sloppy claims async handlers, V8 Promise settlement, microtask policy, request-scope
-  lifetime, and rejected-promise diagnostics must be implemented and tested.
+  lifetime, cancellation propagation, bounded queues, and rejected-promise diagnostics must
+  be implemented and tested.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
@@ -87,10 +113,12 @@ state and an honest public-alpha path.
   `intrinsics.cc`; do not let `engine_v8.cc` become a provider-specific bridge file.
 - MAIN1-14 benchmark methodology hardening: release-only measured runs, local artifact
   policy, hardware/build metadata, trend policy, and no external comparisons until
-  comparable paths exist.
+  comparable paths exist. This is deferred behind Slop Engine foundation completion.
 - GitHub issue cleanup: close implemented child/parent issues, relabel deferred follow-ups,
   and create only deduped MAIN/MAIN.1 issues after the roadmap and cleanup plan are
-  approved. EPIC-21 through EPIC-26 implementation issues should not be recreated.
+  approved. EPIC-21 through EPIC-26 implementation issues should not be recreated. The
+  strategic replacement is `tools/github/slop-engine-roadmap-issues.json`; apply only after
+  review.
 
 ## Deferred By Design
 

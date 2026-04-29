@@ -16,6 +16,15 @@ default build/test health, static/lint gates, Rust compiler-tool gates, and non-
 diagnostic behavior. Only a V8-enabled build plus the documented run-once smoke proves the
 executable hello path through V8.
 
+2026-04-29 strategic update: Slop Engine foundation is the next phase. Public alpha
+readiness remains red until the engine layers in
+`docs/project/slop-engine-layered-roadmap.md` are completed or explicitly deferred:
+compiler support for realistic apps, V8 Promise/microtask handling, framework HTTP API
+runtime, SQLite capability-wired end-to-end execution, app/request lifecycle cleanup,
+diagnostics/source maps, cancellation/backpressure/resource-limit infrastructure,
+conformance examples, and packaged runtime evidence. PostgreSQL and SQL Server JS bridges
+and benchmark claims are not immediate readiness blockers.
+
 | Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
 | --- | --- | --- | --- | --- | --- |
 | Native C safety | Yellow | Core primitives, checked math, arena, resource table, diagnostics, plan parser, HTTP parser, providers, boundary-oriented tests, and local sanitizer options. | CTest, warnings, format, lint, C standards scanner, platform scanner. | Sanitizers are not required in CI, fuzz targets are not implemented, and allocator misuse checks, request-scope leak checks, and deeper cleanup integration are incomplete. | Add stable sanitizer/fuzz gates, allocator checks, request-scope resource leak checks, and scanner fixtures. |
@@ -48,10 +57,9 @@ capability metadata now has native Plan/provider validation, an immutable runtim
 and database policy check hooks, but JS-native bridge wiring, OS sandboxing, optional
 SDK/service validation, and release packaging remain separate or experimental.
 
-ROADMAP MAIN is the minimal verification path for the existing compiler-to-runtime work.
-ROADMAP MAIN.1 is the hardening path for alpha-production quality. Public alpha docs should
-not move ahead of MAIN.1 unless a document explicitly says the relevant workflow is still
-deferred.
+ROADMAP MAIN and ROADMAP MAIN.1 are now historical input to the strategic ENGINE roadmap.
+Public alpha docs should not move ahead of the ENGINE roadmap unless a document explicitly
+says the relevant workflow is still deferred and not part of the alpha claim.
 
 ## Gate Interpretation
 

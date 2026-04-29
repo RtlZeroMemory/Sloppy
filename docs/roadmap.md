@@ -9,6 +9,28 @@ GitHub issues mirror these docs. An issue existing or being closed is not proof 
 feature works; status below is based on checked-in source, docs, tests, and current
 tooling.
 
+## 2026-04-29 Strategic Update
+
+MAIN and MAIN.1 have now landed through PRs #240-#255 for their scoped verification and
+hardening work. The older EPIC audit below remains useful history, but detailed "deferred"
+phrasing in those rows may be older than the post-MAIN1 codebase. For the current strategic
+source of truth, use:
+
+- `docs/project/strategic-current-state-audit.md`;
+- `docs/project/strategic-system-audit.md`;
+- `docs/project/slop-engine-final-shape.md`;
+- `docs/project/slop-engine-layered-roadmap.md`.
+
+The next phase is Slop Engine foundation completion: real supported compiler pipeline, real
+V8 runtime integration, async handler/Promise policy, framework HTTP API runtime,
+SQLite end-to-end with capability enforcement, cancellation/deadline/backpressure
+infrastructure, app/request lifecycle, diagnostics/source maps, conformance examples, and
+packaged evidence.
+
+Public alpha docs remain blocked. PostgreSQL and SQL Server JS bridges, benchmark claims,
+ORM/migrations, package-manager behavior, Node compatibility, and production-grade HTTP
+server breadth are deferred until the engine foundation is coherent.
+
 ## Status Key
 
 - Done: the scoped foundation slice is implemented and covered by default checks.
@@ -32,7 +54,7 @@ tooling.
 | EPIC-06 Plan Schema and Loader | Mostly done | Minimal Plan v1 structs, JSON parsing, validation, arena-owned parsed strings, handler lookup, and golden fixture matrix exist. File-based loading, compatibility checks, hashes, routes/modules/providers, and source-map diagnostics remain deferred. |
 | EPIC-07 V8 Bridge Smoke | Mostly done | V8 SDK detection, isolated C ABI, noop engine, V8 classic-script smoke, function calls, and exception mapping exist behind an explicit V8-enabled build. Default gates do not validate V8. SDK distribution remains deferred. |
 | EPIC-08 Handwritten Artifact Execution | Mostly done | A V8-gated handwritten `app.plan.json` plus `app.js` smoke path invokes a numeric handler ID through the runtime-contract boundary. Compiler output, ESM module loading, HTTP contexts, and full result conversion remain deferred. |
-| EPIC-09 Event Loop / Concurrency Foundation | Mostly done | `SlLoop`, `SlAsync`, and inline `SlWorkerPool` skeletons exist with deterministic C tests. They are single-threaded/caller-backed skeletons, not libuv integration, real threads, V8 promises, cancellation, deadlines, or backpressure. |
+| EPIC-09 Event Loop / Concurrency Foundation | Mostly done | `SlLoop`, `SlAsync`, and inline `SlWorkerPool` skeletons exist with deterministic C tests. They are single-threaded/caller-backed skeletons, not libuv integration, real threads, V8 promises, cancellation-token propagation, deadlines, bounded queues, or backpressure. |
 | EPIC-10 HTTP Router Foundation | Mostly done | Route pattern parser/matcher, complete-buffer HTTP/1 request-head parser through llhttp, libuv init smoke, synthetic in-memory GET dispatch to handler ID, and EPIC-23 dev-only response/context wiring exist. EPIC-22 adds a dev-only socket loop in the CLI, but production-grade/server-ready streaming parser state, request body parsing, middleware, and production route table remain deferred. |
 | EPIC-11 Public TypeScript API Bootstrap | Mostly done | Bootstrap stdlib layout, `Results.text/json`, `Sloppy.create`, in-memory `app.mapGet`, names, static checks, and `examples/hello` exist. Bare `"sloppy"` import, compiler extraction, plan emission, runtime ESM loading, and `app.run` remain deferred. |
 | EPIC-12 App Host Foundation | Mostly done | `Sloppy.createBuilder`, `builder.build`, structural `app.freeze`, object config, memory logging, and string-token services exist in the bootstrap stdlib. Native app-host validation and request-scoped lifetimes remain deferred. |
@@ -148,8 +170,9 @@ Exists now: caller-backed `SlLoop`, `SlAsync`, and inline `SlWorkerPool` skeleto
 
 Works now: deterministic single-threaded completion and settlement tests.
 
-Deferred: libuv backend, real worker threads, cross-thread posting, OS wakeups, V8
-microtasks/promises, request-scope retention, cancellation, deadlines, and backpressure.
+Deferred but foundation-required: libuv backend, real worker threads, cross-thread posting,
+OS wakeups, V8 microtasks/promises, request-scope retention, cancellation-token
+propagation, deadline hooks, bounded queues, and backpressure diagnostics.
 
 ### HTTP / Router Foundation
 
@@ -223,16 +246,16 @@ external runtime comparisons, dashboards, uploads, and CI performance gates.
 
 ## GitHub Issue Reality
 
-The GitHub issue set no longer mirrors repo reality cleanly:
+The 2026-04-29 live audit initially found no open PRs, merged MAIN/MAIN1 PRs #240-#255,
+completed-but-open parent issues #167/#168/#180-#192, blocked public-alpha issues
+#194/#237-#239, deferred benchmark issues #193/#234-#236, and old EPIC-00..EPIC-05
+leftovers needing focused review.
 
-- many child task issues for EPIC-06 through EPIC-20 are closed;
-- the parent EPIC issues remain open with `status:deferred` labels;
-- older EPIC-00/01/03/04/05 task issues remain open even where repo-side work partly or
-  mostly exists;
-- milestones remain open with old open-issue counts.
-
-See `docs/project/post-0.7-issue-audit.md` for recommended cleanup. This roadmap PR does
-not mutate GitHub issues.
+After review in PR #256, completed/superseded stale issues were closed with evidence or
+replacement-roadmap comments. The remaining pre-ENGINE open issues are #26 and #32 because
+they still represent focused unfinished platform-scanner and string/buffer work. See
+`docs/project/strategic-current-state-audit.md` and
+`docs/project/strategic-issue-cleanup-plan.md` for the cleanup record.
 
 ## Next Roadmap
 
@@ -242,15 +265,18 @@ bootstrap runtime handoff, experimental local packaging, and default non-V8 host
 
 Active planning has moved to:
 
-1. [ROADMAP MAIN](project/roadmap-main.md): verify the minimal supported alpha path through
-   `sloppyc build` plus V8-enabled `sloppy run --artifacts` without duplicating completed
-   EPIC-21 through EPIC-26 work.
-2. [ROADMAP MAIN.1](project/roadmap-main-1-hardening.md): harden MVP/skeleton systems to
-   alpha-production quality.
+1. [Slop Engine Final Shape](project/slop-engine-final-shape.md): define the intended
+   engine/framework foundation before higher-level framework perks.
+2. [Slop Engine Layered Roadmap](project/slop-engine-layered-roadmap.md): Layer 0 cleanup
+   through Layer 10 public-alpha gate.
+3. [ROADMAP MAIN](project/roadmap-main.md) and
+   [ROADMAP MAIN.1](project/roadmap-main-1-hardening.md): historical input from the narrow
+   alpha-path planning and hardening pass.
 
-EPIC-27 capability enforcement belongs in MAIN.1. EPIC-28 public alpha docs/examples are
-deferred until MAIN and relevant MAIN.1 evidence exists, or until the docs explicitly mark
-unsupported workflows as deferred.
+Capability enforcement is now an engine-foundation blocker specifically because the
+SQLite JS/native bridge still needs to call the native capability hook. EPIC-28-style public
+alpha docs/examples are deferred until the engine foundation layers pass or are explicitly
+scoped down with honest exclusions.
 
 See also `docs/project/current-issue-state-audit.md` and
-`docs/project/main-main1-issue-cleanup-plan.md` for the stale issue cleanup plan.
+`docs/project/strategic-issue-cleanup-plan.md` for the stale issue cleanup plan.

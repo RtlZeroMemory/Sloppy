@@ -1,9 +1,15 @@
 # ROADMAP MAIN.1: Alpha-Production Hardening
 
-Status: issue-ready hardening roadmap.
+Status: historical hardening roadmap; superseded as active strategy by the Slop Engine
+layered roadmap.
 
 MAIN.1 goal: harden existing supported and semi-supported systems from MVP/skeleton to
 alpha-production quality after MAIN works.
+
+2026-04-29 update: PRs #244-#255 merged the scoped MAIN1-01 through MAIN1-13 work.
+Remaining foundation work is now organized by `docs/project/slop-engine-layered-roadmap.md`
+and staged as `tools/github/slop-engine-roadmap-issues.json`. MAIN1-14 benchmark work and
+MAIN1-15 public alpha docs remain deferred/blocked until the engine foundation layers pass.
 
 Alpha-production means the supported path works end to end, functionality is real, docs are
 honest, diagnostics are usable, tests cover intended behavior, unsupported behavior fails
@@ -238,7 +244,8 @@ Advanced features included: machine-readable JSON diagnostics and source-frame r
 Deferred items: localization, CLI-wide diagnostic format flag, richer compiler spans, and
 MAIN1-05 V8 exception source-map remapping.
 
-Existing issue references: #34 remains open.
+Existing issue references: #34 was closed completed during PR #256 cleanup; remaining
+runtime/source-map diagnostic work is tracked by ENGINE-08.
 
 ## EPIC MAIN1-07: Resource Lifecycle and JS-Native Handles
 
@@ -280,7 +287,8 @@ Advanced features included: leak reports.
 
 Deferred items: cross-process resource isolation.
 
-Existing issue references: #35 remains open.
+Existing issue references: #35 was closed completed during PR #256 cleanup; remaining
+app/request lifecycle work is tracked by ENGINE-07.
 
 ## EPIC MAIN1-08: SQLite JS-to-Native Data Bridge
 
