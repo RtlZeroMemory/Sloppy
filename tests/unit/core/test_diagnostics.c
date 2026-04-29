@@ -290,7 +290,7 @@ static int test_provider_code_names(void)
     if (expect_str_equal(sl_diag_code_name(SL_DIAG_DATABASE_UNSUPPORTED_VALUE),
                          sl_str_from_cstr("SLOPPY_E_DATABASE_UNSUPPORTED_VALUE")) != 0)
     {
-        return 50;
+        return 51;
     }
 
     return 0;

@@ -75,12 +75,14 @@ typedef struct SlSqliteValue
 {
     SlSqliteValueKind kind;
     union {
+        /* Text values returned by query APIs are copied into the caller arena. */
         SlStr text;
         int64_t integer;
         double number;
     } value;
 } SlSqliteValue;
 
+/* Row cell storage is arena-owned and invalid after the associated arena is reset. */
 typedef struct SlSqliteRow
 {
     SlSqliteValue* values;
@@ -91,6 +93,10 @@ typedef struct SlSqliteQueryOptions
     size_t max_rows;
 } SlSqliteQueryOptions;
 
+/*
+ * Query results borrow no SQLite statement storage. Column names, rows, and cell values are
+ * copied into the caller-provided arena and become invalid when that arena is reset/freed.
+ */
 typedef struct SlSqliteResult
 {
     size_t column_count;
@@ -99,6 +105,10 @@ typedef struct SlSqliteResult
     SlSqliteRow* rows;
 } SlSqliteResult;
 
+/*
+ * queryOne uses the same arena-owned ownership model as SlSqliteResult. Copy values out if
+ * they must outlive the arena passed to sl_sqlite_query_one.
+ */
 typedef struct SlSqliteQueryOneResult
 {
     bool found;
@@ -112,6 +122,10 @@ typedef struct SlSqliteExecResult
     int changes;
 } SlSqliteExecResult;
 
+/*
+ * Transaction handles are single-use. Commit or rollback completes the transaction and makes
+ * this wrapper unusable; callers must begin a new transaction for more transactional work.
+ */
 typedef struct SlSqliteTransaction
 {
     SlSqliteConnection* connection;
