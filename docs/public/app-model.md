@@ -3,9 +3,10 @@
 Status: Bootstrap app-host skeleton implemented.
 
 Bootstrap status: `stdlib/sloppy/app.js` exports a frozen `Sloppy` object with
-`Sloppy.create()` and `Sloppy.createBuilder()`. The returned app is an in-memory conceptual
-object with route registration, route groups, structural freeze behavior,
-config/log/services accessors, and `app.__getRoutes()` for bootstrap tests/debugging.
+`Sloppy.create()`, `Sloppy.createBuilder()`, and `Sloppy.module(...)`. The returned app is
+an in-memory conceptual object with route registration, route groups, structural freeze
+behavior, config/log/services accessors, module debug metadata, and `app.__getRoutes()` for
+bootstrap tests/debugging.
 
 Purpose: explain the current builder/app model, structural freeze boundary, and the future
 path to native app-host validation.
@@ -21,6 +22,10 @@ builder.config.addObject({
 
 builder.logging.addMemorySink();
 builder.services.addSingleton("message", () => "Hello from Sloppy");
+builder.addModule(Sloppy.module("hello")
+  .services(services => {
+    services.addSingleton("hello.module", () => "Hello from a module");
+  }));
 
 const app = builder.build();
 
@@ -35,13 +40,19 @@ registered until `app.freeze()`.
 Implemented lifecycle behavior:
 
 - `Sloppy.createBuilder()` creates a builder with `config`, `logging`, and `services`.
+- `Sloppy.module(name)` creates a bootstrap module definition with dependencies, services,
+  routes, and simple metadata.
+- `builder.addModule(module)` registers a module definition for build-time phase execution.
 - `builder.build()` freezes further builder mutation and returns an app.
 - Calling `builder.build()` again fails because building is a builder mutation.
+- `builder.build()` resolves module dependencies and runs module services before module
+  routes.
 - The app starts mutable for route registration.
 - `app.freeze()` is idempotent, returns the app, and freezes route/endpoint mutation.
 - `app.isFrozen()` reports the route graph freeze state.
 - `app.mapGet(...)`, `app.mapGroup(...)`, group metadata mutation, and endpoint
   `.withName(...)` fail after `app.freeze()`.
+- `app.__debug().modules` exposes bootstrap-only module order and contribution metadata.
 - Freeze is structural only. It does not run native startup validation, emit a plan, or
   start execution.
 
@@ -82,9 +93,10 @@ The bootstrap app stores this metadata only. It does not parse requests or produ
 validation responses.
 
 Not implemented yet: `app.run`, `app.listen`, native startup validation, compiler
-extraction, automatic `app.plan.json` emission, HTTP serving, modules, nested route groups,
+extraction, automatic `app.plan.json` emission, HTTP serving, nested route groups,
 middleware, filters, automatic validation, config file/env providers, console/file/native
-logging, service disposal, async factories, and real request-scoped lifetimes.
+logging, service disposal, async factories, real request-scoped lifetimes, module packages,
+data providers, and native plugins.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/app-plan.md`.

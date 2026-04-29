@@ -1,6 +1,6 @@
 # Public Documentation
 
-Status: Bootstrap app-host skeleton implemented; runtime execution planned.
+Status: Bootstrap app-host and module skeleton implemented; runtime execution planned.
 
 This directory is for user/developer-facing documentation: how people will use Sloppy to
 build applications. It is distinct from internal architecture/spec docs under `docs/`.
@@ -27,3 +27,7 @@ Checked-in examples:
 
 - `examples/hello/`: current bootstrap API-shape example using the source stdlib through a
   relative import. It is not a `sloppy run` app yet.
+- `examples/ergonomics/`: current route group, result helper, schema, and app-host
+  API-shape example. It is not a `sloppy run` app yet.
+- `examples/modules-basic/`: current module API-shape example with fake in-memory
+  services. It is not a `sloppy run` app yet.

@@ -5,6 +5,7 @@ Status: Bootstrap `mapGet` and route group shape implemented with structural app
 Bootstrap status: `Sloppy.create()` and `Sloppy.createBuilder().build()` return an
 in-memory app facade with `app.mapGet(...)` and `app.mapGroup(...)`. Handler registration,
 HTTP dispatch integration, app-plan emission, and compiler extraction remain future work.
+Routes can also be contributed during a module routes phase through `builder.addModule(...)`.
 
 Purpose: document current `app.mapGet`, route snapshots, handler context, and future route
 features.
@@ -31,6 +32,7 @@ users.mapGet("{id:int}", ({ route }) => Results.ok({ id: route.id ?? "demo" }))
   memory;
 - returns a frozen endpoint builder with `.withName(name)`;
 - fails after `app.freeze()`;
+- records `metadata.module` when the route was registered by a module routes phase;
 - lets tests/debug code inspect frozen route snapshots with `app.__getRoutes()`.
 
 `withName(name)` requires a non-empty string, stores it as the route `name`, and returns the
@@ -63,11 +65,13 @@ Route groups:
   `"/users/{id:int}"` and `"/users/active"`.
 - A child pattern of `/` maps to the group prefix.
 - Group tags, group name, and group prefix are copied into child route metadata.
+- Module-created grouped routes use the same shape and also include `metadata.module`.
 - Route groups are in-memory bootstrap metadata only.
 
 Not implemented yet: `mapPost`, nested groups, middleware, filters, automatic validation,
 duplicate/ambiguity diagnostics, compiler extraction, automatic `app.plan.json` emission,
-native route table construction, HTTP server behavior, and route dispatch integration.
+native route table construction, HTTP server behavior, route dispatch integration, and
+route/module extraction.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/app-plan.md`,
 `docs/execution-model.md`.

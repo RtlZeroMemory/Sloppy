@@ -47,8 +47,12 @@ config, deterministic memory logging, and string-token singleton/transient servi
 TASK 13.A/13.B/13.C/13.D extends the same bootstrap facade with in-memory route groups,
 the fuller bounded `Results.*` helper set, a small `schema` validation skeleton, and an
 `examples/ergonomics/` API-shape fixture.
+TASK 14.A/14.B/14.C/14.D adds the same kind of bootstrap-only module skeleton:
+`Sloppy.module(...)`, `builder.addModule(...)`, dependency graph ordering, services/routes
+phase execution, module attribution, module debug metadata, and module graph errors.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
-Plan, serve HTTP, perform compiler extraction, validate requests, or integrate modules.
+Plan, serve HTTP, perform compiler extraction, validate requests, load module packages, or
+integrate native modules.
 `examples/hello/` demonstrates the checked-in bootstrap API shape through a relative import
 from `stdlib/sloppy/index.js` because the public bare `"sloppy"` specifier remains future
 compiler/runtime behavior.
@@ -111,6 +115,8 @@ builder/app host skeleton. `Sloppy.create()` is now equivalent to a default boot
 builder plus `build()`, but this is still a JavaScript-only structural facade rather than a
 native app graph. TASK 13 adds route groups, route metadata storage, `schema`, and the
 bounded result helper set to that same JavaScript-only facade.
+TASK 14 adds `Sloppy.module(...)`, `builder.addModule(...)`, dependency ordering, module
+services/routes phases, and bootstrap module debug metadata.
 
 TASK 11.D adds the first checked-in tiny app example:
 
@@ -330,6 +336,22 @@ builder
 Modules are explicit, not side-effect imports. They contribute services, routes,
 middleware, filters, capabilities, permissions, health checks, jobs, and metadata to the
 Sloppy Plan.
+
+Current TASK 14 bootstrap behavior:
+
+- `Sloppy.module(name)` creates a module definition.
+- `.dependsOn(...)`, `.services(...)`, `.routes(...)`, and `.metadata(...)` are available.
+- `builder.addModule(...)` registers modules and freezes the module definition.
+- `builder.build()` validates missing dependencies and cycles.
+- services run for all modules before routes, with each phase in deterministic dependency
+  order.
+- independent modules keep builder insertion order.
+- module-created services and routes are attributed in `app.__debug().modules`.
+
+The debug metadata is plan-like bootstrap introspection, not real `app.plan.json` emission.
+Compiler extraction, package loading, native plugins, optional dependencies, versioning,
+middleware, filters, capabilities, permissions, health checks, jobs, and data provider
+modules remain future work.
 
 ## Data Provider Ergonomics
 

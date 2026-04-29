@@ -40,6 +40,9 @@ The foundation phase does not implement:
 ## Current Phase
 
 `src/data/` is a placeholder. No data provider dependencies are present.
+The EPIC-14 module skeleton can register fake JavaScript services from modules, but it does
+not implement data providers, database modules, provider resources, or provider plan
+entries.
 
 ## Future Phase Order
 

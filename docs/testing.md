@@ -56,6 +56,11 @@ Current tests:
   logging memory sinks, services singleton/transient behavior, route groups, result
   helpers, schema validation, route handler context, and app freeze behavior. This is test
   infrastructure only and is not a Node compatibility claim;
+- optional CTest executable check `bootstrap.stdlib.modules` when `node` is available,
+  which imports the ESM stdlib and verifies `Sloppy.module`, `builder.addModule`, module
+  dependency order, missing dependency/cycle/duplicate diagnostics, phase failure context,
+  route/service attribution, and module debug metadata. This is test infrastructure only
+  and is not a Node compatibility claim;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
   hello example files exist, use the current relative stdlib import, use
   `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
@@ -64,6 +69,10 @@ Current tests:
   EPIC-13 example files exist, use the current relative stdlib import, demonstrate route
   groups, result helpers, schema metadata, config/logging/services, and honestly document
   that the example is not runnable through `sloppy run` yet;
+- CTest structural check `examples.modules_basic.api_shape`, which statically verifies the
+  EPIC-14 module example files exist, use the current relative stdlib import, demonstrate
+  module dependencies, services, routes, metadata, and builder registration, and honestly
+  document that the example is not runnable through `sloppy run` yet;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -328,6 +337,18 @@ services, route groups, result descriptors, schema validation, route context, an
 `Sloppy.create()` consistency. It does not add package-manager behavior, npm dependencies,
 or a Node compatibility promise. V8-backed ESM bootstrap tests remain future work.
 
+TASK 14 adds a second optional executable ESM smoke test:
+
+```text
+tests/bootstrap/test_modules.mjs
+```
+
+CMake registers it as `bootstrap.stdlib.modules` only when `node` is available. It verifies
+documented bootstrap behavior for module API shape, builder integration, dependency graph
+ordering, module diagnostics, phase error context, route/service attribution, and module
+debug metadata. It does not add package-manager behavior, npm dependencies, runtime module
+loading, or a Node compatibility promise.
+
 TASK 11.D adds the first public example structural check:
 
 ```text
@@ -350,6 +371,17 @@ tests/cmake/check_ergonomics_example.cmake
 
 It verifies the current route group, result helper, schema skeleton, and app-host foundation
 API shape without claiming runtime execution.
+
+TASK 14 adds the first module example structural check:
+
+```text
+examples/modules-basic/app.js
+examples/modules-basic/README.md
+tests/cmake/check_modules_basic_example.cmake
+```
+
+It verifies the current module API shape without claiming compiler extraction, real data
+providers, HTTP serving, package loading, or runtime execution.
 
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 

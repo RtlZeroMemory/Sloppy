@@ -110,6 +110,8 @@ Public API:
 
 - examples compile/run when feature exists;
 - docs examples become tests where practical.
+- bootstrap module examples are statically checked until compiler extraction, real plan
+  emission, and runtime module loading exist.
 - bootstrap API-shape examples may be statically checked while compiler extraction, module
   loading, and HTTP serving remain future work, but the example docs must clearly say they
   are not runnable apps yet.

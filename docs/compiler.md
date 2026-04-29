@@ -168,6 +168,9 @@ compiler placeholder does not read or emit stdlib assets.
 `examples/hello/app.js` therefore uses a relative source import from
 `stdlib/sloppy/index.js`; that example is not compiler input, compiler output, or proof of
 bare import support.
+The bootstrap stdlib now also contains the EPIC-14 JavaScript-only `Sloppy.module(...)`
+and `builder.addModule(...)` skeleton. The compiler still does not extract modules, sort
+module graphs, or emit module plan entries.
 `examples/ergonomics/app.js` follows the same rule for the EPIC-13 route group, result
 helper, and schema skeleton API shape. The compiler still does not extract route groups,
 schemas, services, or any `app.plan.json` metadata from these examples.

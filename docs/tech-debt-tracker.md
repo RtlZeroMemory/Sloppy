@@ -34,13 +34,16 @@
 - The bootstrap stdlib now has the bounded EPIC-13 `Results.*` helper set, `schema`,
   route groups, route metadata storage, `Sloppy.create`,
   `Sloppy.createBuilder`, builder build/freeze behavior, structural `app.freeze`, object
-  config, memory logging, string-token singleton/transient services, and in-memory
-  `app.mapGet` facade behavior. It still has no handler registration, runtime intrinsic
-  binding, module resolver, compiler import rewriting, package-manager behavior, native
-  app-host validation, app run/listen, HTTP response conversion, automatic validation, or
-  `app.plan.json` emission yet.
+  config, memory logging, string-token singleton/transient services, in-memory
+  `app.mapGet` facade behavior, and the EPIC-14 bootstrap `Sloppy.module` /
+  `builder.addModule` skeleton with dependency ordering, services/routes phases,
+  attribution, and module debug metadata. It still has no handler registration, runtime
+  intrinsic binding, module resolver, compiler import rewriting, package-manager behavior,
+  native app-host validation, app run/listen, HTTP response conversion, automatic
+  validation, or `app.plan.json` emission yet.
 - `examples/hello/` and `examples/ergonomics/` exist as static bootstrap API-shape
-  examples. They are not compiled by `sloppyc`, do not emit `app.plan.json`, do not run
+  examples. `examples/modules-basic/` exists as a static bootstrap module API-shape
+  example. They are not compiled by `sloppyc`, do not emit `app.plan.json`, do not run
   through `sloppy run`, and are not served by an HTTP server.
 
 ## Deferred decisions
@@ -152,6 +155,14 @@
   future app-host work.
 - Automatic compiler extraction and `app.plan.json` emission from `app.mapGet` are future
   work.
+- Compiler extraction of `Sloppy.module(...)`, module dependencies, module service
+  tokens, and module route contributions is future work.
+- Real `app.plan.json` module emission is future work; TASK 14 exposes only bootstrap
+  debug metadata.
+- Module package distribution, optional dependencies, module version ranges, and native
+  plugin modules are future work.
+- Data provider modules are future work; the modules-basic example uses only fake
+  in-memory JavaScript services.
 - Compiler import rewriting for `"sloppy"` is future work.
 - Runtime intrinsic binding for `stdlib/sloppy/internal/intrinsics.js` is future work.
 

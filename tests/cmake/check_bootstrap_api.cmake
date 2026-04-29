@@ -66,6 +66,13 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "createBuilder()"
+        "module: createModule"
+        "dependsOn(...names)"
+        "addModule(module)"
+        "resolveModuleOrder"
+        "module dependency missing"
+        "module dependency cycle detected"
+        "module phase failed"
         "config,"
         "logging,"
         "services,"
@@ -83,6 +90,9 @@ foreach(required_pattern IN ITEMS
         "groupName"
         "withName(name)"
         "__getRoutes()"
+        "__debug()"
+        "__getModuleGraph()"
+        "__getPlanContributions()"
         "addObject(object)"
         "setMinimumLevel(level)"
         "addMemorySink()"

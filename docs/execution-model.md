@@ -98,6 +98,11 @@ object config, memory logging, and string-token singleton/transient services. Ro
 handlers invoked through bootstrap route snapshots can receive `{ services, config, log }`
 for tests/examples. This still does not change runtime startup, native HTTP dispatch,
 compiler extraction, or plan emission behavior.
+TASK 13 adds route groups, route metadata storage, `schema`, and the fuller bounded
+`Results.*` helper set. TASK 14 adds bootstrap app modules with deterministic dependency
+ordering, services/routes phase execution, route/service attribution, and module debug
+metadata. These remain local JavaScript bootstrap structures; runtime startup, native HTTP
+dispatch, compiler module extraction, and real plan emission are still future work.
 TASK 13.A/13.B/13.C/13.D keeps that boundary and adds JavaScript-only route groups,
 expanded result descriptors, a `schema` validation skeleton, and an ergonomics example.
 Route schemas and group metadata are stored only in bootstrap route snapshots. They are not
