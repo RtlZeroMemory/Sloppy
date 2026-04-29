@@ -36,8 +36,9 @@ tests.
 Current tests:
 
 - CTest unit tests for core status, source location, string view, byte view, checked math,
-  arena behavior, native cleanup scope behavior, native completion queue behavior, native
-  async settlement behavior, inline worker-pool completion contract behavior, route pattern
+  arena behavior, native cleanup scope behavior, native app-host startup/request-scope
+  hardening, native completion queue behavior, native async settlement behavior, inline
+  worker-pool completion contract behavior, route pattern
   parser/matcher behavior, HTTP request-head parser behavior, libuv dependency smoke,
   HTTP route table precedence/duplicate behavior, query/request target limits, request body
   rejection, minimal plan contract helper behavior, minimal plan JSON parser/validator behavior,
@@ -52,6 +53,9 @@ Current tests:
   `app.plan.json`, malformed plans, invalid artifact paths, hash mismatches, missing source
   map artifacts, runtime compatibility mismatches, source-input handoff deferral, and the
   clear V8-disabled failure message;
+- CTest `core.app_host.hardening`, which validates native app graph startup success,
+  missing route-handler references, duplicate route policy, duplicate represented service
+  tokens, and request-scope cleanup on handler success and failure without requiring V8;
 - CTest docs/static check `docs.main_contract`, which verifies the MAIN hello command
   sequence, evidence caveats, source-input deferral, V8-gated wording, and Node/npm/package
   non-goals remain present in the source docs;
@@ -325,6 +329,7 @@ tests/unit/core/
   test_checked_math.c
   test_arena.c
   test_scope.c
+  test_app_host.c
   test_loop.c
   test_async.c
   test_worker_pool.c

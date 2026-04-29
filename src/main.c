@@ -12,6 +12,7 @@
 #include "sloppy/data_sqlserver.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/engine.h"
+#include "sloppy/app_host.h"
 #include "sloppy/http.h"
 #include "sloppy/http_dispatch.h"
 #include "sloppy/http_response.h"
@@ -38,7 +39,9 @@
 #define SL_CLI_ARENA_BYTES 65536U
 #define SL_RUN_FILE_MAX_BYTES 65536U
 #define SL_RUN_ARENA_BYTES 65536U
+#define SL_RUN_MAX_ROUTES SL_CLI_MAX_ROUTES
 #define SL_RUN_MAX_CLIENTS 16U
+#define SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_MAX_BYTES 8192U
 #define SL_RUN_RESPONSE_MAX_BYTES 16384U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
@@ -1368,12 +1371,35 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
     return 0;
 }
 
+static int sl_run_validate_startup(SlRunApp* app)
+{
+    SlAppHostStartupValidation validation = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (app == NULL) {
+        return 1;
+    }
+
+    validation.diag_arena = &app->plan_arena;
+    validation.require_runnable_route = true;
+    validation.max_runnable_routes = SL_RUN_MAX_ROUTES;
+
+    status = sl_app_host_validate_startup(&app->plan, &validation, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: app graph startup validation failed: ", &diag);
+        return 1;
+    }
+
+    return 0;
+}
+
 static int sl_run_prepare_routes(SlRunApp* app)
 {
     SlDiag diag = {0};
     SlStatus status;
 
-    if (app->plan.route_count > SL_CLI_MAX_ROUTES) {
+    if (app->plan.route_count > SL_RUN_MAX_ROUTES) {
         sl_cli_write_cstr(
             stderr, "sloppy run: app.plan.json contains more GET routes than the dev runtime can "
                     "materialize\n");
@@ -1496,7 +1522,9 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
         return 1;
     }
 
-    if (sl_run_load_plan(app, plan_path) != 0 || sl_run_prepare_routes(app) != 0) {
+    if (sl_run_load_plan(app, plan_path) != 0 || sl_run_validate_startup(app) != 0 ||
+        sl_run_prepare_routes(app) != 0)
+    {
         return 1;
     }
 
@@ -1602,14 +1630,54 @@ static SlStr sl_run_target_path(const char* target)
     return sl_str_from_parts(target, index);
 }
 
+typedef struct SlRunDispatchContext
+{
+    SlRunApp* app;
+    SlArena* arena;
+    const SlHttpRequestHead* request;
+    char* response;
+    size_t response_capacity;
+    int response_length;
+} SlRunDispatchContext;
+
+static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_scope, void* user,
+                                                   SlDiag* out_diag)
+{
+    SlRunDispatchContext* context = (SlRunDispatchContext*)user;
+    SlEngineResult result = {0};
+    SlBytes response_bytes = {0};
+    SlStatus status;
+
+    /* The scope is represented by the callback boundary; this slice registers no cleanups here. */
+    (void)request_scope;
+    if (context == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_http_dispatch_request_head(context->arena, context->app->engine,
+                                           &context->app->plan, &context->app->route_table.dispatch,
+                                           context->request, &result, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_http_response_write(&result.response, (unsigned char*)context->response,
+                                    context->response_capacity, &response_bytes);
+    if (!sl_status_is_ok(status) || response_bytes.length > (size_t)INT32_MAX) {
+        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    }
+
+    context->response_length = (int)response_bytes.length;
+    return sl_status_ok();
+}
+
 static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request, char* response,
                                 size_t response_capacity)
 {
     unsigned char dispatch_storage[SL_RUN_ARENA_BYTES];
     SlArena dispatch_arena = {0};
-    SlEngineResult result = {0};
+    SlScopeCleanup request_cleanups[SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS];
+    SlRunDispatchContext dispatch_context = {0};
     SlDiag diag = {0};
-    SlBytes response_bytes = {0};
     SlStatus status;
 
     if (app == NULL || request == NULL || response == NULL ||
@@ -1619,15 +1687,18 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
         return -1;
     }
 
-    status = sl_http_dispatch_request_head(&dispatch_arena, app->engine, &app->plan,
-                                           &app->route_table.dispatch, request, &result, &diag);
+    dispatch_context.app = app;
+    dispatch_context.arena = &dispatch_arena;
+    dispatch_context.request = request;
+    dispatch_context.response = response;
+    dispatch_context.response_capacity = response_capacity;
+    dispatch_context.response_length = -1;
+
+    status = sl_app_request_scope_execute(
+        request_cleanups, sizeof(request_cleanups) / sizeof(request_cleanups[0]),
+        sl_run_dispatch_with_request_scope, &dispatch_context, &diag);
     if (sl_status_is_ok(status)) {
-        if (!sl_status_is_ok(sl_http_response_write(&result.response, (unsigned char*)response,
-                                                    response_capacity, &response_bytes)))
-        {
-            return -1;
-        }
-        return response_bytes.length > (size_t)INT32_MAX ? -1 : (int)response_bytes.length;
+        return dispatch_context.response_length;
     }
 
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&

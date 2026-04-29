@@ -32,8 +32,9 @@ This document does not implement allocators, string builders, or JS bindings.
 
 The core foundation now implements `SlStatus`, `SlSourceLoc`, borrowed `SlStr`, borrowed
 `SlBytes`, checked `size_t` arithmetic, assertion macros, a caller-backed `SlArena`, a
-fixed-capacity native cleanup `SlScope`, and a fixed-capacity `SlResourceTable` with
-generation-counted `SlResourceId` handles.
+fixed-capacity native cleanup `SlScope`, a fixed-capacity `SlResourceTable` with
+generation-counted `SlResourceId` handles, and a minimal `SlAppRequestScope` wrapper that
+closes request cleanups on handler success or failure.
 `SlBuf`, string builders, and allocator modules are not implemented yet.
 
 ## Future Phase
@@ -190,6 +191,9 @@ Future JS/native bridges must use the resource table rather than inventing ad ho
 - Request/app scope ownership must be explicit before a handle is exposed: app-lifetime
   pools, request-lifetime checked-out resources, and statement/transaction resources cannot
   share an implicit global registry.
+- Request-scoped native resources should be represented by `SlResourceId` entries and paired
+  with a request-scope cleanup that closes the ID. MAIN1-03 adds the cleanup boundary but
+  does not wire provider handles into request scope yet.
 - MAIN1-08 SQLite bridge work must consume `SlResourceId`/`SlResourceTable`; it must not
   reinvent handle storage or expose SQLite pointers.
 
@@ -231,6 +235,12 @@ Target request lifecycle:
 6. close scoped resources;
 7. detect leaked statements/connections/handles in debug builds;
 8. release request arena.
+
+Implemented MAIN1-03 request-scope behavior is smaller: a native request scope begins
+before the handler boundary and closes after handler success or failure. Cleanup callbacks
+run in `SlScope` LIFO order. The scope owns cleanup registrations only; cleanup payloads
+and user data remain caller-owned and must outlive cleanup execution. Cleanup callbacks are
+currently void/no-fail, so rich cleanup-failure diagnostics remain deferred.
 
 ## Forbidden Patterns
 

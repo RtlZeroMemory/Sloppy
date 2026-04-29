@@ -185,8 +185,11 @@ Implementation notes:
 - config keys may appear in the plan, but secret values must not;
 - current bootstrap `build()` freezes builder-side config/logging/services mutation;
 - current bootstrap `app.freeze()` freezes route registration and endpoint naming;
-- future native app-host work will make build/freeze part of startup validation and plan
-  emission;
+- current native app-host startup validation rejects malformed Plan-backed routes,
+  route-handler mismatches, duplicate routes/names, and represented provider service-token
+  conflicts before V8/user execution;
+- future native app-host work will make build/freeze part of full module/service startup
+  validation and plan emission;
 - errors detected before `run()` should be startup diagnostics, not request-time surprises.
 
 ## Route Groups

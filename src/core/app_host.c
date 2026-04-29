@@ -1,0 +1,581 @@
+/*
+ * src/core/app_host.c
+ *
+ * Native app-host hardening for the current Plan-backed runtime path. This module validates
+ * app graph metadata that already exists in native Plan structs and provides the minimal
+ * request-scope lifecycle wrapper used by request execution. It intentionally does not
+ * implement DI, middleware, provider opening, module execution, HTTP precedence, or V8
+ * behavior.
+ */
+#include "sloppy/app_host.h"
+
+static SlStr sl_app_host_literal(const char* ptr, size_t length)
+{
+    return sl_str_from_parts(ptr, length);
+}
+
+static bool sl_app_host_token_syntax_valid(SlStr token)
+{
+    size_t index = 0U;
+
+    if (sl_str_is_empty(token)) {
+        return false;
+    }
+
+    for (index = 0U; index < token.length; index += 1U) {
+        char ch = token.ptr[index];
+        bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                  (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-';
+        if (!ok) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static SlStatus sl_app_host_diag(const SlAppHostStartupValidation* options, SlDiag* out_diag,
+                                 SlDiagCode code, SlStr message, SlStr hint,
+                                 SlStatusCode status_code)
+{
+    SlDiagBuilder builder;
+    SlStatus status;
+
+    if (out_diag == NULL) {
+        return sl_status_from_code(status_code);
+    }
+    if (options == NULL || options->diag_arena == NULL) {
+        *out_diag = (SlDiag){0};
+        return sl_status_from_code(status_code);
+    }
+
+    status =
+        sl_diag_builder_init(&builder, options->diag_arena, SL_DIAG_SEVERITY_ERROR, code, message);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_is_empty(hint)) {
+        status = sl_diag_builder_add_hint(&builder, hint);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    status = sl_diag_builder_finish(&builder, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_status_from_code(status_code);
+}
+
+static bool sl_app_host_plan_has_service_token(const SlPlan* plan, SlStr token, size_t before)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || plan->data_providers == NULL || sl_str_is_empty(token)) {
+        return false;
+    }
+
+    for (index = 0U; index < before; index += 1U) {
+        if (sl_str_equal(plan->data_providers[index].service, token)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_app_host_plan_has_provider(const SlPlan* plan, SlStr token)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || plan->data_providers == NULL || sl_str_is_empty(token)) {
+        return false;
+    }
+
+    for (index = 0U; index < plan->data_provider_count; index += 1U) {
+        if (sl_str_equal(plan->data_providers[index].token, token)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_app_host_plan_has_capability(const SlPlan* plan, SlStr token)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || plan->capabilities == NULL || sl_str_is_empty(token)) {
+        return false;
+    }
+
+    for (index = 0U; index < plan->capability_count; index += 1U) {
+        if (sl_str_equal(plan->capabilities[index].token, token)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static SlStatus sl_app_host_validate_plan_header(const SlPlan* plan,
+                                                 const SlAppHostStartupValidation* options,
+                                                 SlDiag* out_diag)
+{
+    if (plan == NULL) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_ARGUMENT,
+            sl_app_host_literal("missing app plan", sizeof("missing app plan") - 1U),
+            sl_app_host_literal("load and parse app.plan.json before app-host startup validation",
+                                sizeof("load and parse app.plan.json before app-host startup "
+                                       "validation") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!sl_plan_version_supported(plan->version)) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_VERSION,
+            sl_app_host_literal("unsupported app plan version",
+                                sizeof("unsupported app plan version") - 1U),
+            sl_app_host_literal("rebuild the app with a compatible sloppyc version",
+                                sizeof("rebuild the app with a compatible sloppyc version") - 1U),
+            SL_STATUS_UNSUPPORTED);
+    }
+    if (!sl_str_equal(plan->target.engine, sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8)) ||
+        !sl_str_equal(plan->target.platform, sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64)))
+    {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_UNSUPPORTED_ENGINE,
+            sl_app_host_literal("unsupported app plan target",
+                                sizeof("unsupported app plan target") - 1U),
+            sl_app_host_literal("the current dev app host accepts windows-x64/v8 artifacts only",
+                                sizeof("the current dev app host accepts windows-x64/v8 artifacts "
+                                       "only") -
+                                    1U),
+            SL_STATUS_UNSUPPORTED);
+    }
+    if (!sl_str_equal(plan->runtime_min_version,
+                      sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0)))
+    {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("unsupported app plan runtime version",
+                                sizeof("unsupported app plan runtime version") - 1U),
+            sl_app_host_literal("rebuild the app with the current runtime-compatible compiler",
+                                sizeof("rebuild the app with the current runtime-compatible "
+                                       "compiler") -
+                                    1U),
+            SL_STATUS_UNSUPPORTED);
+    }
+    if (plan->handler_count == 0U || plan->handlers == NULL) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan has no handler table",
+                                sizeof("app plan has no handler table") - 1U),
+            sl_app_host_literal("handlers[] must contain at least one startup-visible handler",
+                                sizeof("handlers[] must contain at least one startup-visible "
+                                       "handler") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (sl_plan_has_duplicate_handler_ids(plan)) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_DUPLICATE_HANDLER_ID,
+            sl_app_host_literal("duplicate handler id", sizeof("duplicate handler id") - 1U),
+            sl_app_host_literal("handler ids must be unique before request dispatch starts",
+                                sizeof("handler ids must be unique before request dispatch "
+                                       "starts") -
+                                    1U),
+            SL_STATUS_INVALID_STATE);
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_app_host_validate_routes(const SlPlan* plan,
+                                            const SlAppHostStartupValidation* options,
+                                            SlDiag* out_diag)
+{
+    size_t index = 0U;
+    size_t runnable_routes = 0U;
+
+    if (plan->route_count > 0U && plan->routes == NULL) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan route table is malformed",
+                                sizeof("app plan route table is malformed") - 1U),
+            sl_app_host_literal("routes must point to route_count entries during startup "
+                                "validation",
+                                sizeof("routes must point to route_count entries during startup "
+                                       "validation") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (options != NULL && options->require_runnable_route && plan->route_count == 0U) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan does not contain runnable route metadata",
+                                sizeof("app plan does not contain runnable route metadata") - 1U),
+            sl_app_host_literal("compiler-emitted runnable artifacts must include at least one "
+                                "route",
+                                sizeof("compiler-emitted runnable artifacts must include at least "
+                                       "one route") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (sl_plan_has_duplicate_routes(plan)) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("duplicate app plan route",
+                                sizeof("duplicate app plan route") - 1U),
+            sl_app_host_literal("route method and pattern pairs must be unique before serving",
+                                sizeof("route method and pattern pairs must be unique before "
+                                       "serving") -
+                                    1U),
+            SL_STATUS_INVALID_STATE);
+    }
+    if (sl_plan_has_duplicate_route_names(plan)) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("duplicate app plan route name",
+                                sizeof("duplicate app plan route name") - 1U),
+            sl_app_host_literal("non-empty route names must be unique before serving",
+                                sizeof("non-empty route names must be unique before serving") - 1U),
+            SL_STATUS_INVALID_STATE);
+    }
+
+    for (index = 0U; index < plan->route_count; index += 1U) {
+        const SlPlanHandler* handler = NULL;
+        const SlPlanRoute* route = &plan->routes[index];
+        if (!sl_plan_route_method_supported(route->method)) {
+            return sl_app_host_diag(
+                options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+                sl_app_host_literal("unsupported app plan route method",
+                                    sizeof("unsupported app plan route method") - 1U),
+                sl_app_host_literal("the current dev app host supports GET routes only",
+                                    sizeof("the current dev app host supports GET routes only") -
+                                        1U),
+                SL_STATUS_UNSUPPORTED);
+        }
+        runnable_routes += 1U;
+        if (!sl_status_is_ok(sl_plan_find_handler_by_id(plan, route->handler_id, &handler))) {
+            return sl_app_host_diag(
+                options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+                sl_app_host_literal("app plan route references missing handler",
+                                    sizeof("app plan route references missing handler") - 1U),
+                sl_app_host_literal("routes[].handlerId must reference handlers[].id before "
+                                    "serving",
+                                    sizeof("routes[].handlerId must reference handlers[].id before "
+                                           "serving") -
+                                        1U),
+                SL_STATUS_INVALID_ARGUMENT);
+        }
+    }
+
+    if (options != NULL && options->require_runnable_route && runnable_routes == 0U) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan does not contain runnable route metadata",
+                                sizeof("app plan does not contain runnable route metadata") - 1U),
+            sl_app_host_literal("the current dev app host serves GET route metadata only",
+                                sizeof("the current dev app host serves GET route metadata only") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (options != NULL && options->max_runnable_routes > 0U &&
+        runnable_routes > options->max_runnable_routes)
+    {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan has too many runnable routes",
+                                sizeof("app plan has too many runnable routes") - 1U),
+            sl_app_host_literal("reduce route metadata or raise the host route-table capacity",
+                                sizeof("reduce route metadata or raise the host route-table "
+                                       "capacity") -
+                                    1U),
+            SL_STATUS_CAPACITY_EXCEEDED);
+    }
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_app_host_validate_one_provider(const SlPlan* plan, size_t index,
+                                                  const SlAppHostStartupValidation* options,
+                                                  SlDiag* out_diag)
+{
+    const SlPlanDataProvider* provider = &plan->data_providers[index];
+
+    if (!sl_app_host_token_syntax_valid(provider->token) ||
+        !sl_plan_provider_supported(provider->provider))
+    {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("invalid app plan provider metadata",
+                                sizeof("invalid app plan provider metadata") - 1U),
+            sl_app_host_literal("provider metadata must use supported tokens and provider values",
+                                sizeof("provider metadata must use supported tokens and provider "
+                                       "values") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!sl_str_is_empty(provider->service)) {
+        if (!sl_app_host_token_syntax_valid(provider->service)) {
+            return sl_app_host_diag(
+                options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+                sl_app_host_literal("invalid app plan service token",
+                                    sizeof("invalid app plan service token") - 1U),
+                sl_app_host_literal("service tokens may contain letters, digits, '.', '_', and '-'",
+                                    sizeof("service tokens may contain letters, digits, '.', '_', "
+                                           "and '-'") -
+                                        1U),
+                SL_STATUS_INVALID_ARGUMENT);
+        }
+        if (sl_app_host_plan_has_service_token(plan, provider->service, index)) {
+            return sl_app_host_diag(
+                options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+                sl_app_host_literal("duplicate app plan service token",
+                                    sizeof("duplicate app plan service token") - 1U),
+                sl_app_host_literal(
+                    "service tokens represented in provider metadata must be unique",
+                    sizeof("service tokens represented in provider metadata must be unique") - 1U),
+                SL_STATUS_INVALID_STATE);
+        }
+    }
+
+    if (!sl_str_is_empty(provider->capability) &&
+        !sl_app_host_plan_has_capability(plan, provider->capability))
+    {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan provider references missing capability",
+                                sizeof("app plan provider references missing capability") - 1U),
+            sl_app_host_literal("dataProviders[].capability must reference capabilities[].token",
+                                sizeof("dataProviders[].capability must reference "
+                                       "capabilities[].token") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_app_host_validate_one_capability(const SlPlan* plan, size_t index,
+                                                    const SlAppHostStartupValidation* options,
+                                                    SlDiag* out_diag)
+{
+    const SlPlanCapability* capability = &plan->capabilities[index];
+
+    if (!sl_app_host_token_syntax_valid(capability->token) ||
+        !sl_plan_capability_kind_supported(capability->kind) ||
+        !sl_plan_capability_access_supported(capability->kind, capability->access))
+    {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("invalid app plan capability metadata",
+                                sizeof("invalid app plan capability metadata") - 1U),
+            sl_app_host_literal(
+                "capability metadata must use supported token, kind, and access values",
+                sizeof("capability metadata must use supported token, kind, and access values") -
+                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!sl_str_is_empty(capability->provider) &&
+        !sl_app_host_plan_has_provider(plan, capability->provider))
+    {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan capability references missing provider",
+                                sizeof("app plan capability references missing provider") - 1U),
+            sl_app_host_literal("capabilities[].provider must reference dataProviders[].token",
+                                sizeof("capabilities[].provider must reference "
+                                       "dataProviders[].token") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_app_host_validate_metadata_shape(const SlPlan* plan,
+                                                    const SlAppHostStartupValidation* options,
+                                                    SlDiag* out_diag)
+{
+    if (plan->data_provider_count > 0U && plan->data_providers == NULL) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan provider metadata is malformed",
+                                sizeof("app plan provider metadata is malformed") - 1U),
+            sl_app_host_literal("dataProviders must point to data_provider_count entries",
+                                sizeof("dataProviders must point to data_provider_count entries") -
+                                    1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (plan->capability_count > 0U && plan->capabilities == NULL) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("app plan capability metadata is malformed",
+                                sizeof("app plan capability metadata is malformed") - 1U),
+            sl_app_host_literal("capabilities must point to capability_count entries",
+                                sizeof("capabilities must point to capability_count entries") - 1U),
+            SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (sl_plan_has_duplicate_data_provider_tokens(plan)) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("duplicate app plan provider token",
+                                sizeof("duplicate app plan provider token") - 1U),
+            sl_app_host_literal("data provider tokens must be unique before startup",
+                                sizeof("data provider tokens must be unique before startup") - 1U),
+            SL_STATUS_INVALID_STATE);
+    }
+    if (sl_plan_has_duplicate_capability_tokens(plan)) {
+        return sl_app_host_diag(
+            options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
+            sl_app_host_literal("duplicate app plan capability token",
+                                sizeof("duplicate app plan capability token") - 1U),
+            sl_app_host_literal("capability tokens must be unique before startup",
+                                sizeof("capability tokens must be unique before startup") - 1U),
+            SL_STATUS_INVALID_STATE);
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_app_host_validate_metadata(const SlPlan* plan,
+                                              const SlAppHostStartupValidation* options,
+                                              SlDiag* out_diag)
+{
+    size_t index = 0U;
+    SlStatus status = sl_app_host_validate_metadata_shape(plan, options, out_diag);
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    for (index = 0U; index < plan->data_provider_count; index += 1U) {
+        status = sl_app_host_validate_one_provider(plan, index, options, out_diag);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    for (index = 0U; index < plan->capability_count; index += 1U) {
+        status = sl_app_host_validate_one_capability(plan, index, options, out_diag);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    return sl_status_ok();
+}
+
+SlStatus sl_app_host_validate_startup(const SlPlan* plan, const SlAppHostStartupValidation* options,
+                                      SlDiag* out_diag)
+{
+    SlStatus status;
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+
+    status = sl_app_host_validate_plan_header(plan, options, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_app_host_validate_routes(plan, options, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_app_host_validate_metadata(plan, options, out_diag);
+}
+
+static SlStatus sl_app_request_scope_diag(SlDiag* out_diag, SlDiagCode code, SlStr message)
+{
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+        out_diag->severity = SL_DIAG_SEVERITY_ERROR;
+        out_diag->code = code;
+        out_diag->message = message;
+    }
+    return sl_status_from_code(SL_STATUS_INVALID_STATE);
+}
+
+SlStatus sl_app_request_scope_init(SlAppRequestScope* request_scope, SlScopeCleanup* storage,
+                                   size_t cleanup_capacity)
+{
+    SlStatus status;
+
+    if (request_scope == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *request_scope = (SlAppRequestScope){0};
+    status = sl_scope_init(&request_scope->cleanups, storage, cleanup_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    request_scope->active = true;
+    return sl_status_ok();
+}
+
+SlStatus sl_app_request_scope_add_cleanup(SlAppRequestScope* request_scope, SlScopeCleanupFn fn,
+                                          void* payload, void* user)
+{
+    if (request_scope == NULL || !request_scope->active) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    return sl_scope_add_cleanup(&request_scope->cleanups, fn, payload, user);
+}
+
+SlStatus sl_app_request_scope_close(SlAppRequestScope* request_scope, SlDiag* out_diag)
+{
+    SlStatus status;
+
+    if (request_scope == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!request_scope->active) {
+        return sl_status_ok();
+    }
+
+    status = sl_scope_close(&request_scope->cleanups);
+    request_scope->active = false;
+    if (!sl_status_is_ok(status)) {
+        return sl_app_request_scope_diag(
+            out_diag, SL_DIAG_INTERNAL_ERROR,
+            sl_app_host_literal("request scope cleanup failed",
+                                sizeof("request scope cleanup failed") - 1U));
+    }
+
+    return sl_status_ok();
+}
+
+bool sl_app_request_scope_is_active(const SlAppRequestScope* request_scope)
+{
+    return request_scope != NULL && request_scope->active;
+}
+
+SlStatus sl_app_request_scope_execute(SlScopeCleanup* storage, size_t cleanup_capacity,
+                                      SlAppRequestScopeHandler handler, void* user,
+                                      SlDiag* out_diag)
+{
+    SlAppRequestScope request_scope;
+    SlStatus handler_status;
+    SlStatus close_status;
+
+    if (handler == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    handler_status = sl_app_request_scope_init(&request_scope, storage, cleanup_capacity);
+    if (!sl_status_is_ok(handler_status)) {
+        return handler_status;
+    }
+
+    handler_status = handler(&request_scope, user, out_diag);
+    close_status = sl_app_request_scope_close(&request_scope, out_diag);
+    if (!sl_status_is_ok(close_status)) {
+        return close_status;
+    }
+
+    return handler_status;
+}

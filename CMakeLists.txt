@@ -289,6 +289,7 @@ set(
     src/core/arena.c
     src/core/scope.c
     src/core/resource.c
+    src/core/app_host.c
     src/core/loop.c
     src/core/async.c
     src/core/worker_pool.c
@@ -328,6 +329,7 @@ set(
     tests/unit/core/test_arena.c
     tests/unit/core/test_scope.c
     tests/unit/core/test_resource.c
+    tests/unit/core/test_app_host.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
     tests/unit/core/test_worker_pool.c
@@ -575,6 +577,8 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(core_scope_lifetime core.scope.lifetime tests/unit/core/test_scope.c)
     sloppy_add_c_unit_test(
         core_resource_lifecycle core.resource.lifecycle tests/unit/core/test_resource.c)
+    sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
+                           tests/unit/core/test_app_host.c)
     sloppy_add_c_unit_test(
         core_loop_completion_queue core.loop.completion_queue tests/unit/core/test_loop.c)
     sloppy_add_c_unit_test(
@@ -813,7 +817,7 @@ if(SLOPPY_ENABLE_TESTS)
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
             "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/too-many-routes;--once;GET;/"
-            "-DSLOPPY_EXPECTED_ERROR=contains more GET routes than the dev runtime can materialize"
+            "-DSLOPPY_EXPECTED_ERROR=app plan has too many runnable routes"
             -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.run.too_many_routes
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")

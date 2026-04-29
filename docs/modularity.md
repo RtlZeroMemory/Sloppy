@@ -327,6 +327,13 @@ Each entry contains `name`, `dependencies`, `order`, `contributes`, `capabilitie
 `services`, `routes`, and `metadata`. This shape is a temporary introspection/debug
 contract for tests and future plan work, not the final Sloppy Plan schema.
 
+MAIN1-03 does not add native module execution or a Plan `modules` section. The only
+service metadata currently represented in native startup validation is
+`dataProviders[].service`; when present, those string tokens are syntax-checked and must be
+unique. Bootstrap module dependencies, duplicate module names, cycles, and service
+registrations remain JavaScript-only diagnostics until compiler extraction emits native
+module/service metadata.
+
 ## Native Plugins
 
 Native plugins are future work, not v0.1.
@@ -460,6 +467,9 @@ Current bootstrap diagnostics are plain JavaScript errors rather than native `Sl
 records. They include duplicate module names, invalid module objects, missing dependencies,
 cycles, invalid module names, duplicate capability tokens, invalid capability tokens,
 missing capabilities, mutation after module add, and phase callback failures.
+Native MAIN1-03 diagnostics cover duplicate represented provider service tokens but do not
+yet diagnose bootstrap module names, module dependencies, service lifetimes, or module
+cycles from Plan metadata because that metadata is not emitted.
 
 ## Testing Requirements
 
