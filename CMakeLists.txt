@@ -696,6 +696,12 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(sloppy.cli.help_includes_run PROPERTIES PASS_REGULAR_EXPRESSION "sloppy run")
 
     add_test(
+        NAME docs.main_contract
+        COMMAND
+            "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_main_contract_docs.cmake")
+
+    add_test(
         NAME sloppy.cli.missing_metadata
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
@@ -721,6 +727,15 @@ if(SLOPPY_ENABLE_TESTS)
             "-DSLOPPY_EXPECTED_ERROR=artifact path not found" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.run.missing_artifacts PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.run.missing_plan
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/missing-plan;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=app.plan.json" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.missing_plan PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
         NAME sloppy.run.source_input_deferred

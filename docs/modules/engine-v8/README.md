@@ -139,6 +139,17 @@ CI behavior:
 Passing required CI does not prove V8 execution. Report V8-enabled results separately from
 default gate results.
 
+For MAIN-01, the positive runtime proof is explicitly V8-gated:
+
+```powershell
+sloppy run --artifacts .sloppy-main-smoke --once GET /
+```
+
+That command must be run from a V8-enabled build and is expected to return
+`Hello from Sloppy` for the canonical compiler hello artifact. If the SDK/build is not
+available, report the V8 smoke as skipped or unavailable and rely only on the non-V8
+diagnostic test; do not describe default gates as V8 execution evidence.
+
 On Windows, prefer the repo wrapper instead of direct `cmake`:
 
 ```powershell

@@ -38,6 +38,10 @@ matches the required minimal handler/bundle/source-map fields and includes a nar
 `routes` metadata section for EPIC-22 handoff. The current native Plan v1 parser still
 ignores that unknown section, while `sloppy run` reads it directly to build a dev-only GET
 route binding table.
+MAIN-01 locks `examples/compiler-hello/app.js` as the canonical verification fixture for
+that contract: the emitted plan references `app.js`, `app.js.map`, handler ID `1`, and a
+single `GET /` route bound to that handler. The plan remains deterministic and does not
+carry absolute source paths or timestamps.
 EPIC-24 keeps Plan v1's handler schema stable but changes V8 execution from named global
 lookup to runtime-owned registration. Generated app artifacts call
 `__sloppy_register_handler(id, handler)`, and `sloppy run` validates that each plan handler
