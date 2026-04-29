@@ -44,6 +44,43 @@ static bool diag_has_hint_containing(const SlDiag* diag, const char* expected)
     return false;
 }
 
+static const char* classify_live_open_failure(const SlDiag* diag)
+{
+    if (diag_has_hint_containing(diag, "Data source name not found") ||
+        diag_has_hint_containing(diag, "ODBC driver manager is unavailable") ||
+        diag_has_hint_containing(diag, "Can't open lib"))
+    {
+        return "dependency/driver missing";
+    }
+    if (diag_has_hint_containing(diag, "Login failed") ||
+        diag_has_hint_containing(diag, "authentication") ||
+        diag_has_hint_containing(diag, "Access denied"))
+    {
+        return "credentials rejected";
+    }
+    if (diag_has_hint_containing(diag, "network") || diag_has_hint_containing(diag, "timeout") ||
+        diag_has_hint_containing(diag, "unreachable") ||
+        diag_has_hint_containing(diag, "SQL Server does not exist or access denied"))
+    {
+        return "service unreachable";
+    }
+    return "test failure";
+}
+
+static void report_live_provider_not_configured(const char* provider, const char* env_var)
+{
+    printf("SKIP: live %s provider tests are not configured; set %s to enable them. Secret "
+           "values are never printed.\n",
+           provider, env_var);
+}
+
+static void report_live_provider_open_failure(const char* provider, const SlDiag* diag)
+{
+    printf("FAIL: live %s provider open failed; category: %s. Diagnostics are redacted and "
+           "connection strings are not printed.\n",
+           provider, classify_live_open_failure(diag));
+}
+
 static void print_diag(const SlDiag* diag)
 {
     if (diag == NULL) {
@@ -276,24 +313,44 @@ static int test_pool_state_machine_without_live_connection(void)
     {
         return 33;
     }
+    pool.connections[0].open = false;
+    if (expect_status(sl_sqlserver_pool_close(&pool), SL_STATUS_OK) != 0 ||
+        expect_status(sl_sqlserver_pool_close(&pool), SL_STATUS_OK) != 0)
+    {
+        return 34;
+    }
     return 0;
 #endif
+}
+
+static int test_live_failure_classification_ignores_provider_hint(void)
+{
+    SlDiag diag = {0};
+
+    diag.hints[0] = sl_str_from_cstr("provider: sqlserver");
+    diag.hints[1] = sl_str_from_cstr("operation: open");
+    diag.hints[2] = sl_str_from_cstr("malformed connection string");
+    diag.hint_count = 3U;
+
+    return strcmp(classify_live_open_failure(&diag), "test failure") == 0 ? 0 : 35;
 }
 
 static int open_live(SlArena* arena, SlSqlServerConnection* connection)
 {
     const char* connection_string = getenv("SLOPPY_SQLSERVER_TEST_CONNECTION_STRING");
     SlSqlServerOpenOptions options;
+    SlDiag diag = {0};
     SlStatus status;
 
     if (connection_string == NULL || connection_string[0] == '\0') {
-        printf("SKIP: SLOPPY_SQLSERVER_TEST_CONNECTION_STRING not set; live SQL Server tests "
-               "disabled.\n");
+        report_live_provider_not_configured("SQL Server",
+                                            "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING");
         return 77;
     }
     options = sl_sqlserver_open_options_connection_string(sl_str_from_cstr(connection_string));
-    status = sl_sqlserver_open(arena, &options, connection, NULL);
+    status = sl_sqlserver_open(arena, &options, connection, &diag);
     if (expect_status(status, SL_STATUS_OK) != 0) {
+        report_live_provider_open_failure("SQL Server", &diag);
         return 1;
     }
     return 0;
@@ -454,13 +511,17 @@ static int test_live_pool(void)
         return 60;
     }
     if (connection_string == NULL || connection_string[0] == '\0') {
-        printf("SKIP: SLOPPY_SQLSERVER_TEST_CONNECTION_STRING not set; live SQL Server pool tests "
-               "disabled.\n");
-        return 0;
+        report_live_provider_not_configured("SQL Server pool",
+                                            "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING");
+        return 77;
     }
     options = sl_sqlserver_pool_options_connection_string(sl_str_from_cstr(connection_string), 2U);
-    status = sl_sqlserver_pool_open(&arena, &options, &pool, NULL);
+    diag = (SlDiag){0};
+    status = sl_sqlserver_pool_open(&arena, &options, &pool, &diag);
     if (expect_status(status, SL_STATUS_OK) != 0) {
+        printf("FAIL: live SQL Server pool open failed; category: %s. Diagnostics are redacted "
+               "and connection strings are not printed.\n",
+               classify_live_open_failure(&diag));
         return 61;
     }
     if (expect_status(sl_sqlserver_pool_acquire(&arena, &pool, &first, NULL), SL_STATUS_OK) != 0 ||
@@ -483,10 +544,13 @@ static int test_live_pool(void)
         (void)sl_sqlserver_pool_close(&pool);
         return 64;
     }
-    return expect_status(sl_sqlserver_pool_close(&pool), SL_STATUS_OK) == 0 ? 0 : 65;
+    return expect_status(sl_sqlserver_pool_close(&pool), SL_STATUS_OK) == 0 &&
+                   expect_status(sl_sqlserver_pool_close(&pool), SL_STATUS_OK) == 0
+               ? 0
+               : 65;
 }
 
-int main(void)
+static int run_default_tests(void)
 {
     int result = test_redaction_driver_parse_and_doctor();
     if (result != 0) {
@@ -500,9 +564,26 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    result = test_live_query_exec_and_transactions();
+    result = test_live_failure_classification_ignores_provider_hint();
+    if (result != 0) {
+        return result;
+    }
+    return 0;
+}
+
+static int run_live_tests(void)
+{
+    int result = test_live_query_exec_and_transactions();
     if (result != 0) {
         return result;
     }
     return test_live_pool();
+}
+
+int main(int argc, char** argv)
+{
+    if (argc > 1 && strcmp(argv[1], "--live") == 0) {
+        return run_live_tests();
+    }
+    return run_default_tests();
 }

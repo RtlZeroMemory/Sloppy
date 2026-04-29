@@ -1858,8 +1858,11 @@ SlStatus sl_sqlserver_pool_release(SlSqlServerPool* pool, SlSqlServerConnection*
 
 SlStatus sl_sqlserver_pool_close(SlSqlServerPool* pool)
 {
-    if (pool == NULL || pool->closed) {
+    if (pool == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (pool->closed) {
+        return sl_status_ok();
     }
     for (size_t index = 0U; index < pool->open_count; index += 1U) {
         if (pool->connections[index].open) {

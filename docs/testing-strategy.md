@@ -23,6 +23,12 @@ The workflow is:
 3. implementation changes until tests pass;
 4. if intent changes, docs and tests change together.
 
+Optional live provider tests are still tests, not silent best-effort probes. They must be
+registered separately from default provider tests, report a CTest skip when required
+environment variables or driver/service prerequisites are missing, and fail when a
+configured live provider cannot satisfy the documented behavior. Skip output and failure
+messages must identify missing prerequisites without printing secret values.
+
 ## Test Categories
 
 - C unit tests;

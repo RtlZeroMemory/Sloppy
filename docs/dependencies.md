@@ -128,10 +128,18 @@ runner has ODBC support and a reachable server/driver. Linux/macOS default jobs 
 `SLOPPY_ENABLE_SQLSERVER=OFF` and verify the unavailable/stub path rather than pretending a
 SQL Server driver exists.
 
+CTest registers live PostgreSQL and SQL Server tests separately from default provider
+tests. Missing live environment variables are reported as CTest skips, not provider
+success. When a configured live provider cannot open, the test output classifies the
+failure as dependency/driver missing where applicable, service unreachable, credentials
+rejected, or test failure without printing connection strings.
+
 EPIC-25 Windows local packages copy the runtime DLLs restored by vcpkg into `bin/` so the
 CLI tools can start after extraction outside the checkout. This is local package smoke
 plumbing, not a complete public release dependency policy. Database drivers, V8 SDK files,
-and package-manager prerequisites are not installed or bundled.
+and package-manager prerequisites are not installed or bundled. Package smoke does not
+connect to PostgreSQL or SQL Server, does not prove SQL Server ODBC driver installation,
+and does not prove the deferred JS-to-native data bridge.
 
 The optional V8 CI job is manual and gated. It requires a runner-local preinstalled SDK
 path through the `v8_root` workflow input. If that path is not supplied or does not exist,
@@ -341,7 +349,8 @@ License/update/security:
 Tests:
 
 - `tests/unit/data/test_postgres.c` covers redaction, invalid options, use after close,
-  doctor diagnostics, and env-gated live connection/query/transaction/pool behavior.
+  doctor diagnostics, tiny pool lifecycle behavior, and separately registered env-gated
+  live connection/query/transaction/pool behavior.
 
 ### ODBC / SQL Server
 
@@ -387,8 +396,9 @@ License/update/security:
 Tests:
 
 - `tests/unit/data/test_sqlserver.c` covers redaction, driver-name parsing, missing-driver
-  diagnostics, invalid options, use after close, unsupported values, pool state behavior,
-  and env-gated live ODBC connection/query/transaction/pool behavior.
+  diagnostics, invalid options, use after close, unsupported values, pool lifecycle
+  behavior, and separately registered env-gated live ODBC connection/query/transaction/pool
+  behavior.
 
 ## Acceptance Criteria For Adding A Dependency
 

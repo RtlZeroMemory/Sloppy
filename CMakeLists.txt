@@ -608,8 +608,14 @@ if(SLOPPY_ENABLE_TESTS)
         core.diagnostics.foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(
         data_postgres_provider data.postgres.provider tests/unit/data/test_postgres.c)
+    add_test(NAME data.postgres.live_provider COMMAND data_postgres_provider --live)
+    set_tests_properties(
+        data.postgres.live_provider PROPERTIES SKIP_RETURN_CODE 77 LABELS "live-provider;postgres")
     sloppy_add_c_unit_test(
         data_sqlserver_provider data.sqlserver.provider tests/unit/data/test_sqlserver.c)
+    add_test(NAME data.sqlserver.live_provider COMMAND data_sqlserver_provider --live)
+    set_tests_properties(
+        data.sqlserver.live_provider PROPERTIES SKIP_RETURN_CODE 77 LABELS "live-provider;sqlserver")
     sloppy_add_c_unit_test(data_sqlite_provider data.sqlite.provider tests/unit/data/test_sqlite.c)
     sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
 

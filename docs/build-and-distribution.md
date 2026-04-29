@@ -141,6 +141,8 @@ PostgreSQL build and distribution notes:
   `PostgreSQL::PostgreSQL` target.
 - Default tests do not require a running PostgreSQL server.
 - Live PostgreSQL tests run only when `SLOPPY_POSTGRES_TEST_URL` is set.
+- The separate live CTest target is reported as skipped when that variable is unset; a
+  skipped live target is not evidence that live PostgreSQL passed.
 - Release packaging still needs an explicit libpq DLL/shared-library copy and license
   strategy before packaged PostgreSQL runtime support can be claimed; do not assume a
   system-global PostgreSQL installation will be present.
@@ -153,6 +155,8 @@ SQL Server build and distribution notes:
   driver binaries, or download drivers.
 - Default tests do not require a running SQL Server or installed SQL Server ODBC driver.
 - Live SQL Server tests run only when `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set.
+- The separate live CTest target is reported as skipped when that variable is unset; a
+  skipped live target is not evidence that live SQL Server passed.
 - Release packaging must document the external Microsoft ODBC Driver prerequisite and any
   future non-Windows unixODBC/iODBC strategy before claiming packaged SQL Server support.
 
@@ -478,8 +482,9 @@ Build/tooling tests currently include:
 Package smoke unpacks the ZIP under the system temp directory, runs `sloppy --version`,
 `sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies stdlib assets and
 manifest fields, checks excluded directories are absent, and verifies `SHA256SUMS.txt`
-when it is present. It does not require V8, live databases, a running server, admin
-privileges, or global PATH mutation.
+when it is present. It does not require V8, live databases, SQL Server ODBC drivers,
+provider credentials, a running server, admin privileges, or global PATH mutation. Passing
+package smoke must not be reported as live provider availability.
 
 ## Implementation Tasks
 

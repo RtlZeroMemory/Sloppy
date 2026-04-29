@@ -192,6 +192,9 @@ Optional/gated jobs:
   `SLOPPY_POSTGRES_TEST_URL` and `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`. Default CI
   prints provider gate status and runs non-live provider tests; it does not require live
   services or secrets.
+- Live provider CTests must be registered as separate optional gates and use skip code `77`
+  for not-configured environments. A skipped live provider test is a reported skip, not a
+  pass claim.
 - Package smoke is not part of the default required CI matrix. A PR that reports package
   evidence must list the package command and outside-checkout smoke result separately from
   default CI.

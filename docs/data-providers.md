@@ -78,6 +78,18 @@ redaction, and a small `doctor(options)` shape as the intended public entry poin
 No native pointer is exposed to JavaScript and no fake SQL Server success is reported by the
 stdlib.
 
+## Provider Support Classification
+
+| Provider | Native status | Default validation | Live validation | JS bridge status |
+| --- | --- | --- | --- | --- |
+| SQLite | Native C provider exists and is linked through the default build. | In-memory open/query/exec/transaction tests run in default CTest. | No external service is required for current provider tests. | Deferred until MAIN1-08; `data.sqlite.open(...)` fails with bridge-unavailable today. |
+| PostgreSQL | Native libpq provider boundary exists. | Non-live option, doctor, redaction, use-after-close, and lifecycle tests run in default CTest. | Opt-in `data.postgres.live_provider` requires `SLOPPY_POSTGRES_TEST_URL`; when unset, CTest reports it skipped. | Deferred; `data.postgres.open(...)` validates/redacts and then fails with bridge-unavailable. |
+| SQL Server | Native ODBC provider boundary exists when `SLOPPY_ENABLE_SQLSERVER` is enabled; otherwise stubs report unavailable. | Windows default tests cover ODBC-enabled non-live diagnostics; Linux/macOS defaults cover unavailable/stub behavior. | Opt-in `data.sqlserver.live_provider` requires `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`, an ODBC driver, and a reachable SQL Server; when unset, CTest reports it skipped. | Deferred; `data.sqlserver.open(...)` validates/redacts and then fails with bridge-unavailable. |
+
+Default CI proves only default/non-live provider behavior. It does not prove live
+PostgreSQL, live SQL Server, SQL Server driver installation, package-smoke provider
+availability, or JavaScript-to-native provider execution.
+
 ## Future Phase Order
 
 1. SQLite first, built-in/static provider. Native C provider implemented; JavaScript bridge
@@ -306,6 +318,8 @@ Native PostgreSQL behavior:
 - pool support is intentionally tiny: bounded max connection count, acquire/release,
   close-all, no waiting queue, no health checks, no background threads, no idle pruning,
   and no thread-safety contract;
+- pool close is idempotent after the first successful close, while releasing an idle,
+  closed, foreign, or transaction-active connection is rejected;
 - `PGresult` values are cleared on every path and connections close deterministically.
 
 Native SQL Server behavior:
@@ -328,6 +342,8 @@ Native SQL Server behavior:
 - pool support is intentionally tiny: bounded max connection count, acquire/release,
   close-all, no waiting queue, no health checks, no background threads, no idle pruning,
   and no thread-safety contract;
+- pool close is idempotent after the first successful close, while releasing an idle,
+  closed, foreign, or transaction-active connection is rejected;
 - ODBC statement, connection, and environment handles close deterministically.
 
 Transaction example:
@@ -635,6 +651,10 @@ headers/libraries discovered by CMake and depends on Microsoft ODBC Driver prese
 use. `sloppy doctor` should later surface the same missing-driver and incomplete-config
 checks currently covered by the native SQL Server doctor helper.
 
+Package smoke proves packaged CLIs start and stdlib assets/manifest fields are present. It
+does not prove live PostgreSQL, live SQL Server, SQL Server ODBC driver installation,
+credentials, V8 execution, or JS-to-native provider bridges.
+
 ## Security Rules
 
 - template query APIs parameterize by default;
@@ -683,6 +703,10 @@ Provider tests must include:
 
 Integration tests that require external services must be gated behind environment variables
 or future test containers. Skipped tests must explain which variable or driver is missing.
+Live provider tests are registered separately from default provider tests and use CTest skip
+code `77` when not configured. When configured but failing to open, they report only a
+redacted category such as dependency/driver missing (where applicable), service
+unreachable, credentials rejected, or test failure.
 
 ## Quality Gates
 

@@ -27,9 +27,9 @@ state and an honest public-alpha path.
   source, V8-enabled package validation, and package CI evidence remain open.
 - Capability enforcement: declared capabilities must gate provider/filesystem/network
   access before public docs imply a security model.
-- Live provider service testing: opt-in local PostgreSQL and SQL Server environment
-  variables are not enough for release confidence, and default gates must continue to
-  report skipped live services honestly until explicit service jobs exist.
+- Live DB service infrastructure for PostgreSQL and SQL Server: opt-in local env vars and
+  separate skipped CTest gates make reporting honest, but hosted service jobs are still
+  needed for release confidence.
 - Cross-platform CI hardening: default Linux clang/gcc, macOS clang, Windows clang-cl, and
   explicit V8/provider-gated reporting exist; remaining work is V8 SDK cache/prebuilt
   setup, optional live provider service jobs, sanitizer/fuzz jobs, and package smoke.
@@ -60,7 +60,8 @@ state and an honest public-alpha path.
   validation.
 - Source map strategy for compiler output and V8 exception remapping.
 - Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
-  close/drain behavior, thread-safety contract, and diagnostics.
+  drain behavior beyond the current idempotent close, thread-safety contract, and richer
+  diagnostics.
 - SQLite file database capability policy.
 - Docs examples executable path: replace static checks with Sloppy-run examples as soon as
   the runtime path exists.
