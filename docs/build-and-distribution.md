@@ -28,7 +28,7 @@ The foundation phase does not:
 - build V8;
 - fetch V8;
 - package releases;
-- add runtime dependencies;
+- add runtime dependencies before their documented phase;
 - add Linux/macOS presets that must pass today.
 
 ## Current Phase
@@ -38,7 +38,8 @@ binary. The default CMake project uses C only. V8 is not required.
 
 TASK 07.A adds optional V8 SDK detection. The default build keeps the V8 bridge disabled.
 TASK 07.C compiles the V8 bridge and V8-gated smoke test only when V8 is explicitly enabled
-and the SDK gate passes.
+and the SDK gate passes. TASK 10.B adds required vcpkg manifest dependencies for yyjson,
+llhttp, and libuv in the normal non-V8 build.
 
 ## Future Phase
 
@@ -87,10 +88,12 @@ platform implementation layer can support them.
 ## vcpkg Policy
 
 vcpkg manifest mode is reserved for normal C dependencies. TASK 06.B introduces `yyjson`
-through the manifest for Plan JSON parsing.
+through the manifest for Plan JSON parsing. TASK 10.B introduces `llhttp` for HTTP/1
+request-head parsing and `libuv` for a dependency/link smoke ahead of the future event-loop
+backend.
 
-Do not add libuv, llhttp, sqlite, libpq, ODBC, or other runtime dependencies until the
-relevant implementation phase.
+Do not add sqlite, libpq, ODBC, or other runtime dependencies until the relevant
+implementation phase. Do not add a second HTTP parser or a custom HTTP parser.
 
 ## V8 SDK Policy
 

@@ -12,8 +12,9 @@ platform-boundary expectations, and acceptance criteria for adding a new depende
 
 ## Non-Goals
 
-The foundation phase did not add V8, Oxc, libuv, llhttp, sqlite, libpq, ODBC, TLS,
-compression, or other runtime dependencies before their relevant phases.
+The foundation phase did not add V8, Oxc, sqlite, libpq, ODBC, TLS, compression, or other
+runtime dependencies before their relevant phases. libuv and llhttp are now allowed for the
+HTTP router foundation slice started by TASK 10.B.
 
 Use dependencies for:
 
@@ -147,6 +148,78 @@ Cross-platform dependencies do not remove the need for Sloppy-owned platform bou
 libuv may hide event-loop details internally, but Sloppy still owns the future `SlLoop`
 abstraction. Core runtime modules should depend on Sloppy abstractions rather than direct OS
 APIs or dependency-specific platform behavior.
+
+### llhttp
+
+`llhttp` is added in TASK 10.B through vcpkg manifest mode as the HTTP/1 request-head
+parser.
+
+Why it is used:
+
+- HTTP request parsing is specialized protocol work and should not be hand-rolled;
+- TASK 10.B needs a bounded parser skeleton before route dispatch grows;
+- Sloppy keeps the public/internal API as `SlBytes`, `SlArena`, `SlHttpRequestHead`,
+  `SlStatus`, and `SlDiag`, so llhttp types do not leak through `include/sloppy/http.h`.
+
+Build wiring:
+
+- `vcpkg.json` lists `llhttp`;
+- CMake uses `find_package(llhttp CONFIG REQUIRED)`;
+- `sloppy_core` links the detected llhttp CMake target, currently `llhttp::llhttp_static`
+  with the pinned vcpkg baseline.
+
+Ownership and lifetime:
+
+- llhttp parser state is stack-local inside `src/core/http.c`;
+- parsed request target, path, header names, and header values are copied into the
+  caller-provided `SlArena`;
+- no llhttp pointer escapes the parser wrapper.
+
+License/update/security:
+
+- vcpkg currently installs llhttp 9.3.1 from the pinned manifest baseline;
+- llhttp declares the MIT license in vcpkg;
+- broader update and security review remain lightweight until release packaging begins.
+
+Tests:
+
+- `tests/unit/core/test_http.c` covers valid request-head parsing, malformed/incomplete
+  input, unsupported methods, header capture, max-header enforcement, diagnostics, and route
+  matcher reuse with the parsed path.
+
+### libuv
+
+`libuv` is added in TASK 10.B through vcpkg manifest mode as the future event-loop backend
+dependency and current build/link smoke for the HTTP foundation.
+
+Why it is used:
+
+- docs identify libuv as the planned first event-loop backend;
+- TASK 10.B is allowed to prove dependency availability without building a server or
+  replacing `SlLoop`.
+
+Build wiring:
+
+- `vcpkg.json` lists `libuv`;
+- CMake uses `find_package(libuv CONFIG REQUIRED)`;
+- `sloppy_core` links `libuv::uv_a` when available, otherwise `libuv::uv`.
+
+Ownership and lifetime:
+
+- TASK 10.B only initializes and closes a stack-local `uv_loop_t` in `sl_http_libuv_smoke`;
+- no libuv handle, loop, socket, callback, or platform-specific state is exposed to Sloppy
+  public/internal APIs.
+
+License/update/security:
+
+- vcpkg currently installs libuv 1.52.1 from the pinned manifest baseline;
+- libuv declares the BSD-3-Clause license in vcpkg;
+- broader update and security review remain lightweight until release packaging begins.
+
+Tests:
+
+- `tests/unit/core/test_http.c` calls `sl_http_libuv_smoke` to prove init/close linkage
+  without network I/O.
 
 ## Acceptance Criteria For Adding A Dependency
 

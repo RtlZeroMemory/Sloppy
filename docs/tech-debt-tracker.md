@@ -21,6 +21,11 @@
   parser/server integration, method dispatch, route table/trie, route precedence,
   catch-all/optional/regex constraints, percent decoding, route groups, OpenAPI metadata,
   validation/schema integration, public TypeScript API, or compiler extraction yet.
+- `SlHttpRequestHead` exists only as a complete-buffer HTTP/1 request-head parser over
+  llhttp. It has no streaming parser API, body parsing, chunked transfer handling,
+  keep-alive state, TCP server, socket I/O, response writer, request pipeline, route
+  dispatch, middleware, public TypeScript API, asterisk-form/absolute-form target handling,
+  query parsing, percent decoding, or V8/app host integration yet.
 
 ## Deferred decisions
 
@@ -30,7 +35,8 @@
 - Exact event loop backend integration is future.
 - Thread-safe completion posting is future work.
 - `SlLoop` owner-thread identity checks are future work.
-- libuv event-loop backend integration is future work.
+- libuv event-loop backend integration is future work; TASK 10.B only proves dependency
+  linkage with a local loop init/close smoke.
 - Real worker-pool threads are future work.
 - Thread-safe worker-pool completion posting into `SlLoop` is future work.
 - Worker-pool cancellation, deadlines, and backpressure are future work.
@@ -93,7 +99,16 @@
 - Route group prefix composition is future work.
 - Route percent decoding and URL normalization policy are future work.
 - Route method dispatch and handler-ID lookup are future TASK 10.C work.
-- HTTP parser/server integration with llhttp/libuv is future TASK 10.B work.
+- HTTP server/socket integration with llhttp/libuv is future work after TASK 10.B.
+- HTTP streaming parser state is future work.
+- HTTP request body parsing is future work.
+- HTTP chunked transfer handling is future work.
+- HTTP keep-alive state is future work.
+- HTTP response writing is future work.
+- HTTP route dispatch from parsed request head to handler ID is future TASK 10.C work.
+- HTTP asterisk-form and absolute-form request target policy is future work.
+- HTTP query parsing is future work.
+- HTTP percent decoding is future work.
 - Public `app.mapGet` route API integration is future work.
 - Route OpenAPI metadata and validation/schema integration are future work.
 
