@@ -507,6 +507,143 @@ static int test_renderer_outputs(void)
     return 0;
 }
 
+static int test_json_renderer_snapshot(void)
+{
+    unsigned char buffer[4096];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlStr rendered;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 80;
+    }
+    if (expect_status(sl_diag_builder_init(
+                          &builder, &arena, SL_DIAG_SEVERITY_ERROR, SL_DIAG_INVALID_ROUTE_PATTERN,
+                          sl_str_from_cstr("unsupported \"dynamic\" route\npattern")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 81;
+    }
+    if (expect_status(sl_diag_builder_set_primary_span(
+                          &builder, sl_source_span_make(sl_str_from_cstr("app.js"), 5U, 12U, 9U)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 82;
+    }
+    if (expect_status(sl_diag_builder_add_related(
+                          &builder, sl_source_span_make(sl_str_from_cstr("routes.js"), 2U, 1U, 0U),
+                          sl_str_from_cstr("route registration happens here")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 83;
+    }
+    if (expect_status(
+            sl_diag_builder_add_hint(
+                &builder, sl_str_from_cstr("use app.mapGet(\"/users/{id:int}\", handler)")),
+            SL_STATUS_OK) != 0)
+    {
+        return 84;
+    }
+    if (expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_render_json(&arena, &diag, &rendered), SL_STATUS_OK) != 0)
+    {
+        return 85;
+    }
+    if (expect_snapshot(rendered, "tests/golden/diagnostics/json_single.json") != 0) {
+        return 86;
+    }
+    return 0;
+}
+
+static int test_source_frame_snapshot_and_fallback(void)
+{
+    unsigned char buffer[4096];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlDiagSource source;
+    SlStr rendered;
+    SlStr fallback;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 90;
+    }
+    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR,
+                                           SL_DIAG_INVALID_ROUTE_PATTERN,
+                                           sl_str_from_cstr("unsupported dynamic route pattern")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 91;
+    }
+    if (expect_status(sl_diag_builder_set_primary_span(
+                          &builder, sl_source_span_make(sl_str_from_cstr("app.js"), 5U, 12U, 9U)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_add_hint(
+                          &builder, sl_str_from_cstr("expected a string literal route pattern")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0)
+    {
+        return 92;
+    }
+
+    source.path = sl_str_from_cstr("app.js");
+    source.text = sl_str_from_cstr("import { Sloppy } from \"sloppy\";\n"
+                                   "const app = Sloppy.create();\n"
+                                   "const routePath = \"/users\";\n"
+                                   "\n"
+                                   "app.mapGet(routePath, handler)\n");
+    if (expect_status(sl_diag_render_text_with_source(&arena, &diag, &source, &rendered),
+                      SL_STATUS_OK) != 0)
+    {
+        return 93;
+    }
+    if (expect_snapshot(rendered, "tests/golden/diagnostics/source_frame.snap") != 0) {
+        return 94;
+    }
+
+    source.text = sl_str_from_cstr("only one line\n");
+    if (expect_status(sl_diag_render_text_with_source(&arena, &diag, &source, &fallback),
+                      SL_STATUS_OK) != 0 ||
+        expect_str_equal(fallback,
+                         sl_str_from_cstr("error SLOPPY_E_INVALID_ROUTE_PATTERN: unsupported "
+                                          "dynamic route pattern\n\n"
+                                          "  at app.js:5:12 (len 9)\n\n"
+                                          "  help:\n"
+                                          "    expected a string literal route pattern\n")) != 0)
+    {
+        return 95;
+    }
+    return 0;
+}
+
+static int test_redaction_helper(void)
+{
+    unsigned char buffer[1024];
+    SlArena arena;
+    SlStr redacted;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 100;
+    }
+    if (expect_status(sl_diag_redact_secrets(
+                          &arena,
+                          sl_str_from_cstr("password=secret PWD = {top;secret}; token:abc "
+                                           "postgres://ada:secret@localhost/db API_KEY=xyz"),
+                          &redacted),
+                      SL_STATUS_OK) != 0)
+    {
+        return 101;
+    }
+    if (expect_str_equal(redacted,
+                         sl_str_from_cstr("password=****** PWD = ************; token:*** "
+                                          "postgres://ada:******@localhost/db API_KEY=***")) != 0)
+    {
+        return 102;
+    }
+    return 0;
+}
+
 static int test_snapshots(void)
 {
     int result = test_missing_service_snapshot();
@@ -515,6 +652,16 @@ static int test_snapshots(void)
     }
 
     result = test_invalid_plan_version_snapshot();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_json_renderer_snapshot();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_source_frame_snapshot_and_fallback();
     if (result != 0) {
         return result;
     }
@@ -545,6 +692,11 @@ int main(void)
     }
 
     result = test_renderer_outputs();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_redaction_helper();
     if (result != 0) {
         return result;
     }

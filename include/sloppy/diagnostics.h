@@ -94,6 +94,20 @@ typedef struct SlDiag
 } SlDiag;
 
 /*
+ * Optional source text supplied at render time.
+ *
+ * `text` is borrowed and is never stored in the diagnostic. The renderer uses it only to
+ * print a single-line source frame for the diagnostic's primary span when path, line, and
+ * column can be matched. Tabs and non-ASCII bytes are copied as-is; caret positioning is
+ * byte-column based for this bounded renderer.
+ */
+typedef struct SlDiagSource
+{
+    SlStr path;
+    SlStr text;
+} SlDiagSource;
+
+/*
  * Builds an arena-owned diagnostic from borrowed inputs.
  *
  * The builder copies message text, hint text, related messages, and span paths into `arena`.
@@ -128,6 +142,28 @@ SlStatus sl_diag_builder_finish(SlDiagBuilder* builder, SlDiag* out);
  * declared; tests pin the current foundation behavior.
  */
 SlStatus sl_diag_render_text(SlArena* arena, const SlDiag* diag, SlStr* out);
+
+/*
+ * Renders deterministic text with a single-line source frame when `source` matches the
+ * primary span. Falls back to `sl_diag_render_text` when source text is unavailable or the
+ * requested line cannot be found.
+ */
+SlStatus sl_diag_render_text_with_source(SlArena* arena, const SlDiag* diag,
+                                         const SlDiagSource* source, SlStr* out);
+
+/*
+ * Renders a deterministic machine-readable diagnostic object. Field order is stable:
+ * `code`, `severity`, `message`, optional `primary`, optional `related`, optional `hints`.
+ * Output contains no timestamps, random IDs, or raw pointer values.
+ */
+SlStatus sl_diag_render_json(SlArena* arena, const SlDiag* diag, SlStr* out);
+
+/*
+ * Copies `input` into `arena` while redacting common secret-bearing diagnostic text:
+ * password/pwd/token/secret/API_KEY-style key values and URI userinfo passwords. This is a
+ * small audit helper for diagnostic paths, not a full data-loss-prevention engine.
+ */
+SlStatus sl_diag_redact_secrets(SlArena* arena, SlStr input, SlStr* out);
 
 #ifdef __cplusplus
 }

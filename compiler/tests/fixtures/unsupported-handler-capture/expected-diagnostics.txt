@@ -1,2 +1,6 @@
 <compiler>/tests/fixtures/unsupported-handler-capture/input.js:6:17: SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE: route handler result arguments must be inline JSON-safe values
+  --> <compiler>/tests/fixtures/unsupported-handler-capture/input.js:6:17
+   |
+6 | app.mapGet("/", () => Results.text(message));
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 hint: Use literals, arrays, and object literals instead of closed-over bindings.

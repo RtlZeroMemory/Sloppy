@@ -40,7 +40,8 @@ Current tests:
   async settlement behavior, inline worker-pool completion contract behavior, route pattern
   parser/matcher behavior, HTTP request-head parser behavior, libuv dependency smoke,
   minimal plan contract helper behavior, minimal plan JSON parser/validator behavior,
-  diagnostics foundation behavior, and assertion macro compilation;
+  diagnostics foundation text/JSON/source-frame/redaction behavior, and assertion macro
+  compilation;
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest process-level golden tests for `sloppy routes`, `sloppy doctor`, `sloppy audit`,
@@ -64,7 +65,7 @@ Current tests:
 - Rust compiler diagnostic fixture tests for unsupported dynamic route patterns, computed
   route method calls, loop/conditional route registration, unsupported handler shapes,
   unsupported imports including Node-style imports, missing default app export, non-GET
-  methods, and multiple app objects;
+  methods, multiple app objects, and source frames where source spans exist;
 - Rust compiler rejected-build coverage that verifies unsupported compiler input does not
   leave success artifacts;
 - CTest smoke for `sloppy_bench --list` and `sloppy_bench --smoke --format json`, which
@@ -498,20 +499,24 @@ They should verify:
 - severity;
 - message;
 - source span;
-- code frame;
+- JSON escaping and deterministic field order;
+- single-line source frame and missing-source fallback;
 - suggested fix;
-- related locations.
+- related locations;
+- secret redaction.
 
 Expected layout:
 
 ```text
 tests/golden/diagnostics/
   invalid_plan_version.snap
+  json_single.json
   missing_service.snap
+  source_frame.snap
 ```
 
-TASK 04.A wires `core.diagnostics.foundation` to read and compare those fixture files.
-Snapshot drift fails CTest unless the expected fixture change is intentional.
+`core.diagnostics.foundation` reads and compares those fixture files. Snapshot drift fails
+CTest unless the expected fixture change is intentional.
 
 ## Integration Tests
 

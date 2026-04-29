@@ -18,7 +18,7 @@ This document covers:
 - source locations and code frames;
 - related spans;
 - hints and fixes;
-- future JSON output;
+- JSON output;
 - source map integration;
 - subsystem diagnostic expectations;
 - examples;
@@ -29,13 +29,13 @@ This document covers:
 The foundation phase does not implement:
 
 - source map parser;
-- JSON diagnostic output;
+- V8 exception source-map remapping;
 - localization;
 - IDE protocol integration.
 
 ## Current Phase
 
-TASK 04.A implements the first diagnostic core:
+MAIN1-06 completes the bounded alpha diagnostic renderer surface:
 
 - severity enum;
 - small enum-backed diagnostic code model with stable string names;
@@ -43,10 +43,14 @@ TASK 04.A implements the first diagnostic core:
 - bounded related spans and hints;
 - arena-copying diagnostic builder;
 - deterministic plain-text renderer;
-- synthetic golden/snapshot tests.
+- deterministic single-object JSON renderer;
+- deterministic single-line source-frame renderer when source text is supplied;
+- minimal diagnostic redaction helper for common secret-bearing text;
+- golden/snapshot tests for plain text, JSON, source frames, and redaction.
 
-This is not the final diagnostics system. The text format is a foundation test contract,
-not a released CLI output contract.
+This is not the final diagnostics system. The C renderers are stable enough for alpha
+tests and tools, but the native `sloppy` CLI does not yet expose a generic
+`--diagnostic-format json` flag for every error path.
 
 ## Future Phase
 
@@ -64,10 +68,11 @@ Implemented foundation fields:
 - optional primary source span;
 - related locations;
 - hint;
-- placeholder redacted text when the caller knows a value is secret.
+- source text supplied at render time for optional source frames;
+- redacted text when the caller knows a value may contain a secret.
 
-Deferred fields include title, code frames, structured fixes, subsystem, metadata, JSON,
-and redaction classification.
+Deferred fields include title, structured fixes, subsystem/category metadata, and richer
+redaction classification.
 
 Implemented C shape, simplified:
 
@@ -82,6 +87,11 @@ typedef struct SlDiag {
     SlStr hints[SL_DIAG_MAX_HINTS];
     size_t hint_count;
 } SlDiag;
+
+typedef struct SlDiagSource {
+    SlStr path;
+    SlStr text;
+} SlDiagSource;
 ```
 
 ## Severity Levels
@@ -164,8 +174,22 @@ sites.
 When generated artifacts are involved later, diagnostics should prefer original TypeScript
 source via source maps and include generated locations as secondary details.
 
-Code frames should be concise and deterministic for snapshot tests. Code frames are
-deferred; TASK 04.A renders only `path:line:column` and optional length.
+Source-frame rendering is implemented as a bounded single-line renderer. When callers
+provide source text that matches the primary span, the renderer prints:
+
+```text
+error SLOPPY_E_INVALID_ROUTE_PATTERN: unsupported dynamic route pattern
+
+  --> app.js:5:12 (len 9)
+   |
+ 5 | app.mapGet(routePath, handler)
+   |            ^^^^^^^^^ expected a string literal route pattern
+```
+
+If source text is unavailable, the requested line is missing, or the source path does not
+match, rendering falls back to the regular deterministic text output. Tabs and non-ASCII
+bytes are copied as-is; caret placement is byte-column based. This is intentional for the
+alpha renderer and is not an IDE-grade display-width engine.
 
 ## Related Spans
 
@@ -189,28 +213,44 @@ Rules:
 - include module/provider names;
 - prefer adding a missing module or permission grant over vague advice.
 
+## Redaction Policy
+
+Diagnostics must not print secret values. Secret key names such as `DATABASE_URL` or
+`SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` may appear because they tell developers where to
+fix configuration; the environment variable value must not appear.
+
+The bounded C helper `sl_diag_redact_secrets` masks common diagnostic-risk strings:
+`password`, `pwd`, `token`, `secret`, `api_key`/`apikey`, and URI userinfo passwords such
+as `postgres://user:password@host/db`. Provider-specific redaction remains the first line
+of defense for PostgreSQL and SQL Server connection strings because those providers know
+their connection-string grammar. The generic helper is a safety net for shared diagnostic
+paths, not a full data-loss-prevention engine.
+
 ## Machine-Readable Output
 
-Future CLI output should support JSON diagnostics for tools:
+`sl_diag_render_json` emits one deterministic JSON diagnostic object for tools:
 
 ```json
 {
-  "code": "SLP_SERVICE_MISSING",
+  "code": "SLOPPY_E_INVALID_ROUTE_PATTERN",
   "severity": "error",
-  "message": "service not registered",
+  "message": "unsupported route",
   "primary": {
-    "file": "users.ts",
-    "line": 18,
-    "column": 21
+    "file": "app.js",
+    "line": 5,
+    "column": 12,
+    "span": 9
   },
-  "metadata": {
-    "serviceToken": "data.main",
-    "handler": "Users.Create"
-  }
+  "hints": ["use a string literal route pattern"]
 }
 ```
 
-JSON output must never include unredacted secrets.
+Field order is stable: `code`, `severity`, `message`, optional `primary`, optional
+`related`, optional `hints`. The renderer performs JSON escaping itself, emits no
+timestamps or random IDs, and does not include raw pointers. Callers must redact
+secret-bearing messages before rendering; JSON output must never include unredacted
+secrets. A CLI-wide diagnostic format flag remains deferred until native command error
+paths share the renderer consistently.
 
 ## Source Map Integration
 
@@ -223,6 +263,10 @@ Runtime exception flow:
 5. generated JS location appears as related detail;
 6. missing source map produces a separate diagnostic quality warning/error depending on
    mode.
+
+V8 exception source-map remapping remains owned by MAIN1-05. MAIN1-06 source frames do not
+parse source maps and do not rewrite generated V8 stack locations to original TypeScript
+locations.
 
 ## Subsystem Expectations
 
@@ -453,12 +497,14 @@ Diagnostic tests must include:
 - severity verification;
 - source span rendering;
 - related spans;
-- JSON output later;
+- JSON output;
 - redaction behavior;
 - source map fallback behavior.
 
-TASK 04.A implements snapshot text, stable code, severity, source span, related span, hint,
-and placeholder redaction tests. JSON, source maps, and code frames remain deferred.
+`core.diagnostics.foundation` covers snapshot text, JSON escaping/output, source-frame
+output/fallback, stable code/severity mapping, related spans, hints, and representative
+secret redaction. Compiler golden diagnostics cover source frames where `sloppyc` already
+has source spans. Source-map remapping remains deferred.
 
 ## Quality Gates
 
@@ -471,12 +517,14 @@ and placeholder redaction tests. JSON, source maps, and code frames remain defer
 
 1. Define diagnostic code naming policy. Done for the foundation enum/string mapping.
 2. Add user/app source span and diagnostic structs. Done as `SlSourceSpan` and `SlDiag`.
-3. Add formatter for plain text output. Done for deterministic foundation text.
+3. Add formatter for plain text output. Done for deterministic foundation text and
+   source-frame text when source is available.
 4. Add snapshot harness. Done with CTest fixture comparisons.
 5. Add examples from this document as fixtures. Started with missing service and invalid
    plan version.
-6. Add JSON output only after plain text stabilizes.
-7. Add source map mapping after compiler artifacts exist.
+6. Add JSON output only after plain text stabilizes. Done for single diagnostics.
+7. Add source map mapping after compiler artifacts exist. Deferred to MAIN1-05 for V8
+   exception remapping and later compiler span fidelity work.
 
 ## Acceptance Criteria
 
@@ -484,6 +532,8 @@ Diagnostics foundation is accepted when:
 
 - C structs represent severity, code, message, primary location, and related notes;
 - formatter emits deterministic text;
+- JSON formatter emits deterministic valid JSON;
+- source-frame formatter emits deterministic single-line frames when source is supplied;
 - missing service and invalid plan version examples are covered by snapshots;
 - diagnostics can be attached to `SlStatus`-returning operations without replacing
   `SlStatus`;
@@ -493,6 +543,7 @@ Diagnostics foundation is accepted when:
 ## Open Questions
 
 - Exact code namespace prefix for released diagnostics.
-- Whether JSON output is line-delimited or array-based.
+- Whether CLI-level JSON diagnostic output should be line-delimited, array-based, or part
+  of each command's existing JSON envelope.
 - How much source map logic lives in C versus compiler/helper code.
 - Whether diagnostics support localization later.

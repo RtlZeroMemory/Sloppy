@@ -1,0 +1,6 @@
+error SLOPPY_E_INVALID_ROUTE_PATTERN: unsupported dynamic route pattern
+
+  --> app.js:5:12 (len 9)
+   |
+ 5 | app.mapGet(routePath, handler)
+   |            ^^^^^^^^^ expected a string literal route pattern

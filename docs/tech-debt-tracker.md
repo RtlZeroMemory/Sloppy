@@ -118,7 +118,8 @@ state and an honest public-alpha path.
   package-manager scope.
 - Stronger Rust lint configuration after `sloppyc` grows beyond the placeholder CLI.
 - Stronger generated-artifact and ignored-file staging checks.
-- More diagnostic renderers: JSON, source frames, structured fixes, and localization.
+- More diagnostic polish: CLI-wide diagnostic format flags, structured fixes,
+  localization, richer related spans, and source-map remapping.
 - Fuzz targets for plan JSON, route patterns, HTTP request-head parsing, source maps, and
   compiler extraction.
 - Sanitizer matrix for core-only and provider-enabled builds.
