@@ -496,10 +496,12 @@ static int test_live_pool(void)
     }
     (void)strcpy(copied_url, url);
     options = sl_postgres_pool_options_connection_string(sl_str_from_cstr(copied_url), 2U);
-    status = sl_postgres_pool_open(&arena, &options, &pool, NULL);
+    diag = (SlDiag){0};
+    status = sl_postgres_pool_open(&arena, &options, &pool, &diag);
     if (expect_status(status, SL_STATUS_OK) != 0) {
-        printf("FAIL: live PostgreSQL pool open failed; category: test failure. Diagnostics are "
-               "redacted and connection strings are not printed.\n");
+        printf("FAIL: live PostgreSQL pool open failed; category: %s. Diagnostics are redacted "
+               "and connection strings are not printed.\n",
+               classify_live_open_failure(&diag));
         return 51;
     }
     (void)memset(copied_url, 'x', strlen(copied_url));

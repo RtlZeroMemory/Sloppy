@@ -705,8 +705,8 @@ Integration tests that require external services must be gated behind environmen
 or future test containers. Skipped tests must explain which variable or driver is missing.
 Live provider tests are registered separately from default provider tests and use CTest skip
 code `77` when not configured. When configured but failing to open, they report only a
-redacted category such as dependency/driver missing, service unreachable, credentials
-rejected, or test failure.
+redacted category such as dependency/driver missing (where applicable), service
+unreachable, credentials rejected, or test failure.
 
 ## Quality Gates
 

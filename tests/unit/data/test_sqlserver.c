@@ -516,10 +516,12 @@ static int test_live_pool(void)
         return 77;
     }
     options = sl_sqlserver_pool_options_connection_string(sl_str_from_cstr(connection_string), 2U);
-    status = sl_sqlserver_pool_open(&arena, &options, &pool, NULL);
+    diag = (SlDiag){0};
+    status = sl_sqlserver_pool_open(&arena, &options, &pool, &diag);
     if (expect_status(status, SL_STATUS_OK) != 0) {
-        printf("FAIL: live SQL Server pool open failed; category: test failure. Diagnostics are "
-               "redacted and connection strings are not printed.\n");
+        printf("FAIL: live SQL Server pool open failed; category: %s. Diagnostics are redacted "
+               "and connection strings are not printed.\n",
+               classify_live_open_failure(&diag));
         return 61;
     }
     if (expect_status(sl_sqlserver_pool_acquire(&arena, &pool, &first, NULL), SL_STATUS_OK) != 0 ||
