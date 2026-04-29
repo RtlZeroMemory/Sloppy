@@ -16,10 +16,24 @@ Dry run, default:
 .\tools\github\create-all.ps1
 ```
 
+Alternate reviewed issue data can be checked without mutating GitHub:
+
+```powershell
+.\tools\github\validate-issue-data.ps1 -Input tools/github/next-roadmap-issues.json
+.\tools\github\dry-run-summary.ps1 -Input tools/github/next-roadmap-issues.json
+.\tools\github\create-issues.ps1 -Input tools/github/next-roadmap-issues.json -DryRun
+```
+
 Apply changes:
 
 ```powershell
 .\tools\github\create-all.ps1 -Apply
+```
+
+To apply an alternate reviewed issue input, keep the same explicit apply boundary:
+
+```powershell
+.\tools\github\create-all.ps1 -Input tools/github/next-roadmap-issues.json -Apply
 ```
 
 Validation runs before issue creation, including dry-run mode. `create-all.ps1` also runs
@@ -30,12 +44,13 @@ The scripts do not delete existing labels, milestones, issues, or repository set
 
 ## Alternate Issue Data
 
-`tools/github/next-roadmap-issues.json` is staged planning data for EPIC-21 onward. The
-current mutator scripts do not support an input override; `create-issues.ps1` always reads
+`tools/github/next-roadmap-issues.json` is reviewed planning data for the remaining
+EPIC-23 onward roadmap work. The issue scripts support `-Input` so this file can be
+validated, summarized, dry-run, and then applied without copying entries into
 `tools/github/issues.json`.
 
-Do not run GitHub mutation scripts against the staged next-roadmap file by default. To
-create those issues, either copy reviewed entries into the canonical issue data in a
-separate PR or first add an explicit, validated `-Input` path to the tooling.
+Issue mutation remains opt-in through `-Apply`. `create-issues.ps1` checks exact issue
+titles across open and closed issues, reports existing matches, and skips them rather than
+creating duplicates. It does not close, relabel, or update existing issues.
 
 Review ZIP hygiene stays in `tools/windows/create-review-zip.ps1`, which builds archives from tracked files and excludes generated artifacts such as `.git/`, `build/`, `compiler/target/`, archives, binaries, and local dependency output. `git archive` is also acceptable for source-only review bundles.

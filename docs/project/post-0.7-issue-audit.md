@@ -95,10 +95,10 @@ stay closed:
 ## Missing Follow-Up Issues
 
 Recommended new issues should be generated from `docs/project/next-roadmap.md` after the
-old issue state is cleaned up:
+old issue state is cleaned up. EPIC-21 Compiler Extraction MVP and EPIC-22 Sloppy Run MVP
+were completed before this issue-ceremony pass and are intentionally excluded from the
+remaining issue input:
 
-- EPIC-21 Compiler Extraction MVP.
-- EPIC-22 Sloppy Run MVP.
 - EPIC-23 HTTP Response Writer and Request Context.
 - EPIC-24 V8 Module Loading and Bootstrap Runtime.
 - EPIC-25 Release Packaging and Distribution.

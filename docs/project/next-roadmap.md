@@ -1,13 +1,21 @@
-# Next Roadmap: EPIC-21 Through EPIC-28
+# Next Roadmap: EPIC-23 Through EPIC-28
 
 ## Purpose
 
-This document defines the next coherent roadmap batch after the EPIC-00 through EPIC-20
-foundation, bootstrap, provider, CLI, and benchmark work.
+This document defines the remaining coherent roadmap batch after the EPIC-00 through
+EPIC-22 foundation, compiler extraction, dev-run, provider, CLI, and benchmark work.
 
-The batch is deliberately integration-heavy. The repo now has many useful foundations; the
-next step is to connect the smallest compiler -> plan -> runtime -> HTTP path without
+The batch is deliberately integration-heavy. The repo now has the smallest compiler ->
+plan -> runtime -> HTTP path; the next step is to harden the response/request boundary,
+V8 bootstrap loading, packaging, CI, capabilities, and public-alpha documentation without
 pretending Sloppy is production ready.
+
+## Completed Before This Batch
+
+- EPIC-21 Compiler Extraction MVP is complete and should not be recreated as a new GitHub
+  issue in this ceremony pass.
+- EPIC-22 Sloppy Run MVP is complete and should not be recreated as a new GitHub issue in
+  this ceremony pass.
 
 ## Non-Goals For The Batch
 
@@ -21,7 +29,11 @@ pretending Sloppy is production ready.
 - No full TypeScript type system unless the selected compiler slice explicitly introduces
   it with tests and docs.
 
-## EPIC-21: Compiler Extraction MVP
+## Completed Reference: EPIC-21 Compiler Extraction MVP
+
+Status: complete before this remaining-roadmap issue ceremony pass. This section is kept
+as prerequisite context for EPIC-23 onward and should not be recreated as GitHub issue work
+from `tools/github/next-roadmap-issues.json`.
 
 Summary: turn a tiny Sloppy source file into deterministic runtime artifacts.
 
@@ -71,7 +83,11 @@ Acceptance criteria:
 - output does not claim full TypeScript checking;
 - no runtime server behavior is added in this epic.
 
-## EPIC-22: Sloppy Run MVP
+## Completed Reference: EPIC-22 Sloppy Run MVP
+
+Status: complete before this remaining-roadmap issue ceremony pass. This section is kept
+as prerequisite context for EPIC-23 onward and should not be recreated as GitHub issue work
+from `tools/github/next-roadmap-issues.json`.
 
 Summary: make the first dev-only executable app path.
 
@@ -391,11 +407,19 @@ Acceptance criteria:
 
 ## Issue Generation Notes
 
-`tools/github/next-roadmap-issues.json` contains staged issue data for this roadmap. The
-current `tools/github/create-issues.ps1` script does not support `-Input` and always reads
-`tools/github/issues.json`, so the staged file is not directly consumable by the existing
-mutator.
+`tools/github/next-roadmap-issues.json` contains reviewed issue data for the remaining
+roadmap work. The GitHub issue scripts support an explicit `-Input` override, so EPIC-23
+onward issues can be validated, summarized, dry-run, and applied without copying entries
+into `tools/github/issues.json`.
 
-Until tooling grows an explicit input override, create EPIC-21 onward issues manually from
-this document or copy reviewed entries into the canonical issue data in a separate PR.
-Do not mutate GitHub from the staged file by default.
+Dry-run before applying:
+
+```powershell
+.\tools\github\validate-issue-data.ps1 -Input tools/github/next-roadmap-issues.json
+.\tools\github\dry-run-summary.ps1 -Input tools/github/next-roadmap-issues.json
+.\tools\github\create-issues.ps1 -Input tools/github/next-roadmap-issues.json -DryRun
+```
+
+Mutation remains explicit through `-Apply`, and issue creation skips exact-title matches
+instead of duplicating existing issues. EPIC-21 and EPIC-22 are already complete and are
+intentionally excluded from the next-roadmap issue input.

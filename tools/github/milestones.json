@@ -70,8 +70,6 @@
     },
     {
         "epics":  [
-                      "EPIC-21",
-                      "EPIC-22",
                       "EPIC-23",
                       "EPIC-24",
                       "EPIC-25",
@@ -80,6 +78,6 @@
                       "EPIC-28"
                   ],
         "title":  "0.8 Planning / Consolidation",
-        "purpose":  "Post-0.7 consolidation plus the next roadmap batch for compiler extraction, run MVP, response/request context, V8 bootstrap, packaging, CI, capabilities, and public-alpha docs."
+        "purpose":  "Remaining post-0.7 roadmap batch after completed compiler extraction and run MVP work: response/request context, V8 bootstrap, packaging, CI, capabilities, and public-alpha docs."
     }
 ]

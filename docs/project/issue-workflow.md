@@ -12,11 +12,28 @@ Before creating GitHub issues from local metadata, run:
 .\tools\github\create-all.ps1
 ```
 
+For reviewed alternate issue data, pass the input file explicitly:
+
+```powershell
+.\tools\github\validate-issue-data.ps1 -Input tools/github/next-roadmap-issues.json
+.\tools\github\dry-run-summary.ps1 -Input tools/github/next-roadmap-issues.json
+.\tools\github\create-issues.ps1 -Input tools/github/next-roadmap-issues.json -DryRun
+```
+
 Apply only after validation passes and the dry run is reviewed:
 
 ```powershell
 .\tools\github\create-all.ps1 -Apply
 ```
+
+For alternate data, apply only after the input-specific dry run is reviewed:
+
+```powershell
+.\tools\github\create-all.ps1 -Input tools/github/next-roadmap-issues.json -Apply
+```
+
+Issue creation must skip exact-title matches and must not close, relabel, or update existing
+issues unless a future task explicitly asks for that mutation.
 
 2. Generate a dev prompt from the task.
 

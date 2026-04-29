@@ -1,4 +1,7 @@
-param()
+param(
+    [Alias("Input")]
+    [string]$IssueInput = (Join-Path $PSScriptRoot "issues.json")
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -77,11 +80,15 @@ $errors = [System.Collections.Generic.List[string]]::new()
 
 $labelsPath = Join-Path $PSScriptRoot "labels.json"
 $milestonesPath = Join-Path $PSScriptRoot "milestones.json"
-$issuesPath = Join-Path $PSScriptRoot "issues.json"
+$issuesPath = if ([System.IO.Path]::IsPathRooted($IssueInput)) {
+    $IssueInput
+} else {
+    Join-Path $Root $IssueInput
+}
 
 $labels = Read-RequiredJson $labelsPath "tools/github/labels.json" $errors
 $milestones = Read-RequiredJson $milestonesPath "tools/github/milestones.json" $errors
-$issues = Read-RequiredJson $issuesPath "tools/github/issues.json" $errors
+$issues = Read-RequiredJson $issuesPath $IssueInput $errors
 
 if ($errors.Count -gt 0) {
     $errors | ForEach-Object { Write-Error $_ }
@@ -108,9 +115,11 @@ foreach ($milestone in @($milestones)) {
     [void]$milestoneNames.Add([string]$milestone.title)
 }
 
-$allIssues = @($issues.epics) + @($issues.tasks)
-$taskCount = @($issues.tasks).Count
-$epicCount = @($issues.epics).Count
+$epicItems = if ($null -ne $issues.epics) { @($issues.epics) } else { @() }
+$taskItems = if ($null -ne $issues.tasks) { @($issues.tasks) } else { @() }
+$allIssues = $epicItems + $taskItems
+$taskCount = $taskItems.Count
+$epicCount = $epicItems.Count
 
 foreach ($issue in $allIssues) {
     $title = if (Test-RequiredText $issue.title) { [string]$issue.title } else { "<missing title>" }
@@ -119,19 +128,27 @@ foreach ($issue in $allIssues) {
         Add-ValidationError $errors "Issue is missing required field: title."
     }
 
-    if (-not (Test-RequiredText $issue.bodyPath)) {
-        Add-ValidationError $errors "Issue '$title' is missing required field: bodyPath."
-    } else {
+    $hasBodyPath = Test-RequiredText $issue.bodyPath
+    if (-not $hasBodyPath -and -not (Test-RequiredText $issue.goal) -and -not (Test-RequiredText $issue.summary)) {
+        Add-ValidationError $errors "Issue '$title' is missing required field: bodyPath, goal, or summary."
+    }
+
+    if ($hasBodyPath) {
         $bodyPath = Join-Path $Root ([string]$issue.bodyPath)
         if (-not (Test-Path -LiteralPath $bodyPath -PathType Leaf)) {
             Add-ValidationError $errors "Issue '$title' bodyPath does not exist: $($issue.bodyPath)"
         }
+    } else {
+        # Staged roadmap files may provide compact structured issue data. The
+        # mutator expands missing generated-body sections from source docs and
+        # labels, so validation only requires a useful summary/goal here.
     }
 
-    if (-not (Test-RequiredText $issue.milestone)) {
+    $effectiveMilestone = if (Test-RequiredText $issue.milestone) { [string]$issue.milestone } else { [string]$issues.milestone }
+    if (-not (Test-RequiredText $effectiveMilestone)) {
         Add-ValidationError $errors "Issue '$title' is missing required field: milestone."
-    } elseif (-not $milestoneNames.Contains([string]$issue.milestone)) {
-        Add-ValidationError $errors "Issue '$title' uses unknown milestone: $($issue.milestone)"
+    } elseif (-not $milestoneNames.Contains($effectiveMilestone)) {
+        Add-ValidationError $errors "Issue '$title' uses unknown milestone: $effectiveMilestone"
     }
 
     if ($null -eq $issue.labels -or @($issue.labels).Count -eq 0) {
@@ -164,8 +181,12 @@ foreach ($issue in $allIssues) {
     }
 }
 
-foreach ($task in @($issues.tasks)) {
+foreach ($task in $taskItems) {
     $title = if (Test-RequiredText $task.title) { [string]$task.title } else { "<missing title>" }
+    if (-not (Test-RequiredText $task.parentEpic)) {
+        Add-ValidationError $errors "Task '$title' is missing required field: parentEpic."
+    }
+
     if (-not (Test-RequiredText $task.bodyPath)) {
         continue
     }

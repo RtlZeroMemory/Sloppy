@@ -235,17 +235,17 @@ not mutate GitHub issues.
 
 ## Next Roadmap
 
-The next coherent roadmap batch starts at EPIC-21 and is documented in
-`docs/project/next-roadmap.md`. The recommended order is:
+The next coherent roadmap batch originally started at EPIC-21. EPIC-21 Compiler Extraction
+MVP and EPIC-22 Sloppy Run MVP are complete in the repository, so the remaining tracked
+batch in `docs/project/next-roadmap.md` starts at EPIC-23. The recommended remaining order
+is:
 
-1. EPIC-21 Compiler Extraction MVP.
-2. EPIC-22 Sloppy Run MVP.
-3. EPIC-23 HTTP Response Writer and Request Context.
-4. EPIC-24 V8 Module Loading and Bootstrap Runtime.
-5. EPIC-25 Release Packaging and Distribution.
-6. EPIC-26 Cross-platform CI Expansion.
-7. EPIC-27 Runtime Security / Capabilities Enforcement.
-8. EPIC-28 Public Alpha Docs and Examples.
+1. EPIC-23 HTTP Response Writer and Request Context.
+2. EPIC-24 V8 Module Loading and Bootstrap Runtime.
+3. EPIC-25 Release Packaging and Distribution.
+4. EPIC-26 Cross-platform CI Expansion.
+5. EPIC-27 Runtime Security / Capabilities Enforcement.
+6. EPIC-28 Public Alpha Docs and Examples.
 
-The next batch deliberately begins with compiler/app-run/HTTP-response integration instead
-of adding more isolated provider or ergonomics surface.
+The remaining batch deliberately begins with HTTP response/request-context integration
+instead of adding more isolated provider or ergonomics surface.
