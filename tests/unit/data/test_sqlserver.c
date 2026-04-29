@@ -165,7 +165,9 @@ static int test_invalid_options_and_use_after_close(void)
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
     SlSqlServerConnection connection = {0};
+#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
     SlSqlServerConnection read_only = {.open = true, .access = SL_SQLSERVER_ACCESS_READ};
+#endif
     SlSqlServerExecResult result = {0};
     SlSqlServerOpenOptions options = sl_sqlserver_open_options_connection_string(sl_str_empty());
     SlSqlServerPool pool = {0};
@@ -177,6 +179,31 @@ static int test_invalid_options_and_use_after_close(void)
     if (!sl_status_is_ok(status)) {
         return 20;
     }
+#ifndef SLOPPY_ENABLE_SQLSERVER_PROVIDER
+    status = sl_sqlserver_open(&arena, &options, &connection, &diag);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_SQLSERVER_PROVIDER_ERROR ||
+        !diag_has_hint_containing(&diag, "provider: sqlserver") ||
+        !diag_has_hint_containing(&diag, "operation: open"))
+    {
+        return 21;
+    }
+    status = sl_sqlserver_exec(&arena, &connection, sl_str_from_cstr("select 1"), NULL, 0U, &result,
+                               &diag);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_SQLSERVER_PROVIDER_ERROR)
+    {
+        return 22;
+    }
+    pool_options.access = (SlSqlServerAccess)99;
+    status = sl_sqlserver_pool_open(&arena, &pool_options, &pool, &diag);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_SQLSERVER_PROVIDER_ERROR)
+    {
+        return 24;
+    }
+    return 0;
+#else
     status = sl_sqlserver_open(&arena, &options, &connection, &diag);
     if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
         diag.code != SL_DIAG_SQLSERVER_PROVIDER_ERROR ||
@@ -215,10 +242,14 @@ static int test_invalid_options_and_use_after_close(void)
         return 24;
     }
     return 0;
+#endif
 }
 
 static int test_pool_state_machine_without_live_connection(void)
 {
+#ifndef SLOPPY_ENABLE_SQLSERVER_PROVIDER
+    return 0;
+#else
     SlSqlServerPool pool = {0};
     SlSqlServerConnection foreign = {.open = true};
 
@@ -246,6 +277,7 @@ static int test_pool_state_machine_without_live_connection(void)
         return 33;
     }
     return 0;
+#endif
 }
 
 static int open_live(SlArena* arena, SlSqlServerConnection* connection)

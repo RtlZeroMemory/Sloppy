@@ -92,6 +92,15 @@ static SlStatus sl_sqlsrv_copy_str(SlArena* arena, SlStr src, SlStr* out)
     return sl_status_ok();
 }
 
+static bool sl_sqlsrv_ascii_equal_ci(char actual, char expected_lower)
+{
+    if (actual >= 'A' && actual <= 'Z') {
+        actual = (char)(actual - 'A' + 'a');
+    }
+    return actual == expected_lower;
+}
+
+#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
 static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
 {
     void* ptr = NULL;
@@ -119,14 +128,6 @@ static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
     return sl_status_ok();
 }
 
-static bool sl_sqlsrv_ascii_equal_ci(char actual, char expected_lower)
-{
-    if (actual >= 'A' && actual <= 'Z') {
-        actual = (char)(actual - 'A' + 'a');
-    }
-    return actual == expected_lower;
-}
-
 static bool sl_sqlsrv_has_case_insensitive_at(SlStr text, size_t index, const char* word)
 {
     size_t offset = 0U;
@@ -141,6 +142,7 @@ static bool sl_sqlsrv_has_case_insensitive_at(SlStr text, size_t index, const ch
     }
     return true;
 }
+#endif
 
 static size_t sl_sqlsrv_skip_spaces(SlStr text, size_t index)
 {
@@ -408,16 +410,6 @@ static SlStatus sl_sqlsrv_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code
     return status;
 }
 
-static SlStatus sl_sqlsrv_safe_config_hint(SlArena* arena, SlStr connection_string, SlStr* out)
-{
-    SlStr redacted = sl_str_empty();
-
-    return sl_sqlserver_redact_connection_string(arena, connection_string, &redacted).code ==
-                   SL_STATUS_OK
-               ? sl_sqlsrv_copy_str(arena, redacted, out)
-               : sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-}
-
 SlSqlServerOpenOptions sl_sqlserver_open_options_connection_string(SlStr connection_string)
 {
     SlSqlServerOpenOptions options;
@@ -437,6 +429,19 @@ SlSqlServerPoolOptions sl_sqlserver_pool_options_connection_string(SlStr connect
     options.max_connections = max_connections;
     return options;
 }
+
+#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
+static SlStatus sl_sqlsrv_safe_config_hint(SlArena* arena, SlStr connection_string, SlStr* out)
+{
+    SlStr redacted = sl_str_empty();
+
+    return sl_sqlserver_redact_connection_string(arena, connection_string, &redacted).code ==
+                   SL_STATUS_OK
+               ? sl_sqlsrv_copy_str(arena, redacted, out)
+               : sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+}
+
+#endif
 
 static SlStatus sl_sqlsrv_set_doctor(SlArena* arena, SlSqlServerDoctorResult* out_result, bool ok,
                                      SlStr driver_manager, SlStr driver, SlStr message,
