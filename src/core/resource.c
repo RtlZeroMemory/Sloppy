@@ -30,6 +30,11 @@ static bool sl_resource_kind_is_valid(SlResourceKind kind)
     return kind != SL_RESOURCE_KIND_NONE;
 }
 
+static bool sl_resource_capacity_is_valid(size_t capacity)
+{
+    return capacity <= (size_t)UINT32_MAX;
+}
+
 static SlStatus sl_resource_next_generation(uint32_t current, uint32_t* out)
 {
     uint32_t next = 0U;
@@ -84,6 +89,10 @@ static SlStatus sl_resource_validate_table(const SlResourceTable* table)
 {
     if (table == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!table->initialized) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
     if (table->entries == NULL && table->capacity != 0U) {
@@ -172,12 +181,21 @@ SlStatus sl_resource_table_init(SlResourceTable* table, SlResourceEntry* storage
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    if (table->initialized) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
     if (storage == NULL && capacity != 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    if (!sl_resource_capacity_is_valid(capacity)) {
+        return sl_status_from_code(SL_STATUS_OVERFLOW);
+    }
+
     table->entries = storage;
     table->capacity = capacity;
+    table->initialized = true;
 
     for (index = 0U; index < capacity; index += 1U) {
         storage[index] = (SlResourceEntry){0};
@@ -195,6 +213,14 @@ SlStatus sl_resource_table_init_from_arena(SlResourceTable* table, SlArena* aren
 
     if (table == NULL || arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (table->initialized) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    if (!sl_resource_capacity_is_valid(capacity)) {
+        return sl_status_from_code(SL_STATUS_OVERFLOW);
     }
 
     if (capacity == 0U) {
@@ -244,7 +270,7 @@ SlStatus sl_resource_table_insert(SlResourceTable* table, SlResourceKind kind, v
                 entry->generation = 1U;
             }
 
-            if (index + 1U > UINT32_MAX) {
+            if (index + 1U > (size_t)UINT32_MAX) {
                 return sl_status_from_code(SL_STATUS_OVERFLOW);
             }
 
@@ -422,7 +448,7 @@ void sl_resource_table_dispose(SlResourceTable* table)
 {
     size_t index = 0U;
 
-    if (table == NULL || table->entries == NULL) {
+    if (table == NULL || !table->initialized || table->entries == NULL) {
         return;
     }
 

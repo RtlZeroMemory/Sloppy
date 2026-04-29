@@ -56,10 +56,16 @@ static void record_cleanup(void* ptr, void* user)
 static int test_id_model_and_init(void)
 {
     SlResourceEntry storage[2];
-    SlResourceTable table;
-    SlResourceTable zero;
+    SlResourceTable table = {0};
+    SlResourceTable zero = {0};
+    SlResourceTable invalid_storage = {0};
     unsigned char arena_buffer[256];
     SlArena arena;
+    SlResourceTable arena_table = {0};
+#if SIZE_MAX > UINT32_MAX
+    SlResourceTable too_large = {0};
+    size_t impossible_capacity = ((size_t)UINT32_MAX) + 1U;
+#endif
 
     if (sl_resource_id_is_valid(sl_resource_id_invalid())) {
         return 1;
@@ -77,34 +83,61 @@ static int test_id_model_and_init(void)
         return 4;
     }
 
-    if (expect_status(sl_resource_table_init(&table, NULL, 2U), SL_STATUS_INVALID_ARGUMENT) != 0) {
+    if (expect_status(sl_resource_table_init(&invalid_storage, NULL, 2U),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
         return 5;
+    }
+
+    if (expect_status(sl_resource_table_init(&table, storage, 2U), SL_STATUS_INVALID_STATE) != 0) {
+        return 6;
     }
 
     if (expect_status(sl_resource_table_init(&zero, NULL, 0U), SL_STATUS_OK) != 0 ||
         sl_resource_table_capacity(&zero) != 0U)
     {
-        return 6;
-    }
-
-    if (expect_status(sl_arena_init(&arena, arena_buffer, sizeof(arena_buffer)), SL_STATUS_OK) != 0)
-    {
         return 7;
     }
 
-    if (expect_status(sl_resource_table_init_from_arena(&table, &arena, 2U), SL_STATUS_OK) != 0 ||
-        sl_resource_table_capacity(&table) != 2U)
+#if SIZE_MAX > UINT32_MAX
+    if (expect_status(sl_resource_table_init(&too_large, storage, impossible_capacity),
+                      SL_STATUS_OVERFLOW) != 0)
     {
         return 8;
+    }
+#endif
+
+    if (expect_status(sl_arena_init(&arena, arena_buffer, sizeof(arena_buffer)), SL_STATUS_OK) != 0)
+    {
+        return 9;
+    }
+
+    if (expect_status(sl_resource_table_init_from_arena(&arena_table, &arena, 2U), SL_STATUS_OK) !=
+            0 ||
+        sl_resource_table_capacity(&arena_table) != 2U)
+    {
+        return 10;
     }
 
     if (expect_status(sl_resource_table_init_from_arena(NULL, &arena, 1U),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
-        expect_status(sl_resource_table_init_from_arena(&table, NULL, 1U),
+        expect_status(sl_resource_table_init_from_arena(&arena_table, NULL, 1U),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_resource_table_init_from_arena(&arena_table, &arena, 1U),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        expect_status(sl_resource_table_init_from_arena(&zero, NULL, 1U),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
-        return 9;
+        return 11;
     }
+
+#if SIZE_MAX > UINT32_MAX
+    if (expect_status(sl_resource_table_init_from_arena(&too_large, &arena, impossible_capacity),
+                      SL_STATUS_OVERFLOW) != 0)
+    {
+        return 12;
+    }
+#endif
 
     return 0;
 }
@@ -112,7 +145,7 @@ static int test_id_model_and_init(void)
 static int test_insert_lookup_and_failure_atomicity(void)
 {
     SlResourceEntry storage[1];
-    SlResourceTable table;
+    SlResourceTable table = {0};
     SlResourceId id = sl_resource_id_invalid();
     SlResourceId sentinel = {99U, 99U};
     int value = 42;
@@ -192,7 +225,7 @@ static int test_insert_lookup_and_failure_atomicity(void)
 static int test_invalid_wrong_kind_and_output_atomicity(void)
 {
     SlResourceEntry storage[1];
-    SlResourceTable table;
+    SlResourceTable table = {0};
     SlResourceId id;
     SlResourceId missing = {2U, 1U};
     int value = 7;
@@ -247,7 +280,7 @@ static int test_invalid_wrong_kind_and_output_atomicity(void)
 static int test_close_stale_reuse_and_double_close(void)
 {
     SlResourceEntry storage[1];
-    SlResourceTable table;
+    SlResourceTable table = {0};
     SlResourceId first;
     SlResourceId second;
     int first_value = 1;
@@ -317,7 +350,7 @@ static int test_close_stale_reuse_and_double_close(void)
 static int test_exhaustion_cleanup_and_dispose(void)
 {
     SlResourceEntry storage[2];
-    SlResourceTable table;
+    SlResourceTable table = {0};
     CleanupRecord record = {{0}, {0}, 0U};
     CleanupPayload first_payload = {&record, 10};
     CleanupPayload second_payload = {&record, 20};
@@ -355,29 +388,33 @@ static int test_exhaustion_cleanup_and_dispose(void)
         return 42;
     }
 
-    if (expect_status(sl_resource_table_close(&table, first, NULL), SL_STATUS_OK) != 0 ||
-        record.count != 1U || record.values[0] != 10 || record.users[0] != 100)
+    if (expect_status(sl_resource_table_init(&table, storage, 2U), SL_STATUS_INVALID_STATE) != 0 ||
+        record.count != 0U || sl_resource_table_live_count(&table) != 2U)
     {
         return 43;
     }
 
-    if (expect_status(sl_resource_table_close(&table, first, NULL), SL_STATUS_STALE_RESOURCE) !=
-            0 ||
-        record.count != 1U)
+    sl_resource_table_dispose(&table);
+    if (record.count != 2U || record.values[0] != 10 || record.users[0] != 100 ||
+        record.values[1] != 20 || record.users[1] != 200 ||
+        sl_resource_table_capacity(&table) != 0U || sl_resource_table_live_count(&table) != 0U)
     {
         return 44;
     }
 
-    sl_resource_table_dispose(&table);
-    if (record.count != 2U || record.values[1] != 20 || record.users[1] != 200 ||
-        sl_resource_table_capacity(&table) != 0U || sl_resource_table_live_count(&table) != 0U)
+    if (expect_status(sl_resource_table_close(&table, first, NULL), SL_STATUS_OUT_OF_RANGE) != 0 ||
+        record.count != 2U)
     {
         return 45;
     }
 
+    if (expect_status(sl_resource_table_init(&table, storage, 2U), SL_STATUS_INVALID_STATE) != 0) {
+        return 46;
+    }
+
     sl_resource_table_dispose(&table);
     if (record.count != 2U) {
-        return 46;
+        return 47;
     }
 
     (void)second;

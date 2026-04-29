@@ -255,8 +255,9 @@ Non-goals: native plugin ABI.
 Files likely touched: `include/sloppy/`, `src/core/`, `docs/memory.md`,
 `docs/modules/resource/README.md`, `tests/unit/core/`.
 
-Tests required: stale ID, wrong kind, double close, cleanup, exhaustion, and request-scope
-lifetime. Request-scope leak reporting remains with app-host lifecycle work.
+Tests required for MAIN1-07: stale ID, wrong kind, double close, cleanup, and exhaustion.
+Request-scope lifetime and leak reporting are handled under app-host lifecycle work, not
+MAIN1-07.
 
 Acceptance criteria: JS-visible native resources use IDs and generation checks. MAIN1-07
 establishes the core table and policy; MAIN1-08 consumes it for SQLite JS-native handles.

@@ -147,6 +147,9 @@ Implemented MAIN1-07 behavior:
 - public IDs do not contain native pointers and are safe to wrap in future JS handle
   objects;
 - table storage is caller-owned or arena-owned through `sl_resource_table_init_from_arena`;
+- table objects are zero-initialized before first init and cannot be reinitialized after
+  init/dispose, preventing old IDs from being resurrected by resetting generations;
+- table capacity must fit in the `uint32_t` slot range encoded by `SlResourceId`;
 - inserts require a non-NULL native pointer and a non-`NONE` kind;
 - lookup validates slot, generation, liveness, and expected kind before returning the
   native pointer to trusted C callers;
@@ -242,7 +245,7 @@ Target request lifecycle:
 
 ## File Layout
 
-Likely Phase 1 files:
+Implemented and planned Phase 1 files:
 
 ```text
 include/sloppy/status.h
@@ -251,15 +254,19 @@ include/sloppy/bytes.h
 include/sloppy/buf.h
 include/sloppy/allocator.h
 include/sloppy/arena.h
+include/sloppy/resource.h
 src/core/status.c
 src/core/string.c
 src/core/buf.c
 src/core/allocator.c
 src/core/arena.c
+src/core/resource.c
 tests/unit/
 ```
 
-Names may change, but tests must land with primitives.
+`include/sloppy/resource.h` defines `SlResourceId`, `SlResourceKind`, `SlResourceEntry`,
+and `SlResourceTable`; `src/core/resource.c` implements the fixed-capacity resource table
+used by future JS-native handles. Names may change only with matching tests and docs.
 
 ## Error And Diagnostic Behavior
 
@@ -288,7 +295,8 @@ Each primitive needs tests:
 - scope cleanup: registration, LIFO close, idempotent close, reset behavior, capacity
   exhaustion;
 - checked math: boundary values;
-- resource table: generation mismatch, double close, stale ID, leak tracking.
+- resource table: invalid IDs, generation mismatch, wrong kind, double close, cleanup,
+  exhaustion, and dispose ordering.
 
 ## Quality Gates
 
@@ -308,7 +316,10 @@ Each primitive needs tests:
 - Add `SlBuf` and tests.
 - Add allocator interface with a default bootstrap allocator.
 - Add debug allocation tags.
-- Add resource ID layout proposal before resource table implementation.
+- Add resource ID layout and fixed-capacity resource table. Done in MAIN1-07 with
+  slot/generation IDs, kind validation, cleanup callbacks, and bridge policy docs.
+- Add app/request-scope resource ownership and leak reporting. Follow-up app-host
+  lifecycle work.
 
 ## Acceptance Criteria
 

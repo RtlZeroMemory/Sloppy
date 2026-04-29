@@ -52,6 +52,7 @@ typedef struct SlResourceTable
 {
     SlResourceEntry* entries;
     size_t capacity;
+    bool initialized;
 } SlResourceTable;
 
 SlResourceId sl_resource_id_invalid(void);
@@ -61,7 +62,10 @@ SlStr sl_resource_kind_name(SlResourceKind kind);
 /*
  * Initializes a fixed-capacity table over caller-owned storage.
  *
- * `table` is required. `storage` is required when `capacity` is nonzero. The table owns
+ * `table` is required and must be zero-initialized before first init. Reinitializing the
+ * same table object is rejected, including after dispose, so old IDs cannot be made valid
+ * by resetting slot generations. `storage` is required when `capacity` is nonzero.
+ * Capacity must fit in the uint32_t slot range used by `SlResourceId`. The table owns
  * entries after insertion, but it owns only the native resource pointer lifecycle through
  * the optional cleanup callback. Storage remains owned by the caller and must outlive the
  * table. The table is not thread-safe.
@@ -72,7 +76,8 @@ SlStatus sl_resource_table_init(SlResourceTable* table, SlResourceEntry* storage
  * Initializes a fixed-capacity table with entry storage allocated from `arena`.
  *
  * The table does not own the arena. Entries remain valid until the arena resets, resets to
- * a mark before the storage allocation, or its backing buffer ends.
+ * a mark before the storage allocation, or its backing buffer ends. Reinitialization and
+ * unrepresentable capacities are rejected before arena storage is consumed.
  */
 SlStatus sl_resource_table_init_from_arena(SlResourceTable* table, SlArena* arena, size_t capacity);
 
