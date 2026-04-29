@@ -303,4 +303,4 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "Packaged Sloppy V8 SDK: $SdkRoot"
 Write-Host "Configure with:"
-Write-Host "  .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -CMakeArgs `"-DSLOPPY_ENABLE_V8=ON`",`"-DSLOPPY_V8_ROOT=$SdkRoot`""
+Write-Host "  .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root $SdkRoot"

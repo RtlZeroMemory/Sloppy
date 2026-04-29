@@ -38,6 +38,8 @@ These standards govern:
 - Do not depend on npm packages in the bootstrap stdlib.
 - Do not use dynamic imports unless a future scoped task documents the boundary and tests.
 - Avoid top-level side effects except intentional export initialization.
+- `stdlib/sloppy/internal/runtime-classic.js` is the narrow exception that may publish
+  `globalThis.__sloppy_runtime`; it must not add broader globals or Node/browser shims.
 - Keep public modules small and stable.
 
 Node may appear only in test infrastructure when the docs say the test is an execution

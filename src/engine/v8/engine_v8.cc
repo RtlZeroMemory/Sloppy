@@ -1237,7 +1237,7 @@ extern "C" SlStatus sl_engine_v8_validate_registered_handlers(SlEngine* engine, 
 
     if (sl_plan_has_duplicate_handler_ids(plan)) {
         return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_PLAN_DUPLICATE_HANDLER_ID, SL_STATUS_INVALID_ARGUMENT,
+            engine->arena, out_diag, SL_DIAG_DUPLICATE_HANDLER_ID, SL_STATUS_INVALID_ARGUMENT,
             sl_v8_literal("Plan contains duplicate handler IDs.",
                           sizeof("Plan contains duplicate handler IDs.") - 1U),
             sl_str_empty(),

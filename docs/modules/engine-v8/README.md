@@ -138,6 +138,17 @@ CI behavior:
 Passing required CI does not prove V8 execution. Report V8-enabled results separately from
 default gate results.
 
+On Windows, prefer the repo wrapper instead of direct `cmake`:
+
+```powershell
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root <sdk-root>
+```
+
+The wrapper imports the Visual Studio C++ environment, keeps vcpkg attached on fresh
+configure, and recreates a preset build directory if an earlier direct `cmake` attempt left
+a stale cache without the vcpkg toolchain. Direct `cmake --preset` remains available for
+custom automation, but that caller owns the MSVC, Windows SDK, and vcpkg environment.
+
 ## Module Loading Strategy
 
 EPIC-24 deliberately chooses the smallest bridge from classic-script smoke tests toward the

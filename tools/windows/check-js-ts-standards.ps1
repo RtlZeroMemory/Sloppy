@@ -129,6 +129,21 @@ function New-Finding {
     }
 }
 
+function Test-AllowedStdlibGlobalWrite {
+    param(
+        [string]$RelativePath,
+        [string]$Line
+    )
+
+    if ($RelativePath -eq "stdlib/sloppy/internal/runtime-classic.js" -and
+        $Line -match '^\s*globalThis\.__sloppy_runtime\s*=')
+    {
+        return $true
+    }
+
+    return $false
+}
+
 $files = Get-TrackedSourceFiles
 if ($files.Count -eq 0) {
     $files = Get-RecursiveSourceFiles
@@ -187,7 +202,9 @@ foreach ($file in $files) {
 
             if ($line -notmatch '^\s*(const|let|var|function|class|export|import|//|/\*|\*|\}|$)') {
                 foreach ($rule in $topLevelStdlibSideEffects) {
-                    if ($line -match $rule.Pattern) {
+                    if (($line -match $rule.Pattern) -and
+                        -not (Test-AllowedStdlibGlobalWrite -RelativePath $relativePath -Line $line))
+                    {
                         $violations += New-Finding -File $relativePath -Line $lineNumber -Rule $rule.Rule -Message $rule.Message
                     }
                 }

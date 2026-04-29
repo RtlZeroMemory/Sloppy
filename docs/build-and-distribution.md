@@ -180,9 +180,10 @@ Contributor path:
 - fetch through `tools/windows/fetch-v8.ps1` later;
 - validate an existing SDK root with
   `.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>`;
-- set `SLOPPY_V8_ROOT` to SDK root;
-- configure explicitly with `-DSLOPPY_ENABLE_V8=ON -DSLOPPY_V8_ROOT=<sdk-root>` or
-  `-DSLOPPY_ENGINE=v8 -DSLOPPY_V8_ROOT=<sdk-root>`;
+- configure through the Windows wrapper with
+  `.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root <sdk-root>`;
+- use direct CMake only from a shell that already has MSVC, the Windows SDK, and vcpkg
+  configured;
 - do not build V8 locally by default.
 
 Maintainer path:
@@ -216,6 +217,11 @@ Current SDK layout:
 The current source SDK is a monolithic release build and should be consumed through the
 `windows-relwithdebinfo` preset. The default `windows-dev` Debug preset remains the normal
 non-V8 contributor path.
+
+The Windows `dev.ps1` wrapper is the supported local configure path. It imports the Visual
+Studio C++ environment, injects the vcpkg toolchain on fresh configure, and recreates a
+preset build directory when a stale partial CMake cache was created without that toolchain.
+Use `-FreshConfigure` when a preset should be deliberately rebuilt from scratch.
 
 The CMake gate validates both SDK layout and `share/sloppy-v8-sdk.json` before creating
 `Sloppy::V8` as an imported interface target. The manifest must match the pinned V8

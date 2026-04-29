@@ -4,7 +4,13 @@ param(
 
     [string]$Preset = "windows-dev",
 
-    [string[]]$CMakeArgs = @()
+    [string[]]$CMakeArgs = @(),
+
+    [switch]$EnableV8,
+
+    [string]$V8Root,
+
+    [switch]$FreshConfigure
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +62,117 @@ function Resolve-VcpkgRoot {
     throw "vcpkg was not found. Set VCPKG_ROOT, install vcpkg on PATH, or bootstrap .sdeps/vcpkg."
 }
 
+function Assert-BuildDirectoryPath {
+    param(
+        [string]$Path
+    )
+
+    $buildRoot = [System.IO.Path]::GetFullPath((Join-Path $Root "build")).TrimEnd('\', '/')
+    $target = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    $buildRootPrefix = $buildRoot + [System.IO.Path]::DirectorySeparatorChar
+
+    if ($target -eq $buildRoot) {
+        throw "Refusing to clean the build root itself: $target"
+    }
+
+    if (-not $target.StartsWith($buildRootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean path outside build root: $target"
+    }
+
+    return $target
+}
+
+function Remove-BuildDirectory {
+    param(
+        [string]$Path
+    )
+
+    $target = Assert-BuildDirectoryPath -Path $Path
+    if (-not (Test-Path -LiteralPath $target)) {
+        Write-Host "Nothing to clean: $target"
+        return
+    }
+
+    Remove-Item -LiteralPath $target -Recurse -Force
+    Write-Host "Removed $target"
+}
+
+function Get-CMakeCacheValue {
+    param(
+        [string]$CachePath,
+        [string]$Name
+    )
+
+    if (-not (Test-Path -LiteralPath $CachePath)) {
+        return $null
+    }
+
+    $escapedName = [regex]::Escape($Name)
+    $entry = Select-String -LiteralPath $CachePath -Pattern "^$escapedName(?::[^=]*)?=(.*)$" |
+        Select-Object -First 1
+    if ($null -eq $entry) {
+        return $null
+    }
+
+    if ($entry.Line -match "^$escapedName(?::[^=]*)?=(.*)$") {
+        return $matches[1]
+    }
+
+    return $null
+}
+
+function Get-ConfigureCacheRefreshReason {
+    param(
+        [string]$CachePath,
+        [string]$ExpectedToolchain
+    )
+
+    if ($FreshConfigure) {
+        return "Fresh configure requested."
+    }
+
+    if (-not (Test-Path -LiteralPath $CachePath)) {
+        return $null
+    }
+
+    $cachedToolchain = Get-CMakeCacheValue -CachePath $CachePath -Name "CMAKE_TOOLCHAIN_FILE"
+    if ([string]::IsNullOrWhiteSpace($cachedToolchain)) {
+        return "CMake cache is missing CMAKE_TOOLCHAIN_FILE."
+    }
+
+    if ($cachedToolchain -notmatch "vcpkg[\\/]+scripts[\\/]buildsystems[\\/]vcpkg\.cmake$") {
+        return "CMake cache was not configured with the vcpkg toolchain."
+    }
+
+    $expected = [System.IO.Path]::GetFullPath($ExpectedToolchain)
+    $actual = [System.IO.Path]::GetFullPath($cachedToolchain)
+    if (-not [string]::Equals($actual, $expected, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return "CMake cache uses a different vcpkg toolchain."
+    }
+
+    return $null
+}
+
+function Resolve-V8Root {
+    if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+        if (-not (Test-Path -LiteralPath $V8Root)) {
+            throw "V8 root was not found: $V8Root"
+        }
+
+        return (Resolve-Path -LiteralPath $V8Root).Path
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:SLOPPY_V8_ROOT)) {
+        if (-not (Test-Path -LiteralPath $env:SLOPPY_V8_ROOT)) {
+            throw "SLOPPY_V8_ROOT was set but was not found: $env:SLOPPY_V8_ROOT"
+        }
+
+        return (Resolve-Path -LiteralPath $env:SLOPPY_V8_ROOT).Path
+    }
+
+    throw "-EnableV8 requires -V8Root or SLOPPY_V8_ROOT."
+}
+
 function Resolve-GateTool {
     param(
         [string]$Name,
@@ -77,22 +194,41 @@ function Resolve-GateTool {
 }
 
 function Invoke-Configure {
+    if ([string]::IsNullOrWhiteSpace($Preset)) {
+        throw "Preset must not be empty."
+    }
+
+    if ($EnableV8 -and $Preset -eq "windows-dev") {
+        throw "The current V8 SDK is release/RelWithDebInfo. Use -Preset windows-relwithdebinfo with -EnableV8."
+    }
+
     Import-SlVisualStudioEnvironment
 
     $vcpkgRoot = Resolve-VcpkgRoot
     $vcpkgToolchain = Join-Path $vcpkgRoot "scripts/buildsystems/vcpkg.cmake"
+    $cachePath = Join-Path $BuildDir "CMakeCache.txt"
+    $refreshReason = Get-ConfigureCacheRefreshReason -CachePath $cachePath -ExpectedToolchain $vcpkgToolchain
+    if ($null -ne $refreshReason) {
+        Write-Warning "$refreshReason Recreating $BuildDir with the repo Windows wrapper."
+        Remove-BuildDirectory -Path $BuildDir
+    }
+
     $args = @("--preset", $Preset)
-    if (-not (Test-Path -LiteralPath (Join-Path $BuildDir "CMakeCache.txt"))) {
+    if (-not (Test-Path -LiteralPath $cachePath)) {
         $args += "-DCMAKE_TOOLCHAIN_FILE=$vcpkgToolchain"
     }
-    $hasV8Selection = @($CMakeArgs | Where-Object {
-            $_ -match "^-DSLOPPY_(ENABLE_V8|ENGINE|V8_ROOT)="
-        }).Count -gt 0
+    $hasV8Selection = $EnableV8 -or @($CMakeArgs | Where-Object {
+        $_ -match "^-DSLOPPY_(ENABLE_V8|ENGINE|V8_ROOT)="
+    }).Count -gt 0
     if (-not $hasV8Selection) {
         $args += @("-DSLOPPY_ENGINE=none", "-DSLOPPY_ENABLE_V8=OFF")
     }
     if ($CMakeArgs.Count -gt 0) {
         $args += $CMakeArgs
+    }
+    if ($EnableV8) {
+        $resolvedV8Root = Resolve-V8Root
+        $args += @("-DSLOPPY_ENABLE_V8=ON", "-DSLOPPY_V8_ROOT=$resolvedV8Root")
     }
 
     Invoke-Native "cmake" $args
@@ -114,23 +250,7 @@ function Invoke-Test {
 }
 
 function Invoke-Clean {
-    $buildRoot = Join-Path $Root "build"
-    $buildDir = Join-Path $buildRoot $Preset
-
-    if (-not (Test-Path -LiteralPath $buildDir)) {
-        Write-Host "Nothing to clean: $buildDir"
-        return
-    }
-
-    $resolvedBuildRoot = (Resolve-Path -LiteralPath $buildRoot).Path
-    $resolvedBuildDir = (Resolve-Path -LiteralPath $buildDir).Path
-
-    if (-not $resolvedBuildDir.StartsWith($resolvedBuildRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to clean path outside build root: $resolvedBuildDir"
-    }
-
-    Remove-Item -LiteralPath $resolvedBuildDir -Recurse -Force
-    Write-Host "Removed $resolvedBuildDir"
+    Remove-BuildDirectory -Path $BuildDir
 }
 
 function Invoke-FormatCheck {
