@@ -145,6 +145,30 @@ SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, 
                                               SlEngineResult* out_result, SlDiag* out_diag);
 
 /*
+ * Validates that every handler ID in `plan` was registered through the runtime-owned
+ * handler intrinsic.
+ *
+ * This is the EPIC-24 bridge from compiler-emitted app modules to native dispatch. The
+ * plan is borrowed for this call only. No V8 handles, JavaScript values, or native
+ * pointers are exposed through the ABI. Non-V8 engines return SL_STATUS_UNSUPPORTED with a
+ * diagnostic when requested.
+ */
+SlStatus sl_engine_validate_registered_handlers(SlEngine* engine, const SlPlan* plan,
+                                                SlDiag* out_diag);
+
+/*
+ * Calls a runtime-registered handler by numeric ID with one borrowed request context.
+ *
+ * `request_context` is materialized as a plain JavaScript object for the duration of the
+ * call. Handler function handles stay backend-owned; JS receives no native pointers.
+ */
+SlStatus sl_engine_call_registered_handler_with_context(SlEngine* engine, SlArena* arena,
+                                                        SlHandlerId handler_id,
+                                                        const SlHttpRequestContext* request_context,
+                                                        SlEngineResult* out_result,
+                                                        SlDiag* out_diag);
+
+/*
  * Calls a handler by numeric Sloppy Plan handler ID.
  *
  * This defines the C-side shape needed by later V8 bridge work but does not execute

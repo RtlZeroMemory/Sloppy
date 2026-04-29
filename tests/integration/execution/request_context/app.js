@@ -1,20 +1,14 @@
-const Results = Object.freeze({
-  json(value, options) {
-    return Object.freeze({
-      __sloppyResult: true,
-      kind: "json",
-      status: options?.status ?? 200,
-      body: value,
-      contentType: options?.contentType ?? "application/json; charset=utf-8",
-    });
-  },
-});
+const __sloppyRuntime = globalThis.__sloppy_runtime;
+if (__sloppyRuntime === undefined) {
+  throw new Error("Sloppy bootstrap runtime was not loaded");
+}
+const { Results } = __sloppyRuntime;
 
-globalThis.__sloppy_handler_1 = ({ route, query, request }) =>
+globalThis.__sloppy_register_handler(1, ({ route, query, request }) =>
   Results.json({
     id: route.id,
     q: query.q,
     path: request.path,
     rawTarget: request.rawTarget,
     method: request.method,
-  });
+  }));

@@ -365,6 +365,63 @@ static int test_call_function_with_context_rejects_malformed_context(void)
     return 0;
 }
 
+static int test_noop_registered_handler_apis_are_unsupported(void)
+{
+    unsigned char storage[2048];
+    unsigned char result_storage[256];
+    SlArena arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = noop_options();
+    SlEngine* engine = NULL;
+    SlPlan plan = {0};
+    SlPlanHandler handler = {0};
+    SlEngineResult result = {0};
+    SlHttpRequestHead request = {0};
+    SlHttpRequestContext context = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 70;
+    }
+
+    if (expect_status(sl_engine_create(&options, &arena, &engine), SL_STATUS_OK) != 0) {
+        return 71;
+    }
+
+    handler.id = 1U;
+    handler.export_name = sl_str_from_cstr("__sloppy_handler_1");
+    handler.display_name = sl_str_from_cstr("Home");
+    plan.handlers = &handler;
+    plan.handler_count = 1U;
+    request.method = SL_HTTP_METHOD_GET;
+    request.path = sl_str_from_cstr("/");
+    request.raw_target = sl_str_from_cstr("/");
+    context.request = &request;
+
+    if (expect_status(sl_engine_validate_registered_handlers(engine, &plan, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 72;
+    }
+
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_registered_handler_with_context(engine, &result_arena, 1U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 73;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -404,5 +461,10 @@ int main(void)
         return result;
     }
 
-    return test_call_function_with_context_rejects_malformed_context();
+    result = test_call_function_with_context_rejects_malformed_context();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_noop_registered_handler_apis_are_unsupported();
 }

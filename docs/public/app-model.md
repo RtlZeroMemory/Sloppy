@@ -15,12 +15,13 @@ Compiler status: `sloppyc build` can extract one tiny app from either `Sloppy.cr
 `mapGet` routes and simple route groups. It does not execute the bootstrap app object,
 extract modules/services/data providers, or run `app.run`.
 
-Runtime status: `sloppy run --artifacts <dir>` can load EPIC-21/23 artifacts in a
-V8-enabled build, evaluate the generated classic-script `app.js`, route GET request paths
-using the compiler-emitted route metadata, call handlers by numeric ID with a minimal
+Runtime status: `sloppy run --artifacts <dir>` can load EPIC-21/24 artifacts in a
+V8-enabled build, load the classic bootstrap runtime asset, evaluate the generated
+classic-script `app.js`, validate registered handler IDs, route GET request paths using the
+compiler-emitted route metadata, call handlers by numeric ID with a minimal
 route/query/request context, and return supported text/JSON/empty/problem responses.
-Source input build handoff, native app-host validation, bootstrap ESM loading, services,
-middleware, and `app.run` remain deferred.
+Source input build handoff, native app-host validation, true bootstrap ESM loading,
+services, middleware, and `app.run` remain deferred.
 
 Purpose: explain the current builder/app model, structural freeze boundary, and the future
 path to native app-host validation.
@@ -107,11 +108,12 @@ The bootstrap app stores this metadata only. It does not parse requests or produ
 validation responses.
 
 Not implemented yet: `app.run`, `app.listen`, native startup validation for the full app
-host, bootstrap ESM loading, nested route groups, middleware, filters, automatic
+host, true bootstrap ESM loading, nested route groups, middleware, filters, automatic
 validation, typed request binding beyond the EPIC-23 route/query/request context,
 config file/env providers, console/file/native logging, service disposal, async factories,
 real request-scoped lifetimes, module packages, data providers, native plugins, broad
-bundling, package resolution, or full TypeScript type checking.
+bundling, Node/npm package resolution, arbitrary import graphs, or full TypeScript type
+checking.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/app-plan.md`.

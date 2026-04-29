@@ -16,6 +16,7 @@ stdlib/sloppy/
   app.js
   internal/
     intrinsics.js
+    runtime-classic.js
   bootstrap.manifest.json
   README.md
 ```
@@ -47,10 +48,16 @@ storage, route metadata storage, `.withName(...)`, structural `app.freeze()`,
 `app.__getRoutes()`, and
 `app.__debug().modules` for bootstrap tests/debugging.
 
+`internal/runtime-classic.js` is the EPIC-24 V8-gated bridge asset for generated artifacts.
+It is not the public ESM stdlib and it is not a Node compatibility shim. `sloppy run`
+loads this classic script from the staged bootstrap stdlib root before evaluating generated
+`app.js`; generated code reads `globalThis.__sloppy_runtime.Results` and registers
+handlers through the V8-installed `__sloppy_register_handler(id, handler)` intrinsic.
+
 Not implemented here:
 
 - `app.run`, `app.listen`, or `app.build`;
-- handler registration;
+- public handler registration APIs;
 - compiler extraction or `app.plan.json` emission;
 - HTTP server behavior or response writing;
 - JavaScript-to-native SQLite/PostgreSQL/SQL Server provider calls;
@@ -60,5 +67,5 @@ Not implemented here:
 - config files, environment variables, command-line config, or secret managers;
 - console, file, or native logging sinks;
 - request-scoped service lifetimes, disposal hooks, async factories, or typed tokens;
-- runtime intrinsic binding;
-- module resolution, compiler module extraction, or compiler import rewriting.
+- broad runtime intrinsic binding;
+- Node/npm module resolution, compiler module extraction, or arbitrary import rewriting.

@@ -152,6 +152,15 @@ handler ID, missing JS function, and thrown handler diagnostics. EPIC-22 also re
 V8-gated `sloppy run --once` process tests for the compiler MVP hello route, route miss,
 and unsupported method responses. These are not part of the default non-V8 test set.
 
+EPIC-24 extends that V8-gated surface. V8-enabled tests now also cover bootstrap
+`internal/runtime-classic.js` loading, compiler-generated handler registration through
+`__sloppy_register_handler`, numeric registered-handler dispatch with the EPIC-23 request
+context, `Results.text` response conversion through the bootstrap runtime asset, missing
+stdlib asset diagnostics, missing app module diagnostics, missing handler registration
+diagnostics, duplicate handler registration diagnostics, intrinsic misuse diagnostics, and
+compiler rejection of unsupported bare imports. Default non-V8 tests still do not prove the
+V8 bootstrap path passed; V8 configure/build/CTest must be run and reported separately.
+
 ## Future Phase
 
 Testing expands with each implementation epic. No feature story should land without either
@@ -527,9 +536,10 @@ TASK 12.A/12.B/12.C/12.D expands it for the app-host foundation skeleton:
 tests/cmake/check_bootstrap_api.cmake
 ```
 
-It is intentionally static because the current V8 bridge smoke path evaluates classic
-scripts only and does not load ESM modules from `stdlib/sloppy/`. A future module-loading
-task should replace or supplement this with executable bootstrap stdlib tests.
+It remains intentionally static for the ESM public stdlib because the current V8 bridge
+still evaluates classic scripts only. EPIC-24 supplements it with V8-gated executable
+coverage for the classic bootstrap runtime asset used by generated app artifacts; it does
+not prove true V8 ESM loading.
 
 TASK 12 also adds an optional executable ESM smoke test:
 

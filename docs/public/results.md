@@ -23,9 +23,11 @@ app.mapGet("/health", () => Results.json({ status: "ok" }, { status: 200 }));
 descriptor shape. `examples/ergonomics/app.js` demonstrates `Results.ok`,
 `Results.accepted`, and `Results.noContent`.
 
-`sloppy run --artifacts` executes EPIC-21/23 compiler output in V8-enabled builds. The
-generated `app.js` includes a small `Results.text/json/ok/noContent` shim that returns
-descriptor objects. The V8 bridge converts supported descriptors into native
+`sloppy run --artifacts` executes EPIC-21/24 compiler output in V8-enabled builds. The
+runtime loads `stdlib/sloppy/internal/runtime-classic.js` from the staged bootstrap stdlib
+root before evaluating generated `app.js`; generated code reads `Results` from
+`globalThis.__sloppy_runtime` instead of embedding a compiler-owned shim. The V8 bridge
+converts supported descriptors into native
 `SlHttpResponse` values, and the native writer emits HTTP/1.1 bytes with status,
 `Connection: close`, `Content-Type` when present, `Content-Length`, CRLF separators, and
 body bytes. Plain string handler returns remain supported as a compatibility fallback and

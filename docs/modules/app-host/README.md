@@ -71,8 +71,10 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
 `examples/hello/app.js` demonstrates this current facade through a relative source import
 from `stdlib/sloppy/index.js`. That example is still not a `sloppy run` artifact app. The
 compiler-owned `examples/compiler-hello/` input uses the bare `"sloppy"` import and can be
-compiled to artifacts that the EPIC-22 dev-only `sloppy run --artifacts` path can load when
-V8 is enabled.
+compiled to artifacts that the EPIC-22/24 dev-only `sloppy run --artifacts` path can load
+when V8 is enabled. EPIC-24 does not make V8 load the public ESM stdlib directly; generated
+artifacts still run as classic scripts after `sloppy run` loads
+`stdlib/sloppy/internal/runtime-classic.js` from the staged bootstrap stdlib root.
 
 Native app graph validation, `app.run`, `app.listen`, `app.build`, automatic
 `app.plan.json` emission from the bootstrap facade, real data providers, database
@@ -113,9 +115,10 @@ check the implemented bootstrap API names, descriptor fields, route registration
 shape, schema export, module API shape, and absence of future app-host APIs. When `node` is available, CTest
 also registers `bootstrap.stdlib.app_host_foundation` to execute the ESM stdlib and cover
 builder freeze, config, logging, services, route groups, result helpers, schema validation,
-route context, and app freeze behavior. V8-backed ESM stdlib tests, plan fixtures,
-diagnostics snapshots, and full integration smoke remain future work once module loading
-exists in the V8 bridge.
+route context, and app freeze behavior. V8-backed classic bootstrap runtime tests cover
+the generated artifact path, but true V8 ESM stdlib tests, plan fixtures, diagnostics
+snapshots, and full app-host integration smoke remain future work once ESM loading exists
+in the V8 bridge.
 `bootstrap.stdlib.modules` executes the ESM stdlib with Node when available and covers
 module API shape, builder integration, dependency ordering, missing dependency and cycle
 errors, duplicate module names, phase failure context, route/service attribution, and

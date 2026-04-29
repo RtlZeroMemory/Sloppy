@@ -15,9 +15,9 @@ state and an honest public-alpha path.
   pages.
 - Request context model beyond EPIC-23: body/header access, typed/coerced route/query
   binding, services/config/log injection, and real request-scoped lifetime boundaries.
-- V8 module loading and bootstrap runtime: load `stdlib/sloppy` reliably, define the bare
-  import story, load app module entrypoint, bind intrinsics, and reject unsupported module
-  shapes with diagnostics.
+- V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
+  maps, Promise/microtask policy, owner-thread enforcement, and executable public examples
+  through the final bootstrap module shape remain open.
 - V8 runtime bundling hardening: EPIC-25 documents the SDK/runtime split and excludes SDK
   headers/libs from packages, but exact dynamic runtime file lists, hosted prebuilt SDK
   source, and V8-enabled package validation remain open.
@@ -85,7 +85,8 @@ state and an honest public-alpha path.
 - Official TypeScript checking path: `tsgo` or `tsc`, subprocess versus library, and how
   diagnostics merge with extraction diagnostics.
 - JavaScript module format and bundling: ESM loading in V8, generated wrapper shape, import
-  rewriting, source-map fidelity, and app entrypoint semantics.
+  maps if ever needed, source-map fidelity, and app entrypoint semantics beyond the EPIC-24
+  classic bootstrap runtime handoff.
 - V8 process shutdown policy and whether process-wide platform teardown is ever attempted.
 - Threading model evolution from inline skeletons to real worker threads/libuv posting,
   including owner-thread identity checks.

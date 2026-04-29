@@ -118,6 +118,7 @@ struct AppState {
     sloppy_imported: bool,
     results_imported: bool,
     unsupported_import_alias: bool,
+    unsupported_import_specifier: Option<String>,
     app_vars: BTreeSet<String>,
     builder_vars: BTreeSet<String>,
     group_vars: BTreeMap<String, String>,
@@ -131,6 +132,7 @@ impl AppState {
             sloppy_imported: false,
             results_imported: false,
             unsupported_import_alias: false,
+            unsupported_import_specifier: None,
             app_vars: BTreeSet::new(),
             builder_vars: BTreeSet::new(),
             group_vars: BTreeMap::new(),
@@ -317,6 +319,17 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
         }
     }
 
+    if let Some(specifier) = &state.unsupported_import_specifier {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            format!("unsupported import specifier \"{specifier}\""),
+        )
+        .with_path(path)
+        .with_hint(
+            "Only the public bare import \"sloppy\" is accepted; Sloppy does not implement Node or npm resolution.",
+        ));
+    }
+
     if !state.sloppy_imported || !state.results_imported {
         let hint = if state.unsupported_import_alias {
             "Import without aliases: import { Sloppy, Results } from \"sloppy\";"
@@ -400,6 +413,7 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
 
 fn extract_import(state: &mut AppState, import: &oxc_ast::ast::ImportDeclaration<'_>) {
     if import.source.value.as_str() != "sloppy" {
+        state.unsupported_import_specifier = Some(import.source.value.as_str().to_string());
         return;
     }
 
@@ -1357,42 +1371,17 @@ fn emit_plan(app: &ExtractedApp) -> Result<String, Diagnostic> {
 
 fn emit_app_js(app: &ExtractedApp) -> String {
     let mut output = String::new();
-    output.push_str("const Results = Object.freeze({\n");
-    output.push_str("  text(body, options) {\n");
-    output.push_str("    return Object.freeze({\n");
-    output.push_str("      __sloppyResult: true,\n");
-    output.push_str("      kind: \"text\",\n");
-    output.push_str("      status: options?.status ?? 200,\n");
-    output.push_str("      body: String(body),\n");
-    output.push_str("      contentType: options?.contentType ?? \"text/plain; charset=utf-8\",\n");
-    output.push_str("    });\n");
-    output.push_str("  },\n");
-    output.push_str("  json(value, options) {\n");
-    output.push_str("    return Object.freeze({\n");
-    output.push_str("      __sloppyResult: true,\n");
-    output.push_str("      kind: \"json\",\n");
-    output.push_str("      status: options?.status ?? 200,\n");
-    output.push_str("      body: value,\n");
-    output.push_str(
-        "      contentType: options?.contentType ?? \"application/json; charset=utf-8\",\n",
-    );
-    output.push_str("    });\n");
-    output.push_str("  },\n");
-    output.push_str("  ok(value, options) {\n");
-    output.push_str("    return this.json(value, options);\n");
-    output.push_str("  },\n");
-    output.push_str("  noContent() {\n");
-    output.push_str(
-        "    return Object.freeze({ __sloppyResult: true, kind: \"empty\", status: 204 });\n",
-    );
-    output.push_str("  },\n");
-    output.push_str("});\n\n");
+    output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
+    output.push_str("if (__sloppyRuntime === undefined) {\n");
+    output.push_str("  throw new Error(\"Sloppy bootstrap runtime was not loaded\");\n");
+    output.push_str("}\n");
+    output.push_str("const { Results } = __sloppyRuntime;\n\n");
 
     for (index, route) in app.routes.iter().enumerate() {
         let id = index + 1;
-        output.push_str(&format!("globalThis.__sloppy_handler_{id} = "));
+        output.push_str(&format!("globalThis.__sloppy_register_handler({id}, "));
         output.push_str(&route.handler.source);
-        output.push_str(";\n");
+        output.push_str(");\n");
     }
 
     output
@@ -1691,6 +1680,7 @@ export default app;
             ("unsupported-handler-capture", "input.js"),
             ("unsupported-typescript-handler", "input.ts"),
             ("unsupported-import-alias", "input.js"),
+            ("unsupported-import-specifier", "input.js"),
             ("missing-app", "input.js"),
             ("multiple-apps", "input.js"),
         ] {

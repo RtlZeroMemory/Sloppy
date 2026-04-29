@@ -5,7 +5,8 @@ set(required_bootstrap_assets
     index.js
     results.js
     schema.js
-    internal/intrinsics.js)
+    internal/intrinsics.js
+    internal/runtime-classic.js)
 
 foreach(asset IN LISTS required_bootstrap_assets)
     set(source_asset "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/${asset}")

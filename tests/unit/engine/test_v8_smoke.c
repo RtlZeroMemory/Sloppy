@@ -536,6 +536,173 @@ static int test_missing_json_body_serializes_as_null(void)
     return 0;
 }
 
+static int test_registered_handler_receives_context(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 90;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-register.js"),
+                                  sl_str_from_cstr("__sloppy_register_handler(1, function (ctx) { "
+                                                   "return ctx.request.rawTarget; });"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 91;
+    }
+
+    if (expect_status(sl_engine_call_registered_handler_with_context(engine, &result_arena, 1U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 92;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("/users/123?q=abc")))
+    {
+        sl_engine_destroy(engine);
+        return 93;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_duplicate_registered_handler_fails_during_eval(void)
+{
+    unsigned char engine_storage[8192];
+    SlArena engine_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0) {
+        return 100;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 101;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-duplicate-register.js"),
+                                  sl_str_from_cstr("__sloppy_register_handler(1, () => \"a\");"
+                                                   "__sloppy_register_handler(1, () => \"b\");"),
+                                  &diag),
+            SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 102;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(diag.message, sl_str_from_cstr("duplicate handler ID")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 103;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_intrinsic_misuse_fails_during_eval(void)
+{
+    unsigned char engine_storage[8192];
+    SlArena engine_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0) {
+        return 110;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 111;
+    }
+
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("v8-bad-register.js"),
+                                            sl_str_from_cstr("__sloppy_register_handler(\"1\", "
+                                                             "() => \"bad\");"),
+                                            &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 112;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(diag.message, sl_str_from_cstr("handler ID")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 113;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_missing_registered_handler_returns_diagnostic(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 120;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 121;
+    }
+
+    if (expect_status(sl_engine_call_registered_handler_with_context(engine, &result_arena, 99U,
+                                                                     &context, &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 122;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
+        expect_str_contains(diag.message, sl_str_from_cstr("unregistered handler ID 99")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 123;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -580,5 +747,25 @@ int main(void)
         return result;
     }
 
-    return test_missing_json_body_serializes_as_null();
+    result = test_missing_json_body_serializes_as_null();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_registered_handler_receives_context();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_duplicate_registered_handler_fails_during_eval();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_intrinsic_misuse_fails_during_eval();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_missing_registered_handler_returns_diagnostic();
 }

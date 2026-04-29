@@ -38,8 +38,10 @@ The packaging foundation does not:
 ## Current Phase
 
 The project builds the `sloppy` runtime CLI and Rust `sloppyc` compiler CLI. EPIC-21 added
-the compiler extraction MVP, and EPIC-22 added the dev-only `sloppy run --artifacts` path
-for V8-enabled builds. V8 is still not required for default builds.
+the compiler extraction MVP, EPIC-22 added the dev-only `sloppy run --artifacts` path for
+V8-enabled builds, EPIC-23 added the request/response boundary, and EPIC-24 loads the
+classic bootstrap runtime asset plus generated handler registrations in that V8-gated
+path. V8 is still not required for default builds.
 
 EPIC-20 also builds `sloppy_bench`, a native benchmark executable for manual performance
 validation. It is not installed or packaged as a user-facing CLI surface.
@@ -311,6 +313,13 @@ sloppy-<version>-<platform>-<arch>/
     # Windows packages also include required native runtime DLLs from vcpkg
   lib/
     sloppy/
+      bootstrap/
+        sloppy/
+          index.js
+          app.js
+          results.js
+          internal/runtime-classic.js
+          bootstrap.manifest.json
       stdlib/
         sloppy/
           index.js
@@ -341,6 +350,14 @@ TASK 11.A starts the bootstrap support-data layout. Source assets live in
 `<build>/lib/sloppy/bootstrap/sloppy/`, and CMake install places them under
 `<prefix>/lib/sloppy/bootstrap/sloppy/`. The copy is plain file staging: no Node, npm,
 bundler, transpiler, or package-manager metadata is involved.
+
+EPIC-24 makes the staged bootstrap root executable in V8-gated `sloppy run`. Build-tree
+executables use the staged `<build>/lib/sloppy/bootstrap/sloppy/` path compiled into the
+binary unless `--stdlib <dir>` is supplied. Packages stage the same bootstrap root under
+`lib/sloppy/bootstrap/sloppy/`; executable-relative package lookup is deferred, so package
+smoke tests that execute V8 bootstrap behavior should pass that path explicitly. The
+runtime never reads stdlib assets from `.sdeps/`, npm, Node resolution, or the current
+working directory unless the caller explicitly passes a relative `--stdlib` path.
 
 EPIC-25 package staging copies the source-controlled stdlib assets into
 `lib/sloppy/stdlib/sloppy/` inside the archive. Windows packages also copy runtime DLLs

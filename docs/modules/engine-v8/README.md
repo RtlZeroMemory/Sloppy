@@ -11,6 +11,10 @@ EPIC-21 compiler output deliberately targets the same classic-script global-func
 for now. EPIC-22 `sloppy run` requires this V8-enabled path to execute compiler artifacts.
 EPIC-23 extends the bridge with a narrow handler call that materializes one plain request
 context object and converts supported result descriptors into native response descriptors.
+EPIC-24 adds the first bootstrap runtime handoff: `sloppy run` loads a source-controlled
+classic bootstrap asset, evaluates generated `app.js`, lets generated code register
+numeric handlers through a narrow intrinsic, validates the plan against that runtime-owned
+handler table, and dispatches by handler ID.
 
 ## Purpose
 
@@ -41,8 +45,10 @@ Implemented now:
   and invokes it through the engine boundary;
 - V8-gated handwritten artifact integration fixtures under
   `tests/integration/execution/handwritten_smoke/`.
-- compiler-generated `app.js` artifacts can define `globalThis.__sloppy_handler_N`
-  functions that match the current runtime-contract lookup shape.
+- compiler-generated `app.js` artifacts call `__sloppy_register_handler(N, handler)`;
+- the classic bootstrap runtime asset at `stdlib/sloppy/internal/runtime-classic.js`
+  installs the current V8-runnable `Results.*` descriptor helpers on
+  `globalThis.__sloppy_runtime`;
 - `sloppy run --artifacts <dir>` creates a V8 engine, evaluates the artifact `app.js`, and
   dispatches matched GET routes through the runtime-contract helper with an EPIC-23
   request context argument;
@@ -52,16 +58,17 @@ Implemented now:
 
 Later scope:
 
-- handler registration intrinsics/function handles;
+- true V8 ESM module loading and a production module cache;
+- richer source-map remapping for generated app modules;
 - V8 Promise integration that maps resolved/rejected JS promises onto the native `SlAsync`
   settlement model or a documented evolution of it.
 
 ## Non-goals
 
-No public JS API bootstrap module loading, ESM resolver, full app host, handler table
-registration, V8 Promise integration, microtask policy, workers, inspector, snapshots,
-Node compatibility, or package-manager behavior. EPIC-22/23 HTTP usage is limited to the
-dev-only CLI path and does not make this bridge a production server boundary.
+No ESM resolver, full app host, arbitrary import graph, V8 Promise integration, microtask
+policy, workers, inspector, snapshots, hot reload, Node compatibility, npm resolution, or
+package-manager behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and
+does not make this bridge a production server boundary.
 
 ## Public/Internal API
 
@@ -85,14 +92,20 @@ Current behavior:
 - `sl_engine_call_function_with_context` looks up a named global function, materializes one
   plain request context object, and converts supported `Results.*` descriptors into native
   response descriptors;
+- `__sloppy_register_handler(id, handler)` exists only in the V8 runtime context and accepts
+  a positive numeric handler ID plus a callable handler. Duplicate IDs, nonnumeric IDs, and
+  non-callable handlers fail during app evaluation with deterministic V8 diagnostics;
+- `sl_engine_validate_registered_handlers` checks that every plan handler ID was registered
+  by generated app code before `sloppy run` starts serving or dispatching `--once`;
+- `sl_engine_call_registered_handler_with_context` dispatches by registered handler ID and
+  does not expose raw native pointers to JavaScript;
 - `sl_runtime_contract_call_handler` looks up a handler ID in `SlPlan`, validates the
   export name, and calls the named global with no arguments;
 - `sl_runtime_contract_call_handler_with_context` performs the same plan lookup and calls
-  the named global with the EPIC-23 request context;
-- EPIC-21 generated `app.js` uses classic-script `globalThis.__sloppy_handler_N`
-  assignments plus a tiny compiler-generated `Results.text/json/ok/noContent` shim that
-  returns descriptors for the EPIC-23 response conversion path until EPIC-24 owns stdlib
-  bootstrap module loading;
+  the runtime-owned registered handler with the EPIC-23 request context;
+- EPIC-21/24 generated `app.js` remains a classic script, but it now expects the bootstrap
+  runtime asset to have installed `globalThis.__sloppy_runtime` and it registers handlers
+  through `__sloppy_register_handler`;
 - `sloppy run` fails clearly with "requires V8-enabled build" when this bridge is not
   compiled in;
 - `sl_engine_call_handler` exists as a future engine-owned handler dispatch shape but
@@ -125,6 +138,37 @@ CI behavior:
 Passing required CI does not prove V8 execution. Report V8-enabled results separately from
 default gate results.
 
+## Module Loading Strategy
+
+EPIC-24 deliberately chooses the smallest bridge from classic-script smoke tests toward the
+real bootstrap/app runtime. V8 still evaluates classic scripts in one Sloppy-owned context.
+`sloppy run` loads the source-controlled bootstrap asset
+`internal/runtime-classic.js` from the configured stdlib root, then evaluates the generated
+`app.js` artifact in that same context. The app artifact reads Sloppy-owned globals and
+registers handlers through the intrinsic; it does not ask V8 to resolve public imports.
+
+The public authoring import `import { Sloppy, Results } from "sloppy";` is handled by
+`sloppyc`. The compiler recognizes only the bare specifier `"sloppy"` and emits a generated
+classic script that reads `Results` from `globalThis.__sloppy_runtime`. Arbitrary bare
+imports such as `"express"`, `"fs"`, and `"node:fs"` fail in the compiler MVP with a clear
+unsupported import diagnostic. Runtime import resolution for npm packages, Node built-ins,
+relative source module graphs, dynamic imports, and import maps is not implemented.
+
+The stdlib lookup policy is deterministic:
+
+1. `sloppy run --stdlib <dir>` uses the explicit directory. Relative explicit directories
+   are resolved by the process in the usual way, so callers should prefer absolute paths in
+   automation.
+2. Build-tree executables use the CMake-staged bootstrap root compiled into the binary:
+   `<build>/lib/sloppy/bootstrap/sloppy`.
+3. Package-installed layouts stage the same root at `lib/sloppy/bootstrap/sloppy`; executable-
+   relative installed lookup remains deferred, so packaged smoke tests may pass that root
+   explicitly.
+
+Missing stdlib roots, missing `internal/runtime-classic.js`, missing `app.js`, malformed
+modules, duplicate registrations, intrinsic misuse, and plan references to unregistered
+handlers all fail before serving. Default non-V8 gates do not execute this path.
+
 ## Ownership/Lifetime Rules
 
 The noop engine is allocated from the caller-provided arena and owns no external resources.
@@ -134,11 +178,12 @@ bridge-owned and released by `sl_engine_destroy`. Callers must destroy an engine
 resetting the arena that backs the opaque handle.
 
 `sl_engine_call_function0` copies supported plain-string compatibility results into the
-caller-provided result arena. `sl_engine_call_function_with_context` copies supported
-descriptor response bodies into that same result arena and borrows the native request
-context only while constructing the JS argument. Returned views remain valid until that
-arena is reset or its backing storage ends. No V8 handle or raw native pointer escapes the
-bridge, and JS never receives raw native pointers.
+caller-provided result arena. `sl_engine_call_function_with_context` and
+`sl_engine_call_registered_handler_with_context` copy supported descriptor response bodies
+into that same result arena and borrow the native request context only while constructing
+the JS argument. Returned views remain valid until that arena is reset or its backing
+storage ends. No V8 handle or raw native pointer escapes the bridge, handler functions are
+stored in a bridge-owned table, and JS never receives raw native pointers.
 
 Diagnostics produced by the V8 bridge are built through `SlDiagBuilder` in the engine
 arena. Exception message text, generated source names, hints, and bounded stack summaries
@@ -225,8 +270,9 @@ is intentionally gated on an explicit SDK root and copies only dynamic runtime f
 Current engine diagnostics include `SLOPPY_E_UNSUPPORTED_ENGINE` for unsupported noop
 operations, `SLOPPY_E_ENGINE_COMPILE_ERROR` for V8 syntax/compile failures,
 `SLOPPY_E_ENGINE_EXCEPTION` for thrown eval/function exceptions, and
-`SLOPPY_E_ENGINE_CALL_ERROR` for missing/non-callable smoke globals and unsupported smoke
-result types.
+`SLOPPY_E_ENGINE_CALL_ERROR` for missing/non-callable smoke globals, missing registered
+handlers, intrinsic misuse surfaced through V8 exception diagnostics, duplicate handler
+registration, and unsupported smoke result types.
 
 The mapping is intentionally basic. It captures V8 exception message text, generated
 source/resource name when available, 1-based line and column when V8 reports them, and a
@@ -252,12 +298,13 @@ Current checks:
 - `engine.v8.smoke` is registered only when V8 is enabled and covers classic script
   evaluation, global function call returning `sloppy-ok`, syntax-error diagnostics,
   missing function diagnostics, non-callable global diagnostics, thrown function
-  diagnostics, unsupported result diagnostics, and create/destroy/create lifecycle
-  behavior.
+  diagnostics, unsupported result diagnostics, handler intrinsic misuse, duplicate handler
+  registration, missing registered handler diagnostics, registered handler context
+  dispatch, and create/destroy/create lifecycle behavior.
 - `execution.handwritten_artifact` is registered only when V8 is enabled and covers parsing
-  the handwritten plan fixture, evaluating handwritten `app.js`, invoking handler ID `1`,
-  missing plan handler ID diagnostics, missing JS function diagnostics, and thrown handler
-  diagnostics.
+  the handwritten plan fixture, evaluating bootstrap runtime and handwritten/compiler
+  `app.js`, validating registered handlers, invoking handler ID `1`, missing plan handler
+  ID diagnostics, missing registration diagnostics, and thrown handler diagnostics.
 - `http.dispatch.execution` is registered only when V8 is enabled and covers synthetic
   in-memory GET dispatch from parsed HTTP request head through a manual route binding to a
   numeric handler ID, plus missing JavaScript function and throwing handler diagnostics.
@@ -272,7 +319,7 @@ Current checks:
 Later checks:
 
 - wrong-thread checks.
-- bootstrap stdlib loading and intrinsic binding.
+- true V8 ESM bootstrap loading.
 
 EPIC-20's default benchmark harness does not require V8. Handler dispatch benchmarks cover
 plan lookup and the current noop engine boundary by default. Any V8 handler-call benchmark

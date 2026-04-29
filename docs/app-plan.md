@@ -38,6 +38,10 @@ matches the required minimal handler/bundle/source-map fields and includes a nar
 `routes` metadata section for EPIC-22 handoff. The current native Plan v1 parser still
 ignores that unknown section, while `sloppy run` reads it directly to build a dev-only GET
 route binding table.
+EPIC-24 keeps Plan v1's handler schema stable but changes V8 execution from named global
+lookup to runtime-owned registration. Generated app artifacts call
+`__sloppy_register_handler(id, handler)`, and `sloppy run` validates that each plan handler
+ID has a registered callable before accepting requests or running `--once`.
 
 ## Public API Shape
 
@@ -80,8 +84,9 @@ Handler rules implemented now:
 - handler IDs are numeric runtime dispatch keys;
 - handler ID `0` is reserved and invalid;
 - duplicate handler IDs are invalid plan input;
-- handler export names identify engine bridge callable names. TASK 08.A uses the export
-  name as a handwritten V8 global function name for the smoke path;
+- handler export names remain compatibility and diagnostic metadata. EPIC-24 V8 dispatch
+  uses the numeric handler ID registered through the runtime intrinsic rather than a named
+  global lookup;
 - display names are diagnostic/user-facing only.
 
 Unknown JSON fields are allowed and ignored in Plan v1 for forward compatibility. Known

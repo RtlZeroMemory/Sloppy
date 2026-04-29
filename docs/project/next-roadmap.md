@@ -201,13 +201,14 @@ Non-goals:
 
 Suggested large-coherent task grouping:
 
-- ESM/classic-script decision and implementation notes;
+- classic-script bootstrap runtime decision and implementation notes, with true ESM
+  loading deferred;
 - bootstrap stdlib loading from installed/staged assets;
-- bare `"sloppy"` import or compiler rewrite story;
-- app module entrypoint loading;
+- bare `"sloppy"` compiler rewrite story;
+- generated app entrypoint loading;
 - handler registration intrinsic;
-- source map handoff/fallback diagnostics;
-- V8 module-loading integration tests.
+- source location fallback diagnostics without full source-map fidelity;
+- V8-gated bootstrap/runtime integration tests.
 
 Prerequisites:
 
@@ -217,7 +218,7 @@ Prerequisites:
 
 Tests:
 
-- V8-gated bootstrap import smoke;
+- V8-gated classic bootstrap runtime smoke;
 - missing stdlib asset diagnostic;
 - missing handler registration diagnostic;
 - source location fallback diagnostic;
@@ -225,7 +226,7 @@ Tests:
 
 Acceptance criteria:
 
-- V8 loads bootstrap and app entrypoint without Node;
+- V8 loads the classic bootstrap runtime asset and app entrypoint without Node;
 - handlers register through documented intrinsics;
 - missing or malformed modules produce deterministic diagnostics;
 - default non-V8 gates remain honest about not validating this path.

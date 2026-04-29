@@ -36,6 +36,11 @@ SlStatus sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* aren
                                                  SlStr function_name,
                                                  const SlHttpRequestContext* request_context,
                                                  SlEngineResult* out_result, SlDiag* out_diag);
+SlStatus sl_engine_v8_validate_registered_handlers(SlEngine* engine, const SlPlan* plan,
+                                                   SlDiag* out_diag);
+SlStatus sl_engine_v8_call_registered_handler_with_context(
+    SlEngine* engine, SlArena* arena, SlHandlerId handler_id,
+    const SlHttpRequestContext* request_context, SlEngineResult* out_result, SlDiag* out_diag);
 #endif
 
 #ifdef __cplusplus

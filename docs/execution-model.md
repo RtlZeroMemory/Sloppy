@@ -52,6 +52,8 @@ TASK 08.A adds the first handwritten artifact execution smoke path. A parsed han
 engine boundary and receives the copied string result `sloppy-ok`. This is still not the
 HTTP runtime, compiler output, route dispatch, module loader, request context, public
 TypeScript API, or full `Results.*` model.
+EPIC-24 keeps that compatibility smoke but moves the generated app path to
+runtime-owned handler registration through `__sloppy_register_handler`.
 
 TASK 09.A adds a native `SlLoop` completion queue skeleton for future async runtime work.
 It is caller-backed, fixed-capacity, and synchronous: completion callbacks run on the caller
@@ -126,17 +128,18 @@ export default app;
 The MVP also supports `Sloppy.createBuilder()` plus `builder.build()`, simple
 `app.mapGroup(prefix)` variables, literal grouped `mapGet` routes, `.withName(...)`, and
 handlers returning `Results.text(...)` or `Results.json(...)`. It does not implement full
-TypeScript checking, package resolution, bundling, module extraction, services/data
-providers, V8 module loading, source-input `sloppy run`, or `app.run`.
+TypeScript checking, Node/npm package resolution, bundling, module extraction,
+services/data providers, source-input `sloppy run`, or `app.run`.
 
 EPIC-22 adds the first dev-only run path for those artifacts. EPIC-23 extends it with the
-first real response/request boundary. `sloppy run --artifacts <dir>` loads
-`app.plan.json`, reads the compiler-emitted `routes` metadata, evaluates `app.js` in a
-V8-enabled build, dispatches GET request paths through the native route matcher, passes a
-minimal `{ route, query, request }` context to the handler, converts supported
-`Results.*` descriptors, writes a deterministic HTTP/1.1 response, and closes the
-connection. The deterministic `--once METHOD TARGET` mode performs the same dispatch
-without opening a socket.
+first real response/request boundary. EPIC-24 loads the classic bootstrap runtime asset
+before the generated app artifact and validates runtime-owned handler registrations.
+`sloppy run --artifacts <dir>` loads `app.plan.json`, reads the compiler-emitted `routes`
+metadata, evaluates bootstrap runtime plus `app.js` in a V8-enabled build, dispatches GET
+request paths through the native route matcher, passes a minimal `{ route, query, request
+}` context to the handler, converts supported `Results.*` descriptors, writes a
+deterministic HTTP/1.1 response, and closes the connection. The deterministic
+`--once METHOD TARGET` mode performs the same dispatch without opening a socket.
 
 ## Current Handwritten Milestone
 
@@ -185,12 +188,11 @@ V8 executes JavaScript, not TypeScript. TypeScript is never evaluated directly. 
 does not type-check. `sloppy check` later uses the official TypeScript checker through
 `tsgo` or `tsc`.
 
-Current EPIC-21/22 behavior covers the first executable compiler-to-runtime path for one
-source file when V8 is enabled. The generated `app.js` is a classic script with
-deterministic `globalThis.__sloppy_handler_N` functions and a tiny compiler-generated
-`Results.text/json` shim that returns strings for the current V8 global-function execution
-path. Full stdlib bootstrap loading is EPIC-24, and real result descriptor conversion is
-EPIC-23.
+Current EPIC-21/22/23/24 behavior covers the first executable compiler-to-runtime path for
+one source file when V8 is enabled. The generated `app.js` is still a classic script, but it
+expects bootstrap runtime state from `globalThis.__sloppy_runtime` and calls
+`__sloppy_register_handler(N, handler)`. The runtime does not resolve Node packages, npm
+packages, arbitrary bare specifiers, dynamic imports, or user source module graphs.
 
 ## Artifact Boundary
 
@@ -267,16 +269,18 @@ Exact filenames are deferred until implementation stories begin.
 
 ## Dev Mode Flow
 
-Current EPIC-22 `sloppy run` flow:
+Current EPIC-22/23/24 `sloppy run` flow:
 
 1. accept an artifact directory through `--artifacts <dir>` or positional `<artifact-dir>`;
 2. load `<dir>/app.plan.json` through the native Plan parser;
 3. read the interim `routes` metadata from the same JSON file;
 4. parse GET route patterns into a borrowed dev dispatch table;
-5. create a V8 engine and evaluate the artifact `app.js`;
-6. either dispatch one synthetic `--once METHOD TARGET` request or start a local
+5. create a V8 engine, load the configured bootstrap stdlib root, and evaluate
+   `internal/runtime-classic.js`;
+6. evaluate the artifact `app.js` and validate all plan handler IDs were registered;
+7. either dispatch one synthetic `--once METHOD TARGET` request or start a local
    `127.0.0.1:5173` dev server by default;
-7. parse request heads, route GET paths, call handlers by numeric ID with route/query
+8. parse request heads, route GET paths, call handlers by numeric ID with route/query
    context, convert supported descriptors, write a native HTTP response, and close the
    connection.
 
@@ -322,15 +326,14 @@ Target startup flow:
 
 ## Handler Registration Flow
 
-Planned handler registration:
+Current handler registration:
 
 1. plan declares expected handler IDs and generated exports;
-2. bootstrap stdlib exposes a registration intrinsic;
-3. app bundle calls registration during startup;
+2. V8 runtime context exposes only `__sloppy_register_handler(id, handler)`;
+3. generated app bundle calls registration during startup;
 4. V8 bridge stores function handles by numeric ID;
 5. runtime verifies all expected IDs exist;
-6. unexpected IDs are diagnosed;
-7. duplicate IDs are diagnosed.
+6. duplicate IDs, nonnumeric IDs, and non-callable handlers are diagnosed.
 
 User-facing names such as `Users.Get` exist for diagnostics and tooling. Dispatch uses
 numeric IDs.
@@ -339,15 +342,13 @@ Handler table consistency checks:
 
 - every expected plan handler ID is registered;
 - no handler ID is registered twice;
-- unexpected handler IDs are rejected or warned according to mode;
 - registered handler callable type is verified by the engine bridge;
 - user-facing handler name is carried only for diagnostics/tooling.
 
-TASK 11.A reserves `stdlib/sloppy/internal/intrinsics.js` as the future import boundary for
-runtime-provided registration and host intrinsics. That file currently exports an empty
-frozen placeholder object; no registration intrinsic exists yet. TASK 11.C route
-registration is therefore local JavaScript state only, exposed by `app.__getRoutes()` for
-bootstrap tests/debugging and not consumed by the runtime.
+`stdlib/sloppy/internal/intrinsics.js` remains an ESM stdlib placeholder for the later app
+host. EPIC-24 does not expose a broad `__sloppy` host object and does not surface native
+pointers to JavaScript; the V8-only intrinsic is installed directly in the runtime context
+for generated artifacts.
 
 ## Request Execution Flow
 
@@ -666,6 +667,8 @@ The first execution milestone is accepted when:
 
 - a handwritten `app.plan.json` declares one handler ID;
 - a handwritten `app.js` defines global function `__sloppy_handler_1`;
+- generated compiler artifacts register handler ID `1` through
+  `__sloppy_register_handler`;
 - runtime validates enough plan/bundle consistency to catch missing plan handler IDs,
   duplicate plan handler IDs, missing JS functions, and thrown handlers;
 - runtime invokes the handler by numeric ID;

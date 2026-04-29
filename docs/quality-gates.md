@@ -360,8 +360,9 @@ V8 remains an opt-in build gate. Default and CI builds leave the V8 bridge disab
 not require a V8 SDK. A manual V8-enabled configure must fail clearly when
 `SLOPPY_V8_ROOT` is empty or does not contain the documented SDK layout.
 
-When the V8 SDK gate succeeds, the V8 bridge source and `engine.v8.smoke` test are compiled
-and linked only in that V8-enabled build. Passing default CTest does not prove V8 smoke
+When the V8 SDK gate succeeds, the V8 bridge source, `engine.v8.smoke`, V8-gated bootstrap
+runtime tests, and V8-gated `sloppy run` process tests are compiled and linked only in that
+V8-enabled build. Passing default CTest does not prove V8 smoke or bootstrap runtime tests
 passed; the V8-enabled configure/build/test commands must be run and reported separately.
 
 Phase 1 CTest expectations:
