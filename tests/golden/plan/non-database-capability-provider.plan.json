@@ -9,7 +9,6 @@
   "handlers": [{ "id": 1, "exportName": "__sloppy_handler_1", "displayName": "Home" }],
   "dataProviders": [{ "token": "data.main", "provider": "sqlite" }],
   "capabilities": [
-    { "token": "data.main", "kind": "database", "access": "read", "provider": "data.main" },
-    { "token": "data.main", "kind": "database", "access": "write", "provider": "data.main" }
+    { "token": "files.uploads", "kind": "filesystem", "access": "read", "provider": "data.main" }
   ]
 }

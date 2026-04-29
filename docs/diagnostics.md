@@ -372,9 +372,17 @@ They must not include native pointer values or provider handle addresses.
 Permissions diagnostics:
 
 - missing capability;
-- denied filesystem path;
+- wrong capability kind;
+- insufficient capability access;
+- provider mismatch;
+- denied filesystem/network skeleton capability;
 - denied database token;
 - stale resource ID.
+
+MAIN1-10 uses `SLOPPY_E_PERMISSION_DENIED` for deterministic capability denials. Hints may
+include token, kind, operation, required/actual access, and provider token when safe. They
+must not include connection strings, passwords, API keys, raw provider handles, or native
+pointers.
 
 ## Examples
 

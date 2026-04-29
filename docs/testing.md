@@ -118,6 +118,10 @@ Current tests:
   behavior. CTest `data.sqlserver.live_provider` covers live
   connection/query/transaction/pool behavior only when
   `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set; otherwise it is reported as skipped;
+- CTest unit test `core.capability.registry`, which verifies the parsed-plan capability
+  registry, database read/write policy, provider mismatch denial, missing/wrong-kind/
+  insufficient access diagnostics, filesystem/network skeleton checks, redacted denied
+  diagnostics, and denial before a fake provider operation is called;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
   hello example files exist, use the current relative stdlib import, use
   `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
@@ -830,7 +834,9 @@ Plan loader phase:
 - parser tests once the parser exists;
 - diagnostics checks;
 - malformed JSON tests.
-- route/provider/capability section fixtures for native Plan v1 alpha validation;
+- route/provider/capability section fixtures for native Plan v1 alpha validation,
+  including missing capability tokens, duplicate tokens, invalid kinds/access modes,
+  required database provider references, and filesystem/network skeleton modes;
 - supported artifact-path tests for missing files, hash mismatch, and compatibility
   mismatch before V8/user-code execution.
 

@@ -355,27 +355,28 @@ Existing issue references: EPIC-17 and EPIC-18 native scopes are closed.
 
 Goal: enforce declared capabilities for supported alpha resource access.
 
-Why it exists: metadata exists but enforcement does not.
+Why it exists: metadata exists and now needs explicit runtime checks without overstating
+OS-level isolation.
 
 Prerequisites: plan capability section and resource table.
 
 Task breakdown:
 
 - MAIN1-10.A: capability plan section and parser validation.
-- MAIN1-10.B: runtime capability registry.
-- MAIN1-10.C: provider access policy.
-- MAIN1-10.D: filesystem/network capability skeletons.
-- MAIN1-10.E: denied-access diagnostics and audit fixtures.
+- MAIN1-10.B: runtime capability registry and provider policy hook.
+- MAIN1-10.C: denied-access diagnostics and audit fixtures.
 
-Non-goals: OS sandboxing or strong isolation claims.
+Non-goals: OS sandboxing, filesystem/network APIs, permission prompts, auth/RBAC/ABAC, or
+Node/Deno permission compatibility.
 
 Files likely touched: `docs/security-permissions.md`, `docs/public/permissions.md`,
 `src/core/`, `src/data/`, `tests/golden/cli/`.
 
 Tests required: denied access, missing capability, audit fixtures, redaction.
 
-Acceptance criteria: supported provider/filesystem/network access is gated or clearly
-unsupported.
+Acceptance criteria: database provider access can be denied by registry checks before
+provider work where the boundary calls the hook; filesystem/network entries are
+metadata/check-only skeletons and are documented as unsupported APIs.
 
 Risk: high.
 

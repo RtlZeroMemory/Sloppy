@@ -271,6 +271,31 @@ static SlStatus sl_plan_parse_require_object(SlPlanParseContext* ctx, yyjson_val
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_parse_reject_secret_fields(SlPlanParseContext* ctx, yyjson_val* object)
+{
+    static const char* secret_fields[] = {"connectionString", "password", "pwd",
+                                          "secret",           "apiKey",   "accessToken"};
+    size_t index = 0U;
+
+    if (ctx == NULL || object == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (index = 0U; index < sizeof(secret_fields) / sizeof(secret_fields[0]); index += 1U) {
+        if (yyjson_obj_get(object, secret_fields[index]) != NULL) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("app plan contains secret-bearing field",
+                                      sizeof("app plan contains secret-bearing field") - 1U),
+                sl_plan_parse_literal(
+                    "store secret values outside app.plan.json and reference config keys instead",
+                    sizeof("store secret values outside app.plan.json and reference config keys "
+                           "instead") -
+                        1U));
+        }
+    }
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_schema_version(SlPlanParseContext* ctx, yyjson_val* root,
                                              uint32_t* out)
 {
@@ -718,6 +743,11 @@ static SlStatus sl_plan_parse_one_provider(SlPlanParseContext* ctx, yyjson_val* 
                                   sizeof("each dataProviders entry must be a JSON object") - 1U));
     }
 
+    status = sl_plan_parse_reject_secret_fields(ctx, value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
     status = sl_plan_parse_require_string(ctx, value, "token", true, &out->token);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -846,6 +876,11 @@ static SlStatus sl_plan_parse_one_capability(SlPlanParseContext* ctx, const SlPl
                                   sizeof("each capabilities entry must be a JSON object") - 1U));
     }
 
+    status = sl_plan_parse_reject_secret_fields(ctx, value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
     status = sl_plan_parse_require_string(ctx, value, "token", true, &out->token);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -892,6 +927,24 @@ static SlStatus sl_plan_parse_one_capability(SlPlanParseContext* ctx, const SlPl
     status = sl_plan_parse_optional_string(ctx, value, "provider", true, &out->provider);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (sl_str_equal(out->kind, sl_str_from_cstr("database")) && sl_str_is_empty(out->provider)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("database capability is missing provider",
+                                  sizeof("database capability is missing provider") - 1U),
+            sl_plan_parse_literal("database capabilities require capabilities[].provider",
+                                  sizeof("database capabilities require capabilities[].provider") -
+                                      1U));
+    }
+    if (!sl_str_equal(out->kind, sl_str_from_cstr("database")) && !sl_str_is_empty(out->provider)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("non-database capability has provider",
+                                  sizeof("non-database capability has provider") - 1U),
+            sl_plan_parse_literal("only database capabilities may reference dataProviders",
+                                  sizeof("only database capabilities may reference dataProviders") -
+                                      1U));
     }
     if (!sl_plan_parse_provider_token_exists(plan, out->provider)) {
         return sl_plan_parse_field_diag(

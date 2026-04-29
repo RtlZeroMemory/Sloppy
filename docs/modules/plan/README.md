@@ -30,12 +30,21 @@ Implemented now:
 - supported-path `sloppy run --artifacts` hash and compatibility checks for `app.js` and
   `app.js.map`.
 
+MAIN1-10 implemented scope:
+
+- validated database, filesystem, and network capability metadata;
+- database capability provider references are required and must point at `dataProviders`;
+- filesystem/network capabilities are stored as skeleton metadata without provider
+  references;
+- provider/capability metadata rejects obvious secret-bearing fields;
+- an immutable runtime capability registry can be initialized from a parsed plan.
+
 Future scope:
 
 - file-based loading;
 - native host graph construction;
 - real module section parsing and validation;
-- provider access enforcement and JS-to-native provider bridges.
+- JS-to-native provider bridges calling the capability registry before provider work.
 
 ## Non-goals
 
@@ -50,12 +59,13 @@ EPIC-15 exposes bootstrap capability debug metadata through
 `app.__getPlanContributions().capabilities`, but this is not parsed by the native plan
 loader and is not emitted as `app.plan.json`.
 EPIC-19 CLI introspection reads plan-compatible JSON files with optional `routes`,
-`modules`, `dataProviders`, and `doctorChecks` sections. The CLI does not execute
-application code to discover that metadata.
+`modules`, `dataProviders`, `capabilities`, and `doctorChecks` sections. The CLI does not
+execute application code to discover that metadata.
 EPIC-21 `sloppyc build` emits the first real compiler-owned `routes` metadata section with
 `method`, `pattern`, `handlerId`, and `name`. MAIN1-02 makes that section a
 native-validated Plan v1 alpha contract. `dataProviders` and `capabilities` are also
-native-validated when present, but remain metadata-only.
+native-validated when present. MAIN1-10 adds a runtime capability registry and explicit
+check hooks, while filesystem/network entries remain metadata/check-only skeletons.
 
 ## Public/Internal API
 
@@ -144,7 +154,8 @@ Parser validation rules:
 - `dataProviders`, when present, must contain unique valid tokens and supported provider
   values;
 - `capabilities`, when present, must contain unique valid tokens, supported kind/access
-  pairs, and valid provider references when used.
+  pairs, required provider references for database capabilities, and no provider reference
+  for filesystem/network skeleton capabilities.
 
 Known fields with the wrong JSON type fail validation. Unknown top-level and nested fields
 are ignored.

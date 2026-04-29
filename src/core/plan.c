@@ -53,8 +53,7 @@ bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
     if (sl_str_equal(kind, sl_str_from_cstr("database"))) {
         return sl_str_equal(access, sl_str_from_cstr("read")) ||
                sl_str_equal(access, sl_str_from_cstr("write")) ||
-               sl_str_equal(access, sl_str_from_cstr("readwrite")) ||
-               sl_str_equal(access, sl_str_from_cstr("connect"));
+               sl_str_equal(access, sl_str_from_cstr("readwrite"));
     }
     if (sl_str_equal(kind, sl_str_from_cstr("filesystem"))) {
         return sl_str_equal(access, sl_str_from_cstr("read")) ||
@@ -63,7 +62,8 @@ bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
     }
     if (sl_str_equal(kind, sl_str_from_cstr("network"))) {
         return sl_str_equal(access, sl_str_from_cstr("connect")) ||
-               sl_str_equal(access, sl_str_from_cstr("listen"));
+               sl_str_equal(access, sl_str_from_cstr("listen")) ||
+               sl_str_equal(access, sl_str_from_cstr("connect-listen"));
     }
     return false;
 }

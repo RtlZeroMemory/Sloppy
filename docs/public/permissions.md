@@ -1,6 +1,7 @@
 # Permissions
 
-Status: Bootstrap database capability metadata skeleton implemented.
+Status: Runtime capability registry and database policy checks implemented; filesystem and
+network checks are metadata-only skeletons.
 
 Purpose: document future capabilities, permissions, audit output, and denied-operation
 diagnostics.
@@ -29,9 +30,17 @@ Implemented behavior:
 - database capability metadata currently stores `token`, `kind`, `provider`, `access`,
   `module`, and copied options.
 - Plan v1 alpha can carry metadata-only `capabilities` entries with `token`, `kind`,
-  `access`, and an optional provider token reference. The native parser validates token
-  syntax, supported kinds/access values, duplicate tokens, and provider references when the
-  section is present.
+  `access`, and a provider token reference for database capabilities. The native parser
+  validates token syntax, supported kinds/access values, duplicate tokens, required
+  database providers, and provider references when the section is present.
+- The runtime can build an immutable native capability registry from the parsed plan and
+  check database, filesystem, and network capability tokens by kind and access mode.
+- Database checks support `read`, `write`, and `readwrite`; provider references must match
+  when declared.
+- Filesystem checks support `read`, `write`, and `readwrite` as skeleton policy checks
+  only. No filesystem API is implemented.
+- Network checks support `connect`, `listen`, and `connect-listen` as skeleton policy
+  checks only. No network client/listener API is implemented.
 - SQLite examples may include `path: ":memory:"` in copied metadata. This is provider
   metadata only today; runtime permission enforcement and file database policy are still
   deferred.
@@ -46,12 +55,15 @@ Implemented behavior:
 
 Not implemented yet:
 
-- no filesystem or network capability APIs;
-- no runtime permission enforcement;
+- no filesystem or network APIs;
 - no OS sandboxing;
 - no user prompts or grant sources;
 - no JavaScript database provider access checks.
-- no provider access enforcement from Plan capability metadata yet.
+- no Node/Deno permission compatibility.
+
+Provider enforcement note: native check hooks deny before provider work when a caller uses
+them. The JavaScript SQLite bridge remains the follow-up integration point if MAIN1-08 has
+not yet landed in the branch being reviewed.
 
 Related internal docs: `docs/modularity.md`, `docs/data-providers.md`,
 `docs/diagnostics.md`.
