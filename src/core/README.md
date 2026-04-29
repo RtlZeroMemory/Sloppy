@@ -10,6 +10,8 @@ Implemented TASK 02.A primitives:
 - checked `size_t` add/multiply helpers;
 - internal assertion macros;
 - caller-backed `SlArena` allocation, mark/reset, and high-water stats.
+- fixed-capacity `SlResourceTable` with JS-safe slot/generation IDs, kind validation,
+  stale-handle diagnostics, deterministic close/reuse, and cleanup callbacks.
 - caller-backed `SlLoop` native completion queue skeleton.
 - caller-owned `SlAsync` native promise settlement skeleton over `SlLoop`.
 - inline/fake `SlWorkerPool` native worker completion skeleton over `SlLoop`.

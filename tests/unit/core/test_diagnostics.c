@@ -303,6 +303,36 @@ static int test_provider_code_names(void)
         return 53;
     }
 
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_RESOURCE_INVALID_ID),
+                         sl_str_from_cstr("SLOPPY_E_RESOURCE_INVALID_ID")) != 0)
+    {
+        return 54;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_RESOURCE_STALE_ID),
+                         sl_str_from_cstr("SLOPPY_E_RESOURCE_STALE_ID")) != 0)
+    {
+        return 55;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_RESOURCE_WRONG_KIND),
+                         sl_str_from_cstr("SLOPPY_E_RESOURCE_WRONG_KIND")) != 0)
+    {
+        return 56;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_RESOURCE_CLOSED),
+                         sl_str_from_cstr("SLOPPY_E_RESOURCE_CLOSED")) != 0)
+    {
+        return 57;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_RESOURCE_TABLE_EXHAUSTED),
+                         sl_str_from_cstr("SLOPPY_E_RESOURCE_TABLE_EXHAUSTED")) != 0)
+    {
+        return 58;
+    }
+
     return 0;
 }
 

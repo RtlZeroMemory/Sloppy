@@ -452,6 +452,20 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_SQLSERVER_POOL_EXHAUSTED:
         return sl_diag_literal("SLOPPY_E_SQLSERVER_POOL_EXHAUSTED",
                                sizeof("SLOPPY_E_SQLSERVER_POOL_EXHAUSTED") - 1U);
+    case SL_DIAG_RESOURCE_INVALID_ID:
+        return sl_diag_literal("SLOPPY_E_RESOURCE_INVALID_ID",
+                               sizeof("SLOPPY_E_RESOURCE_INVALID_ID") - 1U);
+    case SL_DIAG_RESOURCE_STALE_ID:
+        return sl_diag_literal("SLOPPY_E_RESOURCE_STALE_ID",
+                               sizeof("SLOPPY_E_RESOURCE_STALE_ID") - 1U);
+    case SL_DIAG_RESOURCE_WRONG_KIND:
+        return sl_diag_literal("SLOPPY_E_RESOURCE_WRONG_KIND",
+                               sizeof("SLOPPY_E_RESOURCE_WRONG_KIND") - 1U);
+    case SL_DIAG_RESOURCE_CLOSED:
+        return sl_diag_literal("SLOPPY_E_RESOURCE_CLOSED", sizeof("SLOPPY_E_RESOURCE_CLOSED") - 1U);
+    case SL_DIAG_RESOURCE_TABLE_EXHAUSTED:
+        return sl_diag_literal("SLOPPY_E_RESOURCE_TABLE_EXHAUSTED",
+                               sizeof("SLOPPY_E_RESOURCE_TABLE_EXHAUSTED") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

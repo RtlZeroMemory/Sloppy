@@ -26,15 +26,15 @@ This document covers:
 
 ## Non-Goals
 
-This document does not implement allocators, arenas, resource tables, or JS bindings.
+This document does not implement allocators, string builders, or JS bindings.
 
 ## Current Phase
 
 The core foundation now implements `SlStatus`, `SlSourceLoc`, borrowed `SlStr`, borrowed
-`SlBytes`, checked `size_t` arithmetic, assertion macros, a caller-backed `SlArena`, and a
-fixed-capacity native cleanup `SlScope`.
-`SlBuf`, string builders, allocator modules, and resource table primitives are not
-implemented yet.
+`SlBytes`, checked `size_t` arithmetic, assertion macros, a caller-backed `SlArena`, a
+fixed-capacity native cleanup `SlScope`, and a fixed-capacity `SlResourceTable` with
+generation-counted `SlResourceId` handles.
+`SlBuf`, string builders, and allocator modules are not implemented yet.
 
 ## Future Phase
 
@@ -138,16 +138,60 @@ rather than pretending an OS or heap allocation failed.
 
 ## Resource Table Model
 
-Resources that can close independently use resource tables.
+Resources that can close independently use `SlResourceTable`.
 
-`SlResourceId` should eventually encode:
+Implemented MAIN1-07 behavior:
 
-- resource kind/table;
-- slot index;
-- generation counter.
+- `SlResourceId` is a plain `{ slot, generation }` value made of two `uint32_t` fields;
+- slot zero and generation zero are invalid/null;
+- public IDs do not contain native pointers and are safe to wrap in future JS handle
+  objects;
+- table storage is caller-owned or arena-owned through `sl_resource_table_init_from_arena`;
+- table objects are zero-initialized before first init and cannot be reinitialized after
+  init/dispose, preventing old IDs from being resurrected by resetting generations;
+- table capacity must fit in the `uint32_t` slot range encoded by `SlResourceId`;
+- inserts require a non-NULL native pointer and a non-`NONE` kind;
+- lookup validates slot, generation, liveness, and expected kind before returning the
+  native pointer to trusted C callers;
+- kind is table-owned metadata and must never be trusted from JavaScript;
+- close invokes the optional cleanup callback exactly once, clears the slot, and advances
+  the generation;
+- using a closed ID after close fails as a stale handle once the generation advances;
+- slot reuse returns the same slot with the next generation;
+- table exhaustion returns `SL_STATUS_CAPACITY_EXCEEDED` without mutating caller-owned
+  outputs or running cleanup;
+- dispose closes remaining live entries in deterministic ascending slot order.
 
 Generation counters prevent stale IDs from referring to reused slots. JS-visible native
 resources must use IDs, never raw C pointers.
+
+Resource lookup failures use deterministic status/diagnostic pairs:
+
+- invalid/null ID or missing slot: `SL_STATUS_INVALID_ARGUMENT` or `SL_STATUS_OUT_OF_RANGE`
+  with `SL_DIAG_RESOURCE_INVALID_ID`;
+- stale generation: `SL_STATUS_STALE_RESOURCE` with `SL_DIAG_RESOURCE_STALE_ID`;
+- wrong kind: `SL_STATUS_WRONG_RESOURCE_KIND` with `SL_DIAG_RESOURCE_WRONG_KIND`;
+- closed current slot: `SL_STATUS_INVALID_STATE` with `SL_DIAG_RESOURCE_CLOSED`.
+
+Diagnostics may include the operation name plus expected/actual resource kind names. They
+must not include native pointer values.
+
+## JS-Native Handle Bridge Policy
+
+Future JS/native bridges must use the resource table rather than inventing ad hoc handles.
+
+- JS may see only opaque resource IDs or handle objects that wrap those IDs.
+- JS must never receive raw native pointers, pointer-sized integers, V8 external pointers,
+  or provider-owned address strings.
+- Every JS-visible native handle maps to a live `SlResourceTable` entry.
+- Every bridge call validates the ID slot, generation, liveness, and expected kind before
+  touching a provider object.
+- Stale and wrong-kind handles fail deterministically with the resource diagnostics above.
+- Request/app scope ownership must be explicit before a handle is exposed: app-lifetime
+  pools, request-lifetime checked-out resources, and statement/transaction resources cannot
+  share an implicit global registry.
+- MAIN1-08 SQLite bridge work must consume `SlResourceId`/`SlResourceTable`; it must not
+  reinvent handle storage or expose SQLite pointers.
 
 ## Async Lifetime Rules
 
@@ -201,7 +245,7 @@ Target request lifecycle:
 
 ## File Layout
 
-Likely Phase 1 files:
+Implemented and planned Phase 1 files:
 
 ```text
 include/sloppy/status.h
@@ -210,15 +254,19 @@ include/sloppy/bytes.h
 include/sloppy/buf.h
 include/sloppy/allocator.h
 include/sloppy/arena.h
+include/sloppy/resource.h
 src/core/status.c
 src/core/string.c
 src/core/buf.c
 src/core/allocator.c
 src/core/arena.c
+src/core/resource.c
 tests/unit/
 ```
 
-Names may change, but tests must land with primitives.
+`include/sloppy/resource.h` defines `SlResourceId`, `SlResourceKind`, `SlResourceEntry`,
+and `SlResourceTable`; `src/core/resource.c` implements the fixed-capacity resource table
+used by future JS-native handles. Names may change only with matching tests and docs.
 
 ## Error And Diagnostic Behavior
 
@@ -247,7 +295,8 @@ Each primitive needs tests:
 - scope cleanup: registration, LIFO close, idempotent close, reset behavior, capacity
   exhaustion;
 - checked math: boundary values;
-- resource table: generation mismatch, double close, stale ID, leak tracking.
+- resource table: invalid IDs, generation mismatch, wrong kind, double close, cleanup,
+  exhaustion, and dispose ordering.
 
 ## Quality Gates
 
@@ -267,7 +316,10 @@ Each primitive needs tests:
 - Add `SlBuf` and tests.
 - Add allocator interface with a default bootstrap allocator.
 - Add debug allocation tags.
-- Add resource ID layout proposal before resource table implementation.
+- Add resource ID layout and fixed-capacity resource table. Done in MAIN1-07 with
+  slot/generation IDs, kind validation, cleanup callbacks, and bridge policy docs.
+- Add app/request-scope resource ownership and leak reporting. Follow-up app-host
+  lifecycle work.
 
 ## Acceptance Criteria
 

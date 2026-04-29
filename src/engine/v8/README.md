@@ -17,7 +17,8 @@ Rules:
 - `v8::*` types must never leak outside this directory.
 - V8 headers may appear only under this directory.
 - JS code must never receive raw C pointers.
-- Native handles exposed to JS must flow through resource IDs with generation checks.
+- Native handles exposed to JS must flow through `SlResourceId` values with generation,
+  liveness, and kind checks in `SlResourceTable`.
 - No ESM/module resolver, Sloppy Plan handler execution, event loop, workers, inspector,
   snapshots, Node compatibility, or package-manager behavior belongs in TASK 07.C.
 - Process-wide V8 platform state is initialized once and intentionally kept alive for the
