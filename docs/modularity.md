@@ -43,9 +43,9 @@ The foundation phase does not implement:
 
 The bootstrap stdlib implements the first JavaScript-only module skeleton. `Sloppy.module`
 creates module definitions; `builder.addModule` registers them; `builder.build` validates
-missing dependencies and cycles, sorts modules deterministically, runs services before
-routes, attributes module-created services/routes, and exposes plan-like debug metadata
-through `app.__debug().modules`.
+missing dependencies and cycles, sorts modules deterministically, runs capabilities before
+services before routes, attributes module-created capabilities/services/routes, and exposes
+plan-like debug metadata through `app.__debug().modules`.
 
 This is not compiler extraction, real `app.plan.json` emission, native runtime module
 loading, package distribution, or native plugin support.
@@ -141,13 +141,14 @@ Phase rules:
 Current bootstrap TASK 14 phases are intentionally smaller:
 
 1. dependency resolution / graph validation;
-2. services callbacks for each module in dependency order;
-3. routes callbacks for each module in dependency order;
-4. debug metadata assembly for module names, dependencies, services, routes, and custom
-   metadata.
+2. capabilities callbacks for each module in dependency order;
+3. services callbacks for each module in dependency order;
+4. routes callbacks for each module in dependency order;
+5. debug metadata assembly for module names, dependencies, capabilities, services, routes,
+   and custom metadata.
 
-Config, capabilities, permissions, middleware, filters, jobs, health checks, validation
-freeze, and native graph freeze are future phases.
+Config, permissions, middleware, filters, jobs, health checks, validation freeze, and native
+graph freeze are future phases. Capabilities exist only as bootstrap metadata today.
 
 ## Module Dependency Graph
 
@@ -322,9 +323,9 @@ Current TASK 14 does not emit this JSON. Instead, bootstrap apps expose debug me
 app.__debug().modules
 ```
 
-Each entry contains `name`, `dependencies`, `order`, `contributes`, `services`, `routes`,
-and `metadata`. This shape is a temporary introspection/debug contract for tests and future
-plan work, not the final Sloppy Plan schema.
+Each entry contains `name`, `dependencies`, `order`, `contributes`, `capabilities`,
+`services`, `routes`, and `metadata`. This shape is a temporary introspection/debug
+contract for tests and future plan work, not the final Sloppy Plan schema.
 
 ## Native Plugins
 
@@ -457,7 +458,8 @@ Diagnostics must include:
 Diagnostics should include module name, phase, source span, and suggested fix where safe.
 Current bootstrap diagnostics are plain JavaScript errors rather than native `SlDiag`
 records. They include duplicate module names, invalid module objects, missing dependencies,
-cycles, invalid module names, mutation after module add, and phase callback failures.
+cycles, invalid module names, duplicate capability tokens, invalid capability tokens,
+missing capabilities, mutation after module add, and phase callback failures.
 
 ## Testing Requirements
 

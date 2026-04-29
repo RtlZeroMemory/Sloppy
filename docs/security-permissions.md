@@ -39,7 +39,9 @@ The foundation phase does not implement:
 
 ## Current Phase
 
-Permissions are specified in docs and app-plan examples only.
+EPIC-15 implements a bootstrap JavaScript capability metadata skeleton for database
+capabilities only. Permissions, filesystem/network capabilities, enforcement, OS
+sandboxing, grants, and audit tooling remain future work.
 
 ## Future Phase
 
@@ -70,6 +72,22 @@ export const FilesModule = Sloppy.module("files")
 
 The token `files.storage` should appear in the Sloppy Plan with source location and access
 modes.
+
+Implemented bootstrap database capability shape:
+
+```ts
+const DataModule = Sloppy.module("data")
+  .capabilities(caps => {
+    caps.addDatabase("data.main", {
+      provider: "sqlite",
+      access: "readwrite",
+    });
+  });
+```
+
+The current registry stores metadata only. Capability tokens must be non-empty strings,
+duplicates fail, and `app.capabilities.has/get/list` exposes frozen debug metadata with the
+declaring module when applicable.
 
 ## Permission Grants
 
@@ -111,6 +129,10 @@ Database providers contribute capabilities:
 - permissions required by routes/modules.
 
 Plan entries must reference config keys, not connection string values.
+
+Current bootstrap metadata does not open databases, validate config keys, or enforce access.
+It exists so future provider modules, plan extraction, and audit tooling have a tested API
+shape to build from.
 
 ## Environment And Config Secrets
 

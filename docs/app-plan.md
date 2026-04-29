@@ -125,9 +125,9 @@ App module graph:
 - source location.
 
 TASK 14 adds only bootstrap debug metadata for modules. `app.__debug().modules` includes
-module names, dependencies, deterministic order, service tokens, route strings, and custom
-metadata for tests and examples. The native Plan v1 parser still does not parse a
-`modules` section, and the compiler still does not emit one.
+module names, dependencies, deterministic order, capability tokens, service tokens, route
+strings, and custom metadata for tests and examples. The native Plan v1 parser still does
+not parse a `modules` section, and the compiler still does not emit one.
 
 ### routes
 
@@ -207,6 +207,9 @@ Database provider registrations:
 - required driver/package metadata;
 - health check metadata.
 
+EPIC-15 exposes bootstrap-only `app.__getPlanContributions().capabilities` metadata for
+declared capabilities. It does not emit or parse real `dataProviders` plan entries.
+
 ### capabilities
 
 Capability declarations:
@@ -217,6 +220,9 @@ Capability declarations:
 - provider/source module;
 - config key references;
 - path policy where applicable.
+
+EPIC-15 implements database capability metadata only in the JavaScript bootstrap facade.
+The native Plan v1 parser still does not parse a `capabilities` section.
 
 ### permissions
 

@@ -430,6 +430,12 @@ params: [id]
 
 The provider lowers placeholders and binds values.
 
+Current EPIC-15 bootstrap behavior implements this only inside the source-controlled ESM
+stdlib. `sql`, `data.lowerQueryTemplate(...)`, and fake provider methods produce frozen
+query descriptors with SQL text and parameters separated. No compiler transform parses
+template literals, no native provider receives queries, no database connection is opened,
+and no SQL is executed.
+
 ## Example Input
 
 ```ts

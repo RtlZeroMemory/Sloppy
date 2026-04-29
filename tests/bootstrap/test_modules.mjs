@@ -197,3 +197,18 @@ function assertThrowsMessage(fn, expected) {
         /phase failed[\s\S]*broken[\s\S]*routes[\s\S]*route boom/,
     );
 }
+
+{
+    assertThrowsMessage(
+        () => Sloppy.module("broken").capabilities(async () => {}),
+        /capabilities phase callback must be synchronous/,
+    );
+
+    const builder = Sloppy.createBuilder();
+    builder.addModule(Sloppy.module("broken").capabilities(() => Promise.resolve()));
+
+    assertThrowsMessage(
+        () => builder.build(),
+        /phase failed[\s\S]*broken[\s\S]*capabilities[\s\S]*synchronous/,
+    );
+}

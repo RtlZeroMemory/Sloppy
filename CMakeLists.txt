@@ -28,6 +28,7 @@ set(
     README.md
     app.js
     bootstrap.manifest.json
+    data.js
     index.js
     results.js
     schema.js
@@ -588,6 +589,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.modules_basic.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_modules_basic_example.cmake")
+    add_test(
+        NAME examples.data_foundation.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_data_foundation_example.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(
@@ -597,6 +602,10 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(
             NAME bootstrap.stdlib.modules
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_modules.mjs")
+        add_test(
+            NAME bootstrap.stdlib.data_foundation
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_data_foundation.mjs")
     endif()
 
     if(CARGO_EXECUTABLE)

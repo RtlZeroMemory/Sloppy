@@ -8,6 +8,7 @@ const LOG_LEVEL_RANK = Object.freeze({
 const MEMORY_SINK_STATE = new WeakMap();
 const MODULE_STATE = new WeakMap();
 const MODULE_NAME_PATTERN = /^[a-z][a-z0-9.-]*$/u;
+const DATABASE_ACCESS_MODES = Object.freeze(["read", "readwrite"]);
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -36,6 +37,26 @@ function validateServiceToken(token) {
     }
 }
 
+function validateCapabilityToken(token) {
+    if (typeof token !== "string" || token.length === 0) {
+        throw new TypeError("Sloppy capability token must be a non-empty string.");
+    }
+}
+
+function validateDatabaseCapabilityOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy database capability options must be a plain object.");
+    }
+
+    if (typeof options.provider !== "string" || options.provider.length === 0) {
+        throw new TypeError("Sloppy database capability provider must be a non-empty string.");
+    }
+
+    if (!DATABASE_ACCESS_MODES.includes(options.access)) {
+        throw new TypeError("Sloppy database capability access must be read or readwrite.");
+    }
+}
+
 function validateModuleName(name) {
     if (typeof name !== "string" || name.length === 0) {
         throw new TypeError("Sloppy module name must be a non-empty string.");
@@ -57,6 +78,10 @@ function validateModuleMetadataKey(key) {
 function validateModulePhaseCallback(callback, phase) {
     if (typeof callback !== "function") {
         throw new TypeError(`Sloppy module ${phase} phase callback must be a function.`);
+    }
+
+    if (callback.constructor?.name === "AsyncFunction") {
+        throw new TypeError(`Sloppy module ${phase} phase callback must be synchronous.`);
     }
 }
 
@@ -152,6 +177,7 @@ function createModule(name) {
     const state = {
         name,
         dependencies: [],
+        capabilityCallbacks: [],
         serviceCallbacks: [],
         routeCallbacks: [],
         metadata: Object.create(null),
@@ -194,6 +220,13 @@ function createModule(name) {
             return module;
         },
 
+        capabilities(callback) {
+            assertMutable();
+            validateModulePhaseCallback(callback, "capabilities");
+            state.capabilityCallbacks.push(callback);
+            return module;
+        },
+
         routes(callback) {
             assertMutable();
             validateModulePhaseCallback(callback, "routes");
@@ -212,6 +245,7 @@ function createModule(name) {
             return Object.freeze({
                 name: state.name,
                 dependencies: Object.freeze([...state.dependencies]),
+                capabilities: state.capabilityCallbacks.length,
                 services: state.serviceCallbacks.length,
                 routes: state.routeCallbacks.length,
                 metadata: snapshotModuleMetadata(state.metadata),
@@ -383,6 +417,132 @@ function createLogger(snapshot) {
     });
 }
 
+function snapshotCapability(capability) {
+    return Object.freeze({
+        token: capability.token,
+        kind: capability.kind,
+        provider: capability.provider,
+        access: capability.access,
+        module: capability.module,
+        metadata: Object.freeze({ ...capability.metadata }),
+    });
+}
+
+function createCapabilityRegistry(guard) {
+    const capabilities = new Map();
+    let currentModule = null;
+
+    function addCapability(token, capability) {
+        guard.assertMutable();
+        validateCapabilityToken(token);
+
+        if (capabilities.has(token)) {
+            throw new Error(`sloppy: capability token already declared
+
+Token:
+  ${token}
+
+Fix:
+  Declare each capability token once, or choose a more specific token such as 'data.main'.`);
+        }
+
+        capabilities.set(token, {
+            ...capability,
+            token,
+            module: currentModule,
+        });
+
+        return registry;
+    }
+
+    const registry = {
+        addDatabase(token, options) {
+            validateDatabaseCapabilityOptions(options);
+
+            return addCapability(token, {
+                kind: "database",
+                provider: options.provider,
+                access: options.access,
+                metadata: { ...options },
+            });
+        },
+
+        has(token) {
+            validateCapabilityToken(token);
+            return capabilities.has(token);
+        },
+
+        get(token) {
+            validateCapabilityToken(token);
+
+            if (!capabilities.has(token)) {
+                throw new Error(`sloppy: capability token is not declared
+
+Token:
+  ${token}
+
+Fix:
+  Add builder.capabilities.addDatabase(...) or a module .capabilities(...) declaration before build().`);
+            }
+
+            return snapshotCapability(capabilities.get(token));
+        },
+
+        list() {
+            return Object.freeze(Array.from(capabilities.values(), snapshotCapability));
+        },
+
+        __snapshot() {
+            return new Map(Array.from(capabilities.entries(), ([token, capability]) => [
+                token,
+                { ...capability, metadata: { ...capability.metadata } },
+            ]));
+        },
+
+        __runInModule(moduleName, callback) {
+            const previousModule = currentModule;
+            currentModule = moduleName;
+
+            try {
+                return callback(registry);
+            } finally {
+                currentModule = previousModule;
+            }
+        },
+    };
+
+    return Object.freeze(registry);
+}
+
+function createCapabilityProvider(capabilitySnapshot) {
+    return Object.freeze({
+        has(token) {
+            validateCapabilityToken(token);
+            return capabilitySnapshot.has(token);
+        },
+
+        get(token) {
+            validateCapabilityToken(token);
+
+            if (!capabilitySnapshot.has(token)) {
+                throw new Error(`sloppy: capability token is not declared
+
+Token:
+  ${token}
+
+Fix:
+  Check app.capabilities.list() or declare the capability before build().`);
+            }
+
+            return snapshotCapability(capabilitySnapshot.get(token));
+        },
+
+        list() {
+            return Object.freeze(Array.from(capabilitySnapshot.values(), snapshotCapability));
+        },
+    });
+}
+
 function createServicesBuilder(guard) {
     const registrations = new Map();
     let currentModule = null;
@@ -449,7 +609,7 @@ function createServicesBuilder(guard) {
     return Object.freeze(services);
 }
 
-function createServiceProvider(registrations) {
+function createServiceProvider(registrations, capabilities) {
     function resolve(scope, token) {
         validateServiceToken(token);
 
@@ -473,6 +633,7 @@ function createServiceProvider(registrations) {
 
     function createScope() {
         const scope = Object.freeze({
+            capabilities,
             get(token) {
                 return resolve(scope, token);
             },
@@ -495,6 +656,7 @@ function createServiceProvider(registrations) {
 function createHandlerContext(host) {
     return Object.freeze({
         services: host.services.createScope(),
+        capabilities: host.capabilities,
         config: host.config,
         log: host.log,
         route: Object.freeze({}),
@@ -724,6 +886,7 @@ function createApp(host) {
         config: host.config,
         log: host.log,
         services: host.services,
+        capabilities: host.capabilities,
 
         mapGet(pattern, optionsOrHandler, maybeHandler) {
             return registerRoute(
@@ -768,6 +931,7 @@ function createApp(host) {
         __getPlanContributions() {
             return Object.freeze({
                 modules: moduleDebugRef.modules,
+                capabilities: host.capabilities.list(),
             });
         },
 
@@ -882,7 +1046,13 @@ function resolveModuleOrder(moduleStates) {
 
 function runModulePhase(state, phase, callback, target) {
     try {
-        return callback(target);
+        const result = callback(target);
+
+        if (result !== null && typeof result === "object" && typeof result.then === "function") {
+            throw new TypeError(`Sloppy module ${phase} phase callback must be synchronous.`);
+        }
+
+        return result;
     } catch (error) {
         throw createModulePhaseError(state.name, phase, error);
     }
@@ -901,6 +1071,28 @@ function buildServiceContributions(serviceSnapshot) {
         }
 
         byModule.get(registration.module).push(token);
+    }
+
+    for (const tokens of byModule.values()) {
+        tokens.sort();
+    }
+
+    return byModule;
+}
+
+function buildCapabilityContributions(capabilitySnapshot) {
+    const byModule = new Map();
+
+    for (const capability of capabilitySnapshot.values()) {
+        if (capability.module === null) {
+            continue;
+        }
+
+        if (!byModule.has(capability.module)) {
+            byModule.set(capability.module, []);
+        }
+
+        byModule.get(capability.module).push(capability.token);
     }
 
     for (const tokens of byModule.values()) {
@@ -930,14 +1122,20 @@ function buildRouteContributions(routes) {
     return byModule;
 }
 
-function createModuleDebugEntries(orderedModules, serviceSnapshot, routes) {
+function createModuleDebugEntries(orderedModules, capabilitySnapshot, serviceSnapshot, routes) {
+    const capabilitiesByModule = buildCapabilityContributions(capabilitySnapshot);
     const servicesByModule = buildServiceContributions(serviceSnapshot);
     const routesByModule = buildRouteContributions(routes);
 
     return Object.freeze(orderedModules.map((state, index) => {
+        const capabilities = Object.freeze([...(capabilitiesByModule.get(state.name) ?? [])]);
         const services = Object.freeze([...(servicesByModule.get(state.name) ?? [])]);
         const routeContributions = Object.freeze([...(routesByModule.get(state.name) ?? [])]);
         const contributes = [];
+
+        if (capabilities.length > 0) {
+            contributes.push("capabilities");
+        }
 
         if (services.length > 0) {
             contributes.push("services");
@@ -956,6 +1154,7 @@ function createModuleDebugEntries(orderedModules, serviceSnapshot, routes) {
             dependencies: Object.freeze([...state.dependencies]),
             order: index,
             contributes: Object.freeze(contributes),
+            capabilities,
             services,
             routes: routeContributions,
             metadata: snapshotModuleMetadata(state.metadata),
@@ -967,6 +1166,7 @@ function createBuilder() {
     const guard = createMutationGuard("builder");
     const config = createConfigBuilder(guard);
     const logging = createLoggingBuilder(guard);
+    const capabilities = createCapabilityRegistry(guard);
     const services = createServicesBuilder(guard);
     const modules = [];
     const moduleNames = new Set();
@@ -974,6 +1174,7 @@ function createBuilder() {
     const builder = {
         config,
         logging,
+        capabilities,
         services,
 
         addModule(module) {
@@ -997,6 +1198,14 @@ function createBuilder() {
             const orderedModules = resolveModuleOrder(modules);
 
             for (const state of orderedModules) {
+                for (const callback of state.capabilityCallbacks) {
+                    capabilities.__runInModule(state.name, (capabilityRegistry) => {
+                        runModulePhase(state, "capabilities", callback, capabilityRegistry);
+                    });
+                }
+            }
+
+            for (const state of orderedModules) {
                 for (const callback of state.serviceCallbacks) {
                     services.__runInModule(state.name, (servicesBuilder) => {
                         runModulePhase(state, "services", callback, servicesBuilder);
@@ -1004,6 +1213,7 @@ function createBuilder() {
                 }
             }
 
+            const capabilitySnapshot = capabilities.__snapshot();
             const serviceSnapshot = services.__snapshot();
 
             guard.freeze();
@@ -1015,7 +1225,8 @@ function createBuilder() {
             const app = createApp(Object.freeze({
                 config: createConfigProvider(config.__snapshot()),
                 log: createLogger(logging.__snapshot()),
-                services: createServiceProvider(serviceSnapshot),
+                capabilities: createCapabilityProvider(capabilitySnapshot),
+                services: createServiceProvider(serviceSnapshot, createCapabilityProvider(capabilitySnapshot)),
                 moduleDebugRef,
             }));
 
@@ -1029,6 +1240,7 @@ function createBuilder() {
 
             moduleDebugRef.modules = createModuleDebugEntries(
                 orderedModules,
+                capabilitySnapshot,
                 serviceSnapshot,
                 app.__getRoutes(),
             );

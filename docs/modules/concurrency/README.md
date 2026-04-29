@@ -213,6 +213,11 @@ V8 Promise integration, V8 microtasks, request-scope retention, cancellation cle
 thread-safe posting, real libuv/backend behavior, and no-V8-entry worker tests remain
 future work.
 
+EPIC-15 adds only JavaScript fake data-provider transaction tests. Those tests verify the
+public callback contract (commit on resolve, rollback on throw/reject, no nested
+transactions, no use after close) without using `SlLoop`, worker pools, native resources,
+database connections, or SQL execution.
+
 ## Source Docs
 
 - `docs/concurrency.md`;

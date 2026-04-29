@@ -42,6 +42,9 @@ validator, or package-manager behavior.
 
 TASK 14 exposes bootstrap module debug metadata through `app.__debug().modules`, but this
 is not parsed by the native plan loader and is not emitted as `app.plan.json`.
+EPIC-15 exposes bootstrap capability debug metadata through
+`app.__getPlanContributions().capabilities`, but this is not parsed by the native plan
+loader and is not emitted as `app.plan.json`.
 
 ## Public/Internal API
 
