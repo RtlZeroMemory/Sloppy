@@ -57,6 +57,14 @@ The compiler MVP example lives at `examples/compiler-hello/` and uses the suppor
 cargo run --manifest-path compiler/Cargo.toml -- build examples/compiler-hello/app.js --out .sloppy
 ```
 
+The same supported MAIN hello path can be exercised with the installed/fronted `sloppyc`
+binary when it is available:
+
+```powershell
+sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
+sloppy run --artifacts .sloppy-main-smoke --once GET /
+```
+
 That command emits `.sloppy/app.plan.json`, `.sloppy/app.js`, and `.sloppy/app.js.map`.
 With a V8-enabled build, those artifacts can be served by the dev-only run MVP:
 

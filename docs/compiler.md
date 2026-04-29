@@ -36,6 +36,11 @@ shape, and emits deterministic artifacts:
 - `app.js`;
 - `app.js.map`.
 
+MAIN-01 uses `examples/compiler-hello/app.js` as the canonical artifact-path verification
+fixture. Repeated builds of that source must produce byte-identical `app.plan.json`,
+`app.js`, and `app.js.map` output with stable handler IDs and without absolute local paths,
+timestamps, random IDs, or checkout-specific path text.
+
 If EPIC-21 GitHub issues are absent, this implementation follows
 `docs/project/next-roadmap.md` as the source of truth for the post-roadmap plan.
 

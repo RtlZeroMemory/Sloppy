@@ -46,13 +46,20 @@ Current tests:
 - CTest process-level golden tests for `sloppy routes`, `sloppy doctor`, `sloppy audit`,
   and `sloppy openapi` over deterministic metadata fixtures under `tests/fixtures/cli/`;
 - CTest failure smoke for missing CLI metadata paths;
-- CTest default process tests for `sloppy run` help text, missing artifacts, malformed
-  plans, source-input handoff deferral, and the clear V8-disabled failure message;
+- CTest default process tests for `sloppy run` help text, missing artifacts, missing
+  `app.plan.json`, malformed plans, source-input handoff deferral, and the clear
+  V8-disabled failure message;
+- CTest docs/static check `docs.main_contract`, which verifies the MAIN hello command
+  sequence, evidence caveats, source-input deferral, V8-gated wording, and Node/npm/package
+  non-goals remain present in the source docs;
 - CTest smoke for `sloppyc --version`;
 - CTest `sloppyc.compiler_extraction`, which runs the Rust compiler test suite covering
   the EPIC-21 compiler extraction fixtures;
 - Rust compiler golden tests for `hello-mapget`, `builder-mapget`, and `grouped-route`
   deterministic `app.plan.json` and `app.js` outputs;
+- Rust compiler repeatability coverage for `examples/compiler-hello/app.js`, which builds
+  the canonical MAIN fixture twice and verifies byte-identical artifacts, stable handler
+  IDs, and no checkout-local path or volatility marker text;
 - Rust compiler diagnostic fixture tests for unsupported dynamic route patterns, missing
   default app export, and multiple app objects;
 - CTest smoke for `sloppy_bench --list` and `sloppy_bench --smoke --format json`, which

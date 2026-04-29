@@ -82,6 +82,57 @@ Acceptance criteria:
 - default non-V8 behavior is clear and separately reported;
 - no unsupported public example is promoted as executable.
 
+### MAIN-01 Supported Hello Contract
+
+MAIN supports exactly the existing executable artifact workflow, using
+`examples/compiler-hello/app.js` as the canonical source fixture:
+
+```js
+import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+
+app.mapGet("/", () => Results.text("Hello from Sloppy"));
+
+export default app;
+```
+
+The supported command sequence is:
+
+```powershell
+sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
+sloppy run --artifacts .sloppy-main-smoke --once GET /
+```
+
+The first command emits deterministic artifacts under the requested output directory:
+
+```text
+.sloppy-main-smoke/
+  app.plan.json
+  app.js
+  app.js.map
+```
+
+`app.plan.json` targets V8, declares bundle path `app.js`, source map path `app.js.map`,
+assigns stable handler ID `1`, and records one `GET /` route bound to handler ID `1`.
+`app.js` is the generated classic-script artifact. It reads `Results` from the
+runtime-loaded classic bootstrap asset and registers handler ID `1` through
+`__sloppy_register_handler`. `app.js.map` remains a deterministic placeholder.
+
+The expected `--once GET /` response body is:
+
+```text
+Hello from Sloppy
+```
+
+Runtime execution requires a V8-enabled build and a configured bootstrap stdlib root.
+Default non-V8 builds must fail clearly with the V8-required diagnostic; they prove
+unsupported-path behavior, not positive V8 execution. Source-input `sloppy run <source.js>`
+is deferred; MAIN runs artifact directories only. Dynamic route patterns, arbitrary bare
+imports such as `express`, `fs`, or `node:fs`, package resolution, npm/package-manager
+behavior, and Node compatibility are unsupported and must fail or remain documented as
+deferred. Node/npm/package-manager behavior is not part of MAIN.
+
 Risk: high because V8 validation is environment-gated.
 
 Suggested PR grouping: one bounded verification/docs PR.

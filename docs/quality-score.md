@@ -11,6 +11,10 @@ gates, and default provider tests are not live database tests. Cross-platform de
 proves the non-V8 path across hosted Windows, Linux, and macOS runners; it still does not
 prove optional SDK/service paths.
 
+MAIN-01 evidence is tracked separately in `docs/project/main-evidence.md`. Default gates
+prove compiler determinism and clear non-V8 failure behavior; only a V8-enabled run of
+`sloppy run --artifacts .sloppy-main-smoke --once GET /` proves the executable hello path.
+
 | Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
 | --- | --- | --- | --- | --- | --- |
 | Native C safety | Yellow | Core primitives, checked math, arena, diagnostics, plan parser, HTTP parser, providers, and boundary-oriented tests. | CTest, warnings, format, lint, C standards scanner, platform scanner. | Sanitizers, fuzzing, allocator/resource misuse checks, and deeper cleanup/leak checks are incomplete. | Add sanitizer/fuzz gates, resource table tests, allocator checks, and scanner fixtures. |

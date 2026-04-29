@@ -1739,4 +1739,52 @@ export default app;
 
         fs::remove_dir_all(&out_dir).expect("test output directory should be removable");
     }
+
+    #[test]
+    fn compiler_hello_artifacts_are_repeatable_and_path_clean() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let input = root.join("../examples/compiler-hello/app.js");
+        let base = std::env::temp_dir().join(format!(
+            "sloppyc-main-determinism-test-{}",
+            std::process::id()
+        ));
+        let first = base.join("first");
+        let second = base.join("second");
+
+        if base.exists() {
+            fs::remove_dir_all(&base).expect("stale test output directory should be removable");
+        }
+
+        super::build(&input, &first).expect("first build should succeed");
+        super::build(&input, &second).expect("second build should succeed");
+
+        for artifact in ["app.plan.json", "app.js", "app.js.map"] {
+            let first_text =
+                fs::read_to_string(first.join(artifact)).expect("first artifact should exist");
+            let second_text =
+                fs::read_to_string(second.join(artifact)).expect("second artifact should exist");
+            assert_eq!(first_text, second_text, "{artifact} should be repeatable");
+
+            assert!(
+                !first_text.contains(env!("CARGO_MANIFEST_DIR")),
+                "{artifact} must not contain the local compiler manifest path"
+            );
+            assert!(
+                !first_text.contains("\\Slop\\") && !first_text.contains("/Slop/"),
+                "{artifact} must not contain checkout-local paths"
+            );
+            assert!(
+                !first_text.contains("timestamp") && !first_text.contains("random"),
+                "{artifact} must not contain volatility marker text"
+            );
+        }
+
+        let plan = fs::read_to_string(first.join("app.plan.json")).expect("plan should exist");
+        assert!(
+            plan.contains("\"id\": 1") && plan.contains("\"handlerId\": 1"),
+            "MAIN hello handler IDs must remain stable"
+        );
+
+        fs::remove_dir_all(&base).expect("test output directory should be removable");
+    }
 }

@@ -71,6 +71,13 @@ bootstrap root compiled into the binary. Package layouts stage the same assets u
 `lib/sloppy/bootstrap/sloppy`; executable-relative package lookup is still deferred, so
 package smoke tests may pass that directory explicitly.
 
+Source input handoff to `sloppyc` is deferred. MAIN supports the two-step artifact path:
+
+```powershell
+sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
+sloppy run --artifacts .sloppy-main-smoke --once GET /
+```
+
 Default server binding is `127.0.0.1:5173`. The server is single-process, dev-only, and
 intentionally tiny: HTTP/1 request heads only, GET dispatch only, route/query/request
 context only, no TLS, no body parsing, no headers in handler context, no streaming, no
