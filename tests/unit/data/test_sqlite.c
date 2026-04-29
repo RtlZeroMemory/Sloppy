@@ -404,6 +404,131 @@ static int test_sql_diagnostics(void)
     return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 64;
 }
 
+static int test_trailing_sql_rejected(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteExecResult exec_result = {0};
+    SlSqliteResult query_result = {0};
+    SlSqliteQueryOneResult one = {0};
+    SlDiag diag = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 80;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 81;
+    }
+
+    status = sl_sqlite_exec(
+        &arena, &connection,
+        sl_str_from_cstr("create table tail_test (value integer); create table ignored (value)"),
+        NULL, 0U, &exec_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: exec"))
+    {
+        return 82;
+    }
+
+    status = sl_sqlite_query(&arena, &connection, sl_str_from_cstr("select 1; invalid trailing"),
+                             NULL, 0U, NULL, &query_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: query"))
+    {
+        return 83;
+    }
+
+    status = sl_sqlite_query_one(&arena, &connection, sl_str_from_cstr("select 1; select 2"), NULL,
+                                 0U, &one, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: queryOne"))
+    {
+        return 84;
+    }
+
+    status = sl_sqlite_query_one(&arena, &connection, sl_str_from_cstr("select 1 \n\t"), NULL, 0U,
+                                 &one, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found) {
+        return 85;
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 86;
+}
+
+static int test_parameter_arity_mismatch_rejected(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteTransaction tx = {0};
+    SlSqliteParam param = int_param(7);
+    SlSqliteExecResult exec_result = {0};
+    SlSqliteResult query_result = {0};
+    SlSqliteQueryOneResult one = {0};
+    SlDiag diag = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 90;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 91;
+    }
+
+    status = sl_sqlite_query_one(&arena, &connection, sl_str_from_cstr("select ?"), NULL, 0U, &one,
+                                 &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: queryOne"))
+    {
+        return 92;
+    }
+
+    status = sl_sqlite_exec(&arena, &connection, sl_str_from_cstr("select 1"), &param, 1U,
+                            &exec_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: exec"))
+    {
+        return 93;
+    }
+
+    status = sl_sqlite_transaction_begin(&arena, &connection, &tx, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 94;
+    }
+
+    status = sl_sqlite_transaction_exec(&arena, &tx, sl_str_from_cstr("select ?"), NULL, 0U,
+                                        &exec_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: exec"))
+    {
+        return 95;
+    }
+
+    status = sl_sqlite_transaction_query(&arena, &tx, sl_str_from_cstr("select 1"), &param, 1U,
+                                         NULL, &query_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: query"))
+    {
+        return 96;
+    }
+
+    status = sl_sqlite_transaction_query_one(&arena, &tx, sl_str_from_cstr("select ?"), NULL, 0U,
+                                             &one, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "operation: queryOne"))
+    {
+        return 97;
+    }
+
+    if (expect_status(sl_sqlite_transaction_rollback(&arena, &tx, NULL), SL_STATUS_OK) != 0) {
+        return 98;
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 99;
+}
+
 static int test_invalid_open_options(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -457,6 +582,16 @@ int main(void)
     }
 
     result = test_sql_diagnostics();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_trailing_sql_rejected();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_parameter_arity_mismatch_rejected();
     if (result != 0) {
         return result;
     }

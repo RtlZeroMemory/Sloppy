@@ -136,10 +136,17 @@ static SlStatus sl_sqlite_invalid_state_diag(SlArena* arena, SlDiag* out_diag, S
         operation, NULL, sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
 }
 
+static bool sl_sqlite_is_ascii_space(char value)
+{
+    return value == ' ' || value == '\t' || value == '\n' || value == '\r' || value == '\v' ||
+           value == '\f';
+}
+
 static SlStatus sl_sqlite_bind_params(sqlite3_stmt* stmt, const SlSqliteParam* params,
                                       size_t param_count, SlArena* arena, SlDiag* out_diag,
                                       SlStr operation, SlStr sql)
 {
+    const int bind_count = sqlite3_bind_parameter_count(stmt);
     size_t index = 0U;
     int rc = SQLITE_OK;
 
@@ -149,6 +156,15 @@ static SlStatus sl_sqlite_bind_params(sqlite3_stmt* stmt, const SlSqliteParam* p
 
     if (param_count > (size_t)INT_MAX) {
         return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+
+    if (bind_count < 0 || (size_t)bind_count != param_count) {
+        return sl_sqlite_diag(
+            arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
+            sl_sqlite_literal("sqlite provider parameter count mismatch",
+                              sizeof("sqlite provider parameter count mismatch") - 1U),
+            operation, sqlite3_errmsg(sqlite3_db_handle(stmt)), sql,
+            sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
 
     for (index = 0U; index < param_count; index += 1U) {
@@ -206,6 +222,8 @@ static SlStatus sl_sqlite_prepare(SlArena* arena, SlSqliteConnection* connection
 {
     sqlite3* db = sl_sqlite_db(connection);
     sqlite3_stmt* stmt = NULL;
+    const char* tail = NULL;
+    const char* end = NULL;
     int rc = SQLITE_OK;
 
     if (out_stmt == NULL) {
@@ -222,7 +240,7 @@ static SlStatus sl_sqlite_prepare(SlArena* arena, SlSqliteConnection* connection
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    rc = sqlite3_prepare_v2(db, sql.ptr, (int)sql.length, &stmt, NULL);
+    rc = sqlite3_prepare_v2(db, sql.ptr, (int)sql.length, &stmt, &tail);
     if (rc != SQLITE_OK) {
         return sl_sqlite_diag(arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
                               sl_sqlite_literal("sqlite provider prepare failed",
@@ -236,6 +254,19 @@ static SlStatus sl_sqlite_prepare(SlArena* arena, SlSqliteConnection* connection
             arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
             sl_sqlite_literal("sqlite provider prepare produced no statement",
                               sizeof("sqlite provider prepare produced no statement") - 1U),
+            operation, sqlite3_errmsg(db), sql, sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+    }
+
+    end = sql.ptr + sql.length;
+    while (tail != NULL && tail < end && sl_sqlite_is_ascii_space(*tail)) {
+        tail += 1;
+    }
+    if (tail != NULL && tail < end) {
+        sqlite3_finalize(stmt);
+        return sl_sqlite_diag(
+            arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
+            sl_sqlite_literal("sqlite provider rejected trailing SQL",
+                              sizeof("sqlite provider rejected trailing SQL") - 1U),
             operation, sqlite3_errmsg(db), sql, sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
 
