@@ -26,7 +26,8 @@ This document covers:
 
 The current foundation/runtime-contract work still does not implement:
 
-- production V8 runtime startup with ESM module loading and bootstrap intrinsics;
+- production V8 runtime startup with true ESM module loading, arbitrary module graphs, and
+  broad bootstrap intrinsics;
 - a production HTTP server, request body parser, middleware pipeline, or full framework
   request/response model;
 - native app module execution from a compiler-emitted plan;
@@ -131,11 +132,13 @@ EPIC-21 adds the compiler extraction MVP for one tiny source file and emits dete
 `app.plan.json`, `app.js`, and placeholder source-map artifacts. EPIC-22 adds the first
 dev-only `sloppy run --artifacts` path. EPIC-23 extends that path so V8-enabled builds can
 load those artifacts, parse GET route metadata, materialize route/query/request context,
-start a tiny local libuv HTTP server or `--once` synthetic dispatch, call handlers through
-the runtime-contract path, and serialize supported text/JSON/empty/problem result
-descriptors through the native response writer. Source input handoff, production server
-hardening, request bodies, middleware, hot reload, package-manager behavior, and Node
-compatibility remain out of scope.
+start a tiny local libuv HTTP server or `--once` synthetic dispatch, and serialize supported
+text/JSON/empty/problem result descriptors through the native response writer. EPIC-24
+adds the classic bootstrap runtime asset load, the compiler rewrite for the public
+`"sloppy"` import, the internal `__sloppy_register_handler(id, handler)` intrinsic, and
+registered-handler validation before dispatch. Source input handoff, true ESM module
+loading, production server hardening, request bodies, middleware, hot reload,
+package-manager behavior, npm resolution, and Node compatibility remain out of scope.
 
 EPIC-26 adds default non-V8 CI gates for Windows clang-cl, Linux clang/gcc, and macOS
 clang, plus optional/manual V8 validation and explicit provider gate reporting. These jobs
@@ -145,9 +148,9 @@ reported separately.
 
 ## Future Phase
 
-The next implementation batch should connect the remaining bootstrap and productionization
-pieces around the smallest compiler-to-runtime path: V8 module/bootstrap loading,
-capability enforcement, package hardening, and public alpha docs. See
+The next implementation batch should connect the remaining productionization pieces around
+the smallest compiler-to-runtime path: package/runtime hardening, cross-platform CI,
+capability enforcement, source-input handoff, and public alpha docs. See
 `docs/project/next-roadmap.md`.
 
 ## System Shape
@@ -159,8 +162,8 @@ TypeScript source
   -> sloppyc emits app.js, app.js.map, app.plan.json
   -> C runtime loads and validates app.plan.json
   -> C runtime builds native host graph
-  -> C++ V8 bridge loads app.js
-  -> JS bootstrap registers handlers
+  -> C++ V8 bridge loads classic bootstrap runtime and app.js
+  -> generated JS registers handlers through an internal intrinsic
   -> C runtime dispatches work by numeric handler ID
 ```
 

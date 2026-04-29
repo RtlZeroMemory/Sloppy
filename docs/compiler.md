@@ -22,8 +22,8 @@ The compiler extraction MVP does not:
 - assume Node compatibility;
 - execute application JavaScript during compilation;
 - extract services, data providers, modules, middleware, or validation schemas;
-- implement source-input handoff for `sloppy run`, `app.run`, or V8 bootstrap module
-  loading;
+- implement source-input handoff for `sloppy run` or `app.run`;
+- implement Node/npm package resolution, arbitrary import graphs, or runtime module loading;
 - expose Rust/C FFI.
 
 ## Current Phase
@@ -93,8 +93,9 @@ MVP phases:
 2. validate the supported import and app factory shape;
 3. extract literal `mapGet` routes and handlers;
 4. assign stable numeric handler IDs in source order;
-5. emit `app.plan.json`, `app.js`, and a placeholder `app.js.map`;
-6. produce structured compiler diagnostics for unsupported syntax.
+5. rewrite the public `"sloppy"` import into the internal bootstrap runtime handoff;
+6. emit `app.plan.json`, `app.js`, and a placeholder `app.js.map`;
+7. produce structured compiler diagnostics for unsupported syntax.
 
 ## App Graph Extraction
 
@@ -113,12 +114,16 @@ The compiler extraction MVP extracts:
 
 Extraction must be deterministic. Import order must not silently decide module ordering.
 
-Unsupported input fails with diagnostics. The MVP rejects dynamic route strings, computed
-method names, multiple app objects, missing default export, unsupported handler shapes,
-handlers with more than one parameter, destructured/default/rest handler parameters,
-handlers that close over source-file bindings, TypeScript input or TypeScript-only handler
-syntax, dynamic imports, package resolution, broad module graphs, and top-level control
-flow.
+Unsupported input fails with diagnostics. The MVP accepts only
+`import { Sloppy, Results } from "sloppy";` as a public import and rejects arbitrary bare
+imports such as `"express"`, `"fs"`, and `"node:fs"` with
+`SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`. The compiler does not implement Node package
+resolution, npm resolution, import maps, dynamic imports, relative source module graphs, or
+package-manager behavior. It also rejects dynamic route strings, computed method names,
+multiple app objects, missing default export, unsupported handler shapes, handlers with
+more than one parameter, destructured/default/rest handler parameters, handlers that close
+over source-file bindings, TypeScript input or TypeScript-only handler syntax, broad module
+graphs, and top-level control flow.
 
 ## Static Mode
 
@@ -178,10 +183,14 @@ watching remain future work, and runtime code must not invent a separate discove
 
 The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is staged for
 runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler MVP recognizes only
-the public bare import `import { Sloppy, Results } from "sloppy";` as input syntax. It does
-not emit or load stdlib assets; generated `app.js` includes a tiny compiler-owned
-`Results.text/json/ok/noContent` shim that returns descriptor objects for the EPIC-23
-response conversion path until EPIC-24 owns real bootstrap module loading.
+the public bare import `import { Sloppy, Results } from "sloppy";` as input syntax. EPIC-24
+rewrites that import away in generated `app.js`: the artifact reads `Results` from
+`globalThis.__sloppy_runtime`, which is installed by the runtime-loaded bootstrap asset,
+assigns each generated handler to its legacy `globalThis.__sloppy_handler_<id>` export name,
+and registers that same function through `__sloppy_register_handler(handlerId, handler)`.
+The legacy global keeps the no-context runtime-contract ABI explicit while the registered
+handler table is the EPIC-24 dispatch path. The compiler does not load stdlib assets itself
+and does not imply Node or npm compatibility.
 `examples/hello/app.js` therefore uses a relative source import from
 `stdlib/sloppy/index.js`; that example remains a bootstrap API-shape example. The
 compiler-owned runnable artifact example is `examples/compiler-hello/`.

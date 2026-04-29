@@ -8,6 +8,7 @@
     "sloppy/results.js",
     "sloppy/schema.js",
     "sloppy/app.js",
-    "sloppy/internal/intrinsics.js"
+    "sloppy/internal/intrinsics.js",
+    "sloppy/internal/runtime-classic.js"
   ]
 }

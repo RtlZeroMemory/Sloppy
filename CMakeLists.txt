@@ -41,7 +41,8 @@ set(
     index.js
     results.js
     schema.js
-    internal/intrinsics.js)
+    internal/intrinsics.js
+    internal/runtime-classic.js)
 
 find_program(CARGO_EXECUTABLE cargo)
 find_program(CLANG_FORMAT_EXECUTABLE clang-format)
@@ -389,6 +390,7 @@ target_link_libraries(sloppy PRIVATE sloppy_core)
 target_link_libraries(sloppy PRIVATE yyjson::yyjson ${SLOPPY_LIBUV_TARGET})
 target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy PRIVATE c_std_17)
+target_compile_definitions(sloppy PRIVATE SLOPPY_BOOTSTRAP_BUILD_DIR="${SLOPPY_BOOTSTRAP_BUILD_DIR}")
 
 add_executable(
     sloppy_bench
@@ -805,6 +807,42 @@ if(SLOPPY_ENABLE_TESTS)
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(sloppy.run.once_invalid_descriptor
                              PROPERTIES PASS_REGULAR_EXPRESSION "500 Internal Server Error")
+        add_test(
+            NAME sloppy.run.missing_stdlib_asset
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--stdlib;tests/fixtures/run/missing;--once;GET;/"
+                "-DSLOPPY_EXPECTED_ERROR=stdlib asset missing" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+        set_tests_properties(sloppy.run.missing_stdlib_asset
+                             PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        add_test(
+            NAME sloppy.run.missing_app_module
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/missing-app-module;--once;GET;/"
+                "-DSLOPPY_EXPECTED_ERROR=artifact path not found" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+        set_tests_properties(sloppy.run.missing_app_module
+                             PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        add_test(
+            NAME sloppy.run.missing_handler_registration
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/missing_handler;--once;GET;/"
+                "-DSLOPPY_EXPECTED_ERROR=unregistered handler ID" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+        set_tests_properties(sloppy.run.missing_handler_registration
+                             PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        add_test(
+            NAME sloppy.run.duplicate_handler_registration
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/duplicate_handler;--once;GET;/"
+                "-DSLOPPY_EXPECTED_ERROR=duplicate handler ID" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+        set_tests_properties(sloppy.run.duplicate_handler_registration
+                             PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 
     add_test(

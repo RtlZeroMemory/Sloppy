@@ -159,6 +159,7 @@ SlStatus sl_runtime_contract_call_handler_with_context(SlEngine* engine, SlArena
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
-    return sl_engine_call_function_with_context(engine, arena, handler->export_name,
-                                                request_context, out_result, out_diag);
+    (void)handler;
+    return sl_engine_call_registered_handler_with_context(engine, arena, handler_id,
+                                                          request_context, out_result, out_diag);
 }

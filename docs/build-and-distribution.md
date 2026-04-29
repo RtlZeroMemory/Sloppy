@@ -38,8 +38,10 @@ The packaging foundation does not:
 ## Current Phase
 
 The project builds the `sloppy` runtime CLI and Rust `sloppyc` compiler CLI. EPIC-21 added
-the compiler extraction MVP, and EPIC-22 added the dev-only `sloppy run --artifacts` path
-for V8-enabled builds. V8 is still not required for default builds.
+the compiler extraction MVP, EPIC-22 added the dev-only `sloppy run --artifacts` path for
+V8-enabled builds, EPIC-23 added the request/response boundary, and EPIC-24 loads the
+classic bootstrap runtime asset plus generated handler registrations in that V8-gated
+path. V8 is still not required for default builds.
 
 EPIC-20 also builds `sloppy_bench`, a native benchmark executable for manual performance
 validation. It is not installed or packaged as a user-facing CLI surface.
@@ -178,9 +180,10 @@ Contributor path:
 - fetch through `tools/windows/fetch-v8.ps1` later;
 - validate an existing SDK root with
   `.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>`;
-- set `SLOPPY_V8_ROOT` to SDK root;
-- configure explicitly with `-DSLOPPY_ENABLE_V8=ON -DSLOPPY_V8_ROOT=<sdk-root>` or
-  `-DSLOPPY_ENGINE=v8 -DSLOPPY_V8_ROOT=<sdk-root>`;
+- configure through the Windows wrapper with
+  `.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root <sdk-root>`;
+- use direct CMake only from a shell that already has MSVC, the Windows SDK, and vcpkg
+  configured;
 - do not build V8 locally by default.
 
 Maintainer path:
@@ -214,6 +217,11 @@ Current SDK layout:
 The current source SDK is a monolithic release build and should be consumed through the
 `windows-relwithdebinfo` preset. The default `windows-dev` Debug preset remains the normal
 non-V8 contributor path.
+
+The Windows `dev.ps1` wrapper is the supported local configure path. It imports the Visual
+Studio C++ environment, injects the vcpkg toolchain on fresh configure, and recreates a
+preset build directory when a stale partial CMake cache was created without that toolchain.
+Use `-FreshConfigure` when a preset should be deliberately rebuilt from scratch.
 
 The CMake gate validates both SDK layout and `share/sloppy-v8-sdk.json` before creating
 `Sloppy::V8` as an imported interface target. The manifest must match the pinned V8
@@ -311,6 +319,13 @@ sloppy-<version>-<platform>-<arch>/
     # Windows packages also include required native runtime DLLs from vcpkg
   lib/
     sloppy/
+      bootstrap/
+        sloppy/
+          index.js
+          app.js
+          results.js
+          internal/runtime-classic.js
+          bootstrap.manifest.json
       stdlib/
         sloppy/
           index.js
@@ -341,6 +356,14 @@ TASK 11.A starts the bootstrap support-data layout. Source assets live in
 `<build>/lib/sloppy/bootstrap/sloppy/`, and CMake install places them under
 `<prefix>/lib/sloppy/bootstrap/sloppy/`. The copy is plain file staging: no Node, npm,
 bundler, transpiler, or package-manager metadata is involved.
+
+EPIC-24 makes the staged bootstrap root executable in V8-gated `sloppy run`. Build-tree
+executables use the staged `<build>/lib/sloppy/bootstrap/sloppy/` path compiled into the
+binary unless `--stdlib <dir>` is supplied. Packages stage the same bootstrap root under
+`lib/sloppy/bootstrap/sloppy/`; executable-relative package lookup is deferred, so package
+smoke tests that execute V8 bootstrap behavior should pass that path explicitly. The
+runtime never reads stdlib assets from `.sdeps/`, npm, Node resolution, or the current
+working directory unless the caller explicitly passes a relative `--stdlib` path.
 
 EPIC-25 package staging copies the source-controlled stdlib assets into
 `lib/sloppy/stdlib/sloppy/` inside the archive. Windows packages also copy runtime DLLs

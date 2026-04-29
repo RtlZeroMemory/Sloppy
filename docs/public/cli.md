@@ -8,19 +8,20 @@ inspection, local readiness checks, audit findings, and OpenAPI skeleton generat
 Implemented commands:
 
 ```powershell
-sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]
-sloppy run --artifacts <dir> [--once METHOD TARGET]
+sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]
+           [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]
 sloppy routes --plan <path> [--format text|json]
 sloppy doctor [--plan <path>] [--format text|json]
 sloppy audit --plan <path> [--format text|json]
 sloppy openapi --plan <path> [--output <path>]
 ```
 
-`sloppy run` is a dev-only MVP that loads EPIC-21/23 artifacts, enters V8, dispatches GET
-routes, passes a minimal route/query/request context, converts supported `Results.*`
-descriptors, and writes HTTP/1.1 responses through the native response writer. It requires
-a V8-enabled build. Source input handoff to `sloppyc` is deferred; use `sloppyc build ...
---out <dir>` first, then run the emitted artifact directory.
+`sloppy run` is a dev-only MVP that loads EPIC-21/24 artifacts, enters V8, loads the
+classic bootstrap runtime asset, validates handler registration, dispatches GET routes,
+passes a minimal route/query/request context, converts supported `Results.*` descriptors,
+and writes HTTP/1.1 responses through the native response writer. It requires a V8-enabled
+build. Source input handoff to `sloppyc` is deferred; use `sloppyc build ... --out <dir>`
+first, then run the emitted artifact directory.
 
 The other commands inspect plan-compatible metadata JSON only. They do not compile apps,
 run handlers, start an HTTP server, enter V8, connect to live databases, or execute
@@ -43,6 +44,7 @@ Supported forms:
 
 ```powershell
 sloppy run --artifacts .sloppy
+sloppy run --artifacts .sloppy --stdlib build\windows-dev\lib\sloppy\bootstrap\sloppy
 sloppy run .sloppy --host 127.0.0.1 --port 5173
 sloppy run --artifacts .sloppy --once GET /
 ```
@@ -57,14 +59,23 @@ app.js.map   # optional for this MVP
 
 The command loads `app.plan.json` through the native Plan parser, reads the interim
 compiler-emitted `routes` metadata section, parses GET route patterns with the native route
-matcher, creates a V8 engine, evaluates `app.js` as the current classic-script artifact,
-and dispatches requests by numeric handler ID through the existing runtime-contract path.
+matcher, creates a V8 engine, loads `<stdlib-root>/internal/runtime-classic.js`, evaluates
+`app.js` as the current classic-script artifact, validates that all plan handler IDs were
+registered through `__sloppy_register_handler`, and dispatches requests by numeric handler
+ID through the runtime-contract path.
+
+Stdlib lookup is deterministic. `--stdlib <dir>` uses the explicit bootstrap stdlib root;
+relative explicit paths are resolved by the process in the usual way, so automation should
+prefer absolute paths. Without `--stdlib`, build-tree executables use the CMake-staged
+bootstrap root compiled into the binary. Package layouts stage the same assets under
+`lib/sloppy/bootstrap/sloppy`; executable-relative package lookup is still deferred, so
+package smoke tests may pass that directory explicitly.
 
 Default server binding is `127.0.0.1:5173`. The server is single-process, dev-only, and
 intentionally tiny: HTTP/1 request heads only, GET dispatch only, route/query/request
 context only, no TLS, no body parsing, no headers in handler context, no streaming, no
-keep-alive contract, no middleware, no hot reload, no package manager, and no Node
-compatibility.
+keep-alive contract, no middleware, no hot reload, no package manager, no npm resolution,
+no arbitrary import graph, and no Node compatibility.
 
 `--once METHOD TARGET` is a deterministic dev/test helper. It does not open a socket; it
 loads artifacts, dispatches one synthetic request target, prints the HTTP response bytes,
@@ -77,11 +88,12 @@ In non-V8 builds, `sloppy run` fails before serving with:
 sloppy run: sloppy run requires V8-enabled build
 ```
 
-Missing artifacts, malformed plans, missing route metadata, invalid route patterns, missing
-plan handlers, V8 evaluation failures, missing handler globals, thrown handlers, malformed
-query strings, and malformed/unsupported result descriptors fail with stderr diagnostics or
-safe dev `500` responses depending on whether the failure happens during startup or
-request dispatch.
+Missing stdlib assets, missing app modules, malformed plans, missing route metadata,
+invalid route patterns, missing plan handlers, missing registrations, duplicate handler
+registrations, intrinsic misuse, V8 evaluation failures, thrown handlers, malformed query
+strings, and malformed/unsupported result descriptors fail with stderr diagnostics or safe
+dev `500` responses depending on whether the failure happens during startup or request
+dispatch.
 
 ## Metadata Input
 

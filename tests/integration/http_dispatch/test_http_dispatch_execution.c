@@ -116,6 +116,21 @@ static int eval_app(SlEngine* engine, SlDiag* out_diag)
     SlBytes js = {0};
     SlStr source = {0};
 
+    if (read_file("stdlib/sloppy/internal/runtime-classic.js", js_storage, sizeof(js_storage),
+                  &js) != 0)
+    {
+        return 1;
+    }
+
+    source = sl_str_from_parts((const char*)js.ptr, js.length);
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("stdlib/sloppy/internal/runtime-classic.js"),
+                          source, out_diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+
     if (read_file("tests/integration/http_dispatch/fixtures/app.js", js_storage, sizeof(js_storage),
                   &js) != 0)
     {

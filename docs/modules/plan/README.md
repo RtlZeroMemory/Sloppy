@@ -120,9 +120,8 @@ Future loader invariants:
 - TASK 10.C synthetic HTTP dispatch keeps route bindings manual and outside `SlPlan`; the
   dispatch helper only validates that a matched binding's numeric handler ID exists in this
   handler table before entering the engine.
-- EPIC-21 compiler output assigns handler IDs starting at `1` in source order and emits
-  global handler names matching `__sloppy_handler_N` for the current classic-script smoke
-  convention.
+- EPIC-21/24 compiler output assigns handler IDs starting at `1` in source order and emits
+  classic-script handlers that register those IDs through `__sloppy_register_handler`.
 
 Parser validation rules:
 

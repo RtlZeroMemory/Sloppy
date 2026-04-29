@@ -23,11 +23,13 @@
 #include <libplatform/libplatform.h>
 #include <v8.h>
 
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <string>
+#include <unordered_map>
 
 namespace {
 
@@ -36,6 +38,8 @@ struct SlV8Engine
     v8::ArrayBuffer::Allocator* allocator = nullptr;
     v8::Isolate* isolate = nullptr;
     v8::Global<v8::Context> context;
+    std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
+    std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
 };
 
 std::mutex g_v8_platform_mutex;
@@ -582,6 +586,88 @@ bool sl_v8_stringify_json(v8::Isolate* isolate, v8::Local<v8::Context> context,
     return true;
 }
 
+SlStatus sl_v8_write_missing_registered_handler_diag(SlEngine* engine, SlDiag* out_diag,
+                                                     SlHandlerId handler_id)
+{
+    std::string message =
+        "app plan references unregistered handler ID " + std::to_string(handler_id);
+    return sl_v8_write_diag_string(
+        engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE, message,
+        sl_str_empty(),
+        sl_v8_literal("Generated app modules must call __sloppy_register_handler(id, handler).",
+                      sizeof("Generated app modules must call "
+                             "__sloppy_register_handler(id, handler).") -
+                          1U));
+}
+
+void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+
+    if (backend == nullptr || args.Length() != 2) {
+        isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
+            isolate, "__sloppy_register_handler requires handler ID and handler function")));
+        return;
+    }
+
+    v8::Local<v8::Value> id_value = args[0];
+    v8::Local<v8::Value> handler_value = args[1];
+
+    if (!id_value->IsUint32()) {
+        isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
+            isolate, "__sloppy_register_handler handler ID must be a positive integer")));
+        return;
+    }
+
+    uint32_t handler_id = id_value.As<v8::Uint32>()->Value();
+    if (handler_id == 0U) {
+        isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
+            isolate, "__sloppy_register_handler handler ID must be a positive integer")));
+        return;
+    }
+
+    if (!handler_value->IsFunction()) {
+        isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
+            isolate, "__sloppy_register_handler handler must be callable")));
+        return;
+    }
+
+    if (backend->pending_handlers == nullptr) {
+        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8Literal(
+            isolate, "__sloppy_register_handler is only valid during app evaluation")));
+        return;
+    }
+
+    if (backend->handlers.find(handler_id) != backend->handlers.end() ||
+        backend->pending_handlers->find(handler_id) != backend->pending_handlers->end())
+    {
+        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8Literal(
+            isolate, "__sloppy_register_handler duplicate handler ID")));
+        return;
+    }
+
+    backend->pending_handlers->emplace(
+        handler_id, v8::Global<v8::Function>(isolate, handler_value.As<v8::Function>()));
+    args.GetReturnValue().Set(v8::Undefined(isolate));
+}
+
+bool sl_v8_install_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context)
+{
+    v8::Local<v8::String> name = v8::String::NewFromUtf8Literal(
+        isolate, "__sloppy_register_handler", v8::NewStringType::kInternalized);
+    v8::Local<v8::FunctionTemplate> function_template =
+        v8::FunctionTemplate::New(isolate, sl_v8_register_handler_callback);
+    v8::Local<v8::Function> function;
+
+    if (!function_template->GetFunction(context).ToLocal(&function)) {
+        return false;
+    }
+
+    return context->Global()->Set(context, name, function).FromMaybe(false);
+}
+
 SlStatus sl_v8_platform_acquire(void)
 {
     std::lock_guard<std::mutex> lock(g_v8_platform_mutex);
@@ -662,13 +748,23 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     {
         v8::Isolate::Scope isolate_scope(backend->isolate);
         v8::HandleScope handle_scope(backend->isolate);
+        backend->isolate->SetData(0, backend);
         v8::Local<v8::Context> context = v8::Context::New(backend->isolate);
+        if (!sl_v8_install_intrinsics(backend->isolate, context)) {
+            backend->isolate->SetData(0, nullptr);
+            backend->isolate->Dispose();
+            delete backend->allocator;
+            delete backend;
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
         backend->context.Reset(backend->isolate, context);
     }
 
     status = sl_arena_alloc(arena, sizeof(SlEngine), alignof(SlEngine), &engine_memory);
     if (!sl_status_is_ok(status)) {
+        backend->handlers.clear();
         backend->context.Reset();
+        backend->isolate->SetData(0, nullptr);
         backend->isolate->Dispose();
         delete backend->allocator;
         delete backend;
@@ -702,7 +798,9 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
 
     if (backend != nullptr) {
         if (backend->isolate != nullptr) {
+            backend->handlers.clear();
             backend->context.Reset();
+            backend->isolate->SetData(0, nullptr);
             backend->isolate->Dispose();
         }
 
@@ -758,6 +856,7 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
     v8::ScriptCompiler::Source script_source(source_string, origin);
     v8::MaybeLocal<v8::Script> maybe_script = v8::ScriptCompiler::Compile(context, &script_source);
     v8::Local<v8::Script> script;
+    std::unordered_map<uint32_t, v8::Global<v8::Function>> pending_handlers;
     if (!maybe_script.ToLocal(&script)) {
         return sl_v8_write_exception_diag(
             engine, out_diag, SL_DIAG_ENGINE_COMPILE_ERROR, SL_STATUS_INVALID_STATE, isolate,
@@ -769,7 +868,9 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
                     1U));
     }
 
+    backend->pending_handlers = &pending_handlers;
     if (script->Run(context).IsEmpty()) {
+        backend->pending_handlers = nullptr;
         return sl_v8_write_exception_diag(
             engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,
             try_catch, source_name, "JavaScript evaluation failed",
@@ -778,6 +879,11 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
                 sizeof("Generated JavaScript locations are reported without source-map "
                        "remapping.") -
                     1U));
+    }
+    backend->pending_handlers = nullptr;
+
+    for (auto& entry : pending_handlers) {
+        backend->handlers.emplace(entry.first, std::move(entry.second));
     }
 
     return sl_status_ok();
@@ -1125,6 +1231,98 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
         return sl_v8_write_exception_diag(
             engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,
             try_catch, sl_str_empty(), "JavaScript function threw",
+            sl_v8_literal(
+                "Generated JavaScript locations are reported without source-map remapping.",
+                sizeof("Generated JavaScript locations are reported without source-map "
+                       "remapping.") -
+                    1U));
+    }
+
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, out_result,
+                                        out_diag);
+}
+
+extern "C" SlStatus sl_engine_v8_validate_registered_handlers(SlEngine* engine, const SlPlan* plan,
+                                                              SlDiag* out_diag)
+{
+    SlV8Engine* backend = sl_v8_backend(engine);
+    size_t index = 0U;
+
+    if (engine == nullptr || backend == nullptr || plan == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (sl_plan_has_duplicate_handler_ids(plan)) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_DUPLICATE_HANDLER_ID, SL_STATUS_INVALID_ARGUMENT,
+            sl_v8_literal("Plan contains duplicate handler IDs.",
+                          sizeof("Plan contains duplicate handler IDs.") - 1U),
+            sl_str_empty(),
+            sl_v8_literal("Handler IDs must be unique before runtime registration validation.",
+                          sizeof("Handler IDs must be unique before runtime registration "
+                                 "validation.") -
+                              1U));
+    }
+
+    for (index = 0U; index < plan->handler_count; index += 1U) {
+        SlHandlerId handler_id = plan->handlers[index].id;
+        if (!sl_handler_id_valid(handler_id) ||
+            backend->handlers.find(handler_id) == backend->handlers.end())
+        {
+            return sl_v8_write_missing_registered_handler_diag(engine, out_diag, handler_id);
+        }
+    }
+
+    return sl_status_ok();
+}
+
+extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
+    SlEngine* engine, SlArena* arena, SlHandlerId handler_id,
+    const SlHttpRequestContext* request_context, SlEngineResult* out_result, SlDiag* out_diag)
+{
+    SlV8Engine* backend = sl_v8_backend(engine);
+    v8::Local<v8::Object> context_arg;
+
+    if (out_result == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_result = SlEngineResult{};
+
+    if (engine == nullptr || backend == nullptr || backend->isolate == nullptr ||
+        arena == nullptr || request_context == nullptr || !sl_handler_id_valid(handler_id))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    auto handler = backend->handlers.find(handler_id);
+    if (handler == backend->handlers.end()) {
+        return sl_v8_write_missing_registered_handler_diag(engine, out_diag, handler_id);
+    }
+
+    v8::Isolate* isolate = backend->isolate;
+    v8::Isolate::Scope isolate_scope(isolate);
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = backend->context.Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::TryCatch try_catch(isolate);
+
+    if (!sl_v8_make_context_object(isolate, context, request_context, &context_arg)) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            sl_v8_literal("failed to materialize JavaScript request context",
+                          sizeof("failed to materialize JavaScript request context") - 1U),
+            sl_str_empty(), sl_str_empty());
+    }
+
+    v8::Local<v8::Function> function = handler->second.Get(isolate);
+    v8::Local<v8::Value> args[1] = {context_arg};
+    v8::MaybeLocal<v8::Value> maybe_result = function->Call(context, context->Global(), 1, args);
+    v8::Local<v8::Value> js_result;
+    if (!maybe_result.ToLocal(&js_result)) {
+        return sl_v8_write_exception_diag(
+            engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,
+            try_catch, sl_str_empty(), "JavaScript handler threw",
             sl_v8_literal(
                 "Generated JavaScript locations are reported without source-map remapping.",
                 sizeof("Generated JavaScript locations are reported without source-map "

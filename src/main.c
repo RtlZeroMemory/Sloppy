@@ -43,6 +43,9 @@
 #define SL_RUN_RESPONSE_MAX_BYTES 16384U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
+#ifndef SLOPPY_BOOTSTRAP_BUILD_DIR
+#define SLOPPY_BOOTSTRAP_BUILD_DIR ""
+#endif
 
 typedef enum SlCliFormat
 {
@@ -113,6 +116,7 @@ typedef struct SlCliOptions
     const char* output_path;
     const char* input_path;
     const char* artifacts_path;
+    const char* stdlib_path;
     const char* host;
     const char* once_method;
     const char* once_target;
@@ -193,8 +197,8 @@ static void sl_cli_print_help(void)
     (void)printf("Usage:\n");
     (void)printf("  sloppy --help\n");
     (void)printf("  sloppy --version\n");
-    (void)printf("  sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]\n");
-    (void)printf("  sloppy run --artifacts <dir> [--once METHOD TARGET]\n");
+    (void)printf("  sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]\n");
+    (void)printf("             [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
     (void)printf("  sloppy routes --plan <path> [--format text|json]\n");
     (void)printf("  sloppy doctor [--plan <path>] [--format text|json]\n");
     (void)printf("  sloppy audit --plan <path> [--format text|json]\n");
@@ -208,8 +212,8 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "run") == 0) {
-        (void)printf("Usage: sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]\n");
-        (void)printf("       sloppy run --artifacts <dir> [--once METHOD TARGET]\n");
+        (void)printf("Usage: sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]\n");
+        (void)printf("                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
         (void)printf("\n");
         (void)printf("Dev-only MVP. Requires a V8-enabled build and .sloppy-style artifacts.\n");
         return;
@@ -268,14 +272,8 @@ static bool sl_cli_parse_port(const char* text, uint16_t* out)
     return true;
 }
 
-static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptions* out)
+static int sl_cli_parse_run_path_option(int argc, char** argv, int* index, SlCliOptions* out)
 {
-    if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
-        strcmp(out->command, "run") != 0)
-    {
-        return 0;
-    }
-
     if (strcmp(argv[*index], "--artifacts") == 0) {
         if (*index + 1 >= argc) {
             sl_cli_write_cstr(stderr, "sloppy run: --artifacts requires a directory\n");
@@ -292,12 +290,48 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
         return 1;
     }
 
+    if (argv[*index][0] != '-') {
+        if (out->input_path != NULL || out->artifacts_path != NULL) {
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy run: expected either --artifacts <dir> or one positional artifact path\n");
+            return -1;
+        }
+        out->input_path = argv[*index];
+        *index += 1;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptions* out)
+{
+    int path_result = 0;
+
+    if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
+        strcmp(out->command, "run") != 0)
+    {
+        return 0;
+    }
+
     if (strcmp(argv[*index], "--host") == 0) {
         if (*index + 1 >= argc) {
             sl_cli_write_cstr(stderr, "sloppy run: --host requires an IPv4 address\n");
             return -1;
         }
         out->host = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--stdlib") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: --stdlib requires a bootstrap stdlib directory\n");
+            return -1;
+        }
+        out->stdlib_path = argv[*index + 1];
         *index += 2;
         return 1;
     }
@@ -322,16 +356,9 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
         return 1;
     }
 
-    if (argv[*index][0] != '-') {
-        if (out->input_path != NULL || out->artifacts_path != NULL) {
-            sl_cli_write_cstr(
-                stderr,
-                "sloppy run: expected either --artifacts <dir> or one positional artifact path\n");
-            return -1;
-        }
-        out->input_path = argv[*index];
-        *index += 1;
-        return 1;
+    path_result = sl_cli_parse_run_path_option(argc, argv, index, out);
+    if (path_result != 0) {
+        return path_result;
     }
 
     return 0;
@@ -945,6 +972,7 @@ typedef struct SlRunApp
 {
     unsigned char plan_json_storage[SL_RUN_FILE_MAX_BYTES];
     unsigned char metadata_json_storage[SL_RUN_FILE_MAX_BYTES];
+    unsigned char bootstrap_js_storage[SL_RUN_FILE_MAX_BYTES];
     unsigned char app_js_storage[SL_RUN_FILE_MAX_BYTES];
     unsigned char plan_arena_storage[SL_RUN_ARENA_BYTES];
     unsigned char route_arena_storage[SL_RUN_ARENA_BYTES];
@@ -1093,6 +1121,14 @@ static int sl_run_read_file(const char* path, unsigned char* buffer, size_t capa
                                       "sloppy run: artifact file is empty or too large: ");
 }
 
+static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size_t capacity,
+                                   SlBytes* out)
+{
+    return sl_read_file_with_messages(
+        path, buffer, capacity, out,
+        "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ");
+}
+
 static void sl_run_print_diag(const char* prefix, const SlDiag* diag)
 {
     sl_cli_write_cstr(stderr, prefix);
@@ -1213,7 +1249,43 @@ static int sl_run_load_routes(SlRunApp* app, const char* plan_path)
     return 0;
 }
 
-static int sl_run_load_engine(SlRunApp* app, const char* app_js_path)
+static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
+{
+    char bootstrap_path[1024];
+    SlBytes js = {0};
+    SlStr source = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (stdlib_root == NULL || stdlib_root[0] == '\0') {
+        sl_cli_write_cstr(stderr, "sloppy run: bootstrap stdlib root is not configured\n");
+        return 1;
+    }
+
+    if (!sl_run_artifact_file_path(bootstrap_path, sizeof(bootstrap_path), stdlib_root,
+                                   "internal/runtime-classic.js"))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid bootstrap stdlib directory\n");
+        return 1;
+    }
+
+    if (sl_run_read_stdlib_file(bootstrap_path, app->bootstrap_js_storage,
+                                sizeof(app->bootstrap_js_storage), &js) != 0)
+    {
+        return 1;
+    }
+
+    source = sl_str_from_parts((const char*)js.ptr, js.length);
+    status = sl_engine_eval_source(app->engine, sl_str_from_cstr(bootstrap_path), source, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: failed to evaluate bootstrap stdlib: ", &diag);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char* app_js_path)
 {
     SlBytes js = {0};
     SlStr source = {0};
@@ -1231,6 +1303,10 @@ static int sl_run_load_engine(SlRunApp* app, const char* app_js_path)
         return 1;
     }
 
+    if (sl_run_load_bootstrap_runtime(app, stdlib_root) != 0) {
+        return 1;
+    }
+
     if (sl_run_read_file(app_js_path, app->app_js_storage, sizeof(app->app_js_storage), &js) != 0) {
         return 1;
     }
@@ -1242,10 +1318,16 @@ static int sl_run_load_engine(SlRunApp* app, const char* app_js_path)
         return 1;
     }
 
+    status = sl_engine_validate_registered_handlers(app->engine, &app->plan, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: registered handler validation failed: ", &diag);
+        return 1;
+    }
+
     return 0;
 }
 
-static int sl_run_load_app(const char* artifacts_path, SlRunApp* app)
+static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, SlRunApp* app)
 {
     char plan_path[1024];
     char app_js_path[1024];
@@ -1281,7 +1363,7 @@ static int sl_run_load_app(const char* artifacts_path, SlRunApp* app)
         return 1;
     }
 
-    return sl_run_load_engine(app, app_js_path);
+    return sl_run_load_engine(app, stdlib_path, app_js_path);
 }
 
 static int sl_run_write_response(char* buffer, size_t capacity, unsigned status,
@@ -1645,6 +1727,7 @@ static int sl_cli_command_run(const SlCliOptions* options)
 {
     SlRunApp app;
     const char* artifacts_path = options->artifacts_path;
+    const char* stdlib_path = options->stdlib_path;
     int result = 0;
 
     if (artifacts_path == NULL) {
@@ -1666,7 +1749,11 @@ static int sl_cli_command_run(const SlCliOptions* options)
         }
     }
 
-    if (sl_run_load_app(artifacts_path, &app) != 0) {
+    if (stdlib_path == NULL) {
+        stdlib_path = SLOPPY_BOOTSTRAP_BUILD_DIR;
+    }
+
+    if (sl_run_load_app(artifacts_path, stdlib_path, &app) != 0) {
         sl_engine_destroy(app.engine);
         return 1;
     }
