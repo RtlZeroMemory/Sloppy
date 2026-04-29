@@ -29,7 +29,8 @@ The foundation phase does not implement:
 - V8 runtime integration;
 - HTTP or routing;
 - app module execution;
-- SQLite, PostgreSQL, or SQL Server;
+- PostgreSQL or SQL Server;
+- JavaScript-to-native SQLite resource/intrinsic integration;
 - Sloppy Plan loading;
 - TypeScript compilation;
 - native dynamic plugins.

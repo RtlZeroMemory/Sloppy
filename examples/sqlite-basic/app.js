@@ -22,11 +22,11 @@ export const UsersModule = Sloppy.module("users")
             const db = services.get("data.main");
 
             await db.exec`
-                create table users (id integer primary key, name text not null)
+                create table if not exists users (id integer primary key, name text not null)
             `;
 
             await db.exec`
-                insert into users (name) values (${"Ada"})
+                insert or ignore into users (id, name) values (${1}, ${"Ada"})
             `;
 
             const user = await db.queryOne`

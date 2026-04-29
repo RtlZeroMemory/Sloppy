@@ -29,13 +29,13 @@ This document covers:
 
 The foundation phase does not implement:
 
-- sqlite;
+- JavaScript-to-native SQLite resource/intrinsic integration;
 - libpq;
 - ODBC;
 - connection pools;
 - SQL parsing;
-- provider native ABI;
-- database JS API.
+- provider plugin ABI;
+- runnable database JS API.
 
 ## Current Phase
 

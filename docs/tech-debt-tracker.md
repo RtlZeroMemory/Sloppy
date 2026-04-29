@@ -6,8 +6,9 @@
   checksums, and update cadence are still deferred.
 - Sanitizer coverage is incomplete on Windows.
 - Runtime execution is still limited to handwritten V8 smoke artifacts; no HTTP app host,
-  compiler output loader, public TypeScript API, modules, services, or data providers exist
-  yet.
+  compiler output loader, or public TypeScript API exists yet. A native SQLite provider
+  exists, but it is synchronous and not yet integrated with JS resource IDs, app-host
+  disposal, permissions, app-plan entries, or worker-pool execution.
 - `SlLoop` exists only as a caller-backed, single-threaded completion queue skeleton; it has
   no libuv/backend integration, OS wakeup mechanism, cross-thread posting, or owner-thread
   enforcement yet.

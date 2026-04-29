@@ -136,6 +136,15 @@ static SlStatus sl_sqlite_invalid_state_diag(SlArena* arena, SlDiag* out_diag, S
         operation, NULL, sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
 }
 
+static void sl_sqlite_sync_transaction_state(SlSqliteConnection* connection)
+{
+    sqlite3* db = sl_sqlite_db(connection);
+
+    if (db != NULL) {
+        connection->transaction_active = sqlite3_get_autocommit(db) == 0;
+    }
+}
+
 static bool sl_sqlite_is_ascii_space(char value)
 {
     return value == ' ' || value == '\t' || value == '\n' || value == '\r' || value == '\v' ||
@@ -465,6 +474,19 @@ SlStatus sl_sqlite_open(SlArena* diag_arena, const SlSqliteOpenOptions* options,
         return status;
     }
 
+    if (options->access == SL_SQLITE_ACCESS_READWRITE && sqlite3_db_readonly(db, "main") != 0) {
+        status = sl_sqlite_diag(
+            diag_arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
+            sl_sqlite_literal("sqlite provider readwrite open produced read-only handle",
+                              sizeof("sqlite provider readwrite open produced read-only handle") -
+                                  1U),
+            sl_sqlite_literal("operation: open", sizeof("operation: open") - 1U),
+            sqlite3_errmsg(db), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
+        sqlite3_close(db);
+        sqlite3_free(path);
+        return status;
+    }
+
     sqlite3_free(path);
     out_connection->handle = db;
     out_connection->open = true;
@@ -551,6 +573,7 @@ SlStatus sl_sqlite_exec(SlArena* arena, SlSqliteConnection* connection, SlStr sq
                               sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
 
+    sl_sqlite_sync_transaction_state(connection);
     return sl_status_ok();
 }
 
@@ -659,6 +682,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
     out_result->column_count = column_count;
     out_result->row_count = row_count;
     out_result->rows = rows;
+    sl_sqlite_sync_transaction_state(connection);
     return sl_status_ok();
 }
 
@@ -724,6 +748,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
         out_result->column_count = column_count;
         out_result->found = false;
         out_result->values = NULL;
+        sl_sqlite_sync_transaction_state(connection);
         return sl_status_ok();
     }
 
@@ -775,6 +800,7 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
 
     out_result->column_count = column_count;
     out_result->found = true;
+    sl_sqlite_sync_transaction_state(connection);
     return sl_status_ok();
 }
 
@@ -870,6 +896,8 @@ SlStatus sl_sqlite_transaction_exec(SlArena* arena, SlSqliteTransaction* tx, SlS
                                     const SlSqliteParam* params, size_t param_count,
                                     SlSqliteExecResult* out_result, SlDiag* out_diag)
 {
+    SlStatus status;
+
     if (tx == NULL || tx->connection == NULL || !tx->active) {
         return sl_sqlite_invalid_state_diag(
             arena, out_diag,
@@ -877,7 +905,13 @@ SlStatus sl_sqlite_transaction_exec(SlArena* arena, SlSqliteTransaction* tx, SlS
                               sizeof("operation: transaction.exec") - 1U));
     }
 
-    return sl_sqlite_exec(arena, tx->connection, sql, params, param_count, out_result, out_diag);
+    status = sl_sqlite_exec(arena, tx->connection, sql, params, param_count, out_result, out_diag);
+    if (sl_status_is_ok(status) && !tx->connection->transaction_active) {
+        tx->active = false;
+        tx->connection = NULL;
+    }
+
+    return status;
 }
 
 SlStatus sl_sqlite_transaction_query(SlArena* arena, SlSqliteTransaction* tx, SlStr sql,
@@ -885,6 +919,8 @@ SlStatus sl_sqlite_transaction_query(SlArena* arena, SlSqliteTransaction* tx, Sl
                                      const SlSqliteQueryOptions* options,
                                      SlSqliteResult* out_result, SlDiag* out_diag)
 {
+    SlStatus status;
+
     if (tx == NULL || tx->connection == NULL || !tx->active) {
         return sl_sqlite_invalid_state_diag(
             arena, out_diag,
@@ -892,14 +928,22 @@ SlStatus sl_sqlite_transaction_query(SlArena* arena, SlSqliteTransaction* tx, Sl
                               sizeof("operation: transaction.query") - 1U));
     }
 
-    return sl_sqlite_query(arena, tx->connection, sql, params, param_count, options, out_result,
-                           out_diag);
+    status = sl_sqlite_query(arena, tx->connection, sql, params, param_count, options, out_result,
+                             out_diag);
+    if (sl_status_is_ok(status) && !tx->connection->transaction_active) {
+        tx->active = false;
+        tx->connection = NULL;
+    }
+
+    return status;
 }
 
 SlStatus sl_sqlite_transaction_query_one(SlArena* arena, SlSqliteTransaction* tx, SlStr sql,
                                          const SlSqliteParam* params, size_t param_count,
                                          SlSqliteQueryOneResult* out_result, SlDiag* out_diag)
 {
+    SlStatus status;
+
     if (tx == NULL || tx->connection == NULL || !tx->active) {
         return sl_sqlite_invalid_state_diag(
             arena, out_diag,
@@ -907,6 +951,12 @@ SlStatus sl_sqlite_transaction_query_one(SlArena* arena, SlSqliteTransaction* tx
                               sizeof("operation: transaction.queryOne") - 1U));
     }
 
-    return sl_sqlite_query_one(arena, tx->connection, sql, params, param_count, out_result,
-                               out_diag);
+    status =
+        sl_sqlite_query_one(arena, tx->connection, sql, params, param_count, out_result, out_diag);
+    if (sl_status_is_ok(status) && !tx->connection->transaction_active) {
+        tx->active = false;
+        tx->connection = NULL;
+    }
+
+    return status;
 }
