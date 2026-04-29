@@ -42,6 +42,7 @@ tooling lives under `tools/windows/`; future Unix tooling belongs under `tools/u
 - tests reference intended behavior from source docs/specs;
 - `format-check` passes;
 - `lint` passes;
+- language standards scanners pass for touched JS/TS and Rust areas;
 - CMake build passes;
 - CTest passes;
 - `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` pass for compiler

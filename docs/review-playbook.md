@@ -74,6 +74,27 @@ Checks that public API examples remain clean, diagnostics are helpful, framework
 is avoided, and low-level primitive-first UX does not leak into user-facing surfaces unless
 the code is internal.
 
+JS/TS checklist:
+
+- no Node globals/imports in `stdlib/sloppy/`;
+- no npm or package-manager assumptions;
+- descriptor shape is stable and documented;
+- examples are honest about current runtime/compiler support;
+- errors are deterministic and redact secrets;
+- compiler-extractable examples avoid dynamic patterns;
+- `tools/windows/check-js-ts-standards.ps1` passes.
+
+Rust compiler/tooling checklist:
+
+- output is deterministic and path-normalized;
+- no `unwrap()`, `expect()`, `panic!`, `todo!`, `unimplemented!`, or `dbg!` in production
+  code without explicit allow reason;
+- diagnostics include source context where possible;
+- golden tests are updated intentionally;
+- traits, macros, and abstractions are not overbuilt;
+- `tools/windows/check-rust-standards.ps1` passes;
+- `cargo fmt`, `cargo clippy -D warnings`, and `cargo test` pass.
+
 ## Final Verifier
 
 Checks only the original acceptance criteria, confirmed blocking feedback, and no new scope

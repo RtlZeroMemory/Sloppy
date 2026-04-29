@@ -122,7 +122,9 @@ Current tests:
   document the live-server/driver and stdlib-bridge limitations;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
-- C standards scanner.
+- C standards scanner;
+- JS/TS standards scanner;
+- Rust standards scanner.
 
 When V8 is explicitly enabled and a valid SDK is configured, CTest also registers
 `engine.v8.smoke`. That test evaluates classic JavaScript source, calls a named global
@@ -150,6 +152,8 @@ Tests are invoked through:
 .\tools\windows\dev.ps1 test
 .\tools\windows\dev.ps1 format-check
 .\tools\windows\dev.ps1 lint
+.\tools\windows\check-js-ts-standards.ps1
+.\tools\windows\check-rust-standards.ps1
 cargo test --manifest-path compiler/Cargo.toml
 ```
 
@@ -344,6 +348,27 @@ Required gates:
 
 Unit tests should cover CLI parsing and pure compiler helpers. Golden tests should cover
 emitted artifacts once emission begins.
+
+Rust compiler outputs need golden tests when `sloppyc` starts emitting `app.plan.json`,
+`app.js`, source maps, or diagnostics snapshots. Golden outputs must be deterministic and
+path-normalized; local absolute paths, timestamps, and random IDs are not acceptable unless
+a scoped test documents the normalization rule.
+
+The Rust standards scanner is a lint gate, not a replacement for unit tests, diagnostics
+tests, or golden artifact tests.
+
+## JS/TS Public API Tests
+
+JS/TS public API behavior should be tested through the V8 harness where possible. While the
+current V8 bridge cannot load the ESM bootstrap module shape, static fixture checks and
+optional Node-based ESM tests are acceptable only when the docs clearly say they are test
+infrastructure and not Node/npm compatibility.
+
+Static checks may verify examples, stdlib source shape, and forbidden patterns. They do
+not replace behavior tests for public helpers, builder/freeze behavior, descriptors,
+errors, or compiler-extractable API shapes.
+
+Generated JS/TS artifact golden tests must be deterministic and path-normalized.
 
 ## Compiler Golden Tests
 
@@ -614,6 +639,8 @@ Future checks:
 
 - allocator misuse;
 - resource ID/lifetime misuse;
+- JS/TS stdlib and example policy violations;
+- Rust compiler/tooling policy violations;
 - docs drift where source-of-truth links can be checked mechanically.
 
 ## Benchmark Tests
@@ -702,6 +729,8 @@ Benchmark phase:
 - clippy;
 - platform scanner;
 - C standards scanner;
+- JS/TS standards scanner;
+- Rust standards scanner;
 - artifact hygiene.
 
 ## Development Tasks

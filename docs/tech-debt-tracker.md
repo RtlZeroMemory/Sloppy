@@ -97,6 +97,9 @@ state and an honest public-alpha path.
 ## Nice Later
 
 - Docs link checker and semantic stale-doc checker.
+- JS syntax parser/linter once the compiler/tooling story can justify one without adding
+  package-manager scope.
+- Stronger Rust lint configuration after `sloppyc` grows beyond the placeholder CLI.
 - Stronger generated-artifact and ignored-file staging checks.
 - More diagnostic renderers: JSON, source frames, structured fixes, and localization.
 - Fuzz targets for plan JSON, route patterns, HTTP request-head parsing, source maps, and
@@ -135,5 +138,5 @@ state and an honest public-alpha path.
 
 ## Completed Cleanup
 
-- None in this consolidation PR; this pass records and organizes the backlog without
-  implementing runtime features.
+- Added JS/TS and Rust standards docs plus zero-dependency language standards scanners.
+- Wired JS/TS and Rust standards scanners into `tools/windows/dev.ps1 lint`.
