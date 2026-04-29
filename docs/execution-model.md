@@ -127,7 +127,14 @@ The MVP also supports `Sloppy.createBuilder()` plus `builder.build()`, simple
 `app.mapGroup(prefix)` variables, literal grouped `mapGet` routes, `.withName(...)`, and
 handlers returning `Results.text(...)` or `Results.json(...)`. It does not implement full
 TypeScript checking, package resolution, bundling, module extraction, services/data
-providers, V8 module loading, HTTP serving, `sloppy run`, or `app.run`.
+providers, V8 module loading, source-input `sloppy run`, or `app.run`.
+
+EPIC-22 adds the first dev-only run path for those artifacts. `sloppy run --artifacts
+<dir>` loads `app.plan.json`, reads the compiler-emitted `routes` metadata, evaluates
+`app.js` in a V8-enabled build, dispatches GET request paths through the native route
+matcher, calls handlers by numeric ID through the runtime-contract helper, writes a tiny
+HTTP response, and closes the connection. The deterministic `--once METHOD TARGET` mode
+performs the same dispatch without opening a socket.
 
 ## Current Handwritten Milestone
 
@@ -176,11 +183,12 @@ V8 executes JavaScript, not TypeScript. TypeScript is never evaluated directly. 
 does not type-check. `sloppy check` later uses the official TypeScript checker through
 `tsgo` or `tsc`.
 
-Current EPIC-21 behavior covers only the first two pipeline steps for one source file. The
-generated `app.js` is a classic script with deterministic `globalThis.__sloppy_handler_N`
-functions and a tiny compiler-generated `Results.text/json` shim that returns strings for
-the current V8 global-function execution path. Full stdlib bootstrap loading is EPIC-24,
-and real result descriptor conversion is EPIC-23.
+Current EPIC-21/22 behavior covers the first executable compiler-to-runtime path for one
+source file when V8 is enabled. The generated `app.js` is a classic script with
+deterministic `globalThis.__sloppy_handler_N` functions and a tiny compiler-generated
+`Results.text/json` shim that returns strings for the current V8 global-function execution
+path. Full stdlib bootstrap loading is EPIC-24, and real result descriptor conversion is
+EPIC-23.
 
 ## Artifact Boundary
 
@@ -257,15 +265,24 @@ Exact filenames are deferred until implementation stories begin.
 
 ## Dev Mode Flow
 
-Planned `sloppy run` flow:
+Current EPIC-22 `sloppy run` flow:
 
-1. discover project inputs;
-2. compute build cache key;
-3. invoke `sloppyc` pipeline or reuse valid cache;
-4. write artifacts under `.sloppy/`;
-5. start runtime with those artifacts;
-6. surface diagnostics with source spans;
-7. later, watch files and restart or hot-reload only where semantics are explicit.
+1. accept an artifact directory through `--artifacts <dir>` or positional `<artifact-dir>`;
+2. load `<dir>/app.plan.json` through the native Plan parser;
+3. read the interim `routes` metadata from the same JSON file;
+4. parse GET route patterns into a borrowed dev dispatch table;
+5. create a V8 engine and evaluate the artifact `app.js`;
+6. either dispatch one synthetic `--once METHOD TARGET` request or start a local
+   `127.0.0.1:5173` dev server by default;
+7. parse request heads, route GET paths, call handlers by numeric ID, write a tiny
+   text/JSON-compatible response, and close the connection.
+
+Deferred dev-mode work:
+
+- source input handoff to `sloppyc`;
+- cache keys and rebuild validation;
+- source spans for startup diagnostics;
+- file watching and restart/hot reload.
 
 Dev mode must use the same artifact architecture as production. It may add caching and
 watching, but it must not invent a runtime-only app discovery model.
@@ -345,7 +362,7 @@ Target request flow:
 10. release request arena;
 11. report debug leaks.
 
-Before HTTP exists, the current synthetic execution flow is:
+Before `sloppy run`, the synthetic execution flow was:
 
 1. load handwritten plan;
 2. load handwritten bundle;
@@ -377,6 +394,18 @@ TASK 10.C adds only the native HTTP prelude before that runtime-contract call:
 
 Route params are not materialized into a JavaScript request context yet. The returned value
 is still the existing simple engine result, not an HTTP response.
+
+EPIC-22 wraps that foundation in the dev-only CLI path:
+
+1. parse artifact route metadata into route bindings;
+2. parse an HTTP/1 request head from `--once` or a libuv connection;
+3. reject non-GET dispatch as `405`;
+4. return `404` when no GET route matches;
+5. call the matched handler through `sl_runtime_contract_call_handler`;
+6. write a minimal response with status line, `Content-Type`, `Content-Length`, and body.
+
+The response writer is intentionally local and tiny until EPIC-23 owns the request context
+and response descriptor boundary.
 
 ## Async And Promise Lifecycle
 

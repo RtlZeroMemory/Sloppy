@@ -41,10 +41,9 @@ What works today:
 
 What does not work yet:
 
-- `sloppy run` does not exist yet.
 - `sloppyc` does not compile this example or extract routes from it.
 - This example does not emit `app.plan.json`.
-- There is no real HTTP server or response writer for this app.
+- This source-stdlib example is not a `sloppy run --artifacts` app.
 - There is no `app.run` or `app.listen` yet.
 - The bare import `import { Sloppy, Results } from "sloppy";` is future compiler/runtime
   module-resolution behavior, not something this repository supports today.
@@ -56,5 +55,6 @@ sloppy run examples/hello/app.ts
 ```
 
 That command is planned only. Until compiler extraction, ESM bootstrap loading, app-plan
-emission, and HTTP serving land, this directory is a checked-in API-shape and documentation
-example rather than a runnable app host.
+emission for this broader source shape, and V8 bootstrap loading land, this directory is a
+checked-in API-shape and documentation example rather than a runnable app host. Use
+`examples/compiler-hello/` for the current dev-only `sloppy run --artifacts` path.

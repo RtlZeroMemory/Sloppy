@@ -1,7 +1,7 @@
 # Getting Started
 
-Status: Bootstrap app-host, developer ergonomics, module skeleton, and compiler extraction
-MVP implemented; runtime execution planned.
+Status: Bootstrap app-host, developer ergonomics, module skeleton, compiler extraction MVP,
+and dev-only artifact run MVP implemented.
 
 Purpose: introduce the future Sloppy developer workflow from app source to build artifacts
 to runtime execution.
@@ -37,7 +37,7 @@ app.mapGroup("/search")
 current `Results.*` helper set, object-backed config, memory logging, string-token
 singleton/transient services, and the `schema` skeleton now exist in the bootstrap stdlib.
 `app.run()` and `app.listen()` do not. The broader example remains aspirational as a
-runnable application until native app-host validation and HTTP server behavior land.
+runnable application until native app-host validation and V8 bootstrap module loading land.
 
 The first checked-in example lives at `examples/hello/`. It uses the current source stdlib
 path because compiler/runtime support for the bare `"sloppy"` import is not implemented:
@@ -58,7 +58,21 @@ cargo run --manifest-path compiler/Cargo.toml -- build examples/compiler-hello/a
 ```
 
 That command emits `.sloppy/app.plan.json`, `.sloppy/app.js`, and `.sloppy/app.js.map`.
-Running a server from those artifacts is EPIC-22.
+With a V8-enabled build, those artifacts can be served by the dev-only run MVP:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy --host 127.0.0.1 --port 5173
+```
+
+For deterministic smoke tests without opening a socket:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy --once GET /
+```
+
+`sloppy run` requires V8, loads prebuilt artifacts only in this MVP, and is not a
+production server. There is no HTTPS, request body parsing, streaming, middleware, hot
+reload, package manager behavior, Node compatibility, or full response pipeline.
 
 Related internal docs: `docs/architecture.md`, `docs/execution-model.md`,
 `docs/developer-ergonomics.md`.

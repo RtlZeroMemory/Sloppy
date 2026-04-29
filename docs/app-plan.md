@@ -35,14 +35,16 @@ load production plans from disk, build routes, verify hashes, run HTTP, execute 
 output, or provide the final handler registration protocol.
 EPIC-21 adds the first `sloppyc build` compiler output. The emitted `app.plan.json`
 matches the required minimal handler/bundle/source-map fields and includes a narrow
-`routes` metadata section for future EPIC-22 handoff. The current native Plan v1 parser
-still ignores that unknown section.
+`routes` metadata section for EPIC-22 handoff. The current native Plan v1 parser still
+ignores that unknown section, while `sloppy run` reads it directly to build a dev-only GET
+route binding table.
 
 ## Public API Shape
 
 The plan is not normally user-authored. It is a public compatibility contract for `sloppyc`,
 `sloppy`, diagnostics tools, and future package tooling. Users may inspect plan-compatible
-metadata through `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi`.
+metadata through `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi`, and
+may execute EPIC-21 artifacts through `sloppy run --artifacts` in V8-enabled dev builds.
 
 ## Versioning Rules
 
@@ -160,6 +162,9 @@ section.
 EPIC-21 compiler output uses the same plan-compatible metadata idea for extracted routes:
 each MVP route entry records `method`, `pattern`, `handlerId`, and `name`. Handler IDs
 start at `1` and are assigned in source order after route group prefix composition.
+EPIC-22 `sloppy run` consumes those route entries for dev-only GET dispatch and validates
+that each referenced handler ID exists in the parsed minimal Plan handler table before
+serving requests.
 
 Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
 and `{name:int}`. Query strings, catch-all parameters, optional segments, regex

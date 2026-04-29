@@ -48,10 +48,9 @@ foreach(required_pattern IN ITEMS
         "Bootstrap module skeleton example"
         "What works today"
         "What does not work yet"
-        "`sloppy run` does not exist yet"
+        "not a `sloppy run --artifacts` app"
         "`sloppyc` does not compile this example"
         "does not emit `app.plan.json`"
-        "There is no real HTTP server"
         "not a real data provider"
         "module package loading and native plugins are future work"
         "bare `\"sloppy\"` import is planned only")

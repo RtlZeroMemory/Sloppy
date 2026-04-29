@@ -23,10 +23,11 @@ What works today:
 
 What does not work yet:
 
-- `sloppy run` does not exist yet.
+- this source-stdlib example is not a `sloppy run --artifacts` app.
 - `sloppyc` does not compile this example or extract route groups/schemas from it.
 - This example does not emit `app.plan.json`.
-- There is no real HTTP server, response writer, or request body/query parser.
+- The current `sloppy run` MVP does not load this source-stdlib example, materialize a
+  request context, or parse request bodies/query values for it.
 - Route params are not passed by the native HTTP runtime into JavaScript handler context
   yet; this example uses `route.id ?? "demo"` to stay honest in bootstrap mode.
 - Validation metadata is not wired to automatic `400` responses.

@@ -17,9 +17,9 @@ gates, and default provider tests are not live database tests.
 | Language standards | Green | C/C++, JS/TS, and Rust standards docs exist with operational skill summaries and review checklists. | `dev.ps1 lint` runs C standards, JS/TS standards, Rust standards, platform, docs freshness, and artifact hygiene checks. | The JS/TS scanner is structural rather than parser-based; deeper Rust lint config is intentionally minimal. | Add parser-based JS linting and stronger Rust lint configuration only after the compiler/tooling scope justifies them. |
 | Tests as intent | Yellow | Testing strategy requires docs-as-intent; many modules have tests tied to docs. | CTest/cargo gates plus golden fixtures. | Some structural/example checks are static because runtime execution is not available. | Keep tests tied to source docs and replace static checks with runtime checks when features exist. |
 | V8 integration | Yellow | SDK detection, isolated ABI, classic-script smoke, call-function smoke, exception mapping, and handwritten execution path. | Default gates validate only non-V8/noop engine paths. | V8 tests require `SLOPPY_ENABLE_V8=ON` and a valid SDK; SDK distribution is not solved. | Add packaged SDK strategy, V8-enabled CI or release gate, ESM/module loading, intrinsics, promises, and owner-thread checks. |
-| HTTP foundation | Yellow | Route parser/matcher, complete-buffer HTTP/1 request-head parser, libuv init smoke, synthetic GET dispatch. | Default C tests and synthetic dispatch tests. | No sockets, response writer, body parser, request context, streaming parser, or real server. | Build response writer/request context and `sloppy run` server path with tests. |
-| Public API ergonomics | Yellow | Bootstrap ESM stdlib supports builder/app, `Results.*`, route groups, schema, modules, services, config, logging, data facade. Compiler MVP accepts a tiny bare `"sloppy"` import source shape and emits artifacts. | Static checks, optional Node ESM tests, and compiler golden tests. | No V8-backed stdlib loading, no `app.run`, no HTTP server, and only a narrow compiler input shape. | Add V8 module loading, `sloppy run`, response/request handling, and executable Sloppy examples. |
-| Compiler extraction | Yellow | Oxc-backed one-file extractor for `Sloppy.create`, builder build, literal `mapGet`, simple route groups, route names, handler ID assignment, deterministic `app.plan.json`, `app.js`, and placeholder source map. | Cargo tests, compiler golden fixtures, diagnostics fixtures, Rust standards scanner, and clippy. | No full TypeScript checking, package resolution, bundling, modules/services/data providers, source-map fidelity, or runtime execution claim. | Add EPIC-22 runtime consumption, EPIC-24 bootstrap module loading, broader extraction, source maps, and official type checking. |
+| HTTP foundation | Yellow | Route parser/matcher, complete-buffer HTTP/1 request-head parser, libuv init smoke, synthetic GET dispatch, and a dev-only `sloppy run` socket/`--once` path. | Default C tests, synthetic dispatch tests, default `sloppy run` failure-mode tests. | V8-backed run success and socket smoke require a V8-enabled build; no body parser, request context, streaming parser, middleware, or production hardening. | Build EPIC-23 response/request context, broaden server lifecycle tests, and keep production behavior separate. |
+| Public API ergonomics | Yellow | Bootstrap ESM stdlib supports builder/app, `Results.*`, route groups, schema, modules, services, config, logging, data facade. Compiler MVP accepts a tiny bare `"sloppy"` import source shape and emits artifacts that `sloppy run --artifacts` can execute when V8 is enabled. | Static checks, optional Node ESM tests, compiler golden tests, and non-V8 run failure tests. | No V8-backed stdlib loading, no `app.run`, source-input run handoff is deferred, and only a narrow compiler input shape runs. | Add V8 module loading, request context/response writer, source-input run handoff, and executable public examples. |
+| Compiler extraction | Yellow | Oxc-backed one-file extractor for `Sloppy.create`, builder build, literal `mapGet`, simple route groups, route names, handler ID assignment, deterministic `app.plan.json`, `app.js`, placeholder source map, and route metadata consumed by `sloppy run`. | Cargo tests, compiler golden fixtures, diagnostics fixtures, Rust standards scanner, clippy, and V8-gated run smoke when SDK is available. | No full TypeScript checking, package resolution, bundling, modules/services/data providers, source-map fidelity, or source-input `sloppy run` handoff. | Add EPIC-24 bootstrap module loading, broader extraction, source maps, and official type checking. |
 | App host | Yellow | JavaScript-only builder/freeze/config/logging/services skeleton. | Bootstrap tests validate in-memory behavior. | No native app graph, startup validation, request scopes, disposal, or run/listen behavior. | Implement native app graph and runtime startup validation after compiler extraction. |
 | Modules | Yellow | JavaScript-only `Sloppy.module`, dependency ordering, phases, attribution, debug metadata. | Bootstrap module tests. | No compiler extraction, package loading, native module graph, middleware/filter phases, or real plan emission. | Emit/validate module plan metadata and load it through runtime startup. |
 | Data providers | Yellow | Native SQLite, PostgreSQL, and SQL Server provider boundaries plus bootstrap data API/fake provider. | SQLite live-in-memory tests; PostgreSQL/SQL Server default non-live tests; redaction and option tests. | PostgreSQL and SQL Server live tests require env vars; JS-to-native bridge, resource IDs, pooling, async offload, and capability enforcement are missing. | Add JS-native resource bridge, live test infrastructure, pooling hardening, async strategy, and capability policy. |
@@ -31,11 +31,10 @@ gates, and default provider tests are not live database tests.
 
 ## Current Summary
 
-The repo has a surprisingly broad foundation now, but public-alpha readiness is still red
-because the pieces do not yet form an executable app path. The highest-confidence areas are
-portable core primitives and default Windows gates. The riskiest gaps are V8 validation,
-runtime execution from compiler artifacts, `sloppy run`, response/request handling,
-capability enforcement, cross-platform CI, and release packaging.
+The repo has a surprisingly broad foundation now, and it has the first dev-only executable
+artifact path. Public-alpha readiness is still red because the path is intentionally narrow:
+V8 validation is gated, source-input `sloppy run` is deferred, response/request handling is
+minimal, and capability enforcement, cross-platform CI, and release packaging remain open.
 
 ## Gate Interpretation
 
@@ -43,6 +42,7 @@ Passing the default Windows gates means:
 
 - portable C foundations, non-V8 tests, static/bootstrap checks, CLI fixture tests, and
   provider default tests passed;
+- `sloppy run` startup/failure-mode tests passed without proving V8 execution;
 - V8-enabled tests did not necessarily run;
 - PostgreSQL and SQL Server live tests did not necessarily run;
 - benchmark smoke ran only as harness correctness, not as performance evidence.

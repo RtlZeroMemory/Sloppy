@@ -1,6 +1,7 @@
 # App Model
 
-Status: Bootstrap app-host skeleton and compiler extraction MVP implemented.
+Status: Bootstrap app-host skeleton, compiler extraction MVP, and dev-only artifact run MVP
+implemented.
 
 Bootstrap status: `stdlib/sloppy/app.js` exports a frozen `Sloppy` object with
 `Sloppy.create()`, `Sloppy.createBuilder()`, and `Sloppy.module(...)`. The returned app is
@@ -13,6 +14,13 @@ Compiler status: `sloppyc build` can extract one tiny app from either `Sloppy.cr
 `app.js`, and placeholder `app.js.map` artifacts. The compiler MVP supports only literal
 `mapGet` routes and simple route groups. It does not execute the bootstrap app object,
 extract modules/services/data providers, or run `app.run`.
+
+Runtime status: `sloppy run --artifacts <dir>` can load EPIC-21 artifacts in a V8-enabled
+build, evaluate the generated classic-script `app.js`, route GET request paths using the
+compiler-emitted route metadata, call handlers by numeric ID, and return tiny text or
+JSON-compatible responses. Source input build handoff, native app-host validation,
+bootstrap ESM loading, request contexts, services, middleware, and `app.run` remain
+deferred.
 
 Purpose: explain the current builder/app model, structural freeze boundary, and the future
 path to native app-host validation.
@@ -98,11 +106,12 @@ Validation schemas can be attached as metadata, for example
 The bootstrap app stores this metadata only. It does not parse requests or produce automatic
 validation responses.
 
-Not implemented yet: `app.run`, `app.listen`, native startup validation, HTTP serving,
-nested route groups, middleware, filters, automatic validation, config file/env providers,
-console/file/native logging, service disposal, async factories, real request-scoped
-lifetimes, module packages, data providers, native plugins, broad bundling, package
-resolution, or full TypeScript type checking.
+Not implemented yet: `app.run`, `app.listen`, native startup validation for the full app
+host, bootstrap ESM loading, nested route groups, middleware, filters, automatic
+validation, request context materialization, config file/env providers, console/file/native
+logging, service disposal, async factories, real request-scoped lifetimes, module packages,
+data providers, native plugins, broad bundling, package resolution, or full TypeScript type
+checking.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/app-plan.md`.

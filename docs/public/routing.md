@@ -1,12 +1,13 @@
 # Routing
 
-Status: Bootstrap `mapGet`, route group shape, and compiler extraction MVP implemented.
+Status: Bootstrap `mapGet`, route group shape, compiler extraction MVP, and dev-only GET
+artifact routing implemented.
 
 Bootstrap status: `Sloppy.create()` and `Sloppy.createBuilder().build()` return an
-in-memory app facade with `app.mapGet(...)` and `app.mapGroup(...)`. Handler registration,
-HTTP dispatch integration, and server execution remain future work. Routes can also be
-contributed during a module routes phase through `builder.addModule(...)`, but module route
-extraction is not part of the compiler MVP.
+in-memory app facade with `app.mapGet(...)` and `app.mapGroup(...)`. Compiler-emitted
+`mapGet` metadata can now be consumed by `sloppy run --artifacts` for GET-only dev
+dispatch. Bootstrap route snapshots, module-contributed routes, request contexts, and
+route params in JavaScript remain future work.
 
 Purpose: document current `app.mapGet`, route snapshots, handler context, and future route
 features.
@@ -52,8 +53,9 @@ without an explicit context:
 ```
 
 This context exists only for bootstrap tests and examples. `route` is currently an empty
-object unless a test or caller supplies an explicit context. Native HTTP dispatch still does
-not materialize route params into JavaScript handler context.
+object unless a test or caller supplies an explicit context. Native dev dispatch can match
+route parameters to select a handler, but it still does not materialize route params into
+the JavaScript handler context.
 
 Route groups:
 
@@ -86,17 +88,28 @@ Compiler extraction MVP:
   TypeScript input, closed-over source-file bindings, conditional route registration,
   loops, modules, middleware, and package resolution.
 
+Dev-only run behavior:
+
+- reads the compiler-emitted `routes` metadata section from `app.plan.json`;
+- supports GET route bindings only;
+- parses each route pattern with the existing native route parser;
+- matches incoming request paths with strict trailing-slash behavior;
+- resolves the matched route to a numeric handler ID and validates that ID against the
+  parsed Plan handler table before entering V8;
+- returns `404` when no GET route matches and `405` for unsupported methods.
+
 Not implemented yet: `mapPost`, nested groups, middleware, filters, automatic validation,
-native route table construction, HTTP server behavior, route dispatch integration, and
-route/module extraction beyond the tiny compiler MVP shape above.
+production route table construction, route precedence optimization, route params in handler
+context, and route/module extraction beyond the tiny compiler MVP shape above.
 
 ## CLI Introspection
 
 `sloppy routes --plan <path>` can print route metadata from a plan-compatible metadata
 fixture or artifact, including the narrow route metadata emitted by the compiler MVP. This
 is inspection-only: it does not execute handlers, start HTTP, enter V8, or build a
-production native route table. Until native plan parsing grows a real route section, the
-command reads the documented interim `routes` metadata section.
+production native route table. `sloppy run --artifacts <dir>` also reads the documented
+interim `routes` metadata section for dev-only GET dispatch until native Plan parsing grows
+a real route section.
 
 `sloppy openapi --plan <path>` uses the same route metadata to emit a minimal OpenAPI
 skeleton. It converts Sloppy route parameters such as `{id}` and `{id:int}` into OpenAPI

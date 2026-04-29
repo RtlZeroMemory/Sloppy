@@ -8,8 +8,8 @@ state and an honest public-alpha path.
 
 - Public API to plan emission beyond EPIC-21: bootstrap module/service/data metadata must
   become compiler-produced plan metadata instead of in-memory debug snapshots.
-- `sloppy run` MVP: load source or build artifacts, start a local dev HTTP server, route
-  GET requests, call the V8 handler, and return text/JSON responses.
+- `sloppy run` source/build handoff: EPIC-22 can load artifacts, but source input still
+  needs a clean `sloppyc` handoff/cache story.
 - HTTP response writer: status, headers, content type, body writing, basic error handling,
   and response descriptor conversion from current `Results.*` shapes.
 - Request context model: route params, query params, request metadata, services/config/log,
@@ -139,3 +139,6 @@ state and an honest public-alpha path.
 - Wired JS/TS and Rust standards scanners into `tools/windows/dev.ps1 lint`.
 - Added the EPIC-21 `sloppyc` extraction MVP for one-file literal `mapGet` apps, builder
   form, simple route groups, deterministic artifacts, and compiler diagnostics.
+- Added the EPIC-22 dev-only `sloppy run --artifacts` MVP with V8-required startup,
+  GET route dispatch, `--once` test mode, tiny local HTTP serving, and clear non-V8
+  diagnostics.

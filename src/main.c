@@ -1,23 +1,31 @@
 /*
  * Sloppy CLI.
  *
- * EPIC-19 adds metadata-only introspection commands over plan-compatible JSON files. These
- * commands parse artifacts, fixtures, and debug metadata only: they do not start HTTP, load
- * V8, execute application code, or call route handlers.
+ * EPIC-19 adds metadata-only introspection commands over plan-compatible JSON files.
+ * EPIC-22 adds the dev-only `sloppy run` artifact path. The run path is intentionally
+ * narrow: it loads EPIC-21 artifacts, requires V8, dispatches GET routes, writes a tiny
+ * response, and avoids production HTTP, package-manager, Node-compatibility, middleware,
+ * body parsing, and hot-reload behavior.
  */
 #include "sloppy/arena.h"
 #include "sloppy/compiler.h"
 #include "sloppy/data_postgres.h"
 #include "sloppy/data_sqlserver.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/engine.h"
+#include "sloppy/http.h"
+#include "sloppy/http_dispatch.h"
 #include "sloppy/plan.h"
 #include "sloppy/platform.h"
+#include "sloppy/route.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <uv.h>
 #include <yyjson.h>
 
 #define SL_CLI_MAX_ROUTES 128U
@@ -28,6 +36,13 @@
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
+#define SL_RUN_FILE_MAX_BYTES 65536U
+#define SL_RUN_ARENA_BYTES 65536U
+#define SL_RUN_MAX_CLIENTS 16U
+#define SL_RUN_REQUEST_MAX_BYTES 8192U
+#define SL_RUN_RESPONSE_MAX_BYTES 16384U
+#define SL_RUN_DEFAULT_HOST "127.0.0.1"
+#define SL_RUN_DEFAULT_PORT 5173U
 
 typedef enum SlCliFormat
 {
@@ -96,6 +111,12 @@ typedef struct SlCliOptions
     const char* command;
     const char* plan_path;
     const char* output_path;
+    const char* input_path;
+    const char* artifacts_path;
+    const char* host;
+    const char* once_method;
+    const char* once_target;
+    uint16_t port;
     SlCliFormat format;
     bool help;
 } SlCliOptions;
@@ -168,10 +189,12 @@ static void sl_cli_print_version(void)
 static void sl_cli_print_help(void)
 {
     sl_cli_print_version();
-    (void)printf("Foundation build with metadata-only CLI introspection.\n\n");
+    (void)printf("Foundation build with dev-only run MVP and metadata CLI introspection.\n\n");
     (void)printf("Usage:\n");
     (void)printf("  sloppy --help\n");
     (void)printf("  sloppy --version\n");
+    (void)printf("  sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]\n");
+    (void)printf("  sloppy run --artifacts <dir> [--once METHOD TARGET]\n");
     (void)printf("  sloppy routes --plan <path> [--format text|json]\n");
     (void)printf("  sloppy doctor [--plan <path>] [--format text|json]\n");
     (void)printf("  sloppy audit --plan <path> [--format text|json]\n");
@@ -182,6 +205,13 @@ static void sl_cli_print_command_help(const char* command)
 {
     if (strcmp(command, "routes") == 0) {
         (void)printf("Usage: sloppy routes --plan <path> [--format text|json]\n");
+        return;
+    }
+    if (strcmp(command, "run") == 0) {
+        (void)printf("Usage: sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]\n");
+        (void)printf("       sloppy run --artifacts <dir> [--once METHOD TARGET]\n");
+        (void)printf("\n");
+        (void)printf("Dev-only MVP. Requires a V8-enabled build and .sloppy-style artifacts.\n");
         return;
     }
     if (strcmp(command, "doctor") == 0) {
@@ -213,6 +243,146 @@ static void sl_cli_write_error_with_value(const char* prefix, const char* value,
     sl_cli_write_cstr(stderr, suffix);
 }
 
+static bool sl_cli_parse_port(const char* text, uint16_t* out)
+{
+    uint32_t value = 0U;
+    size_t index = 0U;
+
+    if (text == NULL || text[0] == '\0' || out == NULL) {
+        return false;
+    }
+
+    while (text[index] != '\0') {
+        unsigned char ch = (unsigned char)text[index];
+        if (ch < '0' || ch > '9') {
+            return false;
+        }
+        value = (value * 10U) + (uint32_t)(ch - '0');
+        if (value == 0U || value > UINT16_MAX) {
+            return false;
+        }
+        index += 1U;
+    }
+
+    *out = (uint16_t)value;
+    return true;
+}
+
+static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptions* out)
+{
+    if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
+        strcmp(out->command, "run") != 0)
+    {
+        return 0;
+    }
+
+    if (strcmp(argv[*index], "--artifacts") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy run: --artifacts requires a directory\n");
+            return -1;
+        }
+        out->artifacts_path = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--host") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy run: --host requires an IPv4 address\n");
+            return -1;
+        }
+        out->host = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--port") == 0) {
+        if (*index + 1 >= argc || !sl_cli_parse_port(argv[*index + 1], &out->port)) {
+            sl_cli_write_cstr(stderr, "sloppy run: --port requires a value from 1 to 65535\n");
+            return -1;
+        }
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--once") == 0) {
+        if (*index + 2 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy run: --once requires METHOD and TARGET\n");
+            return -1;
+        }
+        out->once_method = argv[*index + 1];
+        out->once_target = argv[*index + 2];
+        *index += 3;
+        return 1;
+    }
+
+    if (argv[*index][0] != '-') {
+        if (out->input_path != NULL) {
+            sl_cli_write_cstr(stderr, "sloppy run: expected only one input or artifact path\n");
+            return -1;
+        }
+        out->input_path = argv[*index];
+        *index += 1;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOptions* out)
+{
+    if (argc <= 0 || argv == NULL || index == NULL || out == NULL) {
+        return 0;
+    }
+
+    if (strcmp(argv[*index], "--help") == 0 || strcmp(argv[*index], "-h") == 0) {
+        out->help = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--format") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy: --format requires text or json\n");
+            return -1;
+        }
+        if (strcmp(argv[*index + 1], "text") == 0) {
+            out->format = SL_CLI_FORMAT_TEXT;
+        }
+        else if (strcmp(argv[*index + 1], "json") == 0) {
+            out->format = SL_CLI_FORMAT_JSON;
+        }
+        else {
+            sl_cli_write_error_with_value("sloppy: unsupported format '", argv[*index + 1], "'\n");
+            return -1;
+        }
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--plan") == 0 || strcmp(argv[*index], "--app") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_error_with_value("sloppy: ", argv[*index], " requires a path\n");
+            return -1;
+        }
+        out->plan_path = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--output") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy: --output requires a path\n");
+            return -1;
+        }
+        out->output_path = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+
+    return 0;
+}
+
 static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
 {
     int index = 2;
@@ -223,6 +393,8 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
 
     *out = (SlCliOptions){0};
     out->format = SL_CLI_FORMAT_TEXT;
+    out->host = SL_RUN_DEFAULT_HOST;
+    out->port = (uint16_t)SL_RUN_DEFAULT_PORT;
 
     if (argc <= 1) {
         out->help = true;
@@ -241,45 +413,20 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     out->command = argv[1];
 
     while (index < argc) {
-        if (strcmp(argv[index], "--help") == 0 || strcmp(argv[index], "-h") == 0) {
-            out->help = true;
-            index += 1;
+        int common_parse = sl_cli_parse_common_option(argc, argv, &index, out);
+        int run_parse = 0;
+        if (common_parse < 0) {
+            return 1;
         }
-        else if (strcmp(argv[index], "--format") == 0) {
-            if (index + 1 >= argc) {
-                sl_cli_write_cstr(stderr, "sloppy: --format requires text or json\n");
-                return 1;
-            }
-            if (strcmp(argv[index + 1], "text") == 0) {
-                out->format = SL_CLI_FORMAT_TEXT;
-            }
-            else if (strcmp(argv[index + 1], "json") == 0) {
-                out->format = SL_CLI_FORMAT_JSON;
-            }
-            else {
-                sl_cli_write_error_with_value("sloppy: unsupported format '", argv[index + 1],
-                                              "'\n");
-                return 1;
-            }
-            index += 2;
+        if (common_parse > 0) {
+            continue;
         }
-        else if (strcmp(argv[index], "--plan") == 0 || strcmp(argv[index], "--app") == 0) {
-            if (index + 1 >= argc) {
-                sl_cli_write_error_with_value("sloppy: ", argv[index], " requires a path\n");
-                return 1;
-            }
-            out->plan_path = argv[index + 1];
-            index += 2;
+
+        run_parse = sl_cli_parse_run_option(argc, argv, &index, out);
+        if (run_parse < 0) {
+            return 1;
         }
-        else if (strcmp(argv[index], "--output") == 0) {
-            if (index + 1 >= argc) {
-                sl_cli_write_cstr(stderr, "sloppy: --output requires a path\n");
-                return 1;
-            }
-            out->output_path = argv[index + 1];
-            index += 2;
-        }
-        else {
+        if (run_parse == 0) {
             sl_cli_write_error_with_value("sloppy: unknown option '", argv[index], "'\n");
             return 1;
         }
@@ -767,6 +914,884 @@ static const SlCliHandler* sl_cli_find_handler(const SlCliMetadata* metadata, Sl
     }
 
     return NULL;
+}
+
+typedef struct SlRunRoute
+{
+    SlRoutePattern pattern;
+    SlHttpRouteBinding binding;
+} SlRunRoute;
+
+typedef struct SlRunApp
+{
+    unsigned char plan_json_storage[SL_RUN_FILE_MAX_BYTES];
+    unsigned char metadata_json_storage[SL_RUN_FILE_MAX_BYTES];
+    unsigned char app_js_storage[SL_RUN_FILE_MAX_BYTES];
+    unsigned char plan_arena_storage[SL_RUN_ARENA_BYTES];
+    unsigned char route_arena_storage[SL_RUN_ARENA_BYTES];
+    unsigned char engine_arena_storage[SL_RUN_ARENA_BYTES];
+    SlArena plan_arena;
+    SlArena route_arena;
+    SlArena engine_arena;
+    SlPlan plan;
+    SlEngine* engine;
+    SlRunRoute routes[SL_CLI_MAX_ROUTES];
+    SlHttpRouteBinding bindings[SL_CLI_MAX_ROUTES];
+    SlHttpDispatchTable dispatch_table;
+} SlRunApp;
+
+typedef struct SlRunServer SlRunServer;
+
+typedef struct SlRunClient
+{
+    uv_tcp_t handle;
+    SlRunServer* server;
+    char request[SL_RUN_REQUEST_MAX_BYTES];
+    size_t request_length;
+    char response[SL_RUN_RESPONSE_MAX_BYTES];
+    uv_write_t write_request;
+    bool active;
+} SlRunClient;
+
+struct SlRunServer
+{
+    SlRunApp* app;
+    uv_loop_t loop;
+    uv_tcp_t listener;
+    SlRunClient clients[SL_RUN_MAX_CLIENTS];
+};
+
+static bool sl_run_span_ends_with(SlCliSpan span, const char* suffix)
+{
+    size_t suffix_length = strlen(suffix);
+
+    if (span.length < suffix_length) {
+        return false;
+    }
+
+    return memcmp(span.ptr + span.length - suffix_length, suffix, suffix_length) == 0;
+}
+
+static bool sl_run_join_path(char* buffer, size_t capacity, const char* dir, SlCliSpan leaf)
+{
+    size_t dir_length = 0U;
+    size_t out = 0U;
+    size_t index = 0U;
+    bool needs_separator = true;
+
+    if (buffer == NULL || capacity == 0U || dir == NULL || leaf.ptr == NULL || leaf.length == 0U) {
+        return false;
+    }
+
+    if (leaf.ptr[0] == '/' || leaf.ptr[0] == '\\') {
+        return false;
+    }
+    for (index = 0U; index < leaf.length; index += 1U) {
+        if (leaf.ptr[index] == ':') {
+            return false;
+        }
+    }
+
+    dir_length = strlen(dir);
+    if (dir_length == 0U) {
+        return false;
+    }
+
+    needs_separator = dir[dir_length - 1U] != '/' && dir[dir_length - 1U] != '\\';
+    if (dir_length + (needs_separator ? 1U : 0U) + leaf.length + 1U > capacity) {
+        return false;
+    }
+
+    for (index = 0U; index < dir_length; index += 1U) {
+        buffer[out] = dir[index];
+        out += 1U;
+    }
+    if (needs_separator) {
+        buffer[out] = '/';
+        out += 1U;
+    }
+    for (index = 0U; index < leaf.length; index += 1U) {
+        if (leaf.ptr[index] == '\\') {
+            buffer[out] = '/';
+        }
+        else {
+            buffer[out] = leaf.ptr[index];
+        }
+        out += 1U;
+    }
+    buffer[out] = '\0';
+    return true;
+}
+
+static SlCliSpan sl_run_str_span(SlStr str)
+{
+    return (SlCliSpan){str.ptr, str.length};
+}
+
+static bool sl_run_artifact_file_path(char* buffer, size_t capacity, const char* dir,
+                                      const char* leaf)
+{
+    return sl_run_join_path(buffer, capacity, dir, sl_cli_span_cstr(leaf));
+}
+
+static int sl_run_read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)
+{
+    FILE* file = NULL;
+    long size = 0L;
+    size_t bytes_read = 0U;
+
+    if (path == NULL || buffer == NULL || out == NULL) {
+        return 1;
+    }
+
+#ifdef _MSC_VER
+    if (fopen_s(&file, path, "rb") != 0) {
+        file = NULL;
+    }
+#else
+    file = fopen(path, "rb");
+#endif
+
+    if (file == NULL) {
+        sl_cli_write_error_with_value("sloppy run: artifact path not found: ", path, "\n");
+        return 1;
+    }
+
+    if (fseek(file, 0L, SEEK_END) != 0) {
+        (void)fclose(file);
+        return 1;
+    }
+
+    size = ftell(file);
+    if (size <= 0L || (size_t)size > capacity) {
+        (void)fclose(file);
+        sl_cli_write_error_with_value("sloppy run: artifact file is empty or too large: ", path,
+                                      "\n");
+        return 1;
+    }
+
+    if (fseek(file, 0L, SEEK_SET) != 0) {
+        (void)fclose(file);
+        return 1;
+    }
+
+    bytes_read = fread(buffer, 1U, (size_t)size, file);
+    (void)fclose(file);
+    if (bytes_read != (size_t)size) {
+        return 1;
+    }
+
+    *out = sl_bytes_from_parts(buffer, bytes_read);
+    return 0;
+}
+
+static void sl_run_print_diag(const char* prefix, const SlDiag* diag)
+{
+    sl_cli_write_cstr(stderr, prefix);
+    if (diag != NULL && !sl_str_is_empty(diag->message)) {
+        sl_cli_write_span(stderr, (SlCliSpan){diag->message.ptr, diag->message.length});
+        sl_cli_write_cstr(stderr, "\n");
+        return;
+    }
+    sl_cli_write_cstr(stderr, "operation failed\n");
+}
+
+static SlEngineOptions sl_run_v8_options(void)
+{
+    SlEngineOptions options = {0};
+
+    options.kind = SL_ENGINE_KIND_V8;
+    options.runtime_name = sl_str_from_cstr("sloppy-run-mvp");
+    options.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
+    options.target_platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    options.target_engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    return options;
+}
+
+static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
+{
+    SlBytes json = {0};
+    SlPlanParseOptions parse_options = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (sl_run_read_file(plan_path, app->plan_json_storage, sizeof(app->plan_json_storage),
+                         &json) != 0)
+    {
+        return 1;
+    }
+
+    parse_options.source_name = sl_str_from_cstr(plan_path);
+    status = sl_plan_parse_json(&app->plan_arena, json, &parse_options, &app->plan, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: malformed app.plan.json: ", &diag);
+        return 1;
+    }
+
+    if (!sl_str_equal(app->plan.target.engine, sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8))) {
+        sl_cli_write_cstr(stderr, "sloppy run: app.plan.json target.engine must be v8\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_run_prepare_routes(SlRunApp* app, const SlCliMetadata* metadata)
+{
+    size_t index = 0U;
+    size_t count = 0U;
+
+    for (index = 0U; index < metadata->route_count; index += 1U) {
+        const SlCliRoute* route = &metadata->routes[index];
+        const SlPlanHandler* handler = NULL;
+        SlStatus status;
+
+        if (!sl_cli_span_equal_cstr(route->method, "GET")) {
+            continue;
+        }
+
+        status = sl_plan_find_handler_by_id(&app->plan, route->handler_id, &handler);
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: route metadata references a missing plan handler\n");
+            return 1;
+        }
+
+        status = sl_route_pattern_parse(&app->route_arena, sl_cli_span_str(route->pattern),
+                                        &app->routes[count].pattern, NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_cli_write_cstr(stderr, "sloppy run: route metadata contains an invalid pattern: ");
+            sl_cli_write_span(stderr, route->pattern);
+            sl_cli_write_cstr(stderr, "\n");
+            return 1;
+        }
+
+        app->routes[count].binding.method = SL_HTTP_METHOD_GET;
+        app->routes[count].binding.pattern = &app->routes[count].pattern;
+        app->routes[count].binding.handler_id = route->handler_id;
+        app->bindings[count] = app->routes[count].binding;
+        count += 1U;
+    }
+
+    if (count == 0U) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: app.plan.json does not contain GET route metadata\n");
+        return 1;
+    }
+
+    app->dispatch_table.routes = app->bindings;
+    app->dispatch_table.route_count = count;
+    return 0;
+}
+
+static int sl_run_load_routes(SlRunApp* app, const char* plan_path)
+{
+    yyjson_doc* doc = NULL;
+    SlCliMetadata metadata = {0};
+
+    if (sl_cli_load_metadata(plan_path, app->metadata_json_storage, &doc, &metadata) != 0) {
+        if (doc != NULL) {
+            yyjson_doc_free(doc);
+        }
+        return 1;
+    }
+
+    if (sl_run_prepare_routes(app, &metadata) != 0) {
+        yyjson_doc_free(doc);
+        return 1;
+    }
+
+    yyjson_doc_free(doc);
+    return 0;
+}
+
+static int sl_run_load_engine(SlRunApp* app, const char* app_js_path)
+{
+    SlBytes js = {0};
+    SlStr source = {0};
+    SlEngineOptions options = sl_run_v8_options();
+    SlDiag diag = {0};
+    SlStatus status;
+
+    status = sl_engine_create(&options, &app->engine_arena, &app->engine);
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED) {
+        sl_cli_write_cstr(stderr, "sloppy run: sloppy run requires V8-enabled build\n");
+        return 1;
+    }
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to create V8 engine\n");
+        return 1;
+    }
+
+    if (sl_run_read_file(app_js_path, app->app_js_storage, sizeof(app->app_js_storage), &js) != 0) {
+        return 1;
+    }
+
+    source = sl_str_from_parts((const char*)js.ptr, js.length);
+    status = sl_engine_eval_source(app->engine, sl_str_from_cstr(app_js_path), source, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: failed to evaluate app.js: ", &diag);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_run_load_app(const char* artifacts_path, SlRunApp* app)
+{
+    char plan_path[1024];
+    char app_js_path[1024];
+
+    if (artifacts_path == NULL || app == NULL) {
+        return 1;
+    }
+
+    *app = (SlRunApp){0};
+    if (!sl_status_is_ok(sl_arena_init(&app->plan_arena, app->plan_arena_storage,
+                                       sizeof(app->plan_arena_storage))) ||
+        !sl_status_is_ok(sl_arena_init(&app->route_arena, app->route_arena_storage,
+                                       sizeof(app->route_arena_storage))) ||
+        !sl_status_is_ok(sl_arena_init(&app->engine_arena, app->engine_arena_storage,
+                                       sizeof(app->engine_arena_storage))))
+    {
+        return 1;
+    }
+
+    if (!sl_run_artifact_file_path(plan_path, sizeof(plan_path), artifacts_path, "app.plan.json")) {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid artifacts directory\n");
+        return 1;
+    }
+
+    if (sl_run_load_plan(app, plan_path) != 0 || sl_run_load_routes(app, plan_path) != 0) {
+        return 1;
+    }
+
+    if (!sl_run_join_path(app_js_path, sizeof(app_js_path), artifacts_path,
+                          sl_run_str_span(app->plan.bundle.path)))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid bundle path in app.plan.json\n");
+        return 1;
+    }
+
+    return sl_run_load_engine(app, app_js_path);
+}
+
+static bool sl_run_text_looks_json(SlStr text)
+{
+    size_t index = 0U;
+
+    while (index < text.length && (text.ptr[index] == ' ' || text.ptr[index] == '\t' ||
+                                   text.ptr[index] == '\r' || text.ptr[index] == '\n'))
+    {
+        index += 1U;
+    }
+
+    if (index >= text.length) {
+        return false;
+    }
+
+    return text.ptr[index] == '{' || text.ptr[index] == '[';
+}
+
+static const char* sl_run_status_reason(unsigned status)
+{
+    switch (status) {
+    case 200U:
+        return "OK";
+    case 404U:
+        return "Not Found";
+    case 405U:
+        return "Method Not Allowed";
+    case 500U:
+        return "Internal Server Error";
+    default:
+        return "OK";
+    }
+}
+
+static bool sl_run_append_byte(char* buffer, size_t capacity, size_t* length, char byte)
+{
+    if (buffer == NULL || length == NULL || *length + 1U >= capacity) {
+        return false;
+    }
+
+    buffer[*length] = byte;
+    *length += 1U;
+    buffer[*length] = '\0';
+    return true;
+}
+
+static bool sl_run_append_cstr(char* buffer, size_t capacity, size_t* length, const char* text)
+{
+    size_t index = 0U;
+
+    if (text == NULL) {
+        return false;
+    }
+
+    while (text[index] != '\0') {
+        if (!sl_run_append_byte(buffer, capacity, length, text[index])) {
+            return false;
+        }
+        index += 1U;
+    }
+
+    return true;
+}
+
+static bool sl_run_append_uint(char* buffer, size_t capacity, size_t* length, unsigned value)
+{
+    char digits[10];
+    size_t count = 0U;
+
+    do {
+        digits[count] = (char)('0' + (value % 10U));
+        value /= 10U;
+        count += 1U;
+    } while (value != 0U && count < sizeof(digits));
+
+    while (count > 0U) {
+        count -= 1U;
+        if (!sl_run_append_byte(buffer, capacity, length, digits[count])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool sl_run_append_size(char* buffer, size_t capacity, size_t* length, size_t value)
+{
+    char digits[32];
+    size_t count = 0U;
+
+    do {
+        digits[count] = (char)('0' + (value % 10U));
+        value /= 10U;
+        count += 1U;
+    } while (value != 0U && count < sizeof(digits));
+
+    while (count > 0U) {
+        count -= 1U;
+        if (!sl_run_append_byte(buffer, capacity, length, digits[count])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool sl_run_append_str(char* buffer, size_t capacity, size_t* length, SlStr text)
+{
+    size_t index = 0U;
+
+    if (text.ptr == NULL && text.length != 0U) {
+        return false;
+    }
+
+    for (index = 0U; index < text.length; index += 1U) {
+        if (!sl_run_append_byte(buffer, capacity, length, text.ptr[index])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static int sl_run_write_response(char* buffer, size_t capacity, unsigned status,
+                                 const char* content_type, SlStr body)
+{
+    size_t length = 0U;
+
+    if (buffer == NULL || content_type == NULL || (body.ptr == NULL && body.length != 0U)) {
+        return -1;
+    }
+
+    buffer[0] = '\0';
+    if (!sl_run_append_cstr(buffer, capacity, &length, "HTTP/1.1 ") ||
+        !sl_run_append_uint(buffer, capacity, &length, status) ||
+        !sl_run_append_cstr(buffer, capacity, &length, " ") ||
+        !sl_run_append_cstr(buffer, capacity, &length, sl_run_status_reason(status)) ||
+        !sl_run_append_cstr(buffer, capacity, &length, "\r\nConnection: close\r\nContent-Type: ") ||
+        !sl_run_append_cstr(buffer, capacity, &length, content_type) ||
+        !sl_run_append_cstr(buffer, capacity, &length, "\r\nContent-Length: ") ||
+        !sl_run_append_size(buffer, capacity, &length, body.length) ||
+        !sl_run_append_cstr(buffer, capacity, &length, "\r\n\r\n") ||
+        !sl_run_append_str(buffer, capacity, &length, body))
+    {
+        return -1;
+    }
+
+    return length > (size_t)INT32_MAX ? -1 : (int)length;
+}
+
+static SlHttpMethod sl_run_method_from_cstr(const char* method)
+{
+    if (method == NULL) {
+        return SL_HTTP_METHOD_UNKNOWN;
+    }
+    if (strcmp(method, "GET") == 0) {
+        return SL_HTTP_METHOD_GET;
+    }
+    if (strcmp(method, "POST") == 0) {
+        return SL_HTTP_METHOD_POST;
+    }
+    if (strcmp(method, "PUT") == 0) {
+        return SL_HTTP_METHOD_PUT;
+    }
+    if (strcmp(method, "DELETE") == 0) {
+        return SL_HTTP_METHOD_DELETE;
+    }
+    if (strcmp(method, "PATCH") == 0) {
+        return SL_HTTP_METHOD_PATCH;
+    }
+    if (strcmp(method, "OPTIONS") == 0) {
+        return SL_HTTP_METHOD_OPTIONS;
+    }
+    if (strcmp(method, "HEAD") == 0) {
+        return SL_HTTP_METHOD_HEAD;
+    }
+    return SL_HTTP_METHOD_UNKNOWN;
+}
+
+static SlStr sl_run_target_path(const char* target)
+{
+    size_t index = 0U;
+
+    if (target == NULL) {
+        return sl_str_empty();
+    }
+
+    while (target[index] != '\0' && target[index] != '?') {
+        index += 1U;
+    }
+
+    return sl_str_from_parts(target, index);
+}
+
+static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request, char* response,
+                                size_t response_capacity)
+{
+    unsigned char dispatch_storage[SL_RUN_ARENA_BYTES];
+    SlArena dispatch_arena = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+    const char* content_type = "text/plain; charset=utf-8";
+
+    if (app == NULL || request == NULL || response == NULL ||
+        !sl_status_is_ok(
+            sl_arena_init(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage))))
+    {
+        return -1;
+    }
+
+    status = sl_http_dispatch_request_head(&dispatch_arena, app->engine, &app->plan,
+                                           &app->dispatch_table, request, &result, &diag);
+    if (sl_status_is_ok(status) && result.kind == SL_ENGINE_RESULT_TEXT) {
+        if (sl_run_text_looks_json(result.text)) {
+            content_type = "application/json; charset=utf-8";
+        }
+        return sl_run_write_response(response, response_capacity, 200U, content_type, result.text);
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED) {
+        return sl_run_write_response(response, response_capacity, 405U, "text/plain; charset=utf-8",
+                                     sl_str_from_cstr("Method Not Allowed\n"));
+    }
+
+    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
+        return sl_run_write_response(response, response_capacity, 404U, "text/plain; charset=utf-8",
+                                     sl_str_from_cstr("Not Found\n"));
+    }
+
+    (void)diag;
+    return sl_run_write_response(response, response_capacity, 500U, "text/plain; charset=utf-8",
+                                 sl_str_from_cstr("Sloppy handler failed\n"));
+}
+
+static int sl_run_once(SlRunApp* app, const char* method, const char* target)
+{
+    unsigned char request_storage[SL_RUN_ARENA_BYTES];
+    SlArena request_arena = {0};
+    SlHttpRequestHead request = {0};
+    char response[SL_RUN_RESPONSE_MAX_BYTES];
+    int response_length;
+
+    if (target == NULL || target[0] != '/') {
+        sl_cli_write_cstr(stderr, "sloppy run: --once target must start with /\n");
+        return 1;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&request_arena, request_storage, sizeof(request_storage)))) {
+        return 1;
+    }
+
+    request.method = sl_run_method_from_cstr(method);
+    request.raw_target = sl_str_from_cstr(target);
+    request.path = sl_run_target_path(target);
+    if (request.method == SL_HTTP_METHOD_UNKNOWN) {
+        sl_cli_write_cstr(stderr, "sloppy run: --once method is unsupported by the MVP parser\n");
+        return 1;
+    }
+
+    response_length = sl_run_dispatch_head(app, &request, response, sizeof(response));
+    if (response_length < 0) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to write response\n");
+        return 1;
+    }
+
+    (void)fwrite(response, 1U, (size_t)response_length, stdout);
+    return 0;
+}
+
+static bool sl_run_request_complete(const SlRunClient* client)
+{
+    size_t index = 0U;
+
+    if (client == NULL || client->request_length < 4U) {
+        return false;
+    }
+
+    for (index = 3U; index < client->request_length; index += 1U) {
+        if (client->request[index - 3U] == '\r' && client->request[index - 2U] == '\n' &&
+            client->request[index - 1U] == '\r' && client->request[index] == '\n')
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void sl_run_client_close_cb(uv_handle_t* handle)
+{
+    SlRunClient* client = (SlRunClient*)handle->data;
+
+    if (client != NULL) {
+        client->active = false;
+        client->request_length = 0U;
+    }
+}
+
+static void sl_run_client_write_cb(uv_write_t* request, int status)
+{
+    SlRunClient* client = (SlRunClient*)request->data;
+
+    (void)status;
+    if (client != NULL) {
+        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
+    }
+}
+
+static void sl_run_client_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
+{
+    SlRunClient* client = (SlRunClient*)handle->data;
+    size_t remaining = 0U;
+
+    (void)suggested_size;
+    if (client == NULL || client->request_length >= sizeof(client->request)) {
+        *buf = uv_buf_init(NULL, 0U);
+        return;
+    }
+
+    remaining = sizeof(client->request) - client->request_length;
+    *buf = uv_buf_init(client->request + client->request_length, (unsigned int)remaining);
+}
+
+static void sl_run_client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
+{
+    SlRunClient* client = (SlRunClient*)stream->data;
+    unsigned char request_arena_storage[SL_RUN_ARENA_BYTES];
+    SlArena request_arena = {0};
+    SlHttpRequestHead request = {0};
+    SlDiag diag = {0};
+    int response_length = 0;
+    SlStatus status;
+    uv_buf_t response_buf;
+
+    (void)buf;
+    if (client == NULL) {
+        return;
+    }
+
+    if (nread < 0) {
+        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
+        return;
+    }
+
+    client->request_length += (size_t)nread;
+    if (!sl_run_request_complete(client)) {
+        if (client->request_length >= sizeof(client->request)) {
+            response_length = sl_run_write_response(client->response, sizeof(client->response),
+                                                    500U, "text/plain; charset=utf-8",
+                                                    sl_str_from_cstr("Request head too large\n"));
+            response_buf = uv_buf_init(client->response, (unsigned int)response_length);
+            client->write_request.data = client;
+            (void)uv_write(&client->write_request, stream, &response_buf, 1U,
+                           sl_run_client_write_cb);
+        }
+        return;
+    }
+
+    if (!sl_status_is_ok(
+            sl_arena_init(&request_arena, request_arena_storage, sizeof(request_arena_storage))))
+    {
+        return;
+    }
+
+    status = sl_http_parse_request_head(
+        &request_arena,
+        sl_bytes_from_parts((const unsigned char*)client->request, client->request_length), NULL,
+        &request, &diag);
+    if (sl_status_is_ok(status)) {
+        response_length = sl_run_dispatch_head(client->server->app, &request, client->response,
+                                               sizeof(client->response));
+    }
+    else {
+        response_length = sl_run_write_response(client->response, sizeof(client->response), 500U,
+                                                "text/plain; charset=utf-8",
+                                                sl_str_from_cstr("Malformed HTTP request\n"));
+    }
+
+    if (response_length < 0) {
+        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
+        return;
+    }
+
+    response_buf = uv_buf_init(client->response, (unsigned int)response_length);
+    client->write_request.data = client;
+    (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
+}
+
+static SlRunClient* sl_run_server_acquire_client(SlRunServer* server)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < SL_RUN_MAX_CLIENTS; index += 1U) {
+        if (!server->clients[index].active) {
+            server->clients[index] = (SlRunClient){0};
+            server->clients[index].active = true;
+            server->clients[index].server = server;
+            return &server->clients[index];
+        }
+    }
+
+    return NULL;
+}
+
+static void sl_run_server_connection_cb(uv_stream_t* listener, int status)
+{
+    SlRunServer* server = (SlRunServer*)listener->data;
+    SlRunClient* client = NULL;
+
+    if (status < 0 || server == NULL) {
+        return;
+    }
+
+    client = sl_run_server_acquire_client(server);
+    if (client == NULL) {
+        return;
+    }
+
+    if (uv_tcp_init(&server->loop, &client->handle) != 0) {
+        client->active = false;
+        return;
+    }
+
+    client->handle.data = client;
+    if (uv_accept(listener, (uv_stream_t*)&client->handle) != 0) {
+        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
+        return;
+    }
+
+    (void)uv_read_start((uv_stream_t*)&client->handle, sl_run_client_alloc_cb,
+                        sl_run_client_read_cb);
+}
+
+static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
+{
+    SlRunServer server = {0};
+    struct sockaddr_in address;
+    int rc = 0;
+
+    server.app = app;
+    rc = uv_loop_init(&server.loop);
+    if (rc != 0) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to initialize dev server loop\n");
+        return 1;
+    }
+
+    rc = uv_ip4_addr(host, (int)port, &address);
+    if (rc != 0) {
+        sl_cli_write_cstr(stderr, "sloppy run: --host must be an IPv4 address\n");
+        (void)uv_loop_close(&server.loop);
+        return 1;
+    }
+
+    rc = uv_tcp_init(&server.loop, &server.listener);
+    if (rc == 0) {
+        server.listener.data = &server;
+        rc = uv_tcp_bind(&server.listener, (const struct sockaddr*)&address, 0U);
+    }
+    if (rc == 0) {
+        rc = uv_listen((uv_stream_t*)&server.listener, 16, sl_run_server_connection_cb);
+    }
+
+    if (rc != 0) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to listen on requested host/port\n");
+        uv_close((uv_handle_t*)&server.listener, NULL);
+        (void)uv_run(&server.loop, UV_RUN_DEFAULT);
+        (void)uv_loop_close(&server.loop);
+        return 1;
+    }
+
+    (void)printf("Sloppy dev server listening on http://%s:%u\n", host, (unsigned)port);
+    (void)printf("Dev-only MVP: no TLS, no body parsing, no streaming, no middleware.\n");
+    rc = uv_run(&server.loop, UV_RUN_DEFAULT);
+    (void)uv_loop_close(&server.loop);
+    return rc == 0 ? 0 : 1;
+}
+
+static int sl_cli_command_run(const SlCliOptions* options)
+{
+    SlRunApp app;
+    const char* artifacts_path = options->artifacts_path;
+    int result = 0;
+
+    if (artifacts_path == NULL) {
+        artifacts_path = options->input_path;
+    }
+
+    if (artifacts_path == NULL) {
+        sl_cli_write_cstr(stderr, "sloppy run: expected <artifact-dir> or --artifacts <dir>\n");
+        return 1;
+    }
+
+    if (options->artifacts_path == NULL && options->input_path != NULL) {
+        SlCliSpan input = sl_cli_span_cstr(options->input_path);
+        if (sl_run_span_ends_with(input, ".js") || sl_run_span_ends_with(input, ".mjs")) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: source input handoff to sloppyc is deferred; use "
+                              "--artifacts <dir>\n");
+            return 1;
+        }
+    }
+
+    if (sl_run_load_app(artifacts_path, &app) != 0) {
+        sl_engine_destroy(app.engine);
+        return 1;
+    }
+
+    if (options->once_method != NULL) {
+        result = sl_run_once(&app, options->once_method, options->once_target);
+    }
+    else {
+        result = sl_run_server(&app, options->host, options->port);
+    }
+
+    sl_engine_destroy(app.engine);
+    return result;
 }
 
 static const SlCliModule* sl_cli_find_module(const SlCliMetadata* metadata, SlCliSpan name)
@@ -1354,6 +2379,9 @@ int main(int argc, char** argv)
 
     if (strcmp(options.command, "routes") == 0) {
         return sl_cli_command_routes(&options);
+    }
+    if (strcmp(options.command, "run") == 0) {
+        return sl_cli_command_run(&options);
     }
     if (strcmp(options.command, "doctor") == 0) {
         return sl_cli_command_doctor(&options);

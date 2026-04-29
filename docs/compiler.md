@@ -22,7 +22,8 @@ The compiler extraction MVP does not:
 - assume Node compatibility;
 - execute application JavaScript during compilation;
 - extract services, data providers, modules, middleware, or validation schemas;
-- implement `sloppy run`, HTTP serving, `app.run`, or V8 bootstrap module loading;
+- implement source-input handoff for `sloppy run`, `app.run`, or V8 bootstrap module
+  loading;
 - expose Rust/C FFI.
 
 ## Current Phase
@@ -168,8 +169,9 @@ Future commands:
 - `sloppyc explain`.
 
 See also `docs/execution-model.md`. Dev and production paths must use the same artifact
-architecture: `app.js`, `app.js.map`, and `app.plan.json`. `sloppy run` may add caching and
-watching, but it must not invent a separate runtime-only discovery model.
+architecture: `app.js`, `app.js.map`, and `app.plan.json`. The EPIC-22 `sloppy run` MVP
+loads those artifacts from `--artifacts <dir>`; source-input build handoff, caching, and
+watching remain future work, and runtime code must not invent a separate discovery model.
 
 The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is staged for
 runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler MVP recognizes only
@@ -197,10 +199,10 @@ provider modules, emit data provider plan entries, lower application template li
 native provider calls, or produce metadata for live provider checks.
 EPIC-19 CLI introspection reads interim plan-compatible metadata sections from
 fixtures/artifacts. The compiler MVP now emits a narrow `routes` metadata section in
-`app.plan.json` for EPIC-22 tooling and route handoff; the native Plan v1 parser still
-ignores unknown sections and does not validate or build a route table from it. EPIC-20
-benchmarks measure current native foundations only and do not imply compiler output
-performance.
+`app.plan.json` for CLI tooling and EPIC-22 route handoff; the native Plan v1 parser still
+ignores unknown sections, while `sloppy run` reads this metadata directly for dev-only GET
+dispatch. EPIC-20 benchmarks measure current native foundations only and do not imply
+compiler output performance.
 `examples/ergonomics/app.js` follows the same static-example rule for the broader EPIC-13
 route group, result helper, and schema skeleton API shape. The compiler MVP extracts only
 the tiny route group shape covered by compiler fixtures; it still does not extract schemas,

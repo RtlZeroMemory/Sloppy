@@ -8,7 +8,7 @@ configured with `SLOPPY_ENABLE_V8=ON` and a valid SDK. TASK 07.D adds the first 
 exception-to-`SlDiag` mapping skeleton for that smoke path. TASK 08.A adds the first
 handwritten `app.plan.json` + `app.js` execution smoke through the V8 bridge.
 EPIC-21 compiler output deliberately targets the same classic-script global-function shape
-for now.
+for now. EPIC-22 `sloppy run` requires this V8-enabled path to execute compiler artifacts.
 
 ## Purpose
 
@@ -39,6 +39,8 @@ Implemented now:
   `tests/integration/execution/handwritten_smoke/`.
 - compiler-generated `app.js` artifacts can define `globalThis.__sloppy_handler_N`
   functions that match the current runtime-contract lookup shape.
+- `sloppy run --artifacts <dir>` creates a V8 engine, evaluates the artifact `app.js`, and
+  dispatches matched GET routes through `sl_runtime_contract_call_handler`.
 
 Later scope:
 
@@ -48,9 +50,10 @@ Later scope:
 
 ## Non-goals
 
-No HTTP, public JS API bootstrap module loading, ESM resolver, full app host, request
-context, route matcher, handler table registration, V8 Promise integration, microtask
-policy, workers, inspector, snapshots, Node compatibility, or package-manager behavior.
+No public JS API bootstrap module loading, ESM resolver, full app host, request context,
+handler table registration, V8 Promise integration, microtask policy, workers, inspector,
+snapshots, Node compatibility, or package-manager behavior. EPIC-22 HTTP usage is limited
+to the dev-only CLI path and does not make this bridge a production server boundary.
 
 ## Public/Internal API
 
@@ -76,6 +79,8 @@ Current behavior:
   assignments plus a tiny compiler-generated `Results.text/json` shim that returns strings
   for the current engine result boundary until EPIC-24 owns stdlib bootstrap module loading
   and EPIC-23 owns descriptor conversion;
+- `sloppy run` fails clearly with "requires V8-enabled build" when this bridge is not
+  compiled in;
 - `sl_engine_call_handler` exists as a future engine-owned handler dispatch shape but
   still returns `SL_STATUS_UNSUPPORTED` for the noop engine.
 

@@ -1,22 +1,73 @@
 # CLI
 
-Status: Initial metadata-only introspection implemented.
+Status: Metadata introspection and dev-only `sloppy run` MVP implemented.
 
-Purpose: document Sloppy CLI commands for metadata inspection, local readiness checks,
-audit findings, and OpenAPI skeleton generation.
+Purpose: document Sloppy CLI commands for dev-only artifact execution, metadata
+inspection, local readiness checks, audit findings, and OpenAPI skeleton generation.
 
 Implemented commands:
 
 ```powershell
+sloppy run <artifact-dir> [--host 127.0.0.1] [--port 5173]
+sloppy run --artifacts <dir> [--once METHOD TARGET]
 sloppy routes --plan <path> [--format text|json]
 sloppy doctor [--plan <path>] [--format text|json]
 sloppy audit --plan <path> [--format text|json]
 sloppy openapi --plan <path> [--output <path>]
 ```
 
-These commands inspect plan-compatible metadata JSON only. They do not compile apps, run
-handlers, start an HTTP server, enter V8, connect to live databases, or execute arbitrary
-application code.
+`sloppy run` is a dev-only MVP that loads EPIC-21 artifacts, enters V8, dispatches GET
+routes, and writes tiny text/JSON-compatible HTTP responses. It requires a V8-enabled
+build. Source input handoff to `sloppyc` is deferred; use `sloppyc build ... --out
+<dir>` first, then run the emitted artifact directory.
+
+The other commands inspect plan-compatible metadata JSON only. They do not compile apps,
+run handlers, start an HTTP server, enter V8, connect to live databases, or execute
+arbitrary application code.
+
+## run
+
+Supported forms:
+
+```powershell
+sloppy run --artifacts .sloppy
+sloppy run .sloppy --host 127.0.0.1 --port 5173
+sloppy run --artifacts .sloppy --once GET /
+```
+
+`sloppy run` expects an artifact directory containing:
+
+```text
+app.plan.json
+app.js
+app.js.map   # optional for this MVP
+```
+
+The command loads `app.plan.json` through the native Plan parser, reads the interim
+compiler-emitted `routes` metadata section, parses GET route patterns with the native route
+matcher, creates a V8 engine, evaluates `app.js` as the current classic-script artifact,
+and dispatches requests by numeric handler ID through the existing runtime-contract path.
+
+Default server binding is `127.0.0.1:5173`. The server is single-process, dev-only, and
+intentionally tiny: HTTP/1 request heads only, GET dispatch only, no TLS, no body parsing,
+no streaming, no keep-alive contract, no middleware, no hot reload, no package manager, and
+no Node compatibility.
+
+`--once METHOD TARGET` is a deterministic dev/test helper. It does not open a socket; it
+loads artifacts, dispatches one synthetic request target, prints the HTTP response bytes,
+and exits nonzero only for startup/tooling failures. Route misses print a `404` response,
+and unsupported methods print a `405` response.
+
+In non-V8 builds, `sloppy run` fails before serving with:
+
+```text
+sloppy run: sloppy run requires V8-enabled build
+```
+
+Missing artifacts, malformed plans, missing route metadata, invalid route patterns, missing
+plan handlers, V8 evaluation failures, missing handler globals, and thrown handlers fail
+with stderr diagnostics or safe dev `500` responses depending on whether the failure
+happens during startup or request dispatch.
 
 ## Metadata Input
 

@@ -22,6 +22,31 @@ The command emits:
 - `.sloppy/app.js`;
 - `.sloppy/app.js.map`.
 
-The generated artifacts are intended for the EPIC-22 `sloppy run` path. This example does
-not start an HTTP server, does not use Node/npm/package-manager behavior, and does not
-claim full TypeScript checking or broad bundling.
+With a V8-enabled Sloppy build, run the artifacts through the dev-only MVP:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy --host 127.0.0.1 --port 5173
+```
+
+Expected URL:
+
+```text
+http://127.0.0.1:5173/
+```
+
+For deterministic smoke tests without opening a socket:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy --once GET /
+```
+
+Expected body:
+
+```text
+Hello from Sloppy
+```
+
+This run path is dev-only and requires V8. It does not use Node/npm/package-manager
+behavior, does not claim full TypeScript checking or broad bundling, and does not include
+production server hardening, HTTPS, request body parsing, streaming, middleware, hot reload,
+or Node compatibility.
