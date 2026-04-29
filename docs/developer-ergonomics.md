@@ -44,6 +44,9 @@ TASK 11.B/11.C added the first tiny public JavaScript facade inside that stdlib:
 TASK 12.A/12.B/12.C/12.D extends that facade with the first app-host foundation skeleton:
 `Sloppy.createBuilder()`, `builder.build()`, structural `app.freeze()`, object-backed
 config, deterministic memory logging, and string-token singleton/transient services.
+TASK 13.A/13.B/13.C/13.D extends the same bootstrap facade with in-memory route groups,
+the fuller bounded `Results.*` helper set, a small `schema` validation skeleton, and an
+`examples/ergonomics/` API-shape fixture.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan, serve HTTP, perform compiler extraction, validate requests, or integrate modules.
 `examples/hello/` demonstrates the checked-in bootstrap API shape through a relative import
@@ -106,7 +109,8 @@ TASK 11.B/11.C turns the first two placeholders into a minimal implemented API s
 `app.__getRoutes()` for tests/debugging. TASK 12.A/12.B/12.C/12.D adds a bootstrap
 builder/app host skeleton. `Sloppy.create()` is now equivalent to a default bootstrap
 builder plus `build()`, but this is still a JavaScript-only structural facade rather than a
-native app graph.
+native app graph. TASK 13 adds route groups, route metadata storage, `schema`, and the
+bounded result helper set to that same JavaScript-only facade.
 
 TASK 11.D adds the first checked-in tiny app example:
 
@@ -189,6 +193,19 @@ Route groups contribute:
 - permission requirements;
 - source locations for diagnostics.
 
+Current TASK 13.A bootstrap behavior:
+
+- `app.mapGroup(prefix)` returns an in-memory route group.
+- `prefix` must start with `/`; trailing slashes are normalized except for root `/`.
+- Child patterns may be relative or start with `/`.
+- `"/users"` plus `"{id:int}"` becomes `"/users/{id:int}"`; `"/users/"` plus
+  `"/active"` becomes `"/users/active"`.
+- `.withTags(...tags)` and `.withName(name)` store group metadata on child route snapshots.
+- Grouped `.mapGet(...)` registers ordinary in-memory GET routes and fails after
+  `app.freeze()`.
+- Nested groups, middleware/filter contribution, duplicate route diagnostics, compiler
+  extraction, app-plan emission, and native HTTP route table integration remain future work.
+
 ## Results Model
 
 Handlers return values or result helpers. They do not mutate raw response objects by
@@ -216,17 +233,18 @@ Internal architecture expectation:
 - native fast paths handle text, JSON, no-content, and common status responses;
 - unsupported result shapes produce diagnostics with handler name and source location.
 
-Current TASK 11.B descriptor helpers:
+Current TASK 13.B descriptor helpers:
 
-- `Results.text(body, options?)` returns a frozen descriptor with `__sloppyResult: true`,
-  `kind: "text"`, `status`, `body: String(body)`, and
-  `contentType: "text/plain; charset=utf-8"`;
-- `Results.json(value, options?)` returns a frozen descriptor with `__sloppyResult: true`,
-  `kind: "json"`, `status`, `body: value`, and
-  `contentType: "application/json; charset=utf-8"`;
-- `options.status` defaults to `200` and must be an integer from 100 to 999;
-- JSON serialization, response writing, headers, streaming, content negotiation, and
-  native descriptor conversion remain future work.
+- `Results.ok`, `Results.created`, `Results.accepted`, `Results.noContent`,
+  `Results.notFound`, `Results.badRequest`, `Results.problem`, `Results.text`,
+  `Results.json`, and `Results.html` return frozen plain descriptors with the
+  `__sloppyResult: true` identity marker.
+- `options.status` defaults to each helper's documented status and must be an integer from
+  100 to 999.
+- `options.headers` may be a plain object and is shallow-copied/frozen as descriptor
+  metadata.
+- JSON serialization, response writing, streaming, files, redirects, cookies, content
+  negotiation, header normalization, and native descriptor conversion remain future work.
 
 ## Validation As Route Shape
 
@@ -261,6 +279,21 @@ Validation behavior:
 - diagnostics identify the route, schema, and failing field;
 - schema metadata feeds future OpenAPI generation;
 - validation code must not require raw request parsing in normal apps.
+
+Current TASK 13.C bootstrap behavior:
+
+- `schema.string()`, `schema.number()`, `schema.boolean()`, and `schema.object(shape)`
+  return frozen schema objects.
+- Each schema has `kind`, `metadata`, and `validate(value)`.
+- `string.min(n)` and `string.email()` return new string schemas with inspectable rule
+  metadata.
+- Validation results are `{ ok: true, value }` or
+  `{ ok: false, issues: [{ path, code, message }] }`.
+- `app.mapGet(pattern, metadata, handler)` and grouped `.mapGet(...)` can store schema
+  metadata such as `{ query: schema.object(...) }` on route snapshots.
+- Request parsing, body/query binding, automatic `400` responses, OpenAPI generation,
+  schema extraction into `app.plan.json`, async validation, coercion, arrays, unions, and
+  custom refinements remain future work.
 
 ## Built-In App Host
 

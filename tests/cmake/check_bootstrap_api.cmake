@@ -1,14 +1,16 @@
 set(results_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/results.js")
+set(schema_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/schema.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${app_source}" "${index_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${app_source}" "${index_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
 endforeach()
 
 file(READ "${results_source}" results_js)
+file(READ "${schema_source}" schema_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
 
@@ -29,12 +31,37 @@ endfunction()
 foreach(required_pattern IN ITEMS
         "text/plain; charset=utf-8"
         "application/json; charset=utf-8"
+        "text/html; charset=utf-8"
+        "application/problem+json; charset=utf-8"
         "__sloppyResult: true"
         "kind,"
         "status:"
         "body,"
+        "headers:"
+        "ok,"
+        "created,"
+        "accepted,"
+        "noContent,"
+        "notFound,"
+        "badRequest,"
+        "problem,"
+        "html,"
         "Object.freeze")
     require_substring("${results_js}" "${required_pattern}" "results.js is missing expected API shape pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "kind: \"string\""
+        "\"number\""
+        "\"boolean\""
+        "kind: \"object\""
+        "min(length)"
+        "email()"
+        "validate(value)"
+        "issues:"
+        "metadata:"
+        "__validateAtPath")
+    require_substring("${schema_js}" "${required_pattern}" "schema.js is missing expected API shape pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS
@@ -44,12 +71,16 @@ foreach(required_pattern IN ITEMS
         "services,"
         "build()"
         "create()"
-        "mapGet(pattern, handler)"
+        "mapGet(pattern, optionsOrHandler, maybeHandler)"
+        "mapGroup(prefix)"
+        "withTags(...tags)"
         "freeze()"
         "isFrozen()"
         "method: \"GET\""
         "name: null"
-        "metadata: {}"
+        "metadata:"
+        "groupPrefix"
+        "groupName"
         "withName(name)"
         "__getRoutes()"
         "addObject(object)"
@@ -59,11 +90,12 @@ foreach(required_pattern IN ITEMS
         "addTransient(token, factory)"
         "createScope()"
         "starting with '/'"
-        "handler must be a function")
+        "handler must be a function"
+        "route: Object.freeze({})")
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Sloppy }" "export { Results }")
+foreach(required_pattern IN ITEMS "export { Sloppy }" "export { Results }" "export { schema }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

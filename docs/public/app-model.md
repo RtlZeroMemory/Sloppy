@@ -4,8 +4,8 @@ Status: Bootstrap app-host skeleton implemented.
 
 Bootstrap status: `stdlib/sloppy/app.js` exports a frozen `Sloppy` object with
 `Sloppy.create()` and `Sloppy.createBuilder()`. The returned app is an in-memory conceptual
-object with route registration, structural freeze behavior, config/log/services accessors,
-and `app.__getRoutes()` for bootstrap tests/debugging.
+object with route registration, route groups, structural freeze behavior,
+config/log/services accessors, and `app.__getRoutes()` for bootstrap tests/debugging.
 
 Purpose: explain the current builder/app model, structural freeze boundary, and the future
 path to native app-host validation.
@@ -40,7 +40,8 @@ Implemented lifecycle behavior:
 - The app starts mutable for route registration.
 - `app.freeze()` is idempotent, returns the app, and freezes route/endpoint mutation.
 - `app.isFrozen()` reports the route graph freeze state.
-- `app.mapGet(...)` and endpoint `.withName(...)` fail after `app.freeze()`.
+- `app.mapGet(...)`, `app.mapGroup(...)`, group metadata mutation, and endpoint
+  `.withName(...)` fail after `app.freeze()`.
 - Freeze is structural only. It does not run native startup validation, emit a plan, or
   start execution.
 
@@ -52,7 +53,11 @@ Current route registration shape:
   pattern: "/hello",
   handler,
   name: null,
-  metadata: {}
+  metadata: {
+    tags: [],
+    groupName: null,
+    groupPrefix: "/users"
+  }
 }
 ```
 
@@ -66,14 +71,20 @@ explicit context is supplied:
 {
   services: app.services.createScope(),
   config: app.config,
-  log: app.log
+  log: app.log,
+  route: {}
 }
 ```
 
+Validation schemas can be attached as metadata, for example
+`app.mapGet("/search", { query: schema.object({ q: schema.string().min(1) }) }, handler)`.
+The bootstrap app stores this metadata only. It does not parse requests or produce automatic
+validation responses.
+
 Not implemented yet: `app.run`, `app.listen`, native startup validation, compiler
-extraction, automatic `app.plan.json` emission, HTTP serving, modules, route groups,
-middleware, filters, validation, config file/env providers, console/file/native logging,
-service disposal, async factories, and real request-scoped lifetimes.
+extraction, automatic `app.plan.json` emission, HTTP serving, modules, nested route groups,
+middleware, filters, automatic validation, config file/env providers, console/file/native
+logging, service disposal, async factories, and real request-scoped lifetimes.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/app-plan.md`.

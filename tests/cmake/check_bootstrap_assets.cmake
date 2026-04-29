@@ -4,6 +4,7 @@ set(required_bootstrap_assets
     bootstrap.manifest.json
     index.js
     results.js
+    schema.js
     internal/intrinsics.js)
 
 foreach(asset IN LISTS required_bootstrap_assets)

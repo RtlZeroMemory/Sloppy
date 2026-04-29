@@ -98,6 +98,11 @@ object config, memory logging, and string-token singleton/transient services. Ro
 handlers invoked through bootstrap route snapshots can receive `{ services, config, log }`
 for tests/examples. This still does not change runtime startup, native HTTP dispatch,
 compiler extraction, or plan emission behavior.
+TASK 13.A/13.B/13.C/13.D keeps that boundary and adds JavaScript-only route groups,
+expanded result descriptors, a `schema` validation skeleton, and an ergonomics example.
+Route schemas and group metadata are stored only in bootstrap route snapshots. They are not
+emitted into `app.plan.json`, consumed by native HTTP dispatch, or converted into automatic
+request validation.
 
 ## Current Handwritten Milestone
 

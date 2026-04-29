@@ -8,7 +8,7 @@ app-host behavior is still planned / not implemented yet.
 ## Purpose
 
 Provide the developer-facing app host model: builder, app freeze, config, logging,
-services, routes, validation, and modules.
+services, routes, route groups, validation shape, and modules.
 
 ## Scope
 
@@ -24,7 +24,10 @@ No Node compatibility by default and no raw primitive-first public app model.
 `stdlib/sloppy/index.js` now re-exports frozen `Sloppy` and `Results` modules for the
 future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally small:
 
-- `Results.text(...)` and `Results.json(...)` create frozen plain descriptors;
+- `Results.text(...)`, `Results.json(...)`, and the EPIC-13 status/problem helper set
+  create frozen plain descriptors;
+- `schema.string()`, `schema.number()`, `schema.boolean()`, and `schema.object(...)`
+  create inspectable bootstrap validation skeletons with standalone `validate(...)`;
 - `Sloppy.createBuilder()` creates a JavaScript bootstrap builder;
 - `builder.config.addObject(...)` stores object-backed config values, with later object
   providers overriding earlier keys;
@@ -35,6 +38,10 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
 - `builder.build()` freezes builder mutation and creates a frozen JavaScript app facade;
 - `Sloppy.create()` remains supported as a default builder plus `build()`;
 - `app.mapGet(pattern, handler)` stores an in-memory GET route registration;
+- `app.mapGet(pattern, metadata, handler)` stores route metadata such as validation
+  schemas without executing validation;
+- `app.mapGroup(prefix)` creates an in-memory route group with prefix composition,
+  `.withTags(...)`, `.withName(...)`, and grouped `.mapGet(...)`;
 - `.withName(name)` stores a route name;
 - `app.freeze()` idempotently freezes route/endpoint mutation;
 - `app.isFrozen()` reports app freeze state;
@@ -47,10 +54,10 @@ from `stdlib/sloppy/index.js`. The example documents the future bare `"sloppy"` 
 `sloppy run` workflow as planned behavior only.
 
 Native app graph validation, `app.run`, `app.listen`, `app.build`, compiler extraction,
-automatic `app.plan.json` emission, HTTP server behavior, route groups, modules,
-middleware, validation, config file/env providers, console/file/native logging sinks,
-request-scoped service lifetimes, disposal hooks, async factories, and typed service tokens
-remain future work.
+automatic `app.plan.json` emission, HTTP server behavior, nested route groups, modules,
+middleware, automatic validation/request binding, config file/env providers,
+console/file/native logging sinks, request-scoped service lifetimes, disposal hooks, async
+factories, and typed service tokens remain future work.
 
 ## Ownership/Lifetime Rules
 
@@ -65,23 +72,27 @@ run in static plan mode.
 ## Diagnostics
 
 Implemented bootstrap errors are thrown JavaScript `Error`/`TypeError` values for invalid
-config keys, invalid log levels, duplicate/missing service tokens, invalid routes, and
-mutation after freeze. Native diagnostics for missing service, duplicate route, invalid
-lifetime, missing config, and module graph errors remain future work.
+config keys, invalid log levels, duplicate/missing service tokens, invalid routes, invalid
+route groups, invalid result status/header options, invalid schemas, and mutation after
+freeze. Native diagnostics for missing service, duplicate route, invalid lifetime, missing
+config, validation failure, and module graph errors remain future work.
 
 ## Tests
 
 CTest registers `bootstrap.stdlib.assets` to verify the source bootstrap files and copied
 build-tree assets exist. CTest also registers `bootstrap.stdlib.api_shape` to statically
-check the implemented bootstrap API names, descriptor fields, route registration shape, and
-absence of future app-host APIs. When `node` is available, CTest also registers
-`bootstrap.stdlib.app_host_foundation` to execute the ESM stdlib and cover builder freeze,
-config, logging, services, route context, and app freeze behavior. V8-backed ESM stdlib
-tests, plan fixtures, diagnostics snapshots, and full integration smoke remain future work
-once module loading exists in the V8 bridge.
+check the implemented bootstrap API names, descriptor fields, route registration/group
+shape, schema export, and absence of future app-host APIs. When `node` is available, CTest
+also registers `bootstrap.stdlib.app_host_foundation` to execute the ESM stdlib and cover
+builder freeze, config, logging, services, route groups, result helpers, schema validation,
+route context, and app freeze behavior. V8-backed ESM stdlib tests, plan fixtures,
+diagnostics snapshots, and full integration smoke remain future work once module loading
+exists in the V8 bridge.
 CTest also registers `examples.hello.api_shape` to statically check that the hello example
 files exist, use the current stdlib import path, use `Sloppy.createBuilder`, `builder.build`,
 `app.mapGet`, `Results.text`, and avoid package-manager scope.
+`examples.ergonomics.api_shape` statically checks the EPIC-13 example for route groups,
+result helpers, schema metadata, and honest non-runnable status text.
 
 ## Source Docs
 

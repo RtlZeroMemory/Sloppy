@@ -40,9 +40,45 @@ function validatePattern(pattern) {
     }
 }
 
+function validateGroupPrefix(prefix) {
+    if (typeof prefix !== "string" || prefix.length === 0 || !prefix.startsWith("/")) {
+        throw new TypeError("Sloppy app.mapGroup prefix must be a non-empty string starting with '/'.");
+    }
+}
+
+function validateGroupChildPattern(pattern) {
+    if (typeof pattern !== "string" || pattern.length === 0) {
+        throw new TypeError("Sloppy route group child pattern must be a non-empty string.");
+    }
+}
+
 function validateHandler(handler) {
     if (typeof handler !== "function") {
-        throw new TypeError("Sloppy app.mapGet handler must be a function.");
+        throw new TypeError("Sloppy route handler must be a function.");
+    }
+}
+
+function validateMetadataOptions(options) {
+    if (options === undefined) {
+        return undefined;
+    }
+
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy route metadata options must be a plain object.");
+    }
+
+    return Object.freeze({ ...options });
+}
+
+function validateTag(tag) {
+    if (typeof tag !== "string" || tag.length === 0) {
+        throw new TypeError("Sloppy route group tags must be non-empty strings.");
+    }
+}
+
+function validateName(name, subject) {
+    if (typeof name !== "string" || name.length === 0) {
+        throw new TypeError(`Sloppy ${subject} name must be a non-empty string.`);
     }
 }
 
@@ -321,6 +357,7 @@ function createHandlerContext(host) {
         services: host.services.createScope(),
         config: host.config,
         log: host.log,
+        route: Object.freeze({}),
     });
 }
 
@@ -336,18 +373,25 @@ function snapshotRoute(route) {
         pattern: route.pattern,
         handler: route.handler,
         name: route.name,
-        metadata: Object.freeze({ ...route.metadata }),
+        metadata: snapshotMetadata(route.metadata),
     });
+}
+
+function snapshotMetadata(metadata) {
+    const snapshot = { ...metadata };
+
+    if (Array.isArray(snapshot.tags)) {
+        snapshot.tags = Object.freeze([...snapshot.tags]);
+    }
+
+    return Object.freeze(snapshot);
 }
 
 function createEndpointBuilder(route, assertAppMutable) {
     const endpoint = {
         withName(name) {
             assertAppMutable();
-
-            if (typeof name !== "string" || name.length === 0) {
-                throw new TypeError("Sloppy endpoint name must be a non-empty string.");
-            }
+            validateName(name, "endpoint");
 
             route.name = name;
             return endpoint;
@@ -355,6 +399,150 @@ function createEndpointBuilder(route, assertAppMutable) {
     };
 
     return Object.freeze(endpoint);
+}
+
+function normalizeGroupPrefix(prefix) {
+    validateGroupPrefix(prefix);
+
+    if (prefix === "/") {
+        return "/";
+    }
+
+    return prefix.replace(/\/+$/u, "");
+}
+
+function composeRoutePattern(prefix, childPattern) {
+    validateGroupChildPattern(childPattern);
+
+    if (prefix === "/") {
+        return childPattern.startsWith("/") ? childPattern : `/${childPattern}`;
+    }
+
+    if (childPattern === "/") {
+        return prefix;
+    }
+
+    return childPattern.startsWith("/") ? `${prefix}${childPattern}` : `${prefix}/${childPattern}`;
+}
+
+function normalizeMapGetArguments(pattern, optionsOrHandler, maybeHandler) {
+    if (typeof optionsOrHandler === "function" && maybeHandler === undefined) {
+        return {
+            pattern,
+            metadata: undefined,
+            handler: optionsOrHandler,
+        };
+    }
+
+    return {
+        pattern,
+        metadata: validateMetadataOptions(optionsOrHandler),
+        handler: maybeHandler,
+    };
+}
+
+function mergeRouteMetadata(groupMetadata, routeMetadata) {
+    if (routeMetadata?.tags !== undefined && !Array.isArray(routeMetadata.tags)) {
+        throw new TypeError("Sloppy route metadata tags must be an array when provided.");
+    }
+
+    const tags = [
+        ...groupMetadata.tags,
+        ...((routeMetadata?.tags !== undefined) ? routeMetadata.tags : []),
+    ];
+
+    for (const tag of tags) {
+        validateTag(tag);
+    }
+
+    return {
+        ...routeMetadata,
+        tags,
+        groupName: groupMetadata.name,
+        groupPrefix: groupMetadata.prefix,
+    };
+}
+
+function createRouteMetadata(routeMetadata) {
+    if (routeMetadata?.tags !== undefined) {
+        if (!Array.isArray(routeMetadata.tags)) {
+            throw new TypeError("Sloppy route metadata tags must be an array when provided.");
+        }
+
+        for (const tag of routeMetadata.tags) {
+            validateTag(tag);
+        }
+
+        return {
+            ...routeMetadata,
+            tags: [...routeMetadata.tags],
+        };
+    }
+
+    return routeMetadata ?? {};
+}
+
+function registerRoute(routes, host, assertAppMutable, pattern, optionsOrHandler, maybeHandler, metadataBase) {
+    const args = normalizeMapGetArguments(pattern, optionsOrHandler, maybeHandler);
+
+    assertAppMutable();
+    validatePattern(args.pattern);
+    validateHandler(args.handler);
+
+    const route = {
+        method: "GET",
+        pattern: args.pattern,
+        handler: createRouteHandler(host, args.handler),
+        name: null,
+        metadata: metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata),
+    };
+
+    routes.push(route);
+    return createEndpointBuilder(route, assertAppMutable);
+}
+
+function createRouteGroup(routes, host, assertAppMutable, prefix) {
+    const groupMetadata = {
+        prefix: normalizeGroupPrefix(prefix),
+        tags: [],
+        name: null,
+    };
+
+    const group = {
+        get prefix() {
+            return groupMetadata.prefix;
+        },
+
+        withTags(...tags) {
+            assertAppMutable();
+
+            for (const tag of tags) {
+                validateTag(tag);
+            }
+
+            groupMetadata.tags.push(...tags);
+            return group;
+        },
+
+        withName(name) {
+            assertAppMutable();
+            validateName(name, "route group");
+
+            groupMetadata.name = name;
+            return group;
+        },
+
+        mapGet(pattern, optionsOrHandler, maybeHandler) {
+            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
+            return registerRoute(routes, host, assertAppMutable, fullPattern, optionsOrHandler, maybeHandler, {
+                prefix: groupMetadata.prefix,
+                tags: groupMetadata.tags,
+                name: groupMetadata.name,
+            });
+        },
+    };
+
+    return Object.freeze(group);
 }
 
 function createApp(host) {
@@ -370,21 +558,13 @@ function createApp(host) {
         log: host.log,
         services: host.services,
 
-        mapGet(pattern, handler) {
+        mapGet(pattern, optionsOrHandler, maybeHandler) {
+            return registerRoute(routes, host, assertAppMutable, pattern, optionsOrHandler, maybeHandler);
+        },
+
+        mapGroup(prefix) {
             assertAppMutable();
-            validatePattern(pattern);
-            validateHandler(handler);
-
-            const route = {
-                method: "GET",
-                pattern,
-                handler: createRouteHandler(host, handler),
-                name: null,
-                metadata: {},
-            };
-
-            routes.push(route);
-            return createEndpointBuilder(route, assertAppMutable);
+            return createRouteGroup(routes, host, assertAppMutable, prefix);
         },
 
         freeze() {

@@ -31,16 +31,17 @@
   precedence, plan route section, route params in handler context, HTTP response writer,
   request context, middleware, TCP server, sockets, body parsing, public TypeScript API, or
   compiler extraction yet.
-- The bootstrap stdlib now has `Results.text/json`, `Sloppy.create`,
+- The bootstrap stdlib now has the bounded EPIC-13 `Results.*` helper set, `schema`,
+  route groups, route metadata storage, `Sloppy.create`,
   `Sloppy.createBuilder`, builder build/freeze behavior, structural `app.freeze`, object
   config, memory logging, string-token singleton/transient services, and in-memory
   `app.mapGet` facade behavior. It still has no handler registration, runtime intrinsic
   binding, module resolver, compiler import rewriting, package-manager behavior, native
-  app-host validation, app run/listen, HTTP response conversion, or `app.plan.json`
-  emission yet.
-- `examples/hello/` exists as a static bootstrap API-shape example. It is not compiled by
-  `sloppyc`, does not emit `app.plan.json`, does not run through `sloppy run`, and is not
-  served by an HTTP server.
+  app-host validation, app run/listen, HTTP response conversion, automatic validation, or
+  `app.plan.json` emission yet.
+- `examples/hello/` and `examples/ergonomics/` exist as static bootstrap API-shape
+  examples. They are not compiled by `sloppyc`, do not emit `app.plan.json`, do not run
+  through `sloppy run`, and are not served by an HTTP server.
 
 ## Deferred decisions
 
@@ -111,7 +112,7 @@
 - Route precedence and ambiguity diagnostics are future work.
 - Route catch-all/wildcard parameters are future work.
 - Route optional segments and regex constraints are future work.
-- Route group prefix composition is future work.
+- Nested route groups are future work.
 - Route percent decoding and URL normalization policy are future work.
 - Production route method dispatch, route table/trie construction, and route precedence are
   future work.
@@ -130,7 +131,8 @@
 - HTTP percent decoding is future work.
 - Public `app.mapGet` native route/API integration beyond in-memory registration is future
   work.
-- Route OpenAPI metadata and validation/schema integration are future work.
+- Route OpenAPI metadata, schema extraction, automatic validation responses, request
+  binding, and full validation engine behavior are future work.
 - Executable ESM/V8 tests for `stdlib/sloppy` are future work; TASK 11.B/11.C adds only a
   static CTest API-shape check because current V8 smoke execution does not load ESM
   modules.
