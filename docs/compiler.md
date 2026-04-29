@@ -178,6 +178,13 @@ provider registrations, or query template literals.
 EPIC-16 adds native SQLite provider tests and the `data.sqlite` stdlib shape, but the
 compiler still does not extract SQLite modules, emit data provider plan entries, or lower
 application template literals into native provider calls.
+EPIC-17 and EPIC-18 add native PostgreSQL and SQL Server provider tests plus
+`data.postgres` and `data.sqlserver` stdlib shapes, but the compiler still does not extract
+provider modules, emit data provider plan entries, lower application template literals into
+native provider calls, or produce metadata for live provider checks.
+EPIC-19 CLI introspection currently reads interim plan-compatible metadata sections from
+fixtures/artifacts; the compiler does not emit that metadata yet. EPIC-20 benchmarks
+measure current native foundations only and do not imply compiler output exists.
 `examples/ergonomics/app.js` follows the same rule for the EPIC-13 route group, result
 helper, and schema skeleton API shape. The compiler still does not extract route groups,
 schemas, services, or any `app.plan.json` metadata from these examples.

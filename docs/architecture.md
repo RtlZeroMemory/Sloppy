@@ -24,15 +24,14 @@ This document covers:
 
 ## Non-Goals
 
-The foundation phase does not implement:
+The current foundation/runtime-contract work still does not implement:
 
-- V8 runtime integration;
-- HTTP or routing;
-- app module execution;
-- PostgreSQL or SQL Server;
-- JavaScript-to-native SQLite resource/intrinsic integration;
-- Sloppy Plan loading;
-- TypeScript compilation;
+- production V8 runtime startup with ESM module loading and bootstrap intrinsics;
+- a real HTTP server, response writer, request body parser, or request context;
+- native app module execution from a compiler-emitted plan;
+- JavaScript-to-native database resource/intrinsic integration;
+- production Sloppy Plan loading from compiler output with compatibility/hash checks;
+- TypeScript compilation or app graph extraction;
 - native dynamic plugins.
 
 ## Current Phase
@@ -89,21 +88,17 @@ still JavaScript-only bootstrap state. It does not implement native app-host val
 `app.run`/`app.listen`, compiler extraction, `app.plan.json` emission, HTTP serving,
 modules, middleware, validation, data providers, config file/env providers, native logging,
 or real request-scoped service lifetimes.
-TASK 13 adds the bounded developer ergonomics layer on top of that facade: route groups,
-route metadata storage, expanded `Results.*` helpers, and a small `schema` validation
-shape. TASK 14 adds the bootstrap module skeleton: `Sloppy.module(...)`,
-`builder.addModule(...)`, dependency graph validation/topological ordering,
-services/routes module phases, route/service attribution, and plan-like module debug
-metadata. These are still JavaScript-only bootstrap structures and do not implement
-compiler extraction, real `app.plan.json` emission, native module loading, package/module
-distribution, native plugins, data providers, HTTP serving, or app run/listen behavior.
-TASK 13.A/13.B/13.C/13.D adds the first developer ergonomics layer on top of that
-bootstrap state: in-memory route groups and grouped GET registration, a fuller bounded
+TASK 13.A/13.B/13.C/13.D adds the bounded developer ergonomics layer on top of
+that facade: in-memory route groups and grouped GET registration, a fuller bounded
 `Results.*` descriptor helper set, a small `schema` validation skeleton, route metadata
-storage for validation shapes, and `examples/ergonomics/`. It still does not implement
-compiler extraction, plan emission, native HTTP serving, middleware, modules, OpenAPI,
-request parsing, automatic validation responses, or route params in native JavaScript
-contexts.
+storage for validation shapes, and `examples/ergonomics/`. TASK 14 adds the bootstrap
+module skeleton: `Sloppy.module(...)`, `builder.addModule(...)`, dependency graph
+validation/topological ordering, services/routes module phases, route/service attribution,
+and plan-like module debug metadata. These are still JavaScript-only bootstrap structures
+and do not implement compiler extraction, real `app.plan.json` emission, native module
+loading, package/module distribution, native plugins, data providers, HTTP serving,
+middleware execution, OpenAPI generation, request parsing, automatic validation responses,
+route params in native JavaScript contexts, or app run/listen behavior.
 TASK 15.A/15.B/15.C/15.D added the JavaScript-only data/capabilities foundation on top of
 the bootstrap app-host/module skeleton: database capability metadata, module capability
 phase attribution, query template lowering, a fake data provider contract for tests and
@@ -118,12 +113,26 @@ native tests. The JavaScript stdlib exposes `data.sqlite` as the intended public
 point, but stdlib-to-native database intrinsics, JS-visible resource IDs, compiler
 extraction, app-plan data provider emission, and HTTP/app-host runtime integration remain
 future work.
+EPIC-17 and EPIC-18 add native PostgreSQL/libpq and SQL Server/ODBC provider boundaries.
+They cover native open/close, parameterized exec/query/queryOne, transactions, redaction
+diagnostics, tiny bounded pool skeletons, and env-gated live tests. The JavaScript stdlib
+exposes `data.postgres` and `data.sqlserver` metadata/open shapes, but JavaScript-to-native
+provider calls still fail honestly until runtime intrinsics and resource IDs exist.
+EPIC-19 adds metadata-only CLI introspection commands: `sloppy routes`, `sloppy doctor`,
+`sloppy audit`, and `sloppy openapi`. They read plan-compatible metadata fixtures/artifacts
+and do not compile apps, execute handlers, start HTTP, enter V8, or run live database
+checks by default.
+EPIC-20 adds the first benchmark harness and scenarios for implemented foundations:
+route matching/parsing, complete-buffer HTTP request-head parsing, handler plan lookup,
+noop dispatch, and synthetic GET dispatch. Benchmark smoke/list checks are correctness
+smoke only and are not performance claims.
 
 ## Future Phase
 
-Implementation starts with platform abstraction skeleton and core C primitives. Runtime
-features come only after standards, diagnostics, tests, and quality gates exist for the
-supporting layer.
+The next implementation batch should connect the smallest compiler-to-runtime path:
+compiler extraction, `sloppy run`, HTTP response/request context, V8 module/bootstrap
+loading, packaging, cross-platform CI, capability enforcement, and public alpha docs. See
+`docs/project/next-roadmap.md`.
 
 ## System Shape
 
@@ -386,16 +395,16 @@ Required gates:
 - EPIC 03: Allocators: SlArena.
 - EPIC 04: Diagnostics foundation.
 - EPIC 05: Resource table/lifecycle kernel.
-- EPIC 06: Event loop abstraction.
+- EPIC 06: Plan schema and loader.
 - EPIC 07: V8 bridge smoke test.
-- EPIC 08: Plan schema and loader.
-- EPIC 09: Handwritten artifact execution milestone.
-- EPIC 10: sloppyc fake emitter.
-- EPIC 11: HTTP/router foundation.
-- EPIC 12: Public TypeScript API bootstrap.
+- EPIC 08: Handwritten artifact execution milestone.
+- EPIC 09: Event loop/concurrency foundation.
+- EPIC 10: HTTP/router foundation.
+- EPIC 11: Public TypeScript API bootstrap.
+- EPIC 12: App host foundation.
 - EPIC 13: Developer ergonomics layer.
 - EPIC 14: Modularity/app modules.
-- EPIC 15: Config/logging/services.
+- EPIC 15: Data/capabilities foundation.
 - EPIC 16: SQLite provider.
 - EPIC 17: PostgreSQL provider.
 - EPIC 18: SQL Server provider.

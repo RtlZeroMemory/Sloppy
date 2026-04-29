@@ -1,247 +1,139 @@
 # Technical Debt Tracker
 
-## Active debt
+This tracker records real deferred work after the EPIC-00 through EPIC-20 roadmap batch.
+It is not a wishlist for random expansion; items here are known gaps between current repo
+state and an honest public-alpha path.
 
-- V8 SDK source-build workflow exists for local maintainer use, but prebuilt hosting,
-  checksums, and update cadence are still deferred.
-- Sanitizer coverage is incomplete on Windows.
-- Runtime execution is still limited to handwritten V8 smoke artifacts; no HTTP app host,
-  compiler output loader, or public TypeScript API exists yet. Native SQLite and
-  PostgreSQL providers exist, but they are synchronous and not yet integrated with JS
-  resource IDs, app-host disposal, permissions, app-plan entries, or worker-pool execution.
-- Benchmarks exist for the current measurable foundations only. Full HTTP throughput,
-  JSON serialization, live database benchmarks, V8 handler-call timing, external runtime
-  comparisons, trend tracking, and dashboard/report upload remain deferred.
-- `SlLoop` exists only as a caller-backed, single-threaded completion queue skeleton; it has
-  no libuv/backend integration, OS wakeup mechanism, cross-thread posting, or owner-thread
-  enforcement yet.
-- `SlAsync` exists only as a caller-owned native settlement skeleton over `SlLoop`; it has
-  no V8 Promise integration, microtask policy, request-scope retention, thread-safe
-  settlement, cancellation token, deadline, backpressure, or worker-pool integration yet.
-- `SlWorkerPool` exists only as an inline/fake design skeleton over `SlLoop`; it has no real
-  threads, OS wakeups, thread-safe completion posting, libuv backend, cancellation,
-  deadlines, backpressure, blocking DB/filesystem integration, or V8/HTTP integration yet.
-- `SlRoutePattern` exists only as a one-pattern parser/matcher foundation. It has no HTTP
-  parser/server integration, method dispatch, route table/trie, route precedence,
-  catch-all/optional/regex constraints, percent decoding, route groups, OpenAPI metadata,
-  validation/schema integration, public TypeScript API, or compiler extraction yet.
-- `SlHttpRequestHead` exists only as a complete-buffer HTTP/1 request-head parser over
-  llhttp. It has no streaming parser API, body parsing, chunked transfer handling,
-  keep-alive state, TCP server, socket I/O, response writer, request pipeline, route
-  dispatch, middleware, public TypeScript API, asterisk-form/absolute-form target handling,
-  query parsing, percent decoding, or V8/app host integration yet.
-- `sl_http_dispatch_request_head` exists only as synthetic in-memory GET dispatch over a
-  manual borrowed route binding table. It has no production route table/trie, route
-  precedence, plan route section, route params in handler context, HTTP response writer,
-  request context, middleware, TCP server, sockets, body parsing, public TypeScript API, or
-  compiler extraction yet.
-- The bootstrap stdlib now has the bounded EPIC-13 `Results.*` helper set, `schema`,
-  route groups, route metadata storage, `Sloppy.create`,
-  `Sloppy.createBuilder`, builder build/freeze behavior, structural `app.freeze`, object
-  config, memory logging, string-token singleton/transient services, in-memory
-  `app.mapGet` facade behavior, the EPIC-14 bootstrap `Sloppy.module` /
-  `builder.addModule` skeleton with dependency ordering, services/routes phases,
-  attribution, and module debug metadata, and the EPIC-15 data/capabilities foundation with
-  database capability metadata, query template lowering, fake data providers, and
-  transaction callback semantics. EPIC-16 adds `data.sqlite` metadata/open shape, but the
-  stdlib still has no JavaScript-to-native SQLite bridge. It still has no handler
-  registration, runtime intrinsic binding, module resolver, compiler import rewriting,
-  package-manager behavior, native app-host validation, app run/listen, HTTP response
-  conversion, automatic validation, JavaScript database connections, SQL execution from
-  JavaScript, or `app.plan.json` emission yet.
-- The native SQLite provider exists and is covered by C tests, but it is synchronous and
-  not yet connected to JS resource IDs, app-host service disposal, permission enforcement,
-  app-plan provider entries, or worker-pool/off-thread execution.
-- The native PostgreSQL provider exists and is covered by default non-live C tests plus
-  `SLOPPY_POSTGRES_TEST_URL` gated live tests, but it is synchronous and not yet connected
-  to JS resource IDs, app-host service disposal, permission enforcement, app-plan provider
-  entries, or worker-pool/off-thread execution. Its pool is a bounded skeleton only.
-- `examples/hello/` and `examples/ergonomics/` exist as static bootstrap API-shape
-  examples. `examples/modules-basic/` exists as a static bootstrap module API-shape
-  example. `examples/data-foundation/` exists as a static data/capabilities API-shape
-  example. They are not compiled by `sloppyc`, do not emit `app.plan.json`, do not run
-  through `sloppy run`, and are not served by an HTTP server.
-- `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi` exist as
-  metadata-only CLI introspection commands over plan-compatible JSON fixtures/artifacts.
-  They do not compile apps, execute handlers, start HTTP, enter V8, or run live provider
-  checks by default. Real compiler/app-host metadata emission, richer provider checks,
-  fuller audit rules, and full OpenAPI schema generation remain future work.
+## Must Fix Before Public Alpha
 
-## Deferred decisions
+- Real `sloppyc` extraction MVP: parse/import public API source, discover
+  `Sloppy.createBuilder` / `Sloppy.create`, routes, groups, modules, handlers, and emit
+  deterministic `app.plan.json` plus `app.js`.
+- Public API to plan emission: bootstrap route/module/service/data metadata must become
+  compiler-produced plan metadata instead of in-memory debug snapshots.
+- `sloppy run` MVP: load source or build artifacts, start a local dev HTTP server, route
+  GET requests, call the V8 handler, and return text/JSON responses.
+- HTTP response writer: status, headers, content type, body writing, basic error handling,
+  and response descriptor conversion from current `Results.*` shapes.
+- Request context model: route params, query params, request metadata, services/config/log,
+  and a documented lifetime boundary.
+- V8 module loading and bootstrap runtime: load `stdlib/sloppy` reliably, define the bare
+  import story, load app module entrypoint, bind intrinsics, and reject unsupported module
+  shapes with diagnostics.
+- V8 SDK distribution/release packaging: decide linked/bundled strategy, manifest,
+  checksums, dynamic library copy policy, and release validation.
+- Capability enforcement: declared capabilities must gate provider/filesystem/network
+  access before public docs imply a security model.
+- Live DB test infrastructure for PostgreSQL and SQL Server: opt-in local env vars are not
+  enough for release confidence.
+- Cross-platform CI: Linux clang/gcc, macOS clang, Windows clang-cl, and explicit
+  V8/provider-gated matrix behavior.
+- Release packaging: Windows zip, Linux tar, macOS tar, checksums, install smoke, and
+  outside-checkout validation.
+- Public alpha docs/examples: at least one executable hello and one executable SQLite demo
+  must run through the real Sloppy toolchain, not Node/static checks.
 
-- `sloppyc`/Oxc integration is planned but not implemented.
-- Linux/macOS CI is future.
-- Package compatibility is future.
-- Benchmark performance gates are future; current CI should run only tiny list/smoke
-  checks, not fail on noisy timing deltas.
-- Exact event loop backend integration is future.
-- Thread-safe completion posting is future work.
-- `SlLoop` owner-thread identity checks are future work.
-- libuv event-loop backend integration is future work; TASK 10.B only proves dependency
-  linkage with a local loop init/close smoke.
-- Real worker-pool threads are future work.
-- Thread-safe worker-pool completion posting into `SlLoop` is future work.
-- Worker-pool cancellation, deadlines, and backpressure are future work.
-- Worker-pool DB provider integration is future work.
-- V8 Promise settlement through `SlAsync`/`SlLoop` is future work.
-- V8 microtask draining policy for async handlers is future work.
-- Request scope retention until async settlement is future work.
-- Thread-safe async settlement/posting is future work.
-- Cancellation token, deadline, and backpressure integration with `SlAsync` is future work.
-- HTTP request scope integration with `SlScope` is future.
-- Resource-table cleanup callbacks registered through `SlScope` are future.
-- Async cancellation and deadline-triggered `SlScope` cleanup are future.
-- Exact worker-pool implementation is future.
-- DB provider async strategy is future.
-- DB transaction scope integration with native lifetime cleanup is future.
-- Multiple worker/process scaling model is future.
-- Cancellation semantics by provider are future.
-- Docs freshness automated checker is lightweight and should become more semantic over time.
-- Public docs example test runner is future.
-- Golden update workflow is future.
-- Docs link checker is future.
-- Diagnostics JSON output is future.
-- Diagnostics source-frame rendering is future.
-- Diagnostics source-map integration is future.
-- Diagnostics localization is future.
-- Diagnostics structured fixes/metadata are future.
-- Diagnostics redaction policy is future; TASK 04.A only provides an explicit
-  `<redacted>` placeholder helper.
-- Plan file-based loading is future work.
-- Plan runtime compatibility checks for target platform, target engine, runtime minimum
-  version, and stdlib version are future work.
-- Plan hash verification is future validation work.
-- Plan source map parsing and JSON pointer/source-frame diagnostics are future work.
-- Plan route/service/module/data provider/capability/permission sections are future work.
-- Plan route/service/module/data provider/capability/permission golden fixtures are future
-  work and should be added only when those sections are implemented.
-- Exact V8 SDK prebuilt hosting, checksum manifest, and update cadence are future work.
-- Exact V8 SDK debug/release packaging matrix is future work.
-- Exact V8 dynamic DLL copy/package rules are future work.
-- Exact final V8 library list for non-monolithic/component builds is future work.
-- V8-backed handwritten `app.plan.json` + `app.js` execution exists only as a smoke path;
-  compiler output loading, handler registration intrinsics, HTTP/request context, routing,
-  and full result conversion remain future work.
-- Explicit V8 process shutdown policy is future work; the bridge keeps process-wide V8
-  platform state alive after first initialization and releases only per-engine isolates.
-- `SlEngine` owner-thread checks are future bridge/event-loop work.
-- Real `sl_engine_call_handler` execution, engine-owned handler tables, and registration
-  intrinsics are future EPIC-08/09 work.
-- V8 source-map remapping is future work; TASK 07.D reports generated JavaScript locations
-  only.
-- V8 route/handler-aware diagnostics are future EPIC-08/09 work after plan handler mapping
-  exists.
-- V8 promise rejection policy and async stack traces are future event-loop/promise work.
-- Rich V8 code frames are future diagnostics renderer work.
-- ESM/module loading and resolver behavior are future work.
-- Route table/trie or equivalent optimized dispatch is future work.
-- Route precedence and ambiguity diagnostics are future work.
-- Route catch-all/wildcard parameters are future work.
-- Route optional segments and regex constraints are future work.
-- Nested route groups are future work.
-- Route percent decoding and URL normalization policy are future work.
-- Production route method dispatch, route table/trie construction, and route precedence are
-  future work.
-- HTTP server/socket integration with llhttp/libuv is future work after TASK 10.B.
-- HTTP streaming parser state is future work.
-- HTTP request body parsing is future work.
-- HTTP chunked transfer handling is future work.
-- HTTP keep-alive state is future work.
-- HTTP response writing is future work.
-- HTTP response conversion/writing after handler result is future work.
-- Route params passed into handler context are future work.
-- Plan-owned route section and route-to-handler validation are future work.
-- Middleware/request pipeline integration is future work.
-- HTTP asterisk-form and absolute-form request target policy is future work.
-- HTTP query parsing is future work.
-- HTTP percent decoding is future work.
-- Public `app.mapGet` native route/API integration beyond in-memory registration is future
-  work.
-- Route OpenAPI metadata, schema extraction, automatic validation responses, request
-  binding, and full validation engine behavior are future work.
-- Executable ESM/V8 tests for `stdlib/sloppy` are future work; TASK 11.B/11.C adds only a
-  static CTest API-shape check because current V8 smoke execution does not load ESM
-  modules.
-- V8-backed ESM tests for `stdlib/sloppy` remain future work. TASK 12 adds optional
-  executable ESM coverage through `node` when available, but that is not a runtime module
-  loading test or a Node compatibility promise.
-- `examples/hello/` should become executable through the Sloppy runtime once module
-  loading, compiler extraction, plan emission, and HTTP serving exist.
-- `app.run`, `app.listen`, `app.build`, native app graph validation, and native app graph
-  freeze are future app-host work.
-- Config file, environment variable, command-line, secret-manager, validation, and
-  redaction providers are future app-host work.
-- Console, file, native, timestamped, async, structured-export, scoped, and redacted
-  logging are future app-host work.
-- Request-scoped service lifetime, disposal hooks, async factories, dependency graph
-  validation, cycle diagnostics, typed tokens, decorators, and module-owned services are
-  future app-host work.
-- Automatic compiler extraction and `app.plan.json` emission from `app.mapGet` are future
-  work.
-- Compiler extraction of `Sloppy.module(...)`, module dependencies, module service
-  tokens, and module route contributions is future work.
-- Real `app.plan.json` module emission is future work; TASK 14 exposes only bootstrap
-  debug metadata.
-- Module package distribution, optional dependencies, module version ranges, and native
-  plugin modules are future work.
-- Data provider modules are future work; the modules-basic example uses only fake
-  in-memory JavaScript services.
-- JavaScript-to-native SQLite provider binding is future work; the current native provider
-  executes SQL in C tests and the fake data provider remains for JS tests/examples.
-- SQL Server provider exists as a synchronous ODBC native provider with a tiny bounded pool
-  skeleton and env-gated live tests, but JavaScript-to-native binding remains future work.
-- Production database connection pooling, migrations, file DB capability policy, blob/date
-  support, async worker offload, cancellation/deadline propagation, isolation levels,
-  savepoints, PostgreSQL and SQL Server TLS/options hardening, SQL Server TVP/bulk support,
-  JSON/array support, raw SQL escape hatch, and provider-specific quoting remain future
-  data-provider work.
-- Capability enforcement, filesystem capabilities, network capabilities, permission grants,
-  `sloppy audit`, and app-plan data provider/capability emission remain future work.
-- Compiler import rewriting for `"sloppy"` is future work.
-- Runtime intrinsic binding for `stdlib/sloppy/internal/intrinsics.js` is future work.
-- Real app metadata extraction for CLI introspection is future work.
-- Full OpenAPI schema/request/response generation is future work.
-- Richer `sloppy audit` rules, source mapping, and authority-flow reporting are future
-  work.
-- CLI output polish, including stable lower-level diagnostic rendering and optional live
-  provider checks behind explicit flags, is future work.
+## Should Fix Soon
 
-## Cleanup candidates
+- Response/request diagnostics for missing handlers, result conversion failures, malformed
+  route params, unsupported methods, and app startup failures.
+- Route params in runtime handler context, including int parsing policy and failure
+  diagnostics.
+- Query parsing and route/query percent-decoding policy.
+- Request body parsing skeleton with explicit limits and unsupported-content diagnostics.
+- JSON serialization strategy for `Results.json`, including supported values, errors,
+  redaction, and benchmark plan.
+- Plan route/module/provider/capability sections with golden fixtures and native startup
+  validation.
+- Source map strategy for compiler output and V8 exception remapping.
+- Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
+  close/drain behavior, thread-safety contract, and diagnostics.
+- SQLite file database capability policy.
+- Docs examples executable path: replace static checks with Sloppy-run examples as soon as
+  the runtime path exists.
+- Benchmark methodology hardening: release-only measured runs, local artifact policy,
+  hardware/build metadata, and no external comparisons until comparable paths exist.
+- GitHub issue cleanup: close implemented child/parent issues, relabel deferred follow-ups,
+  and add EPIC-21 onward issues after the next roadmap is approved.
 
-- Add scanner fixtures or self-test mode for structural checks.
-- Decide whether `include/sloppy/os.h` is public or internal before platform APIs grow.
-- Expand docs freshness checks to catch broken links and implemented API drift.
+## Deferred By Design
+
+- Production HTTP server behavior beyond the dev-only MVP.
+- Full response pipeline: streaming, files, redirects, cookies, content negotiation,
+  compression, keep-alive tuning, and middleware/result filters.
+- Full route table/trie optimization, catch-all routes, optional segments, regex
+  constraints, nested route groups, route precedence policy, and ambiguity diagnostics.
+- Full OpenAPI generation, request/response schema emission, examples, and security
+  schemes.
+- Full validation engine behavior: body/query/headers/route binding, automatic problem
+  responses, coercion, arrays, unions, and custom refinements.
+- Production database features: migrations, isolation levels, savepoints, blob/date/json
+  shape, array support, TLS/options hardening, PostgreSQL COPY/listen/notify, SQL Server
+  TVP/bulk copy, and raw SQL escape hatch policy.
+- Dynamic module/package loading, package-manager behavior, native plugin ABI, compiler
+  plugins, and Node compatibility.
+- Multi-worker/process scaling, hot reload, dev watch, inspector/debugger integration, and
+  snapshots.
+- Performance dashboards, upload jobs, and CI performance regression thresholds.
+
+## Research Needed
+
+- Oxc integration depth: parser-only MVP versus transform/bundling ownership.
+- Official TypeScript checking path: `tsgo` or `tsc`, subprocess versus library, and how
+  diagnostics merge with extraction diagnostics.
+- JavaScript module format and bundling: ESM loading in V8, generated wrapper shape, import
+  rewriting, source-map fidelity, and app entrypoint semantics.
+- V8 process shutdown policy and whether process-wide platform teardown is ever attempted.
+- Threading model evolution from inline skeletons to real worker threads/libuv posting,
+  including owner-thread identity checks.
+- Async provider strategy: worker-pool blocking calls versus nonblocking libpq/socket
+  integration; cancellation/deadline semantics by provider.
+- Cross-platform SQL Server support versus Windows-first ODBC-only policy.
+- Filesystem/network capability semantics: path normalization, symlinks, config/env
+  access, and honest non-sandboxing language.
+- Release packaging format and dependency story for V8, libpq, SQLite, ODBC, and future
+  stdlib assets.
+
+## Nice Later
+
+- Docs link checker and semantic stale-doc checker.
+- Stronger generated-artifact and ignored-file staging checks.
+- More diagnostic renderers: JSON, source frames, structured fixes, and localization.
+- Fuzz targets for plan JSON, route patterns, HTTP request-head parsing, source maps, and
+  compiler extraction.
+- Sanitizer matrix for core-only and provider-enabled builds.
+- Benchmark samples for documentation once methodology is stable.
+- Optional CLI output polish and machine-readable metadata envelopes for all commands.
+- Typed service tokens after string-token plan/debuggability is proven.
+- Richer module metadata for health checks, jobs, filters, permissions, and package
+  manifests.
+
+## Cleanup Candidates
+
+- Reconcile stale GitHub issue labels: many open parent EPICs still say `status:deferred`
+  after their scoped child tasks closed.
+- Decide whether to close or retitle legacy open tasks that are now superseded by
+  EPIC-21 onward.
+- Update `tools/github/create-issues.ps1` with an explicit `-Input` parameter only after
+  the team wants alternate issue-data files to be first-class.
+- Remove duplicate or contradictory "Current Phase" paragraphs as docs continue to evolve.
 
 ## Overengineering Watchlist
 
-- Watch for unnecessary registries.
-- Watch for macro DSLs.
-- Watch for provider/vtable abstractions before provider phase.
-- Watch for generic containers before concrete needs.
-- Watch for C code that hides cleanup/error paths.
+- Avoid broad registries until the native app graph and resource table need them.
+- Avoid generic provider/vtable abstractions beyond documented provider boundaries.
+- Avoid macro DSLs or hidden cleanup paths in C.
+- Avoid API shape expansion before compiler/runtime integration catches up.
+- Avoid performance dashboards or external comparisons before real comparable paths exist.
 
 ## Comment Quality Watchlist
 
-- Watch for AI-noise comments.
-- Watch for stale rationale comments.
-- Watch for missing ownership comments on public APIs.
-- Watch for tricky C code without invariants documented.
+- Public APIs need ownership/lifetime/invariant comments.
+- Platform, engine, provider, and threading boundaries need rationale comments.
+- Remove stale comments when implementation reality changes.
+- Do not add comments that merely narrate obvious syntax.
 
-## Repeated review findings
+## Completed Cleanup
 
-- None recorded yet.
-
-## Proposed mechanical checks
-
-- V8 leakage scanner expansion once the bridge exists.
-- Allocator/resource misuse checks once allocator and resource-table modules exist.
-- Docs drift checks for roadmap/source-doc links.
-- Public docs example tests once public API exists.
-- Golden update intent check once golden harnesses exist.
-- Diagnostic snapshot update intent check once more diagnostic fixtures exist.
-- Complexity warnings for one-call-site abstractions and high nesting if a reliable scanner
-  becomes practical.
-
-## Completed cleanup
-
-- None recorded yet.
+- None in this consolidation PR; this pass records and organizes the backlog without
+  implementing runtime features.

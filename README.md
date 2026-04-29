@@ -2,53 +2,53 @@
 
 AI-slop branding, zero-slop architecture.
 
-Sloppy is a planned TypeScript application runtime with a C host kernel, a tiny isolated
-C++ V8 engine bridge, and a Rust compiler/build tool named `sloppyc`. The runtime is meant
-to feel closer to an app host inspired by ASP.NET Core Minimal APIs than to a JavaScript
-platform compatibility layer.
+Sloppy is an experimental TypeScript backend application runtime/app-host. It has a C
+runtime kernel, an isolated C++ V8 bridge, a source-controlled JavaScript bootstrap stdlib,
+and a Rust compiler/build tool placeholder named `sloppyc`.
 
-Sloppy is not a Node clone, Bun clone, Deno clone, or Express clone. It will expose custom
-Sloppy application APIs, compile an application into a Sloppy Plan, and let the native host
-own routing, services, permissions, diagnostics, and request lifecycle behavior.
-
-Windows x64 is the first-class development path; Sloppy is cross-platform by design. The
-initial developer loop is Windows, `clang-cl`, `lld-link`, CMake, Ninja, vcpkg manifest mode
-for ordinary C dependencies, and prebuilt V8 SDK artifacts later. Platform-specific API
-calls must be isolated behind `src/platform/*`.
-
-## Why Sloppy?
-
-Sloppy is an experiment in disciplined AI-assisted systems engineering. The joke is slop;
-the standards are not.
-
-The main product wedge is developer ergonomics. Sloppy aims to make TypeScript backend apps
-feel designed, not assembled from runtime primitives, npm debris, and framework soup.
-Performance matters, but the app-host model is the reason the project exists.
-
-Sloppy is an app-host/framework-centric runtime. The intended default path is builder, app,
-routes, route groups, `Results.*`, validation shape, modules, services, config, logging,
-data providers, diagnostics, and Sloppy Plan-powered tooling. A raw low-level fetch callback
-is not the primary application model.
+Sloppy is not production ready. The repo is still pre-alpha foundation work. It is also not
+a Node, Bun, Deno, or Express compatibility project. The intended product shape is a
+compiler-planned app host: Sloppy APIs describe routes, modules, services, permissions,
+diagnostics, and data providers; `sloppyc` will emit artifacts; the native host will load
+the Sloppy Plan and execute handlers through V8.
 
 Windows x64 is the first-class development path. Sloppy is cross-platform by design:
-platform-specific API calls belong under `src/platform/*`, and core runtime modules must
-remain portable C.
+platform-specific API calls belong under `src/platform/*`, and portable runtime modules
+must not include OS-specific headers.
 
-Before implementation starts, the docs are the source of truth. Future GitHub EPICs, PR
-prompts, and reviewer prompts should map back to these specifications.
+## What Works Today
 
-Core specs:
+- Windows CMake/Ninja/Cargo developer workflow through `tools/windows`.
+- Portable C core primitives: status, source locations, strings, bytes, checked math,
+  assertions, `SlArena`, diagnostics, plan parsing, scope cleanup, loop/async/worker-pool
+  skeletons, route parsing, HTTP request-head parsing, and synthetic dispatch helpers.
+- Optional V8 bridge smoke when a valid V8 SDK is configured; default builds do not require
+  or validate V8.
+- Minimal handwritten `app.plan.json` plus `app.js` execution smoke in V8-enabled builds.
+- Bootstrap ESM stdlib with `Sloppy`, `Results`, `schema`, `data`, builder/app skeletons,
+  route groups, modules, config/logging/services, fake data providers, and examples.
+- Native SQLite, PostgreSQL, and SQL Server provider boundaries with C tests. PostgreSQL and
+  SQL Server live tests are opt-in through environment variables.
+- Metadata-only CLI introspection: `sloppy routes`, `sloppy doctor`, `sloppy audit`, and
+  `sloppy openapi`.
+- Benchmark harness for current foundations. Smoke/list checks are not performance claims.
 
-- [Architecture](docs/architecture.md);
-- [Compiler and execution model](docs/execution-model.md);
-- [Developer ergonomics](docs/developer-ergonomics.md);
-- [Platform abstraction](docs/platform-abstraction.md);
-- [Agent harness](docs/agent-harness.md);
-- [C standards](docs/c-standards.md);
-- [Quality gates](docs/quality-gates.md);
-- [Roadmap](docs/roadmap.md).
+## What Does Not Work Yet
 
-Planned user API shape:
+- No real `sloppyc` extraction from application TypeScript.
+- No `app.plan.json` emission from public API source.
+- No `sloppy run`.
+- No production HTTP server, response writer, request body parser, or request context.
+- No V8 ESM/bootstrap module loading or runtime intrinsics.
+- No JavaScript-to-native database bridge or JS-visible native resource IDs.
+- No package-manager behavior and no Node compatibility goal.
+- No capability enforcement yet; current capability data is metadata only.
+- No release packages, checksums, installers, or public alpha distribution.
+- No public performance comparison claims.
+
+## Example Shape
+
+The intended user-facing API still looks like this:
 
 ```ts
 import { Sloppy, Results } from "sloppy";
@@ -61,63 +61,81 @@ app.mapGet("/", () => Results.text("Sloppy is alive"));
 await app.run();
 ```
 
-## Sloppy Modules And Data Providers
+Today, `app.run()` and the bare `"sloppy"` import are future behavior. Checked-in examples
+under `examples/` use relative imports from `stdlib/sloppy/` and are static/bootstrap
+API-shape examples unless a page explicitly says otherwise.
 
-Sloppy applications will be composed from declarative modules that contribute services,
-routes, middleware, permissions, schemas, health checks, and metadata to the Sloppy Plan.
-Database providers are modules too.
+## Current Roadmap State
 
-Planned data provider shape:
+The initial EPIC-00 through EPIC-20 roadmap produced a broad foundation: native core,
+minimal plan loader, V8 smoke, handwritten execution, concurrency skeletons, HTTP/router
+foundation, bootstrap stdlib/app-host ergonomics, modules, data/provider foundations,
+metadata CLI tools, and benchmarks.
 
-```ts
-import { sqlite } from "sloppy:data/sqlite";
+The next proposed batch starts with compiler extraction and a dev-only executable path:
 
-builder.addModule(sqlite.module({ token: "data.main", path: "app.db" }));
+- EPIC-21 Compiler Extraction MVP.
+- EPIC-22 Sloppy Run MVP.
+- EPIC-23 HTTP Response Writer and Request Context.
+- EPIC-24 V8 Module Loading and Bootstrap Runtime.
+- EPIC-25 Release Packaging and Distribution.
+- EPIC-26 Cross-platform CI Expansion.
+- EPIC-27 Runtime Security / Capabilities Enforcement.
+- EPIC-28 Public Alpha Docs and Examples.
+
+See [docs/roadmap.md](docs/roadmap.md) and
+[docs/project/next-roadmap.md](docs/project/next-roadmap.md).
+
+## Core Specs
+
+- [Architecture](docs/architecture.md)
+- [Compiler and execution model](docs/execution-model.md)
+- [Developer ergonomics](docs/developer-ergonomics.md)
+- [Platform abstraction](docs/platform-abstraction.md)
+- [App Plan](docs/app-plan.md)
+- [Data providers](docs/data-providers.md)
+- [Quality gates](docs/quality-gates.md)
+- [Roadmap](docs/roadmap.md)
+
+## Developer Workflow
+
+Canonical Windows workflow:
+
+```powershell
+.\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 configure
+.\tools\windows\dev.ps1 build
+.\tools\windows\dev.ps1 test
+.\tools\windows\dev.ps1 format-check
+.\tools\windows\dev.ps1 lint
 ```
 
-SQLite is planned as the first built-in/static provider later. PostgreSQL and SQL Server are
-planned provider modules, through libpq and Microsoft ODBC Driver/ODBC respectively. None
-of this is v0 foundation runtime work yet.
+Rust compiler-tool gates:
 
-## What Works Today
+```powershell
+cargo fmt --manifest-path compiler/Cargo.toml -- --check
+cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
+cargo test --manifest-path compiler/Cargo.toml
+```
 
-- placeholder `sloppy` CLI;
-- placeholder `sloppyc` CLI;
-- CMake/Ninja build skeleton;
-- Rust compiler-tool skeleton;
-- PowerShell developer tooling;
-- docs, ADRs, and CI skeleton.
+Run these from a shell with the MSVC and Windows SDK developer environment initialized.
+The in-repo Windows wrapper attempts to import/supplement that environment where possible.
 
-## What Intentionally Does Not Work Yet
+## V8 And Providers
 
-- V8 integration;
-- TypeScript compilation;
-- HTTP host;
-- routing;
-- app modules;
-- database providers;
-- Sloppy Plan loading.
+Default builds leave V8 disabled. Passing default CTest does not prove the V8 bridge or
+handwritten V8 execution path passed. V8 work must be validated with an approved SDK and
+reported separately.
 
-Current repository status: foundation/spec phase only. Runtime features, V8 integration,
-HTTP, routing, SQLite, services, and compiler logic are intentionally not implemented yet.
+PostgreSQL and SQL Server live tests are also gated. Default tests cover non-live/provider
+diagnostic behavior; they do not prove a live database server path unless the relevant
+environment variables were configured and reported.
 
 ## Agent-First Development
 
 Sloppy is intentionally built with Codex, but not casually. Repo-local docs are the system
-of record, `AGENTS.md` is the map, and quality gates enforce the standards that should not
+of record, `AGENTS.md` is the map, and quality gates enforce standards that should not
 depend on chat memory. Repeated review feedback should become docs, checks, or tools.
 
-Contributor bootstrap:
-
-```powershell
-.\tools\bootstrap.ps1
-.\tools\dev.ps1 configure
-.\tools\dev.ps1 build
-.\tools\dev.ps1 test
-```
-
-Run these from a shell with the MSVC and Windows SDK developer environment initialized.
-CI does this with a Visual Studio developer command setup step.
-
-The project policy is simple: MVP means narrow, not bad. Feature work should land only
-after the supporting standards, tests, diagnostics, and tooling are in place.
+MVP means narrow, not bad. Runtime features should land only with the supporting standards,
+tests, diagnostics, docs, and tooling.

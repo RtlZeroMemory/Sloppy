@@ -36,3 +36,12 @@ Only apply after validation passes and the dry-run output looks right:
 ```
 
 Do not include `.git/`, `build/`, `compiler/target/`, or other generated artifacts in review archives. Use `tools/windows/create-review-zip.ps1` or `git archive` for source-only bundles.
+
+## Post-0.7 Planning
+
+- `docs/project/post-0.7-issue-audit.md` records the recommended cleanup for stale/open
+  EPIC-00 through EPIC-20 GitHub issues after the initial roadmap batch.
+- `docs/project/next-roadmap.md` defines the proposed EPIC-21 through EPIC-28 roadmap.
+- `tools/github/next-roadmap-issues.json` is staged data only. Current GitHub creation
+  scripts do not support an alternate input file, so do not mutate GitHub from it by
+  default.

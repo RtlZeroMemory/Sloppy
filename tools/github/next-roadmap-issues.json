@@ -1,0 +1,104 @@
+{
+  "schema": "sloppy-next-roadmap-staged-issues-v1",
+  "status": "staged-not-directly-consumable",
+  "note": "Current tools/github/create-issues.ps1 reads tools/github/issues.json and does not support -Input. Do not pass this file to mutation tooling until input override support exists.",
+  "milestone": "0.8 Planning / Consolidation",
+  "epics": [
+    {
+      "title": "EPIC-21: Compiler Extraction MVP",
+      "labels": ["type:epic", "area:compiler", "priority:p1", "risk:high", "status:ready"],
+      "summary": "Parse/import the tiny public API source shape and emit deterministic app.plan.json plus app.js artifacts.",
+      "suggestedTasks": [
+        "Compiler input discovery and CLI contract",
+        "Minimal Sloppy app and route extractor",
+        "Stable handler ID assignment",
+        "Deterministic plan and app.js emission",
+        "Golden artifact and diagnostics tests"
+      ]
+    },
+    {
+      "title": "EPIC-22: Sloppy Run MVP",
+      "labels": ["type:epic", "area:cli", "area:http", "area:engine-v8", "priority:p1", "risk:high", "status:ready"],
+      "summary": "Add a dev-only single-process sloppy run path that serves a tiny GET route through V8.",
+      "suggestedTasks": [
+        "sloppy run command and artifact loading",
+        "Source build handoff to sloppyc MVP",
+        "Dev-only HTTP accept/read loop",
+        "GET route dispatch to V8 handler",
+        "Process-level hello smoke"
+      ]
+    },
+    {
+      "title": "EPIC-23: HTTP Response Writer and Request Context",
+      "labels": ["type:epic", "area:http", "area:app-host", "priority:p1", "risk:high", "status:ready"],
+      "summary": "Convert result descriptors into HTTP responses and pass route/query context to handlers.",
+      "suggestedTasks": [
+        "Response descriptor C model",
+        "Text/json response writer",
+        "Status/header/content-type validation",
+        "Route and query parameter context",
+        "Malformed result diagnostics"
+      ]
+    },
+    {
+      "title": "EPIC-24: V8 Module Loading and Bootstrap Runtime",
+      "labels": ["type:epic", "area:engine-v8", "area:ts-api", "priority:p1", "risk:high", "status:ready"],
+      "summary": "Load the bootstrap stdlib and app module entrypoint in V8 with documented intrinsic boundaries.",
+      "suggestedTasks": [
+        "ESM/module loading decision and implementation",
+        "Bootstrap stdlib asset loading",
+        "Bare import or compiler rewrite story",
+        "Handler registration intrinsic",
+        "V8-gated bootstrap/app integration tests"
+      ]
+    },
+    {
+      "title": "EPIC-25: Release Packaging and Distribution",
+      "labels": ["type:epic", "type:tooling", "area:ci", "priority:p2", "risk:high", "status:ready"],
+      "summary": "Define and validate installable Windows, Linux, and macOS package artifacts with checksums.",
+      "suggestedTasks": [
+        "Package layout docs",
+        "Windows zip package",
+        "Linux and macOS tar packages",
+        "V8 linked/bundled strategy",
+        "Outside-checkout package smoke"
+      ]
+    },
+    {
+      "title": "EPIC-26: Cross-platform CI Expansion",
+      "labels": ["type:epic", "type:tooling", "area:ci", "area:platform", "priority:p1", "risk:high", "status:ready"],
+      "summary": "Add Linux and macOS default gates and make optional V8/provider gates explicit.",
+      "suggestedTasks": [
+        "Linux clang/gcc gate",
+        "macOS clang gate",
+        "Windows clang-cl gate maintenance",
+        "V8 optional CI job",
+        "Provider gated test reporting"
+      ]
+    },
+    {
+      "title": "EPIC-27: Runtime Security / Capabilities Enforcement",
+      "labels": ["type:epic", "area:data", "priority:p1", "risk:high", "status:ready"],
+      "summary": "Enforce declared capabilities for provider access and add filesystem/network capability skeleton diagnostics.",
+      "suggestedTasks": [
+        "Capability plan section",
+        "Runtime capability registry",
+        "Provider access policy",
+        "Filesystem and network capability skeletons",
+        "Denied-access diagnostics and audit fixtures"
+      ]
+    },
+    {
+      "title": "EPIC-28: Public Alpha Docs and Examples",
+      "labels": ["type:epic", "type:docs", "area:docs", "area:testing", "priority:p2", "risk:medium", "status:ready"],
+      "summary": "Refresh public docs and examples around executable, verified Sloppy workflows.",
+      "suggestedTasks": [
+        "Executable hello tutorial",
+        "Executable SQLite demo or explicit deferral",
+        "README and public docs refresh",
+        "Troubleshooting and V8 SDK caveats",
+        "Public alpha checklist"
+      ]
+    }
+  ]
+}

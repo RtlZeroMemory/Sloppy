@@ -67,5 +67,19 @@
                   ],
         "title":  "0.7 Tooling and Performance",
         "purpose":  "routes/doctor/audit/openapi commands, benchmark suite, and performance validation."
+    },
+    {
+        "epics":  [
+                      "EPIC-21",
+                      "EPIC-22",
+                      "EPIC-23",
+                      "EPIC-24",
+                      "EPIC-25",
+                      "EPIC-26",
+                      "EPIC-27",
+                      "EPIC-28"
+                  ],
+        "title":  "0.8 Planning / Consolidation",
+        "purpose":  "Post-0.7 consolidation plus the next roadmap batch for compiler extraction, run MVP, response/request context, V8 bootstrap, packaging, CI, capabilities, and public-alpha docs."
     }
 ]

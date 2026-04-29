@@ -439,9 +439,10 @@ Current TASK 15 bootstrap behavior:
   binding, transactions, and diagnostics.
 - `data.sqlite.open(...)` exists but reports that the native stdlib bridge is unavailable.
 
-Still not implemented: JavaScript-to-native SQLite calls, PostgreSQL/SQL Server providers,
-migrations, pooling, native provider scheduling, permission enforcement, and compiler
-extraction of template literals.
+Still not implemented: JavaScript-to-native SQLite/PostgreSQL/SQL Server calls, production
+pooling, migrations, native provider scheduling/async offload, permission enforcement, and
+compiler extraction of template literals. Native PostgreSQL and SQL Server provider
+boundaries exist in C tests, with live execution gated by environment variables.
 
 ## Diagnostics As Product UX
 
