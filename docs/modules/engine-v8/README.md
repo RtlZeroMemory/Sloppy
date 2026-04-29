@@ -56,20 +56,25 @@ Implemented now:
 - supported handler return values are plain strings or `Results.text/json/ok/noContent`
   and `problem` descriptors. Unsupported descriptor kinds and malformed descriptors fail
   safely with diagnostics.
+- Promise-returning and `async` handlers fail explicitly as unsupported instead of being
+  treated as `[object Promise]` success.
 
 Later scope:
 
 - true V8 ESM module loading and a production module cache;
 - richer source-map remapping for generated app modules;
-- V8 Promise integration that maps resolved/rejected JS promises onto the native `SlAsync`
-  settlement model or a documented evolution of it.
+- required V8 Promise integration that maps resolved/rejected JS promises onto the native
+  `SlAsync` settlement model or a documented evolution of it before Sloppy claims async
+  handler support;
+- richer source-map fidelity once compiler source maps contain useful mappings.
 
 ## Non-goals
 
 No ESM resolver, full app host, arbitrary import graph, V8 Promise integration, microtask
-policy, workers, inspector, snapshots, hot reload, Node compatibility, npm resolution, or
-package-manager behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and
-does not make this bridge a production server boundary.
+draining policy beyond clear rejection, workers, inspector, snapshots, hot reload, Node
+compatibility, timers, fetch, fs, process/Buffer APIs, npm resolution, or package-manager
+behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and does not make
+this bridge a production server boundary.
 
 ## Public/Internal API
 
@@ -82,6 +87,12 @@ Current behavior:
 
 - `SL_ENGINE_KIND_NONE` creates an arena-backed noop engine;
 - `sl_engine_destroy(NULL)` is allowed;
+- `sl_engine_destroy(engine)` is idempotent; double destroy is a no-op;
+- a wrong-thread destroy invalidates the public handle without entering V8. Later calls on
+  that handle return invalid-state lifecycle results, and an owner-thread destroy may still
+  release bridge-owned resources;
+- calls after destroy return `SL_STATUS_INVALID_STATE` with an engine lifecycle diagnostic
+  where the API accepts `out_diag`;
 - `sl_engine_info` returns stable noop metadata for active noop engines;
 - `SL_ENGINE_KIND_V8` creates a V8 isolate/context only when V8 is enabled at configure
   time; otherwise it returns `SL_STATUS_UNSUPPORTED`;
@@ -100,6 +111,11 @@ Current behavior:
   by generated app code before `sloppy run` starts serving or dispatching `--once`;
 - `sl_engine_call_registered_handler_with_context` dispatches by registered handler ID and
   does not expose raw native pointers to JavaScript;
+- V8 handler calls that return a JavaScript Promise fail with `SL_STATUS_UNSUPPORTED` and a
+  `SLOPPY_E_ENGINE_CALL_ERROR` diagnostic. The alpha bridge does not run microtasks to
+  settle Promise values and does not pretend async handlers completed. This is a temporary
+  hardening policy, not the final runtime shape: real Promise/microtask support is required
+  before async handlers become supported;
 - `sl_runtime_contract_call_handler` looks up a handler ID in `SlPlan`, validates the
   export name, and calls the named global with no arguments;
 - `sl_runtime_contract_call_handler_with_context` performs the same plan lookup and calls
@@ -198,7 +214,9 @@ The noop engine is allocated from the caller-provided arena and owns no external
 The V8 engine wrapper is arena-backed only after V8 isolate/context creation succeeds, so
 failed creates do not consume caller arena capacity. V8 isolate/context resources are
 bridge-owned and released by `sl_engine_destroy`. Callers must destroy an engine before
-resetting the arena that backs the opaque handle.
+resetting the arena that backs the opaque handle. Destroy is idempotent. After destroy, the
+arena-owned handle remains only as inactive storage; eval, call, validation, and future
+handler APIs return `SL_STATUS_INVALID_STATE` rather than entering backend state.
 
 `sl_engine_call_function0` copies supported plain-string compatibility results into the
 caller-provided result arena. `sl_engine_call_function_with_context` and
@@ -224,17 +242,24 @@ without materializing a diagnostic.
 
 ## Invariants
 
-One V8 isolate has one owning JS thread.
+One V8 isolate/context has one owner thread: the thread that created the engine. Engine
+creation, source evaluation, handler calls, registered-handler validation, and destroy are
+owner-thread operations. Calls from another thread fail before entering V8 with
+`SL_STATUS_INVALID_STATE` and an engine diagnostic when the API has `out_diag`.
 
 V8 headers and `v8::*` types may appear only below `src/engine/v8/`.
 
-The current ABI is not thread-safe. TASK 07.C creates and enters the isolate on the calling
-thread and documents the owner-thread rule, but does not enforce cross-thread entry yet.
-Owner-thread checks remain deferred until later bridge/event-loop tasks.
+The current ABI is not a scheduler. It enforces owner-thread entry for V8 but does not post
+work between threads, run worker callbacks, or allow native worker threads to enter an
+isolate. Future worker/event-loop integration must post work back to the owner thread.
 
-TASK 09.B's `SlAsync` model lives in the C runtime core and does not include V8 types. The
-future bridge should settle returned JS promises by posting back to the owning loop and must
-continue to keep V8 handles and microtask policy inside `src/engine/v8/`.
+TASK 09.B's `SlAsync` model lives in the C runtime core and does not include V8 types.
+MAIN1-05 chooses the alpha Promise policy: returned Promises and `async` handlers are
+unsupported and fail clearly. Future support should settle returned JS promises by posting
+back to the owning loop and must continue to keep V8 handles and microtask policy inside
+`src/engine/v8/`. That support is deferred but required; Sloppy must not document or market
+async handler support until V8 Promise settlement, microtask policy, request-scope lifetime,
+and rejected-promise diagnostics are implemented and tested.
 
 V8 requires process-wide platform initialization. TASK 07.C initializes that state once,
 keeps it private to `src/engine/v8/`, and intentionally leaves it alive for process
@@ -321,8 +346,9 @@ source/resource name when available, 1-based line and column when V8 reports the
 bounded stack string as a related note when practical. V8 reports start columns as
 zero-based; the bridge converts them to Sloppy's 1-based diagnostic column convention. No
 source maps, TypeScript remapping, rich code frames, async stack policy, route/handler
-context, V8 promise rejection policy, Sloppy Plan execution, public JS API, Node
-compatibility, or package-manager behavior is implemented here.
+context, Node compatibility, or package-manager behavior is implemented here. Compiler
+`app.js.map` files are currently deterministic placeholders with empty mappings, so V8
+runtime diagnostics report generated `app.js` labels and locations only.
 
 ## Tests
 

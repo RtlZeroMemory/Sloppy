@@ -169,8 +169,10 @@ TypeScript type compatibility from its extractor alone.
 
 The MVP emits a deterministic placeholder `app.js.map` because Plan v1 currently requires a
 `sourceMap` section. MAIN1-02 hashes that placeholder source-map artifact so plan/runtime
-drift is detectable, but it still does not claim source fidelity. Real source maps must
-later support:
+drift is detectable, but it still does not claim source fidelity. MAIN1-05 V8 exception
+diagnostics therefore report generated `app.js` source names and V8 line/column data only;
+they do not remap to author source from the placeholder map. Real source maps must later
+support:
 
 - runtime exception diagnostics;
 - plan extraction diagnostics;
@@ -425,7 +427,8 @@ Compiler diagnostics must include:
 For current `sloppyc` fixture failures, diagnostics with source spans include a
 deterministic single-line source frame. Diagnostics without spans still render the stable
 path/summary fallback. Richer spans, related compiler locations, and V8/source-map
-exception remapping remain future work.
+exception remapping from generated artifacts remain future work while source maps carry
+empty mappings.
 
 ## Testing Requirements
 

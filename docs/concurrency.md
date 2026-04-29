@@ -50,7 +50,10 @@ thread-safe posting, socket I/O, timers, owner-thread checks, or request lifecyc
 integration.
 
 The remaining event loop backend, real worker pool, request lifecycle, V8 promise
-integration, and async backend behavior is still future work.
+integration, and async backend behavior is still future work. V8 Promise integration is
+deferred but required: Sloppy cannot claim async handler support until returned Promises
+settle through the runtime, microtasks have an explicit owner-thread policy, request scopes
+survive pending Promise work, and rejected Promises produce deterministic diagnostics.
 
 ## Core Decision
 
@@ -294,6 +297,9 @@ rejections should include route and handler context when possible.
 
 TASK 09.B does not implement this V8 behavior. It only defines the native settlement record
 and loop-continuation shape that future V8 Promise resolution can map onto or evolve.
+Implementing that bridge is required future runtime work, not optional polish. Until it
+lands, Promise-returning handlers must continue to fail clearly instead of completing as
+`[object Promise]` or silently dropping asynchronous failures.
 
 ## Request Scope Lifetime
 
@@ -425,7 +431,9 @@ app-host level:
 
 - Unit tests for request scope lifetime later.
 - Native SlAsync settlement tests now; V8 Promise, microtask, and request-scope settlement
-  tests later.
+  tests later. Those tests are required when async handler support is implemented, including
+  fulfilled Promise responses, rejected Promise diagnostics, owner-thread continuation, and
+  request-scope cleanup after settlement.
 - Cancellation cleanup tests later.
 - Worker pool no-V8-entry tests later.
 - Resource leak tests.

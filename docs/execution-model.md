@@ -422,14 +422,15 @@ future work.
 
 ## Async And Promise Lifecycle
 
-Handlers may return promises. Request scope remains alive until the promise settles. Rejected
-promises become diagnostics. The engine bridge controls microtask draining so the runtime
-owns cleanup and error boundaries.
+Alpha V8 handlers must return a concrete supported value during the native call: a string
+or supported `Results.*` descriptor. Returned Promises and `async` handlers are rejected
+with an explicit unsupported diagnostic. Sloppy does not yet keep request scope alive across
+JavaScript async work and does not run a JS event loop or timer/microtask integration path.
 
 Async work must not retain request-arena memory beyond request scope. Long-lived work must
 own data explicitly or use resource table entries.
 
-Promise lifecycle requirements:
+Future Promise lifecycle requirements:
 
 - request scope stays alive until the returned promise settles;
 - continuations run on the owning JS event-loop thread;
@@ -456,7 +457,8 @@ Current native skeleton:
   after the owning `SlLoop` is reset.
 
 Future V8 Promise handling should resolve or reject through this model or a documented
-evolution of it so request cleanup remains owned by the runtime.
+evolution of it so request cleanup remains owned by the runtime. Until then, tests must
+verify Promise rejection as unsupported rather than `[object Promise]` success.
 
 ## Source Map Diagnostic Flow
 
@@ -465,15 +467,15 @@ Runtime exception flow:
 1. V8 reports generated JS location;
 2. bridge captures exception message, generated source name, generated line/column, and
    stack summary when available;
-3. runtime maps generated location through `app.js.map`;
+3. when source maps become useful, runtime maps generated location through `app.js.map`;
 4. diagnostic reports original TypeScript file/span;
 5. generated location is included as fallback detail;
-6. missing source map is a diagnostic quality failure in dev and a configurable packaging
-   concern in production.
+6. missing or placeholder source maps keep generated locations as the honest fallback.
 
-Current TASK 07.D behavior stops after step 2 for the smoke API. Source maps, TypeScript
-source remapping, code frames, route/handler context, async stacks, and promise rejection
-policy remain future work.
+MAIN1-05 behavior stops after generated source name, 1-based line/column, message, and a
+bounded stack note. Current compiler `app.js.map` files are hashed artifacts but carry empty
+mappings, so TypeScript source remapping and code frames remain future work. Promise returns
+now have a clear unsupported diagnostic, not async stack handling.
 
 Source map task boundaries:
 

@@ -12,7 +12,8 @@
  * - JS never receives raw native pointers;
  * - result strings are copied out of V8 before returning to C;
  * - the bridge is single-threaded by contract and does not implement workers or owner
- *   enforcement yet;
+ * - one owner thread creates and enters each isolate/context; wrong-thread entry fails
+ *   before touching V8 state;
  * - V8's required process-wide platform state is initialized once, kept for process
  *   lifetime, and private to this module until an explicit runtime shutdown task exists.
  *
@@ -29,6 +30,7 @@
 #include <mutex>
 #include <new>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 namespace {
@@ -40,6 +42,7 @@ struct SlV8Engine
     v8::Global<v8::Context> context;
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
     std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
+    std::thread::id owner_thread;
 };
 
 std::mutex g_v8_platform_mutex;
@@ -600,6 +603,35 @@ SlStatus sl_v8_write_missing_registered_handler_diag(SlEngine* engine, SlDiag* o
                           1U));
 }
 
+SlStatus sl_v8_write_wrong_thread_diag(SlEngine* engine, SlDiag* out_diag)
+{
+    return sl_v8_write_diag(
+        engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+        sl_v8_literal("V8 engine entered from a non-owner thread",
+                      sizeof("V8 engine entered from a non-owner thread") - 1U),
+        sl_str_empty(),
+        sl_v8_literal("Create, evaluate, call, validate, and dispose a V8 engine on its owner "
+                      "thread. Worker threads must post work back to the owner thread.",
+                      sizeof("Create, evaluate, call, validate, and dispose a V8 engine on its "
+                             "owner thread. Worker threads must post work back to the owner "
+                             "thread.") -
+                          1U));
+}
+
+bool sl_v8_on_owner_thread(const SlV8Engine* backend)
+{
+    return backend != nullptr && backend->owner_thread == std::this_thread::get_id();
+}
+
+SlStatus sl_v8_check_owner_thread(SlEngine* engine, const SlV8Engine* backend, SlDiag* out_diag)
+{
+    if (!sl_v8_on_owner_thread(backend)) {
+        return sl_v8_write_wrong_thread_diag(engine, out_diag);
+    }
+
+    return sl_status_ok();
+}
+
 void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
@@ -729,6 +761,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     if (backend == nullptr) {
         return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
+    backend->owner_thread = std::this_thread::get_id();
 
     backend->allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (backend->allocator == nullptr) {
@@ -787,9 +820,15 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
 
 extern "C" void sl_engine_v8_destroy(SlEngine* engine)
 {
-    SlV8Engine* backend = sl_v8_backend(engine);
+    SlV8Engine* backend = nullptr;
 
     if (engine == nullptr) {
+        return;
+    }
+
+    backend = sl_v8_backend(engine);
+    if (backend != nullptr && !sl_v8_on_owner_thread(backend)) {
+        engine->active = false;
         return;
     }
 
@@ -815,6 +854,10 @@ extern "C" SlStatus sl_engine_v8_info(const SlEngine* engine, SlEngineInfo* out_
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    if (!sl_v8_on_owner_thread(sl_v8_backend_const(engine))) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
     out_info->kind = SL_ENGINE_KIND_V8;
     out_info->name = sl_v8_literal("v8", sizeof("v8") - 1U);
     out_info->version = sl_v8_literal("enabled", sizeof("enabled") - 1U);
@@ -832,6 +875,11 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
         source.length == 0U)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_v8_check_owner_thread(engine, backend, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
     v8::Isolate* isolate = backend->isolate;
@@ -914,6 +962,11 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    status = sl_v8_check_owner_thread(engine, backend, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
     v8::Isolate* isolate = backend->isolate;
     v8::Isolate::Scope isolate_scope(isolate);
     v8::HandleScope handle_scope(isolate);
@@ -932,8 +985,9 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
         return sl_v8_write_exception_diag(
             engine, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE, isolate, context,
             try_catch, sl_str_empty(), "JavaScript function lookup failed",
-            sl_v8_literal("TASK 08 will map plan handler IDs to registered functions.",
-                          sizeof("TASK 08 will map plan handler IDs to registered functions.") -
+            sl_v8_literal("Use registered handler dispatch for compiler-generated app handlers.",
+                          sizeof("Use registered handler dispatch for compiler-generated app "
+                                 "handlers.") -
                               1U));
     }
 
@@ -942,10 +996,10 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
                               std::string(function_name.ptr, function_name.length);
         return sl_v8_write_diag_string(engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR,
                                        SL_STATUS_INVALID_STATE, message, sl_str_empty(),
-                                       sl_v8_literal("TASK 08 will map plan handler IDs to "
-                                                     "registered functions.",
-                                                     sizeof("TASK 08 will map plan handler IDs to "
-                                                            "registered functions.") -
+                                       sl_v8_literal("Use registered handler dispatch for "
+                                                     "compiler-generated app handlers.",
+                                                     sizeof("Use registered handler dispatch for "
+                                                            "compiler-generated app handlers.") -
                                                          1U));
     }
 
@@ -955,10 +1009,9 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
         return sl_v8_write_diag_string(
             engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE, message,
             sl_str_empty(),
-            sl_v8_literal("Only global functions can be called by the "
-                          "TASK 07 smoke API.",
-                          sizeof("Only global functions can be called by "
-                                 "the TASK 07 smoke API.") -
+            sl_v8_literal("Only global functions can be called by the compatibility smoke API.",
+                          sizeof("Only global functions can be called by the compatibility smoke "
+                                 "API.") -
                               1U));
     }
 
@@ -1012,6 +1065,20 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
             sl_str_empty(),
             sl_v8_literal("Return a string or a supported Results.* descriptor.",
                           sizeof("Return a string or a supported Results.* descriptor.") - 1U));
+    }
+
+    if (js_result->IsPromise()) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
+            sl_v8_literal("JavaScript handler returned a Promise",
+                          sizeof("JavaScript handler returned a Promise") - 1U),
+            sl_str_empty(),
+            sl_v8_literal("Async handlers and Promise results are not supported in the alpha V8 "
+                          "bridge; return a concrete string or Results.* descriptor.",
+                          sizeof("Async handlers and Promise results are not supported in the "
+                                 "alpha V8 bridge; return a concrete string or Results.* "
+                                 "descriptor.") -
+                              1U));
     }
 
     v8::Local<v8::Object> object = js_result.As<v8::Object>();
@@ -1172,6 +1239,11 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    status = sl_v8_check_owner_thread(engine, backend, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
     v8::Isolate* isolate = backend->isolate;
     v8::Isolate::Scope isolate_scope(isolate);
     v8::HandleScope handle_scope(isolate);
@@ -1247,9 +1319,15 @@ extern "C" SlStatus sl_engine_v8_validate_registered_handlers(SlEngine* engine, 
 {
     SlV8Engine* backend = sl_v8_backend(engine);
     size_t index = 0U;
+    SlStatus status;
 
     if (engine == nullptr || backend == nullptr || plan == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_v8_check_owner_thread(engine, backend, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
     if (sl_plan_has_duplicate_handler_ids(plan)) {
@@ -1293,6 +1371,11 @@ extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
         arena == nullptr || request_context == nullptr || !sl_handler_id_valid(handler_id))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    SlStatus status = sl_v8_check_owner_thread(engine, backend, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
     auto handler = backend->handlers.find(handler_id);
