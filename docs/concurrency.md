@@ -330,6 +330,11 @@ implementation strategy. SQLite likely uses a dedicated DB executor or worker po
 PostgreSQL/libpq may use blocking worker-pool mode first or nonblocking socket integration
 later. SQL Server/ODBC likely uses a worker-pool strategy first.
 
+EPIC-16's native SQLite provider is synchronous and used only by C/runtime tests. It does
+not run blocking work on `SlWorkerPool`, does not settle JavaScript promises, and does not
+change the future requirement that JS-visible database completions post back to the owning
+event loop.
+
 Transactions pin their connection/resource until the async callback settles. Completions
 post back to the JS event loop. Providers must support cancellation/deadline where possible,
 or document when they cannot.

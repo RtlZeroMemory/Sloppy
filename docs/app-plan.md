@@ -209,6 +209,8 @@ Database provider registrations:
 
 EPIC-15 exposes bootstrap-only `app.__getPlanContributions().capabilities` metadata for
 declared capabilities. It does not emit or parse real `dataProviders` plan entries.
+EPIC-16 adds the native SQLite provider and `data.sqlite` stdlib shape, but it still does
+not emit or parse real `dataProviders` plan entries.
 
 ### capabilities
 

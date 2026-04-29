@@ -22,7 +22,9 @@ What does not work yet:
 - `sloppyc` does not compile this example;
 - this example does not emit `app.plan.json`;
 - there is no real HTTP server;
-- there is no real SQLite, PostgreSQL, or SQL Server provider yet;
+- the real SQLite provider is covered by native C tests, but this example still uses a fake
+  JavaScript provider;
+- there is no PostgreSQL or SQL Server provider yet;
 - no database connection is opened;
 - no SQL is executed;
 - filesystem and network capabilities are not enforced;
@@ -30,4 +32,5 @@ What does not work yet:
   work;
 - the future bare `"sloppy"` import is planned only.
 
-SQLite provider work comes next. PostgreSQL and SQL Server providers come later.
+See `examples/sqlite-basic/` for the SQLite provider registration shape. PostgreSQL and SQL
+Server providers come later.

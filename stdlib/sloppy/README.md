@@ -30,7 +30,10 @@ The current modules implement the first app-host foundation and developer ergono
 facade. `index.js` re-exports frozen `Sloppy`, `data`, `sql`, `Results`, and `schema` objects. The
 implemented `Results.*` helpers return plain frozen descriptor objects. `schema` exposes a
 small validation skeleton for string, number, boolean, and object shapes.
-`sql` and `data` expose the bootstrap query-template lowering and fake-provider contract.
+`sql` and `data` expose the bootstrap query-template lowering, fake-provider contract, and
+SQLite provider metadata. `data.sqlite.open(...)` is the future stdlib entry point for the
+native SQLite provider, but it reports a bridge-unavailable error until runtime intrinsics
+exist.
 `Sloppy.createBuilder()` exposes minimal config, logging, capabilities, and services builders;
 `Sloppy.module(...)` creates bootstrap app module definitions; `builder.addModule(...)`
 registers them; `builder.build()` freezes builder mutation and returns an in-memory app
@@ -48,8 +51,9 @@ Not implemented here:
 - handler registration;
 - compiler extraction or `app.plan.json` emission;
 - HTTP server behavior or response writing;
-- real SQLite, PostgreSQL, or SQL Server providers;
-- database connections or SQL execution;
+- JavaScript-to-native SQLite provider calls;
+- PostgreSQL or SQL Server providers;
+- database connections or SQL execution from JavaScript;
 - nested route groups, middleware, automatic validation/request binding, module package
   loading, or native plugins;
 - config files, environment variables, command-line config, or secret managers;

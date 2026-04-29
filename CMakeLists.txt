@@ -242,6 +242,7 @@ endif()
 find_package(yyjson CONFIG REQUIRED)
 find_package(llhttp CONFIG REQUIRED)
 find_package(libuv CONFIG REQUIRED)
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
 if(TARGET llhttp::llhttp_static)
     set(SLOPPY_LLHTTP_TARGET llhttp::llhttp_static)
@@ -280,6 +281,7 @@ set(
     src/core/plan_parse.c
     src/core/runtime_contract.c
     src/core/diagnostics.c
+    src/data/sqlite.c
     src/engine/engine.c)
 
 if(SLOPPY_ENABLE_V8)
@@ -309,7 +311,8 @@ set(
     tests/unit/core/test_engine.c
     tests/unit/core/test_diagnostics.c
     tests/unit/core/test_assert.c
-    tests/unit/core/test_assert_enabled_under_ndebug.c)
+    tests/unit/core/test_assert_enabled_under_ndebug.c
+    tests/unit/data/test_sqlite.c)
 
 if(SLOPPY_ENABLE_V8)
     list(
@@ -327,7 +330,8 @@ target_link_libraries(
     sloppy_core
     PRIVATE yyjson::yyjson
             ${SLOPPY_LLHTTP_TARGET}
-            ${SLOPPY_LIBUV_TARGET})
+            ${SLOPPY_LIBUV_TARGET}
+            unofficial::sqlite3::sqlite3)
 
 if(SLOPPY_ENABLE_V8)
     target_compile_features(sloppy_core PRIVATE cxx_std_20)
@@ -538,6 +542,7 @@ if(SLOPPY_ENABLE_TESTS)
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
     set_tests_properties(
         core.diagnostics.foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(data_sqlite_provider data.sqlite.provider tests/unit/data/test_sqlite.c)
     sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
 
     add_executable(
@@ -593,6 +598,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.data_foundation.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_data_foundation_example.cmake")
+    add_test(
+        NAME examples.sqlite_basic.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlite_basic_example.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

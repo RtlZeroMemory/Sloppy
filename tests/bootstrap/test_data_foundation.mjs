@@ -155,6 +155,24 @@ function createForgedLoweredQuery() {
 }
 
 {
+    assert.equal(data.sqlite.provider, "sqlite");
+    assert.equal(data.sqlite.placeholderStyle, "question");
+    assert.equal(data.sqlite.supports.memory, true);
+    assert.equal(data.sqlite.supports.transactions, true);
+    assert.equal(data.sqlite.supports.pooling, false);
+    assert.equal(data.sqlite.supports.nativeStdlibBridge, false);
+    assert.equal(data.sqlite.__debug().nativeStdlibBridge, false);
+    assertThrowsMessage(() => data.sqlite.open({}), /path must be a non-empty string/);
+    assertThrowsMessage(() => data.sqlite.open({
+        path: ":memory:",
+        access: "admin",
+    }), /access must be read or readwrite/);
+    assertThrowsMessage(() => data.sqlite.open({
+        path: ":memory:",
+    }), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
+}
+
+{
     const received = [];
     const fakeDb = data.createFakeProvider({
         query(lowered) {
@@ -259,6 +277,7 @@ function createForgedLoweredQuery() {
         .capabilities((caps) => {
             caps.addDatabase("data.main", {
                 provider: "sqlite",
+                path: ":memory:",
                 access: "readwrite",
             });
         })
@@ -280,4 +299,29 @@ function createForgedLoweredQuery() {
     const db = app.services.get("data.main");
     assert.deepEqual(await db.query`select id from users`, [{ id: 1 }]);
     assert.equal(app.capabilities.get("data.main").provider, "sqlite");
+    assert.equal(app.capabilities.get("data.main").metadata.path, ":memory:");
+}
+
+{
+    const SqliteModule = Sloppy.module("data.sqlite")
+        .capabilities((caps) => {
+            caps.addDatabase("data.main", {
+                provider: "sqlite",
+                path: ":memory:",
+                access: "readwrite",
+            });
+        })
+        .services((services) => {
+            services.addSingleton("data.main", () => data.sqlite.open({
+                path: ":memory:",
+            }));
+        });
+
+    const app = Sloppy.createBuilder()
+        .addModule(SqliteModule)
+        .build();
+
+    assert.equal(app.capabilities.get("data.main").metadata.path, ":memory:");
+    assert.deepEqual(app.__debug().modules[0].services, ["data.main"]);
+    assertThrowsMessage(() => app.services.get("data.main"), /native bridge unavailable/);
 }

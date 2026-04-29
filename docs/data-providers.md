@@ -29,25 +29,34 @@ This document covers:
 
 The foundation phase does not implement:
 
-- sqlite;
+- JavaScript-to-native SQLite resource/intrinsic integration;
 - libpq;
 - ODBC;
 - connection pools;
 - SQL parsing;
-- provider native ABI;
-- database JS API.
+- provider plugin ABI;
+- runnable database JS API.
 
 ## Current Phase
 
-`src/data/` is a placeholder. No data provider dependencies are present.
-The EPIC-15 bootstrap stdlib adds the first JavaScript-only data/capabilities foundation:
-database capability metadata, query template lowering, a fake data provider contract for
-tests/examples, and transaction callback semantics. It does not implement real providers,
-database connections, provider resources, or native provider plan entries.
+EPIC-15 added the JavaScript-only data/capabilities foundation: database capability
+metadata, query template lowering, a fake data provider contract for tests/examples, and
+transaction callback semantics.
+
+EPIC-16 adds the first real provider boundary: native C SQLite support backed by the vcpkg
+`sqlite3` package. The native provider can open `:memory:` databases, execute parameterized
+statements, query rows, return the first row or no-row for `queryOne`, bind primitive
+parameters, and commit or roll back explicit transactions.
+
+The JavaScript stdlib now exposes `data.sqlite` metadata and `data.sqlite.open(options)` as
+the intended public entry point, but that function fails honestly until the runtime has a
+stdlib-to-native intrinsic/resource bridge. No native pointer is exposed to JavaScript and
+no fake SQLite success is reported by the stdlib.
 
 ## Future Phase Order
 
-1. SQLite first, built-in/static provider.
+1. SQLite first, built-in/static provider. Native C provider implemented; JavaScript bridge
+   deferred.
 2. PostgreSQL second, via libpq.
 3. SQL Server third, via Microsoft ODBC Driver and ODBC API on Windows.
 4. Dynamic provider ABI later.
@@ -66,7 +75,8 @@ tests/golden/data/
 tests/integration/data/
 ```
 
-Do not add provider directories with real dependencies before their phase.
+SQLite now owns `src/data/sqlite.c`. Do not add PostgreSQL, SQL Server, or generic provider
+framework directories before their phase.
 
 ## Internal Architecture
 
@@ -76,17 +86,36 @@ binding, execution, and result conversion behind a common interface.
 
 ## Public API Shape
 
-SQLite:
+SQLite stdlib shape:
 
 ```ts
-import { sqlite } from "sloppy:data/sqlite";
+import { Sloppy, data } from "sloppy";
 
-builder.addModule(
-  sqlite.module({
-    token: "data.main",
-    path: "app.db",
+const SqliteModule = Sloppy.module("data.sqlite")
+  .capabilities(caps => {
+    caps.addDatabase("data.main", {
+      provider: "sqlite",
+      path: ":memory:",
+      access: "readwrite",
+    });
   })
-);
+  .services(services => {
+    services.addSingleton("data.main", () => data.sqlite.open({
+      path: ":memory:",
+      access: "readwrite",
+    }));
+  })
+```
+
+Native C test shape:
+
+```c
+SlSqliteConnection db = {0};
+SlSqliteOpenOptions options = sl_sqlite_open_options_memory();
+sl_sqlite_open(arena, &options, &db, diag);
+sl_sqlite_exec(arena, &db, sql, params, param_count, &exec_result, diag);
+sl_sqlite_query(arena, &db, sql, params, param_count, NULL, &rows, diag);
+sl_sqlite_close(&db);
 ```
 
 PostgreSQL:
@@ -167,6 +196,23 @@ Current bootstrap behavior:
 - fake transactions commit when the callback resolves, roll back when it throws/rejects,
   reject nested transactions, and reject use after close.
 - the fake provider never opens a database and never executes SQL.
+- `data.sqlite.open(options)` validates SQLite options and then reports that the native
+  stdlib bridge is unavailable.
+- native SQLite provider tests use the same `?` placeholder lowering contract at the C
+  boundary.
+
+Native SQLite behavior:
+
+- supported path for tests: `:memory:`;
+- native file paths can be passed to SQLite, but public file database capability policy is
+  still deferred;
+- `exec` returns SQLite `changes`;
+- `query` returns arena-owned rows with stable column names and values;
+- `queryOne` returns the first row or `found = false`;
+- parameters support null, text, integer, float, and boolean as 0/1;
+- unsupported parameter kinds fail before unsafe coercion;
+- nested transactions are rejected for now;
+- statements are finalized on all paths and close is deterministic.
 
 Transaction example:
 
@@ -234,7 +280,7 @@ Placeholder formats:
 
 Raw SQL may exist later only under an explicitly unsafe name, such as `db.rawUnsafe(...)`.
 
-The EPIC-15 bootstrap lowering descriptor is:
+The bootstrap lowering descriptor is:
 
 ```js
 {
@@ -422,44 +468,42 @@ sloppy: SQL Server provider unavailable
     sloppy doctor
 ```
 
-Missing config:
+SQLite provider error:
 
 ```text
-sloppy: database configuration missing
+error[SLOPPY_E_SQLITE_PROVIDER]: sqlite provider prepare failed
 
   Provider:
-    postgres
+    sqlite
 
-  Token:
-    data.main
+  Operation:
+    query
 
-  Missing key:
-    DATABASE_URL
+  SQLite:
+    no such table: users
+
+  SQL:
+    select id from users
 ```
 
 Parameter binding diagnostic:
 
 ```text
-sloppy: unsupported database parameter
+error[SLOPPY_E_DATABASE_UNSUPPORTED_VALUE]: unsupported sqlite parameter value
 
   Provider:
-    postgres
+    sqlite
 
-  Token:
-    data.main
-
-  Parameter:
-    2
-
-  Reason:
-    value type cannot be bound by this provider
+  Operation:
+    exec
 ```
 
 ## Distribution Implications
 
-SQLite is easiest: static or bundled. PostgreSQL requires libpq DLL strategy. SQL Server
-depends on Microsoft ODBC Driver presence on Windows. `sloppy doctor` should detect missing
-drivers and incomplete config.
+SQLite is consumed through the repo-approved vcpkg manifest as `sqlite3` and linked through
+the vcpkg CMake target. PostgreSQL requires libpq DLL strategy. SQL Server depends on
+Microsoft ODBC Driver presence on Windows. `sloppy doctor` should detect missing drivers
+and incomplete config.
 
 ## Security Rules
 

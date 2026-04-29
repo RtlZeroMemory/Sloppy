@@ -48,6 +48,8 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
   SQL text;
 - `data.createFakeProvider(...)` exposes the JS-only fake provider contract for
   tests/examples;
+- `data.sqlite` exposes SQLite provider metadata and a future `open(options)` entry point
+  that fails honestly until native stdlib intrinsics exist;
 - `Sloppy.create()` remains supported as a default builder plus `build()`;
 - `app.mapGet(pattern, handler)` stores an in-memory GET route registration;
 - `app.mapGet(pattern, metadata, handler)` stores route metadata such as validation
@@ -72,7 +74,8 @@ from `stdlib/sloppy/index.js`. The example documents the future bare `"sloppy"` 
 
 Native app graph validation, `app.run`, `app.listen`, `app.build`, compiler extraction,
 automatic `app.plan.json` emission, HTTP server behavior, real data providers, database
-connections, SQL execution, nested route groups, module package loading, native plugins,
+connections from JavaScript, SQL execution from JavaScript, nested route groups, module
+package loading, native plugins,
 middleware, automatic validation/request binding, config file/env providers, console/file/native
 logging sinks, request-scoped service lifetimes, disposal hooks, async factories, and typed
 service tokens remain future work.
@@ -118,7 +121,8 @@ module debug metadata.
 `bootstrap.stdlib.data_foundation` executes the ESM stdlib with Node when available and
 covers database capability metadata, query template lowering, fake data provider methods,
 transaction commit/rollback behavior, nested transaction rejection, use after close, and
-module/service integration.
+module/service integration, plus the `data.sqlite` bridge-unavailable stdlib entry point.
+Native SQLite execution itself is covered by the `data.sqlite.provider` CTest target.
 CTest also registers `examples.hello.api_shape` to statically check that the hello example
 files exist, use the current stdlib import path, use `Sloppy.createBuilder`, `builder.build`,
 `app.mapGet`, `Results.text`, and avoid package-manager scope.

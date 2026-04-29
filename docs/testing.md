@@ -65,8 +65,14 @@ Current tests:
   available, which imports the ESM stdlib and verifies database capability metadata, query
   template lowering, fake data provider query/queryOne/exec behavior, transaction
   commit/rollback behavior, rejected async callback rollback, nested transaction rejection,
-  use after closed transaction scope, and module/service integration. This is test
-  infrastructure only and is not a Node compatibility claim;
+  use after closed transaction scope, SQLite stdlib metadata and bridge-unavailable
+  diagnostics, and module/service integration. This is test infrastructure only and is not
+  a Node compatibility claim;
+- CTest unit test `data.sqlite.provider`, which links the vcpkg SQLite dependency and
+  verifies the native SQLite provider with in-memory open/close, use after close,
+  parameterized exec/query/queryOne, primitive type binding, transaction commit/rollback,
+  nested transaction rejection, transaction use after complete, invalid SQL/missing table
+  diagnostics, unsupported parameter diagnostics, and invalid open diagnostics;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
   hello example files exist, use the current relative stdlib import, use
   `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
@@ -83,7 +89,11 @@ Current tests:
   the EPIC-15 data foundation example files exist, use the current relative stdlib import,
   demonstrate database capability metadata, fake data provider service registration, query
   template lowering, transaction skeleton usage, and honestly document that the example is
-  not runnable and has no real database provider yet;
+  not runnable and still uses a fake JavaScript data provider;
+- CTest structural check `examples.sqlite_basic.api_shape`, which statically verifies the
+  EPIC-16 SQLite example files exist, use the current relative stdlib import, demonstrate
+  SQLite capability/service registration through `data.sqlite`, and honestly document the
+  native-provider/stdlib-bridge split;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -368,9 +378,20 @@ tests/bootstrap/test_data_foundation.mjs
 
 CMake registers it as `bootstrap.stdlib.data_foundation` only when `node` is available. It
 verifies documented bootstrap behavior for capability metadata, query template lowering,
-fake data providers, transaction callback behavior, and module/service integration. It does
-not add package-manager behavior, npm dependencies, database connections, SQL execution, or
-a Node compatibility promise.
+fake data providers, transaction callback behavior, SQLite stdlib metadata, the honest
+SQLite bridge-unavailable path, and module/service integration. It does not add
+package-manager behavior, npm dependencies, JavaScript database connections, JavaScript SQL
+execution, or a Node compatibility promise.
+
+EPIC-16 adds the first real provider CTest:
+
+```text
+tests/unit/data/test_sqlite.c
+```
+
+It executes SQLite through the native provider API against `:memory:` databases. The stdlib
+SQLite entry point remains bridge-unavailable until runtime intrinsics exist, so executable
+JavaScript data tests still use fake providers for SQL-like behavior.
 
 TASK 11.D adds the first public example structural check:
 
@@ -415,8 +436,20 @@ tests/cmake/check_data_foundation_example.cmake
 ```
 
 It verifies the current data/capability API shape without claiming compiler extraction,
-real database providers, database connections, SQL execution, HTTP serving, package
+JavaScript database connections, SQL execution from JavaScript, HTTP serving, package
 loading, or runtime execution.
+
+EPIC-16 adds the SQLite provider example structural check:
+
+```text
+examples/sqlite-basic/app.js
+examples/sqlite-basic/README.md
+tests/cmake/check_sqlite_basic_example.cmake
+```
+
+It verifies the intended `data.sqlite` capability/service shape and honest documentation
+that the native provider is covered by C tests while JavaScript-to-native provider calls are
+still deferred.
 
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 

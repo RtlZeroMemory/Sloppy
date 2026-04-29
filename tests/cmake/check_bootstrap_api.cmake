@@ -79,6 +79,9 @@ foreach(required_pattern IN ITEMS
         "nested transactions are not supported yet"
         "transaction scope is closed"
         "fake data provider method missing"
+        "sqlite"
+        "openSqlite"
+        "nativeStdlibBridge"
         "tagged template")
     require_substring("${data_js}" "${required_pattern}" "data.js is missing expected API shape pattern")
 endforeach()

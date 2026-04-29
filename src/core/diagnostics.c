@@ -435,6 +435,11 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_ROUTE_NOT_FOUND:
         return sl_diag_literal("SLOPPY_E_HTTP_ROUTE_NOT_FOUND",
                                sizeof("SLOPPY_E_HTTP_ROUTE_NOT_FOUND") - 1U);
+    case SL_DIAG_SQLITE_PROVIDER_ERROR:
+        return sl_diag_literal("SLOPPY_E_SQLITE_PROVIDER", sizeof("SLOPPY_E_SQLITE_PROVIDER") - 1U);
+    case SL_DIAG_DATABASE_UNSUPPORTED_VALUE:
+        return sl_diag_literal("SLOPPY_E_DATABASE_UNSUPPORTED_VALUE",
+                               sizeof("SLOPPY_E_DATABASE_UNSUPPORTED_VALUE") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

@@ -511,7 +511,7 @@ matches pending promises; docs and ADR remain aligned.
 - Deferred decisions: structured logging API.
 - Reviewer checklist: config secrets redacted; no hidden global service registry.
 
-## EPIC 16: Filesystem/Capabilities
+## Deferred: Filesystem/Capabilities
 
 - Goal: implement capability-based filesystem foundation.
 - Non-goals: OS sandboxing; broad fs API.
@@ -528,11 +528,12 @@ matches pending promises; docs and ADR remain aligned.
 - Deferred decisions: symlink policy and OS sandboxing.
 - Reviewer checklist: capabilities are explicit; diagnostics honest about non-sandboxing.
 
-## EPIC 17: SQLite Provider
+## EPIC 16: SQLite Provider
 
 - Goal: implement first built-in/static database provider.
 - Non-goals: dynamic provider ABI; multi-database abstraction completeness.
-- Prerequisites: EPIC 05, EPIC 15, EPIC 16.
+- Prerequisites: EPIC 15 data/capability foundation and the documented SQLite dependency
+  phase.
 - Tasks: add sqlite dependency intentionally; provider module; query template lowering;
   transactions; cleanup diagnostics.
 - Suggested issue split: dependency/build; common data API; SQLite open/query; transactions;
@@ -540,16 +541,17 @@ matches pending promises; docs and ADR remain aligned.
 - Files likely touched: `src/data/sqlite/`, `include/sloppy/data.h`, plan schema, stdlib.
 - Tests required: query, queryOne, exec, transaction commit/rollback, statement cleanup.
 - Quality gates: CTest/integration; diagnostics snapshots; no secret leakage.
-- Acceptance criteria: SQLite-backed route fixture passes.
+- Acceptance criteria: native SQLite in-memory execution passes; JavaScript bridge gaps are
+  documented until runtime intrinsics exist.
 - Risks: bundling and file capability interaction.
 - Deferred decisions: migrations.
 - Reviewer checklist: raw SQL concat is not the blessed path; resources use IDs.
 
-## EPIC 18: PostgreSQL Provider
+## EPIC 17: PostgreSQL Provider
 
 - Goal: implement PostgreSQL provider via libpq.
 - Non-goals: custom wire protocol; npm database package dependency.
-- Prerequisites: EPIC 17.
+- Prerequisites: EPIC 16.
 - Tasks: add libpq dependency; driver/DLL strategy; pool; `$n` placeholder lowering;
   env-gated integration.
 - Suggested issue split: libpq build/package; connection pool; query/exec; transactions;
@@ -563,11 +565,11 @@ matches pending promises; docs and ADR remain aligned.
 - Deferred decisions: test container strategy.
 - Reviewer checklist: provider-specific APIs stay namespaced.
 
-## EPIC 19: SQL Server Provider
+## EPIC 18: SQL Server Provider
 
 - Goal: implement SQL Server provider via Microsoft ODBC Driver/ODBC API on Windows.
 - Non-goals: ODBC for every database from the start.
-- Prerequisites: EPIC 17 and platform diagnostics.
+- Prerequisites: EPIC 16 and platform diagnostics.
 - Tasks: ODBC wrapper; driver detection; connection diagnostics; `?` placeholder lowering;
   env-gated integration.
 - Suggested issue split: driver detection; ODBC connection; query/exec; transactions; doctor
@@ -581,11 +583,11 @@ matches pending promises; docs and ADR remain aligned.
 - Deferred decisions: non-Windows SQL Server support.
 - Reviewer checklist: ODBC calls stay in provider/platform boundary.
 
-## EPIC 20: CLI Introspection: routes/doctor/audit/openapi
+## EPIC 19: CLI Introspection: routes/doctor/audit/openapi
 
 - Goal: add plan-powered developer tools.
 - Non-goals: running user handlers for introspection.
-- Prerequisites: EPIC 08, EPIC 14, EPIC 16, provider metadata as needed.
+- Prerequisites: EPIC 08, EPIC 14, provider metadata as needed.
 - Tasks: `sloppy routes`; `sloppy doctor`; `sloppy audit`; `sloppy openapi`; output golden
   tests.
 - Suggested issue split: command framework; routes output; doctor checks; audit output;
@@ -598,7 +600,7 @@ matches pending promises; docs and ADR remain aligned.
 - Deferred decisions: JSON output flags.
 - Reviewer checklist: tools use plan; diagnostics are actionable.
 
-## EPIC 21: Benchmarks/Performance Validation
+## EPIC 20: Benchmarks/Performance Validation
 
 - Goal: measure performance claims with reproducible benchmarks.
 - Non-goals: marketing numbers without data.
