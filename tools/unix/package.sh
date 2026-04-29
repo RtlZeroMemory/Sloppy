@@ -100,6 +100,16 @@ cp "$sloppy_bin" "$stage_root/bin/sloppy"
 cp "$sloppyc_bin" "$stage_root/bin/sloppyc"
 cp -R "$repo_root/stdlib/sloppy" "$stage_root/lib/sloppy/stdlib/sloppy"
 cp "$repo_root/LICENSE.md" "$stage_root/LICENSE"
+cat > "$stage_root/THIRD_PARTY_NOTICES.md" <<'NOTICES'
+# Third Party Notices
+
+This experimental local package may include runtime dependencies provided by the
+host build environment. It does not include V8 SDK headers/import libraries,
+database drivers, package manager metadata, installers, or signed release metadata.
+
+Dependency license review and a complete release notice file are still required
+before any public release.
+NOTICES
 cat > "$stage_root/README.md" <<'README'
 # Sloppy Local Package
 
@@ -126,6 +136,7 @@ cat > "$stage_root/manifest.json" <<JSON
   "containsV8Sdk": false,
   "containsStdlib": true,
   "containsExamples": $([[ "$include_examples" -eq 1 ]] && printf true || printf false),
+  "containsNativeRuntimeDependencies": false,
   "tools": ["sloppy", "sloppyc"],
   "layoutVersion": 1,
   "notes": ["experimental", "not production ready", "no installer", "no package manager"]

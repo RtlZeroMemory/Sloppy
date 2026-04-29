@@ -99,11 +99,17 @@ try {
 
     $checksumPath = Join-Path (Split-Path -Parent $resolvedPackage) "SHA256SUMS.txt"
     if (Test-Path -LiteralPath $checksumPath -PathType Leaf) {
-        $expectedLine = Get-Content -LiteralPath $checksumPath | Select-Object -First 1
         $actualHash = (Get-FileHash -LiteralPath $resolvedPackage -Algorithm SHA256).Hash.ToLowerInvariant()
         $expectedName = [regex]::Escape((Split-Path -Leaf $resolvedPackage))
-        if ($expectedLine -notmatch "^$actualHash\s+$expectedName$") {
-            throw "Package smoke checksum file does not match archive hash."
+        $expectedLine = Get-Content -LiteralPath $checksumPath |
+            Where-Object { $_ -match "\s+\*?$expectedName$" } |
+            Select-Object -First 1
+        if (-not $expectedLine) {
+            throw "Package smoke checksum file is missing an entry for archive: $(Split-Path -Leaf $resolvedPackage)"
+        }
+
+        if ($expectedLine -notmatch "^$actualHash\s+\*?$expectedName$") {
+            throw "Package smoke checksum file entry for archive does not match archive hash."
         }
     }
 

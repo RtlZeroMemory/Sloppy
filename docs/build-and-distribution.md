@@ -443,10 +443,10 @@ privileges, or global PATH mutation.
 ## Implementation Tasks
 
 - Keep root wrappers forwarding to `tools/windows`.
-- Keep the package staging directory under ignored `artifacts/packages/`.
-- Keep manifest fields small and deterministic.
-- Keep Windows ZIP packaging in `tools/windows/package.ps1`.
-- Keep outside-checkout ZIP smoke in `tools/windows/test-package.ps1`.
+- Stage package outputs under ignored `artifacts/packages/`.
+- Limit manifest fields to small deterministic package metadata.
+- Use `tools/windows/package.ps1` for Windows ZIP creation and checksum generation.
+- Validate Windows archives with `tools/windows/test-package.ps1` outside the checkout.
 - Keep Linux/macOS TAR packaging in `tools/unix/package.sh` until CI validates it.
 - Add packaging CI job after binaries become real.
 - Add Linux/macOS presets only when platform code and CI can honestly support them.

@@ -115,17 +115,23 @@ SDK `bin/` directory was available.
 function Copy-NativeRuntimeDependencies {
     param(
         [string]$BuildDirectory,
-        [string]$Destination
+        [string]$Destination,
+        [string]$PackageConfiguration
     )
 
-    $runtimeBin = Join-Path $BuildDirectory "vcpkg_installed/x64-windows/bin"
+    $runtimeRelativePath = if ($PackageConfiguration -eq "Debug") {
+        "vcpkg_installed/x64-windows/debug/bin"
+    } else {
+        "vcpkg_installed/x64-windows/bin"
+    }
+    $runtimeBin = Join-Path $BuildDirectory $runtimeRelativePath
     if (-not (Test-Path -LiteralPath $runtimeBin -PathType Container)) {
-        throw "Required runtime dependency directory is missing: $runtimeBin"
+        throw "Required vcpkg runtime dependency directory is missing: $runtimeBin. Run the matching build first, or remove -SkipBuild so packaging can populate vcpkg_installed."
     }
 
     $runtimeFiles = @(Get-ChildItem -LiteralPath $runtimeBin -Filter "*.dll" -File)
     if ($runtimeFiles.Count -eq 0) {
-        throw "No runtime dependency DLLs were found under $runtimeBin."
+        throw "No runtime dependency DLLs were found under $runtimeBin. Run the matching build first, or remove -SkipBuild so packaging can populate vcpkg_installed."
     }
 
     foreach ($file in $runtimeFiles) {
@@ -218,7 +224,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $PackageRoot "share/sloppy/
 
 Copy-RequiredFile -Source $SloppyExe -Destination (Join-Path $PackageRoot "bin/sloppy.exe")
 Copy-RequiredFile -Source $SloppycExe -Destination (Join-Path $PackageRoot "bin/sloppyc.exe")
-Copy-NativeRuntimeDependencies -BuildDirectory $BuildDir -Destination (Join-Path $PackageRoot "bin")
+Copy-NativeRuntimeDependencies -BuildDirectory $BuildDir -Destination (Join-Path $PackageRoot "bin") -PackageConfiguration $Configuration
 Copy-DirectoryContents -Source (Join-Path $Root "stdlib/sloppy") -Destination (Join-Path $PackageRoot "lib/sloppy/stdlib/sloppy")
 Copy-RequiredFile -Source (Join-Path $Root "LICENSE.md") -Destination (Join-Path $PackageRoot "LICENSE")
 Write-PackageReadme -Path (Join-Path $PackageRoot "README.md")
