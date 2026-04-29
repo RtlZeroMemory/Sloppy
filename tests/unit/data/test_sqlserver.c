@@ -59,7 +59,8 @@ static const char* classify_live_open_failure(const SlDiag* diag)
         return "credentials rejected";
     }
     if (diag_has_hint_containing(diag, "network") || diag_has_hint_containing(diag, "timeout") ||
-        diag_has_hint_containing(diag, "server") || diag_has_hint_containing(diag, "unreachable"))
+        diag_has_hint_containing(diag, "unreachable") ||
+        diag_has_hint_containing(diag, "SQL Server does not exist or access denied"))
     {
         return "service unreachable";
     }
@@ -322,6 +323,18 @@ static int test_pool_state_machine_without_live_connection(void)
 #endif
 }
 
+static int test_live_failure_classification_ignores_provider_hint(void)
+{
+    SlDiag diag = {0};
+
+    diag.hints[0] = sl_str_from_cstr("provider: sqlserver");
+    diag.hints[1] = sl_str_from_cstr("operation: open");
+    diag.hints[2] = sl_str_from_cstr("malformed connection string");
+    diag.hint_count = 3U;
+
+    return strcmp(classify_live_open_failure(&diag), "test failure") == 0 ? 0 : 35;
+}
+
 static int open_live(SlArena* arena, SlSqlServerConnection* connection)
 {
     const char* connection_string = getenv("SLOPPY_SQLSERVER_TEST_CONNECTION_STRING");
@@ -546,6 +559,10 @@ static int run_default_tests(void)
         return result;
     }
     result = test_pool_state_machine_without_live_connection();
+    if (result != 0) {
+        return result;
+    }
+    result = test_live_failure_classification_ignores_provider_hint();
     if (result != 0) {
         return result;
     }
