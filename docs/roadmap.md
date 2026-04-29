@@ -477,6 +477,10 @@ matches pending promises; docs and ADR remain aligned.
 - Goal: implement declarative phased app modules.
 - Non-goals: native plugin ABI; compiler plugin API.
 - Prerequisites: EPIC 13 and plan schema.
+- Current status: TASK 14 adds the bootstrap stdlib module skeleton with
+  `Sloppy.module`, `builder.addModule`, dependency sorting, services/routes phase
+  execution, JS module diagnostics, route/service attribution, and debug metadata. Compiler
+  extraction and real plan module emission remain future work.
 - Tasks: module metadata; phase execution/extraction; dependency sort; cycle diagnostics;
   plan contribution.
 - Suggested issue split: module API shape; fake plan module output; topological sort; cycle

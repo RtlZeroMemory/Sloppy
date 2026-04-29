@@ -30,7 +30,8 @@ Future scope:
 - file-based loading;
 - runtime compatibility checks;
 - hash/source map checks;
-- native host graph construction.
+- native host graph construction;
+- real module section parsing and validation.
 
 ## Non-goals
 
@@ -38,6 +39,9 @@ No file I/O, route model, service model, module model, data provider model,
 permission/capability model, source map parser, hash verification, HTTP, V8 execution,
 compiler extraction, JSON serialization, streaming parser, schema framework, plugin
 validator, or package-manager behavior.
+
+TASK 14 exposes bootstrap module debug metadata through `app.__debug().modules`, but this
+is not parsed by the native plan loader and is not emitted as `app.plan.json`.
 
 ## Public/Internal API
 

@@ -4,6 +4,9 @@
 
 Planned / not implemented yet.
 
+The EPIC-14 module example uses a fake `data` module name with an in-memory JavaScript
+service only. That example is not a data provider implementation.
+
 ## Purpose
 
 Provide common data APIs and provider integrations for SQLite, PostgreSQL, and SQL Server.

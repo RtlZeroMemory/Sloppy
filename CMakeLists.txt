@@ -584,12 +584,19 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.ergonomics.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_ergonomics_example.cmake")
+    add_test(
+        NAME examples.modules_basic.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_modules_basic_example.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(
             NAME bootstrap.stdlib.app_host_foundation
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_app_host_foundation.mjs")
+        add_test(
+            NAME bootstrap.stdlib.modules
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_modules.mjs")
     endif()
 
     if(CARGO_EXECUTABLE)

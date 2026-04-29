@@ -124,6 +124,11 @@ App module graph:
 - contributed phases;
 - source location.
 
+TASK 14 adds only bootstrap debug metadata for modules. `app.__debug().modules` includes
+module names, dependencies, deterministic order, service tokens, route strings, and custom
+metadata for tests and examples. The native Plan v1 parser still does not parse a
+`modules` section, and the compiler still does not emit one.
+
 ### routes
 
 Native route table input:

@@ -6,6 +6,8 @@ const LOG_LEVEL_RANK = Object.freeze({
     error: 4,
 });
 const MEMORY_SINK_STATE = new WeakMap();
+const MODULE_STATE = new WeakMap();
+const MODULE_NAME_PATTERN = /^[a-z][a-z0-9.-]*$/u;
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -31,6 +33,30 @@ function validateLogLevel(level) {
 function validateServiceToken(token) {
     if (typeof token !== "string" || token.length === 0) {
         throw new TypeError("Sloppy service token must be a non-empty string.");
+    }
+}
+
+function validateModuleName(name) {
+    if (typeof name !== "string" || name.length === 0) {
+        throw new TypeError("Sloppy module name must be a non-empty string.");
+    }
+
+    if (!MODULE_NAME_PATTERN.test(name)) {
+        throw new TypeError(
+            "Sloppy module name must start with a lowercase letter and contain only lowercase letters, digits, dots, or hyphens.",
+        );
+    }
+}
+
+function validateModuleMetadataKey(key) {
+    if (typeof key !== "string" || key.length === 0) {
+        throw new TypeError("Sloppy module metadata key must be a non-empty string.");
+    }
+}
+
+function validateModulePhaseCallback(callback, phase) {
+    if (typeof callback !== "function") {
+        throw new TypeError(`Sloppy module ${phase} phase callback must be a function.`);
     }
 }
 
@@ -98,6 +124,105 @@ function createMutationGuard(subject) {
             return frozen;
         },
     });
+}
+
+function snapshotModuleMetadata(metadata) {
+    return Object.freeze({ ...metadata });
+}
+
+function getModuleState(module) {
+    return MODULE_STATE.get(module);
+}
+
+function requireModuleState(module) {
+    const state = getModuleState(module);
+
+    if (state === undefined) {
+        throw new TypeError(
+            "Sloppy builder.addModule expected a module created by Sloppy.module(name).",
+        );
+    }
+
+    return state;
+}
+
+function createModule(name) {
+    validateModuleName(name);
+
+    const state = {
+        name,
+        dependencies: [],
+        serviceCallbacks: [],
+        routeCallbacks: [],
+        metadata: Object.create(null),
+        finalized: false,
+    };
+
+    function assertMutable() {
+        if (state.finalized) {
+            throw new Error(`Sloppy module '${state.name}' is frozen and cannot be modified.`);
+        }
+    }
+
+    const module = {
+        get name() {
+            return state.name;
+        },
+
+        get dependencies() {
+            return Object.freeze([...state.dependencies]);
+        },
+
+        dependsOn(...names) {
+            assertMutable();
+
+            for (const dependency of names) {
+                validateModuleName(dependency);
+
+                if (!state.dependencies.includes(dependency)) {
+                    state.dependencies.push(dependency);
+                }
+            }
+
+            return module;
+        },
+
+        services(callback) {
+            assertMutable();
+            validateModulePhaseCallback(callback, "services");
+            state.serviceCallbacks.push(callback);
+            return module;
+        },
+
+        routes(callback) {
+            assertMutable();
+            validateModulePhaseCallback(callback, "routes");
+            state.routeCallbacks.push(callback);
+            return module;
+        },
+
+        metadata(key, value) {
+            assertMutable();
+            validateModuleMetadataKey(key);
+            state.metadata[key] = value;
+            return module;
+        },
+
+        __debug() {
+            return Object.freeze({
+                name: state.name,
+                dependencies: Object.freeze([...state.dependencies]),
+                services: state.serviceCallbacks.length,
+                routes: state.routeCallbacks.length,
+                metadata: snapshotModuleMetadata(state.metadata),
+                finalized: state.finalized,
+            });
+        },
+    };
+
+    const frozenModule = Object.freeze(module);
+    MODULE_STATE.set(frozenModule, state);
+    return frozenModule;
 }
 
 function createConfigBuilder(guard) {
@@ -260,6 +385,7 @@ function createLogger(snapshot) {
 
 function createServicesBuilder(guard) {
     const registrations = new Map();
+    let currentModule = null;
 
     function addRegistration(token, registration) {
         guard.assertMutable();
@@ -269,7 +395,10 @@ function createServicesBuilder(guard) {
             throw new Error(`Sloppy service '${token}' is already registered.`);
         }
 
-        registrations.set(token, registration);
+        registrations.set(token, {
+            ...registration,
+            module: currentModule,
+        });
         return services;
     }
 
@@ -303,6 +432,17 @@ function createServicesBuilder(guard) {
                 token,
                 { ...registration },
             ]));
+        },
+
+        __runInModule(moduleName, callback) {
+            const previousModule = currentModule;
+            currentModule = moduleName;
+
+            try {
+                return callback(services);
+            } finally {
+                currentModule = previousModule;
+            }
         },
     };
 
@@ -482,7 +622,16 @@ function createRouteMetadata(routeMetadata) {
     return routeMetadata ?? {};
 }
 
-function registerRoute(routes, host, assertAppMutable, pattern, optionsOrHandler, maybeHandler, metadataBase) {
+function registerRoute(
+    routes,
+    host,
+    assertAppMutable,
+    currentModule,
+    pattern,
+    optionsOrHandler,
+    maybeHandler,
+    metadataBase,
+) {
     const args = normalizeMapGetArguments(pattern, optionsOrHandler, maybeHandler);
 
     assertAppMutable();
@@ -494,14 +643,17 @@ function registerRoute(routes, host, assertAppMutable, pattern, optionsOrHandler
         pattern: args.pattern,
         handler: createRouteHandler(host, args.handler),
         name: null,
-        metadata: metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata),
+        metadata: {
+            ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
+            ...((currentModule !== null) ? { module: currentModule } : {}),
+        },
     };
 
     routes.push(route);
     return createEndpointBuilder(route, assertAppMutable);
 }
 
-function createRouteGroup(routes, host, assertAppMutable, prefix) {
+function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix) {
     const groupMetadata = {
         prefix: normalizeGroupPrefix(prefix),
         tags: [],
@@ -534,11 +686,20 @@ function createRouteGroup(routes, host, assertAppMutable, prefix) {
 
         mapGet(pattern, optionsOrHandler, maybeHandler) {
             const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
-            return registerRoute(routes, host, assertAppMutable, fullPattern, optionsOrHandler, maybeHandler, {
-                prefix: groupMetadata.prefix,
-                tags: groupMetadata.tags,
-                name: groupMetadata.name,
-            });
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule(),
+                fullPattern,
+                optionsOrHandler,
+                maybeHandler,
+                {
+                    prefix: groupMetadata.prefix,
+                    tags: groupMetadata.tags,
+                    name: groupMetadata.name,
+                },
+            );
         },
     };
 
@@ -548,9 +709,15 @@ function createRouteGroup(routes, host, assertAppMutable, prefix) {
 function createApp(host) {
     const routes = [];
     const guard = createMutationGuard("app");
+    let currentModule = null;
+    const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
 
     function assertAppMutable() {
         guard.assertMutable();
+    }
+
+    function getCurrentModule() {
+        return currentModule;
     }
 
     const app = {
@@ -559,12 +726,20 @@ function createApp(host) {
         services: host.services,
 
         mapGet(pattern, optionsOrHandler, maybeHandler) {
-            return registerRoute(routes, host, assertAppMutable, pattern, optionsOrHandler, maybeHandler);
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                pattern,
+                optionsOrHandler,
+                maybeHandler,
+            );
         },
 
         mapGroup(prefix) {
             assertAppMutable();
-            return createRouteGroup(routes, host, assertAppMutable, prefix);
+            return createRouteGroup(routes, host, assertAppMutable, getCurrentModule, prefix);
         },
 
         freeze() {
@@ -579,9 +754,213 @@ function createApp(host) {
         __getRoutes() {
             return Object.freeze(routes.map(snapshotRoute));
         },
+
+        __debug() {
+            return Object.freeze({
+                modules: moduleDebugRef.modules,
+            });
+        },
+
+        __getModuleGraph() {
+            return moduleDebugRef.modules;
+        },
+
+        __getPlanContributions() {
+            return Object.freeze({
+                modules: moduleDebugRef.modules,
+            });
+        },
+
+        __runInModule(moduleName, callback) {
+            assertAppMutable();
+
+            const previousModule = currentModule;
+            currentModule = moduleName;
+
+            try {
+                return callback(app);
+            } finally {
+                currentModule = previousModule;
+            }
+        },
+
     };
 
     return Object.freeze(app);
+}
+
+function createModuleDependencyMissingError(moduleName, dependencyName) {
+    return new Error(`sloppy: module dependency missing
+
+Module:
+  ${moduleName}
+
+Missing dependency:
+  ${dependencyName}
+
+Fix:
+  builder.addModule(/* module named '${dependencyName}' */) before build()`);
+}
+
+function createModuleCycleError(cycle) {
+    return new Error(`sloppy: module dependency cycle detected
+
+Cycle:
+  ${cycle.join(" -> ")}
+
+Fix:
+  Remove one dependsOn(...) edge from the cycle.`);
+}
+
+function createModulePhaseError(moduleName, phase, cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    const error = new Error(`sloppy: module phase failed
+
+Module:
+  ${moduleName}
+
+Phase:
+  ${phase}
+
+Reason:
+  ${detail}`);
+
+    error.cause = cause;
+    return error;
+}
+
+function resolveModuleOrder(moduleStates) {
+    const byName = new Map();
+
+    for (const state of moduleStates) {
+        byName.set(state.name, state);
+    }
+
+    for (const state of moduleStates) {
+        for (const dependency of state.dependencies) {
+            if (!byName.has(dependency)) {
+                throw createModuleDependencyMissingError(state.name, dependency);
+            }
+        }
+    }
+
+    const ordered = [];
+    const visitState = new Map();
+    const stack = [];
+
+    function visit(state) {
+        const currentVisitState = visitState.get(state.name);
+
+        if (currentVisitState === "done") {
+            return;
+        }
+
+        if (currentVisitState === "visiting") {
+            const start = stack.indexOf(state.name);
+            const cycle = [...stack.slice(start), state.name];
+            throw createModuleCycleError(cycle);
+        }
+
+        visitState.set(state.name, "visiting");
+        stack.push(state.name);
+
+        for (const dependency of state.dependencies) {
+            visit(byName.get(dependency));
+        }
+
+        stack.pop();
+        visitState.set(state.name, "done");
+        ordered.push(state);
+    }
+
+    for (const state of moduleStates) {
+        visit(state);
+    }
+
+    return ordered;
+}
+
+function runModulePhase(state, phase, callback, target) {
+    try {
+        return callback(target);
+    } catch (error) {
+        throw createModulePhaseError(state.name, phase, error);
+    }
+}
+
+function buildServiceContributions(serviceSnapshot) {
+    const byModule = new Map();
+
+    for (const [token, registration] of serviceSnapshot.entries()) {
+        if (registration.module === null) {
+            continue;
+        }
+
+        if (!byModule.has(registration.module)) {
+            byModule.set(registration.module, []);
+        }
+
+        byModule.get(registration.module).push(token);
+    }
+
+    for (const tokens of byModule.values()) {
+        tokens.sort();
+    }
+
+    return byModule;
+}
+
+function buildRouteContributions(routes) {
+    const byModule = new Map();
+
+    for (const route of routes) {
+        const moduleName = route.metadata.module;
+
+        if (moduleName === undefined) {
+            continue;
+        }
+
+        if (!byModule.has(moduleName)) {
+            byModule.set(moduleName, []);
+        }
+
+        byModule.get(moduleName).push(`${route.method} ${route.pattern}`);
+    }
+
+    return byModule;
+}
+
+function createModuleDebugEntries(orderedModules, serviceSnapshot, routes) {
+    const servicesByModule = buildServiceContributions(serviceSnapshot);
+    const routesByModule = buildRouteContributions(routes);
+
+    return Object.freeze(orderedModules.map((state, index) => {
+        const services = Object.freeze([...(servicesByModule.get(state.name) ?? [])]);
+        const routeContributions = Object.freeze([...(routesByModule.get(state.name) ?? [])]);
+        const contributes = [];
+
+        if (services.length > 0) {
+            contributes.push("services");
+        }
+
+        if (routeContributions.length > 0) {
+            contributes.push("routes");
+        }
+
+        if (Object.keys(state.metadata).length > 0) {
+            contributes.push("metadata");
+        }
+
+        return Object.freeze({
+            name: state.name,
+            dependencies: Object.freeze([...state.dependencies]),
+            order: index,
+            contributes: Object.freeze(contributes),
+            services,
+            routes: routeContributions,
+            metadata: snapshotModuleMetadata(state.metadata),
+        });
+    }));
 }
 
 function createBuilder() {
@@ -589,21 +968,71 @@ function createBuilder() {
     const config = createConfigBuilder(guard);
     const logging = createLoggingBuilder(guard);
     const services = createServicesBuilder(guard);
+    const modules = [];
+    const moduleNames = new Set();
 
     const builder = {
         config,
         logging,
         services,
 
+        addModule(module) {
+            guard.assertMutable();
+
+            const state = requireModuleState(module);
+
+            if (moduleNames.has(state.name)) {
+                throw new Error(`Sloppy module '${state.name}' is already registered.`);
+            }
+
+            state.finalized = true;
+            modules.push(state);
+            moduleNames.add(state.name);
+            return builder;
+        },
+
         build() {
             guard.assertMutable();
+
+            const orderedModules = resolveModuleOrder(modules);
+
+            for (const state of orderedModules) {
+                for (const callback of state.serviceCallbacks) {
+                    services.__runInModule(state.name, (servicesBuilder) => {
+                        runModulePhase(state, "services", callback, servicesBuilder);
+                    });
+                }
+            }
+
+            const serviceSnapshot = services.__snapshot();
+
             guard.freeze();
 
-            return createApp(Object.freeze({
+            const moduleDebugRef = {
+                modules: Object.freeze([]),
+            };
+
+            const app = createApp(Object.freeze({
                 config: createConfigProvider(config.__snapshot()),
                 log: createLogger(logging.__snapshot()),
-                services: createServiceProvider(services.__snapshot()),
+                services: createServiceProvider(serviceSnapshot),
+                moduleDebugRef,
             }));
+
+            for (const state of orderedModules) {
+                for (const callback of state.routeCallbacks) {
+                    app.__runInModule(state.name, (moduleApp) => {
+                        runModulePhase(state, "routes", callback, moduleApp);
+                    });
+                }
+            }
+
+            moduleDebugRef.modules = createModuleDebugEntries(
+                orderedModules,
+                serviceSnapshot,
+                app.__getRoutes(),
+            );
+            return app;
         },
     };
 
@@ -617,4 +1046,5 @@ function create() {
 export const Sloppy = Object.freeze({
     create,
     createBuilder,
+    module: createModule,
 });

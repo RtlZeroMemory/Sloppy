@@ -88,6 +88,14 @@ still JavaScript-only bootstrap state. It does not implement native app-host val
 `app.run`/`app.listen`, compiler extraction, `app.plan.json` emission, HTTP serving,
 modules, middleware, validation, data providers, config file/env providers, native logging,
 or real request-scoped service lifetimes.
+TASK 13 adds the bounded developer ergonomics layer on top of that facade: route groups,
+route metadata storage, expanded `Results.*` helpers, and a small `schema` validation
+shape. TASK 14 adds the bootstrap module skeleton: `Sloppy.module(...)`,
+`builder.addModule(...)`, dependency graph validation/topological ordering,
+services/routes module phases, route/service attribution, and plan-like module debug
+metadata. These are still JavaScript-only bootstrap structures and do not implement
+compiler extraction, real `app.plan.json` emission, native module loading, package/module
+distribution, native plugins, data providers, HTTP serving, or app run/listen behavior.
 TASK 13.A/13.B/13.C/13.D adds the first developer ergonomics layer on top of that
 bootstrap state: in-memory route groups and grouped GET registration, a fuller bounded
 `Results.*` descriptor helper set, a small `schema` validation skeleton, route metadata

@@ -41,8 +41,14 @@ The foundation phase does not implement:
 
 ## Current Phase
 
-The module system is specified but not implemented. `include/sloppy/modules.h` and
-`src/modules/README.md` are placeholders.
+The bootstrap stdlib implements the first JavaScript-only module skeleton. `Sloppy.module`
+creates module definitions; `builder.addModule` registers them; `builder.build` validates
+missing dependencies and cycles, sorts modules deterministically, runs services before
+routes, attributes module-created services/routes, and exposes plan-like debug metadata
+through `app.__debug().modules`.
+
+This is not compiler extraction, real `app.plan.json` emission, native runtime module
+loading, package distribution, or native plugin support.
 
 ## Future Phase
 
@@ -74,21 +80,18 @@ Planned module:
 export const UsersModule = Sloppy.module("users")
   .dependsOn("data")
   .services(services => {
-    services.addScoped("users.repo", scope => {
-      return new UsersRepository(scope.get("data.main"));
-    });
+    services.addSingleton("users.message", () => "hello");
   })
   .routes(app => {
     const users = app.mapGroup("/users").withTags("Users");
 
-    users.mapGet("/{id:int}", getUser)
+    users.mapGet("/{id:int}", ({ route, services }) => {
+      return Results.ok({
+        id: route.id ?? "demo",
+        message: services.get("users.message"),
+      });
+    })
       .withName("Users.Get");
-
-    users.mapPost("/", createUser)
-      .withName("Users.Create");
-  })
-  .permissions(perms => {
-    perms.requireDatabase("data.main");
   });
 ```
 
@@ -135,6 +138,17 @@ Phase rules:
 - routes are validated after group metadata is applied;
 - freeze occurs after validation and before run.
 
+Current bootstrap TASK 14 phases are intentionally smaller:
+
+1. dependency resolution / graph validation;
+2. services callbacks for each module in dependency order;
+3. routes callbacks for each module in dependency order;
+4. debug metadata assembly for module names, dependencies, services, routes, and custom
+   metadata.
+
+Config, capabilities, permissions, middleware, filters, jobs, health checks, validation
+freeze, and native graph freeze are future phases.
+
 ## Module Dependency Graph
 
 Modules may declare dependencies by module name:
@@ -154,6 +168,10 @@ Compiler/runtime requirements:
 - use deterministic tie-breaking when independent modules exist;
 - diagnose cycles with the full cycle path;
 - never let import order silently decide behavior.
+
+Current bootstrap behavior validates dependency names at build time, fails missing
+dependencies with the module and dependency name, fails cycles with the cycle path, and
+uses builder insertion order as the deterministic tie-break for independent modules.
 
 Cycle diagnostic example:
 
@@ -298,6 +316,16 @@ Illustrative module entry:
 }
 ```
 
+Current TASK 14 does not emit this JSON. Instead, bootstrap apps expose debug metadata:
+
+```js
+app.__debug().modules
+```
+
+Each entry contains `name`, `dependencies`, `order`, `contributes`, `services`, `routes`,
+and `metadata`. This shape is a temporary introspection/debug contract for tests and future
+plan work, not the final Sloppy Plan schema.
+
 ## Native Plugins
 
 Native plugins are future work, not v0.1.
@@ -427,6 +455,9 @@ Diagnostics must include:
 - invalid phase ordering.
 
 Diagnostics should include module name, phase, source span, and suggested fix where safe.
+Current bootstrap diagnostics are plain JavaScript errors rather than native `SlDiag`
+records. They include duplicate module names, invalid module objects, missing dependencies,
+cycles, invalid module names, mutation after module add, and phase callback failures.
 
 ## Testing Requirements
 

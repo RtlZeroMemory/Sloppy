@@ -44,6 +44,10 @@ Future scope:
 - route table/trie or other optimized dispatch structure;
 - HTTP response conversion and writing.
 
+EPIC-14 module routes are bootstrap `app.mapGet` registrations only. They do not connect
+module routes to the native HTTP parser, synthetic dispatch helper, route params, or
+response writer.
+
 ## Non-goals
 
 - No HTTP server, sockets, response writer, body parsing, streaming parser, middleware,

@@ -12,6 +12,10 @@ const builder = Sloppy.createBuilder();
 
 builder.services.addSingleton("message", () => "Hello");
 builder.services.addTransient("clock", () => ({ now: () => 123 }));
+builder.addModule(Sloppy.module("users")
+  .services(services => {
+    services.addSingleton("users.message", () => "Hello from users");
+  }));
 
 const app = builder.build();
 const services = app.services.createScope();
@@ -30,6 +34,10 @@ Implemented behavior:
 - Transient factories are called on every `get`.
 - Duplicate service tokens fail during registration.
 - Missing service tokens fail during resolution with a helpful error.
+- Module service phases can register singleton and transient services through the same
+  service builder.
+- Services registered during a module services phase are attributed in
+  `app.__debug().modules[].services`.
 - `builder.build()` freezes further service registration.
 - `app.services.get(token)` resolves through a short-lived scope.
 - `app.services.createScope()` returns a scope with `scope.get(token)`.
@@ -41,9 +49,9 @@ lifetime and it does not own disposal.
 the current bootstrap handler context shape. This is still JavaScript-only route snapshot
 behavior, not native request-scope DI.
 
-Not implemented yet: request-scoped lifetimes, disposal hooks, async factories, dependency
-graph validation, cycle diagnostics, typed tokens, decorators, module-owned services,
-capabilities, native service graph validation, and plan emission.
+Not implemented yet: request-scoped lifetimes, disposal hooks, async factories, service
+dependency graph validation, service cycle diagnostics, typed tokens, decorators,
+capabilities, native service graph validation, and real plan emission.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/diagnostics.md`.
