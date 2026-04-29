@@ -16,6 +16,9 @@ Implemented TASK 02.A primitives:
 - complete-buffer HTTP/1 request-head parser over llhttp plus a libuv dependency smoke.
 - native route pattern parser and one-pattern matcher for static segments, string params,
   int params, and parameter captures.
+- synthetic in-memory GET dispatch from parsed HTTP request head through manual route
+  bindings to numeric Sloppy Plan handler IDs and the existing runtime-contract/engine
+  boundary.
 - TASK 06.A minimal Plan v1 structs/helpers for version support, handler ID rules, handler
   lookup, and duplicate ID detection.
 - TASK 04.A diagnostic severity/code model, source spans, bounded related spans/hints,

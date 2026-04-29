@@ -65,6 +65,12 @@ request head into arena-owned method, raw target, path, and headers, and it has 
 loop init/close smoke. It still does not implement socket accept/read/write, streaming
 parser state, request bodies, response writing, route dispatch, request lifecycle,
 middleware, public TypeScript API, app host behavior, V8 integration, or compiler work.
+TASK 10.C adds the first synthetic in-memory GET dispatch path from parsed HTTP request
+head to numeric Sloppy Plan handler ID. It uses a manual borrowed route binding table,
+matches the parsed path with the existing route matcher, validates the handler ID against
+the parsed plan, and invokes the existing runtime-contract/engine boundary. It still does
+not implement TCP sockets, a real HTTP server, response writing, body parsing, request
+contexts, middleware, public TypeScript API, plan route sections, or compiler extraction.
 
 ## Future Phase
 

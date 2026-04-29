@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "http-dispatch-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "http-dispatch-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Http.Hello"
+    },
+    {
+      "id": 2,
+      "exportName": "__sloppy_handler_2",
+      "displayName": "Http.MissingJs"
+    },
+    {
+      "id": 3,
+      "exportName": "__sloppy_handler_3",
+      "displayName": "Http.Throw"
+    }
+  ]
+}

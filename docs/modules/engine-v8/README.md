@@ -199,6 +199,9 @@ Current checks:
   the handwritten plan fixture, evaluating handwritten `app.js`, invoking handler ID `1`,
   missing plan handler ID diagnostics, missing JS function diagnostics, and thrown handler
   diagnostics.
+- `http.dispatch.execution` is registered only when V8 is enabled and covers synthetic
+  in-memory GET dispatch from parsed HTTP request head through a manual route binding to a
+  numeric handler ID, plus missing JavaScript function and throwing handler diagnostics.
 
 Later checks:
 

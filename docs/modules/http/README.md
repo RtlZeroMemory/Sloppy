@@ -6,8 +6,11 @@ Partially implemented.
 
 TASK 10.A adds a native route pattern parser and matcher foundation. TASK 10.B adds the
 first llhttp/libuv dependency integration skeleton and a complete-buffer HTTP/1 request-head
-parser. There is still no HTTP server, socket I/O, body parsing, streaming parser API,
-route table, method dispatch, public TypeScript API, or `app.mapGet` runtime behavior.
+parser. TASK 10.C adds a synthetic in-memory GET dispatch helper that maps a parsed request
+head and manual route binding to a numeric Sloppy Plan handler ID, then calls the existing
+runtime-contract/engine boundary. There is still no HTTP server, socket I/O, body parsing,
+streaming parser API, response writer, middleware, public TypeScript API, or `app.mapGet`
+runtime behavior.
 
 ## Purpose
 
@@ -20,11 +23,16 @@ Implemented now:
 
 - parse one native route pattern into arena-owned segments;
 - match one path against one parsed pattern;
-- capture route parameters in deterministic order.
+- capture route parameters in deterministic order;
 - parse one complete in-memory HTTP/1 request head with llhttp;
 - map supported request methods into `SlHttpMethod`;
 - copy request target, path, header names, and header values into a caller-provided arena;
-- run a minimal libuv loop init/close smoke to prove dependency linkage.
+- run a minimal libuv loop init/close smoke to prove dependency linkage;
+- dispatch one parsed in-memory GET request head through a manual route binding table to a
+  Sloppy Plan handler ID;
+- invoke the matched handler through the existing runtime-contract helper when an engine is
+  available;
+- return the existing simple `SlEngineResult` text shape from synthetic dispatch tests.
 
 Future scope:
 
@@ -32,17 +40,20 @@ Future scope:
 - streaming HTTP parser state;
 - HTTP body parsing;
 - request lifecycle;
-- method dispatch;
+- production method dispatch;
 - route table/trie or other optimized dispatch structure;
-- handler dispatch.
+- HTTP response conversion and writing.
 
 ## Non-goals
 
-- No HTTP server, sockets, response writer, body parsing, streaming parser, route dispatch,
-  middleware, V8/compiler work, public TypeScript API, or app host behavior in TASK 10.B.
+- No HTTP server, sockets, response writer, body parsing, streaming parser, middleware,
+  compiler work, public TypeScript API, or app host behavior in TASK 10.B or TASK 10.C.
 - No sockets, request/response objects, middleware, route groups, route table, trie,
   precedence engine, public TypeScript API, `app.mapGet`, validation, OpenAPI, V8, or
   compiler extraction in TASK 10.A or TASK 10.B.
+- No route params passed to JavaScript, request context, route groups, route precedence,
+  middleware, `Results.*`, response formatting, TCP/libuv server behavior, or public
+  TypeScript API in TASK 10.C.
 
 ## Public/Internal API
 
@@ -63,6 +74,12 @@ Future scope:
 - `SlHttpParseOptions`;
 - `sl_http_parse_request_head`;
 - `sl_http_libuv_smoke`.
+
+`include/sloppy/http_dispatch.h` exposes the synthetic TASK 10.C dispatch helper:
+
+- `SlHttpRouteBinding`;
+- `SlHttpDispatchTable`;
+- `sl_http_dispatch_request_head`.
 
 Supported route pattern subset:
 
@@ -108,6 +125,14 @@ portion before `?`. TASK 10.B only accepts origin-form path targets that start w
 asterisk-form and absolute-form targets are rejected before returning success. Query
 parsing, percent decoding, URL normalization, and host validation are deferred.
 
+The dispatch helper accepts an already parsed `SlHttpRequestHead`, a borrowed manual route
+binding table, a parsed `SlPlan`, and an `SlEngine`. TASK 10.C supports only GET request
+dispatch. Route bindings borrow parsed `SlRoutePattern` values and carry a numeric
+`SlHandlerId`. The helper matches `request.path`, validates the handler ID exists in the
+plan before entering the engine, then calls `sl_runtime_contract_call_handler`. Route
+parameters may participate in matching but are not passed to JavaScript. The result is the
+existing `SlEngineResult`; no HTTP status/header/body response writer exists yet.
+
 ## Ownership/Lifetime Rules
 
 Parsed route patterns copy source text, static segment text, and parameter names into the
@@ -124,6 +149,11 @@ must keep the arena backing storage alive for the desired request-head lifetime.
 does not return pointers into llhttp temporary state. It also does not retain pointers to
 the input buffer after success.
 
+HTTP dispatch tables borrow route bindings, parsed route patterns, plans, and engine
+handles for the duration of the call only. `sl_http_dispatch_request_head` does not retain
+request, route, plan, engine, or route-parameter storage. Successful V8 text results follow
+the existing engine/runtime-contract rule: text is copied into the caller-provided arena.
+
 Request data must have documented ownership and may not outlive its scope unsafely once HTTP
 request handling grows beyond this skeleton.
 
@@ -139,6 +169,11 @@ The HTTP parser skeleton depends on llhttp and libuv through vcpkg/CMake. The pa
 uses no OS-specific headers or direct OS APIs. libuv use is limited to a local loop
 init/close smoke helper and does not integrate with `SlLoop`.
 
+The dispatch helper is pure core C over existing parser, route, plan, runtime-contract, and
+engine boundaries. It does not include V8 headers, expose V8 handles, call OS APIs, create
+sockets, drive libuv, allocate outside the caller arena, or build a production router
+object.
+
 ## Diagnostics
 
 Implemented parser diagnostics are intentionally small:
@@ -146,17 +181,25 @@ Implemented parser diagnostics are intentionally small:
 - malformed/invalid route pattern;
 - duplicate route parameter name.
 
+TASK 10.B adds small HTTP parser diagnostics:
+
+- invalid/malformed/incomplete HTTP request;
+- HTTP header count limit exceeded.
+
+TASK 10.C adds small synthetic dispatch diagnostics:
+
+- unsupported non-GET dispatch method;
+- no matching route;
+- matched route references a missing plan handler;
+- missing/non-callable/throwing JavaScript functions through the existing engine diagnostic
+  path.
+
 Future diagnostics:
 
 - duplicate routes;
 - ambiguous routes;
 - request conversion errors;
 - route conflict/source-span diagnostics.
-
-TASK 10.B adds small HTTP parser diagnostics:
-
-- invalid/malformed/incomplete HTTP request;
-- HTTP header count limit exceeded.
 
 ## Tests
 
@@ -168,7 +211,7 @@ Implemented CTest coverage:
 - string and integer parameter matching;
 - strict trailing slash behavior;
 - query string rejection;
-- borrowed parameter value lifetime.
+- borrowed parameter value lifetime;
 - valid request targets including query stripping into `path`;
 - Host and multiple header capture;
 - supported method mapping;
@@ -177,24 +220,35 @@ Implemented CTest coverage:
 - max-header enforcement;
 - parser diagnostics for malformed requests and header limits;
 - route matcher reuse with a parsed request path;
-- libuv init/close smoke without network I/O.
+- libuv init/close smoke without network I/O;
+- synthetic dispatch no-route failure;
+- synthetic dispatch non-GET failure;
+- synthetic dispatch missing plan handler failure before engine entry;
+- route parameter match through dispatch without passing params to JavaScript;
+- V8-gated dispatch success returning `sloppy-ok`;
+- V8-gated missing JavaScript function and throwing handler failures.
 
 Future tests:
 
 - route table and ambiguity tests;
 - HTTP server/socket integration tests;
-- fuzz target for route patterns.
+- fuzz target for route patterns;
+- response writer tests;
+- route params in handler context tests.
 
 ## Source Docs
 
 - `docs/developer-ergonomics.md`;
 - `docs/execution-model.md`;
-- `docs/testing-strategy.md`.
+- `docs/testing-strategy.md`;
 - `docs/dependencies.md`;
 - `docs/build-and-distribution.md`;
-- `docs/concurrency.md`.
+- `docs/concurrency.md`;
+- `docs/app-plan.md`;
+- `docs/modules/plan/README.md`;
+- `docs/modules/engine-v8/README.md`.
 
 ## Open Questions
 
 - Exact HTTP server/socket integration timing.
-- Exact route dispatch/table shape for TASK 10.C.
+- Exact future production route table shape.
