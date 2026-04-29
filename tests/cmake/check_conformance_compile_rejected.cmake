@@ -18,7 +18,7 @@ if(NOT DEFINED SLOPPY_EXPECTED_ERROR)
 endif()
 
 set(source_path "${PROJECT_SOURCE_DIR}/${SLOPPY_SOURCE}")
-set(output_dir "${CMAKE_BINARY_DIR}/conformance/${SLOPPY_CONFORMANCE_CASE}/rejected")
+set(output_dir "${CMAKE_BINARY_DIR}/conformance/rejected/${SLOPPY_CONFORMANCE_CASE}")
 
 file(REMOVE_RECURSE "${output_dir}")
 file(MAKE_DIRECTORY "${output_dir}")

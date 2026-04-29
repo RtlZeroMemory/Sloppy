@@ -936,7 +936,8 @@ if(SLOPPY_ENABLE_TESTS)
                 "Hello from Sloppy")
             sloppy_add_conformance_run_once_test(
                 conformance.request_context.run_once request-context examples/request-context/app.js GET
-                "/users/123?q=abc&q=last" "\"q\":\"last\"")
+                "/users/123?q=abc&q=last"
+                "\"id\":\"123\".*\"q\":\"last\".*\"method\":\"GET\".*\"path\":\"/users/123\".*\"rawTarget\":\"/users/123[?]q=abc&q=last\"")
         endif()
 
         function(sloppy_add_conformance_existing_artifact_test test_name artifacts method target

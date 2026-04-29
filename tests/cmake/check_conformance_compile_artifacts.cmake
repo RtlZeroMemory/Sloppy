@@ -15,7 +15,7 @@ if(NOT DEFINED SLOPPY_SOURCE)
 endif()
 
 set(source_path "${PROJECT_SOURCE_DIR}/${SLOPPY_SOURCE}")
-set(output_root "${CMAKE_BINARY_DIR}/conformance/${SLOPPY_CONFORMANCE_CASE}")
+set(output_root "${CMAKE_BINARY_DIR}/conformance/compile-artifacts/${SLOPPY_CONFORMANCE_CASE}")
 set(output_a "${output_root}/out-a")
 set(output_b "${output_root}/out-b")
 
