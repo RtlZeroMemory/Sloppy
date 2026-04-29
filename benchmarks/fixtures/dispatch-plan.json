@@ -6,7 +6,7 @@
     "stdlibVersion": "0.1.0",
     "target": {
       "platform": "windows-x64",
-      "engine": "v8"
+      "engine": "none"
     },
     "bundle": {
       "path": "benchmarks/fixtures/app.js"

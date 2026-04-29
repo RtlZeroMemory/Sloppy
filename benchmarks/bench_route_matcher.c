@@ -27,6 +27,7 @@ static SlStatus sl_bench_route_match_loop(const char* pattern_text, const char* 
     SlArena pattern_arena;
     SlArena match_arena;
     SlRoutePattern pattern = {0};
+    SlStr path_view = sl_str_from_cstr(path);
     uint64_t checksum = 0U;
     uint64_t index;
     SlStatus status;
@@ -48,7 +49,7 @@ static SlStatus sl_bench_route_match_loop(const char* pattern_text, const char* 
     for (index = 0U; index < iterations; index += 1U) {
         SlRouteMatch match = {0};
         sl_arena_reset(&match_arena);
-        status = sl_route_pattern_match(&match_arena, &pattern, sl_str_from_cstr(path), &match);
+        status = sl_route_pattern_match(&match_arena, &pattern, path_view, &match);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -99,6 +100,7 @@ static SlStatus sl_bench_http_request_head_parse_loop(uint64_t iterations, uint6
                                   "Accept: application/json\r\n"
                                   "\r\n";
     unsigned char parse_storage[8192];
+    SlBytes request_bytes = sl_bench_bytes_from_cstr(request);
     SlArena parse_arena;
     uint64_t checksum = 0U;
     uint64_t index;
@@ -111,8 +113,7 @@ static SlStatus sl_bench_http_request_head_parse_loop(uint64_t iterations, uint6
     for (index = 0U; index < iterations; index += 1U) {
         SlHttpRequestHead parsed = {0};
         sl_arena_reset(&parse_arena);
-        status = sl_http_parse_request_head(&parse_arena, sl_bench_bytes_from_cstr(request), NULL,
-                                            &parsed, NULL);
+        status = sl_http_parse_request_head(&parse_arena, request_bytes, NULL, &parsed, NULL);
         if (!sl_status_is_ok(status)) {
             return status;
         }

@@ -633,6 +633,22 @@ if(SLOPPY_ENABLE_TESTS)
         PROPERTIES PASS_REGULAR_EXPRESSION "\"sloppyBenchmarkVersion\": 1")
 
     add_test(
+        NAME benchmarks.sloppy_bench.v8_deferred
+        COMMAND sloppy_bench --include-v8 --bench handler.v8.call_function0)
+    set_tests_properties(
+        benchmarks.sloppy_bench.v8_deferred
+        PROPERTIES PASS_REGULAR_EXPRESSION "benchmark skipped/deferred: handler.v8.call_function0")
+
+    if(WIN32)
+        add_test(
+            NAME benchmarks.windows_wrapper.smoke_json
+            COMMAND
+                powershell -NoProfile -ExecutionPolicy Bypass -File
+                "${PROJECT_SOURCE_DIR}/tests/scripts/test_bench_wrapper_json.ps1" -RepoRoot
+                "${PROJECT_SOURCE_DIR}")
+    endif()
+
+    add_test(
         NAME bootstrap.stdlib.assets
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_BOOTSTRAP_SOURCE_DIR=${SLOPPY_BOOTSTRAP_SOURCE_DIR}"

@@ -17,7 +17,7 @@ static SlPlan sl_bench_plan(const SlPlanHandler* handlers, size_t handler_count)
     plan.runtime_min_version = sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0);
     plan.stdlib_version = sl_str_from_cstr(SL_PLAN_STDLIB_VERSION_0_1_0);
     plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
-    plan.target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    plan.target.engine = sl_str_from_cstr("none");
     plan.bundle.path = sl_str_from_cstr("benchmarks/fixtures/dispatch-plan.json");
     plan.source_map.path = sl_str_from_cstr("benchmarks/fixtures/dispatch-plan.map.json");
     plan.handlers = handlers;

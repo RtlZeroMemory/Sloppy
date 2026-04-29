@@ -35,6 +35,54 @@ static void sl_bench_print_usage(void)
                  "[--include-v8]\n");
 }
 
+static void sl_bench_print_error_text(const char* text)
+{
+    (void)fputs(text, stderr);
+}
+
+static void sl_bench_print_json_string(const char* text)
+{
+    const unsigned char* cursor = (const unsigned char*)text;
+
+    (void)fputc('"', stdout);
+    while (*cursor != '\0') {
+        unsigned char ch = *cursor;
+        switch (ch) {
+        case '"':
+            (void)fputs("\\\"", stdout);
+            break;
+        case '\\':
+            (void)fputs("\\\\", stdout);
+            break;
+        case '\b':
+            (void)fputs("\\b", stdout);
+            break;
+        case '\f':
+            (void)fputs("\\f", stdout);
+            break;
+        case '\n':
+            (void)fputs("\\n", stdout);
+            break;
+        case '\r':
+            (void)fputs("\\r", stdout);
+            break;
+        case '\t':
+            (void)fputs("\\t", stdout);
+            break;
+        default:
+            if (ch < 0x20U) {
+                (void)printf("\\u%04x", (unsigned int)ch);
+            }
+            else {
+                (void)fputc((int)ch, stdout);
+            }
+            break;
+        }
+        cursor += 1;
+    }
+    (void)fputc('"', stdout);
+}
+
 static int sl_bench_parse_options(int argc, char** argv, SlBenchOptions* out_options)
 {
     int index;
@@ -252,14 +300,20 @@ static void sl_bench_print_json_result(const SlBenchResult* result, bool first)
 {
     (void)printf("%s", first ? "" : ",\n");
     (void)printf("    {\n");
-    (void)printf("      \"name\": \"%s\",\n", result->name);
-    (void)printf("      \"category\": \"%s\",\n", result->category);
+    (void)printf("      \"name\": ");
+    sl_bench_print_json_string(result->name);
+    (void)printf(",\n");
+    (void)printf("      \"category\": ");
+    sl_bench_print_json_string(result->category);
+    (void)printf(",\n");
     (void)printf("      \"warmupIterations\": %" PRIu64 ",\n", result->warmup_iterations);
     (void)printf("      \"iterations\": %" PRIu64 ",\n", result->iterations);
     (void)printf("      \"elapsedNs\": %" PRIu64 ",\n", result->elapsed_ns);
     (void)printf("      \"nsPerOp\": %.2f,\n", result->ns_per_op);
     (void)printf("      \"checksum\": %" PRIu64 ",\n", result->checksum);
-    (void)printf("      \"note\": \"%s\"\n", result->note);
+    (void)printf("      \"note\": ");
+    sl_bench_print_json_string(result->note);
+    (void)printf("\n");
     (void)printf("    }");
 }
 
@@ -273,7 +327,9 @@ static void sl_bench_print_json_footer(bool any_result)
 static int sl_bench_run(const SlBenchOptions* options)
 {
     SlBenchContext context = {options->smoke, options->include_v8};
+    bool any_selected = false;
     bool any_result = false;
+    bool any_skipped = false;
     size_t group;
 
     if (options->format == SL_BENCH_FORMAT_TEXT) {
@@ -296,14 +352,20 @@ static int sl_bench_run(const SlBenchOptions* options)
             if (!sl_bench_should_run(options, definition)) {
                 continue;
             }
+            any_selected = true;
 
             status = sl_bench_measure(&context, definition, &result);
             if (!sl_status_is_ok(status)) {
-                if (definition->requires_v8) {
+                if (definition->requires_v8 && sl_status_code(status) == SL_STATUS_UNSUPPORTED) {
+                    sl_bench_print_error_text("benchmark skipped/deferred: ");
+                    sl_bench_print_error_text(definition->name);
+                    sl_bench_print_error_text("\n");
+                    any_skipped = true;
                     continue;
                 }
-                (void)printf("benchmark failed: %s (status=%d)\n", definition->name,
-                             (int)sl_status_code(status));
+                sl_bench_print_error_text("benchmark failed: ");
+                sl_bench_print_error_text(definition->name);
+                sl_bench_print_error_text("\n");
                 return 1;
             }
 
@@ -321,9 +383,13 @@ static int sl_bench_run(const SlBenchOptions* options)
         sl_bench_print_json_footer(any_result);
     }
 
-    if (!any_result) {
-        (void)printf("no benchmarks selected\n");
+    if (!any_selected) {
+        sl_bench_print_error_text("no benchmarks selected\n");
         return 1;
+    }
+
+    if (!any_result && any_skipped) {
+        return 0;
     }
 
     return 0;

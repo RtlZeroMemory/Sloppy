@@ -18,10 +18,18 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 function Invoke-Native {
     param(
         [string]$File,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [switch]$StdoutToStderr
     )
 
-    & $File @Arguments
+    if ($StdoutToStderr) {
+        & $File @Arguments 2>&1 | ForEach-Object {
+            [Console]::Error.WriteLine($_)
+        }
+    }
+    else {
+        & $File @Arguments
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "$File failed with exit code $LASTEXITCODE"
     }
@@ -75,7 +83,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $BuildDir "CMakeCache.txt"))) {
 }
 
 $hasV8Selection = @($CMakeArgs | Where-Object {
-        $_ -match "^-DSLOPPY_(ENABLE_V8|ENGINE|V8_ROOT)="
+        $_ -match "^-DSLOPPY_(ENABLE_V8|ENGINE|V8_ROOT)(:[^=]+)?="
     }).Count -gt 0
 if (-not $hasV8Selection) {
     $configureArgs += @("-DSLOPPY_ENGINE=none", "-DSLOPPY_ENABLE_V8=OFF")
@@ -84,8 +92,8 @@ if ($CMakeArgs.Count -gt 0) {
     $configureArgs += $CMakeArgs
 }
 
-Invoke-Native "cmake" $configureArgs
-Invoke-Native "cmake" @("--build", "--preset", $Preset, "--target", "sloppy_bench")
+Invoke-Native "cmake" $configureArgs -StdoutToStderr:$Json
+Invoke-Native "cmake" @("--build", "--preset", $Preset, "--target", "sloppy_bench") -StdoutToStderr:$Json
 
 $benchArgs = @()
 if ($List) {
