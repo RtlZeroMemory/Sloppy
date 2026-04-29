@@ -2,6 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$PackagePath,
 
+    [switch]$RequireV8Runtime,
+
     [switch]$KeepTemp
 )
 
@@ -40,6 +42,18 @@ function Assert-PackagePathMissing {
     }
 }
 
+function Assert-PackageFileMissing {
+    param(
+        [string]$Root,
+        [string]$RelativePath
+    )
+
+    $path = Join-Path $Root $RelativePath
+    if (Test-Path -LiteralPath $path) {
+        throw "Package smoke found excluded file: $RelativePath"
+    }
+}
+
 $resolvedPackage = (Resolve-Path -LiteralPath $PackagePath).Path
 if ([System.IO.Path]::GetExtension($resolvedPackage) -ne ".zip") {
     throw "Windows package smoke expects a .zip archive: $resolvedPackage"
@@ -72,6 +86,12 @@ try {
     if ($manifest.containsV8Sdk -ne $false) {
         throw "Package smoke manifest must not record V8 SDK inclusion."
     }
+    if ($RequireV8Runtime -and $manifest.containsV8Runtime -ne $true) {
+        throw "Package smoke required V8 runtime files, but manifest containsV8Runtime is not true."
+    }
+    if ((-not $RequireV8Runtime) -and $manifest.containsV8Runtime -eq $true) {
+        Write-Host "Package smoke note: manifest records V8 runtime files. This run validates layout only; V8 execution still requires a V8-enabled package smoke."
+    }
 
     Invoke-CliSmoke -Executable (Join-Path $packageRoot "bin/sloppy.exe") -Name "sloppy"
     Invoke-CliSmoke -Executable (Join-Path $packageRoot "bin/sloppyc.exe") -Name "sloppyc"
@@ -95,6 +115,25 @@ try {
 
     foreach ($excluded in @(".git", ".sdeps", "build", "compiler/target", "target", "vcpkg_installed")) {
         Assert-PackagePathMissing -Root $packageRoot -RelativePath $excluded
+    }
+    foreach ($excludedSdkFile in @("lib/sloppy/engines/v8/include/v8.h", "lib/sloppy/engines/v8/lib/v8_monolith.lib")) {
+        Assert-PackageFileMissing -Root $packageRoot -RelativePath $excludedSdkFile
+    }
+
+    $v8RuntimeRoot = Join-Path $packageRoot "lib/sloppy/engines/v8"
+    if ($RequireV8Runtime) {
+        if (-not (Test-Path -LiteralPath $v8RuntimeRoot -PathType Container)) {
+            throw "Package smoke required V8 runtime files, but lib/sloppy/engines/v8 is missing."
+        }
+        $v8RuntimeFiles = @(
+            Get-ChildItem -LiteralPath $v8RuntimeRoot -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Extension -in @(".dll", ".so", ".dylib") }
+        )
+        if ($v8RuntimeFiles.Count -eq 0) {
+            throw "Package smoke required V8 runtime files, but no DLL/shared-library files were found."
+        }
+        Write-Host "Package smoke V8 runtime files:"
+        $v8RuntimeFiles | ForEach-Object { Write-Host "- $($_.Name)" }
     }
 
     $checksumPath = Join-Path (Split-Path -Parent $resolvedPackage) "SHA256SUMS.txt"

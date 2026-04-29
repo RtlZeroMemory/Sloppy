@@ -312,6 +312,9 @@ Write-Host "Checksum file: $ChecksumPath"
 if ($Smoke) {
     $smokeScript = Join-Path $PSScriptRoot "test-package.ps1"
     $smokeArgs = @("-PackagePath", $ArchivePath)
+    if ($IncludeV8Runtime) {
+        $smokeArgs += "-RequireV8Runtime"
+    }
     if ($KeepTemp) {
         $smokeArgs += "-KeepTemp"
     }

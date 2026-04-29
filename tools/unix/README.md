@@ -22,3 +22,14 @@ It stages the same local archive layout as the Windows ZIP script and writes a `
 plus `SHA256SUMS.txt` under ignored `artifacts/packages/`. This script is intentionally
 simple and is not part of the required default CI gate yet; hosted Linux/macOS CI currently
 validates configure, build, test, Cargo gates, and standards scanners.
+
+`test-package.sh` is the matching outside-checkout package-layout smoke:
+
+```sh
+tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-linux-x64.tar.gz
+```
+
+It extracts the archive under the system temp directory, runs `sloppy --version`,
+`sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies stdlib assets,
+manifest fields, excluded build/dependency directories, and `SHA256SUMS.txt` when present.
+It is not part of the required CI gate until a scoped package-smoke job is added.
