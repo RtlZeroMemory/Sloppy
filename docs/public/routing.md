@@ -104,6 +104,9 @@ Compiler extraction MVP:
   TypeScript input, closed-over source-file bindings, conditional route registration,
   loops, modules, middleware, and package resolution.
 
+`docs/compiler-supported-syntax.md` is the source of truth for the MAIN1-01 supported
+syntax matrix and fixture expectations.
+
 Dev-only run behavior:
 
 - reads the compiler-emitted `routes` metadata section from `app.plan.json`;

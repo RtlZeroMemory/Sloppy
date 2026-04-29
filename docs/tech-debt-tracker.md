@@ -10,9 +10,10 @@ state and an honest public-alpha path.
   become compiler-produced plan metadata instead of in-memory debug snapshots.
 - `sloppy run` source/build handoff: EPIC-22 can load artifacts, but source input still
   needs a clean `sloppyc` handoff/cache story.
-- MAIN.1 source-input decision: MAIN-01 intentionally verifies only artifact directories;
-  deciding whether `sloppy run <source.js>` builds/caches automatically remains a hardening
-  task, not part of the MAIN artifact proof.
+- Source-input `sloppy run <source.js>` implementation: MAIN1-01 decided that alpha keeps
+  the explicit two-step artifact workflow. Implementing direct source input still needs a
+  scoped compiler handoff, cache keys, stale-artifact checks, source diagnostics, and
+  rebuild policy.
 - HTTP production response pipeline beyond EPIC-23: custom headers, redirect helpers,
   streaming/files, cookies, content negotiation, keep-alive policy, and production error
   pages.

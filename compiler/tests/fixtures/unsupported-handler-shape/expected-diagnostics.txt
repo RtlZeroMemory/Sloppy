@@ -1,0 +1,1 @@
+<compiler>/tests/fixtures/unsupported-handler-shape/input.js:7:17: SLOPPYC_E_UNSUPPORTED_HANDLER: route handler must be an inline function or arrow expression

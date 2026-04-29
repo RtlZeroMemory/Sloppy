@@ -78,6 +78,10 @@ sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
 sloppy run --artifacts .sloppy-main-smoke --once GET /
 ```
 
+MAIN1-01 keeps this as the alpha policy. `sloppy run <source.js>` must not implicitly build
+or cache source input until a future scoped task designs the compiler handoff, cache keys,
+stale-artifact checks, source diagnostics, and rebuild behavior.
+
 Default server binding is `127.0.0.1:5173`. The server is single-process, dev-only, and
 intentionally tiny: HTTP/1 request heads only, GET dispatch only, route/query/request
 context only, no TLS, no body parsing, no headers in handler context, no streaming, no

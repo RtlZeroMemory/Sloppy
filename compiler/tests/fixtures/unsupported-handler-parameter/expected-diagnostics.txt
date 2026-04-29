@@ -1,1 +1,2 @@
-SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS
+<compiler>/tests/fixtures/unsupported-handler-parameter/input.js:5:17: SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS: route handlers compiled by this MVP may declare zero parameters or one simple context parameter
+hint: The current runtime passes one plain request context object.

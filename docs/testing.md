@@ -55,13 +55,18 @@ Current tests:
 - CTest smoke for `sloppyc --version`;
 - CTest `sloppyc.compiler_extraction`, which runs the Rust compiler test suite covering
   the EPIC-21 compiler extraction fixtures;
-- Rust compiler golden tests for `hello-mapget`, `builder-mapget`, and `grouped-route`
-  deterministic `app.plan.json` and `app.js` outputs;
+- Rust compiler golden tests for `hello-mapget`, `builder-mapget`, `grouped-route`,
+  `results-json`, and `function-handler` deterministic `app.plan.json`, `app.js`, and
+  `app.js.map` outputs;
 - Rust compiler repeatability coverage for `examples/compiler-hello/app.js`, which builds
   the canonical MAIN fixture twice and verifies byte-identical artifacts, stable handler
   IDs, and no checkout-local path or volatility marker text;
-- Rust compiler diagnostic fixture tests for unsupported dynamic route patterns, missing
-  default app export, and multiple app objects;
+- Rust compiler diagnostic fixture tests for unsupported dynamic route patterns, computed
+  route method calls, loop/conditional route registration, unsupported handler shapes,
+  unsupported imports including Node-style imports, missing default app export, non-GET
+  methods, and multiple app objects;
+- Rust compiler rejected-build coverage that verifies unsupported compiler input does not
+  leave success artifacts;
 - CTest smoke for `sloppy_bench --list` and `sloppy_bench --smoke --format json`, which
   verifies the benchmark harness starts, exposes named benchmarks, and emits the versioned
   JSON envelope. These smoke checks are not performance regression gates;

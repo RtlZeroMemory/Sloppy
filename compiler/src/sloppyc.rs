@@ -118,7 +118,7 @@ struct AppState {
     sloppy_imported: bool,
     results_imported: bool,
     unsupported_import_alias: bool,
-    unsupported_import_specifier: Option<String>,
+    unsupported_import_specifier: Option<(String, Span)>,
     app_vars: BTreeSet<String>,
     builder_vars: BTreeSet<String>,
     group_vars: BTreeMap<String, String>,
@@ -307,24 +307,17 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
             Statement::ExportDefaultDeclaration(export) => {
                 state.default_export = export_default_identifier(&export.declaration);
             }
-            _ => {
-                return Err(Diagnostic::new(
-                    "SLOPPYC_E_UNSUPPORTED_TOP_LEVEL",
-                    "unsupported top-level syntax in compiler extraction MVP",
-                )
-                .with_path(path)
-                .with_span(statement.span())
-                .with_hint("Use imports, const app/builder/group declarations, mapGet calls, and export default app."));
-            }
+            _ => return Err(top_level_statement_diagnostic(path, source, statement)),
         }
     }
 
-    if let Some(specifier) = &state.unsupported_import_specifier {
+    if let Some((specifier, span)) = &state.unsupported_import_specifier {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
             format!("unsupported import specifier \"{specifier}\""),
         )
         .with_path(path)
+        .with_span(*span)
         .with_hint(
             "Only the public bare import \"sloppy\" is accepted; Sloppy does not implement Node or npm resolution.",
         ));
@@ -413,7 +406,8 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
 
 fn extract_import(state: &mut AppState, import: &oxc_ast::ast::ImportDeclaration<'_>) {
     if import.source.value.as_str() != "sloppy" {
-        state.unsupported_import_specifier = Some(import.source.value.as_str().to_string());
+        state.unsupported_import_specifier =
+            Some((import.source.value.as_str().to_string(), import.source.span));
         return;
     }
 
@@ -484,7 +478,7 @@ fn extract_variable_declaration(
                 .group_vars
                 .insert(name.to_string(), prefix.to_string());
         } else {
-            validate_supported_initializer(path, source, init)?;
+            validate_supported_initializer(path, source, state, init)?;
         }
     }
     Ok(())
@@ -505,7 +499,8 @@ fn extract_expression_statement(
     };
 
     let Some((receiver, pattern, handler)) = map_get_call(route_expr, source) else {
-        if let Some(diagnostic) = unsupported_map_get_diagnostic(path, route_expr, source) {
+        if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
+        {
             return Err(diagnostic);
         }
 
@@ -540,16 +535,45 @@ fn extract_expression_statement(
     Ok(())
 }
 
-fn unsupported_map_get_diagnostic(
+fn unsupported_route_call_diagnostic(
     path: &Path,
     expression: &Expression<'_>,
     source: &str,
+    state: &AppState,
 ) -> Option<Diagnostic> {
     let Expression::CallExpression(call) = expression else {
         return None;
     };
-    let (_, property) = static_member_name(&call.callee)?;
+
+    if computed_member_receiver(&call.callee).is_some_and(|receiver| {
+        state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver)
+    }) {
+        return Some(
+            Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD",
+                "computed route registration methods are not supported",
+            )
+            .with_path(path)
+            .with_span(call.span)
+            .with_hint("Use an explicit call such as app.mapGet(\"/literal\", handler)."),
+        );
+    }
+
+    let (receiver, property) = static_member_name(&call.callee)?;
     if property != "mapGet" {
+        if property.starts_with("map")
+            && (state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver))
+        {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HTTP_METHOD",
+                    "only app.mapGet(...) route extraction is supported",
+                )
+                .with_path(path)
+                .with_span(call.span)
+                .with_hint("Non-GET methods are deferred from the compiler extraction MVP."),
+            );
+        }
         return None;
     }
 
@@ -592,6 +616,7 @@ fn unsupported_map_get_diagnostic(
 fn validate_supported_initializer(
     path: &Path,
     source: &str,
+    state: &AppState,
     init: &Expression<'_>,
 ) -> Result<(), Diagnostic> {
     if let Some((_, _, _)) = map_get_call(init, source) {
@@ -602,7 +627,65 @@ fn validate_supported_initializer(
         .with_path(path)
         .with_span(init.span()));
     }
+    if let Some(diagnostic) = unsupported_route_call_diagnostic(path, init, source, state) {
+        return Err(diagnostic);
+    }
     Ok(())
+}
+
+fn top_level_statement_diagnostic(
+    path: &Path,
+    source: &str,
+    statement: &Statement<'_>,
+) -> Diagnostic {
+    let span = statement.span();
+    let text = source_slice(source, span).unwrap_or_default();
+    if top_level_statement_is_conditional(statement) && text.contains(".map") {
+        return Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CONDITIONAL_ROUTE_REGISTRATION",
+            "conditional route registration is not supported",
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Register compiler-extracted routes unconditionally at the top level.");
+    }
+    if top_level_statement_is_loop(statement) && text.contains(".map") {
+        return Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_LOOP_ROUTE_REGISTRATION",
+            "loop-based route registration is not supported",
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("List compiler-extracted routes as explicit top-level mapGet calls.");
+    }
+
+    Diagnostic::new(
+        "SLOPPYC_E_UNSUPPORTED_TOP_LEVEL",
+        "unsupported top-level syntax in compiler extraction MVP",
+    )
+    .with_path(path)
+    .with_span(span)
+    .with_hint(
+        "Use imports, const app/builder/group declarations, mapGet calls, and export default app.",
+    )
+}
+
+fn top_level_statement_is_conditional(statement: &Statement<'_>) -> bool {
+    matches!(
+        statement,
+        Statement::IfStatement(_) | Statement::SwitchStatement(_)
+    )
+}
+
+fn top_level_statement_is_loop(statement: &Statement<'_>) -> bool {
+    matches!(
+        statement,
+        Statement::ForStatement(_)
+            | Statement::ForInStatement(_)
+            | Statement::ForOfStatement(_)
+            | Statement::WhileStatement(_)
+            | Statement::DoWhileStatement(_)
+    )
 }
 
 fn export_default_identifier(
@@ -720,6 +803,16 @@ fn static_member_name<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'
         _ => return None,
     };
     Some((object, member.property.name.as_str()))
+}
+
+fn computed_member_receiver<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
+    let Expression::ComputedMemberExpression(member) = expression else {
+        return None;
+    };
+    match &member.object {
+        Expression::Identifier(identifier) => Some(identifier.name.as_str()),
+        _ => None,
+    }
 }
 
 fn string_argument<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
@@ -1262,28 +1355,39 @@ fn write_artifacts(out_dir: &Path, app: &ExtractedApp) -> Result<(), Diagnostic>
     let source_map = emit_source_map();
     let plan = emit_plan(app)?;
 
-    fs::write(out_dir.join("app.js"), app_js).map_err(|error| {
-        Diagnostic::new(
-            "SLOPPYC_E_OUTPUT",
-            format!("failed to write app.js: {error}"),
-        )
-        .with_path(out_dir)
-    })?;
-    fs::write(out_dir.join("app.js.map"), source_map).map_err(|error| {
-        Diagnostic::new(
-            "SLOPPYC_E_OUTPUT",
-            format!("failed to write app.js.map: {error}"),
-        )
-        .with_path(out_dir)
-    })?;
-    fs::write(out_dir.join("app.plan.json"), plan).map_err(|error| {
-        Diagnostic::new(
-            "SLOPPYC_E_OUTPUT",
-            format!("failed to write app.plan.json: {error}"),
-        )
-        .with_path(out_dir)
-    })?;
+    write_artifact(out_dir, "app.js", &app_js)?;
+    write_artifact(out_dir, "app.js.map", &source_map)?;
+    write_artifact(out_dir, "app.plan.json", &plan)?;
     Ok(())
+}
+
+fn write_artifact(out_dir: &Path, name: &str, contents: &str) -> Result<(), Diagnostic> {
+    let temp_name = format!("{name}.tmp");
+    let temp_path = out_dir.join(&temp_name);
+    let final_path = out_dir.join(name);
+    fs::write(&temp_path, contents).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_OUTPUT",
+            format!("failed to write {temp_name}: {error}"),
+        )
+        .with_path(out_dir)
+    })?;
+    if final_path.exists() {
+        fs::remove_file(&final_path).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_OUTPUT",
+                format!("failed to replace {name}: {error}"),
+            )
+            .with_path(out_dir)
+        })?;
+    }
+    fs::rename(&temp_path, &final_path).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_OUTPUT",
+            format!("failed to finalize {name}: {error}"),
+        )
+        .with_path(out_dir)
+    })
 }
 
 fn validate_output_dir(out_dir: &Path) -> Result<(), Diagnostic> {
@@ -1632,9 +1736,30 @@ export default app;
     }
 
     #[test]
+    fn ignores_unrelated_map_named_initializers() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const items = ["ok"];
+const labels = items.map((value) => value);
+app.mapGet("/", () => Results.text("Hello"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("ordinary JavaScript map initializer should not be treated as a route");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.routes[0].pattern, "/");
+    }
+
+    #[test]
     fn success_fixture_expected_outputs_stay_current() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        for fixture_name in ["hello-mapget", "builder-mapget", "grouped-route"] {
+        for fixture_name in [
+            "hello-mapget",
+            "builder-mapget",
+            "grouped-route",
+            "results-json",
+            "function-handler",
+        ] {
             let fixture = root
                 .join("tests/fixtures")
                 .join(fixture_name)
@@ -1679,13 +1804,19 @@ export default app;
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         for (fixture_name, input_name) in [
             ("unsupported-dynamic-route", "input.js"),
+            ("computed-method", "input.js"),
+            ("loop-route-registration", "input.js"),
+            ("conditional-route-registration", "input.js"),
             ("unsupported-handler-parameter", "input.js"),
             ("unsupported-handler-capture", "input.js"),
+            ("unsupported-handler-shape", "input.js"),
             ("unsupported-typescript-handler", "input.ts"),
             ("unsupported-import-alias", "input.js"),
             ("unsupported-import-specifier", "input.js"),
+            ("node-fs-import", "input.js"),
             ("missing-app", "input.js"),
             ("multiple-apps", "input.js"),
+            ("unsupported-http-method", "input.js"),
         ] {
             let fixture = root
                 .join("tests/fixtures")
@@ -1699,7 +1830,40 @@ export default app;
                     .join("expected-diagnostics.txt"),
             )
             .expect("expected diagnostic should exist");
-            assert_eq!(format!("{}\n", diagnostic.code), expected, "{fixture_name}");
+            let rendered = diagnostic
+                .render(Some(&source))
+                .replace(&super::display_path(root), "<compiler>");
+            assert_eq!(format!("{rendered}\n"), expected, "{fixture_name}");
+        }
+    }
+
+    #[test]
+    fn rejected_build_does_not_emit_success_artifacts() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let input = root.join("tests/fixtures/computed-method/input.js");
+        let out_dir = std::env::temp_dir().join(format!(
+            "sloppyc-rejected-build-test-{}",
+            std::process::id()
+        ));
+
+        if out_dir.exists() {
+            fs::remove_dir_all(&out_dir).expect("stale test output directory should be removable");
+        }
+
+        let failure = super::build(&input, &out_dir).expect_err("fixture should fail to build");
+        assert_eq!(
+            failure.diagnostic.code,
+            "SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD"
+        );
+        assert!(
+            !out_dir.join("app.plan.json").exists()
+                && !out_dir.join("app.js").exists()
+                && !out_dir.join("app.js.map").exists(),
+            "rejected compiler input must not leave success artifacts"
+        );
+
+        if out_dir.exists() {
+            fs::remove_dir_all(&out_dir).expect("test output directory should be removable");
         }
     }
 

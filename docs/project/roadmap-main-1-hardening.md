@@ -31,7 +31,8 @@ Task breakdown:
 - MAIN1-01.A: supported syntax matrix and negative-fixture plan.
 - MAIN1-01.B: source span diagnostics for unsupported syntax.
 - MAIN1-01.C: deterministic handler/route ordering and duplicate detection review.
-- MAIN1-01.D: source-input `sloppy run` handoff design if chosen for alpha.
+- MAIN1-01.D: source-input `sloppy run` handoff design. MAIN1-01 chooses the explicit
+  two-step artifact workflow for alpha and defers direct source input implementation.
 
 Non-goals: full TypeScript checker, npm resolution, broad bundling.
 
