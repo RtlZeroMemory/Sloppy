@@ -112,6 +112,11 @@ EPIC-25 distribution policy separates build-time SDKs from runtime packages:
   an SDK `bin/` directory may be copied into `lib/sloppy/engines/v8/`;
 - default local packages record `containsV8Sdk: false` and are non-V8 unless a V8-linked
   executable plus required runtime files are explicitly staged.
+- package smoke can validate V8 runtime-file staging with an explicit V8-runtime flag, but
+  runtime-file presence is not V8 execution evidence by itself.
+- V8-enabled package validation must also run the V8-gated artifact execution smoke from
+  the extracted package layout and must pass the packaged bootstrap stdlib root explicitly
+  until executable-relative lookup is implemented.
 
 SQLite and libpq are consumed through vcpkg manifest mode for their provider implementation
 phases. libpq release packaging still needs an explicit DLL strategy. SQL Server support
@@ -139,7 +144,7 @@ CLI tools can start after extraction outside the checkout. This is local package
 plumbing, not a complete public release dependency policy. Database drivers, V8 SDK files,
 and package-manager prerequisites are not installed or bundled. Package smoke does not
 connect to PostgreSQL or SQL Server, does not prove SQL Server ODBC driver installation,
-and does not prove the deferred JS-to-native data bridge.
+does not prove V8 execution, and does not prove the deferred JS-to-native data bridge.
 
 The optional V8 CI job is manual and gated. It requires a runner-local preinstalled SDK
 path through the `v8_root` workflow input. If that path is not supplied or does not exist,

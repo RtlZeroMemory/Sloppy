@@ -331,7 +331,7 @@ docs/                    engineering specifications
 adr/                     architecture decision records
 tests/                   unit, integration, golden, fuzz tests
 tools/windows/           first-class Windows tooling
-tools/unix/              future Linux/macOS tooling
+tools/unix/              Linux/macOS tooling and local package smoke
 ```
 
 ## Data Structures

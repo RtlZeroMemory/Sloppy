@@ -147,11 +147,12 @@ Current tests:
 - C standards scanner;
 - JS/TS standards scanner;
 - Rust standards scanner.
-- experimental package smoke through `tools/windows/test-package.ps1`, which extracts a
-  ZIP outside the checkout, runs `sloppy`/`sloppyc` version and help commands, verifies
-  stdlib assets, validates manifest fields, checks excluded local/build directories, and
-  verifies `SHA256SUMS.txt` when present. This is package-layout smoke, not release
-  readiness, V8 runtime evidence, or live provider evidence.
+- experimental package smoke through `tools/windows/test-package.ps1` and
+  `tools/unix/test-package.sh`, which extract archives outside the checkout, run
+  `sloppy`/`sloppyc` version and help commands, verify stdlib assets, validate manifest
+  fields, check excluded local/build directories and V8 SDK files, and verify
+  `SHA256SUMS.txt` when present. This is package-layout smoke, not release readiness, V8
+  runtime evidence, or live provider evidence.
 - CI provider gate reporting, which prints whether default provider tests run, whether
   PostgreSQL and SQL Server live tests are skipped or enabled by environment variables,
   and whether SQL Server ODBC execution is unavailable on the current non-Windows default
@@ -227,10 +228,23 @@ The package script can run the outside-checkout smoke in one step:
 .\tools\windows\package.ps1 -Configuration Release -Smoke
 ```
 
+Unix package smoke is local/manual today:
+
+```sh
+tools/unix/package.sh --configuration Release
+tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-<platform>-<arch>.tar.gz
+```
+
 The package smoke must not require V8, live databases, a running HTTP server, admin
 privileges, global PATH mutation, or package-manager behavior. Passing package smoke does
 not prove installers, signing/notarization, package-manager distribution, V8 runtime
 bundling, Linux/macOS package execution, or public release readiness.
+
+V8 package validation is a separate optional test category. It requires a V8-enabled build,
+accurate package manifest V8 fields, runtime-file presence validation when dynamic V8
+files are expected, and V8-gated `sloppy run --artifacts ... --stdlib <package-root>/lib/
+sloppy/bootstrap/sloppy --once GET /` execution from the extracted package. Default package
+smoke remains non-V8 evidence.
 
 PostgreSQL live provider tests are gated by environment variable and are skipped by default:
 
@@ -699,10 +713,12 @@ Targets:
 
 - plan JSON parser;
 - route pattern parser;
-- HTTP boundaries where Sloppy parses input;
+- HTTP request-head parser and future streaming/body boundaries where Sloppy parses input;
 - config parser;
 - diagnostics/source map parser;
 - compiler extraction boundaries where applicable.
+- resource ID/table decoding and validation if a byte-oriented or serialized resource
+  boundary is introduced.
 
 Fuzz targets should use `fuzz_<boundary>` naming, for example:
 
@@ -711,10 +727,18 @@ Fuzz targets should use `fuzz_<boundary>` naming, for example:
 - `fuzz_source_map`;
 - `fuzz_config_json`.
 
+Fuzz targets should start as local/optional harnesses with short smoke inputs and committed
+regression seeds only when a real bug is fixed. They should not require V8, sockets, live
+providers, package managers, credentials, or network access by default.
+
 ## Sanitizer Tests
 
 ASan/UBSan should run where the toolchain supports them. Windows support may be partial,
 especially once V8 is introduced. Core-only sanitizer configurations remain valuable.
+`windows-asan` is available as a local preset, but sanitizer CI is not required until the
+toolchain/dependency behavior is stable enough to avoid noisy false failures. Initial CI
+sanitizer candidates are non-V8 Linux clang ASan and UBSan jobs; V8-enabled sanitizer
+validation remains separate because the SDK/toolchain combination is much less portable.
 
 ## Platform-Boundary Tests
 

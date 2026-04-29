@@ -22,9 +22,9 @@ state and an honest public-alpha path.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
   maps, Promise/microtask policy, owner-thread enforcement, and executable public examples
   through the final bootstrap module shape remain open.
-- MAIN1-12 package/CI hardening: EPIC-25 documents the SDK/runtime split and excludes SDK
-  headers/libs from packages, but exact dynamic runtime file lists, hosted prebuilt SDK
-  source, V8-enabled package validation, and package CI evidence remain open.
+- MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
+  prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
+  and stable sanitizer/fuzz jobs remain open.
 - Capability enforcement: declared capabilities must gate provider/filesystem/network
   access before public docs imply a security model.
 - Live DB service infrastructure for PostgreSQL and SQL Server: opt-in local env vars and
@@ -33,10 +33,10 @@ state and an honest public-alpha path.
 - Cross-platform CI hardening: default Linux clang/gcc, macOS clang, Windows clang-cl, and
   explicit V8/provider-gated reporting exist; remaining work is V8 SDK cache/prebuilt
   setup, optional live provider service jobs, sanitizer/fuzz jobs, and package smoke.
-- Cross-platform release validation: EPIC-25 adds local Windows ZIP tooling, Unix TAR
-  tooling, checksums, and outside-checkout ZIP smoke, but Linux/macOS package execution,
-  V8 runtime packaging evidence, release hardening, and CI validation remain open under
-  MAIN1-12.
+- Cross-platform release validation: local Windows ZIP tooling, Unix TAR tooling,
+  checksums, and outside-checkout package smoke exist, but hosted Linux/macOS package
+  execution, V8 package execution smoke, release hardening, and CI validation remain open
+  after MAIN1-12.
 - Public alpha docs/examples: at least one executable hello must run through the real
   Sloppy toolchain, and the SQLite demo must either run through a real JS-native bridge or
   be explicitly documented as deferred.
