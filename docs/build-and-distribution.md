@@ -93,11 +93,11 @@ Unix package commands:
 
 ```sh
 tools/unix/package.sh --configuration Release
-tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-linux-x64.tar.gz
+tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-<platform>-<arch>.tar.gz
 ```
 
-The Unix smoke command is local package-layout validation. It is not part of required
-hosted CI until a scoped Linux/macOS package-smoke job is added.
+The Unix smoke command is local package-layout validation. It remains local/manual until a
+scoped Linux/macOS package-smoke job runs in hosted CI.
 
 Benchmark wrapper:
 
@@ -264,7 +264,7 @@ Distribution policy:
 - V8 runtime packaging is validated only when a V8-enabled package is built from a
   V8-enabled executable, dynamic runtime files are staged when required, the package smoke
   runs outside the checkout with V8 runtime validation enabled, and a V8-gated
-  `sloppy run --artifacts ... --stdlib <package-root>/lib/sloppy/bootstrap/sloppy --once
+  `sloppy run --artifacts ... --stdlib <package-root>/lib/sloppy/stdlib/sloppy --once
   GET /` smoke succeeds.
 
 CI policy:
@@ -382,11 +382,12 @@ bundler, transpiler, or package-manager metadata is involved.
 
 EPIC-24 makes the staged bootstrap root executable in V8-gated `sloppy run`. Build-tree
 executables use the staged `<build>/lib/sloppy/bootstrap/sloppy/` path compiled into the
-binary unless `--stdlib <dir>` is supplied. Packages stage the same bootstrap root under
-`lib/sloppy/bootstrap/sloppy/`; executable-relative package lookup is deferred, so package
-smoke tests that execute V8 bootstrap behavior should pass that path explicitly. The
-runtime never reads stdlib assets from `.sdeps/`, npm, Node resolution, or the current
-working directory unless the caller explicitly passes a relative `--stdlib` path.
+binary unless `--stdlib <dir>` is supplied. Local ZIP/TAR packages currently stage the
+source-controlled stdlib root under `lib/sloppy/stdlib/sloppy/`; executable-relative
+package lookup is deferred, so package smoke tests that execute V8 bootstrap behavior
+should pass that path explicitly. The runtime never reads stdlib assets from `.sdeps/`,
+npm, Node resolution, or the current working directory unless the caller explicitly passes
+a relative `--stdlib` path.
 
 EPIC-25 package staging copies the source-controlled stdlib assets into
 `lib/sloppy/stdlib/sloppy/` inside the archive. Windows packages also copy runtime DLLs

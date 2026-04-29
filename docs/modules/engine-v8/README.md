@@ -184,9 +184,9 @@ The stdlib lookup policy is deterministic:
    automation.
 2. Build-tree executables use the CMake-staged bootstrap root compiled into the binary:
    `<build>/lib/sloppy/bootstrap/sloppy`.
-3. Package-installed layouts stage the same root at `lib/sloppy/bootstrap/sloppy`; executable-
-   relative installed lookup remains deferred, so packaged smoke tests may pass that root
-   explicitly.
+3. Local ZIP/TAR packages stage the source-controlled stdlib root at
+   `lib/sloppy/stdlib/sloppy`; executable-relative installed lookup remains deferred, so
+   packaged smoke tests may pass that root explicitly.
 
 Missing stdlib roots, missing `internal/runtime-classic.js`, missing `app.js`, malformed
 modules, duplicate registrations, intrinsic misuse, and plan references to unregistered
@@ -303,7 +303,7 @@ Package validation has two levels:
   V8 execution.
 - V8 package smoke requires a V8-enabled package, runtime-file validation when dynamic V8
   files are expected, and a V8-gated `sloppy run --artifacts ... --stdlib
-  <package-root>/lib/sloppy/bootstrap/sloppy --once GET /` execution from the extracted
+  <package-root>/lib/sloppy/stdlib/sloppy --once GET /` execution from the extracted
   package. If that command did not run, do not report packaged V8 runtime success.
 
 ## Diagnostics

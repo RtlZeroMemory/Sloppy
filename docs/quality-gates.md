@@ -118,7 +118,7 @@ Unix local package smoke:
 
 ```sh
 tools/unix/package.sh --configuration Release
-tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-linux-x64.tar.gz
+tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-<platform>-<arch>.tar.gz
 ```
 
 The package smoke must extract outside the checkout, run basic CLI commands, verify stdlib
@@ -430,8 +430,8 @@ explicit future flags or environment gates.
 
 - ASan/UBSan builds. Start with non-V8 core/default builds on platforms where the compiler
   and dependency stack support stable sanitizer output. Windows `windows-asan` is an
-  available local preset but is not a required hosted gate yet. UBSan is expected to start
-  on clang/gcc before becoming required.
+  available local preset but is not yet a required hosted CI gate. UBSan is expected to
+  start on clang/gcc before becoming required.
 - fuzz tests. First candidates are route pattern parsing, HTTP request-head parsing, Plan
   JSON parsing, diagnostics/source map parsing once richer source maps exist, and resource
   ID/table validation. Fuzz targets should be short-running, deterministic, and isolated

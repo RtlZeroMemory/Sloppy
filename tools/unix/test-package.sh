@@ -81,10 +81,10 @@ tar -xzf "$package_path" -C "$temp_root"
 
 root_count=0
 package_root=""
-while IFS= read -r root_candidate; do
+while IFS= read -r -d '' root_candidate; do
   root_count=$((root_count + 1))
   package_root="$root_candidate"
-done < <(find "$temp_root" -mindepth 1 -maxdepth 1 -type d)
+done < <(find "$temp_root" -mindepth 1 -maxdepth 1 -type d -print0)
 if [[ "$root_count" -ne 1 ]]; then
   echo "Package smoke expected exactly one archive root directory, found $root_count." >&2
   exit 1

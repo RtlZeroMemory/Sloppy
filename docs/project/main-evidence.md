@@ -147,7 +147,7 @@ Linux/macOS packaging currently has an experimental TAR staging script:
 
 ```sh
 tools/unix/package.sh --configuration Release
-tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-linux-x64.tar.gz
+tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-<platform>-<arch>.tar.gz
 ```
 
 Hosted Linux/macOS default CI validates non-V8 configure/build/test, Cargo gates, and POSIX

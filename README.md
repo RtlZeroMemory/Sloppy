@@ -141,7 +141,7 @@ This creates an ignored archive under `artifacts/packages/`, writes `SHA256SUMS.
 extracts the ZIP outside the checkout to run basic `sloppy` and `sloppyc` CLI smoke checks.
 It is not a public release workflow and does not prove V8 execution or live provider
 availability. Linux/macOS TAR package smoke has local tooling under `tools/unix/`, but it
-is not a required hosted CI gate yet.
+is not a required CI gate on hosted runners yet.
 
 ## V8 And Providers
 
