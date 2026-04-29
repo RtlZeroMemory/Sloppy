@@ -55,9 +55,10 @@ behavior, not native request-scope DI.
 an ordinary bootstrap singleton; it does not open a database connection.
 
 `examples/sqlite-basic/app.js` shows the intended SQLite service registration through
-`data.sqlite.open({ path: ":memory:" })`. That factory currently fails with an honest
-bridge-unavailable error if resolved from JavaScript. Native SQLite execution is covered by
-C tests until stdlib-to-native intrinsics exist.
+`data.sqlite.open({ path: ":memory:" })`. In a V8-enabled runtime that installs the SQLite
+bridge, that factory returns a safe wrapper around a resource-table connection handle.
+This source-stdlib example is still not a `sloppy run` executable tutorial; native SQLite
+execution is covered by C tests and the bridge is covered by V8-gated fixtures.
 
 `examples/postgres-basic/app.js` shows the intended PostgreSQL service registration through
 `data.postgres.open({ connectionString, maxConnections })`. That factory currently fails

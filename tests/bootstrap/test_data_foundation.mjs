@@ -173,6 +173,56 @@ function createForgedLoweredQuery() {
 }
 
 {
+    const calls = [];
+    globalThis.__sloppy = {
+        data: {
+            sqlite: {
+                open(path) {
+                    calls.push(["open", path]);
+                    return { slot: 1, generation: 1, kind: "sqlite.connection" };
+                },
+                exec(handle, text, params) {
+                    calls.push(["exec", handle.slot, text, params]);
+                    return { affectedRows: 1 };
+                },
+                query(handle, text, params) {
+                    calls.push(["query", handle.generation, text, params]);
+                    return [{ name: "Ada" }];
+                },
+                queryOne(handle, text, params) {
+                    calls.push(["queryOne", handle.kind, text, params]);
+                    return { name: "Ada" };
+                },
+                close(handle) {
+                    calls.push(["close", handle.slot]);
+                },
+            },
+        },
+    };
+
+    const db = data.sqlite.open({ path: ":memory:" });
+    assert.equal(data.sqlite.__debug().nativeStdlibBridge, true);
+    assert.deepEqual(db.exec("insert into users (name) values (?)", ["Ada"]), {
+        affectedRows: 1,
+    });
+    assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
+    assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
+    assert.equal(db.__debug().resource.kind, "sqlite.connection");
+    db.close();
+    db.close();
+    assertThrowsMessage(() => db.query("select 1"), /sqlite connection is closed/);
+    assert.deepEqual(calls, [
+        ["open", ":memory:"],
+        ["exec", 1, "insert into users (name) values (?)", ["Ada"]],
+        ["query", 1, "select name from users", []],
+        ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
+        ["close", 1],
+    ]);
+
+    delete globalThis.__sloppy;
+}
+
+{
     assert.equal(data.postgres.provider, "postgres");
     assert.equal(data.postgres.placeholderStyle, "postgres");
     assert.equal(data.postgres.supports.connectionString, true);

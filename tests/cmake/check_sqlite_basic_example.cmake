@@ -47,13 +47,15 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "SQLite provider API-shape example"
         "native C SQLite provider opens `:memory:`"
-        "`data.sqlite.open({ path: \":memory:\" })` exists"
-        "fails honestly until native stdlib intrinsics are wired"
+        "V8-enabled runtime tests cover the real SQLite JS-to-native bridge"
+        "`data.sqlite.open({ path: \":memory:\" })` opens a native"
+        "V8 runtime installs the SQLite bridge intrinsics"
         "not a `sloppy run --artifacts` app"
         "`sloppyc` does not compile this example"
         "does not emit `app.plan.json`"
-        "stdlib cannot call the native SQLite provider"
+        "executable SQLite proof is the internal V8-gated fixture"
         "PostgreSQL and SQL Server providers are covered"
+        "PostgreSQL and SQL Server do not have JS-to-native provider bridges yet"
         "no ORM, migrations, connection pooling")
     require_substring(
         "${example_readme_md}" "${required_pattern}"

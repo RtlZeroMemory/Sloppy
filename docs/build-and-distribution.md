@@ -189,9 +189,12 @@ When V8 is disabled, configure prints `V8 bridge: disabled` and normal configure
 gates continue without a V8 SDK. Required CI uses this default non-V8 path.
 
 When V8 is enabled and `SLOPPY_V8_ROOT` is empty or invalid, CMake configure fails before
-any bridge code is compiled. When the SDK is valid, CMake compiles
-`src/engine/v8/engine_v8.cc`, links it only to the V8-enabled core target, and registers the
-`engine.v8.smoke`, `engine.v8.owner_thread`, and `execution.handwritten_artifact` tests.
+any bridge code is compiled. When the SDK is valid, CMake compiles the V8 engine core plus
+provider intrinsic modules under `src/engine/v8/`, links them only to the V8-enabled core
+target, and registers the `engine.v8.smoke`, `engine.v8.owner_thread`, and
+`execution.handwritten_artifact` tests. Provider bridges must be added as
+`intrinsics_<provider>.cc` files registered through `intrinsics.cc`, not by expanding
+`engine_v8.cc`.
 
 Contributor path:
 

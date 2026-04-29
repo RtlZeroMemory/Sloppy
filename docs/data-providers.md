@@ -29,11 +29,11 @@ This document covers:
 
 The foundation phase does not implement:
 
-- JavaScript-to-native SQLite resource/intrinsic integration;
+- JavaScript-to-native PostgreSQL or SQL Server resource/intrinsic integration;
 - production connection pools;
 - SQL parsing;
 - provider plugin ABI;
-- runnable database JS API.
+- ORM, migration, or query-builder behavior.
 
 ## Current Phase
 
@@ -46,10 +46,12 @@ EPIC-16 adds the first real provider boundary: native C SQLite support backed by
 statements, query rows, return the first row or no-row for `queryOne`, bind primitive
 parameters, and commit or roll back explicit transactions.
 
-The JavaScript stdlib now exposes `data.sqlite` metadata and `data.sqlite.open(options)` as
-the intended public entry point, but that function fails honestly until the runtime has a
-stdlib-to-native intrinsic/resource bridge. No native pointer is exposed to JavaScript and
-no fake SQLite success is reported by the stdlib.
+MAIN1-08 adds the first JavaScript-to-native data bridge for SQLite in V8-enabled runtime
+contexts. `data.sqlite.open({ path: ":memory:" })` now creates a generation-checked
+resource-table connection handle when the V8 bridge installs SQLite intrinsics. JavaScript
+receives only an opaque slot/generation handle object wrapped by the stdlib facade; it does
+not receive `sqlite3*` or any native pointer. Non-V8/bootstrap-only contexts still fail
+honestly with a bridge-unavailable error.
 
 EPIC-17 adds the second real provider boundary: native C PostgreSQL support backed by
 libpq from the repo-approved vcpkg manifest. The native provider opens connection strings,
@@ -82,7 +84,7 @@ stdlib.
 
 | Provider | Native status | Default validation | Live validation | JS bridge status |
 | --- | --- | --- | --- | --- |
-| SQLite | Native C provider exists and is linked through the default build. | In-memory open/query/exec/transaction tests run in default CTest. | No external service is required for current provider tests. | Deferred until MAIN1-08; `data.sqlite.open(...)` fails with bridge-unavailable today. |
+| SQLite | Native C provider exists and is linked through the default build. V8-enabled runtime contexts install a minimal JS bridge for open/exec/query/queryOne/close. | In-memory open/query/exec/transaction tests run in default CTest; JS wrapper closed-state behavior is covered by bootstrap tests with a mocked bridge. | No external service is required for current provider tests. V8 execution is a separate optional gate. | Implemented for V8-enabled SQLite only; default non-V8 contexts report bridge-unavailable. |
 | PostgreSQL | Native libpq provider boundary exists. | Non-live option, doctor, redaction, use-after-close, and lifecycle tests run in default CTest. | Opt-in `data.postgres.live_provider` requires `SLOPPY_POSTGRES_TEST_URL`; when unset, CTest reports it skipped. | Deferred; `data.postgres.open(...)` validates/redacts and then fails with bridge-unavailable. |
 | SQL Server | Native ODBC provider boundary exists when `SLOPPY_ENABLE_SQLSERVER` is enabled; otherwise stubs report unavailable. | Windows default tests cover ODBC-enabled non-live diagnostics; Linux/macOS defaults cover unavailable/stub behavior. | Opt-in `data.sqlserver.live_provider` requires `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`, an ODBC driver, and a reachable SQL Server; when unset, CTest reports it skipped. | Deferred; `data.sqlserver.open(...)` validates/redacts and then fails with bridge-unavailable. |
 
@@ -93,7 +95,7 @@ availability, or JavaScript-to-native provider execution.
 ## Future Phase Order
 
 1. SQLite first, built-in/static provider. Native C provider implemented; JavaScript bridge
-   deferred.
+   implemented for V8-enabled runtime contexts in MAIN1-08.
 2. PostgreSQL second, via libpq. Native C provider implemented; JavaScript bridge
    deferred.
 3. SQL Server third, via Microsoft ODBC Driver and ODBC API on Windows. Native C provider
@@ -273,8 +275,10 @@ Current bootstrap behavior:
 - fake transactions commit when the callback resolves, roll back when it throws/rejects,
   reject nested transactions, and reject use after close.
 - the fake provider never opens a database and never executes SQL.
-- `data.sqlite.open(options)` validates SQLite options and then reports that the native
-  stdlib bridge is unavailable.
+- `data.sqlite.open(options)` validates SQLite options. In V8-enabled runtime contexts
+  where `globalThis.__sloppy.data.sqlite` is installed, it opens a native SQLite
+  connection through the resource-table bridge. In bootstrap-only or non-V8 contexts it
+  reports that the bridge is unavailable.
 - `data.postgres.open(options)` validates PostgreSQL connection string options, redacts
   credentials, and then reports that the native stdlib bridge is unavailable.
 - `data.sqlserver.open(options)` validates SQL Server ODBC connection string options,
@@ -301,6 +305,38 @@ Native SQLite behavior:
 - unsupported parameter kinds fail before unsafe coercion;
 - nested transactions are rejected for now;
 - statements are finalized on all paths and close is deterministic.
+
+SQLite JS bridge behavior:
+
+- internal V8 intrinsic namespace: `__sloppy.data.sqlite.open/exec/query/queryOne/close`;
+- V8 engine layering: `engine_v8.cc` installs the private `__sloppy.data` namespace and
+  stays provider-neutral. `src/engine/v8/intrinsics.cc` aggregates provider bridge
+  registration, while `src/engine/v8/intrinsics_sqlite.cc` owns SQLite-specific argument
+  validation, parameter conversion, resource lookup, cleanup, and native provider calls.
+  Future PostgreSQL and SQL Server JS bridges must add their own intrinsic modules instead
+  of adding provider logic to `engine_v8.cc`;
+- public stdlib facade: `data.sqlite.open({ path })` returns a frozen connection wrapper;
+- supported operations: `exec(sql, params?)`, `query(sql, params?)`, `queryOne(sql, params?)`,
+  and `close()`;
+- `query` returns arrays of plain objects keyed by deterministic column names;
+- `queryOne` returns one plain object or `null`;
+- SQLite `NULL` maps to JavaScript `null`; integer and float values map to JavaScript
+  numbers; text maps to strings;
+- parameters are positional arrays containing only `null`, string, number, or boolean
+  values;
+- wrapper double close is deterministic and idempotent; query/exec/queryOne after close
+  fails before entering native code;
+- stale, invalid, and wrong-kind resource IDs fail through the core resource-table
+  diagnostics before provider code runs;
+- engine destruction disposes the resource table and closes leaked live SQLite resources.
+
+Capability status:
+
+- the bridge is capability-ready because provider access goes through one narrow native
+  intrinsic namespace and resource kind, but MAIN1-08 does not duplicate the MAIN1-10
+  policy engine;
+- current docs must not claim SQLite access is permission-enforced until MAIN1-10 wires
+  provider capability checks into this hook.
 
 Native PostgreSQL behavior:
 
@@ -524,7 +560,11 @@ Bridge rules:
 - stale, closed, missing-slot, and wrong-kind IDs fail before provider code runs;
 - diagnostics must include operation/kind context where useful and must not include native
   addresses;
-- SQLite MAIN1-08 bridge work depends on this table and should reuse it directly.
+- SQLite MAIN1-08 bridge work depends on this table and reuses it directly through
+  `src/engine/v8/intrinsics_sqlite.cc`;
+- provider-specific V8 bridge modules may consume the engine-owned table, but must not
+  create ad hoc handle maps and must not place provider lookup/conversion code in
+  `engine_v8.cc`.
 
 ## Connection Pool Lifecycle
 

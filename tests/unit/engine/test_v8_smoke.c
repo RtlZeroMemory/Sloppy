@@ -849,6 +849,182 @@ static int test_missing_registered_handler_returns_diagnostic(void)
     return 0;
 }
 
+static int test_sqlite_intrinsics_execute_query_and_close(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 130;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 131;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("sqlite-bridge.js"),
+                sl_str_from_cstr(
+                    "globalThis.sqliteSmoke = function () {"
+                    "  const db = __sloppy.data.sqlite.open(':memory:');"
+                    "  __sloppy.data.sqlite.exec(db, 'create table users (id integer primary key, "
+                    "name text not null)', []);"
+                    "  __sloppy.data.sqlite.exec(db, 'insert into users (name) values (?)', "
+                    "['Ada']);"
+                    "  const row = __sloppy.data.sqlite.queryOne(db, 'select name from users where "
+                    "id = ?', [1]);"
+                    "  const rows = __sloppy.data.sqlite.query(db, 'select name from users', []);"
+                    "  __sloppy.data.sqlite.close(db);"
+                    "  return { __sloppyResult: true, kind: 'json', status: 200, "
+                    "    contentType: 'application/json; charset=utf-8', body: { row, rows } };"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 132;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteSmoke"), &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 133;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body,
+                           "{\"row\":{\"name\":\"Ada\"},\"rows\":[{\"name\":\"Ada\"}]}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 134;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_sqlite_intrinsic_stale_handle_fails(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 140;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 141;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("sqlite-stale.js"),
+                          sl_str_from_cstr("globalThis.sqliteStale = function () {"
+                                           "  const db = __sloppy.data.sqlite.open(':memory:');"
+                                           "  __sloppy.data.sqlite.close(db);"
+                                           "  __sloppy.data.sqlite.queryOne(db, 'select 1', []);"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 142;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteStale"), &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 143;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(diag.message, sl_str_from_cstr("resource id is stale")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 144;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_sqlite_intrinsic_invalid_arguments_fail(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 150;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 151;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("sqlite-invalid.js"),
+                          sl_str_from_cstr("globalThis.sqliteInvalid = function () {"
+                                           "  const db = __sloppy.data.sqlite.open(':memory:');"
+                                           "  try {"
+                                           "    __sloppy.data.sqlite.exec(db, 'select ?', [{}]);"
+                                           "  } finally {"
+                                           "    __sloppy.data.sqlite.close(db);"
+                                           "  }"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 152;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteInvalid"), &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 153;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(diag.message, sl_str_from_cstr("parameters support only")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 154;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -928,5 +1104,20 @@ int main(void)
         return result;
     }
 
-    return test_missing_registered_handler_returns_diagnostic();
+    result = test_missing_registered_handler_returns_diagnostic();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsics_execute_query_and_close();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_stale_handle_fails();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_sqlite_intrinsic_invalid_arguments_fail();
 }

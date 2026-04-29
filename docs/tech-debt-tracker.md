@@ -42,8 +42,9 @@ state and an honest public-alpha path.
   execution, V8 package execution smoke, release hardening, and CI validation remain open
   after MAIN1-12.
 - Public alpha docs/examples: at least one executable hello must run through the real
-  Sloppy toolchain, and the SQLite demo must either run through a real JS-native bridge or
-  be explicitly documented as deferred.
+  Sloppy toolchain. MAIN1-08 adds a real V8-gated SQLite JS-native bridge fixture, but the
+  public source-stdlib SQLite tutorial remains deferred until the compiler/source example
+  path can execute it honestly.
 - Request/app resource ownership: MAIN1-07 adds the fixed table and handle safety layer, and
   MAIN1-03 adds a minimal native request cleanup boundary, but provider handle wiring,
   leak reports, async request-scope retention, and debug lifecycle integration remain open.
@@ -76,6 +77,9 @@ state and an honest public-alpha path.
 - SQLite file database capability policy.
 - Docs examples executable path: replace static checks with Sloppy-run examples as soon as
   the runtime path exists.
+- Provider bridge layering watchlist: future PostgreSQL, SQL Server, or other native
+  bridges must add `src/engine/v8/intrinsics_<provider>.cc` modules and register through
+  `intrinsics.cc`; do not let `engine_v8.cc` become a provider-specific bridge file.
 - MAIN1-14 benchmark methodology hardening: release-only measured runs, local artifact
   policy, hardware/build metadata, trend policy, and no external comparisons until
   comparable paths exist.

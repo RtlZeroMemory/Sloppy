@@ -314,7 +314,12 @@ else()
 endif()
 
 if(SLOPPY_ENABLE_V8)
-    list(APPEND SLOPPY_CORE_SOURCES src/engine/v8/engine_v8.cc)
+    list(
+        APPEND
+        SLOPPY_CORE_SOURCES
+        src/engine/v8/engine_v8.cc
+        src/engine/v8/intrinsics.cc
+        src/engine/v8/intrinsics_sqlite.cc)
 endif()
 
 set(
@@ -881,6 +886,13 @@ if(SLOPPY_ENABLE_TESTS)
             sloppy.run.once_request_context
             PROPERTIES PASS_REGULAR_EXPRESSION
                        "\"id\":\"123\".*\"q\":\"abc\".*\"path\":\"/users/123\"")
+        add_test(
+            NAME sloppy.run.once_sqlite_bridge
+            COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
+                    tests/integration/execution/sqlite_bridge --once GET /sqlite
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(sloppy.run.once_sqlite_bridge
+                             PROPERTIES PASS_REGULAR_EXPRESSION "\"name\":\"Ada\"")
         add_test(
             NAME sloppy.run.once_invalid_descriptor
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts

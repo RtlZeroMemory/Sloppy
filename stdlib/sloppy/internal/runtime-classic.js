@@ -28,6 +28,97 @@
         return Object.freeze(descriptor);
     }
 
+    function requireSqliteBridge() {
+        const bridge = globalThis.__sloppy?.data?.sqlite;
+
+        if (bridge === undefined) {
+            throw new Error(`sloppy: sqlite provider native bridge unavailable
+
+Provider:
+  sqlite
+
+Operation:
+  open
+
+Reason:
+  The V8 runtime did not install SQLite intrinsics.`);
+        }
+
+        return bridge;
+    }
+
+    function sqliteClosedError(operation) {
+        return new Error(`sloppy: sqlite connection is closed
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}`);
+    }
+
+    function normalizeSqliteParams(params, operation) {
+        if (params === undefined) {
+            return [];
+        }
+
+        if (!Array.isArray(params)) {
+            throw new TypeError(`Sloppy sqlite.${operation} parameters must be an array.`);
+        }
+
+        return params;
+    }
+
+    function normalizeSqliteQuery(operation, sql, params) {
+        if (typeof sql !== "string" || sql.length === 0) {
+            throw new TypeError(`Sloppy sqlite.${operation} SQL must be a non-empty string.`);
+        }
+
+        return {
+            text: sql,
+            parameters: normalizeSqliteParams(params, operation),
+        };
+    }
+
+    function createSqliteConnection(bridge, handle) {
+        const state = {
+            closed: false,
+            handle,
+        };
+
+        function assertOpen(operation) {
+            if (state.closed) {
+                throw sqliteClosedError(operation);
+            }
+        }
+
+        return Object.freeze({
+            exec(sql, params) {
+                assertOpen("exec");
+                const query = normalizeSqliteQuery("exec", sql, params);
+                return bridge.exec(state.handle, query.text, query.parameters);
+            },
+            query(sql, params) {
+                assertOpen("query");
+                const query = normalizeSqliteQuery("query", sql, params);
+                return bridge.query(state.handle, query.text, query.parameters);
+            },
+            queryOne(sql, params) {
+                assertOpen("queryOne");
+                const query = normalizeSqliteQuery("queryOne", sql, params);
+                return bridge.queryOne(state.handle, query.text, query.parameters);
+            },
+            close() {
+                if (state.closed) {
+                    return;
+                }
+
+                bridge.close(state.handle);
+                state.closed = true;
+            },
+        });
+    }
+
     function normalizeProblem(problemOrMessage, status) {
         if (problemOrMessage === undefined) {
             return Object.freeze({ title: "Sloppy problem", status });
@@ -69,7 +160,24 @@
         },
     });
 
+    const data = Object.freeze({
+        sqlite: Object.freeze({
+            open(pathOrOptions) {
+                const databasePath =
+                    typeof pathOrOptions === "string" ? pathOrOptions : pathOrOptions?.path;
+
+                if (typeof databasePath !== "string" || databasePath.length === 0) {
+                    throw new TypeError("Sloppy sqlite.open path must be a non-empty string.");
+                }
+
+                const bridge = requireSqliteBridge();
+                return createSqliteConnection(bridge, bridge.open(databasePath));
+            },
+        }),
+    });
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
+        data,
     });
 })();

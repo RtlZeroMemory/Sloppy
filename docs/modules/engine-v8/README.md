@@ -58,6 +58,10 @@ Implemented now:
   safely with diagnostics.
 - Promise-returning and `async` handlers fail explicitly as unsupported instead of being
   treated as `[object Promise]` success.
+- the engine-owned resource table is available to V8-internal provider bridges;
+- provider-specific intrinsic modules are split out of `engine_v8.cc`. `intrinsics.cc`
+  aggregates bridge registration and `intrinsics_sqlite.cc` installs the SQLite bridge
+  under `__sloppy.data.sqlite`.
 
 Later scope:
 
@@ -75,6 +79,29 @@ draining policy beyond clear rejection, workers, inspector, snapshots, hot reloa
 compatibility, timers, fetch, fs, process/Buffer APIs, npm resolution, or package-manager
 behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and does not make
 this bridge a production server boundary.
+
+## Intrinsic Module Layout
+
+`src/engine/v8/engine_v8.cc` is the V8 engine core. It owns process/platform acquire,
+isolate/context lifetime, engine-neutral handler registration, source evaluation,
+owner-thread checks, and conversion between V8 handler return values and `SlEngineResult`.
+It must not grow provider-specific bridge implementations.
+
+Provider bridge code belongs in sibling V8 modules:
+
+- `engine_v8_internal.h` is a private header for files under `src/engine/v8/` only. It
+  defines the backend shape and exposes the engine-owned `SlResourceTable` to bridge
+  modules without leaking V8 or resource internals outside the directory.
+- `intrinsics.cc` is the aggregator that registers provider bridges into the private
+  `__sloppy.data` namespace.
+- `intrinsics_sqlite.cc` owns SQLite-specific argument validation, parameter conversion,
+  row materialization, resource-table lookup, cleanup callback, and native provider calls.
+
+Future PostgreSQL, SQL Server, and other native bridges should follow the same pattern:
+add an `intrinsics_<provider>.cc` file, register it from `intrinsics.cc`, keep public JS in
+the stdlib wrapper, and keep all V8/provider conversion code out of `engine_v8.cc`.
+Resource table ownership remains engine-level; provider modules only insert, lookup, and
+close their own resource kinds through the table.
 
 ## Public/Internal API
 
@@ -107,6 +134,9 @@ Current behavior:
 - `__sloppy_register_handler(id, handler)` exists only in the V8 runtime context and accepts
   a positive numeric handler ID plus a callable handler. Duplicate IDs, nonnumeric IDs, and
   non-callable handlers fail during app evaluation with deterministic V8 diagnostics;
+- `__sloppy.data.sqlite` exists only in the V8 runtime context and is installed by the
+  SQLite provider intrinsic module. It exposes internal open/exec/query/queryOne/close
+  callbacks used by the stdlib wrapper, not a public raw native API;
 - `sl_engine_validate_registered_handlers` checks that every plan handler ID was registered
   by generated app code before `sloppy run` starts serving or dispatching `--once`;
 - `sl_engine_call_registered_handler_with_context` dispatches by registered handler ID and
@@ -231,8 +261,8 @@ Future JS-native resource intrinsics must expose only opaque JS objects that car
 or provider addresses are forbidden as JS-visible handles. The bridge must validate the
 resource table entry's slot, generation, live state, and expected kind before provider code
 runs. Stale and wrong-kind handles must fail with deterministic resource diagnostics. The
-SQLite MAIN1-08 bridge is expected to consume the MAIN1-07 table rather than adding a
-V8-specific handle registry.
+SQLite MAIN1-08 bridge consumes the MAIN1-07 table from `intrinsics_sqlite.cc` rather than
+adding a V8-specific handle registry.
 
 Diagnostics produced by the V8 bridge are built through `SlDiagBuilder` in the engine
 arena. Exception message text, generated source names, hints, and bounded stack summaries

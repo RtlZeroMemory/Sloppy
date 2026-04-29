@@ -112,14 +112,17 @@ EPIC-16 adds the first real native SQLite provider boundary. It is a C/runtime p
 backed by the vcpkg `sqlite3` dependency and covers in-memory open/close, exec, query,
 queryOne, primitive parameter binding, transaction commit/rollback, and diagnostics in
 native tests. The JavaScript stdlib exposes `data.sqlite` as the intended public entry
-point, but stdlib-to-native database intrinsics, JS-visible resource IDs, compiler
-extraction, app-plan data provider emission, and HTTP/app-host runtime integration remain
+point. MAIN1-08 adds the first V8-gated stdlib-to-native SQLite bridge through safe
+resource IDs; non-V8/bootstrap contexts still fail honestly. Compiler extraction,
+app-plan data provider emission, and broader HTTP/app-host runtime integration remain
 future work.
 EPIC-17 and EPIC-18 add native PostgreSQL/libpq and SQL Server/ODBC provider boundaries.
 They cover native open/close, parameterized exec/query/queryOne, transactions, redaction
 diagnostics, tiny bounded pool skeletons, and env-gated live tests. The JavaScript stdlib
 exposes `data.postgres` and `data.sqlserver` metadata/open shapes, but JavaScript-to-native
-provider calls still fail honestly until runtime intrinsics and resource IDs exist.
+provider calls still fail honestly until their own V8 intrinsic modules and resource-kind
+integration exist. Provider bridge code belongs under `src/engine/v8/intrinsics_<provider>.cc`,
+registered through `intrinsics.cc`, not in `engine_v8.cc`.
 EPIC-19 adds metadata-only CLI introspection commands: `sloppy routes`, `sloppy doctor`,
 `sloppy audit`, and `sloppy openapi`. They read plan-compatible metadata fixtures/artifacts
 and do not compile apps, execute handlers, start HTTP, enter V8, or run live database
