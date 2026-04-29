@@ -88,6 +88,9 @@ Current behavior:
 - `SL_ENGINE_KIND_NONE` creates an arena-backed noop engine;
 - `sl_engine_destroy(NULL)` is allowed;
 - `sl_engine_destroy(engine)` is idempotent; double destroy is a no-op;
+- a wrong-thread destroy invalidates the public handle without entering V8. Later calls on
+  that handle return invalid-state lifecycle results, and an owner-thread destroy may still
+  release bridge-owned resources;
 - calls after destroy return `SL_STATUS_INVALID_STATE` with an engine lifecycle diagnostic
   where the API accepts `out_diag`;
 - `sl_engine_info` returns stable noop metadata for active noop engines;

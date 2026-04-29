@@ -86,7 +86,46 @@ static int test_wrong_thread_eval_fails_before_entering_v8(void)
     return 0;
 }
 
+static int test_wrong_thread_destroy_invalidates_handle_without_entering_v8(void)
+{
+    unsigned char engine_storage[8192];
+    SlArena engine_arena = {};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = nullptr;
+    SlEngineInfo info = {};
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == nullptr)
+    {
+        return 1;
+    }
+
+    std::thread worker([&]() { sl_engine_destroy(engine); });
+    worker.join();
+
+    if (expect_status(sl_engine_info(engine, &info), SL_STATUS_INVALID_STATE) != 0) {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 int main(void)
 {
-    return test_wrong_thread_eval_fails_before_entering_v8();
+    int result = test_wrong_thread_eval_fails_before_entering_v8();
+
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_wrong_thread_destroy_invalidates_handle_without_entering_v8();
+    if (result != 0) {
+        return 10 + result;
+    }
+
+    return 0;
 }

@@ -93,7 +93,9 @@ SlStatus sl_engine_create(const SlEngineOptions* options, SlArena* arena, SlEngi
  *
  * Destroy releases bridge-owned resources and marks the arena-owned handle inactive. The
  * handle storage remains arena-owned until the caller resets the arena, but all subsequent
- * operations on that handle return `SL_STATUS_INVALID_STATE`.
+ * operations on that handle return `SL_STATUS_INVALID_STATE`. A wrong-thread V8 destroy
+ * invalidates the handle without entering V8; tests and owners may call destroy again on
+ * the owner thread to release bridge resources.
  */
 void sl_engine_destroy(SlEngine* engine);
 

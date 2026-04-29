@@ -168,7 +168,7 @@ void sl_engine_destroy(SlEngine* engine)
     }
 
 #if defined(SLOPPY_ENABLE_V8_BRIDGE)
-    if (engine->active && engine->kind == SL_ENGINE_KIND_V8) {
+    if (engine->kind == SL_ENGINE_KIND_V8 && engine->backend != NULL) {
         sl_engine_v8_destroy(engine);
         return;
     }

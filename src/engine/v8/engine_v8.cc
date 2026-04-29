@@ -820,13 +820,15 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
 
 extern "C" void sl_engine_v8_destroy(SlEngine* engine)
 {
-    SlV8Engine* backend = sl_v8_backend(engine);
+    SlV8Engine* backend = nullptr;
 
     if (engine == nullptr) {
         return;
     }
 
+    backend = sl_v8_backend(engine);
     if (backend != nullptr && !sl_v8_on_owner_thread(backend)) {
+        engine->active = false;
         return;
     }
 
