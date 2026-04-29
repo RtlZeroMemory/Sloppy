@@ -24,6 +24,8 @@ The command emits:
 
 With a V8-enabled Sloppy build, run the artifacts through the dev-only MVP:
 
+From repository root:
+
 ```powershell
 .\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy --host 127.0.0.1 --port 5173
 ```

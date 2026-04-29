@@ -33,7 +33,7 @@ tooling.
 | EPIC-07 V8 Bridge Smoke | Mostly done | V8 SDK detection, isolated C ABI, noop engine, V8 classic-script smoke, function calls, and exception mapping exist behind an explicit V8-enabled build. Default gates do not validate V8. SDK distribution remains deferred. |
 | EPIC-08 Handwritten Artifact Execution | Mostly done | A V8-gated handwritten `app.plan.json` plus `app.js` smoke path invokes a numeric handler ID through the runtime-contract boundary. Compiler output, ESM module loading, HTTP contexts, and full result conversion remain deferred. |
 | EPIC-09 Event Loop / Concurrency Foundation | Mostly done | `SlLoop`, `SlAsync`, and inline `SlWorkerPool` skeletons exist with deterministic C tests. They are single-threaded/caller-backed skeletons, not libuv integration, real threads, V8 promises, cancellation, deadlines, or backpressure. |
-| EPIC-10 HTTP Router Foundation | Mostly done | Route pattern parser/matcher, complete-buffer HTTP/1 request-head parser through llhttp, libuv init smoke, and synthetic in-memory GET dispatch to handler ID exist. EPIC-22 adds a dev-only socket loop in the CLI, but streaming parser state, request body parsing, full response writer, request context, middleware, and production route table remain deferred. |
+| EPIC-10 HTTP Router Foundation | Mostly done | Route pattern parser/matcher, complete-buffer HTTP/1 request-head parser through llhttp, libuv init smoke, and synthetic in-memory GET dispatch to handler ID exist. EPIC-22 adds a dev-only socket loop in the CLI, but production-grade/server-ready streaming parser state, request body parsing, full response writer, request context, middleware, and production route table remain deferred. |
 | EPIC-11 Public TypeScript API Bootstrap | Mostly done | Bootstrap stdlib layout, `Results.text/json`, `Sloppy.create`, in-memory `app.mapGet`, names, static checks, and `examples/hello` exist. Bare `"sloppy"` import, compiler extraction, plan emission, runtime ESM loading, and `app.run` remain deferred. |
 | EPIC-12 App Host Foundation | Mostly done | `Sloppy.createBuilder`, `builder.build`, structural `app.freeze`, object config, memory logging, and string-token services exist in the bootstrap stdlib. Native app-host validation and request-scoped lifetimes remain deferred. |
 | EPIC-13 Developer Ergonomics Layer | Mostly done | Route groups, expanded `Results.*`, schema skeleton, metadata storage, and ergonomics examples exist as JavaScript-only bootstrap behavior. Automatic validation, OpenAPI schema generation, native response writing, and request binding remain deferred. |
@@ -157,9 +157,10 @@ synthetic GET dispatch to a numeric handler ID.
 
 Works now: complete-buffer parser and synthetic in-memory dispatch tests.
 
-Deferred: TCP server, streaming llhttp state, bodies, response writer, request context,
-route params in JS context, route table/trie or equivalent, precedence, query parsing,
-percent decoding, middleware, and public API integration.
+Deferred: production-grade TCP server / production socket loop, streaming llhttp state,
+bodies, response writer, request context, route params in JS context, route table/trie or
+equivalent, precedence, query parsing, percent decoding, middleware, and public API
+integration. A dev-only socket loop exists under EPIC-22.
 
 ### Public TypeScript API Bootstrap
 

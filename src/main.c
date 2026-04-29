@@ -281,6 +281,12 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
             sl_cli_write_cstr(stderr, "sloppy run: --artifacts requires a directory\n");
             return -1;
         }
+        if (out->artifacts_path != NULL || out->input_path != NULL) {
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy run: expected either --artifacts <dir> or one positional artifact path\n");
+            return -1;
+        }
         out->artifacts_path = argv[*index + 1];
         *index += 2;
         return 1;
@@ -317,8 +323,10 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
     }
 
     if (argv[*index][0] != '-') {
-        if (out->input_path != NULL) {
-            sl_cli_write_cstr(stderr, "sloppy run: expected only one input or artifact path\n");
+        if (out->input_path != NULL || out->artifacts_path != NULL) {
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy run: expected either --artifacts <dir> or one positional artifact path\n");
             return -1;
         }
         out->input_path = argv[*index];
@@ -435,13 +443,17 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     return 0;
 }
 
-static int sl_cli_read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)
+static int sl_read_file_with_messages(const char* path, unsigned char* buffer, size_t capacity,
+                                      SlBytes* out, const char* not_found_prefix,
+                                      const char* size_prefix)
 {
     FILE* file = NULL;
     long size = 0L;
     size_t bytes_read = 0U;
 
-    if (path == NULL || buffer == NULL || out == NULL) {
+    if (path == NULL || buffer == NULL || out == NULL || not_found_prefix == NULL ||
+        size_prefix == NULL)
+    {
         return 1;
     }
 
@@ -454,7 +466,7 @@ static int sl_cli_read_file(const char* path, unsigned char* buffer, size_t capa
 #endif
 
     if (file == NULL) {
-        sl_cli_write_error_with_value("sloppy: metadata path not found: ", path, "\n");
+        sl_cli_write_error_with_value(not_found_prefix, path, "\n");
         return 1;
     }
 
@@ -466,7 +478,7 @@ static int sl_cli_read_file(const char* path, unsigned char* buffer, size_t capa
     size = ftell(file);
     if (size <= 0L || (size_t)size > capacity) {
         (void)fclose(file);
-        sl_cli_write_error_with_value("sloppy: metadata file is empty or too large: ", path, "\n");
+        sl_cli_write_error_with_value(size_prefix, path, "\n");
         return 1;
     }
 
@@ -483,6 +495,13 @@ static int sl_cli_read_file(const char* path, unsigned char* buffer, size_t capa
 
     *out = sl_bytes_from_parts(buffer, bytes_read);
     return 0;
+}
+
+static int sl_cli_read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)
+{
+    return sl_read_file_with_messages(
+        path, buffer, capacity, out,
+        "sloppy: metadata path not found: ", "sloppy: metadata file is empty or too large: ");
 }
 
 static bool sl_cli_write_span(FILE* file, SlCliSpan span)
@@ -972,6 +991,44 @@ static bool sl_run_span_ends_with(SlCliSpan span, const char* suffix)
     return memcmp(span.ptr + span.length - suffix_length, suffix, suffix_length) == 0;
 }
 
+static bool sl_run_path_component_is_safe(SlCliSpan component)
+{
+    if (component.length == 0U) {
+        return false;
+    }
+    if (component.length == 1U && component.ptr[0] == '.') {
+        return false;
+    }
+    return !(component.length == 2U && component.ptr[0] == '.' && component.ptr[1] == '.');
+}
+
+static bool sl_run_relative_artifact_path_is_safe(SlCliSpan leaf)
+{
+    size_t index = 0U;
+    size_t component_start = 0U;
+
+    if (leaf.ptr == NULL || leaf.length == 0U || leaf.ptr[0] == '/' || leaf.ptr[0] == '\\') {
+        return false;
+    }
+
+    for (index = 0U; index < leaf.length; index += 1U) {
+        char ch = leaf.ptr[index];
+        if (ch == ':') {
+            return false;
+        }
+        if (ch == '/' || ch == '\\') {
+            SlCliSpan component = {leaf.ptr + component_start, index - component_start};
+            if (!sl_run_path_component_is_safe(component)) {
+                return false;
+            }
+            component_start = index + 1U;
+        }
+    }
+
+    return sl_run_path_component_is_safe(
+        (SlCliSpan){leaf.ptr + component_start, leaf.length - component_start});
+}
+
 static bool sl_run_join_path(char* buffer, size_t capacity, const char* dir, SlCliSpan leaf)
 {
     size_t dir_length = 0U;
@@ -983,13 +1040,8 @@ static bool sl_run_join_path(char* buffer, size_t capacity, const char* dir, SlC
         return false;
     }
 
-    if (leaf.ptr[0] == '/' || leaf.ptr[0] == '\\') {
+    if (!sl_run_relative_artifact_path_is_safe(leaf)) {
         return false;
-    }
-    for (index = 0U; index < leaf.length; index += 1U) {
-        if (leaf.ptr[index] == ':') {
-            return false;
-        }
     }
 
     dir_length = strlen(dir);
@@ -1036,53 +1088,9 @@ static bool sl_run_artifact_file_path(char* buffer, size_t capacity, const char*
 
 static int sl_run_read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)
 {
-    FILE* file = NULL;
-    long size = 0L;
-    size_t bytes_read = 0U;
-
-    if (path == NULL || buffer == NULL || out == NULL) {
-        return 1;
-    }
-
-#ifdef _MSC_VER
-    if (fopen_s(&file, path, "rb") != 0) {
-        file = NULL;
-    }
-#else
-    file = fopen(path, "rb");
-#endif
-
-    if (file == NULL) {
-        sl_cli_write_error_with_value("sloppy run: artifact path not found: ", path, "\n");
-        return 1;
-    }
-
-    if (fseek(file, 0L, SEEK_END) != 0) {
-        (void)fclose(file);
-        return 1;
-    }
-
-    size = ftell(file);
-    if (size <= 0L || (size_t)size > capacity) {
-        (void)fclose(file);
-        sl_cli_write_error_with_value("sloppy run: artifact file is empty or too large: ", path,
-                                      "\n");
-        return 1;
-    }
-
-    if (fseek(file, 0L, SEEK_SET) != 0) {
-        (void)fclose(file);
-        return 1;
-    }
-
-    bytes_read = fread(buffer, 1U, (size_t)size, file);
-    (void)fclose(file);
-    if (bytes_read != (size_t)size) {
-        return 1;
-    }
-
-    *out = sl_bytes_from_parts(buffer, bytes_read);
-    return 0;
+    return sl_read_file_with_messages(path, buffer, capacity, out,
+                                      "sloppy run: artifact path not found: ",
+                                      "sloppy run: artifact file is empty or too large: ");
 }
 
 static void sl_run_print_diag(const char* prefix, const SlDiag* diag)
@@ -1714,6 +1722,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
     SlRunServer server = {0};
     struct sockaddr_in address;
     int rc = 0;
+    bool listener_initialized = false;
 
     server.app = app;
     rc = uv_loop_init(&server.loop);
@@ -1731,6 +1740,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
 
     rc = uv_tcp_init(&server.loop, &server.listener);
     if (rc == 0) {
+        listener_initialized = true;
         server.listener.data = &server;
         rc = uv_tcp_bind(&server.listener, (const struct sockaddr*)&address, 0U);
     }
@@ -1740,8 +1750,10 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
 
     if (rc != 0) {
         sl_cli_write_cstr(stderr, "sloppy run: failed to listen on requested host/port\n");
-        uv_close((uv_handle_t*)&server.listener, NULL);
-        (void)uv_run(&server.loop, UV_RUN_DEFAULT);
+        if (listener_initialized) {
+            uv_close((uv_handle_t*)&server.listener, NULL);
+            (void)uv_run(&server.loop, UV_RUN_DEFAULT);
+        }
         (void)uv_loop_close(&server.loop);
         return 1;
     }

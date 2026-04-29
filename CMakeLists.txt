@@ -731,6 +731,26 @@ if(SLOPPY_ENABLE_TESTS)
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.run.malformed_plan PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
+    add_test(
+        NAME sloppy.run.invalid_bundle_path
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/invalid-bundle-path;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=invalid bundle path in app.plan.json" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.invalid_bundle_path
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.run.rejects_mixed_artifact_inputs
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;extra;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=expected either --artifacts <dir> or one positional artifact path"
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.rejects_mixed_artifact_inputs
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
     if(NOT SLOPPY_ENABLE_V8)
         add_test(
             NAME sloppy.run.v8_disabled_is_clear

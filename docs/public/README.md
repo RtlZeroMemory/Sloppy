@@ -1,7 +1,7 @@
 # Public Documentation
 
-Status: Bootstrap app-host, module, data facade, metadata CLI, native provider foundations,
-compiler extraction, and dev-only artifact execution implemented.
+Status (MVP): Bootstrap app-host, module, data facade, metadata CLI, native provider
+foundations, compiler extraction, and dev-only artifact execution implemented.
 
 This directory is for user/developer-facing documentation: how people will use Sloppy to
 build applications. It is distinct from internal architecture/spec docs under `docs/`.
