@@ -14,6 +14,8 @@ Compiler status: `sloppyc build` can extract one tiny app from either `Sloppy.cr
 `app.js`, and placeholder `app.js.map` artifacts. The compiler MVP supports only literal
 `mapGet` routes and simple route groups. It does not execute the bootstrap app object,
 extract modules/services/data providers, or run `app.run`.
+See `docs/compiler-supported-syntax.md` for the exact supported and rejected compiler
+source matrix.
 
 Runtime status: `sloppy run --artifacts <dir>` can load EPIC-21/24 artifacts in a
 V8-enabled build, load the classic bootstrap runtime asset, evaluate the generated

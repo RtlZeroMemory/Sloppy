@@ -1,0 +1,2 @@
+<compiler>/tests/fixtures/unsupported-http-method/input.js:5:1: SLOPPYC_E_UNSUPPORTED_HTTP_METHOD: only app.mapGet(...) route extraction is supported
+hint: Non-GET methods are deferred from the compiler extraction MVP.

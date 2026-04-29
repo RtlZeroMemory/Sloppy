@@ -1,1 +1,2 @@
-SLOPPYC_E_MISSING_APP
+<compiler>/tests/fixtures/missing-app/input.js: SLOPPYC_E_MISSING_APP: input must export one app as default
+hint: End the file with: export default app;

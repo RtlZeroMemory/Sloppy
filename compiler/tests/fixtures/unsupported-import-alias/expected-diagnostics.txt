@@ -1,1 +1,2 @@
-SLOPPYC_E_UNSUPPORTED_IMPORT
+<compiler>/tests/fixtures/unsupported-import-alias/input.js: SLOPPYC_E_UNSUPPORTED_IMPORT: input must import Sloppy and Results from "sloppy" without aliases
+hint: Import without aliases: import { Sloppy, Results } from "sloppy";

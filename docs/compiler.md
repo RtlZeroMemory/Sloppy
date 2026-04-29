@@ -26,6 +26,9 @@ The compiler extraction MVP does not:
 - implement Node/npm package resolution, arbitrary import graphs, or runtime module loading;
 - expose Rust/C FFI.
 
+For the exact MAIN1-01 supported and rejected source shapes, see
+[`docs/compiler-supported-syntax.md`](compiler-supported-syntax.md).
+
 ## Current Phase
 
 `compiler/` contains the EPIC-21 compiler extraction MVP. `sloppyc build <input.js> --out
@@ -280,7 +283,12 @@ Golden tests cover:
 - `hello-mapget`;
 - `builder-mapget`;
 - `grouped-route`;
+- `results-json`;
+- `function-handler`;
 - unsupported dynamic route diagnostics;
+- unsupported computed route method diagnostics;
+- loop and conditional route registration diagnostics;
+- arbitrary bare import and Node import diagnostics;
 - missing app/default export diagnostics;
 - multiple app diagnostics;
 - deterministic generated `app.plan.json` and `app.js`.
