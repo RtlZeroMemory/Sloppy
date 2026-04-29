@@ -21,19 +21,21 @@ state and an honest public-alpha path.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
   maps, Promise/microtask policy, owner-thread enforcement, and executable public examples
   through the final bootstrap module shape remain open.
-- V8 runtime bundling hardening: EPIC-25 documents the SDK/runtime split and excludes SDK
+- MAIN1-12 package/CI hardening: EPIC-25 documents the SDK/runtime split and excludes SDK
   headers/libs from packages, but exact dynamic runtime file lists, hosted prebuilt SDK
-  source, and V8-enabled package validation remain open.
+  source, V8-enabled package validation, and package CI evidence remain open.
 - Capability enforcement: declared capabilities must gate provider/filesystem/network
   access before public docs imply a security model.
-- Live DB test infrastructure for PostgreSQL and SQL Server: opt-in local env vars are not
-  enough for release confidence.
+- Live provider service testing: opt-in local PostgreSQL and SQL Server environment
+  variables are not enough for release confidence, and default gates must continue to
+  report skipped live services honestly until explicit service jobs exist.
 - Cross-platform CI hardening: default Linux clang/gcc, macOS clang, Windows clang-cl, and
   explicit V8/provider-gated reporting exist; remaining work is V8 SDK cache/prebuilt
   setup, optional live provider service jobs, sanitizer/fuzz jobs, and package smoke.
 - Cross-platform release validation: EPIC-25 adds local Windows ZIP tooling, Unix TAR
-  tooling, checksums, and outside-checkout ZIP smoke, but Linux/macOS package execution and
-  CI validation remain open.
+  tooling, checksums, and outside-checkout ZIP smoke, but Linux/macOS package execution,
+  V8 runtime packaging evidence, release hardening, and CI validation remain open under
+  MAIN1-12.
 - Public alpha docs/examples: at least one executable hello must run through the real
   Sloppy toolchain, and the SQLite demo must either run through a real JS-native bridge or
   be explicitly documented as deferred.
@@ -61,8 +63,9 @@ state and an honest public-alpha path.
 - SQLite file database capability policy.
 - Docs examples executable path: replace static checks with Sloppy-run examples as soon as
   the runtime path exists.
-- Benchmark methodology hardening: release-only measured runs, local artifact policy,
-  hardware/build metadata, and no external comparisons until comparable paths exist.
+- MAIN1-14 benchmark methodology hardening: release-only measured runs, local artifact
+  policy, hardware/build metadata, trend policy, and no external comparisons until
+  comparable paths exist.
 - GitHub issue cleanup: close implemented child/parent issues, relabel deferred follow-ups,
   and create only deduped MAIN/MAIN.1 issues after the roadmap and cleanup plan are
   approved. EPIC-21 through EPIC-26 implementation issues should not be recreated.
