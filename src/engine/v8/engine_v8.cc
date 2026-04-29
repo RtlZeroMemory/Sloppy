@@ -1010,6 +1010,10 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
         SlBytes bytes = {nullptr, 0U};
         SlStatus status;
 
+        if (body->IsUndefined()) {
+            body = v8::Null(isolate);
+        }
+
         if (!sl_v8_stringify_json(isolate, context, body, &json)) {
             return sl_v8_write_diag(
                 engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,

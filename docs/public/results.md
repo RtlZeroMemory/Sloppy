@@ -82,6 +82,8 @@ Both helpers accept `options.status`; status must be an integer from 100 to 999 
 defaults to each helper's documented default. `Results.text` and `Results.html` store
 `String(body)`. `Results.json` and JSON-shaped status helpers preserve the provided
 JavaScript value as `body`; the descriptor is frozen, but object values are not deep-frozen.
+In the dev-only EPIC-23 V8 response conversion path, omitted or `undefined` JSON-shaped
+descriptor bodies serialize deterministically as JSON `null`.
 `options.headers` may be a plain object and is shallow-copied/frozen as descriptor metadata.
 There is no header normalization class.
 
@@ -90,7 +92,8 @@ Implemented in the dev run path now:
 - `text`, `json`, `ok`, `noContent`, and `problem` descriptors;
 - `400`, `404`, `405`, `500`, `200`, `201`, `202`, and `204` response status writing;
 - JSON body serialization through V8 `JSON.stringify` for JSON/problem descriptors;
-- `204` responses with no body and `Content-Length: 0`;
+- omitted or `undefined` JSON/problem descriptor bodies serialized as `null`;
+- `204` responses with no body and no `Content-Length`;
 - Content-Type CR/LF rejection before bytes are written.
 
 Unsupported result descriptor kinds fail safely with a dev `500` response. `Results.html`,
