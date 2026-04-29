@@ -54,28 +54,29 @@ The compiler MVP example lives at `examples/compiler-hello/` and uses the suppor
 `"sloppy"` input shape:
 
 ```powershell
-cargo run --manifest-path compiler/Cargo.toml -- build examples/compiler-hello/app.js --out .sloppy
+cargo run --manifest-path compiler/Cargo.toml -- build examples/compiler-hello/app.js --out .sloppy-main-smoke
 ```
 
-The same supported MAIN hello path can be exercised with the installed/fronted `sloppyc`
-binary when it is available:
+The same supported MAIN hello path can be exercised with an installed `sloppyc` binary
+when it is available:
 
 ```powershell
 sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
 sloppy run --artifacts .sloppy-main-smoke --once GET /
 ```
 
-That command emits `.sloppy/app.plan.json`, `.sloppy/app.js`, and `.sloppy/app.js.map`.
-With a V8-enabled build, those artifacts can be served by the dev-only run MVP:
+The build command emits `.sloppy-main-smoke/app.plan.json`,
+`.sloppy-main-smoke/app.js`, and `.sloppy-main-smoke/app.js.map`. With a V8-enabled
+build, those artifacts can be served by the dev-only run MVP:
 
 ```powershell
-.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy --host 127.0.0.1 --port 5173
+.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy-main-smoke --host 127.0.0.1 --port 5173
 ```
 
 For deterministic smoke tests without opening a socket:
 
 ```powershell
-.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy --once GET /
+.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy-main-smoke --once GET /
 ```
 
 `sloppy run` requires V8, loads prebuilt artifacts only in this MVP, and is not a
