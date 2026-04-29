@@ -796,6 +796,16 @@ if(SLOPPY_ENABLE_TESTS)
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
+        NAME sloppy.run.too_many_routes
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/too-many-routes;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=contains more GET routes than the dev runtime can materialize"
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.too_many_routes
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
         NAME sloppy.run.version_mismatch
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"

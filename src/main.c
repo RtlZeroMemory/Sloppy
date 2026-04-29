@@ -1390,6 +1390,12 @@ static int sl_run_prepare_routes(SlRunApp* app)
             continue;
         }
 
+        if (count >= SL_CLI_MAX_ROUTES) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json contains more GET routes than the "
+                                      "dev runtime can materialize\n");
+            return 1;
+        }
+
         status = sl_plan_find_handler_by_id(&app->plan, route->handler_id, &handler);
         if (!sl_status_is_ok(status)) {
             sl_cli_write_cstr(stderr,

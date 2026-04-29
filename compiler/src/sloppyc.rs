@@ -848,12 +848,15 @@ fn route_segment_supported(segment: &str) -> bool {
         return false;
     }
     if !(segment.starts_with('{') || segment.ends_with('}')) {
-        return true;
+        return !segment.contains('{') && !segment.contains('}');
     }
     if !segment.starts_with('{') || !segment.ends_with('}') {
         return false;
     }
     let inner = &segment[1..segment.len() - 1];
+    if inner.contains('{') || inner.contains('}') {
+        return false;
+    }
     let (name, kind) = inner.split_once(':').unwrap_or((inner, "str"));
     !name.is_empty()
         && name
@@ -1686,7 +1689,7 @@ impl AstSpan for Expression<'_> {
 mod tests {
     use std::{ffi::OsString, fs};
 
-    use super::{command_from_args, extract, CliCommand};
+    use super::{command_from_args, extract, route_pattern_supported, CliCommand};
 
     #[test]
     fn no_argument_prints_help() {
@@ -1735,6 +1738,13 @@ export default app;
             diagnostic.code,
             "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
         );
+    }
+
+    #[test]
+    fn rejects_static_route_segments_with_stray_braces() {
+        assert!(!route_pattern_supported("/foo{bar"));
+        assert!(!route_pattern_supported("/a}b"));
+        assert!(!route_pattern_supported("/{id{slug}}"));
     }
 
     #[test]
