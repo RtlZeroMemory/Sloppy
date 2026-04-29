@@ -802,6 +802,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         v8::HandleScope handle_scope(backend->isolate);
         backend->isolate->SetData(0, backend);
         v8::Local<v8::Context> context = v8::Context::New(backend->isolate);
+        v8::Context::Scope context_scope(context);
         if (!sl_v8_install_intrinsics(backend->isolate, context)) {
             backend->isolate->SetData(0, nullptr);
             backend->isolate->Dispose();

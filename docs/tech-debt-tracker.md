@@ -35,8 +35,9 @@ state and an honest public-alpha path.
   separate skipped CTest gates make reporting honest, but hosted service jobs are still
   needed for release confidence.
 - Cross-platform CI hardening: default Linux clang/gcc, macOS clang, Windows clang-cl, and
-  explicit V8/provider-gated reporting exist; remaining work is V8 SDK cache/prebuilt
-  setup, optional live provider service jobs, sanitizer/fuzz jobs, and package smoke.
+  explicit V8/provider-gated reporting exist; local V8 SDK discovery is centralized through
+  the Windows resolver, but hosted prebuilt SDK/cache setup, optional live provider service
+  jobs, sanitizer/fuzz jobs, and package smoke remain open.
 - Cross-platform release validation: local Windows ZIP tooling, Unix TAR tooling,
   checksums, and outside-checkout package smoke exist, but hosted Linux/macOS package
   execution, V8 package execution smoke, release hardening, and CI validation remain open

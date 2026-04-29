@@ -183,13 +183,20 @@ Build options:
 
 - `SLOPPY_ENABLE_V8` defaults to `OFF`.
 - `SLOPPY_ENGINE` defaults to `none`; `SLOPPY_ENGINE=v8` also enables the V8 SDK gate.
-- `SLOPPY_V8_ROOT` is required only when V8 is enabled.
+- `SLOPPY_V8_ROOT` is an explicit SDK-root override for V8-enabled builds.
+- `SLOPPY_V8_SDK_HINTS` is an optional path-list of portable SDK/cache roots for local
+  discovery.
 
 When V8 is disabled, configure prints `V8 bridge: disabled` and normal configure/build/test
 gates continue without a V8 SDK. Required CI uses this default non-V8 path.
 
-When V8 is enabled and `SLOPPY_V8_ROOT` is empty or invalid, CMake configure fails before
-any bridge code is compiled. When the SDK is valid, CMake compiles the V8 engine core plus
+When V8 is enabled through the Windows wrapper, `tools/windows/v8-sdk.ps1` resolves and
+validates the SDK from `-V8Root`, `SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, this worktree's
+`.sdeps/v8/windows-x64`, or the same path in registered git worktrees. The wrapper passes
+the resolved SDK root into CMake as `SLOPPY_V8_ROOT`. Direct CMake users must pass
+`-DSLOPPY_V8_ROOT=<sdk-root>` themselves. When the SDK root is empty or invalid, CMake
+configure fails before any bridge code is compiled. When the SDK is valid, CMake compiles
+the V8 engine core plus
 provider intrinsic modules under `src/engine/v8/`, links them only to the V8-enabled core
 target, and registers the `engine.v8.smoke`, `engine.v8.owner_thread`, and
 `execution.handwritten_artifact` tests. Provider bridges must be added as
@@ -200,12 +207,12 @@ Contributor path:
 
 - use verified prebuilt V8 SDK artifacts;
 - fetch through `tools/windows/fetch-v8.ps1` later;
-- validate an existing SDK root with
-  `.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>`;
+- discover and validate an existing SDK with `.\tools\windows\resolve-v8-sdk.ps1`;
+- validate the resolved SDK layout with `.\tools\windows\fetch-v8.ps1 -ValidateOnly`;
 - configure through the Windows wrapper with
-  `.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root <sdk-root>`;
+  `.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8`;
 - use direct CMake only from a shell that already has MSVC, the Windows SDK, and vcpkg
-  configured;
+  configured and passes `-DSLOPPY_V8_ROOT=<sdk-root>`;
 - do not build V8 locally by default.
 
 Maintainer path:
@@ -244,6 +251,11 @@ The Windows `dev.ps1` wrapper is the supported local configure path. It imports 
 Studio C++ environment, injects the vcpkg toolchain on fresh configure, and recreates a
 preset build directory when a stale partial CMake cache was created without that toolchain.
 Use `-FreshConfigure` when a preset should be deliberately rebuilt from scratch.
+
+`tools/windows/v8-sdk.ps1` is the shared resolver/validator for V8 SDK layout and manifest
+checks. `dev.ps1`, `fetch-v8.ps1`, `resolve-v8-sdk.ps1`, and V8-runtime packaging use that
+helper so fresh worktrees and parallel Codex worktrees use the same discovery behavior.
+New tooling must dot-source this helper rather than cloning local-path logic.
 
 The CMake gate validates both SDK layout and `share/sloppy-v8-sdk.json` before creating
 `Sloppy::V8` as an imported interface target. The manifest must match the pinned V8
@@ -293,6 +305,8 @@ tools/
     bootstrap.ps1
     dev.ps1
     fetch-v8.ps1
+    resolve-v8-sdk.ps1
+    v8-sdk.ps1
     build-v8.ps1
     package.ps1
     test-package.ps1

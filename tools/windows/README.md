@@ -17,6 +17,31 @@ needed:
 
 The root `tools/*.ps1` files forward here for compatibility.
 
+## V8 SDK Discovery
+
+V8 is optional for the default developer loop. When a V8-enabled build is needed, use the
+shared resolver instead of hard-coding one local path:
+
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+```
+
+The resolver checks, in order, an explicit `-V8Root`, `SLOPPY_V8_ROOT`,
+`SLOPPY_V8_SDK_HINTS`, this worktree's `.sdeps/v8/windows-x64`, and the same `.sdeps`
+location in registered git worktrees. `SLOPPY_V8_SDK_HINTS` is a path-list environment
+variable separated by the platform path separator, so agents can point at portable cache
+roots without baking machine-local paths into docs or PRs.
+
+Validation uses the same helper:
+
+```powershell
+.\tools\windows\fetch-v8.ps1 -ValidateOnly
+```
+
+`fetch-v8.ps1` still downloads nothing; it validates or explains the expected SDK layout.
+Maintainers can build and package a local SDK with `build-v8.ps1`.
+
 Experimental local packaging lives here too:
 
 ```powershell

@@ -15,6 +15,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "msvc-env.ps1")
+. (Join-Path $PSScriptRoot "v8-sdk.ps1")
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $PackageOutputRoot = if ([System.IO.Path]::IsPathRooted($OutputDir)) {
@@ -242,13 +243,7 @@ if ($IncludeExamples) {
 
 $containsV8Runtime = $false
 if ($IncludeV8Runtime) {
-    $resolvedV8Root = $V8Root
-    if ([string]::IsNullOrWhiteSpace($resolvedV8Root)) {
-        $resolvedV8Root = $env:SLOPPY_V8_ROOT
-    }
-    if ([string]::IsNullOrWhiteSpace($resolvedV8Root)) {
-        throw "-IncludeV8Runtime requires -V8Root or SLOPPY_V8_ROOT."
-    }
+    $resolvedV8Root = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -Require
 
     $v8Bin = Join-Path $resolvedV8Root "bin"
     if (-not (Test-Path -LiteralPath $v8Bin -PathType Container)) {

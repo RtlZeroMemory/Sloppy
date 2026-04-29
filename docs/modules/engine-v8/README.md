@@ -25,9 +25,11 @@ Host V8 behind an isolated C++ bridge without leaking V8 types into the C runtim
 Implemented now:
 
 - explicit CMake opt-in for V8 SDK validation;
-- `SLOPPY_V8_ROOT` cache path;
+- shared Windows V8 SDK discovery through `tools/windows/v8-sdk.ps1`;
+- `SLOPPY_V8_ROOT` and `SLOPPY_V8_SDK_HINTS` override paths;
 - imported `Sloppy::V8` interface target after SDK validation succeeds;
-- Windows helper validation through `tools/windows/fetch-v8.ps1 -ValidateOnly`.
+- Windows helper validation through `tools/windows/resolve-v8-sdk.ps1` and
+  `tools/windows/fetch-v8.ps1 -ValidateOnly`.
 - `include/sloppy/engine.h` with opaque `SlEngine`;
 - `SlEngineOptions`, `SlEngineInfo`, and explicit engine kind values;
 - create/destroy/info lifecycle shape;
@@ -162,8 +164,10 @@ Build options:
 
 - `SLOPPY_ENABLE_V8` defaults to `OFF`. Setting it to `ON` enables the V8 SDK gate.
 - `SLOPPY_ENGINE` defaults to `none`. Setting it to `v8` also enables the V8 SDK gate.
-- `SLOPPY_V8_ROOT` points to a prebuilt V8 SDK root and is required only when V8 is
-  enabled.
+- `SLOPPY_V8_ROOT` points to a prebuilt V8 SDK root when an explicit shell-local override
+  is needed. The Windows wrapper can also discover `.sdeps/v8/windows-x64` in this
+  worktree or another registered git worktree, and can search additional roots from
+  `SLOPPY_V8_SDK_HINTS`.
 
 Default foundation builds and CI do not require V8.
 
@@ -199,13 +203,28 @@ diagnostic test; do not describe default gates as V8 execution evidence.
 On Windows, prefer the repo wrapper instead of direct `cmake`:
 
 ```powershell
-.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root <sdk-root>
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
 ```
 
 The wrapper imports the Visual Studio C++ environment, keeps vcpkg attached on fresh
 configure, and recreates a preset build directory if an earlier direct `cmake` attempt left
 a stale cache without the vcpkg toolchain. Direct `cmake --preset` remains available for
 custom automation, but that caller owns the MSVC, Windows SDK, and vcpkg environment.
+Direct CMake callers must pass `-DSLOPPY_V8_ROOT=<sdk-root>` themselves; automatic
+worktree discovery is a Windows script feature.
+
+SDK discovery order for Windows scripts is:
+
+1. command-line `-V8Root`;
+2. `SLOPPY_V8_ROOT`;
+3. `SLOPPY_V8_SDK_HINTS`, split by the platform path separator;
+4. this worktree's `.sdeps/v8/windows-x64`;
+5. `.sdeps/v8/windows-x64` in registered git worktrees.
+
+`tools/windows/v8-sdk.ps1` is the single helper for V8 SDK manifest/layout validation and
+path resolution. New scripts must dot-source it instead of reimplementing their own
+`SLOPPY_V8_ROOT` checks.
 
 ## Module Loading Strategy
 
@@ -388,8 +407,8 @@ Current checks:
 - default non-V8 configure/build/test gates;
 - V8-enabled configure fails during CMake configure when `SLOPPY_V8_ROOT` is empty or
   invalid;
-- `tools/windows/fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>` reports missing layout
-  pieces;
+- `tools/windows/fetch-v8.ps1 -ValidateOnly` reports missing layout pieces for the
+  resolved SDK, and `-V8Root <sdk-root>` can still validate an explicit override;
 - C standards scanner rejects V8 headers and `v8::` references outside `src/engine/v8/`.
 - `core.resource.lifecycle` covers the V8-independent resource ID/table lifecycle that
   future JS-native handle intrinsics must use.

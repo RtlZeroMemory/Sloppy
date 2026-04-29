@@ -56,8 +56,16 @@ std::string sqlite_v8_diag_to_string(const char* fallback, const SlDiag& diag)
 
 void sqlite_v8_throw_type_error(v8::Isolate* isolate, const char* message)
 {
-    isolate->ThrowException(
-        v8::Exception::TypeError(v8::String::NewFromUtf8Literal(isolate, message)));
+    v8::Local<v8::String> local_message;
+    if (!sl_status_is_ok(
+            sqlite_v8_to_local_string(isolate, sl_str_from_cstr(message), &local_message)))
+    {
+        isolate->ThrowException(v8::Exception::TypeError(
+            v8::String::NewFromUtf8Literal(isolate, "Sloppy native type error")));
+        return;
+    }
+
+    isolate->ThrowException(v8::Exception::TypeError(local_message));
 }
 
 void sqlite_v8_throw_error(v8::Isolate* isolate, const std::string& message)
@@ -140,8 +148,9 @@ bool sqlite_v8_make_resource_handle(v8::Isolate* isolate, v8::Local<v8::Context>
         !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key)) ||
         !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr("sqlite.connection"),
                                                    &kind_value)) ||
-        !handle->Set(context, slot_key, v8::Uint32::New(isolate, id.slot)).FromMaybe(false) ||
-        !handle->Set(context, generation_key, v8::Uint32::New(isolate, id.generation))
+        !handle->Set(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot))
+             .FromMaybe(false) ||
+        !handle->Set(context, generation_key, v8::Integer::NewFromUnsigned(isolate, id.generation))
              .FromMaybe(false) ||
         !handle->Set(context, kind_key, kind_value).FromMaybe(false))
     {

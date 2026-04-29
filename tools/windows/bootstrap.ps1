@@ -101,4 +101,6 @@ if (-not ($hasCHeader -and $hasKernelLib -and $hasRuntimeLib)) {
 }
 
 Write-Host "vcpkg manifest mode is required for C dependencies such as yyjson."
-Write-Host "V8 remains optional. Use tools/windows/build-v8.ps1 for maintainer source builds or tools/windows/fetch-v8.ps1 -ValidateOnly for an existing SDK."
+Write-Host "V8 remains optional. Use tools/windows/resolve-v8-sdk.ps1 to discover an existing SDK,"
+Write-Host "tools/windows/fetch-v8.ps1 -ValidateOnly to validate one, or tools/windows/build-v8.ps1"
+Write-Host "for maintainer source builds."

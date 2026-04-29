@@ -190,6 +190,20 @@ diagnostics, duplicate handler registration diagnostics, intrinsic misuse diagno
 compiler rejection of unsupported bare imports. Default non-V8 tests still do not prove the
 V8 bootstrap path passed; V8 configure/build/CTest must be run and reported separately.
 
+Local V8 test setup should use the shared SDK resolver:
+
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
+
+The resolver searches `-V8Root`, `SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, and
+`.sdeps/v8/windows-x64` in this and other registered git worktrees. Prefer that command in
+fresh Codex worktrees so optional V8 evidence is reproducible without machine-local paths.
+Direct CMake callers remain responsible for passing `-DSLOPPY_V8_ROOT=<sdk-root>`.
+
 ## Future Phase
 
 Testing expands with each implementation epic. No feature story should land without either
