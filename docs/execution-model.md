@@ -37,8 +37,8 @@ This document does not implement:
 
 ## Current Phase
 
-`sloppyc` now has an EPIC-21 compiler extraction MVP. It can compile one tiny supported
-Sloppy source file into deterministic `app.plan.json`, `app.js`, and placeholder
+`sloppyc` now has the ENGINE-02 compiler/Plan pipeline. It can compile a supported
+single-file Sloppy app into deterministic `app.plan.json`, `app.js`, and real handler-line
 `app.js.map` artifacts. The execution model beyond artifact emission is still staged. The
 engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call shapes.
 The noop backend is always available. A V8-enabled build can run the TASK 07.C smoke path:
@@ -125,11 +125,13 @@ app.mapGet("/", () => Results.text("Hello from Sloppy"));
 export default app;
 ```
 
-The MVP also supports `Sloppy.createBuilder()` plus `builder.build()`, simple
-`app.mapGroup(prefix)` variables, literal grouped `mapGet` routes, `.withName(...)`, and
-handlers returning `Results.text(...)` or `Results.json(...)`. It does not implement full
-TypeScript checking, Node/npm package resolution, bundling, module extraction,
-services/data providers, source-input `sloppy run`, or `app.run`.
+ENGINE-02 supports `Sloppy.createBuilder()` plus `builder.build()`, simple
+`app.mapGroup(prefix)` variables, literal grouped route calls for
+GET/POST/PUT/PATCH/DELETE, `.withName(...)`, direct async handler metadata, supported
+`Results.*` descriptors, and minimal SQLite provider/capability Plan metadata. It does not
+implement full TypeScript checking, Node/npm package resolution, bundling, module
+extraction, source-input `sloppy run`, `app.run`, runtime Promise settlement, non-GET
+request dispatch, or native SQLite bridge execution from compiled handlers.
 
 EPIC-22 adds the first dev-only run path for those artifacts. EPIC-23 extends it with the
 first real response/request boundary. EPIC-24 loads the classic bootstrap runtime asset
@@ -219,9 +221,11 @@ source module graphs.
 - `app.js.map`: source map for diagnostics;
 - `app.plan.json`: host graph contract.
 
-The MVP source map is a deterministic placeholder with no source mappings. It exists
-because Plan v1 requires `sourceMap` fields. MAIN1-02 verifies the source-map artifact hash
-when the run path loads artifacts, but source-map fidelity is still deferred.
+The ENGINE-02 source map is a deterministic Source Map v3 artifact with `sources`,
+`sourcesContent`, and mappings from generated handler assignment lines back to the original
+handler source lines. MAIN1-02 verifies the source-map artifact hash when the run path
+loads artifacts. Runtime exception remapping through that map remains deferred to
+ENGINE-08, so generated V8 locations are still the execution-time fallback.
 
 The plan is authority for the native host graph. The bundle provides executable handler
 functions. Both must agree at startup.
@@ -449,8 +453,9 @@ future work.
 ## Async And Promise Lifecycle
 
 Alpha V8 handlers must return a concrete supported value during the native call: a string
-or supported `Results.*` descriptor. Returned Promises and `async` handlers are rejected
-with an explicit unsupported diagnostic. Sloppy does not yet keep request scope alive across
+or supported `Results.*` descriptor. ENGINE-02 can emit async handler metadata and copy a
+direct async handler into `app.js`, but the runtime still rejects Promise results with an
+explicit unsupported diagnostic. Sloppy does not yet keep request scope alive across
 JavaScript async work and does not run a JS event loop or timer/microtask integration path.
 
 Async work must not retain request-arena memory beyond request scope. Long-lived work must
@@ -506,12 +511,14 @@ Runtime exception flow:
 3. when source maps become useful, runtime maps generated location through `app.js.map`;
 4. diagnostic reports original TypeScript file/span;
 5. generated location is included as fallback detail;
-6. missing or placeholder source maps keep generated locations as the honest fallback.
+6. missing, placeholder, or not-yet-consumed source maps keep generated locations as the
+   honest fallback.
 
 MAIN1-05 behavior stops after generated source name, 1-based line/column, message, and a
-bounded stack note. Current compiler `app.js.map` files are hashed artifacts but carry empty
-mappings, so TypeScript source remapping and code frames remain future work. Promise returns
-now have a clear unsupported diagnostic, not async stack handling.
+bounded stack note. ENGINE-02 compiler `app.js.map` files are hashed artifacts with real
+handler-line mappings, but TypeScript source remapping, map consumption by the V8
+diagnostic path, and code frames remain future work. Promise returns still have a clear
+unsupported diagnostic, not async stack handling.
 
 Source map task boundaries:
 
@@ -616,7 +623,9 @@ this contract. TASK 06.B parses caller-provided Plan v1 JSON bytes into arena-ow
 `SlPlan` storage and validates the minimal handwritten shape. MAIN1-02 adds native route,
 data provider, and capability metadata validation when those sections are present, and the
 supported artifact run path verifies runtime compatibility and artifact hashes where bytes
-are available. Provider/capability entries remain metadata-only and are not enforcement.
+are available. ENGINE-02 makes the compiler emit minimal SQLite provider/capability
+metadata, but those entries remain metadata-only until ENGINE-05/06 provider and
+capability enforcement work consumes them.
 
 Mismatch fails before serving work.
 

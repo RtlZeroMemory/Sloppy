@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;gCAIsB;AACtB;AACA",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.mapGet(\"/source\", function () {\n  return Results.text(\"mapped\");\n});\n\nexport default app;\n"
+  ],
+  "version": 3
+}

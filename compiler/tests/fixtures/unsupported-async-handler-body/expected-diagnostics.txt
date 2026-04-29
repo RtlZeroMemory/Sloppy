@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/unsupported-async-handler-body/input.js:5:22: SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY: async handler extraction currently supports one direct Results.* return
+  --> <compiler>/tests/fixtures/unsupported-async-handler-body/input.js:5:22
+   |
+5 | app.mapGet("/async", async () => {
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+hint: Keep async compiler fixtures to direct Results.* returns until ENGINE-03 owns Promise settlement.

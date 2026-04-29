@@ -14,60 +14,63 @@ golden tests, implementation phases, and acceptance criteria.
 
 ## Non-Goals
 
-The compiler extraction MVP does not:
+The current compiler pipeline does not:
 
 - perform full TypeScript type checking;
 - bundle module graphs;
 - resolve npm packages or implement package-manager behavior;
 - assume Node compatibility;
 - execute application JavaScript during compilation;
-- extract services, data providers, modules, middleware, or validation schemas;
+- extract services, modules, middleware, validation schemas, or arbitrary provider
+  module graphs;
+- lower database query templates or open native providers;
 - implement source-input handoff for `sloppy run` or `app.run`;
 - implement Node/npm package resolution, arbitrary import graphs, or runtime module loading;
 - expose Rust/C FFI.
 
-For the exact MAIN1-01 supported and rejected source shapes, see
+For the exact supported and rejected source shapes, see
 [`docs/compiler-supported-syntax.md`](compiler-supported-syntax.md).
 
 ## Current Phase
 
-`compiler/` contains the EPIC-21 compiler extraction MVP. `sloppyc build <input.js> --out
-<directory>` parses one source file with Oxc, extracts a deliberately narrow Sloppy app
-shape, and emits deterministic artifacts:
+`compiler/` contains the ENGINE-02 compiler/Plan pipeline. `sloppyc build <input.js>
+--out <directory>` parses one JavaScript source file with Oxc, extracts the supported
+static Sloppy app shape, and emits deterministic artifacts:
 
 - `app.plan.json`;
 - `app.js`;
 - `app.js.map`.
 
-MAIN-01 uses `examples/compiler-hello/app.js` as the canonical artifact-path verification
-fixture. Repeated builds of that source must produce byte-identical `app.plan.json`,
-`app.js`, and `app.js.map` output with stable handler IDs and without absolute local paths,
-timestamps, random IDs, or checkout-specific path text.
+`examples/compiler-hello/app.js` remains the canonical artifact-path verification fixture.
+Repeated builds of that source must produce byte-identical `app.plan.json`, `app.js`, and
+`app.js.map` output with stable handler IDs and without absolute local paths, timestamps,
+random IDs, or checkout-specific path text.
 MAIN1-02 replaces placeholder artifact hashes with deterministic `sha256:` hashes. The
 compiler computes those hashes from the emitted `app.js` and `app.js.map` bytes before
 writing `app.plan.json`, preserving relative artifact paths and repeated-build identity.
+ENGINE-02 broadens the extracted metadata to include GET/POST/PUT/PATCH/DELETE route
+methods, direct async handler metadata, minimal SQLite database capability/provider plan
+metadata, source locations, feature flags, and real handler-source source-map mappings.
 
 Compiler diagnostics render a single-line source frame when the extractor already has a
-source span and source text. This is a renderer improvement only; it does not broaden the
-supported syntax matrix, change extraction behavior, or claim source-map fidelity.
-
-If EPIC-21 GitHub issues are absent, this implementation follows
-`docs/project/next-roadmap.md` as the source of truth for the post-roadmap plan.
+source span and source text. That renderer is separate from the generated source-map
+artifact; the map now records handler-source mappings, while runtime exception remapping is
+still an ENGINE-08 task.
 
 ## Future Phase
 
-The compiler grows from this MVP in later slices:
+The compiler grows from this pipeline in later slices:
 
 1. richer route and app-host metadata;
-2. source-map fidelity;
+2. source-map consumption in runtime diagnostics;
 3. module extraction;
-4. data provider extraction;
+4. broader data provider extraction;
 5. V8 bootstrap module loading handoff;
 6. official TypeScript checking integration.
 
 ## Public API Shape
 
-Current MVP:
+Current compiler command:
 
 ```powershell
 sloppyc --help
@@ -85,7 +88,7 @@ memory safety for complex graph processing, and direct access to Oxc. The runtim
 
 ## Why Oxc
 
-Oxc is the parser for the compiler extraction MVP. The MVP uses Oxc for syntax parsing and
+Oxc is the parser for the compiler pipeline. The compiler uses Oxc for syntax parsing and
 explicit AST extraction. It does not run arbitrary JavaScript, invoke Node, resolve
 packages, or perform full TypeScript semantic checking.
 
@@ -102,44 +105,52 @@ compiler output testable with golden files.
 
 ## Compiler Phases
 
-MVP phases:
+Current phases:
 
 1. parse one input file;
 2. validate the supported import and app factory shape;
-3. extract literal `mapGet` routes and handlers;
+3. extract literal route declarations and handlers;
 4. assign stable numeric handler IDs in source order;
 5. rewrite the public `"sloppy"` import into the internal bootstrap runtime handoff;
-6. emit `app.plan.json`, `app.js`, and a placeholder `app.js.map`;
+6. emit `app.plan.json`, `app.js`, and `app.js.map`;
 7. hash the emitted app and source-map artifacts into the plan;
 8. produce structured compiler diagnostics for unsupported syntax.
 
 ## App Graph Extraction
 
-The compiler extraction MVP extracts:
+The compiler extracts:
 
 - one app object from `Sloppy.create()` or `Sloppy.createBuilder()` plus `builder.build()`;
-- literal `app.mapGet(pattern, handler)` routes;
-- simple `const group = app.mapGroup(prefix)` followed by `group.mapGet(child, handler)`;
+- literal `app.mapGet`, `app.mapPost`, `app.mapPut`, `app.mapPatch`, and
+  `app.mapDelete` routes;
+- simple `const group = app.mapGroup(prefix)` followed by grouped route calls for the same
+  supported method set;
 - optional `.withName("Route.Name")` route names;
+- sync handlers and direct async handlers whose body is an inline function/arrow
+  expression returning `Results.text(...)`, `Results.json(...)`, `Results.ok(...)`, or
+  `Results.noContent()`;
 - zero-argument handlers or one-argument context handlers whose single parameter is a
-  simple identifier and whose body is an inline function/arrow expression returning
-  `Results.text(...)`, `Results.json(...)`, `Results.ok(...)`, or `Results.noContent()`;
+  simple identifier;
 - result arguments that are inline JSON-safe literals, arrays, object literals, or simple
   request-context property reads such as `route.id` and `query.q`;
-- source ranges for copied handler bodies.
+- source ranges for copied handler bodies;
+- `builder.capabilities.addDatabase(token, { provider: "sqlite", access })` as
+  metadata-only Plan `dataProviders` and database `capabilities` entries.
 
 Extraction must be deterministic. Import order must not silently decide module ordering.
 
-Unsupported input fails with diagnostics. The MVP accepts only
-`import { Sloppy, Results } from "sloppy";` as a public import and rejects arbitrary bare
-imports such as `"express"`, `"fs"`, and `"node:fs"` with
+Unsupported input fails with diagnostics. The compiler accepts only
+`import { Sloppy, Results } from "sloppy";` plus optional unaliased `data` as public import
+syntax and rejects arbitrary bare imports such as `"express"`, `"fs"`, and `"node:fs"` with
 `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`. The compiler does not implement Node package
 resolution, npm resolution, import maps, dynamic imports, relative source module graphs, or
 package-manager behavior. It also rejects dynamic route strings, computed method names,
 multiple app objects, missing default export, unsupported handler shapes, handlers with
 more than one parameter, destructured/default/rest handler parameters, handlers that close
 over source-file bindings, TypeScript input or TypeScript-only handler syntax, broad module
-graphs, and top-level control flow.
+graphs, top-level control flow, HEAD/OPTIONS route declarations, async handler bodies that
+do more than directly return a supported `Results.*` descriptor, unsupported provider
+metadata, duplicate capability tokens, and secret-bearing provider/capability fields.
 
 ## Static Mode
 
@@ -160,23 +171,26 @@ Dynamic behavior must not silently weaken static plan guarantees.
 
 ## Official TypeScript Checking
 
-The compiler extraction MVP is JavaScript-input-only. Oxc is used for parsing and narrow
-AST extraction, but the MVP does not lower TypeScript syntax into generated JavaScript.
+The current compiler pipeline is JavaScript-input-only. Oxc is used for parsing and narrow
+AST extraction, but the compiler does not lower TypeScript syntax into generated
+JavaScript.
 Official type checking through `tsgo` or `tsc` is planned later. Sloppy should not claim
 TypeScript type compatibility from its extractor alone.
 
 ## Source Map Requirements
 
-The MVP emits a deterministic placeholder `app.js.map` because Plan v1 currently requires a
-`sourceMap` section. MAIN1-02 hashes that placeholder source-map artifact so plan/runtime
-drift is detectable, but it still does not claim source fidelity. MAIN1-05 V8 exception
-diagnostics therefore report generated `app.js` source names and V8 line/column data only;
-they do not remap to author source from the placeholder map. Real source maps must later
-support:
+ENGINE-02 emits a deterministic Source Map v3 artifact with `sources`, `sourcesContent`,
+and mappings from generated handler assignment lines back to the original handler source
+lines in the single input file. This is intentionally enough for ENGINE-08 to start from a
+real map instead of a placeholder. It is not yet a full TypeScript or module-graph
+remapping story, and the current runtime still reports generated V8 locations until the
+diagnostic consumer is implemented.
+
+Future source-map work must support:
 
 - runtime exception diagnostics;
 - plan extraction diagnostics;
-- generated handler mapping;
+- generated handler mapping across transformed/module output;
 - user-facing names and source spans;
 - golden tests for stable mapping behavior.
 
@@ -202,8 +216,9 @@ loads those artifacts from `--artifacts <dir>`; source-input build handoff, cach
 watching remain future work, and runtime code must not invent a separate discovery model.
 
 The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is staged for
-runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler MVP recognizes only
-the public bare import `import { Sloppy, Results } from "sloppy";` as input syntax. EPIC-24
+runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler recognizes only the
+public bare import `import { Sloppy, Results } from "sloppy";` plus optional unaliased
+`data` as input syntax. EPIC-24
 rewrites that import away in generated `app.js`: the artifact reads `Results` from
 `globalThis.__sloppy_runtime`, which is installed by the runtime-loaded bootstrap asset,
 assigns each generated handler to its legacy `globalThis.__sloppy_handler_<id>` export name,
@@ -219,24 +234,27 @@ and `builder.addModule(...)` skeleton. The compiler still does not extract modul
 module graphs, or emit module plan entries.
 The bootstrap stdlib now also contains the EPIC-15 JavaScript-only data/capabilities
 foundation: database capability metadata, query template lowering, fake providers, and
-transaction callback semantics. The compiler still does not extract capabilities, data
-provider registrations, or query template literals.
+transaction callback semantics. ENGINE-02 extracts only the minimal
+`builder.capabilities.addDatabase(...)` SQLite metadata shape into Plan `dataProviders` and
+database `capabilities`; it does not extract module-contributed provider registrations,
+service lifetimes, fake providers, or query template literals.
 EPIC-16 adds native SQLite provider tests and the `data.sqlite` stdlib shape, but the
-compiler still does not extract SQLite modules, emit data provider plan entries, or lower
-application template literals into native provider calls.
+compiler still does not extract SQLite modules, open native providers, or lower application
+template literals into native provider calls.
 EPIC-17 and EPIC-18 add native PostgreSQL and SQL Server provider tests plus
 `data.postgres` and `data.sqlserver` stdlib shapes, but the compiler still does not extract
-provider modules, emit data provider plan entries, lower application template literals into
-native provider calls, or produce metadata for live provider checks.
+provider modules for those providers, lower application template literals into native
+provider calls, or produce metadata for live provider checks.
 EPIC-19 CLI introspection reads interim plan-compatible metadata sections from
-fixtures/artifacts. The compiler MVP now emits the native-validated Plan v1 alpha `routes`
-section in `app.plan.json` for CLI tooling and dev-only GET dispatch. EPIC-20 benchmarks
-measure current native foundations only and do not imply
-compiler output performance.
+fixtures/artifacts. The compiler now emits the native-validated Plan v1 alpha `routes`,
+`dataProviders`, and `capabilities` sections in `app.plan.json` for CLI tooling and
+dev-only GET dispatch metadata. EPIC-20 benchmarks measure current native foundations only
+and do not imply compiler output performance.
 `examples/ergonomics/app.js` follows the same static-example rule for the broader EPIC-13
-route group, result helper, and schema skeleton API shape. The compiler MVP extracts only
-the tiny route group shape covered by compiler fixtures; it still does not extract schemas,
-services, modules, or data providers from those broader examples.
+route group, result helper, and schema skeleton API shape. The compiler extracts only the
+route group and minimal database capability shapes covered by compiler fixtures; it still
+does not extract schemas, services, modules, or broad provider graphs from those broader
+examples.
 
 ## Internal Architecture
 
@@ -270,10 +288,12 @@ The JSON schema remains the runtime contract.
 TASK 06.A defines the first minimal runtime contract shape for handwritten plan fixtures:
 `schemaVersion`, `compilerVersion`, `runtimeMinimumVersion`, `stdlibVersion`,
 `target.platform`, `target.engine`, bundle path/id/hash, source map path/id/hash, and
-handler id/exportName/displayName entries. MAIN1-02 makes the compiler MVP emit those fields
+handler id/exportName/displayName entries. MAIN1-02 makes the compiler emit those fields
 with deterministic `sha256:` artifact hashes plus the native-validated Plan v1 alpha
-`routes` section. Provider and capability sections are not emitted yet because the
-supported source syntax does not extract provider/capability declarations.
+`routes` section. ENGINE-02 adds source metadata, handler async flags, route method
+metadata for GET/POST/PUT/PATCH/DELETE, feature flags, and minimal SQLite
+provider/capability Plan entries for supported `builder.capabilities.addDatabase(...)`
+declarations.
 
 ## Lifecycle Flow
 
@@ -298,15 +318,21 @@ Golden tests cover:
 - `grouped-route`;
 - `results-json`;
 - `function-handler`;
+- `http-methods`;
+- `async-handler`;
+- `provider-capability`;
+- `source-map`;
 - unsupported dynamic route diagnostics;
 - unsupported computed route method diagnostics;
+- unsupported async handler body diagnostics;
+- unsupported secret-bearing capability metadata diagnostics;
 - loop and conditional route registration diagnostics;
 - arbitrary bare import and Node import diagnostics;
 - missing app/default export diagnostics;
 - multiple app diagnostics;
-- deterministic generated `app.plan.json` and `app.js`.
+- deterministic generated `app.plan.json`, `app.js`, and `app.js.map`.
 
-Future golden tests should add source-map fidelity, module ordering, and data provider plan
+Future golden tests should add module ordering and broader provider/schema plan
 contribution only when those features exist.
 
 Golden files are public contract tests. Updating them requires review.
@@ -336,7 +362,7 @@ Acceptance:
 
 ### Phase C: One-Route Extractor
 
-Extract one literal `app.mapGet` route from a tiny TypeScript file.
+Extract one literal `app.mapGet` route from a tiny JavaScript file.
 
 Acceptance:
 
@@ -375,9 +401,9 @@ Acceptance:
 - duplicate tokens are diagnostics;
 - route-required service references are validated.
 
-### Phase G: Data Provider Extraction
+### Phase G: Broad Data Provider Extraction
 
-Extract provider module registrations.
+Extract provider module registrations beyond the ENGINE-02 SQLite metadata shape.
 
 Acceptance:
 
@@ -395,9 +421,9 @@ Acceptance:
 - route binding references schema ID;
 - unsupported dynamic schema gets diagnostic.
 
-### Phase I: Source Maps
+### Phase I: Runtime Source-Map Diagnostics
 
-Emit source maps for generated JS and plan metadata.
+Consume compiler source maps in runtime diagnostics.
 
 Acceptance:
 
@@ -427,8 +453,8 @@ Compiler diagnostics must include:
 For current `sloppyc` fixture failures, diagnostics with source spans include a
 deterministic single-line source frame. Diagnostics without spans still render the stable
 path/summary fallback. Richer spans, related compiler locations, and V8/source-map
-exception remapping from generated artifacts remain future work while source maps carry
-empty mappings.
+exception remapping from generated artifacts remain future work; ENGINE-02 source maps
+carry real handler mappings, but runtime diagnostics do not consume them yet.
 
 ## Testing Requirements
 

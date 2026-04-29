@@ -53,10 +53,11 @@ Current tests:
 - CTest failure smoke for invalid route metadata rejected through native Plan validation
   before OpenAPI output;
 - CTest conformance tests under `tests/conformance/`, including default compiler artifact
-  determinism for `examples/compiler-hello/app.js` and `examples/request-context/app.js`,
-  default unsupported compiler source rejection for dynamic route registration and
-  arbitrary bare imports, and V8-gated run-once conformance for hello, request context,
-  result failure, and SQLite bridge cases when V8 is enabled;
+  determinism for `examples/compiler-hello/app.js`, `examples/request-context/app.js`, and
+  ENGINE-02 method/async/provider/source-map fixtures, default unsupported compiler source
+  rejection for dynamic route registration, arbitrary bare imports, unsupported async
+  handler bodies, and secret-bearing capability metadata, and V8-gated run-once conformance
+  for hello, request context, result failure, and SQLite bridge cases when V8 is enabled;
 - CTest default process tests for `sloppy run` help text, missing artifacts, missing
   `app.plan.json`, malformed plans, invalid artifact paths, hash mismatches, missing source
   map artifacts, runtime compatibility mismatches, source-input handoff deferral, and the
@@ -68,18 +69,20 @@ Current tests:
   sequence, evidence caveats, source-input deferral, V8-gated wording, and Node/npm/package
   non-goals remain present in the source docs;
 - CTest smoke for `sloppyc --version`;
-- CTest `sloppyc.compiler_extraction`, which runs the Rust compiler test suite covering
-  the EPIC-21 compiler extraction fixtures;
+- CTest `sloppyc.supported_app_pipeline`, which runs the Rust compiler test suite covering
+  the ENGINE-02 supported app compiler fixtures;
 - Rust compiler golden tests for `hello-mapget`, `builder-mapget`, `grouped-route`,
-  `results-json`, and `function-handler` deterministic `app.plan.json`, `app.js`, and
+  `results-json`, `function-handler`, `http-methods`, `async-handler`,
+  `provider-capability`, and `source-map` deterministic `app.plan.json`, `app.js`, and
   `app.js.map` outputs, including deterministic `sha256:` artifact hashes;
 - Rust compiler repeatability coverage for `examples/compiler-hello/app.js`, which builds
   the canonical MAIN fixture twice and verifies byte-identical artifacts, stable handler
   IDs, and no checkout-local path or volatility marker text;
 - Rust compiler diagnostic fixture tests for unsupported dynamic route patterns, computed
   route method calls, loop/conditional route registration, unsupported handler shapes,
-  unsupported imports including Node-style imports, missing default app export, non-GET
-  methods, multiple app objects, and source frames where source spans exist;
+  unsupported imports including Node-style imports, missing default app export,
+  unsupported route methods, unsupported async handler bodies, secret-bearing capability
+  metadata, multiple app objects, and source frames where source spans exist;
 - Rust compiler rejected-build coverage that verifies unsupported compiler input does not
   leave success artifacts;
 - CTest smoke for `sloppy_bench --list` and `sloppy_bench --smoke --format json`, which
@@ -194,7 +197,7 @@ instead of adding provider cases to `engine_v8.cc`.
 TASK 08.A also registers `execution.handwritten_artifact`, which parses the handwritten
 plan fixture, evaluates handwritten `app.js`, invokes handler ID `1`, and covers missing
 handler ID, missing JS function, and thrown handler diagnostics. EPIC-22 also registers
-V8-gated `sloppy run --once` process tests for the compiler MVP hello route, route miss,
+V8-gated `sloppy run --once` process tests for the compiler-generated hello route, route miss,
 and unsupported method responses. These are not part of the default non-V8 test set.
 
 EPIC-24 extends that V8-gated surface. V8-enabled tests now also cover bootstrap

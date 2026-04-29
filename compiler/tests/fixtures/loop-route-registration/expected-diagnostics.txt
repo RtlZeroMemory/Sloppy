@@ -3,4 +3,4 @@
    |
 6 | for (const route of routes) {
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-hint: List compiler-extracted routes as explicit top-level mapGet calls.
+hint: List compiler-extracted routes as explicit top-level route method calls.

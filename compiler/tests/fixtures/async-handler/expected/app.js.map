@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;gCAIqB",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.mapGet(\"/async\", async () => Results.json({ ok: true }));\n\nexport default app;\n"
+  ],
+  "version": 3
+}

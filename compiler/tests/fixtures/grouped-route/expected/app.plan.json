@@ -1,15 +1,29 @@
 {
   "bundle": {
     "hash": "sha256:16f5671d312bc4b5c89db21b631ce59e8983b3075e76923dd927fd73a6c166eb",
-    "id": "compiler-mvp-app-js",
+    "id": "sloppyc-app-js",
     "path": "app.js"
   },
-  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-mvp",
+  "capabilities": [],
+  "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "dataProviders": [],
+  "features": {
+    "asyncHandlers": false,
+    "capabilities": false,
+    "dataProviders": false,
+    "sourceMaps": true
+  },
   "handlers": [
     {
+      "async": false,
       "displayName": "Users.Get",
       "exportName": "__sloppy_handler_1",
-      "id": 1
+      "id": 1,
+      "source": {
+        "column": 27,
+        "line": 6,
+        "path": "input.js"
+      }
     }
   ],
   "routes": [
@@ -17,14 +31,19 @@
       "handlerId": 1,
       "method": "GET",
       "name": "Users.Get",
-      "pattern": "/users/{id:int}"
+      "pattern": "/users/{id:int}",
+      "source": {
+        "column": 27,
+        "line": 6,
+        "path": "input.js"
+      }
     }
   ],
   "runtimeMinimumVersion": "0.1.0",
   "schemaVersion": 1,
   "sourceMap": {
-    "hash": "sha256:d12ed083a2040a2b479c50b3aa9050263e770438ac90a94db322c928dece70d6",
-    "id": "compiler-mvp-app-js-map",
+    "hash": "sha256:5ee64ccc886e9b7e436f0dc0d3e6be9a877df93ccd94f33e9ee191a8d07a28af",
+    "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
   "stdlibVersion": "0.1.0",

@@ -1,7 +1,7 @@
 # Getting Started
 
-Status: Bootstrap app-host, developer ergonomics, module skeleton, compiler extraction MVP,
-and dev-only artifact run MVP implemented.
+Status: Bootstrap app-host, developer ergonomics, module skeleton, ENGINE-02 compiler
+metadata, and dev-only artifact run implemented.
 
 Purpose: introduce the future Sloppy developer workflow from app source to build artifacts
 to runtime execution.

@@ -205,6 +205,70 @@ static int test_route_table_rejects_duplicate_method_pattern(void)
     return expect_true(table.route_count == 0U && diag.code == SL_DIAG_DUPLICATE_ROUTE);
 }
 
+static int test_route_table_build_skips_non_get_metadata(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlPlanHandler handlers[2];
+    SlPlanRoute routes[2];
+    SlPlan plan = route_table_plan(handlers, routes);
+    SlHttpRouteTable table = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0) {
+        return 70;
+    }
+
+    routes[0].pattern = sl_str_from_cstr("/users");
+    routes[1].method = sl_str_from_cstr("POST");
+    routes[1].pattern = sl_str_from_cstr("/users");
+
+    if (expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0) {
+        return 71;
+    }
+    if (table.route_count != 1U || table.dispatch.route_count != 1U ||
+        table.dispatch.routes == NULL || table.dispatch.routes[0].handler_id != 1U ||
+        diag.code != SL_DIAG_NONE)
+    {
+        return 72;
+    }
+
+    return 0;
+}
+
+static int test_route_table_build_accepts_non_get_only_metadata(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0) {
+        return 73;
+    }
+
+    route.method = sl_str_from_cstr("POST");
+    route.pattern = sl_str_from_cstr("/users");
+    route.handler_id = 1U;
+    route.name = sl_str_from_cstr("Users.Create");
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0) {
+        return 74;
+    }
+    if (table.route_count != 0U || table.dispatch.route_count != 0U ||
+        table.dispatch.routes != NULL || diag.code != SL_DIAG_NONE)
+    {
+        return 75;
+    }
+
+    return 0;
+}
+
 static int test_non_get_fails_before_route_match(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -423,6 +487,16 @@ int main(void)
     }
 
     result = test_route_table_rejects_duplicate_method_pattern();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_route_table_build_skips_non_get_metadata();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_route_table_build_accepts_non_get_only_metadata();
     if (result != 0) {
         return result;
     }

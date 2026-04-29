@@ -1,14 +1,14 @@
 # Routing
 
-Status: Bootstrap `mapGet`, route group shape, compiler extraction MVP, dev-only GET
-artifact routing, and minimal route/query request context implemented.
+Status: Bootstrap `mapGet`, route group shape, ENGINE-02 compiler route metadata,
+dev-only GET artifact routing, and minimal route/query request context implemented.
 
 Bootstrap status: `Sloppy.create()` and `Sloppy.createBuilder().build()` return an
 in-memory app facade with `app.mapGet(...)` and `app.mapGroup(...)`. Compiler-emitted
-`mapGet` metadata can now be consumed by `sloppy run --artifacts` for GET-only dev
-dispatch. Matched route params and query params are passed to V8 handlers in a minimal
-request context. Bootstrap route snapshots and module-contributed routes remain
-JavaScript-only until later compiler/runtime work.
+GET/POST/PUT/PATCH/DELETE metadata can now be validated and inspected, while
+`sloppy run --artifacts` still serves GET-only dev dispatch. Matched route params and query
+params are passed to V8 handlers in a minimal request context. Bootstrap route snapshots and
+module-contributed routes remain JavaScript-only until later compiler/runtime work.
 
 Purpose: document current `app.mapGet`, route snapshots, handler context, and future route
 features.
@@ -108,24 +108,28 @@ Route groups:
 - Module-created grouped routes use the same shape and also include `metadata.module`.
 - Route groups are in-memory bootstrap metadata only.
 
-Compiler extraction MVP:
+Compiler extraction:
 
 - supports `app.mapGet("/literal", () => Results.text(...))`;
 - supports `app.mapGet("/literal", () => Results.json(...))`;
+- supports `app.mapPost`, `app.mapPut`, `app.mapPatch`, and `app.mapDelete` as plan
+  metadata;
 - supports `const group = app.mapGroup("/prefix"); group.mapGet("/child", handler)`;
 - supports `.withName("Route.Name")`;
+- supports direct async handlers as metadata/emitted JavaScript only; runtime Promise
+  settlement remains deferred;
 - allows compiled handlers to declare zero parameters or one simple identifier request
   context parameter;
 - supports inline JSON-safe literals, arrays, object literals, and simple context property
   reads such as `route.id` and `query.q` in result arguments;
 - assigns handler IDs from `1` in source order;
-- emits route metadata into `app.plan.json` as `method`, `pattern`, `handlerId`, and
-  `name`, and the native Plan parser now validates that route metadata;
+- emits route metadata into `app.plan.json` as `method`, `pattern`, `handlerId`, `name`,
+  and source metadata, and the native Plan parser now validates that route metadata;
 - rejects dynamic route strings, computed method names, unsupported handler bodies,
   TypeScript input, closed-over source-file bindings, conditional route registration,
-  loops, modules, middleware, and package resolution.
+  loops, HEAD/OPTIONS route declarations, modules, middleware, and package resolution.
 
-`docs/compiler-supported-syntax.md` is the source of truth for the MAIN1-01 supported
+`docs/compiler-supported-syntax.md` is the source of truth for the supported
 syntax matrix and fixture expectations.
 
 Dev-only run behavior:
@@ -146,14 +150,15 @@ Dev-only run behavior:
 - returns safe dev `500` responses for handler exceptions or malformed/unsupported result
   descriptors.
 
-Not implemented yet: `mapPost`, nested groups, middleware, filters, automatic validation,
-production route table construction, route precedence optimization, request body parsing,
-headers in context, and route/module extraction beyond the tiny compiler MVP shape above.
+Not implemented yet: non-GET runtime dispatch, nested groups, middleware, filters,
+automatic validation, production route table construction, route precedence optimization,
+request body parsing, headers in context, and route/module extraction beyond the compiler
+shape above.
 
 ## CLI Introspection
 
 `sloppy routes --plan <path>` can print route metadata from a plan-compatible metadata
-fixture or artifact, including the narrow route metadata emitted by the compiler MVP. This
+fixture or artifact, including the route metadata emitted by the compiler. This
 is inspection-only: it does not execute handlers, start HTTP, enter V8, or build a
 production native route table. `sloppy run --artifacts <dir>` also reads the documented
 Plan v1 alpha `routes` section for dev-only GET dispatch.

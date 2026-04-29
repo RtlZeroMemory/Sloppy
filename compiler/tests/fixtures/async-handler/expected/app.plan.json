@@ -1,0 +1,54 @@
+{
+  "bundle": {
+    "hash": "sha256:f25f2593c3ed428966c3569ce1200599ad3357d9bc6d00d5abebc598a08129ae",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [],
+  "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "dataProviders": [],
+  "features": {
+    "asyncHandlers": true,
+    "capabilities": false,
+    "dataProviders": false,
+    "sourceMaps": true
+  },
+  "handlers": [
+    {
+      "async": true,
+      "displayName": "GET /async",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 22,
+        "line": 5,
+        "path": "input.js"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": null,
+      "pattern": "/async",
+      "source": {
+        "column": 22,
+        "line": 5,
+        "path": "input.js"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceMap": {
+    "hash": "sha256:36947c329e5e1d27785a7b113b2c744c1dc357526eb72bd6405952b5d44a0bd4",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

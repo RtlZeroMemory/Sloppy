@@ -18,9 +18,10 @@ testing philosophy in `docs/testing-strategy.md`.
 
 ## Current Phase
 
-Current gates cover placeholder C/Rust builds, formatting, linting, CTest, cargo tests,
-artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS standards
-scanning, Rust standards scanning, and a lightweight docs freshness structure check.
+Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
+goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
+standards scanning, Rust standards scanning, and a lightweight docs freshness structure
+check.
 Default CI now runs Windows clang-cl, Linux clang, Linux gcc, and macOS clang non-V8 gates.
 Benchmark list/smoke checks may run as correctness smoke, but performance deltas are not a
 normal hard gate yet.

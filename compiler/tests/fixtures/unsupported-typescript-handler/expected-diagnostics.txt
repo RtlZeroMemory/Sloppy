@@ -1,2 +1,2 @@
-<compiler>/tests/fixtures/unsupported-typescript-handler/input.ts: SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT: compiler extraction MVP accepts JavaScript input only
+<compiler>/tests/fixtures/unsupported-typescript-handler/input.ts: SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT: supported app compiler accepts JavaScript input only
 hint: Use a .js/.mjs source file and omit TypeScript-only handler syntax for this MVP.

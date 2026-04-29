@@ -132,12 +132,14 @@ EPIC-20 adds the first benchmark harness and scenarios for implemented foundatio
 route matching/parsing, complete-buffer HTTP request-head parsing, handler plan lookup,
 noop dispatch, and synthetic GET dispatch. Benchmark smoke/list checks are correctness
 smoke only and are not performance claims.
-EPIC-21 adds the compiler extraction MVP for one tiny source file and emits deterministic
-`app.plan.json`, `app.js`, and placeholder source-map artifacts. EPIC-22 adds the first
-dev-only `sloppy run --artifacts` path. EPIC-23 extends that path so V8-enabled builds can
-load those artifacts, parse GET route metadata, materialize route/query/request context,
-start a tiny local libuv HTTP server or `--once` synthetic dispatch, and serialize supported
-text/JSON/empty/problem result descriptors through the native response writer. EPIC-24
+EPIC-21 adds the first compiler extraction path for one tiny source file. ENGINE-02 expands
+that path to supported route-method metadata, direct async-handler metadata, minimal SQLite
+provider/capability metadata, deterministic `app.plan.json`/`app.js`, and handler-line
+source-map artifacts. EPIC-22 adds the first dev-only `sloppy run --artifacts` path.
+EPIC-23 extends that path so V8-enabled builds can load those artifacts, parse GET route
+metadata, materialize route/query/request context, start a tiny local libuv HTTP server or
+`--once` synthetic dispatch, and serialize supported text/JSON/empty/problem result
+descriptors through the native response writer. EPIC-24
 adds the classic bootstrap runtime asset load, the compiler rewrite for the public
 `"sloppy"` import, the internal `__sloppy_register_handler(id, handler)` intrinsic, and
 registered-handler validation before dispatch. Source input handoff, true ESM module

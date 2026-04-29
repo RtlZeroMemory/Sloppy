@@ -128,6 +128,9 @@ Implemented behavior:
 - Plan v1 alpha can carry metadata-only `dataProviders` entries with a token, provider
   kind (`sqlite`, `postgres`, or `sqlserver`), optional service token, and optional
   capability token reference.
+- ENGINE-02 compiler output can emit minimal SQLite `dataProviders` and database
+  `capabilities` metadata from `builder.capabilities.addDatabase(...)`; this is metadata
+  for later runtime/provider work and does not open a native provider by itself.
 - MAIN1-10 adds a native capability registry and provider policy check hook for plan
   capability metadata. Database checks cover token lookup, read/write access, and provider
   mismatch denial before provider work when a bridge calls the hook.

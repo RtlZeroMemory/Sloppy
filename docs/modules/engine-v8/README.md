@@ -72,7 +72,7 @@ Later scope:
 - required V8 Promise integration that maps resolved/rejected JS promises onto the native
   `SlAsync` settlement model or a documented evolution of it before Sloppy claims async
   handler support;
-- richer source-map fidelity once compiler source maps contain useful mappings.
+- runtime source-map remapping now that compiler source maps contain handler mappings.
 
 ## Non-goals
 
