@@ -35,6 +35,9 @@
   in-memory `app.mapGet` facade behavior. It still has no handler registration, runtime
   intrinsic binding, module resolver, compiler import rewriting, package-manager behavior,
   app host build/freeze/run, HTTP response conversion, or `app.plan.json` emission yet.
+- `examples/hello/` exists as a static bootstrap API-shape example. It is not compiled by
+  `sloppyc`, does not emit `app.plan.json`, does not run through `sloppy run`, and is not
+  served by an HTTP server.
 
 ## Deferred decisions
 
@@ -128,7 +131,8 @@
 - Executable ESM/V8 tests for `stdlib/sloppy` are future work; TASK 11.B/11.C adds only a
   static CTest API-shape check because current V8 smoke execution does not load ESM
   modules.
-- TASK 11.D owns the first hello example.
+- `examples/hello/` should become executable through the Sloppy runtime once module
+  loading, compiler extraction, plan emission, and HTTP serving exist.
 - `app.run`, `app.listen`, `app.build`, `app.freeze`, and app graph freeze are future
   app-host work.
 - Automatic compiler extraction and `app.plan.json` emission from `app.mapGet` are future

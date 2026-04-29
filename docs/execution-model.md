@@ -89,7 +89,9 @@ TASK 11.A adds only the bootstrap stdlib file layout. TASK 11.B/11.C adds a tiny
 facade inside that layout: `Results.text/json` descriptors plus in-memory
 `Sloppy.create().mapGet(...)` route registration. The runtime still does not load these
 modules, the V8 bridge does not bind intrinsics or resolve ESM imports from this
-directory, and `app.mapGet` does not produce `app.plan.json`.
+directory, and `app.mapGet` does not produce `app.plan.json`. TASK 11.D adds
+`examples/hello/` as a static API-shape example using the source stdlib; it does not change
+runtime startup or execution behavior.
 
 ## Current Handwritten Milestone
 

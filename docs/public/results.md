@@ -15,6 +15,9 @@ app.mapGet("/hello", () => Results.text("hello"));
 app.mapGet("/health", () => Results.json({ status: "ok" }, { status: 200 }));
 ```
 
+`examples/hello/app.js` uses `Results.text("Hello from Sloppy")` to demonstrate the current
+text descriptor shape. No HTTP response writer consumes that descriptor yet.
+
 `Results.text(body, options?)` returns a frozen plain descriptor:
 
 ```js

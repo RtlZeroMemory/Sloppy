@@ -8,6 +8,9 @@ diagnostics foundation behavior. The `bootstrap.stdlib.assets` CTest check verif
 bootstrap stdlib assets exist in source and are copied into the build support-data layout.
 The `bootstrap.stdlib.api_shape` CTest check statically verifies the tiny bootstrap
 `Results` and `Sloppy` API shape until executable ESM stdlib tests exist.
+The `examples.hello.api_shape` CTest check statically verifies the first public hello
+example uses the current bootstrap API shape without requiring Node, npm, compiler
+extraction, or HTTP runtime behavior.
 
 Future suites:
 

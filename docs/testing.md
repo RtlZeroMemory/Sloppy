@@ -49,6 +49,9 @@ Current tests:
 - CTest structural check `bootstrap.stdlib.api_shape`, which statically verifies the tiny
   bootstrap API source shape for `Results.text/json`, `Sloppy.create`, `app.mapGet`,
   `.withName`, route snapshots, index exports, and absence of deferred app-host APIs;
+- CTest structural check `examples.hello.api_shape`, which statically verifies the first
+  hello example files exist, use the current relative stdlib import, use `Sloppy.create`,
+  `app.mapGet`, and `Results.text`, and do not introduce package-manager scope;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -299,6 +302,18 @@ tests/cmake/check_bootstrap_api.cmake
 It is intentionally static because the current V8 bridge smoke path evaluates classic
 scripts only and does not load ESM modules from `stdlib/sloppy/`. A future module-loading
 task should replace or supplement this with executable bootstrap stdlib tests.
+
+TASK 11.D adds the first public example structural check:
+
+```text
+examples/hello/app.js
+examples/hello/README.md
+tests/cmake/check_hello_example.cmake
+```
+
+It is intentionally static for the same ESM/module-loading reason. It verifies documented
+example intent and current API usage without requiring Node, npm, a bundler, `sloppy run`,
+compiler extraction, `app.plan.json` emission, or HTTP server behavior.
 
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 

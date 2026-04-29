@@ -30,6 +30,10 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
 - `.withName(name)` stores a route name;
 - `app.__getRoutes()` returns frozen route snapshots for bootstrap tests/debugging.
 
+`examples/hello/app.js` demonstrates this current facade through a relative source import
+from `stdlib/sloppy/index.js`. The example documents the future bare `"sloppy"` import and
+`sloppy run` workflow as planned behavior only.
+
 Builders, native app graph freeze, startup validation, `app.run`, `app.listen`,
 `app.build`, `app.freeze`, compiler extraction, automatic `app.plan.json` emission, HTTP
 server behavior, route groups, modules, services, middleware, validation, config, and
@@ -54,6 +58,9 @@ build-tree assets exist. CTest also registers `bootstrap.stdlib.api_shape` to st
 check the implemented bootstrap API names, descriptor fields, route registration shape, and
 absence of future app-host APIs. Executable ESM/V8 stdlib tests, plan fixtures, diagnostics
 snapshots, and full integration smoke remain future work once module loading exists.
+CTest also registers `examples.hello.api_shape` to statically check that the hello example
+files exist, use the current stdlib import path, use `Sloppy.create`, `app.mapGet`,
+`Results.text`, and avoid package-manager scope.
 
 ## Source Docs
 

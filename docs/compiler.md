@@ -165,6 +165,9 @@ The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is stage
 runtime/package use under `lib/sloppy/bootstrap/sloppy/`. Compiler import rewriting from
 the public `"sloppy"` specifier to those bootstrap modules is future work; the current
 compiler placeholder does not read or emit stdlib assets.
+`examples/hello/app.js` therefore uses a relative source import from
+`stdlib/sloppy/index.js`; that example is not compiler input, compiler output, or proof of
+bare import support.
 
 ## Internal Architecture
 

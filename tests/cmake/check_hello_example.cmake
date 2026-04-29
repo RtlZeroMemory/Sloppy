@@ -1,0 +1,49 @@
+set(hello_dir "${PROJECT_SOURCE_DIR}/examples/hello")
+set(hello_app "${hello_dir}/app.js")
+set(hello_readme "${hello_dir}/README.md")
+
+foreach(required_file IN ITEMS "${hello_app}" "${hello_readme}")
+    if(NOT EXISTS "${required_file}")
+        message(FATAL_ERROR "Missing hello example file: ${required_file}")
+    endif()
+endforeach()
+
+if(EXISTS "${hello_dir}/package.json")
+    message(FATAL_ERROR "Hello example must not introduce package-manager scope.")
+endif()
+
+file(READ "${hello_app}" hello_app_js)
+file(READ "${hello_readme}" hello_readme_md)
+
+function(require_substring haystack needle description)
+    string(FIND "${haystack}" "${needle}" found_index)
+    if(found_index EQUAL -1)
+        message(FATAL_ERROR "${description}: ${needle}")
+    endif()
+endfunction()
+
+foreach(required_pattern IN ITEMS
+        "import { Sloppy, Results } from \"../../stdlib/sloppy/index.js\";"
+        "const app = Sloppy.create();"
+        "app.mapGet(\"/\", () => Results.text(\"Hello from Sloppy\"))"
+        ".withName(\"Hello.Index\")"
+        "export default app;")
+    require_substring(
+        "${hello_app_js}" "${required_pattern}"
+        "examples/hello/app.js is missing expected API shape")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "Bootstrap API shape example"
+        "What works today"
+        "What does not work yet"
+        "`sloppy run` does not exist yet"
+        "`sloppyc` does not compile this example"
+        "does not emit `app.plan.json`"
+        "There is no real HTTP server"
+        "bare import"
+        "planned only")
+    require_substring(
+        "${hello_readme_md}" "${required_pattern}"
+        "examples/hello/README.md is missing required status text")
+endforeach()
