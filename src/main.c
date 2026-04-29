@@ -345,14 +345,15 @@ static bool sl_cli_write_span(FILE* file, SlCliSpan span)
 
 static void sl_cli_json_escape(FILE* file, SlCliSpan span)
 {
+    static const char hex[] = "0123456789abcdef";
     size_t index = 0U;
 
     (void)fputc('"', file);
     for (index = 0U; index < span.length; index += 1U) {
-        char ch = span.ptr[index];
+        unsigned char ch = (unsigned char)span.ptr[index];
         if (ch == '"' || ch == '\\') {
             (void)fputc('\\', file);
-            (void)fputc(ch, file);
+            (void)fputc((int)ch, file);
         }
         else if (ch == '\n') {
             (void)fputs("\\n", file);
@@ -363,8 +364,19 @@ static void sl_cli_json_escape(FILE* file, SlCliSpan span)
         else if (ch == '\t') {
             (void)fputs("\\t", file);
         }
+        else if (ch == '\b') {
+            (void)fputs("\\b", file);
+        }
+        else if (ch == '\f') {
+            (void)fputs("\\f", file);
+        }
+        else if (ch < 0x20U) {
+            (void)fputs("\\u00", file);
+            (void)fputc(hex[(ch >> 4U) & 0x0FU], file);
+            (void)fputc(hex[ch & 0x0FU], file);
+        }
         else {
-            (void)fputc(ch, file);
+            (void)fputc((int)ch, file);
         }
     }
     (void)fputc('"', file);
@@ -605,7 +617,12 @@ static int sl_cli_parse_modules(yyjson_val* root, SlCliMetadata* metadata)
         yyjson_val* dep = NULL;
         yyjson_arr_iter dep_iter;
 
-        if (!yyjson_is_obj(value) || metadata->module_count >= SL_CLI_MAX_MODULES) {
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed module in metadata\n");
+            return 1;
+        }
+        if (metadata->module_count >= SL_CLI_MAX_MODULES) {
+            sl_cli_write_cstr(stderr, "sloppy: too many modules in metadata\n");
             return 1;
         }
         module.name = sl_cli_json_span(value, "name");
@@ -645,7 +662,12 @@ static int sl_cli_parse_providers(yyjson_val* root, SlCliMetadata* metadata)
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         SlCliProvider provider = {0};
 
-        if (!yyjson_is_obj(value) || metadata->provider_count >= SL_CLI_MAX_PROVIDERS) {
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed data provider in metadata\n");
+            return 1;
+        }
+        if (metadata->provider_count >= SL_CLI_MAX_PROVIDERS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many data providers in metadata\n");
             return 1;
         }
         provider.token = sl_cli_json_span(value, "token");
@@ -676,13 +698,19 @@ static int sl_cli_parse_doctor_checks(yyjson_val* root, SlCliMetadata* metadata)
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         SlCliDoctorCheck check = {0};
 
-        if (!yyjson_is_obj(value) || metadata->doctor_check_count >= SL_CLI_MAX_DOCTOR_CHECKS) {
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed doctor check in metadata\n");
+            return 1;
+        }
+        if (metadata->doctor_check_count >= SL_CLI_MAX_DOCTOR_CHECKS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many doctor checks in metadata\n");
             return 1;
         }
         check.id = sl_cli_json_span(value, "id");
         check.status = sl_cli_json_span(value, "status");
         check.message = sl_cli_json_span(value, "message");
         if (sl_cli_span_empty(check.id) || sl_cli_span_empty(check.status)) {
+            sl_cli_write_cstr(stderr, "sloppy: doctor check is missing id or status\n");
             return 1;
         }
         metadata->doctor_checks[metadata->doctor_check_count] = check;
@@ -1061,12 +1089,16 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     return 0;
 }
 
-static SlCliSpan sl_cli_openapi_path(char* buffer, size_t capacity, SlCliSpan pattern)
+static bool sl_cli_openapi_path(char* buffer, size_t capacity, SlCliSpan pattern,
+                                SlCliSpan* openapi_path)
 {
     size_t index = 0U;
     size_t out = 0U;
 
-    while (index < pattern.length && out + 1U < capacity) {
+    while (index < pattern.length) {
+        if (out + 1U >= capacity) {
+            return false;
+        }
         if (pattern.ptr[index] == '{') {
             buffer[out] = pattern.ptr[index];
             out += 1U;
@@ -1078,8 +1110,14 @@ static SlCliSpan sl_cli_openapi_path(char* buffer, size_t capacity, SlCliSpan pa
                 out += 1U;
                 index += 1U;
             }
+            if (out + 1U >= capacity) {
+                return false;
+            }
             while (index < pattern.length && pattern.ptr[index] != '}') {
                 index += 1U;
+            }
+            if (index >= pattern.length) {
+                return false;
             }
         }
         buffer[out] = pattern.ptr[index];
@@ -1088,7 +1126,8 @@ static SlCliSpan sl_cli_openapi_path(char* buffer, size_t capacity, SlCliSpan pa
     }
 
     buffer[out] = '\0';
-    return (SlCliSpan){buffer, out};
+    *openapi_path = (SlCliSpan){buffer, out};
+    return true;
 }
 
 static void sl_cli_openapi_parameters(FILE* file, SlCliSpan pattern)
@@ -1139,13 +1178,112 @@ static void sl_cli_openapi_parameters(FILE* file, SlCliSpan pattern)
     sl_cli_write_cstr(file, "]");
 }
 
+static int sl_cli_openapi_prepare_paths(const SlCliMetadata* metadata,
+                                        char path_buffers[SL_CLI_MAX_ROUTES][512],
+                                        SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES])
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->route_count; index += 1U) {
+        if (!sl_cli_openapi_path(path_buffers[index], sizeof(path_buffers[index]),
+                                 metadata->routes[index].pattern, &openapi_paths[index]))
+        {
+            sl_cli_write_cstr(stderr, "sloppy openapi: malformed route pattern in metadata: ");
+            sl_cli_write_span(stderr, metadata->routes[index].pattern);
+            sl_cli_write_cstr(stderr, "\n");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static bool sl_cli_openapi_path_seen(const SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES],
+                                     size_t current)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < current; index += 1U) {
+        if (sl_cli_span_equal(openapi_paths[index], openapi_paths[current])) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static void sl_cli_openapi_emit_operation(FILE* out, const SlCliRoute* route)
+{
+    sl_cli_json_escape_lower(out, route->method);
+    sl_cli_write_cstr(out, ": {\n        \"operationId\": ");
+    sl_cli_json_escape(out, route->name);
+    sl_cli_write_cstr(out, ",\n        \"parameters\": ");
+    sl_cli_openapi_parameters(out, route->pattern);
+    sl_cli_write_cstr(out, ",\n"
+                           "        \"responses\": {\n"
+                           "          \"200\": { \"description\": \"OK\" }\n"
+                           "        }\n"
+                           "      }");
+}
+
+static void sl_cli_openapi_emit_path(FILE* out, const SlCliMetadata* metadata,
+                                     const SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES],
+                                     size_t path_index)
+{
+    size_t operation = 0U;
+    bool first_method = true;
+
+    sl_cli_write_cstr(out, "\n    ");
+    sl_cli_json_escape(out, openapi_paths[path_index]);
+    sl_cli_write_cstr(out, ": {");
+    for (operation = 0U; operation < metadata->route_count; operation += 1U) {
+        if (!sl_cli_span_equal(openapi_paths[operation], openapi_paths[path_index])) {
+            continue;
+        }
+        if (!first_method) {
+            sl_cli_write_cstr(out, ",");
+        }
+        first_method = false;
+        sl_cli_write_cstr(out, "\n      ");
+        sl_cli_openapi_emit_operation(out, &metadata->routes[operation]);
+    }
+    sl_cli_write_cstr(out, "\n    }");
+}
+
+static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadata,
+                                         const SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES])
+{
+    size_t index = 0U;
+    bool first_path = true;
+
+    sl_cli_write_cstr(out, "{\n"
+                           "  \"openapi\": \"3.0.3\",\n"
+                           "  \"info\": {\n"
+                           "    \"title\": \"Sloppy API\",\n"
+                           "    \"version\": \"0.0.0\"\n"
+                           "  },\n"
+                           "  \"paths\": {");
+    for (index = 0U; index < metadata->route_count; index += 1U) {
+        if (sl_cli_openapi_path_seen(openapi_paths, index)) {
+            continue;
+        }
+        if (!first_path) {
+            sl_cli_write_cstr(out, ",");
+        }
+        first_path = false;
+        sl_cli_openapi_emit_path(out, metadata, openapi_paths, index);
+    }
+    sl_cli_write_cstr(out, "\n  }\n}\n");
+}
+
 static int sl_cli_command_openapi(const SlCliOptions* options)
 {
     unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
     yyjson_doc* doc = NULL;
     SlCliMetadata metadata = {0};
+    char path_buffers[SL_CLI_MAX_ROUTES][512];
+    SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES] = {0};
     FILE* out = stdout;
-    size_t index = 0U;
 
     if (options->plan_path == NULL) {
         sl_cli_write_cstr(stderr, "sloppy openapi: --plan <path> is required\n");
@@ -1175,38 +1313,14 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
         return 1;
     }
     sl_cli_sort_routes(&metadata);
-
-    sl_cli_write_cstr(out, "{\n"
-                           "  \"openapi\": \"3.0.3\",\n"
-                           "  \"info\": {\n"
-                           "    \"title\": \"Sloppy API\",\n"
-                           "    \"version\": \"0.0.0\"\n"
-                           "  },\n"
-                           "  \"paths\": {");
-    for (index = 0U; index < metadata.route_count; index += 1U) {
-        char path_buffer[512];
-        SlCliSpan path =
-            sl_cli_openapi_path(path_buffer, sizeof(path_buffer), metadata.routes[index].pattern);
-
-        if (index != 0U) {
-            sl_cli_write_cstr(out, ",");
+    if (sl_cli_openapi_prepare_paths(&metadata, path_buffers, openapi_paths) != 0) {
+        yyjson_doc_free(doc);
+        if (out != stdout) {
+            (void)fclose(out);
         }
-        sl_cli_write_cstr(out, "\n    ");
-        sl_cli_json_escape(out, path);
-        sl_cli_write_cstr(out, ": {\n      ");
-        sl_cli_json_escape_lower(out, metadata.routes[index].method);
-        sl_cli_write_cstr(out, ": {\n        \"operationId\": ");
-        sl_cli_json_escape(out, metadata.routes[index].name);
-        sl_cli_write_cstr(out, ",\n        \"parameters\": ");
-        sl_cli_openapi_parameters(out, metadata.routes[index].pattern);
-        sl_cli_write_cstr(out, ",\n"
-                               "        \"responses\": {\n"
-                               "          \"200\": { \"description\": \"OK\" }\n"
-                               "        }\n"
-                               "      }\n"
-                               "    }");
+        return 1;
     }
-    sl_cli_write_cstr(out, "\n  }\n}\n");
+    sl_cli_openapi_emit_document(out, &metadata, openapi_paths);
 
     yyjson_doc_free(doc);
     if (out != stdout) {

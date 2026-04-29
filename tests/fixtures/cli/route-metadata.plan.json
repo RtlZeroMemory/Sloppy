@@ -27,6 +27,11 @@
       "id": 2,
       "exportName": "__sloppy_handler_2",
       "displayName": "Users.Get"
+    },
+    {
+      "id": 3,
+      "exportName": "__sloppy_handler_3",
+      "displayName": "Users.Create"
     }
   ],
   "routes": [
@@ -35,6 +40,13 @@
       "pattern": "/users/{id:int}",
       "handlerId": 2,
       "name": "Users.Get",
+      "module": "users"
+    },
+    {
+      "method": "POST",
+      "pattern": "/users/{id:int}",
+      "handlerId": 3,
+      "name": "Users.Create",
       "module": "users"
     },
     {

@@ -38,7 +38,7 @@
     {
       "id": "sqlserver.driver",
       "status": "error",
-      "message": "connectionString=Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=super-secret; Microsoft ODBC Driver 18 for SQL Server not found"
+      "message": "connectionString=Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=<PASSWORD>; Microsoft ODBC Driver 18 for SQL Server not found"
     }
   ]
 }
