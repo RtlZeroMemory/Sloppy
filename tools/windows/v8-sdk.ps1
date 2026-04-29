@@ -81,8 +81,8 @@ function Test-SlV8SdkManifest {
     if ($errors.Count -gt 0) {
         if (-not $Quiet) {
             Write-Host "V8 SDK manifest is incompatible:"
-            foreach ($error in $errors) {
-                Write-Host "  - $error"
+            foreach ($manifestError in $errors) {
+                Write-Host "  - $manifestError"
             }
         }
         return $false
@@ -141,10 +141,10 @@ function Test-SlV8SdkLayout {
             }
 
             foreach ($pattern in @("v8_libplatform*.lib", "v8_libbase*.lib")) {
-                $matches = @(
+                $libraryMatches = @(
                     Get-ChildItem -LiteralPath $libDir -Filter $pattern -File -ErrorAction SilentlyContinue
                 )
-                if ($matches.Count -eq 0) {
+                if ($libraryMatches.Count -eq 0) {
                     $missing.Add("lib/$pattern")
                 }
             }

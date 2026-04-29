@@ -421,6 +421,9 @@ Current checks:
   diagnostics, unsupported result diagnostics, handler intrinsic misuse, duplicate handler
   registration, missing registered handler diagnostics, registered handler context
   dispatch, and create/destroy/create lifecycle behavior.
+- `engine.v8.owner_thread` is registered only when V8 is enabled and covers owner-thread
+  lifecycle checks, wrong-thread destroy invalidation without entering V8, and
+  invalid-state diagnostics for later use of a wrong-thread-destroyed handle.
 - `execution.handwritten_artifact` is registered only when V8 is enabled and covers parsing
   the handwritten plan fixture, evaluating bootstrap runtime and handwritten/compiler
   `app.js`, validating registered handlers, invoking handler ID `1`, missing plan handler
@@ -438,7 +441,6 @@ Current checks:
 
 Later checks:
 
-- wrong-thread checks.
 - true V8 ESM bootstrap loading.
 
 EPIC-20's default benchmark harness does not require V8. Handler dispatch benchmarks cover

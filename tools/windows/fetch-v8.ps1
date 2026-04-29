@@ -45,8 +45,12 @@ Write-SlV8ExpectedLayout
 Write-Host ""
 Write-Host "Default future destination, once fetching is implemented: $Destination"
 
-$resolved = Resolve-SlV8SdkRoot -RepoRoot $Root
+$resolved = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root
 if ($null -ne $resolved) {
     Write-Host ""
-    Write-Host "Discovered compatible V8 SDK: $resolved"
+    if ([string]::IsNullOrWhiteSpace($V8Root)) {
+        Write-Host "Discovered compatible V8 SDK: $resolved"
+    } else {
+        Write-Host "Compatible V8 SDK from -V8Root: $resolved"
+    }
 }
