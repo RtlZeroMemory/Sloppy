@@ -11,9 +11,10 @@ gates, and default provider tests are not live database tests. Cross-platform de
 proves the non-V8 path across hosted Windows, Linux, and macOS runners; it still does not
 prove optional SDK/service paths.
 
-MAIN-01 evidence is tracked separately in `docs/project/main-evidence.md`. Default gates
-prove compiler determinism and clear non-V8 failure behavior; only a V8-enabled run of
-`sloppy run --artifacts .sloppy-main-smoke --once GET /` proves the executable hello path.
+MAIN evidence is tracked separately in `docs/project/main-evidence.md`. Default gates prove
+default build/test health, static/lint gates, Rust compiler-tool gates, and non-V8
+diagnostic behavior. Only a V8-enabled build plus the documented run-once smoke proves the
+executable hello path through V8.
 
 | Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
 | --- | --- | --- | --- | --- | --- |
@@ -28,11 +29,11 @@ prove compiler determinism and clear non-V8 failure behavior; only a V8-enabled 
 | Compiler extraction | Yellow | Oxc-backed one-file extractor for `Sloppy.create`, builder build, literal `mapGet`, simple route groups, route names, handler ID assignment, `"sloppy"` import rewrite, unsupported arbitrary import diagnostics, deterministic `app.plan.json`, `app.js`, placeholder source map, and route metadata consumed by `sloppy run`. | Cargo tests, compiler golden fixtures, diagnostics fixtures, Rust standards scanner, clippy, and V8-gated run smoke when SDK is available. | No full TypeScript checking, Node/npm package resolution, bundling, modules/services/data providers, source-map fidelity, or source-input `sloppy run` handoff. | Add broader extraction, source maps, and official type checking. |
 | App host | Yellow | JavaScript-only builder/freeze/config/logging/services skeleton. | Bootstrap tests validate in-memory behavior. | No native app graph, startup validation, request scopes, disposal, or run/listen behavior. | Implement native app graph and runtime startup validation after compiler extraction. |
 | Modules | Yellow | JavaScript-only `Sloppy.module`, dependency ordering, phases, attribution, debug metadata. | Bootstrap module tests. | No compiler extraction, package loading, native module graph, middleware/filter phases, or real plan emission. | Emit/validate module plan metadata and load it through runtime startup. |
-| Data providers | Yellow | Native SQLite, PostgreSQL, and SQL Server provider boundaries plus bootstrap data API/fake provider and core JS-safe resource IDs. | SQLite live-in-memory tests; PostgreSQL/SQL Server default non-live tests; redaction, option, and resource lifecycle tests. | PostgreSQL and SQL Server live tests require env vars; JS-to-native bridge, request-scope ownership, pooling, async offload, and capability enforcement are missing. | Add SQLite JS-native bridge, live test infrastructure, pooling hardening, async strategy, and capability policy. |
+| Data providers | Yellow | Native SQLite, PostgreSQL, and SQL Server provider boundaries plus bootstrap data API/fake provider and core JS-safe resource IDs. | SQLite in-memory native provider tests; PostgreSQL/SQL Server default non-live tests; redaction, option, and resource lifecycle tests. | PostgreSQL and SQL Server live tests require env vars; SQLite in-memory tests are not JS bridge evidence; JS-to-native bridge, request-scope ownership, pooling, async offload, and capability enforcement are missing. | Add SQLite JS-native bridge, live test infrastructure, pooling hardening, async strategy, and capability policy. |
 | CLI | Yellow | Metadata-only `routes`, `doctor`, `audit`, and `openapi` commands. | Golden process tests over fixtures. | Commands do not compile, run handlers, start HTTP, enter V8, or run live provider checks. | Wire to compiler/app-host metadata and add opt-in live diagnostics. |
 | Benchmarks | Yellow | `sloppy_bench`, route/parser/handler/synthetic dispatch scenarios, JSON/text output, wrapper. | List/smoke CTest checks. | No performance regression gate; no real HTTP/V8/JSON/live DB/external comparisons. | Add release benchmark methodology, trend tracking, real paths, and only then external comparisons. |
 | Cross-platform readiness | Yellow | Cross-platform layout, platform boundary policy, Linux clang/gcc CI, macOS clang CI, Windows clang-cl CI, and POSIX standards scanners exist. | Required default CI proves non-V8 configure/build/test, Cargo gates, artifact hygiene, and boundary scans on Windows, Linux, and macOS. | V8 CI is manual/gated, live provider services are opt-in, package smoke is not required on Linux/macOS, and sanitizer/fuzz matrices are absent. | Add V8 SDK caching/prebuilt setup, optional live provider service jobs, Linux/macOS package smoke, and sanitizer/fuzz gates before stronger public-alpha claims. |
-| Distribution readiness | Yellow | Experimental local package layout, Windows ZIP tooling, Unix TAR script, manifest, checksums, stdlib inclusion, V8 SDK exclusion policy, and outside-checkout ZIP smoke exist. | Windows package creation and package smoke can validate `sloppy --version`, `sloppyc --version`, stdlib assets, manifest fields, excluded directories, and SHA256SUMS locally. | Linux/macOS packaging is not CI-validated yet; dynamic V8 runtime bundling, libpq/runtime DLL strategy, signing/notarization, installers, package-manager distribution, reproducibility hardening, and public release automation remain deferred. | Add EPIC-26 cross-platform CI package validation, V8 runtime bundling hardening, provider runtime dependency strategy, signing/notarization, and package-manager work only when scoped. |
+| Distribution readiness | Yellow | Experimental local package layout, Windows ZIP tooling, Unix TAR script, manifest, checksums, stdlib inclusion, V8 SDK exclusion policy, and outside-checkout ZIP smoke exist. | Windows package creation and package smoke can validate `sloppy --version`, `sloppyc --version`, stdlib assets, manifest fields, excluded directories, and SHA256SUMS locally. | Package smoke is not release readiness; Linux/macOS packaging is not CI-validated yet; dynamic V8 runtime bundling, libpq/runtime DLL strategy, signing/notarization, installers, package-manager distribution, reproducibility hardening, and public release automation remain deferred. | Add MAIN1-12 package/CI hardening, V8 runtime bundling hardening, provider runtime dependency strategy, signing/notarization, and package-manager work only when scoped. |
 | Security / capability model | Red | Capability metadata and audit concepts exist. | Some metadata/audit fixture checks. | No runtime enforcement, filesystem/network policy, provider access policy, or permission gate. | Implement EPIC-27 enforcement and diagnostics before public alpha. |
 
 ## Current Summary
@@ -58,6 +59,7 @@ Passing the default Windows gates means:
 - `sloppy run` startup/failure-mode tests passed without proving V8 execution;
 - V8-enabled tests did not necessarily run;
 - PostgreSQL and SQL Server live tests did not necessarily run;
+- package smoke did not necessarily run and is not public release readiness;
 - benchmark smoke ran only as harness correctness, not as performance evidence.
 
 Passing the default cross-platform CI additionally means:
@@ -69,5 +71,6 @@ Passing the default cross-platform CI additionally means:
 - provider live tests were either explicitly enabled by environment or reported as
   skipped. It does not mean live PostgreSQL, live SQL Server, or V8 validation ran.
 
-Do not convert default-gate success into claims about V8, live databases, HTTP throughput,
-public package usability, or production readiness.
+Do not convert default-gate success into claims about V8, live databases, package release
+readiness, HTTP throughput, public performance, public package usability, or production
+readiness.

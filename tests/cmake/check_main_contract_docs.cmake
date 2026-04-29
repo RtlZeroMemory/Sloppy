@@ -32,11 +32,14 @@ foreach(required IN ITEMS
 endforeach()
 
 foreach(required IN ITEMS
-        "default non-V8 gates"
-        "V8-gated commands"
-        "does not prove V8 execution"
-        "Live provider tests are not relevant to MAIN-01"
-        "Benchmark claims are not relevant to MAIN-01")
+        "Default non-V8"
+        "default non-V8 results"
+        "V8-Gated Evidence"
+        "These commands do not prove"
+        "Package Evidence"
+        "Live Provider Evidence"
+        "Benchmark Evidence"
+        "public alpha readiness")
     require_file_substring("${main_evidence}" "${required}" "MAIN evidence doc is missing text")
 endforeach()
 
