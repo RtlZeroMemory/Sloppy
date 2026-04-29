@@ -6,6 +6,17 @@ network checks are metadata-only skeletons.
 Purpose: document future capabilities, permissions, audit output, and denied-operation
 diagnostics.
 
+ENGINE-01 target contract:
+
+- SQLite open/use must check a database capability before provider work.
+- Denied SQLite access must return a stable diagnostic and must not reach provider
+  execution.
+- diagnostics should include safe token, access, provider, route, and handler context where
+  known.
+- filesystem and network capabilities remain skeleton metadata until APIs exist.
+- Sloppy does not claim OS sandboxing, prompt-based grants, or Node/Deno permission
+  compatibility.
+
 Implemented database capability metadata example:
 
 ```ts

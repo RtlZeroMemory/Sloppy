@@ -109,8 +109,11 @@ builder
 
 const app = builder.build();
 
-await app.run();
+export default app;
 ```
+
+`app.run()` remains deferred by the ENGINE-01 contract. Runtime startup uses compiled
+artifacts through `sloppy run --artifacts` until source-input handoff is implemented.
 
 ## Module Phases
 

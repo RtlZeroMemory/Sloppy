@@ -13,6 +13,20 @@ JavaScript-only until later compiler/runtime work.
 Purpose: document current `app.mapGet`, route snapshots, handler context, and future route
 features.
 
+ENGINE-01 target contract:
+
+- core route declaration methods are `mapGet`, `mapPost`, `mapPut`, `mapPatch`, and
+  `mapDelete`;
+- OPTIONS is framework-owned for allowed-method/preflight-style responses;
+- HEAD is deferred until its body and metadata policy is explicit;
+- route params are available as strings on `ctx.route`;
+- query params are decoded scalar strings with last-wins repeated-key behavior;
+- request headers are available through case-insensitive `ctx.request.headers.get(name)`
+  and deterministic entries;
+- JSON and text bodies are core HTTP runtime work, with body-size and content-type policy;
+- multipart/file upload, streaming bodies, nested groups, middleware, filters, typed
+  binding, and production route-table optimization remain deferred.
+
 Implemented bootstrap API example:
 
 ```ts

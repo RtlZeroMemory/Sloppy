@@ -10,6 +10,10 @@ These blockers now define the next Slop Engine phase. They supersede treating be
 methodology, public alpha docs, PostgreSQL JS bridge work, or SQL Server JS bridge work as
 immediate product blockers:
 
+ENGINE-01 locks the framework contract in
+`docs/project/engine-framework-contract.md`; future implementation debt should be tracked
+against that contract rather than reopening ambiguous "minimum alpha" scope.
+
 - Compiler support for realistic supported Sloppy apps: async handlers, non-GET route
   methods, SQLite/data metadata, capability metadata, and real source maps.
 - V8 async runtime: Promise return support, microtask policy, owner-thread continuation,
@@ -36,9 +40,10 @@ immediate product blockers:
 - `sloppy run` source/build handoff: EPIC-22 can load artifacts, but source input still
   needs a clean `sloppyc` handoff/cache story.
 - Source-input `sloppy run <source.js>` implementation: MAIN1-01 decided that alpha keeps
-  the explicit two-step artifact workflow. Implementing direct source input still needs a
-  scoped compiler handoff, cache keys, stale-artifact checks, source diagnostics, and
-  rebuild policy.
+  the explicit two-step artifact workflow. #302 now tracks the dedicated source-input
+  handoff task after the compiler emits full supported-app artifacts. Implementing direct
+  source input still needs a scoped compiler handoff, cache keys, stale-artifact checks,
+  source diagnostics, cleanup policy, and rebuild policy.
 - HTTP production response pipeline beyond EPIC-23: custom headers, redirect helpers,
   streaming/files, cookies, content negotiation, keep-alive policy, and production error
   pages.
@@ -208,6 +213,9 @@ immediate product blockers:
 
 ## Completed Cleanup
 
+- Added the ENGINE-01 framework contract source of truth for JS app API, Results, request
+  context, async/microtasks, cancellation/deadlines, HTTP, SQLite, capabilities, and
+  deferred behavior.
 - Added JS/TS and Rust standards docs plus zero-dependency language standards scanners.
 - Wired JS/TS and Rust standards scanners into `tools/windows/dev.ps1 lint`.
 - Added the EPIC-21 `sloppyc` extraction MVP for one-file literal `mapGet` apps, builder

@@ -6,6 +6,11 @@ This is not a public alpha document and not a feature implementation plan by its
 defines the intended engine/framework foundation that must be coherent before Sloppy moves
 up-stack into broader ergonomics, public launch docs, benchmarks, or provider expansion.
 
+ENGINE-01 locks the concrete framework contract for implementation handoff in
+`docs/project/engine-framework-contract.md`. That contract is the immediate source of truth
+for ENGINE-02 through ENGINE-05 decisions around JS app shape, Results, request context,
+async/microtasks, cancellation, HTTP, SQLite, capabilities, and deferred behavior.
+
 ## 1. Runtime Philosophy
 
 Sloppy is a compiler-planned TypeScript backend runtime/app-host.

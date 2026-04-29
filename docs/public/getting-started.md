@@ -37,10 +37,11 @@ app.mapGroup("/search")
 current `Results.*` helper set, object-backed config, memory logging, string-token
 singleton/transient services, and the `schema` skeleton now exist in the bootstrap stdlib.
 `app.run()` and `app.listen()` do not. The broader example remains aspirational as a
-runnable application until native app-host validation and V8 bootstrap module loading land.
+runnable application until the ENGINE-01 foundation contract is implemented across the
+compiler, V8 async runtime, HTTP runtime, and SQLite bridge.
 
 The first checked-in example lives at `examples/hello/`. It uses the current source stdlib
-path because compiler/runtime support for the bare `"sloppy"` import is not implemented:
+path as a bootstrap API-shape fixture, not as the compiler input contract:
 
 ```js
 import { Sloppy, Results } from "../../stdlib/sloppy/index.js";
@@ -84,6 +85,12 @@ production server. EPIC-23 adds route/query/request context and supported
 `Results.text/json/ok/noContent/problem` response descriptors. There is no HTTPS, request
 body parsing, headers in handler context, streaming, middleware, hot reload, package
 manager behavior, Node compatibility, or production response pipeline.
+
+ENGINE-01 keeps public alpha docs blocked until the foundation contract in
+`docs/project/engine-framework-contract.md` has executable evidence for realistic examples:
+async handlers, cancellation, JSON/text bodies, headers, SQLite, capability denial, and
+packaged runtime smoke. Direct source input is tracked by #302; until that lands, examples
+should continue to show explicit `sloppyc build` plus `sloppy run --artifacts`.
 
 The request-context compiler example lives at `examples/request-context/`.
 MAIN1-13 adds executable conformance around the public compiler examples: default tests

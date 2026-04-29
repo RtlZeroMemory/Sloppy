@@ -18,8 +18,10 @@ executable hello path through V8.
 
 2026-04-29 strategic update: Slop Engine foundation is the next phase. Public alpha
 readiness remains red until the engine layers in
-`docs/project/slop-engine-layered-roadmap.md` are completed or explicitly deferred:
-compiler support for realistic apps, V8 Promise/microtask handling, framework HTTP API
+`docs/project/slop-engine-layered-roadmap.md` are completed or explicitly deferred.
+ENGINE-01 locks the implementation-facing contract in
+`docs/project/engine-framework-contract.md`. The locked contract covers compiler support
+for realistic apps, V8 Promise/microtask handling, framework HTTP API
 runtime, SQLite capability-wired end-to-end execution, app/request lifecycle cleanup,
 diagnostics/source maps, cancellation/backpressure/resource-limit infrastructure,
 conformance examples, and packaged runtime evidence. PostgreSQL and SQL Server JS bridges
