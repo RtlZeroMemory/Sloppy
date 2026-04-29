@@ -80,20 +80,23 @@ Default gates and required hosted CI leave V8 disabled.
 Validate the SDK when a local SDK root is available:
 
 ```powershell
-.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\fetch-v8.ps1 -ValidateOnly
 ```
 
 Configure, build, and test the V8-enabled preset:
 
 ```powershell
-.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root <sdk-root>
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
 .\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
 
 The equivalent CMake selection is `SLOPPY_ENABLE_V8=ON` or `SLOPPY_ENGINE=v8` with
-`SLOPPY_V8_ROOT=<sdk-root>`. The current Windows source SDK is release/RelWithDebInfo
-compatible; do not use it with the default Debug `windows-dev` preset.
+`SLOPPY_V8_ROOT=<sdk-root>`. The Windows wrapper resolves that value from `-V8Root`,
+`SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, and registered worktree `.sdeps` locations. The
+current Windows source SDK is release/RelWithDebInfo compatible; do not use it with the
+default Debug `windows-dev` preset.
 
 Run the MAIN hello run-once smoke only from the V8-enabled build after creating the
 compiler smoke artifacts:

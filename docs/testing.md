@@ -98,9 +98,10 @@ Current tests:
   available, which imports the ESM stdlib and verifies database capability metadata, query
   template lowering, fake data provider query/queryOne/exec behavior, transaction
   commit/rollback behavior, rejected async callback rollback, nested transaction rejection,
-  use after closed transaction scope, SQLite stdlib metadata and bridge-unavailable
-  diagnostics, and module/service integration. This is test infrastructure only and is not
-  a Node compatibility claim;
+  use after closed transaction scope, SQLite stdlib metadata, bridge-unavailable
+  diagnostics in non-V8 contexts, SQLite wrapper closed-state behavior through a mocked
+  native bridge, and module/service integration. This is test infrastructure only and is
+  not a Node compatibility claim;
 - CTest unit test `data.sqlite.provider`, which links the vcpkg SQLite dependency and
   verifies the native SQLite provider with in-memory open/close, use after close,
   parameterized exec/query/queryOne, primitive type binding, transaction commit/rollback,
@@ -173,6 +174,11 @@ When V8 is explicitly enabled and a valid SDK is configured, CTest also register
 `engine.v8.smoke`. That test evaluates classic JavaScript source, calls a named global
 function returning `sloppy-ok`, and checks syntax errors, missing/non-callable globals,
 throwing functions, and unsupported result types fail with diagnostics instead of crashing.
+MAIN1-08 extends that target with SQLite bridge coverage for `:memory:` open, create,
+insert, query/queryOne, close, stale/closed handles, and invalid argument diagnostics. The
+SQLite bridge is implemented as `src/engine/v8/intrinsics_sqlite.cc` registered through
+`src/engine/v8/intrinsics.cc`; future provider bridge tests should follow that split
+instead of adding provider cases to `engine_v8.cc`.
 TASK 08.A also registers `execution.handwritten_artifact`, which parses the handwritten
 plan fixture, evaluates handwritten `app.js`, invokes handler ID `1`, and covers missing
 handler ID, missing JS function, and thrown handler diagnostics. EPIC-22 also registers
@@ -187,6 +193,20 @@ stdlib asset diagnostics, missing app module diagnostics, missing handler regist
 diagnostics, duplicate handler registration diagnostics, intrinsic misuse diagnostics, and
 compiler rejection of unsupported bare imports. Default non-V8 tests still do not prove the
 V8 bootstrap path passed; V8 configure/build/CTest must be run and reported separately.
+
+Local V8 test setup should use the shared SDK resolver:
+
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
+
+The resolver searches `-V8Root`, `SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, and
+`.sdeps/v8/windows-x64` in this and other registered git worktrees. Prefer that command in
+fresh Codex worktrees so optional V8 evidence is reproducible without machine-local paths.
+Direct CMake callers remain responsible for passing `-DSLOPPY_V8_ROOT=<sdk-root>`.
 
 ## Future Phase
 
@@ -634,9 +654,10 @@ tests/bootstrap/test_data_foundation.mjs
 CMake registers it as `bootstrap.stdlib.data_foundation` only when `node` is available. It
 verifies documented bootstrap behavior for capability metadata, query template lowering,
 fake data providers, transaction callback behavior, SQLite stdlib metadata, the honest
-SQLite bridge-unavailable path, and module/service integration. It does not add
-package-manager behavior, npm dependencies, JavaScript database connections, JavaScript SQL
-execution, or a Node compatibility promise.
+SQLite bridge-unavailable path, SQLite wrapper behavior with a mocked native bridge, and
+module/service integration. It does not add package-manager behavior, npm dependencies,
+real JavaScript database connections, real JavaScript SQL execution, or a Node
+compatibility promise.
 
 EPIC-16 adds the first real provider CTest:
 
@@ -644,9 +665,9 @@ EPIC-16 adds the first real provider CTest:
 tests/unit/data/test_sqlite.c
 ```
 
-It executes SQLite through the native provider API against `:memory:` databases. The stdlib
-SQLite entry point remains bridge-unavailable until runtime intrinsics exist, so executable
-JavaScript data tests still use fake providers for SQL-like behavior.
+It executes SQLite through the native provider API against `:memory:` databases. MAIN1-08
+adds V8-gated JavaScript bridge coverage separately; default non-V8 tests still do not
+prove JavaScript-to-native SQLite execution.
 
 TASK 11.D adds the first public example structural check:
 
@@ -703,8 +724,9 @@ tests/cmake/check_sqlite_basic_example.cmake
 ```
 
 It verifies the intended `data.sqlite` capability/service shape and honest documentation
-that the native provider is covered by C tests while JavaScript-to-native provider calls are
-still deferred.
+that the native provider is covered by C tests while the public source-stdlib SQLite example
+is still not an executable `sloppy run` tutorial. The executable SQLite proof lives in the
+V8-gated integration fixture until the compiler/source example path can support it.
 
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 

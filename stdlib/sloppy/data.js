@@ -159,6 +159,129 @@ function validateSqliteOpenOptions(options) {
     });
 }
 
+function sqliteNativeBridge() {
+    return globalThis.__sloppy?.data?.sqlite ?? null;
+}
+
+function createSqliteClosedError(operation) {
+    return new Error(`sloppy: sqlite connection is closed
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}
+
+Fix:
+  Open a new SQLite connection before using ${operation}.`);
+}
+
+function validateSqliteParams(params, operation) {
+    if (params === undefined) {
+        return [];
+    }
+
+    if (!Array.isArray(params)) {
+        throw new TypeError(`Sloppy sqlite.${operation} parameters must be an array.`);
+    }
+
+    for (const param of params) {
+        const type = typeof param;
+        if (
+            param !== null
+            && type !== "string"
+            && type !== "number"
+            && type !== "boolean"
+        ) {
+            throw new TypeError(
+                `Sloppy sqlite.${operation} parameters support only null, string, number, and boolean values.`,
+            );
+        }
+    }
+
+    return params;
+}
+
+function normalizeSqliteOperation(operation, args) {
+    if (args.length === 1 && isLoweredQuery(args[0])) {
+        return {
+            text: args[0].text,
+            parameters: validateSqliteParams(args[0].parameters, operation),
+        };
+    }
+
+    if (typeof args[0] === "string") {
+        if (args.length > 2) {
+            throw new TypeError(`Sloppy sqlite.${operation} accepts sql and optional params.`);
+        }
+
+        if (args[0].length === 0) {
+            throw new TypeError(`Sloppy sqlite.${operation} SQL must be a non-empty string.`);
+        }
+
+        return {
+            text: args[0],
+            parameters: validateSqliteParams(args[1], operation),
+        };
+    }
+
+    return normalizeQueryArguments(operation, "question", args);
+}
+
+function createSqliteConnection(nativeBridge, handle) {
+    const state = {
+        closed: false,
+        handle,
+    };
+
+    function assertOpen(operation) {
+        if (state.closed) {
+            throw createSqliteClosedError(operation);
+        }
+    }
+
+    return Object.freeze({
+        query(...args) {
+            assertOpen("query");
+            const query = normalizeSqliteOperation("query", args);
+            return nativeBridge.query(state.handle, query.text, query.parameters);
+        },
+
+        queryOne(...args) {
+            assertOpen("queryOne");
+            const query = normalizeSqliteOperation("queryOne", args);
+            return nativeBridge.queryOne(state.handle, query.text, query.parameters);
+        },
+
+        exec(...args) {
+            assertOpen("exec");
+            const query = normalizeSqliteOperation("exec", args);
+            return nativeBridge.exec(state.handle, query.text, query.parameters);
+        },
+
+        close() {
+            if (state.closed) {
+                return;
+            }
+
+            nativeBridge.close(state.handle);
+            state.closed = true;
+        },
+
+        __debug() {
+            return Object.freeze({
+                kind: "sqlite-connection",
+                closed: state.closed,
+                resource: Object.freeze({
+                    slot: state.handle.slot,
+                    generation: state.handle.generation,
+                    kind: state.handle.kind,
+                }),
+            });
+        },
+    });
+}
+
 function redactConnectionString(value) {
     return value
         .replace(
@@ -266,10 +389,10 @@ Operation:
   ${operation}
 
 Reason:
-  The native SQLite provider exists for C/runtime tests, but stdlib-to-native database intrinsics are not wired yet.
+  The native SQLite provider exists, but this JavaScript context did not install the V8 SQLite intrinsics.
 
 Fix:
-  Register SQLite as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);
+  Run through a V8-enabled Sloppy runtime that loads the SQLite bridge, or keep SQLite usage behind a documented deferral.`);
 }
 
 function createPostgresUnavailableError(operation, options) {
@@ -313,8 +436,16 @@ Fix:
 }
 
 function openSqlite(options) {
-    validateSqliteOpenOptions(options);
-    throw createSqliteUnavailableError("open");
+    const safeOptions = validateSqliteOpenOptions(
+        typeof options === "string" ? { path: options } : options,
+    );
+    const nativeBridge = sqliteNativeBridge();
+
+    if (nativeBridge === null) {
+        throw createSqliteUnavailableError("open");
+    }
+
+    return createSqliteConnection(nativeBridge, nativeBridge.open(safeOptions));
 }
 
 function openPostgres(options) {
@@ -349,26 +480,34 @@ function doctorSqlServer(options = {}) {
     });
 }
 
+const sqliteSupports = {
+    memory: true,
+    file: true,
+    queryTemplates: true,
+    parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
+    transactions: true,
+    pooling: false,
+    migrations: false,
+    orm: false,
+};
+
+Object.defineProperty(sqliteSupports, "nativeStdlibBridge", {
+    enumerable: true,
+    get() {
+        return sqliteNativeBridge() !== null;
+    },
+});
+
 const sqlite = Object.freeze({
     provider: "sqlite",
     placeholderStyle: "question",
-    supports: Object.freeze({
-        memory: true,
-        file: true,
-        queryTemplates: true,
-        parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
-        transactions: true,
-        pooling: false,
-        migrations: false,
-        orm: false,
-        nativeStdlibBridge: false,
-    }),
+    supports: Object.freeze(sqliteSupports),
     open: openSqlite,
     __debug() {
         return Object.freeze({
             provider: "sqlite",
             placeholderStyle: "question",
-            nativeStdlibBridge: false,
+            nativeStdlibBridge: sqliteNativeBridge() !== null,
         });
     },
 });

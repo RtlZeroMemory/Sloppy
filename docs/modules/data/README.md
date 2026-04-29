@@ -3,8 +3,8 @@
 ## Status
 
 Bootstrap data/capabilities foundation implemented. Native SQLite, PostgreSQL, and SQL
-Server providers are implemented for C/runtime tests; JavaScript stdlib-to-native database
-intrinsics are still planned / not implemented yet.
+Server providers are implemented for C/runtime tests. MAIN1-08 implements the first
+JavaScript stdlib-to-native database bridge for SQLite in V8-enabled runtime contexts.
 
 ## Purpose
 
@@ -29,8 +29,9 @@ Implemented bootstrap API:
 - fake provider methods: `query`, `queryOne`, `exec`, and `transaction`.
 - `builder.capabilities.addDatabase(token, options)` and module `.capabilities(...)`
   metadata declarations.
-- `data.sqlite` provider metadata and `data.sqlite.open(options)` as the future stdlib
-  entry point. It validates options and fails honestly until the native bridge exists.
+- `data.sqlite` provider metadata and `data.sqlite.open(options)`. It validates options
+  and returns a safe SQLite connection wrapper when the V8 runtime installs
+  `__sloppy.data.sqlite`; otherwise it fails honestly with bridge-unavailable.
 - `data.postgres` provider metadata, `$1` placeholder style, redaction helper, and
   `data.postgres.open(options)` as the future stdlib entry point. It validates options and
   fails honestly until the native bridge exists.
@@ -49,6 +50,21 @@ Implemented native SQLite API:
 - `sl_sqlite_open_options_memory`, `sl_sqlite_open`, and `sl_sqlite_close`;
 - `sl_sqlite_exec`, `sl_sqlite_query`, and `sl_sqlite_query_one`;
 - transaction begin/commit/rollback plus transaction-scoped exec/query/queryOne helpers.
+
+Implemented SQLite JS bridge API:
+
+- internal V8 intrinsics under `__sloppy.data.sqlite`;
+- V8 layering: `engine_v8.cc` owns the provider-neutral engine core, `intrinsics.cc`
+  aggregates provider intrinsic registration, and `intrinsics_sqlite.cc` owns SQLite
+  argument conversion, row materialization, resource lookup, cleanup, and provider calls.
+  Future PostgreSQL/SQL Server bridges must add sibling intrinsic modules instead of
+  expanding `engine_v8.cc`;
+- `data.sqlite.open({ path })` wrapper that stores only an opaque `SlResourceId` handle;
+- connection methods `exec(sql, params?)`, `query(sql, params?)`, `queryOne(sql, params?)`,
+  and `close()`;
+- primitive parameter arrays for `null`, string, number, and boolean values;
+- `query` rows as arrays of plain objects, `queryOne` as one plain object or `null`;
+- deterministic closed/stale/invalid-handle failure behavior before provider calls.
 
 Implemented native PostgreSQL API:
 
@@ -83,12 +99,14 @@ and must be closed deterministically through `sl_sqlite_close`, `sl_postgres_clo
 environment handles are freed on every path. Future JS-visible real connections,
 statements, pools, and transactions are resource-table-owned and scoped explicitly.
 
-MAIN1-07 adds the core resource table that those future bridge handles must use. JS-facing
-data handles may wrap only `SlResourceId` values. They must never expose provider pointers,
-ODBC handles, `sqlite3*`, `sqlite3_stmt*`, `PGconn*`, `PGresult*`, or pointer-like integers
-to JavaScript. Every bridge entrypoint must validate kind, generation, and live state before
-calling provider code. SQLite MAIN1-08 should consume this layer for connections,
-statements, and transactions instead of creating a provider-specific handle registry.
+MAIN1-08 consumes the MAIN1-07 core resource table for SQLite connection handles. JS-facing
+data handles wrap only `SlResourceId` values. They never expose provider pointers, ODBC
+handles, `sqlite3*`, `sqlite3_stmt*`, `PGconn*`, `PGresult*`, or pointer-like native
+addresses to JavaScript. Every SQLite bridge entrypoint validates kind, generation, and
+live state before calling provider code. PostgreSQL and SQL Server JS bridges remain
+deferred. The V8 engine owns the resource table; provider intrinsic modules may insert,
+look up, and close their own resource kinds through that table, but must not create separate
+handle registries.
 
 ## Invariants
 
@@ -104,8 +122,9 @@ Provider-specific APIs stay namespaced.
 
 Implemented JavaScript errors cover invalid query template usage, fake provider missing
 methods, duplicate/missing capability tokens, invalid database capability metadata,
-transaction callback misuse, nested transactions, use after closed transaction scope, and
-the missing stdlib native SQLite bridge.
+transaction callback misuse, nested transactions, use after closed transaction scope,
+bridge-unavailable contexts, SQLite wrapper use after close, and invalid SQLite bridge
+parameters.
 
 Native resource lookup diagnostics use `SL_DIAG_RESOURCE_INVALID_ID`,
 `SL_DIAG_RESOURCE_STALE_ID`, `SL_DIAG_RESOURCE_WRONG_KIND`, and `SL_DIAG_RESOURCE_CLOSED`.
@@ -138,14 +157,21 @@ environment gates.
 `bootstrap.stdlib.data_foundation` executes the ESM stdlib with Node when available and
 covers capability metadata, query lowering, fake provider method dispatch, transaction
 commit/rollback, rejected async callbacks, nested transaction rejection, use after close,
-module/service integration, and the honest `data.sqlite.open(...)` bridge-unavailable
-path.
+module/service integration, the honest `data.sqlite.open(...)` bridge-unavailable path,
+and SQLite wrapper behavior against a mocked native bridge. This remains Node test
+infrastructure only, not a Node compatibility claim.
 
 `data.sqlite.provider` is a native CTest target that links SQLite and covers in-memory
 open/close, use after close, exec, parameterized insert, query row shape, queryOne found and
 missing behavior, primitive parameter types, unsupported parameter diagnostics, transaction
 commit/rollback, nested transaction rejection, transaction use after complete, invalid SQL,
 missing table diagnostics, and invalid open diagnostics.
+
+`engine.v8.smoke` adds V8-gated SQLite bridge coverage when the SDK is enabled. Those tests
+prove that JavaScript can open `:memory:`, create a table, insert/query data through the
+stdlib bridge, close the wrapper, and receive deterministic stale/closed/invalid argument
+failures. They are reported separately from default provider tests because default gates do
+not enable V8.
 
 `core.capability.registry` covers the runtime capability registry, database read/write
 policy, provider mismatch denial, missing/wrong-kind/insufficient capability diagnostics,

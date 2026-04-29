@@ -286,7 +286,8 @@ Existing issue references: #35 remains open.
 
 Goal: make one database story executable through real Sloppy, starting with SQLite.
 
-Why it exists: native SQLite is real but `data.sqlite.open` intentionally fails in JS.
+Why it exists: native SQLite is real and MAIN1-08 makes SQLite usable from V8-backed
+JavaScript without exposing raw native pointers.
 
 Prerequisites: resource table and capability policy.
 
@@ -294,13 +295,17 @@ Task breakdown:
 
 - MAIN1-08.A: SQLite open/query/exec intrinsics.
 - MAIN1-08.B: JS resource wrapper with safe IDs.
-- MAIN1-08.C: transaction lifecycle and cleanup tests.
+- MAIN1-08.C: resource lifecycle and cleanup tests.
 - MAIN1-08.D: executable SQLite example or explicit deferral if blocked.
+- MAIN1-08.E: V8 bridge layering. Provider-specific intrinsic code must live in
+  `src/engine/v8/intrinsics_<provider>.cc` and register through `intrinsics.cc`; do not
+  grow `engine_v8.cc` with SQLite/PostgreSQL/SQL Server conversion logic.
 
 Non-goals: ORM, migrations, PostgreSQL/SQL Server JS bridge in this EPIC.
 
 Files likely touched: `stdlib/sloppy/data.js`, `src/data/sqlite.c`, `src/engine/v8/`,
-`examples/sqlite-basic/`, `docs/public/data.md`.
+`tests/integration/execution/sqlite_bridge/`, `examples/sqlite-basic/`,
+`docs/public/data.md`.
 
 Tests required: unit provider tests, V8-gated JS bridge tests, example conformance.
 
@@ -308,11 +313,14 @@ Acceptance criteria: alpha SQLite behavior is real or public docs explicitly def
 
 Risk: high.
 
-Suggested PR grouping: intrinsics, JS wrapper, executable example.
+Suggested PR grouping: intrinsics, JS wrapper, executable/example decision, bridge
+layering docs.
 
-Advanced features included: transaction lifecycle through JS.
+Advanced features included: none beyond primitive parameter binding and deterministic
+resource cleanup.
 
-Deferred items: migrations and advanced types.
+Deferred items: JS transactions, migrations, advanced types, and PostgreSQL/SQL Server JS
+bridges.
 
 Existing issue references: do not duplicate EPIC-16 native provider tasks #71-#74.
 

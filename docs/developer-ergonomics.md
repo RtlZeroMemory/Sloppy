@@ -455,9 +455,11 @@ Current TASK 15 bootstrap behavior:
 - nested transactions and use after closed transaction scopes fail.
 - EPIC-16 native C tests prove SQLite `:memory:` open/close, exec/query/queryOne, primitive
   binding, transactions, and diagnostics.
-- `data.sqlite.open(...)` exists but reports that the native stdlib bridge is unavailable.
+- `data.sqlite.open(...)` opens a native resource only in V8-enabled contexts that install
+  the SQLite bridge; bootstrap-only and non-V8 contexts report that the native stdlib
+  bridge is unavailable.
 
-Still not implemented: JavaScript-to-native SQLite/PostgreSQL/SQL Server calls, production
+Still not implemented: JavaScript-to-native PostgreSQL/SQL Server calls, production
 pooling, migrations, native provider scheduling/async offload, permission enforcement, and
 compiler extraction of template literals. Native PostgreSQL and SQL Server provider
 boundaries exist in C tests, with live execution gated by environment variables.

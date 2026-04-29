@@ -1,11 +1,11 @@
 /*
  * src/engine/v8/engine_v8.cc
  *
- * Implements the first V8-backed engine smoke path behind Sloppy's engine-neutral C ABI.
- * This file is the only implementation file that includes V8 headers. It owns isolate and
- * context lifetime, evaluates classic JavaScript source strings, calls a named global
- * zero-argument function, and copies supported primitive results back into caller-provided
- * arena storage.
+ * Implements the V8-backed engine path behind Sloppy's engine-neutral C ABI. It owns
+ * isolate/context lifetime, installs engine-level intrinsics, evaluates classic JavaScript
+ * source strings, calls a named global zero-argument function, and copies supported primitive
+ * results back into caller-provided arena storage. Provider-specific JS-to-native bridges live
+ * in sibling intrinsic modules under src/engine/v8/.
  *
  * Safety invariants:
  * - no V8 handle, value, or type escapes this file;
@@ -19,7 +19,7 @@
  *
  * Tests: tests/unit/engine/test_v8_smoke.c when SLOPPY_ENABLE_V8 is enabled.
  */
-#include "../engine_internal.h"
+#include "engine_v8_internal.h"
 
 #include <libplatform/libplatform.h>
 #include <v8.h>
@@ -30,20 +30,8 @@
 #include <mutex>
 #include <new>
 #include <string>
-#include <thread>
-#include <unordered_map>
 
 namespace {
-
-struct SlV8Engine
-{
-    v8::ArrayBuffer::Allocator* allocator = nullptr;
-    v8::Isolate* isolate = nullptr;
-    v8::Global<v8::Context> context;
-    std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
-    std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
-    std::thread::id owner_thread;
-};
 
 std::mutex g_v8_platform_mutex;
 v8::Platform* g_v8_platform = nullptr;
@@ -692,12 +680,34 @@ bool sl_v8_install_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> conte
     v8::Local<v8::FunctionTemplate> function_template =
         v8::FunctionTemplate::New(isolate, sl_v8_register_handler_callback);
     v8::Local<v8::Function> function;
+    v8::Local<v8::String> sloppy_key;
+    v8::Local<v8::String> data_key;
+    v8::Local<v8::Object> sloppy = v8::Object::New(isolate);
+    v8::Local<v8::Object> data = v8::Object::New(isolate);
 
     if (!function_template->GetFunction(context).ToLocal(&function)) {
         return false;
     }
 
-    return context->Global()->Set(context, name, function).FromMaybe(false);
+    if (!context->Global()->Set(context, name, function).FromMaybe(false)) {
+        return false;
+    }
+
+    if (!sl_status_is_ok(
+            sl_v8_to_local_string(isolate, sl_str_from_cstr("__sloppy"), &sloppy_key)) ||
+        !sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr("data"), &data_key)))
+    {
+        return false;
+    }
+
+    if (!sl_v8_install_provider_intrinsics(isolate, context, data) ||
+        !sloppy->Set(context, data_key, data).FromMaybe(false) ||
+        !context->Global()->Set(context, sloppy_key, sloppy).FromMaybe(false))
+    {
+        return false;
+    }
+
+    return true;
 }
 
 SlStatus sl_v8_platform_acquire(void)
@@ -763,8 +773,16 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     }
     backend->owner_thread = std::this_thread::get_id();
 
+    status = sl_resource_table_init(&backend->resources, backend->resource_entries.data(),
+                                    backend->resource_entries.size());
+    if (!sl_status_is_ok(status)) {
+        delete backend;
+        return status;
+    }
+
     backend->allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (backend->allocator == nullptr) {
+        sl_resource_table_dispose(&backend->resources);
         delete backend;
         return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
@@ -773,6 +791,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     create_params.array_buffer_allocator = backend->allocator;
     backend->isolate = v8::Isolate::New(create_params);
     if (backend->isolate == nullptr) {
+        sl_resource_table_dispose(&backend->resources);
         delete backend->allocator;
         delete backend;
         return sl_status_from_code(SL_STATUS_INTERNAL);
@@ -783,9 +802,11 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         v8::HandleScope handle_scope(backend->isolate);
         backend->isolate->SetData(0, backend);
         v8::Local<v8::Context> context = v8::Context::New(backend->isolate);
+        v8::Context::Scope context_scope(context);
         if (!sl_v8_install_intrinsics(backend->isolate, context)) {
             backend->isolate->SetData(0, nullptr);
             backend->isolate->Dispose();
+            sl_resource_table_dispose(&backend->resources);
             delete backend->allocator;
             delete backend;
             return sl_status_from_code(SL_STATUS_INTERNAL);
@@ -799,6 +820,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         backend->context.Reset();
         backend->isolate->SetData(0, nullptr);
         backend->isolate->Dispose();
+        sl_resource_table_dispose(&backend->resources);
         delete backend->allocator;
         delete backend;
         SlStatus reset_status = sl_arena_reset_to(arena, mark);
@@ -828,7 +850,6 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
 
     backend = sl_v8_backend(engine);
     if (backend != nullptr && !sl_v8_on_owner_thread(backend)) {
-        engine->active = false;
         return;
     }
 
@@ -836,6 +857,8 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
     engine->backend = nullptr;
 
     if (backend != nullptr) {
+        sl_resource_table_dispose(&backend->resources);
+
         if (backend->isolate != nullptr) {
             backend->handlers.clear();
             backend->context.Reset();

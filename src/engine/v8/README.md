@@ -19,6 +19,13 @@ Rules:
 - JS code must never receive raw C pointers.
 - Native handles exposed to JS must flow through `SlResourceId` values with generation,
   liveness, and kind checks in `SlResourceTable`.
+- `engine_v8.cc` owns isolate/context lifecycle, handler registration, source evaluation,
+  and result/request conversion only.
+- Provider-specific JS-to-native bridges live in `intrinsics_<provider>.cc` files and are
+  reached through `intrinsics.cc`; do not add SQLite/PostgreSQL/SQL Server bridge logic
+  directly to `engine_v8.cc`.
+- `engine_v8_internal.h` is private to this directory. It exposes the V8 backend shape and
+  resource table to sibling intrinsic modules without making V8 a public runtime type.
 - No ESM/module resolver, Sloppy Plan handler execution, event loop, workers, inspector,
   snapshots, Node compatibility, or package-manager behavior belongs in TASK 07.C.
 - Process-wide V8 platform state is initialized once and intentionally kept alive for the

@@ -16,6 +16,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot "msvc-env.ps1")
+. (Join-Path $PSScriptRoot "v8-sdk.ps1")
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $BuildDir = Join-Path (Join-Path $Root "build") $Preset
@@ -154,23 +155,7 @@ function Get-ConfigureCacheRefreshReason {
 }
 
 function Resolve-V8Root {
-    if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
-        if (-not (Test-Path -LiteralPath $V8Root)) {
-            throw "V8 root was not found: $V8Root"
-        }
-
-        return (Resolve-Path -LiteralPath $V8Root).Path
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($env:SLOPPY_V8_ROOT)) {
-        if (-not (Test-Path -LiteralPath $env:SLOPPY_V8_ROOT)) {
-            throw "SLOPPY_V8_ROOT was set but was not found: $env:SLOPPY_V8_ROOT"
-        }
-
-        return (Resolve-Path -LiteralPath $env:SLOPPY_V8_ROOT).Path
-    }
-
-    throw "-EnableV8 requires -V8Root or SLOPPY_V8_ROOT."
+    return Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root -Require
 }
 
 function Resolve-GateTool {

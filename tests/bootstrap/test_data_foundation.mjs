@@ -173,6 +173,64 @@ function createForgedLoweredQuery() {
 }
 
 {
+    const calls = [];
+    const previousSloppy = globalThis.__sloppy;
+    globalThis.__sloppy = {
+        data: {
+            sqlite: {
+                open(options) {
+                    calls.push(["open", options.path, options.access]);
+                    return { slot: 1, generation: 1, kind: "sqlite.connection" };
+                },
+                exec(handle, text, params) {
+                    calls.push(["exec", handle.slot, text, params]);
+                    return { affectedRows: 1 };
+                },
+                query(handle, text, params) {
+                    calls.push(["query", handle.generation, text, params]);
+                    return [{ name: "Ada" }];
+                },
+                queryOne(handle, text, params) {
+                    calls.push(["queryOne", handle.kind, text, params]);
+                    return { name: "Ada" };
+                },
+                close(handle) {
+                    calls.push(["close", handle.slot]);
+                },
+            },
+        },
+    };
+
+    try {
+        const db = data.sqlite.open(":memory:");
+        assert.equal(data.sqlite.supports.nativeStdlibBridge, true);
+        assert.equal(data.sqlite.__debug().nativeStdlibBridge, true);
+        assert.deepEqual(db.exec("insert into users (name) values (?)", ["Ada"]), {
+            affectedRows: 1,
+        });
+        assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
+        assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
+        assert.equal(db.__debug().resource.kind, "sqlite.connection");
+        db.close();
+        db.close();
+        assertThrowsMessage(() => db.query("select 1"), /sqlite connection is closed/);
+        assert.deepEqual(calls, [
+            ["open", ":memory:", "readwrite"],
+            ["exec", 1, "insert into users (name) values (?)", ["Ada"]],
+            ["query", 1, "select name from users", []],
+            ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
+            ["close", 1],
+        ]);
+    } finally {
+        if (previousSloppy === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previousSloppy;
+        }
+    }
+}
+
+{
     assert.equal(data.postgres.provider, "postgres");
     assert.equal(data.postgres.placeholderStyle, "postgres");
     assert.equal(data.postgres.supports.connectionString, true);

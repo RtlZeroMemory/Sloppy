@@ -62,8 +62,12 @@ work.
 TASK 07.A adds the first phase-gated V8 SDK detection path. V8 remains optional for normal
 foundation builds and CI. V8 validation runs only when requested through the Windows
 wrapper with `-EnableV8` or by passing the equivalent CMake options
-`-DSLOPPY_ENABLE_V8=ON` or `-DSLOPPY_ENGINE=v8`. In that mode `SLOPPY_V8_ROOT` or
-`dev.ps1 -V8Root` must point to a prebuilt SDK root with this minimal Windows layout:
+`-DSLOPPY_ENABLE_V8=ON` or `-DSLOPPY_ENGINE=v8`. The Windows wrapper resolves the SDK
+through `tools/windows/v8-sdk.ps1`: `-V8Root` wins for one command, `SLOPPY_V8_ROOT` wins
+for one shell/agent, `SLOPPY_V8_SDK_HINTS` can point at portable cache roots, and
+`.sdeps/v8/windows-x64` is searched in this and other registered git worktrees. Direct
+CMake users must still pass `-DSLOPPY_V8_ROOT=<sdk-root>`. The SDK root must have this
+minimal Windows layout:
 
 ```text
 <SLOPPY_V8_ROOT>/
@@ -90,10 +94,11 @@ The current Windows source SDK is a monolithic release build with Chromium libc+
 Use `windows-relwithdebinfo` for V8 execution tests with this SDK. The `windows-dev` Debug
 CRT preset remains the default non-V8 contributor path.
 
-Use `.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root
-<sdk-root>` for local V8 configure. The wrapper imports the MSVC/Windows SDK environment,
-adds the vcpkg toolchain on fresh configure, and repairs stale partial CMake caches that
-were created without the repo toolchain.
+Use `.\tools\windows\resolve-v8-sdk.ps1` to check what a fresh worktree will use, then
+`.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8` for local V8
+configure. The wrapper imports the MSVC/Windows SDK environment, adds the vcpkg toolchain
+on fresh configure, and repairs stale partial CMake caches that were created without the
+repo toolchain.
 
 TASK 07.C uses that opt-in target to compile the minimal bridge under `src/engine/v8/` when
 V8 is enabled. Default builds still do not require the SDK. V8 tests are registered only

@@ -141,6 +141,13 @@ capability checks can deny database access by token, provider, and read/write mo
 caller invokes provider work. The JavaScript-to-native SQLite bridge remains the next place
 to call those hooks once MAIN1-08 exposes a stable bridge boundary.
 
+MAIN1-08 adds a V8-gated SQLite bridge hook under `__sloppy.data.sqlite`, but it does not
+implement the MAIN1-10 capability policy engine. The hook is intentionally narrow:
+provider-specific V8 bridge code lives in `src/engine/v8/intrinsics_<provider>.cc`, while
+`engine_v8.cc` stays provider-neutral. Future provider capability checks should be called
+from those intrinsic modules or their shared aggregator before opening or using native
+provider resources; this document must not claim enforcement until that integration exists.
+
 ## Environment And Config Secrets
 
 Secrets must be handled as secret values:
@@ -166,6 +173,10 @@ must include generation counters eventually so stale handles can be detected aft
 reuse.
 
 Invalid, stale, closed, or wrong-kind resource IDs must fail with diagnostics.
+
+V8 provider bridges consume the engine-owned resource table from inside `src/engine/v8/`.
+They may expose only opaque resource ID handles to JavaScript, and they must not create
+provider-specific pointer maps or embed provider access policy directly in `engine_v8.cc`.
 
 ## Runtime Permissions Are Not A Full Sandbox
 

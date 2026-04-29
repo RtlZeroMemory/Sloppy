@@ -51,8 +51,8 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
   SQL text;
 - `data.createFakeProvider(...)` exposes the JS-only fake provider contract for
   tests/examples;
-- `data.sqlite` exposes SQLite provider metadata and a future `open(options)` entry point
-  that fails honestly until native stdlib intrinsics exist;
+- `data.sqlite` exposes SQLite provider metadata and an `open(options)` entry point that
+    works only in V8-enabled contexts with the SQLite bridge installed;
 - `Sloppy.create()` remains supported as a default builder plus `build()`;
 - `app.mapGet(pattern, handler)` stores an in-memory GET route registration;
 - `app.mapGet(pattern, metadata, handler)` stores route metadata such as validation
@@ -161,8 +161,9 @@ module debug metadata.
 `bootstrap.stdlib.data_foundation` executes the ESM stdlib with Node when available and
 covers database capability metadata, query template lowering, fake data provider methods,
 transaction commit/rollback behavior, nested transaction rejection, use after close, and
-module/service integration, plus the `data.sqlite` bridge-unavailable stdlib entry point.
-Native SQLite execution itself is covered by the `data.sqlite.provider` CTest target.
+module/service integration, plus the `data.sqlite` bridge-unavailable and mocked-bridge
+stdlib paths. Native SQLite execution itself is covered by the `data.sqlite.provider` CTest
+target, and MAIN1-08 adds separate V8-gated SQLite bridge coverage.
 CTest also registers `examples.hello.api_shape` to statically check that the hello example
 files exist, use the current stdlib import path, use `Sloppy.createBuilder`, `builder.build`,
 `app.mapGet`, `Results.text`, and avoid package-manager scope.

@@ -138,7 +138,7 @@ signing/notarization, package-manager distribution, or public alpha release read
 V8 runtime package validation is optional and separate:
 
 ```powershell
-.\tools\windows\package.ps1 -Configuration RelWithDebInfo -IncludeV8Runtime -V8Root <sdk-root> -Smoke
+.\tools\windows\package.ps1 -Configuration RelWithDebInfo -IncludeV8Runtime -Smoke
 .\tools\windows\test-package.ps1 -PackagePath <zip> -RequireV8Runtime
 ```
 
@@ -402,8 +402,19 @@ CMake must configure and build with the Windows preset. CTest must pass and incl
 coverage for both `sloppy` and `sloppyc` while the project is in placeholder phase.
 
 V8 remains an opt-in build gate. Default and CI builds leave the V8 bridge disabled and do
-not require a V8 SDK. A manual V8-enabled configure must fail clearly when
-`SLOPPY_V8_ROOT` is empty or does not contain the documented SDK layout.
+not require a V8 SDK. Local Windows V8 gates should start with:
+
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
+
+The resolver searches `-V8Root`, `SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, this worktree's
+`.sdeps/v8/windows-x64`, and the same path in registered git worktrees. Direct CMake users
+must pass `-DSLOPPY_V8_ROOT=<sdk-root>` explicitly. A manual V8-enabled configure must fail
+clearly when the resolved SDK root is empty or does not contain the documented SDK layout.
 
 When the V8 SDK gate succeeds, the V8 bridge source, `engine.v8.smoke`,
 `engine.v8.owner_thread`, V8-gated bootstrap runtime tests, and V8-gated `sloppy run`

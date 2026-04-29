@@ -1,7 +1,7 @@
 # Data
 
-Status: Bootstrap data/capabilities foundation plus native SQLite, PostgreSQL, and SQL
-Server providers implemented.
+Status: Bootstrap data/capabilities foundation, native SQLite/PostgreSQL/SQL Server
+providers, and a V8-gated SQLite JavaScript bridge implemented.
 
 Purpose: document future data provider modules, query templates, transactions, and
 provider-specific limitations.
@@ -102,8 +102,9 @@ Implemented behavior:
   `{ __sloppyQuery, text, parameters, parameterCount, placeholderStyle, placeholders }`.
 - `data.createFakeProvider(...)` creates a JS-only fake provider for tests/examples with
   `query`, `queryOne`, `exec`, and `transaction`.
-- `data.sqlite` exposes SQLite provider metadata plus `open(options)` as the future stdlib
-  entry point.
+- `data.sqlite` exposes SQLite provider metadata plus `open(options)`. In a V8-enabled
+  Sloppy runtime that installs SQLite intrinsics, it returns a safe SQLite connection
+  wrapper. In bootstrap-only or non-V8 contexts, it fails with a bridge-unavailable error.
 - `data.postgres` exposes PostgreSQL provider metadata, `$1` placeholder style, connection
   string redaction, and `open(options)` as the future stdlib entry point.
 - `data.sqlserver` exposes SQL Server provider metadata, ODBC `?` placeholder style,
@@ -128,22 +129,48 @@ Implemented behavior:
 - native SQL Server supports ODBC connection-string open/close, `exec`, `query`,
   `queryOne`, primitive parameter binding through ODBC, a tiny bounded pool skeleton,
   missing-driver diagnostics, redaction, and transactions.
-- provider methods accept tagged templates or already-lowered query objects.
+- fake provider methods accept tagged templates or already-lowered query objects.
+- SQLite bridge methods accept raw SQL strings plus optional positional parameter arrays;
+  the ESM stdlib wrapper also accepts existing lowered query objects.
 - `queryOne` uses a supplied handler or falls back to the first row returned by `query`.
 - `transaction(callback)` passes a transaction object with `query`, `queryOne`, and `exec`,
   commits when the callback resolves, and rolls back when it throws or rejects.
 
+SQLite JS bridge support:
+
+```ts
+const db = data.sqlite.open({ path: ":memory:" });
+
+db.exec("create table users (id integer primary key, name text)");
+db.exec("insert into users (name) values (?)", ["Ada"]);
+
+const row = db.queryOne("select name from users where id = ?", [1]);
+
+db.close();
+```
+
+The bridge is intentionally small. It supports `open`, `close`, `exec`, `query`, and
+`queryOne` for SQLite only. It returns arrays/plain objects, maps SQLite `NULL` to
+JavaScript `null`, and supports primitive positional parameters: `null`, string, number,
+and boolean. The wrapper stores only an opaque resource ID object; stale, closed, invalid,
+or wrong-kind handles fail before provider code runs. Double close is idempotent at the
+wrapper level.
+
+Layering matters for future providers: the public stdlib wrapper is JavaScript, the native
+resource table is engine-owned, and provider-specific V8 conversion code lives in
+`src/engine/v8/intrinsics_<provider>.cc`. SQLite uses `intrinsics_sqlite.cc`; later
+PostgreSQL or SQL Server bridges should not add provider logic directly to `engine_v8.cc`.
+
 Not implemented yet:
 
-- no JavaScript-to-native SQLite intrinsic bridge yet, so `data.sqlite.open(...)` validates
-  options and fails with an honest bridge-unavailable error in the stdlib;
 - no JavaScript-to-native PostgreSQL intrinsic bridge yet, so `data.postgres.open(...)`
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
 - no JavaScript-to-native SQL Server intrinsic bridge yet, so `data.sqlserver.open(...)`
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
+- no SQL parser, ORM, migrations, production pooling, cancellation, isolation levels,
+  transactions through the JS wrapper, or PostgreSQL/SQL Server native SQL execution from
+  JavaScript;
 - no JavaScript provider bridge calls the native capability hook yet;
-- no SQL parser, ORM, migrations, production pooling, cancellation, isolation levels, or
-  native SQL execution from JavaScript;
 - no public file database policy beyond the native provider accepting SQLite paths;
 - no compiler extraction of JavaScript template literals.
 
@@ -154,7 +181,7 @@ CLI status:
 - live PostgreSQL and SQL Server checks are not run by default and remain opt-in future CLI
   work;
 - default CI and package smoke do not prove live database availability, SQL Server driver
-  installation, or JS-to-native provider execution;
+  installation, or V8-gated SQLite JS-to-native provider execution;
 - doctor output redacts connection-string-like secrets before printing;
 - `sloppy audit` can flag incomplete provider metadata, missing capability references,
   statically-known insufficient access, and filesystem/network skeleton notes. It remains

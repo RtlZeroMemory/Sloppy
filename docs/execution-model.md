@@ -520,16 +520,25 @@ and no SQL is executed.
 
 EPIC-16 adds native C SQLite execution for the provider boundary. Native tests pass lowered
 `?` SQL text and parameter arrays directly to the SQLite provider and verify exec, query,
-queryOne, and transactions. The JavaScript stdlib still cannot send descriptors to native
-SQLite because runtime intrinsics and JS-visible resource IDs are future work; the
-`data.sqlite.open(...)` stdlib entry point reports that bridge gap instead of pretending to
-open a database.
+queryOne, and transactions. MAIN1-08 adds the first V8-gated JS-to-native bridge for
+SQLite: `data.sqlite.open({ path })` can create a generation-checked resource handle and
+call native `exec`, `query`, and `queryOne` when the V8 runtime installs
+`__sloppy.data.sqlite`. Bootstrap-only and non-V8 contexts still report the bridge gap
+instead of pretending to open a database.
+
+The V8 engine layering is provider-neutral. `engine_v8.cc` creates the private
+`__sloppy.data` namespace and owns engine lifecycle; `src/engine/v8/intrinsics.cc`
+aggregates provider registration; `src/engine/v8/intrinsics_sqlite.cc` owns SQLite
+argument/result conversion and native provider calls. Future PostgreSQL/SQL Server bridges
+must follow that module split.
+
 EPIC-17 and EPIC-18 add the same native-provider boundary shape for PostgreSQL and SQL
 Server. Native tests pass `$1` PostgreSQL SQL or `?` ODBC SQL plus parameters directly to
 the providers and verify non-live behavior by default, with live execution gated by
 `SLOPPY_POSTGRES_TEST_URL` and `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`. The JavaScript
 stdlib still cannot send descriptors to those native providers; `data.postgres.open(...)`
-and `data.sqlserver.open(...)` report the bridge gap honestly.
+and `data.sqlserver.open(...)` report the bridge gap honestly until their own provider
+intrinsic modules exist.
 
 ## Example Input
 
