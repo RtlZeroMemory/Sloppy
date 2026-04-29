@@ -478,7 +478,7 @@ fn extract_variable_declaration(
                 .group_vars
                 .insert(name.to_string(), prefix.to_string());
         } else {
-            validate_supported_initializer(path, source, init)?;
+            validate_supported_initializer(path, source, state, init)?;
         }
     }
     Ok(())
@@ -499,7 +499,8 @@ fn extract_expression_statement(
     };
 
     let Some((receiver, pattern, handler)) = map_get_call(route_expr, source) else {
-        if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source) {
+        if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
+        {
             return Err(diagnostic);
         }
 
@@ -538,12 +539,15 @@ fn unsupported_route_call_diagnostic(
     path: &Path,
     expression: &Expression<'_>,
     source: &str,
+    state: &AppState,
 ) -> Option<Diagnostic> {
     let Expression::CallExpression(call) = expression else {
         return None;
     };
 
-    if computed_member_receiver(&call.callee).is_some() {
+    if computed_member_receiver(&call.callee).is_some_and(|receiver| {
+        state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver)
+    }) {
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD",
@@ -555,9 +559,11 @@ fn unsupported_route_call_diagnostic(
         );
     }
 
-    let (_, property) = static_member_name(&call.callee)?;
+    let (receiver, property) = static_member_name(&call.callee)?;
     if property != "mapGet" {
-        if property.starts_with("map") {
+        if property.starts_with("map")
+            && (state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver))
+        {
             return Some(
                 Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_HTTP_METHOD",
@@ -610,6 +616,7 @@ fn unsupported_route_call_diagnostic(
 fn validate_supported_initializer(
     path: &Path,
     source: &str,
+    state: &AppState,
     init: &Expression<'_>,
 ) -> Result<(), Diagnostic> {
     if let Some((_, _, _)) = map_get_call(init, source) {
@@ -620,7 +627,7 @@ fn validate_supported_initializer(
         .with_path(path)
         .with_span(init.span()));
     }
-    if let Some(diagnostic) = unsupported_route_call_diagnostic(path, init, source) {
+    if let Some(diagnostic) = unsupported_route_call_diagnostic(path, init, source, state) {
         return Err(diagnostic);
     }
     Ok(())
@@ -1726,6 +1733,21 @@ export default app;
                 .expect_err("unsupported handler parameter should fail");
             assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS");
         }
+    }
+
+    #[test]
+    fn ignores_unrelated_map_named_initializers() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const items = ["ok"];
+const labels = items.map((value) => value);
+app.mapGet("/", () => Results.text("Hello"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("ordinary JavaScript map initializer should not be treated as a route");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.routes[0].pattern, "/");
     }
 
     #[test]
