@@ -39,7 +39,8 @@ Current tests:
   arena behavior, native cleanup scope behavior, native completion queue behavior, native
   async settlement behavior, inline worker-pool completion contract behavior, route pattern
   parser/matcher behavior, HTTP request-head parser behavior, libuv dependency smoke,
-  minimal plan contract helper behavior, minimal plan JSON parser/validator behavior,
+  HTTP route table precedence/duplicate behavior, query/request target limits, request body
+  rejection, minimal plan contract helper behavior, minimal plan JSON parser/validator behavior,
   diagnostics foundation text/JSON/source-frame/redaction behavior, and assertion macro
   compilation;
 - CTest smoke for `sloppy --version`;

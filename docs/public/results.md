@@ -92,11 +92,14 @@ There is no header normalization class.
 Implemented in the dev run path now:
 
 - `text`, `json`, `ok`, `noContent`, and `problem` descriptors;
-- `400`, `404`, `405`, `500`, `200`, `201`, `202`, and `204` response status writing;
+- `400`, `404`, `405`, `500`, `501`, `200`, `201`, `202`, and `204` response status
+  writing;
 - JSON body serialization through V8 `JSON.stringify` for JSON/problem descriptors;
 - omitted or `undefined` JSON/problem descriptor bodies serialized as `null`;
 - `204` responses with no body and no `Content-Length`;
 - Content-Type CR/LF rejection before bytes are written.
+- invalid result descriptors fail safely with `SLOPPY_E_INVALID_HTTP_RESULT` and a safe dev
+  `500` response.
 
 Unsupported result descriptor kinds fail safely with a dev `500` response. `Results.html`,
 custom headers, streaming, files, redirects, cookies, content negotiation, and header

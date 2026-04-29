@@ -203,6 +203,9 @@ SlStatus sl_http_query_parse(SlArena* arena, SlStr raw_target, SlHttpQuery* out_
     if (capacity == 0U) {
         return sl_status_ok();
     }
+    if (capacity > SL_HTTP_DEFAULT_MAX_QUERY_PARAMS) {
+        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    }
 
     status = sl_arena_alloc(arena, capacity * sizeof(SlHttpQueryParam), _Alignof(SlHttpQueryParam),
                             &memory);

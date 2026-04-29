@@ -465,6 +465,7 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
     SlArenaMark mark = {0};
     SlHttpMethod method = SL_HTTP_METHOD_UNKNOWN;
     size_t max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    size_t max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     SlStatus status;
     SlStatus reset_status;
 
@@ -483,6 +484,9 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
 
     mark = sl_arena_mark(arena);
     max_headers = options == NULL ? SL_HTTP_DEFAULT_MAX_HEADERS : options->max_headers;
+    max_target_length = options == NULL || options->max_target_length == 0U
+                            ? SL_HTTP_DEFAULT_MAX_TARGET_LENGTH
+                            : options->max_target_length;
     ctx.arena = arena;
     ctx.max_headers = max_headers;
     ctx.callback_status = sl_status_ok();
@@ -500,6 +504,17 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
 
     status = sl_http_validate_parsed_request(&ctx, &parser, &method);
     if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+
+    if (ctx.raw_target.length > max_target_length) {
+        status = sl_http_set_error(
+            &ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_http_literal("HTTP request target is too long",
+                            sizeof("HTTP request target is too long") - 1U),
+            sl_http_literal("the dev HTTP runtime bounds request targets before dispatch",
+                            sizeof("the dev HTTP runtime bounds request targets before dispatch") -
+                                1U));
         goto failure;
     }
 

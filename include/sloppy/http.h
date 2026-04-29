@@ -14,6 +14,7 @@ extern "C" {
 #endif
 
 #define SL_HTTP_DEFAULT_MAX_HEADERS 32U
+#define SL_HTTP_DEFAULT_MAX_TARGET_LENGTH 2048U
 
 typedef enum SlHttpMethod
 {
@@ -53,6 +54,7 @@ typedef struct SlHttpRequestHead
 typedef struct SlHttpParseOptions
 {
     size_t max_headers;
+    size_t max_target_length;
 } SlHttpParseOptions;
 
 /*

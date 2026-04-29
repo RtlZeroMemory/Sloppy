@@ -46,8 +46,8 @@ SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body);
  *
  * `response`, `buffer`, and `out_bytes` are required. Returned bytes borrow `buffer` and
  * remain valid until the caller mutates that storage. Supported statuses are 200, 201, 202,
- * 204, 400, 404, 405, and 500. Unknown statuses and CR/LF in Content-Type are rejected.
- * Status 204 always writes Content-Length: 0 and no body.
+ * 204, 400, 404, 405, 500, and 501. Unknown statuses and CR/LF in Content-Type are rejected.
+ * Status 204 always writes no Content-Type, no Content-Length, and no body.
  */
 SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
                                 size_t capacity, SlBytes* out_bytes);

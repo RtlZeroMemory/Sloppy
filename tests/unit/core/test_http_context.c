@@ -100,6 +100,43 @@ static int test_invalid_percent_encoding_fails(void)
                          SL_STATUS_INVALID_ARGUMENT);
 }
 
+static int test_query_param_limit_is_enforced(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    char target[1024];
+    SlArena arena = {0};
+    SlHttpQuery query = {0};
+    size_t length = 0U;
+    size_t index = 0U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 40;
+    }
+
+    target[length] = '/';
+    length += 1U;
+    target[length] = '?';
+    length += 1U;
+    for (index = 0U; index <= SL_HTTP_DEFAULT_MAX_QUERY_PARAMS; index += 1U) {
+        if (index != 0U) {
+            target[length] = '&';
+            length += 1U;
+        }
+        target[length] = 'a';
+        length += 1U;
+        target[length] = (char)('0' + (index % 10U));
+        length += 1U;
+        target[length] = '=';
+        length += 1U;
+        target[length] = '1';
+        length += 1U;
+    }
+    target[length] = '\0';
+
+    return expect_status(sl_http_query_parse(&arena, sl_str_from_cstr(target), &query),
+                         SL_STATUS_CAPACITY_EXCEEDED);
+}
+
 int main(void)
 {
     int result = test_no_query();
@@ -117,5 +154,10 @@ int main(void)
         return result;
     }
 
-    return test_invalid_percent_encoding_fails();
+    result = test_invalid_percent_encoding_fails();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_query_param_limit_is_enforced();
 }

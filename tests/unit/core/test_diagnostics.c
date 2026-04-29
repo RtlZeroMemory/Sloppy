@@ -333,6 +333,24 @@ static int test_provider_code_names(void)
         return 58;
     }
 
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_DUPLICATE_ROUTE),
+                         sl_str_from_cstr("SLOPPY_E_DUPLICATE_ROUTE")) != 0)
+    {
+        return 59;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_UNSUPPORTED_BODY),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_UNSUPPORTED_BODY")) != 0)
+    {
+        return 60;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_INVALID_HTTP_RESULT),
+                         sl_str_from_cstr("SLOPPY_E_INVALID_HTTP_RESULT")) != 0)
+    {
+        return 61;
+    }
+
     return 0;
 }
 

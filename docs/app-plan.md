@@ -173,8 +173,9 @@ section is present:
 - `handlerId` is required and must reference a declared `handlers[].id`;
 - duplicate `method` + `pattern` pairs are rejected;
 - duplicate non-empty route names are rejected;
-- array order is preserved and remains the deterministic dispatch order for the supported
-  dev-only path.
+- array order is preserved as source order. MAIN1-04 dev dispatch builds a native route
+  table from this source order and applies the alpha precedence policy: literal patterns
+  before parameter patterns, stable source order when precedence is equal.
 
 TASK 10.C synthetic HTTP dispatch tests still build a manual borrowed table, but the
 compiler/runtime artifact path now owns its GET route mapping through `app.plan.json`.

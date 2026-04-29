@@ -61,9 +61,16 @@ static int test_statuses_and_content_length(void)
         return 1;
     }
 
-    return expect_response(sl_http_response_empty(201U),
-                           "HTTP/1.1 201 Created\r\nConnection: close\r\nContent-Length: "
-                           "0\r\n\r\n");
+    if (expect_response(sl_http_response_empty(201U),
+                        "HTTP/1.1 201 Created\r\nConnection: close\r\nContent-Length: "
+                        "0\r\n\r\n") != 0)
+    {
+        return 2;
+    }
+
+    return expect_response(sl_http_response_text(501U, sl_str_from_cstr("No body\n")),
+                           "HTTP/1.1 501 Not Implemented\r\nConnection: close\r\nContent-Type: "
+                           "text/plain; charset=utf-8\r\nContent-Length: 8\r\n\r\nNo body\n");
 }
 
 static int test_invalid_status_and_content_type_are_rejected(void)
