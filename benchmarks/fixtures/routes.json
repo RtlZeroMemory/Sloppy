@@ -1,0 +1,35 @@
+{
+  "description": "Deterministic route matcher benchmark scenarios.",
+  "routes": [
+    {
+      "name": "route.match.static",
+      "pattern": "/users/profile",
+      "path": "/users/profile",
+      "measures": "match only; pattern is parsed before timing"
+    },
+    {
+      "name": "route.match.param",
+      "pattern": "/users/{id}",
+      "path": "/users/alice",
+      "measures": "string parameter match only; pattern is parsed before timing"
+    },
+    {
+      "name": "route.match.int_param",
+      "pattern": "/users/{id:int}",
+      "path": "/users/12345",
+      "measures": "integer parameter match only; pattern is parsed before timing"
+    },
+    {
+      "name": "route.match.multi_param",
+      "pattern": "/users/{id:int}/posts/{postId:int}",
+      "path": "/users/12345/posts/67890",
+      "measures": "multi-parameter match only; pattern is parsed before timing"
+    },
+    {
+      "name": "route.match.no_match",
+      "pattern": "/users/{id:int}/posts/{postId:int}",
+      "path": "/users/not-an-int/posts/67890",
+      "measures": "failed match path; no match params are allocated"
+    }
+  ]
+}

@@ -36,6 +36,9 @@ The foundation phase does not:
 The project builds a placeholder `sloppy` executable and a placeholder Rust `sloppyc`
 binary. The default CMake project uses C only. V8 is not required.
 
+EPIC-20 also builds `sloppy_bench`, a native benchmark executable for manual performance
+validation. It is not installed or packaged as a user-facing CLI surface.
+
 TASK 07.A adds optional V8 SDK detection. The default build keeps the V8 bridge disabled.
 TASK 07.C compiles the V8 bridge and V8-gated smoke test only when V8 is explicitly enabled
 and the SDK gate passes. TASK 10.B adds required vcpkg manifest dependencies for yyjson,
@@ -55,6 +58,14 @@ Supported build commands today:
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
+```
+
+Benchmark wrapper:
+
+```powershell
+.\tools\windows\bench.ps1 -List
+.\tools\windows\bench.ps1 -Smoke -Json
+.\tools\windows\bench.ps1 -Configuration Release
 ```
 
 ## Windows-First, Cross-Platform By Design

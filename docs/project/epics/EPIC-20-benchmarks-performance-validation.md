@@ -76,6 +76,15 @@ Prefer one PR per listed task. Combine only when the result remains one coherent
 - Docs, tests, and quality gates match the source docs.
 - No future-phase implementation lands from this EPIC before prerequisites are met.
 
+## Implemented Slice
+- One coherent EPIC-20 PR may combine TASK 20.A through TASK 20.D because the harness,
+  route scenarios, handler scenarios, and deferred HTTP/JSON/DB methodology share one
+  review boundary.
+- Implemented paths are limited to the existing route matcher, request-head parser, plan
+  handler lookup, runtime-contract/noop engine boundary, and synthetic parsed GET dispatch.
+- Full HTTP throughput, JSON serialization, live database benchmarks, V8 timing by default,
+  external comparisons, dashboards, uploads, and CI performance gates remain non-goals.
+
 ## Risks
 - Scope creep into later runtime features.
 - Docs and issue bodies drifting apart.

@@ -1,0 +1,35 @@
+{
+  "description": "Synthetic handler dispatch fixture used by benchmarks.",
+  "plan": {
+    "version": 1,
+    "runtimeMinimumVersion": "0.1.0",
+    "stdlibVersion": "0.1.0",
+    "target": {
+      "platform": "windows-x64",
+      "engine": "none"
+    },
+    "bundle": {
+      "path": "benchmarks/fixtures/app.js"
+    },
+    "sourceMap": {
+      "path": "benchmarks/fixtures/app.js.map"
+    },
+    "handlers": [
+      {
+        "id": 1,
+        "exportName": "index",
+        "displayName": "GET /"
+      },
+      {
+        "id": 2,
+        "exportName": "getUser",
+        "displayName": "GET /users/{id:int}"
+      },
+      {
+        "id": 3,
+        "exportName": "getPost",
+        "displayName": "GET /users/{id:int}/posts/{postId:int}"
+      }
+    ]
+  }
+}

@@ -215,6 +215,13 @@ Later checks:
 - wrong-thread checks.
 - bootstrap stdlib loading and intrinsic binding.
 
+EPIC-20's default benchmark harness does not require V8. Handler dispatch benchmarks cover
+plan lookup and the current noop engine boundary by default. Any V8 handler-call benchmark
+must be explicitly gated by `SLOPPY_ENABLE_V8`, an approved `SLOPPY_V8_ROOT`, and a
+Release-compatible SDK, and the runtime `--include-v8` flag before its numbers can be
+reported. V8-required benchmark entries are filtered or skipped unless `--include-v8` is
+provided.
+
 ## Source Docs
 
 - `docs/architecture.md`;

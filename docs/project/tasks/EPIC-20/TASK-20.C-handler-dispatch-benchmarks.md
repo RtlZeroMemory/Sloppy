@@ -72,6 +72,14 @@ Create the bounded Handler Dispatch Benchmarks slice for Benchmarks / Performanc
 - Docs/ADRs are updated if behavior or architecture changes.
 - The resulting PR is a bounded coherent review unit.
 
+## EPIC-20 Implementation Notes
+- Handler dispatch benchmarks include borrowed plan handler lookup, runtime-contract
+  dispatch to the current noop engine boundary, and synthetic parsed GET dispatch through
+  route match and plan lookup.
+- The default benchmark harness does not require V8.
+- V8 handler-call timing is documented as gated/deferred until an approved SDK-enabled
+  Release-compatible build is configured.
+
 ## Reviewer Checklist
 - Check source-doc compliance.
 - Check non-goals and scope creep.

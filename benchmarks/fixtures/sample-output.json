@@ -1,0 +1,23 @@
+{
+  "sample": true,
+  "note": "Shape example only. These values are not benchmark results.",
+  "sloppyBenchmarkVersion": 1,
+  "mode": "smoke",
+  "build": {
+    "configuration": "Release",
+    "platform": "windows-x64",
+    "v8Enabled": false
+  },
+  "benchmarks": [
+    {
+      "name": "route.match.static",
+      "category": "route",
+      "warmupIterations": 10,
+      "iterations": 10,
+      "elapsedNs": 0,
+      "nsPerOp": 0.0,
+      "checksum": 0,
+      "note": "route pattern is parsed before timing"
+    }
+  ]
+}

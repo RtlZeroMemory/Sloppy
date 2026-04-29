@@ -44,6 +44,9 @@ Current tests:
 - CTest smoke for `sloppy --version`;
 - CTest smoke for `sloppy --help`;
 - CTest smoke for `sloppyc --version`;
+- CTest smoke for `sloppy_bench --list` and `sloppy_bench --smoke --format json`, which
+  verifies the benchmark harness starts, exposes named benchmarks, and emits the versioned
+  JSON envelope. These smoke checks are not performance regression gates;
 - CTest structural check `bootstrap.stdlib.assets`, which verifies the bootstrap stdlib
   source files exist and were copied to the build output support-data layout;
 - CTest structural check `bootstrap.stdlib.api_shape`, which statically verifies the tiny
@@ -165,6 +168,17 @@ $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Ser
 Do not paste credentials into PR bodies or diagnostics. Use a redacted connection string
 when reporting live test commands.
 
+Benchmark commands are manual/local performance-validation tools:
+
+```powershell
+.\tools\windows\bench.ps1 -List
+.\tools\windows\bench.ps1 -Smoke -Json
+.\tools\windows\bench.ps1 -Configuration Release
+```
+
+Release builds are required for meaningful benchmark numbers. Debug and smoke output may
+be used to verify harness behavior only.
+
 ## Test Layout
 
 Target layout:
@@ -247,7 +261,38 @@ compiler.cli.version
 - golden fixtures: `<feature>/<case>.expected`;
 - diagnostics snapshots: `<diagnostic-code>.snap`;
 - fuzz targets: `fuzz_<parser_or_boundary>`;
-- benchmarks: `bench_<claim_or_path>`.
+- benchmarks: executable names may use `sloppy_bench`; individual scenario names should
+  use dotted capability names such as `route.match.static`.
+
+## Benchmarks
+
+Benchmarks live under `benchmarks/` and are built as the `sloppy_bench` target. They use a
+Sloppy platform monotonic clock abstraction, fixed deterministic fixtures, warmup
+iterations, measured iterations, and a checksum sink to keep measured paths observable.
+
+Benchmarks are not correctness tests. Normal CI may run list/smoke checks, but it must not
+fail builds on noisy performance deltas until a future explicit performance-gate policy
+exists. Local benchmark artifacts are ignored unless a future task intentionally adds a
+small sample or golden metadata file.
+
+Current benchmark coverage:
+
+- route matcher match-only scenarios for static, string-param, int-param, multi-param, and
+  no-match paths;
+- route pattern parse cost as a separate scenario;
+- complete-buffer HTTP request-head parser microbenchmark;
+- handler plan lookup and current non-V8 noop dispatch plumbing;
+- synthetic parsed GET dispatch through route matching, plan lookup, and the noop engine
+  boundary.
+
+Deferred benchmark coverage:
+
+- full HTTP server throughput;
+- JSON serialization;
+- SQLite/PostgreSQL/SQL Server live benchmarks;
+- V8 handler-call timing unless an approved SDK is configured and the benchmark is
+  explicitly gated;
+- Bun/Node/Deno or other external runtime comparisons.
 
 ## C Unit Tests
 

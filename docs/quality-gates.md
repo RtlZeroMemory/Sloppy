@@ -20,7 +20,8 @@ testing philosophy in `docs/testing-strategy.md`.
 
 Current gates cover placeholder C/Rust builds, formatting, linting, CTest, cargo tests,
 artifact hygiene, platform-boundary scanning, C standards scanning, and a lightweight docs
-freshness structure check.
+freshness structure check. Benchmark list/smoke checks may run as correctness smoke, but
+performance deltas are not a normal hard gate yet.
 
 ## Future Phase
 
@@ -80,6 +81,16 @@ cargo fmt --manifest-path compiler/Cargo.toml -- --check
 cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
 cargo test --manifest-path compiler/Cargo.toml
 ```
+
+Benchmark workflow for performance-validation tasks:
+
+```powershell
+.\tools\windows\bench.ps1 -List
+.\tools\windows\bench.ps1 -Smoke -Json
+.\tools\windows\bench.ps1 -Configuration Release
+```
+
+Do not report Debug or smoke output as meaningful performance data.
 
 ## Local Versus CI Behavior
 

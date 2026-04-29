@@ -9,6 +9,9 @@
   compiler output loader, or public TypeScript API exists yet. Native SQLite and
   PostgreSQL providers exist, but they are synchronous and not yet integrated with JS
   resource IDs, app-host disposal, permissions, app-plan entries, or worker-pool execution.
+- Benchmarks exist for the current measurable foundations only. Full HTTP throughput,
+  JSON serialization, live database benchmarks, V8 handler-call timing, external runtime
+  comparisons, trend tracking, and dashboard/report upload remain deferred.
 - `SlLoop` exists only as a caller-backed, single-threaded completion queue skeleton; it has
   no libuv/backend integration, OS wakeup mechanism, cross-thread posting, or owner-thread
   enforcement yet.
@@ -64,6 +67,8 @@
 - `sloppyc`/Oxc integration is planned but not implemented.
 - Linux/macOS CI is future.
 - Package compatibility is future.
+- Benchmark performance gates are future; current CI should run only tiny list/smoke
+  checks, not fail on noisy timing deltas.
 - Exact event loop backend integration is future.
 - Thread-safe completion posting is future work.
 - `SlLoop` owner-thread identity checks are future work.

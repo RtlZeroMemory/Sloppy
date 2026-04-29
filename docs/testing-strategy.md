@@ -183,6 +183,11 @@ Structural tests enforce:
 
 Benchmarks validate performance claims. They do not replace correctness tests.
 
+Benchmark smoke runs only prove that the harness starts and the selected benchmark paths
+execute with tiny iteration counts. A benchmark must not become a public performance claim
+unless the exact command, build configuration, hardware/context, and output are reported.
+Release builds are required for meaningful local numbers.
+
 ## Acceptance Criteria for Phase 1 Testing
 
 For Phase 1 core primitives:

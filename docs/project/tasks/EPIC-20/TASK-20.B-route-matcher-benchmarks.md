@@ -72,6 +72,14 @@ Create the bounded Route Matcher Benchmarks slice for Benchmarks / Performance V
 - Docs/ADRs are updated if behavior or architecture changes.
 - The resulting PR is a bounded coherent review unit.
 
+## EPIC-20 Implementation Notes
+- Route matcher benchmarks cover static, string parameter, integer parameter,
+  multi-parameter, and no-match scenarios.
+- Match-only benchmarks pre-parse route patterns before timing.
+- `route.parse.multi_param` measures parser cost separately from match cost.
+- Match arenas are reset consistently inside benchmark loops, and checksums keep matched
+  results observable.
+
 ## Reviewer Checklist
 - Check source-doc compliance.
 - Check non-goals and scope creep.
