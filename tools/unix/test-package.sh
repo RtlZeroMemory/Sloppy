@@ -79,13 +79,16 @@ trap cleanup EXIT
 
 tar -xzf "$package_path" -C "$temp_root"
 
-mapfile -t roots < <(find "$temp_root" -mindepth 1 -maxdepth 1 -type d)
-if [[ "${#roots[@]}" -ne 1 ]]; then
-  echo "Package smoke expected exactly one archive root directory, found ${#roots[@]}." >&2
+root_count=0
+package_root=""
+while IFS= read -r root_candidate; do
+  root_count=$((root_count + 1))
+  package_root="$root_candidate"
+done < <(find "$temp_root" -mindepth 1 -maxdepth 1 -type d)
+if [[ "$root_count" -ne 1 ]]; then
+  echo "Package smoke expected exactly one archive root directory, found $root_count." >&2
   exit 1
 fi
-
-package_root="${roots[0]}"
 manifest_path="$package_root/manifest.json"
 [[ -f "$manifest_path" ]] || { echo "Package smoke missing manifest.json" >&2; exit 1; }
 
