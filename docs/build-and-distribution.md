@@ -42,6 +42,10 @@ the compiler extraction MVP, EPIC-22 added the dev-only `sloppy run --artifacts`
 V8-enabled builds, EPIC-23 added the request/response boundary, and EPIC-24 loads the
 classic bootstrap runtime asset plus generated handler registrations in that V8-gated
 path. V8 is still not required for default builds.
+MAIN1-05 hardens that optional V8 path with owner-thread checks, per-engine lifecycle
+diagnostics, explicit Promise rejection, and generated-source exception locations. It does
+not make V8 required for default builds and does not add Node/npm, timers, fetch, fs, or
+full source-map fidelity.
 
 EPIC-20 also builds `sloppy_bench`, a native benchmark executable for manual performance
 validation. It is not installed or packaged as a user-facing CLI surface.
@@ -187,7 +191,7 @@ gates continue without a V8 SDK. Required CI uses this default non-V8 path.
 When V8 is enabled and `SLOPPY_V8_ROOT` is empty or invalid, CMake configure fails before
 any bridge code is compiled. When the SDK is valid, CMake compiles
 `src/engine/v8/engine_v8.cc`, links it only to the V8-enabled core target, and registers the
-`engine.v8.smoke` and `execution.handwritten_artifact` tests.
+`engine.v8.smoke`, `engine.v8.owner_thread`, and `execution.handwritten_artifact` tests.
 
 Contributor path:
 

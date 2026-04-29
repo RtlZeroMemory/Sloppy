@@ -11,7 +11,8 @@
  * - no platform APIs, V8 headers, or C++ types appear in this file;
  * - JavaScript loading and global function calls are dispatched only through the internal
  *   backend boundary;
- * - the ABI is not thread-safe yet; future V8 owner-thread checks belong to the bridge.
+ * - lifecycle misuse returns deterministic status/diagnostics before backend dispatch;
+ * - optional V8 owner-thread checks belong to the bridge.
  *
  * Tests: tests/unit/core/test_engine.c.
  */
@@ -68,6 +69,51 @@ static SlStatus sl_engine_write_unsupported_diag(SlArena* arena, SlDiag* out_dia
     }
 
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+}
+
+static SlStatus sl_engine_write_invalid_lifecycle_diag(SlArena* arena, SlDiag* out_diag,
+                                                       SlStr operation)
+{
+    SlDiagBuilder builder;
+    SlStatus status;
+
+    if (out_diag == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    if (arena == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_diag_builder_init(
+        &builder, arena, SL_DIAG_SEVERITY_ERROR, SL_DIAG_ENGINE_CALL_ERROR,
+        sl_engine_literal("engine operation attempted after dispose",
+                          sizeof("engine operation attempted after dispose") - 1U));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_diag_builder_add_related(&builder, sl_source_span_unknown(), operation);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_diag_builder_add_hint(
+        &builder,
+        sl_engine_literal("Create a new engine before evaluating source or calling handlers.",
+                          sizeof("Create a new engine before evaluating source or calling "
+                                 "handlers.") -
+                              1U));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_diag_builder_finish(&builder, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_status_from_code(SL_STATUS_INVALID_STATE);
 }
 
 static SlStatus sl_engine_create_noop(SlArena* arena, SlEngine** out_engine)
@@ -139,8 +185,12 @@ SlStatus sl_engine_info(const SlEngine* engine, SlEngineInfo* out_info)
 
     *out_info = (SlEngineInfo){0};
 
-    if (engine == NULL || !engine->active) {
+    if (engine == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!engine->active) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
     switch (engine->kind) {
@@ -162,10 +212,16 @@ SlStatus sl_engine_info(const SlEngine* engine, SlEngineInfo* out_info)
 
 SlStatus sl_engine_eval_source(SlEngine* engine, SlStr source_name, SlStr source, SlDiag* out_diag)
 {
-    if (engine == NULL || !engine->active || !sl_engine_str_valid(source_name) ||
-        !sl_engine_str_valid(source) || source.length == 0U)
+    if (engine == NULL || !sl_engine_str_valid(source_name) || !sl_engine_str_valid(source) ||
+        source.length == 0U)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_eval_source", sizeof("sl_engine_eval_source") - 1U));
     }
 
     if (engine->kind != SL_ENGINE_KIND_V8) {
@@ -195,10 +251,16 @@ SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr functi
 
     *out_result = (SlEngineResult){0};
 
-    if (engine == NULL || !engine->active || arena == NULL || !sl_engine_str_valid(function_name) ||
+    if (engine == NULL || arena == NULL || !sl_engine_str_valid(function_name) ||
         function_name.length == 0U)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_call_function0", sizeof("sl_engine_call_function0") - 1U));
     }
 
     if (engine->kind != SL_ENGINE_KIND_V8) {
@@ -229,13 +291,20 @@ SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, 
 
     *out_result = (SlEngineResult){0};
 
-    if (engine == NULL || !engine->active || arena == NULL || request_context == NULL ||
+    if (engine == NULL || arena == NULL || request_context == NULL ||
         request_context->request == NULL ||
         (request_context->route_param_count != 0U && request_context->route_params == NULL) ||
         (request_context->query_param_count != 0U && request_context->query_params == NULL) ||
         !sl_engine_str_valid(function_name) || function_name.length == 0U)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_call_function_with_context",
+                              sizeof("sl_engine_call_function_with_context") - 1U));
     }
 
     if (engine->kind != SL_ENGINE_KIND_V8) {
@@ -260,8 +329,15 @@ SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, 
 SlStatus sl_engine_validate_registered_handlers(SlEngine* engine, const SlPlan* plan,
                                                 SlDiag* out_diag)
 {
-    if (engine == NULL || !engine->active || plan == NULL) {
+    if (engine == NULL || plan == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_validate_registered_handlers",
+                              sizeof("sl_engine_validate_registered_handlers") - 1U));
     }
 
     if (engine->kind != SL_ENGINE_KIND_V8) {
@@ -295,12 +371,19 @@ SlStatus sl_engine_call_registered_handler_with_context(SlEngine* engine, SlAren
 
     *out_result = (SlEngineResult){0};
 
-    if (engine == NULL || !engine->active || arena == NULL || !sl_handler_id_valid(handler_id) ||
+    if (engine == NULL || arena == NULL || !sl_handler_id_valid(handler_id) ||
         request_context == NULL || request_context->request == NULL ||
         (request_context->route_param_count != 0U && request_context->route_params == NULL) ||
         (request_context->query_param_count != 0U && request_context->query_params == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_call_registered_handler_with_context",
+                              sizeof("sl_engine_call_registered_handler_with_context") - 1U));
     }
 
     if (engine->kind != SL_ENGINE_KIND_V8) {
@@ -331,9 +414,14 @@ SlStatus sl_engine_call_handler(SlEngine* engine, const SlEngineHandlerCall* cal
 
     *out_result = (SlEngineResult){0};
 
-    if (engine == NULL || !engine->active || call == NULL || !sl_handler_id_valid(call->handler_id))
-    {
+    if (engine == NULL || call == NULL || !sl_handler_id_valid(call->handler_id)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_call_handler", sizeof("sl_engine_call_handler") - 1U));
     }
 
     return sl_engine_write_unsupported_diag(

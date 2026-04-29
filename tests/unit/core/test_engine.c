@@ -59,7 +59,7 @@ static int test_noop_create_info_destroy(void)
     }
 
     sl_engine_destroy(engine);
-    if (expect_status(sl_engine_info(engine, &info), SL_STATUS_INVALID_ARGUMENT) != 0) {
+    if (expect_status(sl_engine_info(engine, &info), SL_STATUS_INVALID_STATE) != 0) {
         return 5;
     }
 
