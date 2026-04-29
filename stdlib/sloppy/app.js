@@ -6,7 +6,7 @@ const LOG_LEVEL_RANK = Object.freeze({
     error: 4,
 });
 const MEMORY_SINK_STATE = new WeakMap();
-const MODULE_STATE = Symbol("Sloppy.module.state");
+const MODULE_STATE = new WeakMap();
 const MODULE_NAME_PATTERN = /^[a-z][a-z0-9.-]*$/u;
 
 function isPlainObject(value) {
@@ -131,7 +131,7 @@ function snapshotModuleMetadata(metadata) {
 }
 
 function getModuleState(module) {
-    return module?.[MODULE_STATE];
+    return MODULE_STATE.get(module);
 }
 
 function requireModuleState(module) {
@@ -165,8 +165,6 @@ function createModule(name) {
     }
 
     const module = {
-        [MODULE_STATE]: state,
-
         get name() {
             return state.name;
         },
@@ -223,6 +221,7 @@ function createModule(name) {
     };
 
     const frozenModule = Object.freeze(module);
+    MODULE_STATE.set(frozenModule, state);
     return frozenModule;
 }
 

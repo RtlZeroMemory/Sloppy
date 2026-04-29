@@ -23,10 +23,12 @@ function assertThrowsMessage(fn, expected) {
     assert.equal(users.__debug().services, 1);
     assert.equal(users.__debug().routes, 1);
     assert.deepEqual(users.__debug().metadata, { owner: "tests" });
+    assert.deepEqual(Object.getOwnPropertySymbols(users), []);
     assertThrowsMessage(() => Sloppy.module(""), /non-empty string/);
     assertThrowsMessage(() => Sloppy.module("Users"), /lowercase/);
     Sloppy.createBuilder().addModule(users);
     assertThrowsMessage(() => users.dependsOn("later"), /frozen/);
+    assert.deepEqual(Object.getOwnPropertySymbols(users), []);
 }
 
 {
@@ -104,10 +106,49 @@ function assertThrowsMessage(fn, expected) {
 }
 
 {
+    const real = Sloppy.module("real");
+    const symbols = Object.getOwnPropertySymbols(real);
     const builder = Sloppy.createBuilder();
     builder.addModule(Sloppy.module("alpha"));
     assertThrowsMessage(() => builder.addModule(Sloppy.module("alpha")), /already registered/);
     assertThrowsMessage(() => Sloppy.createBuilder().addModule({ name: "fake" }), /Sloppy.module/);
+
+    const fake = {
+        name: "fake",
+    };
+
+    for (const symbol of symbols) {
+        fake[symbol] = {
+            name: "fake",
+            dependencies: [],
+            serviceCallbacks: [],
+            routeCallbacks: [],
+            metadata: Object.create(null),
+            finalized: false,
+        };
+    }
+
+    assertThrowsMessage(() => Sloppy.createBuilder().addModule(fake), /Sloppy.module/);
+}
+
+{
+    let ran = false;
+    const module = Sloppy.module("locked");
+    const builder = Sloppy.createBuilder();
+
+    builder.addModule(module);
+
+    for (const value of Object.values(module)) {
+        if (Array.isArray(value)) {
+            assertThrowsMessage(() => value.push("mutated"), /read only|not extensible|frozen/);
+        }
+    }
+
+    assertThrowsMessage(() => module.routes(() => {
+        ran = true;
+    }), /frozen/);
+    builder.build();
+    assert.equal(ran, false);
 }
 
 {
