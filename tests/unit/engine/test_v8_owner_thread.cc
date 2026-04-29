@@ -86,7 +86,7 @@ static int test_wrong_thread_eval_fails_before_entering_v8(void)
     return 0;
 }
 
-static int test_wrong_thread_destroy_invalidates_handle_without_entering_v8(void)
+static int test_wrong_thread_destroy_defers_to_owner_thread(void)
 {
     unsigned char engine_storage[8192];
     SlArena engine_arena = {};
@@ -105,7 +105,7 @@ static int test_wrong_thread_destroy_invalidates_handle_without_entering_v8(void
     std::thread worker([&]() { sl_engine_destroy(engine); });
     worker.join();
 
-    if (expect_status(sl_engine_info(engine, &info), SL_STATUS_INVALID_STATE) != 0) {
+    if (expect_status(sl_engine_info(engine, &info), SL_STATUS_OK) != 0) {
         sl_engine_destroy(engine);
         return 2;
     }
@@ -122,7 +122,7 @@ int main(void)
         return result;
     }
 
-    result = test_wrong_thread_destroy_invalidates_handle_without_entering_v8();
+    result = test_wrong_thread_destroy_defers_to_owner_thread();
     if (result != 0) {
         return 10 + result;
     }

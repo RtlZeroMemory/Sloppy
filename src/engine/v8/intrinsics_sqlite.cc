@@ -10,6 +10,8 @@
 
 #include "sloppy/data_sqlite.h"
 
+#include <cmath>
+#include <cstdint>
 #include <limits>
 #include <new>
 #include <string>
@@ -328,8 +330,18 @@ bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
             param.value.integer = item.As<v8::Int32>()->Value();
         }
         else if (item->IsNumber()) {
-            param.kind = SL_SQLITE_PARAM_FLOAT;
-            param.value.number = item.As<v8::Number>()->Value();
+            const double number = item.As<v8::Number>()->Value();
+            if (std::isfinite(number) && std::trunc(number) == number &&
+                number >= static_cast<double>(std::numeric_limits<int64_t>::min()) &&
+                number < static_cast<double>(std::numeric_limits<int64_t>::max()))
+            {
+                param.kind = SL_SQLITE_PARAM_INTEGER;
+                param.value.integer = static_cast<int64_t>(number);
+            }
+            else {
+                param.kind = SL_SQLITE_PARAM_FLOAT;
+                param.value.number = number;
+            }
         }
         else if (item->IsString()) {
             std::string text;

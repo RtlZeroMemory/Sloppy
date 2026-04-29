@@ -850,8 +850,6 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
 
     backend = sl_v8_backend(engine);
     if (backend != nullptr && !sl_v8_on_owner_thread(backend)) {
-        sl_resource_table_dispose(&backend->resources);
-        engine->active = false;
         return;
     }
 

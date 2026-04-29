@@ -113,8 +113,8 @@ Operation:
                     return;
                 }
 
-                state.closed = true;
                 bridge.close(state.handle);
+                state.closed = true;
             },
         });
     }

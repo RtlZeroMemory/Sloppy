@@ -883,9 +883,12 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
                     "  const row = __sloppy.data.sqlite.queryOne(db, 'select name from users where "
                     "id = ?', [1]);"
                     "  const rows = __sloppy.data.sqlite.query(db, 'select name from users', []);"
+                    "  const typed = __sloppy.data.sqlite.queryOne(db, 'select typeof(?) as kind', "
+                    "[9007199254740991]);"
                     "  __sloppy.data.sqlite.close(db);"
                     "  return { __sloppyResult: true, kind: 'json', status: 200, "
-                    "    contentType: 'application/json; charset=utf-8', body: { row, rows } };"
+                    "    contentType: 'application/json; charset=utf-8', body: { row, rows, typed "
+                    "} };"
                     "};"),
                 &diag),
             SL_STATUS_OK) != 0)
@@ -904,7 +907,8 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
 
     if (result.kind != SL_ENGINE_RESULT_JSON ||
         expect_bytes_equal(result.response.body,
-                           "{\"row\":{\"name\":\"Ada\"},\"rows\":[{\"name\":\"Ada\"}]}") != 0)
+                           "{\"row\":{\"name\":\"Ada\"},\"rows\":[{\"name\":\"Ada\"}],"
+                           "\"typed\":{\"kind\":\"integer\"}}") != 0)
     {
         sl_engine_destroy(engine);
         return 134;

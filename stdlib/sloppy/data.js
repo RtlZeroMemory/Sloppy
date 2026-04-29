@@ -264,8 +264,8 @@ function createSqliteConnection(nativeBridge, handle) {
                 return;
             }
 
-            state.closed = true;
             nativeBridge.close(state.handle);
+            state.closed = true;
         },
 
         __debug() {

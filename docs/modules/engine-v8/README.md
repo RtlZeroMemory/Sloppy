@@ -117,9 +117,8 @@ Current behavior:
 - `SL_ENGINE_KIND_NONE` creates an arena-backed noop engine;
 - `sl_engine_destroy(NULL)` is allowed;
 - `sl_engine_destroy(engine)` is idempotent; double destroy is a no-op;
-- a wrong-thread destroy invalidates the public handle without entering V8. Later calls on
-  that handle return invalid-state lifecycle results, and an owner-thread destroy may still
-  release bridge-owned resources;
+- a wrong-thread destroy is side-effect free and does not enter V8. The owner thread must
+  perform the real destroy that releases bridge-owned resources;
 - calls after destroy return `SL_STATUS_INVALID_STATE` with an engine lifecycle diagnostic
   where the API accepts `out_diag`;
 - `sl_engine_info` returns stable noop metadata for active noop engines;
@@ -422,8 +421,8 @@ Current checks:
   registration, missing registered handler diagnostics, registered handler context
   dispatch, and create/destroy/create lifecycle behavior.
 - `engine.v8.owner_thread` is registered only when V8 is enabled and covers owner-thread
-  lifecycle checks, wrong-thread destroy invalidation without entering V8, and
-  invalid-state diagnostics for later use of a wrong-thread-destroyed handle.
+  lifecycle checks, wrong-thread eval rejection before entering V8, and wrong-thread
+  destroy deferral to the owner thread.
 - `execution.handwritten_artifact` is registered only when V8 is enabled and covers parsing
   the handwritten plan fixture, evaluating bootstrap runtime and handwritten/compiler
   `app.js`, validating registered handlers, invoking handler ID `1`, missing plan handler
