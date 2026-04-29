@@ -113,6 +113,9 @@ Implemented behavior:
 - Plan v1 alpha can carry metadata-only `dataProviders` entries with a token, provider
   kind (`sqlite`, `postgres`, or `sqlserver`), optional service token, and optional
   capability token reference.
+- MAIN1-10 adds a native capability registry and provider policy check hook for plan
+  capability metadata. Database checks cover token lookup, read/write access, and provider
+  mismatch denial before provider work when a bridge calls the hook.
 - native C SQLite tests execute real SQLite against `:memory:` databases.
 - native C PostgreSQL tests execute live libpq coverage only when `SLOPPY_POSTGRES_TEST_URL`
   is set; otherwise the separate live CTest is reported as skipped.
@@ -164,10 +167,10 @@ Not implemented yet:
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
 - no JavaScript-to-native SQL Server intrinsic bridge yet, so `data.sqlserver.open(...)`
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
-- no provider access enforcement from plan metadata yet;
 - no SQL parser, ORM, migrations, production pooling, cancellation, isolation levels,
   transactions through the JS wrapper, or PostgreSQL/SQL Server native SQL execution from
   JavaScript;
+- no JavaScript provider bridge calls the native capability hook yet;
 - no public file database policy beyond the native provider accepting SQLite paths;
 - no compiler extraction of JavaScript template literals.
 
@@ -180,7 +183,8 @@ CLI status:
 - default CI and package smoke do not prove live database availability, SQL Server driver
   installation, or V8-gated SQLite JS-to-native provider execution;
 - doctor output redacts connection-string-like secrets before printing;
-- `sloppy audit` can flag incomplete `dataProviders` metadata, but it does not enforce
-  permissions or validate real provider reachability yet.
+- `sloppy audit` can flag incomplete provider metadata, missing capability references,
+  statically-known insufficient access, and filesystem/network skeleton notes. It remains
+  metadata-oriented and does not execute providers or validate live reachability.
 
 Related internal docs: `docs/data-providers.md`, `docs/concurrency.md`.

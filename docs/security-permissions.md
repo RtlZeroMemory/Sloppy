@@ -31,9 +31,6 @@ This document covers:
 The foundation phase does not implement:
 
 - filesystem APIs;
-- database providers;
-- resource table;
-- permission checker;
 - OS sandboxing;
 - full security audit tooling. The current `sloppy audit` command is metadata-only and
   does not enforce permissions or execute user code.
@@ -42,11 +39,12 @@ The foundation phase does not implement:
 
 EPIC-15 implements a bootstrap JavaScript capability metadata skeleton for database
 capabilities only, and EPIC-19 adds metadata-only `sloppy audit` fixture output.
-Permissions, filesystem/network capabilities, runtime enforcement, OS sandboxing, grants,
-and security-grade audit behavior remain future work.
-MAIN1-02 adds native Plan v1 alpha parsing and validation for metadata-only
-`dataProviders` and `capabilities` sections. This makes the plan shape auditable and
-startup-validated, but it still does not enforce provider, filesystem, or network access.
+MAIN1-02 adds native Plan v1 alpha parsing and validation for `dataProviders` and
+`capabilities` sections. MAIN1-10 turns that metadata into an immutable runtime capability
+registry and explicit provider-bridge check hooks. Those checks are real where callers pass
+the registry before provider work begins. Filesystem and network capabilities are
+metadata/check-only skeletons: they can be stored and checked by token/kind/access, but no
+filesystem API, network API, permission prompt, or OS sandbox exists.
 
 ## Future Phase
 
@@ -138,9 +136,10 @@ Database providers contribute capabilities:
 Plan entries must reference config keys, provider tokens, or already-redacted placeholders,
 not connection string values. Raw secrets do not belong in `app.plan.json`.
 
-Current bootstrap metadata does not open databases, validate config keys, or enforce access.
-It exists so future provider modules, plan extraction, and audit tooling have a tested API
-shape to build from.
+Current bootstrap metadata does not open databases or validate config keys. Runtime
+capability checks can deny database access by token, provider, and read/write mode before a
+caller invokes provider work. The JavaScript-to-native SQLite bridge remains the next place
+to call those hooks once MAIN1-08 exposes a stable bridge boundary.
 
 MAIN1-08 adds a V8-gated SQLite bridge hook under `__sloppy.data.sqlite`, but it does not
 implement the MAIN1-10 capability policy engine. The hook is intentionally narrow:

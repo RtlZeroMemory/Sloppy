@@ -87,6 +87,12 @@ metadata, route-to-handler references, duplicate method/pattern pairs, duplicate
 route names, provider/capability token consistency, and duplicate provider service tokens
 when `dataProviders[].service` is represented.
 
+MAIN1-10 adds a native capability registry that future provider bridge calls can receive
+from the parsed plan. The registry is immutable after startup and has no global mutable
+state. It can deny database access before provider work when a boundary supplies token,
+operation, and provider metadata; filesystem/network checks are skeleton metadata checks
+only and do not add filesystem or network APIs.
+
 `app.run`, `app.listen`, `app.build`, automatic `app.plan.json` emission from the
 bootstrap facade, real data providers, database connections from JavaScript, SQL execution
 from JavaScript, nested route groups, module package loading, native plugins, middleware,

@@ -39,8 +39,9 @@ Implemented bootstrap API:
   helpers, and `data.sqlserver.open(options)` as the future stdlib entry point. It
   validates options and fails honestly until the native bridge exists.
 - Plan v1 alpha `dataProviders` and `capabilities` sections can describe provider and
-  authority metadata for startup validation/audit. This metadata is not provider opening or
-  access enforcement.
+  authority metadata for startup validation/audit. MAIN1-10 adds a native capability
+  registry and check functions that future JS-native bridge calls must run before provider
+  work. Direct provider APIs remain low-level primitives without capability context.
 
 Implemented native SQLite API:
 
@@ -171,6 +172,11 @@ prove that JavaScript can open `:memory:`, create a table, insert/query data thr
 stdlib bridge, close the wrapper, and receive deterministic stale/closed/invalid argument
 failures. They are reported separately from default provider tests because default gates do
 not enable V8.
+
+`core.capability.registry` covers the runtime capability registry, database read/write
+policy, provider mismatch denial, missing/wrong-kind/insufficient capability diagnostics,
+filesystem/network skeleton checks, and the bridge-ready deny-before-provider-work
+contract.
 
 `data.postgres.provider` is a native CTest target that links libpq and covers redaction,
 option validation, use after close, doctor diagnostics, and non-live pool lifecycle
