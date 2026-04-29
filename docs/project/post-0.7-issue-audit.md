@@ -9,7 +9,7 @@ No GitHub issues were mutated by this audit.
 ## Summary
 
 - Open issues: 32.
-- Closed issues returned by the audit: 59.
+- Closed issues returned by the audit: 58.
 - Milestones remain open from `0.0 Foundation / Harness` through
   `0.7 Tooling and Performance`.
 - Child tasks for EPIC-06 through EPIC-20 are mostly or fully closed, but parent EPIC
