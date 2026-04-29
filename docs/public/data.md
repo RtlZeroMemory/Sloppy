@@ -6,6 +6,21 @@ providers, and a V8-gated SQLite JavaScript bridge implemented.
 Purpose: document future data provider modules, query templates, transactions, and
 provider-specific limitations.
 
+ENGINE-01 target contract:
+
+- SQLite is the core foundation database provider.
+- Canonical final public SQLite open options use `database`, `capability`, and `access`;
+  current `path` examples are transitional until ENGINE-05 aligns the wrapper.
+- `data.sqlite.open`, `exec`, `query`, `queryOne`, `transaction`, and `close` are the
+  foundation operations.
+- `:memory:` examples are core conformance.
+- file databases require a capability/path policy before public examples bless them.
+- cancellation must be plumbed through request-context SQLite calls; sync-backed calls
+  check cancellation before work and before result conversion until real interruption
+  exists.
+- prepared statement handles, ORM, migrations, query builders, PostgreSQL JavaScript
+  bridge, and SQL Server JavaScript bridge remain deferred.
+
 Implemented bootstrap API example:
 
 ```ts

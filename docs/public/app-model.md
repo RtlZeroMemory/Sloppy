@@ -24,8 +24,15 @@ compiler-emitted route metadata, build a deterministic native route table, call 
 numeric ID with a minimal route/query/request context, and return supported
 text/JSON/empty/problem responses. Unsupported request bodies fail before handler
 execution.
-Source input build handoff, native app-host validation, true bootstrap ESM loading,
-services, middleware, and `app.run` remain deferred.
+Source input build handoff, full native app-host validation for complete framework graphs,
+true bootstrap ESM loading, services, middleware, and `app.run` remain deferred.
+
+ENGINE-01 target contract: the foundation app model is `Sloppy.create()`, supported route
+declarations, supported `Results.*` returns, an optional request context parameter, and a
+default-exported app compiled by `sloppyc build`. The supported run workflow is
+`sloppy run --artifacts`; `sloppy run app.js`, `app.run`, `app.listen`, Node/npm
+compatibility, broad DI/modules, middleware, and package-manager behavior remain deferred.
+See `docs/project/engine-framework-contract.md`.
 
 Purpose: explain the current builder/app model, structural freeze boundary, and the future
 path to native app-host validation.

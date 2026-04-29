@@ -157,19 +157,32 @@ contract helper to invoke handler ID `1` directly and asserts the returned strin
 
 ## Public API Shape
 
+ENGINE-01 locks the framework contract in `docs/project/engine-framework-contract.md`.
+Implementation layers should use that document as the source of truth for the final JS app
+API, Results API, request context, async/microtask policy, HTTP support matrix, SQLite API,
+capability expectations, and deferred behavior.
+
 The user-facing API remains the app-host API:
 
 ```ts
-const builder = Sloppy.createBuilder();
-const app = builder.build();
+const app = Sloppy.create();
 
 app.mapGet("/", () => Results.text("Sloppy is alive"));
 
-await app.run();
+export default app;
 ```
 
-The execution model supports this API without making users think about generated handler
-functions, bridge intrinsics, or plan files during normal development.
+The foundation execution workflow is explicit artifacts:
+
+```powershell
+sloppyc build app.js --out .sloppy
+sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173
+```
+
+`sloppy run app.js`, `app.run`, and `app.listen` are deferred until a real source-input
+handoff exists. The execution model should still support the app-host API without making
+users think about generated handler functions, bridge intrinsics, or plan files once that
+handoff is deliberately implemented.
 
 ## Core Pipeline
 
@@ -372,6 +385,11 @@ Target request flow:
 10. release request arena;
 11. report debug leaks.
 
+ENGINE-01 target handler context contains `route`, `query`, `request`, `signal`,
+`deadline`, and future request-owned `resources`. The foundation request lifecycle must
+retain that scope until a synchronous handler returns or an async handler Promise settles,
+is rejected, or is cancelled.
+
 MAIN1-03 implements the minimal native request-scope boundary for the current request
 dispatch path. The scope begins before the handler boundary and closes after success or
 failure. Cleanup callbacks use `SlScope` LIFO order. The scope owns cleanup registrations
@@ -448,6 +466,15 @@ Future Promise lifecycle requirements:
 - microtask draining is controlled by the V8 bridge;
 - cancellation semantics are specified in `docs/concurrency.md` and required with the first
   real async/HTTP implementation.
+
+ENGINE-01 makes that future lifecycle a foundation requirement rather than an optional
+enhancement. Async handlers returning Promises must be supported before Sloppy claims the
+framework HTTP foundation is complete. V8 microtasks must drain at documented app-load,
+handler-call, and native-completion boundaries. Every request must carry a native
+cancellation token and JS `ctx.signal`; deadlines, shutdown, queue overflow, and future
+client disconnect behavior cancel through the same path. Native operations that are not yet
+interruptible must still check cancellation before work starts and before results are
+converted, and docs must not claim mid-call interruption until it exists.
 
 Current native skeleton:
 

@@ -24,6 +24,11 @@ Current files:
 Examples in this directory are planned API examples unless the page explicitly says the
 feature is implemented.
 
+ENGINE-01 locks the foundation contract in
+`docs/project/engine-framework-contract.md`. These public docs are still pre-alpha status
+docs, not launch docs; public alpha remains blocked until the contract has executable
+compiler/runtime evidence.
+
 Checked-in examples:
 
 - `examples/hello/`: current bootstrap API-shape example using the source stdlib through a

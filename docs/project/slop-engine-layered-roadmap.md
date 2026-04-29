@@ -62,6 +62,11 @@ that point to replacement ENGINE issues.
 
 Purpose: lock final contracts before widening implementation.
 
+ENGINE-01 contract source: `docs/project/engine-framework-contract.md`. Implementation
+layers should treat that document as the decision record for JS app shape, Results,
+request context, async/microtasks, cancellation/deadlines, limits/backpressure, HTTP,
+SQLite, capabilities, and deferred behavior.
+
 EPICs: ENGINE-01.
 
 Tasks:
@@ -87,8 +92,9 @@ Acceptance criteria: contracts define supported/deferred/rejected behavior and m
 tests, and every core async/HTTP/resource boundary has a cancellation, bounding, and
 cleanup story.
 
-Likely PR grouping: one contract doc PR, then focused follow-up PRs for compiler/runtime
-contract alignment if needed.
+Likely PR grouping: one contract doc PR, then mid-sized bounded-context implementation PRs
+in later layers. Follow-up PRs should group related tasks by module or contract boundary
+when that keeps development faster without making review blurry.
 
 Parallelization: HTTP, async, SQLite, and diagnostics contract sections can be drafted in
 parallel, then reconciled in one final-shape review.
@@ -110,6 +116,8 @@ Tasks:
 - capability/provider Plan metadata emission;
 - real source map output;
 - deterministic Plan metadata/hashes;
+- #302 source-input `sloppy run app.js` compiler/CLI handoff, cache key, stale-artifact,
+  diagnostics, and cleanup policy;
 - rejected-shape fixture matrix.
 
 Prerequisites: Layer 1 contracts.
@@ -122,7 +130,7 @@ Acceptance criteria: supported source examples compile to complete artifacts and
 source leaves no success artifacts.
 
 Likely PR grouping: method extraction; async handler extraction; data/capability emission;
-source maps; diagnostics matrix.
+source-input handoff/cache; source maps; diagnostics matrix.
 
 Parallelization: diagnostics fixture expansion and source-map work can proceed alongside
 method/data extraction after the contracts freeze.

@@ -76,6 +76,38 @@ from `stdlib/sloppy/index.js`. `examples/compiler-hello/` demonstrates the runna
 compiler path with the public bare `"sloppy"` specifier; running that artifact still
 requires a V8-enabled build and the staged bootstrap stdlib assets.
 
+## ENGINE-01 Contract Lock
+
+`docs/project/engine-framework-contract.md` locks the foundation contract before the next
+implementation layers broaden the compiler, V8 runtime, HTTP runtime, and SQLite bridge.
+
+Foundation ergonomics are intentionally small:
+
+- `Sloppy.create()` plus default-exported app is the core app handoff.
+- `app.mapGet`, `app.mapPost`, `app.mapPut`, `app.mapPatch`, and `app.mapDelete` are the
+  supported HTTP route declarations for the foundation.
+- `Results.*` descriptors are the handler response contract.
+- a handler context exposes `route`, `query`, `request`, `signal`, `deadline`, and future
+  request-owned `resources`.
+- async handlers returning Promises are required; V8 microtask draining, request-scope
+  retention, cancellation, deadlines, and bounded queues are part of the foundation.
+- JSON/text bodies, headers, route params, query params, result serialization, and safe
+  error responses are core HTTP runtime work.
+- SQLite is the core data provider foundation with `data.sqlite.open`, `exec`, `query`,
+  `queryOne`, `transaction`, and `close`.
+
+The foundation workflow remains explicit artifacts:
+
+```powershell
+sloppyc build app.js --out .sloppy
+sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173
+```
+
+`sloppy run app.js` is tracked by #302 as a compiler/CLI source handoff after the compiler
+emits complete artifacts for realistic apps. `app.run`, broad service/module registration,
+PostgreSQL/SQL Server JavaScript bridges, public alpha docs, and benchmark claims remain
+deferred.
+
 ## Future Phase
 
 The first ergonomic implementation should prove the tiny app shape with a handwritten or
@@ -105,7 +137,7 @@ const app = Sloppy.create();
 
 app.mapGet("/", () => Results.text("Sloppy is alive"));
 
-await app.run();
+export default app;
 ```
 
 Acceptance criteria for this API shape:
@@ -114,7 +146,9 @@ Acceptance criteria for this API shape:
 - `Sloppy.create()` is equivalent to a default builder plus `build()`;
 - route declaration remains compiler-readable;
 - handler receives a typed context only when it asks for one;
-- emitted plan contains one route and one handler ID.
+- emitted plan contains one route and one handler ID;
+- runtime startup uses `sloppy run --artifacts` until direct source input and `app.run`
+  have an intentional handoff contract.
 
 TASK 11.A creates the bootstrap source layout that will eventually provide the `"sloppy"`
 module:

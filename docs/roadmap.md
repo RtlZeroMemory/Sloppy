@@ -19,6 +19,7 @@ source of truth, use:
 - `docs/project/strategic-current-state-audit.md`;
 - `docs/project/strategic-system-audit.md`;
 - `docs/project/slop-engine-final-shape.md`;
+- `docs/project/engine-framework-contract.md`;
 - `docs/project/slop-engine-layered-roadmap.md`.
 
 The next phase is Slop Engine foundation completion: real supported compiler pipeline, real
@@ -26,6 +27,11 @@ V8 runtime integration, async handler/Promise policy, framework HTTP API runtime
 SQLite end-to-end with capability enforcement, cancellation/deadline/backpressure
 infrastructure, app/request lifecycle, diagnostics/source maps, conformance examples, and
 packaged evidence.
+
+Direct source-input `sloppy run app.js` remains unsupported today, but is now tracked by
+#302 as a compiler/CLI handoff task once the compiler can emit complete artifacts for
+realistic supported apps. The current supported workflow remains explicit `sloppyc build`
+plus `sloppy run --artifacts`.
 
 Public alpha docs remain blocked. PostgreSQL and SQL Server JS bridges, benchmark claims,
 ORM/migrations, package-manager behavior, Node compatibility, and production-grade HTTP
@@ -267,9 +273,11 @@ Active planning has moved to:
 
 1. [Slop Engine Final Shape](project/slop-engine-final-shape.md): define the intended
    engine/framework foundation before higher-level framework perks.
-2. [Slop Engine Layered Roadmap](project/slop-engine-layered-roadmap.md): Layer 0 cleanup
+2. [Engine Framework Contract](project/engine-framework-contract.md): lock the ENGINE-01
+   JS/API, async, HTTP, SQLite, cancellation, limit, and deferred-behavior decisions.
+3. [Slop Engine Layered Roadmap](project/slop-engine-layered-roadmap.md): Layer 0 cleanup
    through Layer 10 public-alpha gate.
-3. [ROADMAP MAIN](project/roadmap-main.md) and
+4. [ROADMAP MAIN](project/roadmap-main.md) and
    [ROADMAP MAIN.1](project/roadmap-main-1-hardening.md): historical input from the narrow
    alpha-path planning and hardening pass.
 

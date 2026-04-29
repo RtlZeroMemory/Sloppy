@@ -12,6 +12,16 @@ Bootstrap status: `stdlib/sloppy/results.js` exports a frozen `Results` object w
 Purpose: document current result descriptor helpers and the future path where handler
 return values become native response descriptors.
 
+ENGINE-01 target contract:
+
+- core helpers are `text`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`,
+  `badRequest`, `problem`, and `status`;
+- supported descriptors become native HTTP responses through the V8 bridge;
+- custom headers are supported only through `options.headers` on supported descriptors;
+- unsupported descriptors fail with diagnostics and a safe framework error response;
+- files, streams, redirects, cookies, compression, content negotiation, middleware
+  filters, and production error page customization remain deferred.
+
 Implemented API example:
 
 ```ts
