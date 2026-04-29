@@ -56,6 +56,8 @@ Runtime standards:
 
 - [C style](docs/c-style.md)
 - [C standards](docs/c-standards.md)
+- [JavaScript/TypeScript standards](docs/js-ts-standards.md)
+- [Rust standards](docs/rust-standards.md)
 - [Memory](docs/memory.md)
 - [Diagnostics](docs/diagnostics.md)
 - [Documentation policy](docs/documentation-policy.md)
@@ -75,6 +77,16 @@ Agent workflow:
 - [Agent skills](docs/skills/README.md)
 - [Execution plans](docs/exec-plans/README.md)
 
+## Language Standards
+
+- C/C++ runtime work: read `docs/c-standards.md` and `docs/c-style.md`.
+- JavaScript/TypeScript stdlib, public API, and examples: read `docs/js-ts-standards.md`.
+- Rust compiler/tooling: read `docs/rust-standards.md`.
+- All languages: follow `docs/testing-strategy.md`, `docs/documentation-policy.md`, and
+  `docs/review-playbook.md`.
+
+Language-specific gates are part of `tools/windows/dev.ps1 lint`.
+
 ## Hard boundaries
 
 - No OS APIs outside `src/platform/*`.
@@ -86,7 +98,10 @@ Agent workflow:
 - No raw `malloc`/`free` outside allocator modules once allocator exists.
 - No package-manager scope.
 - No Node compatibility by default.
+- No package-manager behavior unless a scoped task and docs require it.
+- No Node compatibility assumptions.
 - No runtime features before foundation tasks.
+- No overengineering in JS/Rust either; keep public API and compiler/tooling work direct.
 - Avoid speculative abstraction; simple direct C is preferred unless a documented
   boundary/invariant requires abstraction.
 - No generated/build artifacts committed.

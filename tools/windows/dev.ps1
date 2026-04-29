@@ -237,6 +237,30 @@ function Invoke-CStandardsCheck {
     }
 }
 
+function Invoke-JsTsStandardsCheck {
+    $script = Join-Path $PSScriptRoot "check-js-ts-standards.ps1"
+    & $script
+    if (-not $?) {
+        throw "JS/TS standards check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "JS/TS standards check failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Invoke-RustStandardsCheck {
+    $script = Join-Path $PSScriptRoot "check-rust-standards.ps1"
+    & $script
+    if (-not $?) {
+        throw "Rust standards check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "Rust standards check failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-DocsFreshnessCheck {
     $script = Join-Path $PSScriptRoot "check-docs-freshness.ps1"
     & $script
@@ -262,6 +286,8 @@ function Invoke-Lint {
 
     Invoke-PlatformBoundaryCheck
     Invoke-CStandardsCheck
+    Invoke-JsTsStandardsCheck
+    Invoke-RustStandardsCheck
     Invoke-DocsFreshnessCheck
     Invoke-CComplexityWarningCheck
 

@@ -19,9 +19,10 @@ testing philosophy in `docs/testing-strategy.md`.
 ## Current Phase
 
 Current gates cover placeholder C/Rust builds, formatting, linting, CTest, cargo tests,
-artifact hygiene, platform-boundary scanning, C standards scanning, and a lightweight docs
-freshness structure check. Benchmark list/smoke checks may run as correctness smoke, but
-performance deltas are not a normal hard gate yet.
+artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS standards
+scanning, Rust standards scanning, and a lightweight docs freshness structure check.
+Benchmark list/smoke checks may run as correctness smoke, but performance deltas are not a
+normal hard gate yet.
 
 ## Future Phase
 
@@ -80,6 +81,13 @@ Rust direct gates:
 cargo fmt --manifest-path compiler/Cargo.toml -- --check
 cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
 cargo test --manifest-path compiler/Cargo.toml
+```
+
+Language standards scanners:
+
+```powershell
+.\tools\windows\check-js-ts-standards.ps1
+.\tools\windows\check-rust-standards.ps1
 ```
 
 Benchmark workflow for performance-validation tasks:
@@ -151,7 +159,9 @@ documented intended behavior, not accidental current behavior.
 
 Simplicity is reviewed manually for now. Reviewers should use `docs/c-standards.md` to
 reject speculative abstraction, framework-like subsystems, and "safe-looking" code that
-hides ownership, bounds checks, or error paths.
+hides ownership, bounds checks, or error paths. JS/TS reviewers should use
+`docs/js-ts-standards.md`; Rust compiler/tooling reviewers should use
+`docs/rust-standards.md`.
 
 Future optional complexity checks may warn on:
 
@@ -247,10 +257,59 @@ Local failures should be fixed or documented before review.
 `clang-tidy` runs against configured compile commands and treats warnings as errors in the
 script/CMake targets.
 
+## Language Standards Source Docs
+
+Prompt and PR preparation must include the right language docs:
+
+- stdlib, public JS/TS API, compiler fixture, or example PRs must read
+  `docs/js-ts-standards.md`;
+- compiler/tooling PRs must read `docs/rust-standards.md`;
+- runtime C/C++ PRs must read `docs/c-standards.md` and `docs/c-style.md`;
+- every language follows `docs/testing-strategy.md`, `docs/documentation-policy.md`, and
+  `docs/review-playbook.md`.
+
+## JS/TS Standards Scanner
+
+`tools/windows/check-js-ts-standards.ps1` scans source-controlled JS/TS stdlib, examples,
+compiler fixtures, and golden/fixture inputs without requiring Node or npm.
+
+The scanner fails on obvious policy violations:
+
+- Node globals/imports in `stdlib/sloppy/`;
+- CommonJS usage;
+- dynamic imports;
+- package-manager files under `examples/`;
+- obvious top-level stdlib side effects;
+- conservative secret-looking assignments in examples/fixtures, with redacted placeholder
+  values allowed.
+
+This scanner is a lint gate and does not replace behavior tests. It deliberately starts as
+a zero-dependency structural check; a future parser-based JS linter may replace or
+supplement it after the compiler/tooling story is scoped.
+
+## Rust Standards Scanner
+
+`tools/windows/check-rust-standards.ps1` scans production Rust under `compiler/src/` for
+project-specific compiler/tooling rules that cargo fmt and clippy do not express.
+
+The scanner fails on:
+
+- `unwrap()` and `expect()` in production code without an explicit allow comment and reason;
+- `todo!()`, `unimplemented!()`, `panic!()`, and `dbg!()` in production code;
+- `println!()` / `eprintln!()` outside the current CLI entrypoint unless explicitly
+  allowed;
+- `HashMap` / `HashSet` in obvious artifact/diagnostics paths without a deterministic
+  ordering reason;
+- absolute local paths in future compiler golden outputs.
+
+Tests may use `unwrap()` and `expect()` where appropriate. The current scanner skips
+`#[cfg(test)] mod tests` blocks in `compiler/src/*`.
+
 ## Rust Formatting, Linting, Tests
 
 `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` are required for
-compiler changes and run as part of quality gates.
+compiler changes and run as part of quality gates. The Rust standards scanner complements
+these gates; it is not a replacement for cargo fmt, clippy, or tests.
 
 ## CMake And CTest
 
@@ -312,6 +371,8 @@ Quality gates are acceptable when:
 - generated artifacts are not tracked;
 - platform-boundary violations fail lint;
 - C standards violations fail lint;
+- JS/TS standards violations fail lint;
+- Rust standards violations fail lint;
 - docs freshness structure checks pass;
 - Rust and C gates both run;
 - future gates have clear placeholders.

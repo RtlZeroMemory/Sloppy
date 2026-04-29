@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 #[derive(Debug, Eq, PartialEq)]
 enum CliCommand {
     Help,

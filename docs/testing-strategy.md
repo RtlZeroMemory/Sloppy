@@ -86,7 +86,10 @@ Compiler:
 - expected `app.js`;
 - expected `app.plan.json`;
 - expected diagnostics;
-- source map checks.
+- source map checks;
+- deterministic, path-normalized golden outputs;
+- no absolute local paths, timestamps, or random IDs in golden artifacts unless explicitly
+  normalized and documented.
 
 Runtime execution:
 
@@ -115,6 +118,9 @@ Public API:
 - bootstrap API-shape examples may be statically checked while compiler extraction, module
   loading, and HTTP serving remain future work, but the example docs must clearly say they
   are not runnable apps yet.
+- JS/TS public API behavior must be tested through the V8 harness where possible.
+- Static JS/TS fixture checks are acceptable only with a documented reason and are not a
+  replacement for behavior tests.
 
 ## Test Naming / Layout
 
@@ -177,6 +183,8 @@ Structural tests enforce:
 - no V8 leakage outside `engine/v8`;
 - no unsafe C functions;
 - no generated artifacts;
+- no Node/npm/package-manager assumptions in bootstrap JS/TS and examples;
+- no unreviewed `unwrap`/`expect`/panic-style shortcuts in production Rust compiler code;
 - future raw allocation restrictions.
 
 ## Benchmarks

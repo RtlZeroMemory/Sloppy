@@ -9,6 +9,10 @@ before starting work.
 - [Development skill](development-skill.md): use for bounded implementation tasks.
 - [Review skill](review-skill.md): use for PR or patch review.
 - [C safety skill](c-safety-skill.md): use for C runtime code.
+- [JS/TS stdlib skill](js-ts-stdlib-skill.md): use for bootstrap stdlib, examples, and
+  public JS/TS API shape.
+- [Rust compiler skill](rust-compiler-skill.md): use for `compiler/`, future `sloppyc`,
+  Rust fixtures, and Rust-owned tooling.
 - [Docs to issues skill](docs-to-issues-skill.md): use when turning docs into GitHub epics/tasks.
 - [Platform boundary skill](platform-boundary-skill.md): use for platform-sensitive changes.
 - [Diagnostics skill](diagnostics-skill.md): use for diagnostics design or implementation.

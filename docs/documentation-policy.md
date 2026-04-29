@@ -70,6 +70,13 @@ Examples:
 - adding a CLI command updates `docs/public/cli.md`;
 - changing app API updates `docs/public/app-model.md` and
   `docs/developer-ergonomics.md`.
+- changing public JS API or examples updates the relevant public/internal docs and must
+  distinguish implemented behavior from future runtime/compiler behavior.
+- changing compiler extraction or diagnostics docs must distinguish supported syntax from
+  rejected syntax.
+- Rust/JS changes must update docs and examples together when public behavior, examples,
+  or fixture intent changes.
+- standards changes must update `AGENTS.md` references and relevant skill docs.
 
 ## Rule: No Stale Documentation
 
@@ -115,6 +122,10 @@ Every implemented module should document:
 - Does this PR require user-facing docs?
 - Does this PR require module docs?
 - Does this PR require ADR update?
+- Does this PR touch JS/TS public API or examples and therefore need
+  `docs/js-ts-standards.md` plus updated examples/docs?
+- Does this PR touch compiler/tooling and therefore need `docs/rust-standards.md` plus
+  updated compiler docs or fixtures?
 
 ## Docs Freshness Gate
 
