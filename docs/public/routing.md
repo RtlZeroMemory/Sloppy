@@ -77,8 +77,8 @@ Compiler extraction MVP:
 - supports `.withName("Route.Name")`;
 - requires compiled handlers to declare zero parameters because the current runtime calls
   handler exports with zero arguments;
-- requires compiled handler result arguments to be inline JSON-safe literals, arrays, or
-  object literals;
+- requires handler result arguments in compiled routes to be inline JSON-safe literals,
+  arrays, or object literals;
 - assigns handler IDs from `1` in source order;
 - emits route metadata into `app.plan.json` as `method`, `pattern`, `handlerId`, and
   `name`;
