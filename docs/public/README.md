@@ -1,6 +1,7 @@
 # Public Documentation
 
-Status: Bootstrap app-host and module skeleton implemented; runtime execution planned.
+Status: Bootstrap app-host, module, data facade, metadata CLI, and native provider
+foundations implemented; runtime execution planned.
 
 This directory is for user/developer-facing documentation: how people will use Sloppy to
 build applications. It is distinct from internal architecture/spec docs under `docs/`.
@@ -31,3 +32,8 @@ Checked-in examples:
   API-shape example. It is not a `sloppy run` app yet.
 - `examples/modules-basic/`: current module API-shape example with fake in-memory
   services. It is not a `sloppy run` app yet.
+- `examples/data-foundation/`: current data/capabilities API-shape example with fake
+  JavaScript provider behavior. It is not a `sloppy run` app yet.
+- `examples/sqlite-basic/`, `examples/postgres-basic/`, and `examples/sqlserver-basic/`:
+  provider-shape examples that document the native-provider/stdlib-bridge split. They are
+  not `sloppy run` apps yet.

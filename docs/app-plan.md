@@ -214,6 +214,11 @@ EPIC-15 exposes bootstrap-only `app.__getPlanContributions().capabilities` metad
 declared capabilities. It does not emit or parse real `dataProviders` plan entries.
 EPIC-16 adds the native SQLite provider and `data.sqlite` stdlib shape, but it still does
 not emit or parse real `dataProviders` plan entries.
+EPIC-17 and EPIC-18 add native PostgreSQL and SQL Server providers plus
+`data.postgres`/`data.sqlserver` stdlib shapes, but they also do not emit or parse real
+`dataProviders` plan entries. EPIC-19 CLI introspection can read interim `dataProviders`
+metadata from plan-compatible fixtures/artifacts for doctor/audit output, but the native
+Plan v1 parser does not own that section.
 
 ### capabilities
 

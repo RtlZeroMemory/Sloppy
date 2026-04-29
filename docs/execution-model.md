@@ -442,6 +442,12 @@ queryOne, and transactions. The JavaScript stdlib still cannot send descriptors 
 SQLite because runtime intrinsics and JS-visible resource IDs are future work; the
 `data.sqlite.open(...)` stdlib entry point reports that bridge gap instead of pretending to
 open a database.
+EPIC-17 and EPIC-18 add the same native-provider boundary shape for PostgreSQL and SQL
+Server. Native tests pass `$1` PostgreSQL SQL or `?` ODBC SQL plus parameters directly to
+the providers and verify non-live behavior by default, with live execution gated by
+`SLOPPY_POSTGRES_TEST_URL` and `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`. The JavaScript
+stdlib still cannot send descriptors to those native providers; `data.postgres.open(...)`
+and `data.sqlserver.open(...)` report the bridge gap honestly.
 
 ## Example Input
 

@@ -1,31 +1,49 @@
 # Quality Score
 
-Status key: Green means usable and enforced, Yellow means usable with gaps, Red means not
-ready.
+Status key:
 
-| Category | Status | Why | To move to Green |
-| --- | --- | --- | --- |
-| Architecture docs | Green | Core boundaries and phases are documented. | Keep ADRs/docs updated as choices change. |
-| Story-ready roadmap | Green | Epics have goals, non-goals, tests, and acceptance criteria. | Keep implementation issues mapped to epics. |
-| C standards | Yellow | Standards exist and scanner begins enforcement. | Add fixtures and tighten allocator rules after allocator modules land. |
-| Platform isolation | Yellow | Scanner and docs exist. | Add scanner self-tests and future Unix CI. |
-| Build tooling | Yellow | Windows workflow and CI skeleton exist. | Add more script tests and Unix presets later. |
-| Testing | Yellow | Smoke, structural checks, and initial core C unit tests including scope lifetime tests exist. | Add richer C test reporting if needed and golden/snapshot harnesses. |
-| Testing intent model | Yellow | Strategy now defines tests-as-documented-intent. | Require implementation PRs to tie tests to source docs and add reviewer enforcement. |
-| User-facing docs | Yellow | Planned public docs skeleton exists and marks examples as not implemented. | Fill pages as public features land and add example tests. |
-| Module docs | Yellow | Module README skeletons exist with required headings. | Keep module docs updated with implemented behavior and strengthen freshness checks. |
-| Simplicity / anti-overengineering | Yellow | C standards and review playbook now define anti-overengineering rules; warning scanner is informational. | Enforce through reviews, add examples as patterns appear, and promote reliable checks. |
-| Comment quality / code rationale | Yellow | C standards and review playbook now require useful rationale, ownership, lifetime, and invariant comments without AI-noise. | Enforce through reviews, add examples from repeated findings, and consider lightweight warning scans later. |
-| Diagnostics | Yellow | Initial severity, code, source span, builder, text renderer, and snapshot fixtures exist. | Add source frames, JSON output, source maps, and redaction policy when their phases start. |
-| Developer ergonomics | Yellow | Product API direction is documented. | Validate with compiler/runtime fixtures later. |
-| Modularity | Yellow | Module architecture is documented, and TASK 14 adds the bootstrap `Sloppy.module`/`builder.addModule` skeleton with dependency ordering, JS diagnostics, and debug metadata. | Add compiler extraction, real plan module emission, native startup validation, package/module distribution, and native plugin boundaries in later phases. |
-| Data providers | Yellow | Provider model is documented, EPIC-15 adds the bootstrap data/capabilities foundation, EPIC-16 adds the first native SQLite provider with in-memory execution, parameter binding, transactions, diagnostics, docs, and an honest stdlib bridge gap, EPIC-17 adds native libpq PostgreSQL with connection strings, `$1` parameters, query/exec/queryOne, transactions, redaction diagnostics, a tiny pool skeleton, and opt-in live tests, and EPIC-18 adds native ODBC SQL Server with `?` parameters, query/exec/queryOne, transactions, missing-driver diagnostics, redaction, a tiny pool skeleton, and opt-in live tests. | Add JavaScript-to-native data intrinsics/resource IDs, app-plan provider emission, production pooling, cancellation/deadlines, async worker offload, JSON/array/blob/date support, TLS/options hardening, and public file DB policy later. |
-| CLI introspection | Yellow | EPIC-19 adds metadata-only `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi` with text/JSON output, golden tests, missing-path diagnostics, secret redaction, and no handler/server/V8/live-DB execution by default. | Add real compiler/app-host metadata emission, richer provider doctor checks behind explicit opt-in, fuller audit rules, full OpenAPI schema generation, and output polish later. |
-| Compiler plan | Yellow | `sloppyc` shape is documented and placeholder exists. | Add fake emitter/golden tests, then Oxc integration. |
-| Runtime execution plan | Yellow | Execution model is documented, minimal Plan v1 structs exist, the parser validates a documented golden fixture matrix into arena-owned native data, V8 SDK detection is opt-in, the engine-neutral `SlEngine` ABI has noop/unsupported coverage, V8-enabled builds have a classic script/global function smoke path with basic exception diagnostics, and TASK 08.A adds a V8-gated handwritten plan + bundle handler-ID smoke. | Add file-based loader, runtime compatibility checks, handler registration, HTTP/request context, full result descriptors, and compiler-produced artifacts later. |
-| Concurrency/async model | Yellow | Canonical spec and ADR exist. TASK 09.A adds the caller-backed single-threaded `SlLoop` completion queue skeleton, TASK 09.B adds the caller-owned `SlAsync` native settlement skeleton, and TASK 09.C adds the inline/fake `SlWorkerPool` completion-posting skeleton with CTest coverage. | Add real worker threads, libuv/backend integration, thread-safe posting, owner-thread checks, V8 Promise/microtask integration, request scopes, cancellation, backpressure, and worker scaling design. |
-| HTTP/router foundation | Yellow | TASK 10.A adds a pure-C route pattern parser and one-pattern matcher with static segments, string params, int params, parameter captures, diagnostics, and CTest coverage. TASK 10.B adds vcpkg/CMake llhttp and libuv integration, a complete-buffer HTTP/1 request-head parser, max-header enforcement, raw target/path split, and a libuv init/close smoke. TASK 10.C adds synthetic in-memory GET dispatch from parsed request head through manual route binding to numeric Plan handler ID and the existing runtime-contract/engine boundary. | Add TCP server/socket I/O, streaming parser state, body parsing, response writing, production route table/trie or equivalent dispatch, route precedence, percent decoding, query parsing, route groups, route params in handler context, middleware, and public TypeScript API integration later. |
-| Benchmarks / performance validation | Yellow | EPIC-20 adds the first `sloppy_bench` harness, Windows wrapper, list/smoke CTest checks, route matcher benchmarks, HTTP request-head parser microbenchmark, handler lookup/noop-dispatch benchmarks, JSON/text output, and methodology docs. | Add real V8-gated handler timing, full HTTP throughput after the server path exists, JSON serialization benchmarks when implementation exists, env-gated DB benchmarks, trend tracking, and any external runtime comparisons only after comparable benchmarks are implemented and run. |
-| Bootstrap stdlib | Yellow | TASK 11.A establishes `stdlib/sloppy/`, CMake staging to `lib/sloppy/bootstrap/sloppy/`, install rules, and a CTest asset-presence check. TASK 11.B/11.C adds frozen `Results.text/json` descriptors, `Sloppy.create`, in-memory `app.mapGet`, `.withName`, `app.__getRoutes`, and a static CTest API-shape check. TASK 11.D adds `examples/hello/` and a static example API-shape check. TASK 12.A/12.B/12.C/12.D adds `Sloppy.createBuilder`, `builder.build`, structural `app.freeze`, object config, memory logging, string-token singleton/transient services, optional executable ESM coverage when `node` is available, and docs for implemented/deferred app-host behavior. TASK 13.A/13.B/13.C/13.D adds in-memory route groups, a fuller bounded `Results.*` helper set, a small `schema` validation skeleton, route metadata storage, `examples/ergonomics/`, and static/executable bootstrap checks. TASK 14.A/14.B/14.C/14.D adds `Sloppy.module`, `builder.addModule`, deterministic dependency ordering, module phase execution, module route/service attribution, module debug metadata, `examples/modules-basic/`, and static/executable bootstrap checks. | Add V8-backed ESM stdlib tests, compiler import rewriting, real `app.plan.json` emission, native app-host validation, app run/listen, HTTP response conversion, runtime intrinsic binding, middleware, automatic validation/request binding, route params in handler context, module packages, native plugins, data providers, and runnable public examples in later tasks. |
-| Agent harness | Green | Guide, harness docs, playbooks, plans, score, and debt tracker exist. | Keep repeated feedback promoted into docs/checks. |
-| Mechanical enforcement | Yellow | Platform, C standards, artifact gates, and first scope lifetime tests exist. | Add allocator/resource/V8 checks as implementation grows. |
+- Green: implemented and enforced by default checks.
+- Yellow: implemented or specified with meaningful gaps.
+- Red: not ready for public alpha use.
+
+This score separates "implemented" from "validated". Default gates are not V8-enabled
+gates, and default provider tests are not live database tests.
+
+| Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
+| --- | --- | --- | --- | --- | --- |
+| Native C safety | Yellow | Core primitives, checked math, arena, diagnostics, plan parser, HTTP parser, providers, and boundary-oriented tests. | CTest, warnings, format, lint, C standards scanner, platform scanner. | Sanitizers, fuzzing, allocator/resource misuse checks, and deeper cleanup/leak checks are incomplete. | Add sanitizer/fuzz gates, resource table tests, allocator checks, and scanner fixtures. |
+| Platform boundaries | Yellow | `src/platform/*` structure, platform docs, scanner, and platform time abstraction. | Lint checks common forbidden OS headers outside platform directories. | Linux/macOS CI and scanner self-tests are missing. | Add scanner fixtures, Unix CI jobs, and documented platform API categories. |
+| Docs freshness | Yellow | Source docs, public docs, module docs, ADRs, quality score, and tech-debt tracker exist. | Lightweight docs freshness structure check. | Semantic stale-doc detection and link checking are not implemented. | Add link checker and targeted semantic checks for examples/API claims. |
+| Tests as intent | Yellow | Testing strategy requires docs-as-intent; many modules have tests tied to docs. | CTest/cargo gates plus golden fixtures. | Some structural/example checks are static because runtime execution is not available. | Keep tests tied to source docs and replace static checks with runtime checks when features exist. |
+| V8 integration | Yellow | SDK detection, isolated ABI, classic-script smoke, call-function smoke, exception mapping, and handwritten execution path. | Default gates validate only non-V8/noop engine paths. | V8 tests require `SLOPPY_ENABLE_V8=ON` and a valid SDK; SDK distribution is not solved. | Add packaged SDK strategy, V8-enabled CI or release gate, ESM/module loading, intrinsics, promises, and owner-thread checks. |
+| HTTP foundation | Yellow | Route parser/matcher, complete-buffer HTTP/1 request-head parser, libuv init smoke, synthetic GET dispatch. | Default C tests and synthetic dispatch tests. | No sockets, response writer, body parser, request context, streaming parser, or real server. | Build response writer/request context and `sloppy run` server path with tests. |
+| Public API ergonomics | Yellow | Bootstrap ESM stdlib supports builder/app, `Results.*`, route groups, schema, modules, services, config, logging, data facade. | Static checks and optional Node ESM tests. | No bare `"sloppy"` import, no compiler extraction, no V8-backed stdlib loading, no `app.run`. | Add compiler extraction, app-plan emission, V8 module loading, and executable Sloppy examples. |
+| App host | Yellow | JavaScript-only builder/freeze/config/logging/services skeleton. | Bootstrap tests validate in-memory behavior. | No native app graph, startup validation, request scopes, disposal, or run/listen behavior. | Implement native app graph and runtime startup validation after compiler extraction. |
+| Modules | Yellow | JavaScript-only `Sloppy.module`, dependency ordering, phases, attribution, debug metadata. | Bootstrap module tests. | No compiler extraction, package loading, native module graph, middleware/filter phases, or real plan emission. | Emit/validate module plan metadata and load it through runtime startup. |
+| Data providers | Yellow | Native SQLite, PostgreSQL, and SQL Server provider boundaries plus bootstrap data API/fake provider. | SQLite live-in-memory tests; PostgreSQL/SQL Server default non-live tests; redaction and option tests. | PostgreSQL and SQL Server live tests require env vars; JS-to-native bridge, resource IDs, pooling, async offload, and capability enforcement are missing. | Add JS-native resource bridge, live test infrastructure, pooling hardening, async strategy, and capability policy. |
+| CLI | Yellow | Metadata-only `routes`, `doctor`, `audit`, and `openapi` commands. | Golden process tests over fixtures. | Commands do not compile, run handlers, start HTTP, enter V8, or run live provider checks. | Wire to compiler/app-host metadata and add opt-in live diagnostics. |
+| Benchmarks | Yellow | `sloppy_bench`, route/parser/handler/synthetic dispatch scenarios, JSON/text output, wrapper. | List/smoke CTest checks. | No performance regression gate; no real HTTP/V8/JSON/live DB/external comparisons. | Add release benchmark methodology, trend tracking, real paths, and only then external comparisons. |
+| Cross-platform readiness | Red | Cross-platform layout and platform boundary policy exist. | Windows-first gates only. | Linux/macOS CI, Unix tool wrappers, provider matrices, and package smoke tests are absent. | Add EPIC-26 CI expansion before public alpha claims. |
+| Distribution readiness | Red | Build/package docs and V8 packaging helper exist. | Default local build/package pieces are partially covered. | No release packaging matrix, checksums, install scripts, SDK hosting, or external install validation. | Add EPIC-25 release package layout, artifacts, checksum, and smoke validation. |
+| Security / capability model | Red | Capability metadata and audit concepts exist. | Some metadata/audit fixture checks. | No runtime enforcement, filesystem/network policy, provider access policy, or permission gate. | Implement EPIC-27 enforcement and diagnostics before public alpha. |
+
+## Current Summary
+
+The repo has a surprisingly broad foundation now, but public-alpha readiness is still red
+because the pieces do not yet form an executable app path. The highest-confidence areas are
+portable core primitives and default Windows gates. The riskiest gaps are V8 validation,
+compiler extraction, `sloppy run`, response/request handling, capability enforcement,
+cross-platform CI, and release packaging.
+
+## Gate Interpretation
+
+Passing the default Windows gates means:
+
+- portable C foundations, non-V8 tests, static/bootstrap checks, CLI fixture tests, and
+  provider default tests passed;
+- V8-enabled tests did not necessarily run;
+- PostgreSQL and SQL Server live tests did not necessarily run;
+- benchmark smoke ran only as harness correctness, not as performance evidence.
+
+Do not convert default-gate success into claims about V8, live databases, HTTP throughput,
+public package usability, or production readiness.
