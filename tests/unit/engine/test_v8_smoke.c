@@ -373,6 +373,59 @@ static int test_unsupported_result_returns_call_diagnostic(void)
     return 0;
 }
 
+static int test_promise_result_returns_explicit_unsupported_diagnostic(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 55;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 56;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-promise.js"),
+                                  sl_str_from_cstr("globalThis.sloppy_promise = async function "
+                                                   "() { return \"later\"; };"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 57;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_promise"), &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 58;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
+        expect_str_contains(diag.message, sl_str_from_cstr("Promise")) != 0 ||
+        expect_str_contains(diag.hints[0], sl_str_from_cstr("Async handlers")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("0x")) == 0)
+    {
+        sl_engine_destroy(engine);
+        return 59;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_create_destroy_create_reuses_process_platform(void)
 {
     unsigned char engine_storage[8192];
@@ -400,6 +453,46 @@ static int test_create_destroy_create_reuses_process_platform(void)
     }
 
     sl_engine_destroy(second);
+    return 0;
+}
+
+static int test_call_after_destroy_returns_lifecycle_diagnostic(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 65;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 66;
+    }
+
+    sl_engine_destroy(engine);
+    sl_engine_destroy(engine);
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_smoke"), &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 67;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
+        expect_str_contains(diag.message, sl_str_from_cstr("after dispose")) != 0)
+    {
+        return 68;
+    }
+
     return 0;
 }
 
@@ -790,7 +883,17 @@ int main(void)
         return result;
     }
 
+    result = test_promise_result_returns_explicit_unsupported_diagnostic();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_create_destroy_create_reuses_process_platform();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_call_after_destroy_returns_lifecycle_diagnostic();
     if (result != 0) {
         return result;
     }

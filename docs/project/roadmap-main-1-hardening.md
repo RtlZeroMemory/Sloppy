@@ -191,9 +191,15 @@ Risk: high.
 
 Suggested PR grouping: ownership/shutdown, async policy, source maps, module decision.
 
-Advanced features included: promise/microtask policy if alpha needs async handlers.
+Advanced features included: Promise/microtask policy for alpha, not full async execution.
+MAIN1-05 may harden alpha by rejecting Promise-returning handlers, but that rejection is not
+the product endpoint. Real V8 Promise and microtask support is required in a later runtime
+slice before Sloppy may claim async handler support or a promise-friendly app-host model.
+That later slice must cover owner-thread continuation, request-scope lifetime across pending
+Promises, fulfilled responses, rejected Promise diagnostics, and tests for each behavior.
 
-Deferred items: snapshots and multi-worker scaling.
+Deferred items: required async/event-loop Promise implementation, snapshots, and
+multi-worker scaling.
 
 Existing issue references: EPIC-24 tasks #137-#141 are closed.
 
@@ -463,6 +469,8 @@ Task breakdown:
 - MAIN1-13.B: request context conformance.
 - MAIN1-13.C: SQLite bridge conformance if included.
 - MAIN1-13.D: unsupported behavior conformance.
+- MAIN1-13.E: async/Promise conformance once the required async runtime slice lands; until
+  then, conformance must keep proving Promise-returning handlers are rejected honestly.
 
 Non-goals: broad framework scenario matrix.
 

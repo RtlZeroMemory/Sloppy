@@ -554,6 +554,16 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(NAME ${test_name} COMMAND ${target_name})
     endfunction()
 
+    function(sloppy_add_cxx_unit_test target_name test_name source_file)
+        add_executable(${target_name} ${source_file})
+        target_link_libraries(${target_name} PRIVATE sloppy_core)
+        target_include_directories(${target_name} PRIVATE "${PROJECT_SOURCE_DIR}/include")
+        target_compile_features(${target_name} PRIVATE cxx_std_17)
+        sloppy_apply_warnings(${target_name})
+        sloppy_apply_sanitizers(${target_name})
+        add_test(NAME ${test_name} COMMAND ${target_name})
+    endfunction()
+
     sloppy_add_c_unit_test(core_status_basic core.status.basic tests/unit/core/test_status.c)
     sloppy_add_c_unit_test(
         core_source_loc_current core.source_loc.current tests/unit/core/test_source_loc.c)
@@ -591,6 +601,9 @@ if(SLOPPY_ENABLE_TESTS)
     if(SLOPPY_ENABLE_V8)
         sloppy_add_c_unit_test(
             engine_v8_smoke engine.v8.smoke tests/unit/engine/test_v8_smoke.c)
+        sloppy_add_cxx_unit_test(
+            engine_v8_owner_thread engine.v8.owner_thread
+            tests/unit/engine/test_v8_owner_thread.cc)
         sloppy_add_c_unit_test(
             execution_handwritten_artifact execution.handwritten_artifact
             tests/integration/execution/test_handwritten_artifact_execution.c)

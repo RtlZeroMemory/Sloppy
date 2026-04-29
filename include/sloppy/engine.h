@@ -77,8 +77,9 @@ typedef struct SlEngineResult
  *
  * `options`, `arena`, and `out_engine` are required. The returned engine is allocated from
  * `arena`; callers must call sl_engine_destroy before resetting that arena. The current
- * ABI is not thread-safe. Future V8 engines will have one owning JS isolate/thread, and
- * worker threads must not enter the same engine directly.
+ * ABI calls are not generally thread-safe. V8 engines have one owning isolate/context
+ * thread: create, eval, call, validate, and destroy on that owner thread. Worker threads
+ * must not enter the engine directly.
  *
  * SL_ENGINE_KIND_NONE creates the deterministic noop engine. SL_ENGINE_KIND_V8 creates the
  * V8 bridge only in builds configured with SLOPPY_ENABLE_V8=ON and a valid SDK; otherwise
@@ -87,10 +88,14 @@ typedef struct SlEngineResult
 SlStatus sl_engine_create(const SlEngineOptions* options, SlArena* arena, SlEngine** out_engine);
 
 /*
- * Destroys an engine handle. Passing NULL is allowed.
+ * Destroys an engine handle. Passing NULL is allowed. Double destroy is allowed and is a
+ * no-op after the first destroy.
  *
- * The current noop engine owns no external resources, so destroy only marks the arena-owned
- * object inactive. Future bridge implementations must release engine-owned resources here.
+ * Destroy releases bridge-owned resources and marks the arena-owned handle inactive. The
+ * handle storage remains arena-owned until the caller resets the arena, but all subsequent
+ * operations on that handle return `SL_STATUS_INVALID_STATE`. A wrong-thread V8 destroy
+ * invalidates the handle without entering V8; tests and owners may call destroy again on
+ * the owner thread to release bridge resources.
  */
 void sl_engine_destroy(SlEngine* engine);
 
@@ -104,7 +109,8 @@ SlStatus sl_engine_info(const SlEngine* engine, SlEngineInfo* out_info);
 /*
  * Evaluates classic JavaScript source inside an active engine.
  *
- * `engine` is required. `source_name` is a borrowed diagnostic label only; no file I/O is
+ * `engine` is required and must be active. `source_name` is a borrowed diagnostic label
+ * only; no file I/O is
  * performed. `source` is a borrowed JavaScript source string and is not TypeScript. The
  * current V8 implementation evaluates classic scripts in a single context so smoke tests
  * can define global functions. No ESM loader, module resolver, app.plan integration, or
@@ -119,11 +125,12 @@ SlStatus sl_engine_eval_source(SlEngine* engine, SlStr source_name, SlStr source
 /*
  * Calls a zero-argument global JavaScript function by name.
  *
- * `engine`, `arena`, `function_name`, and `out_result` are required. On success, supported
- * primitive result data is copied into `arena`; result string views remain valid until that
- * arena is reset or its caller-owned backing storage ends. V8 handles and values never
- * escape this API. The current smoke bridge supports string results only and returns
- * SL_STATUS_UNSUPPORTED for other JavaScript result types.
+ * `engine`, `arena`, `function_name`, and `out_result` are required, and `engine` must be
+ * active. On success, supported primitive result data is copied into `arena`; result
+ * string views remain valid until that arena is reset or its caller-owned backing storage
+ * ends. V8 handles and values never escape this API. The current bridge supports concrete
+ * strings and supported result descriptors. Promise returns are explicitly unsupported and
+ * fail with `SL_STATUS_UNSUPPORTED`; the bridge does not run a JavaScript event loop.
  *
  * `out_diag` is optional. When provided, diagnostic text and source paths are copied into
  * the engine arena, not into the result arena passed to this call. Those diagnostic views

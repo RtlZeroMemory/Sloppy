@@ -20,8 +20,12 @@ state and an honest public-alpha path.
 - Request context model beyond EPIC-23: body/header access, typed/coerced route/query
   binding, services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
-  maps, Promise/microtask policy, owner-thread enforcement, and executable public examples
-  through the final bootstrap module shape remain open.
+  maps, required async/event-loop Promise support, and executable public examples through
+  the final bootstrap module shape remain open. MAIN1-05 documents and tests the current
+  owner-thread, lifecycle, generated-source diagnostic, and Promise-rejection policies, but
+  does not add full async JavaScript. Promise support is deferred, not optional: before
+  Sloppy claims async handlers, V8 Promise settlement, microtask policy, request-scope
+  lifetime, and rejected-promise diagnostics must be implemented and tested.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
@@ -61,7 +65,9 @@ state and an honest public-alpha path.
   MAIN1-02 route/provider/capability metadata contract.
 - Provider/capability enforcement that turns MAIN1-02 metadata into denied-operation
   behavior and diagnostics.
-- Source map strategy for compiler output and V8 exception remapping.
+- Source map strategy for compiler output and TypeScript remapping from V8 exceptions.
+  MAIN1-05 reports generated `app.js` line/column only because current maps are
+  placeholders.
 - Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
   drain behavior beyond the current idempotent close, thread-safety contract, and richer
   diagnostics.
@@ -105,6 +111,7 @@ state and an honest public-alpha path.
   maps if ever needed, source-map fidelity, and app entrypoint semantics beyond the EPIC-24
   classic bootstrap runtime handoff.
 - V8 process shutdown policy and whether process-wide platform teardown is ever attempted.
+  Per-engine destroy is defined; global V8 platform teardown remains deliberately deferred.
 - Threading model evolution from inline skeletons to real worker threads/libuv posting,
   including owner-thread identity checks.
 - Async provider strategy: worker-pool blocking calls versus nonblocking libpq/socket
