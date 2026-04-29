@@ -46,6 +46,8 @@ Current tests:
 - CTest process-level golden tests for `sloppy routes`, `sloppy doctor`, `sloppy audit`,
   and `sloppy openapi` over deterministic metadata fixtures under `tests/fixtures/cli/`;
 - CTest failure smoke for missing CLI metadata paths;
+- CTest default process tests for `sloppy run` help text, missing artifacts, malformed
+  plans, source-input handoff deferral, and the clear V8-disabled failure message;
 - CTest smoke for `sloppyc --version`;
 - CTest `sloppyc.compiler_extraction`, which runs the Rust compiler test suite covering
   the EPIC-21 compiler extraction fixtures;
@@ -138,8 +140,9 @@ function returning `sloppy-ok`, and checks syntax errors, missing/non-callable g
 throwing functions, and unsupported result types fail with diagnostics instead of crashing.
 TASK 08.A also registers `execution.handwritten_artifact`, which parses the handwritten
 plan fixture, evaluates handwritten `app.js`, invokes handler ID `1`, and covers missing
-handler ID, missing JS function, and thrown handler diagnostics. These are not part of the
-default non-V8 test set.
+handler ID, missing JS function, and thrown handler diagnostics. EPIC-22 also registers
+V8-gated `sloppy run --once` process tests for the compiler MVP hello route, route miss,
+and unsupported method responses. These are not part of the default non-V8 test set.
 
 ## Future Phase
 
@@ -459,6 +462,17 @@ It parses an in-memory HTTP GET request head, matches a manual route binding, re
 numeric handler ID through the parsed plan, and invokes the existing runtime-contract
 helper. It still does not start sockets, write responses, parse bodies, build request
 contexts, run middleware, or exercise public TypeScript APIs.
+
+EPIC-22 adds process-level `sloppy run` tests:
+
+- default non-V8 tests verify help text, artifact diagnostics, malformed plan diagnostics,
+  source input deferral, and the required "requires V8-enabled build" failure;
+- V8-gated tests use `--once` against `tests/integration/execution/compiler_mvp` to verify
+  `GET /` returns the hello body, `GET /missing` returns a `404`, and `POST /` returns a
+  `405`.
+
+The actual local socket server is intentionally smoke-tested manually when V8 is available.
+Deterministic CI should prefer `--once` until the server lifecycle has a broader harness.
 
 TASK 11.B/11.C adds the first non-executing bootstrap stdlib API-shape check, and
 TASK 12.A/12.B/12.C/12.D expands it for the app-host foundation skeleton:

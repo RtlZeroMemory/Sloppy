@@ -49,10 +49,9 @@ foreach(required_pattern IN ITEMS
         "native C SQLite provider opens `:memory:`"
         "`data.sqlite.open({ path: \":memory:\" })` exists"
         "fails honestly until native stdlib intrinsics are wired"
-        "`sloppy run` does not exist yet"
+        "not a `sloppy run --artifacts` app"
         "`sloppyc` does not compile this example"
         "does not emit `app.plan.json`"
-        "there is no real HTTP server yet"
         "stdlib cannot call the native SQLite provider"
         "PostgreSQL and SQL Server providers are covered"
         "no ORM, migrations, connection pooling")

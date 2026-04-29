@@ -41,10 +41,9 @@ foreach(required_pattern IN ITEMS
         "Bootstrap app-host skeleton example"
         "What works today"
         "What does not work yet"
-        "`sloppy run` does not exist yet"
+        "not a `sloppy run --artifacts` app"
         "`sloppyc` does not compile this example"
         "does not emit `app.plan.json`"
-        "There is no real HTTP server"
         "bare import"
         "planned only")
     require_substring(

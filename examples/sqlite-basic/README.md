@@ -17,10 +17,10 @@ What works today:
 
 What does not work yet:
 
-- `sloppy run` does not exist yet;
+- this source-stdlib example is not a `sloppy run --artifacts` app;
 - `sloppyc` does not compile this example;
 - this example does not emit `app.plan.json`;
-- there is no real HTTP server yet;
+- the current `sloppy run` MVP does not load this source-stdlib SQLite example;
 - the stdlib cannot call the native SQLite provider until runtime intrinsics are added;
 - PostgreSQL and SQL Server providers are covered by their own examples and native C tests;
 - no ORM, migrations, connection pooling, async worker offload, cancellation, deadline, or

@@ -69,11 +69,13 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
   `app.__getPlanContributions().modules` return bootstrap-only module debug metadata.
 
 `examples/hello/app.js` demonstrates this current facade through a relative source import
-from `stdlib/sloppy/index.js`. The example documents the future bare `"sloppy"` import and
-`sloppy run` workflow as planned behavior only.
+from `stdlib/sloppy/index.js`. That example is still not a `sloppy run` artifact app. The
+compiler-owned `examples/compiler-hello/` input uses the bare `"sloppy"` import and can be
+compiled to artifacts that the EPIC-22 dev-only `sloppy run --artifacts` path can load when
+V8 is enabled.
 
-Native app graph validation, `app.run`, `app.listen`, `app.build`, compiler extraction,
-automatic `app.plan.json` emission, HTTP server behavior, real data providers, database
+Native app graph validation, `app.run`, `app.listen`, `app.build`, automatic
+`app.plan.json` emission from the bootstrap facade, real data providers, database
 connections from JavaScript, SQL execution from JavaScript, nested route groups, module
 package loading, native plugins,
 middleware, automatic validation/request binding, config file/env providers, console/file/native

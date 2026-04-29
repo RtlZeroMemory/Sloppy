@@ -8,9 +8,11 @@ TASK 10.A adds a native route pattern parser and matcher foundation. TASK 10.B a
 first llhttp/libuv dependency integration skeleton and a complete-buffer HTTP/1 request-head
 parser. TASK 10.C adds a synthetic in-memory GET dispatch helper that maps a parsed request
 head and manual route binding to a numeric Sloppy Plan handler ID, then calls the existing
-runtime-contract/engine boundary. There is still no HTTP server, socket I/O, body parsing,
-streaming parser API, response writer, middleware, public TypeScript API, or `app.mapGet`
-runtime behavior.
+runtime-contract/engine boundary. EPIC-22 adds a dev-only `sloppy run` path that uses libuv
+to accept one complete request head per connection, dispatches GET routes from EPIC-21
+artifact metadata, writes a tiny text/JSON-compatible response, and closes the connection.
+There is still no production HTTP server, body parsing, streaming parser API, middleware,
+request context, public TypeScript `app.run`, or full response writer.
 
 ## Purpose
 
@@ -33,14 +35,17 @@ Implemented now:
 - invoke the matched handler through the existing runtime-contract helper when an engine is
   available;
 - return the existing simple `SlEngineResult` text shape from synthetic dispatch tests.
+- dev-only `sloppy run --artifacts <dir>` server over libuv;
+- deterministic `sloppy run --artifacts <dir> --once METHOD TARGET` synthetic dispatch;
+- minimal HTTP responses with status line, `Content-Type`, `Content-Length`, body bytes,
+  and connection close.
 
 Future scope:
 
-- TCP accept/read/write integration;
 - streaming HTTP parser state;
 - HTTP body parsing;
 - request lifecycle;
-- production method dispatch;
+- production method dispatch and server hardening;
 - route table/trie or other optimized dispatch structure;
 - HTTP response conversion and writing.
 
@@ -50,14 +55,13 @@ response writer.
 
 ## Non-goals
 
-- No HTTP server, sockets, response writer, body parsing, streaming parser, middleware,
-  compiler work, public TypeScript API, or app host behavior in TASK 10.B or TASK 10.C.
+- No production HTTP server, body parsing, streaming parser, middleware, compiler work,
+  public TypeScript API, or app host behavior in TASK 10.B, TASK 10.C, or EPIC-22.
 - No sockets, request/response objects, middleware, route groups, route table, trie,
   precedence engine, public TypeScript API, `app.mapGet`, validation, OpenAPI, V8, or
   compiler extraction in TASK 10.A or TASK 10.B.
 - No route params passed to JavaScript, request context, route groups, route precedence,
-  middleware, `Results.*`, response formatting, TCP/libuv server behavior, or public
-  TypeScript API in TASK 10.C.
+  middleware, `Results.*`, response formatting, or public TypeScript API in TASK 10.C.
 - EPIC-13 route groups exist only in `stdlib/sloppy/app.js` as in-memory bootstrap
   metadata. They do not alter the native route parser, matcher, synthetic dispatch helper,
   HTTP route table, or request context.
@@ -132,13 +136,17 @@ portion before `?`. TASK 10.B only accepts origin-form path targets that start w
 asterisk-form and absolute-form targets are rejected before returning success. Query
 parsing, percent decoding, URL normalization, and host validation are deferred.
 
-The dispatch helper accepts an already parsed `SlHttpRequestHead`, a borrowed manual route
-binding table, a parsed `SlPlan`, and an `SlEngine`. TASK 10.C supports only GET request
-dispatch. Route bindings borrow parsed `SlRoutePattern` values and carry a numeric
-`SlHandlerId`. The helper matches `request.path`, validates the handler ID exists in the
-plan before entering the engine, then calls `sl_runtime_contract_call_handler`. Route
-parameters may participate in matching but are not passed to JavaScript. The result is the
-existing `SlEngineResult`; no HTTP status/header/body response writer exists yet.
+The dispatch helper accepts an already parsed `SlHttpRequestHead`, a borrowed route binding
+table, a parsed `SlPlan`, and an `SlEngine`. TASK 10.C supports only GET request dispatch.
+Route bindings borrow parsed `SlRoutePattern` values and carry a numeric `SlHandlerId`.
+The helper matches `request.path`, validates the handler ID exists in the plan before
+entering the engine, then calls `sl_runtime_contract_call_handler`. Route parameters may
+participate in matching but are not passed to JavaScript.
+
+`sloppy run` builds that manual binding table from the compiler-emitted `routes` metadata
+section. Its response writer is deliberately local to the CLI MVP: `200` for handler text,
+`404` for route misses, `405` for unsupported methods, and safe `500` text for malformed
+requests or handler/runtime failures.
 
 ## Ownership/Lifetime Rules
 
@@ -179,7 +187,8 @@ init/close smoke helper and does not integrate with `SlLoop`.
 The dispatch helper is pure core C over existing parser, route, plan, runtime-contract, and
 engine boundaries. It does not include V8 headers, expose V8 handles, call OS APIs, create
 sockets, drive libuv, allocate outside the caller arena, or build a production router
-object.
+object. The dev-only socket loop lives in the CLI executable and uses libuv without OS
+headers or platform-specific calls.
 
 ## Diagnostics
 
@@ -236,6 +245,10 @@ Implemented CTest coverage:
 - route parameter match through dispatch without passing params to JavaScript;
 - V8-gated dispatch success returning `sloppy-ok`;
 - V8-gated missing JavaScript function and throwing handler failures.
+- default CLI tests for `sloppy run` help text, missing artifacts, malformed artifacts,
+  source-input deferral, and clear V8-disabled failure;
+- V8-gated `sloppy run --once` tests for hello, route miss, and unsupported method when the
+  build is configured with V8.
 
 EPIC-20 adds manual benchmarks for route matching and complete-buffer request-head parsing.
 The request-head benchmark is a parser microbenchmark only. It is not an HTTP server
@@ -245,9 +258,9 @@ middleware, or public TypeScript APIs.
 Future tests:
 
 - route table and ambiguity tests;
-- HTTP server/socket integration tests;
+- broader HTTP server/socket integration tests;
 - fuzz target for route patterns;
-- response writer tests;
+- full response writer tests;
 - route params in handler context tests.
 
 ## Source Docs

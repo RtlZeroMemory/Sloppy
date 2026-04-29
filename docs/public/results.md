@@ -1,6 +1,7 @@
 # Results
 
-Status: Bootstrap result helper set implemented.
+Status: Bootstrap result helper set implemented; dev-only run consumes the current
+compiler-compatible string result boundary.
 
 Bootstrap status: `stdlib/sloppy/results.js` exports a frozen `Results` object with
 `Results.ok(...)`, `Results.created(...)`, `Results.accepted(...)`,
@@ -20,8 +21,16 @@ app.mapGet("/health", () => Results.json({ status: "ok" }, { status: 200 }));
 
 `examples/hello/app.js` uses `Results.text("Hello from Sloppy")` to demonstrate the text
 descriptor shape. `examples/ergonomics/app.js` demonstrates `Results.ok`,
-`Results.accepted`, and `Results.noContent`. No HTTP response writer consumes these
-descriptors yet.
+`Results.accepted`, and `Results.noContent`. The full native descriptor response writer is
+still deferred to EPIC-23.
+
+`sloppy run --artifacts` currently executes EPIC-21 compiler output. That generated
+`app.js` includes a temporary `Results.text/json` shim that returns strings because the
+current V8 runtime-contract API supports copied string results only. The dev-only run MVP
+turns those strings into minimal HTTP responses with status, `Content-Type`,
+`Content-Length`, and a body. Text responses use `text/plain; charset=utf-8`. Strings that
+look like JSON objects or arrays use `application/json; charset=utf-8` as a narrow
+compatibility bridge until native descriptor conversion lands.
 
 All helpers return frozen plain descriptors with the `__sloppyResult: true` identity marker.
 Descriptors are JavaScript values for bootstrap tests, examples, and future bridge
@@ -77,8 +86,8 @@ JavaScript value as `body`; the descriptor is frozen, but object values are not 
 `options.headers` may be a plain object and is shallow-copied/frozen as descriptor metadata.
 There is no header normalization class.
 
-Not implemented yet: JSON serialization, response writing, streaming, files, redirects,
-cookies, content negotiation, native result conversion, and header normalization beyond a
-shallow metadata copy.
+Not implemented yet: full native JSON serialization, descriptor object conversion,
+streaming, files, redirects, cookies, content negotiation, custom headers, and header
+normalization beyond a shallow metadata copy.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/execution-model.md`.

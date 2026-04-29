@@ -145,7 +145,8 @@ emit `app.plan.json`, and does not serve HTTP.
 
 EPIC-21 adds `examples/compiler-hello/` as the compiler input example. It uses
 `import { Sloppy, Results } from "sloppy";`, can be compiled with `sloppyc build`, and
-documents that serving the result is EPIC-22.
+documents the current V8-required dev-only `sloppy run --artifacts` path for serving the
+result.
 
 ## Builder/App Shape
 

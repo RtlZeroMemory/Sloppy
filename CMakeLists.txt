@@ -382,7 +382,7 @@ endif()
 
 add_executable(sloppy src/main.c)
 target_link_libraries(sloppy PRIVATE sloppy_core)
-target_link_libraries(sloppy PRIVATE yyjson::yyjson)
+target_link_libraries(sloppy PRIVATE yyjson::yyjson ${SLOPPY_LIBUV_TARGET})
 target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy PRIVATE c_std_17)
 
@@ -682,6 +682,9 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)
 
+    add_test(NAME sloppy.cli.help_includes_run COMMAND "$<TARGET_FILE:sloppy>" --help)
+    set_tests_properties(sloppy.cli.help_includes_run PROPERTIES PASS_REGULAR_EXPRESSION "sloppy run")
+
     add_test(
         NAME sloppy.cli.missing_metadata
         COMMAND
@@ -699,6 +702,86 @@ if(SLOPPY_ENABLE_TESTS)
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.cli.openapi_malformed_route
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.run.missing_artifacts
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/missing;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=artifact path not found" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.missing_artifacts PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.run.source_input_deferred
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;examples/compiler-hello/app.js;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=source input handoff to sloppyc is deferred" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.source_input_deferred
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.run.malformed_plan
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/malformed;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=malformed app.plan.json" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.malformed_plan PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.run.invalid_bundle_path
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/invalid-bundle-path;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=invalid bundle path in app.plan.json" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.invalid_bundle_path
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.run.rejects_mixed_artifact_inputs
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;extra;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=expected either --artifacts <dir> or one positional artifact path"
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.rejects_mixed_artifact_inputs
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    if(NOT SLOPPY_ENABLE_V8)
+        add_test(
+            NAME sloppy.run.v8_disabled_is_clear
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--once;GET;/"
+                "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+        set_tests_properties(sloppy.run.v8_disabled_is_clear
+                             PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    else()
+        add_test(
+            NAME sloppy.run.once_hello
+            COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
+                    tests/integration/execution/compiler_mvp --once GET /
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(sloppy.run.once_hello PROPERTIES PASS_REGULAR_EXPRESSION "Hello from Sloppy")
+        add_test(
+            NAME sloppy.run.once_route_miss
+            COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
+                    tests/integration/execution/compiler_mvp --once GET /missing
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(sloppy.run.once_route_miss PROPERTIES PASS_REGULAR_EXPRESSION "404 Not Found")
+        add_test(
+            NAME sloppy.run.once_unsupported_method
+            COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
+                    tests/integration/execution/compiler_mvp --once POST /
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(sloppy.run.once_unsupported_method
+                             PROPERTIES PASS_REGULAR_EXPRESSION "405 Method Not Allowed")
+    endif()
 
     add_test(
         NAME bootstrap.stdlib.assets

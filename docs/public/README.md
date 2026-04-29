@@ -1,7 +1,7 @@
 # Public Documentation
 
-Status: Bootstrap app-host, module, data facade, metadata CLI, and native provider
-foundations implemented; runtime execution planned.
+Status (MVP): Bootstrap app-host, module, data facade, metadata CLI, native provider
+foundations, compiler extraction, and dev-only artifact execution implemented.
 
 This directory is for user/developer-facing documentation: how people will use Sloppy to
 build applications. It is distinct from internal architecture/spec docs under `docs/`.
@@ -27,13 +27,15 @@ feature is implemented.
 Checked-in examples:
 
 - `examples/hello/`: current bootstrap API-shape example using the source stdlib through a
-  relative import. It is not a `sloppy run` app yet.
+  relative import. It is not a `sloppy run --artifacts` app.
 - `examples/ergonomics/`: current route group, result helper, schema, and app-host
-  API-shape example. It is not a `sloppy run` app yet.
+  API-shape example. It is not a `sloppy run --artifacts` app.
 - `examples/modules-basic/`: current module API-shape example with fake in-memory
-  services. It is not a `sloppy run` app yet.
+  services. It is not a `sloppy run --artifacts` app.
 - `examples/data-foundation/`: current data/capabilities API-shape example with fake
-  JavaScript provider behavior. It is not a `sloppy run` app yet.
+  JavaScript provider behavior. It is not a `sloppy run --artifacts` app.
 - `examples/sqlite-basic/`, `examples/postgres-basic/`, and `examples/sqlserver-basic/`:
   provider-shape examples that document the native-provider/stdlib-bridge split. They are
-  not `sloppy run` apps yet.
+  not `sloppy run --artifacts` apps.
+- `examples/compiler-hello/`: compiler MVP input that can emit `.sloppy` artifacts for the
+  current dev-only `sloppy run --artifacts` path when V8 is enabled.
