@@ -1,5 +1,11 @@
 # Post-0.7 GitHub Issue Audit
 
+Status: historical audit. The newer MAIN/MAIN.1 audit supersedes this as the active issue
+cleanup source.
+
+See `docs/project/current-issue-state-audit.md` and
+`docs/project/main-main1-issue-cleanup-plan.md` for current recommendations.
+
 Generated from `gh issue list --repo RtlZeroMemory/Slop --state open --limit 200` and
 `gh issue list --repo RtlZeroMemory/Slop --state closed --limit 200` during the 0.8
 planning/consolidation pass.
@@ -94,21 +100,18 @@ stay closed:
 
 ## Missing Follow-Up Issues
 
-Recommended new issues should be generated from `docs/project/next-roadmap.md` after the
-old issue state is cleaned up. EPIC-21 Compiler Extraction MVP and EPIC-22 Sloppy Run MVP
-were completed before this issue-ceremony pass and are intentionally excluded from the
-remaining issue input:
+Recommended new issues should be generated from the reviewed MAIN and MAIN.1 staged issue
+data after current issue cleanup is approved:
 
-- EPIC-23 HTTP Response Writer and Request Context.
-- EPIC-24 V8 Module Loading and Bootstrap Runtime.
-- EPIC-25 Release Packaging and Distribution.
-- EPIC-26 Cross-platform CI Expansion.
-- EPIC-27 Runtime Security / Capabilities Enforcement.
-- EPIC-28 Public Alpha Docs and Examples.
+- `tools/github/roadmap-main-issues.json`
+- `tools/github/roadmap-main1-issues.json`
 
-Also consider small cleanup issues:
+EPIC-21 through EPIC-26 are now treated as completed baseline work and should not be
+recreated. EPIC-27 remains open as hardening work. EPIC-28 public alpha docs should be
+deferred or re-scoped behind MAIN.1 hardening unless the roadmap review decides otherwise.
 
-- add `tools/github/create-issues.ps1 -Input` support for reviewed alternate issue data;
+Also consider small cleanup issues after approval:
+
 - add docs link checker;
 - add platform scanner fixtures/self-tests;
 - reconcile stale milestones and labels after issue closure.

@@ -35,13 +35,15 @@ The foundation phase does not implement:
 - resource table;
 - permission checker;
 - OS sandboxing;
-- `sloppy audit`.
+- full security audit tooling. The current `sloppy audit` command is metadata-only and
+  does not enforce permissions or execute user code.
 
 ## Current Phase
 
 EPIC-15 implements a bootstrap JavaScript capability metadata skeleton for database
-capabilities only. Permissions, filesystem/network capabilities, enforcement, OS
-sandboxing, grants, and audit tooling remain future work.
+capabilities only, and EPIC-19 adds metadata-only `sloppy audit` fixture output.
+Permissions, filesystem/network capabilities, runtime enforcement, OS sandboxing, grants,
+and security-grade audit behavior remain future work.
 
 ## Future Phase
 
@@ -178,13 +180,16 @@ These are deferred until the runtime and capability model are stable.
 
 ## Audit Tooling
 
-Future command:
+Current metadata-only command:
 
 ```powershell
-sloppy audit app.ts
+sloppy audit --plan app.plan.json
 ```
 
-Planned output:
+Current fixture-driven output can list static metadata from an app plan. It does not
+compile source files, execute user handlers, or enforce permissions.
+
+Planned hardened output:
 
 - module list;
 - declared capabilities;
@@ -193,7 +198,8 @@ Planned output:
 - missing grants;
 - dynamic mode warnings.
 
-`sloppy audit` should use Sloppy Plan metadata and must not execute user handlers.
+`sloppy audit` should use compiler/app-host emitted Sloppy Plan metadata and must not
+execute user handlers.
 
 ## Error And Diagnostic Behavior
 
@@ -252,7 +258,7 @@ Security/permission tests must include:
 3. Add filesystem capability structs after path abstraction exists.
 4. Add database capability entries during provider phases.
 5. Add diagnostics and snapshot tests.
-6. Add `sloppy audit` after plan introspection exists.
+6. Harden `sloppy audit` after compiler/app-host capability metadata exists.
 
 ## Acceptance Criteria
 

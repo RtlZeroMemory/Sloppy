@@ -76,20 +76,25 @@ minimal plan loader, V8 smoke, handwritten execution, concurrency skeletons, HTT
 foundation, bootstrap stdlib/app-host ergonomics, modules, data/provider foundations,
 metadata CLI tools, and benchmarks.
 
-The next proposed batch continues from the compiler extraction and dev-only executable path:
+The EPIC-21 through EPIC-26 batch has now produced the compiler MVP, dev-only artifact run
+path, HTTP response/request-context MVP, classic bootstrap runtime handoff, experimental
+local packaging, and default non-V8 hosted CI. The issue tracker still needs cleanup:
+several parent EPICs remain open after their child tasks closed.
 
-- EPIC-21 Compiler Extraction MVP. Done.
-- EPIC-22 Sloppy Run MVP. Done.
-- EPIC-23 HTTP Response Writer and Request Context.
-- EPIC-24 V8 Module Loading and Bootstrap Runtime.
-- EPIC-25 Release Packaging and Distribution. Done.
-- EPIC-26 Cross-platform CI Expansion. Done for default non-V8 CI; optional V8 and live
-  provider service hardening remain gated follow-ups.
-- EPIC-27 Runtime Security / Capabilities Enforcement.
-- EPIC-28 Public Alpha Docs and Examples.
+The current planning docs split the next work into:
 
-See [docs/roadmap.md](docs/roadmap.md) and
-[docs/project/next-roadmap.md](docs/project/next-roadmap.md).
+- [ROADMAP MAIN](docs/project/roadmap-main.md): final verification of the minimal
+  `sloppyc build` plus `sloppy run --artifacts` alpha path, without recreating completed
+  EPIC-21 through EPIC-26 work.
+- [ROADMAP MAIN.1](docs/project/roadmap-main-1-hardening.md): hardening skeleton/MVP
+  systems to alpha-production quality.
+
+EPIC-27 capability enforcement belongs in MAIN.1. EPIC-28 public alpha docs are deferred
+until the MAIN path and relevant MAIN.1 hardening gates are true or explicitly deferred.
+
+See [docs/roadmap.md](docs/roadmap.md),
+[docs/project/current-issue-state-audit.md](docs/project/current-issue-state-audit.md),
+and [docs/project/main-main1-scope.md](docs/project/main-main1-scope.md).
 
 ## Core Specs
 

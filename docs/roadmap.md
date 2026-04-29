@@ -235,18 +235,21 @@ not mutate GitHub issues.
 
 ## Next Roadmap
 
-The next coherent roadmap batch originally started at EPIC-21. EPIC-21 Compiler Extraction
-MVP and EPIC-22 Sloppy Run MVP are complete in the repository, so the remaining tracked
-batch in `docs/project/next-roadmap.md` starts at EPIC-23. The recommended remaining order
-is:
+The EPIC-21 through EPIC-26 implementation batch has now landed for its scoped MVPs:
+compiler extraction, dev-only artifact run, HTTP response/request context, classic
+bootstrap runtime handoff, experimental local packaging, and default non-V8 hosted CI.
 
-1. EPIC-23 HTTP Response Writer and Request Context.
-2. EPIC-24 V8 Module Loading and Bootstrap Runtime.
-3. EPIC-25 Release Packaging and Distribution. Done for experimental local packages.
-4. EPIC-26 Cross-platform CI Expansion. Done for required non-V8 hosted CI; optional V8
-   SDK setup, live provider services, and package smoke remain follow-ups.
-5. EPIC-27 Runtime Security / Capabilities Enforcement.
-6. EPIC-28 Public Alpha Docs and Examples.
+Active planning has moved to:
 
-The remaining batch deliberately begins with HTTP response/request-context integration
-instead of adding more isolated provider or ergonomics surface.
+1. [ROADMAP MAIN](project/roadmap-main.md): verify the minimal supported alpha path through
+   `sloppyc build` plus V8-enabled `sloppy run --artifacts` without duplicating completed
+   EPIC-21 through EPIC-26 work.
+2. [ROADMAP MAIN.1](project/roadmap-main-1-hardening.md): harden MVP/skeleton systems to
+   alpha-production quality.
+
+EPIC-27 capability enforcement belongs in MAIN.1. EPIC-28 public alpha docs/examples are
+deferred until MAIN and relevant MAIN.1 evidence exists, or until the docs explicitly mark
+unsupported workflows as deferred.
+
+See also `docs/project/current-issue-state-audit.md` and
+`docs/project/main-main1-issue-cleanup-plan.md` for the stale issue cleanup plan.

@@ -36,9 +36,14 @@ prove optional SDK/service paths.
 The repo has a surprisingly broad foundation now, and it has the first dev-only executable
 artifact path plus default hosted CI across Windows, Linux, and macOS. Public-alpha
 readiness is still red because the path is intentionally narrow: V8 validation is gated,
-source-input `sloppy run` is deferred, response/request handling is limited to the EPIC-23
-and EPIC-24 dev-only artifact path, and capability enforcement, optional SDK/service
-validation, and release packaging remain open.
+source-input `sloppy run` is deferred, response/request handling is still dev-only,
+capability enforcement is missing, optional SDK/service validation remains separate, and
+release packaging is experimental.
+
+ROADMAP MAIN is the minimal verification path for the existing compiler-to-runtime work.
+ROADMAP MAIN.1 is the hardening path for alpha-production quality. Public alpha docs should
+not move ahead of MAIN.1 unless a document explicitly says the relevant workflow is still
+deferred.
 
 ## Gate Interpretation
 
