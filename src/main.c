@@ -1743,6 +1743,118 @@ static void sl_run_client_alloc_cb(uv_handle_t* handle, size_t suggested_size, u
     *buf = uv_buf_init(client->request + client->request_length, (unsigned int)remaining);
 }
 
+static int sl_run_ascii_lower(int ch)
+{
+    if (ch >= 'A' && ch <= 'Z') {
+        return ch - 'A' + 'a';
+    }
+    return ch;
+}
+
+static bool sl_run_header_name_equal(const char* ptr, size_t length, const char* expected)
+{
+    size_t index = 0U;
+
+    if (ptr == NULL || expected == NULL) {
+        return false;
+    }
+
+    while (length > 0U && (ptr[length - 1U] == ' ' || ptr[length - 1U] == '\t')) {
+        length -= 1U;
+    }
+
+    while (index < length && expected[index] != '\0') {
+        if (sl_run_ascii_lower((unsigned char)ptr[index]) !=
+            sl_run_ascii_lower((unsigned char)expected[index]))
+        {
+            return false;
+        }
+        index += 1U;
+    }
+
+    return index == length && expected[index] == '\0';
+}
+
+static bool sl_run_content_length_declares_body(const char* ptr, size_t length)
+{
+    size_t index = 0U;
+
+    if (ptr == NULL && length != 0U) {
+        return true;
+    }
+
+    while (index < length && (ptr[index] == ' ' || ptr[index] == '\t')) {
+        index += 1U;
+    }
+
+    while (index < length) {
+        if (ptr[index] >= '1' && ptr[index] <= '9') {
+            return true;
+        }
+        if (ptr[index] != '0' && ptr[index] != ' ' && ptr[index] != '\t') {
+            return true;
+        }
+        index += 1U;
+    }
+
+    return false;
+}
+
+static bool sl_run_header_line_declares_body(const char* line, size_t length)
+{
+    size_t colon = 0U;
+
+    while (colon < length && line[colon] != ':') {
+        colon += 1U;
+    }
+    if (colon == length) {
+        return false;
+    }
+
+    if (sl_run_header_name_equal(line, colon, "Content-Length")) {
+        return sl_run_content_length_declares_body(line + colon + 1U, length - colon - 1U);
+    }
+
+    return sl_run_header_name_equal(line, colon, "Transfer-Encoding");
+}
+
+static bool sl_run_request_declares_body(const char* request, size_t length)
+{
+    size_t line_start = 0U;
+    size_t line_end = 0U;
+
+    if (request == NULL) {
+        return false;
+    }
+
+    while (line_end + 1U < length && !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
+    {
+        line_end += 1U;
+    }
+    if (line_end + 1U >= length) {
+        return false;
+    }
+
+    line_start = line_end + 2U;
+    while (line_start + 1U < length) {
+        line_end = line_start;
+        while (line_end + 1U < length &&
+               !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
+        {
+            line_end += 1U;
+        }
+        if (line_end + 1U >= length || line_end == line_start) {
+            return false;
+        }
+        if (sl_run_header_line_declares_body(request + line_start, line_end - line_start)) {
+            return true;
+        }
+        line_start = line_end + 2U;
+    }
+
+    return false;
+}
+
 static void sl_run_client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     SlRunClient* client = (SlRunClient*)stream->data;
@@ -1775,6 +1887,20 @@ static void sl_run_client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_b
             (void)uv_write(&client->write_request, stream, &response_buf, 1U,
                            sl_run_client_write_cb);
         }
+        return;
+    }
+
+    if (sl_run_request_declares_body(client->request, client->request_length)) {
+        response_length = sl_run_write_response(
+            client->response, sizeof(client->response), 501U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Request body is not supported\n"));
+        if (response_length < 0) {
+            uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
+            return;
+        }
+        response_buf = uv_buf_init(client->response, (unsigned int)response_length);
+        client->write_request.data = client;
+        (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
         return;
     }
 
