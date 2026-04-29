@@ -272,6 +272,19 @@ It uses the runtime contract helper directly and does not start HTTP, route matc
 compiler output loading, public TypeScript APIs, modules, services, data providers, or an
 async event loop.
 
+TASK 10.C adds a second V8-gated integration fixture for synthetic HTTP dispatch:
+
+```text
+tests/integration/http_dispatch/test_http_dispatch_execution.c
+tests/integration/http_dispatch/fixtures/app.plan.json
+tests/integration/http_dispatch/fixtures/app.js
+```
+
+It parses an in-memory HTTP GET request head, matches a manual route binding, resolves the
+numeric handler ID through the parsed plan, and invokes the existing runtime-contract
+helper. It still does not start sockets, write responses, parse bodies, build request
+contexts, run middleware, or exercise public TypeScript APIs.
+
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 
 ## Async and Concurrency Tests
@@ -400,6 +413,8 @@ HTTP/router phase:
 
 - route parser/matcher unit tests; started in TASK 10.A with `core.route.pattern`;
 - HTTP request-head parser tests; started in TASK 10.B with `core.http.parser`;
+- synthetic GET route dispatch tests; started in TASK 10.C with `core.http.dispatch` and
+  V8-gated `http.dispatch.execution`;
 - route match integration tests;
 - fuzz target for route patterns.
 

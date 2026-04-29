@@ -101,6 +101,9 @@ Future loader invariants:
 - unsupported schema versions and malformed plans fail before runtime work is served;
 - unknown fields are allowed and ignored for forward compatibility;
 - bundle/source-map hash verification is a later validation task.
+- TASK 10.C synthetic HTTP dispatch keeps route bindings manual and outside `SlPlan`; the
+  dispatch helper only validates that a matched binding's numeric handler ID exists in this
+  handler table before entering the engine.
 
 Parser validation rules:
 

@@ -79,6 +79,12 @@ complete HTTP/1 request head into arena-owned native fields and uses libuv only 
 dependency/link smoke. It does not add sockets, streaming request parsing, body parsing,
 response writing, route dispatch, request contexts, handler invocation, public TypeScript
 APIs, V8 integration, or compiler extraction.
+TASK 10.C adds the first synthetic GET dispatch path from parsed request head to numeric
+handler ID. A manual borrowed route binding table maps a parsed `SlRoutePattern` to a
+`SlHandlerId`; the helper matches the parsed request path, validates the handler exists in
+the parsed plan, and calls the existing runtime-contract helper. It is still in-memory test
+dispatch only: no TCP server, sockets, response writer, body parsing, request context,
+middleware, public TypeScript API, compiler extraction, or plan routes section exists.
 
 ## Current Handwritten Milestone
 
@@ -300,6 +306,18 @@ classic script text, `sl_runtime_contract_call_handler` maps a plan handler ID t
 `exportName`, and `sl_engine_call_function0` calls that global function. This is not ESM
 loading, handler registration intrinsics, request/job context construction, or compiler
 output loading.
+
+TASK 10.C adds only the native HTTP prelude before that runtime-contract call:
+
+1. parse an in-memory HTTP request head;
+2. reject non-GET methods;
+3. match the parsed path against manual route bindings;
+4. resolve the matched binding to a numeric handler ID;
+5. verify that handler ID exists in the parsed plan;
+6. call the existing runtime-contract helper.
+
+Route params are not materialized into a JavaScript request context yet. The returned value
+is still the existing simple engine result, not an HTTP response.
 
 ## Async And Promise Lifecycle
 

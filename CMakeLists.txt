@@ -261,6 +261,7 @@ set(
     src/core/async.c
     src/core/worker_pool.c
     src/core/http.c
+    src/core/http_dispatch.c
     src/core/route.c
     src/core/plan.c
     src/core/plan_parse.c
@@ -287,6 +288,7 @@ set(
     tests/unit/core/test_async.c
     tests/unit/core/test_worker_pool.c
     tests/unit/core/test_http.c
+    tests/unit/core/test_http_dispatch.c
     tests/unit/core/test_route.c
     tests/unit/core/test_plan.c
     tests/unit/core/test_plan_parse.c
@@ -301,7 +303,8 @@ if(SLOPPY_ENABLE_V8)
         APPEND
         SLOPPY_C_LINT_SOURCES
         tests/unit/engine/test_v8_smoke.c
-        tests/integration/execution/test_handwritten_artifact_execution.c)
+        tests/integration/execution/test_handwritten_artifact_execution.c
+        tests/integration/http_dispatch/test_http_dispatch_execution.c)
 endif()
 
 add_library(sloppy_core STATIC ${SLOPPY_CORE_SOURCES})
@@ -475,6 +478,8 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
+    sloppy_add_c_unit_test(
+        core_http_dispatch core.http.dispatch tests/unit/core/test_http_dispatch.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
     sloppy_add_c_unit_test(core_plan_contract core.plan.contract tests/unit/core/test_plan.c)
     set_tests_properties(core.plan.contract PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
@@ -493,6 +498,11 @@ if(SLOPPY_ENABLE_TESTS)
             tests/integration/execution/test_handwritten_artifact_execution.c)
         set_tests_properties(
             execution.handwritten_artifact PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        sloppy_add_c_unit_test(
+            http_dispatch_execution http.dispatch.execution
+            tests/integration/http_dispatch/test_http_dispatch_execution.c)
+        set_tests_properties(
+            http.dispatch.execution PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
     sloppy_add_c_unit_test(
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)

@@ -141,6 +141,10 @@ Native route table input:
 TASK 10.A implements the native parser/matcher for the initial route path pattern subset
 that future plan `routes[].path` values can reuse. The current Plan v1 parser still does
 not parse a `routes` section, validate route-handler relationships, or build a route table.
+TASK 10.C deliberately keeps route bindings outside `app.plan.json`: synthetic HTTP
+dispatch tests build a manual borrowed table that maps GET route patterns to numeric
+handler IDs. The helper validates the matched handler ID against the existing Plan handler
+table before engine entry. A future plan routes section will own this mapping.
 
 Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
 and `{name:int}`. Query strings, catch-all parameters, optional segments, regex

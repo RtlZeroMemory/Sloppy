@@ -26,6 +26,11 @@
   keep-alive state, TCP server, socket I/O, response writer, request pipeline, route
   dispatch, middleware, public TypeScript API, asterisk-form/absolute-form target handling,
   query parsing, percent decoding, or V8/app host integration yet.
+- `sl_http_dispatch_request_head` exists only as synthetic in-memory GET dispatch over a
+  manual borrowed route binding table. It has no production route table/trie, route
+  precedence, plan route section, route params in handler context, HTTP response writer,
+  request context, middleware, TCP server, sockets, body parsing, public TypeScript API, or
+  compiler extraction yet.
 
 ## Deferred decisions
 
@@ -98,14 +103,18 @@
 - Route optional segments and regex constraints are future work.
 - Route group prefix composition is future work.
 - Route percent decoding and URL normalization policy are future work.
-- Route method dispatch and handler-ID lookup are future TASK 10.C work.
+- Production route method dispatch, route table/trie construction, and route precedence are
+  future work.
 - HTTP server/socket integration with llhttp/libuv is future work after TASK 10.B.
 - HTTP streaming parser state is future work.
 - HTTP request body parsing is future work.
 - HTTP chunked transfer handling is future work.
 - HTTP keep-alive state is future work.
 - HTTP response writing is future work.
-- HTTP route dispatch from parsed request head to handler ID is future TASK 10.C work.
+- HTTP response conversion/writing after handler result is future work.
+- Route params passed into handler context are future work.
+- Plan-owned route section and route-to-handler validation are future work.
+- Middleware/request pipeline integration is future work.
 - HTTP asterisk-form and absolute-form request target policy is future work.
 - HTTP query parsing is future work.
 - HTTP percent decoding is future work.
