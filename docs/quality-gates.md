@@ -29,6 +29,9 @@ Default gate success must be reported as default non-V8 evidence. It does not pr
 runtime execution, live PostgreSQL or SQL Server behavior, package release readiness,
 benchmark/performance claims, or public alpha readiness. `docs/project/main-evidence.md`
 is the source document for reporting those evidence categories separately.
+MAIN1-13 conformance follows the same split: default conformance compiles supported public
+examples and rejects unsupported inputs, while V8-gated conformance runs compiled artifacts
+and selected bridge/result fixtures through `sloppy run --artifacts --once`.
 
 ## Future Phase
 

@@ -117,6 +117,9 @@ Implemented behavior:
   capability metadata. Database checks cover token lookup, read/write access, and provider
   mismatch denial before provider work when a bridge calls the hook.
 - native C SQLite tests execute real SQLite against `:memory:` databases.
+- MAIN1-13 V8-gated conformance executes the checked-in SQLite bridge artifact fixture
+  against an in-memory database, creates/inserts/selects one row, returns a JSON result,
+  and closes the resource.
 - native C PostgreSQL tests execute live libpq coverage only when `SLOPPY_POSTGRES_TEST_URL`
   is set; otherwise the separate live CTest is reported as skipped.
 - native C SQL Server tests execute live ODBC coverage only when

@@ -29,6 +29,14 @@ environment variables or driver/service prerequisites are missing, and fail when
 configured live provider cannot satisfy the documented behavior. Skip output and failure
 messages must identify missing prerequisites without printing secret values.
 
+The MAIN1-13 conformance layer is the workflow-level guard for public alpha behavior. It
+does not replace unit, golden, or provider tests; it ties together the real toolchain at
+the boundaries users can rely on. Default conformance may compile sources, inspect emitted
+artifacts, and assert clear unsupported diagnostics without requiring V8. V8-gated
+conformance may execute `sloppy run --artifacts --once` and must be reported separately.
+Unsupported or future behavior belongs in negative conformance or an explicit deferred
+marker, not a fake passing fixture.
+
 ## Test Categories
 
 - C unit tests;

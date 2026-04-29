@@ -16,9 +16,11 @@ file(READ "${app_js}" app_source)
 foreach(required IN ITEMS
         "import { Sloppy, Results } from \"sloppy\""
         "app.mapGet(\"/users/{id:int}\""
-        "route.id"
-        "query.q"
-        "request.path"
+        "ctx.route.id"
+        "ctx.query.q"
+        "ctx.request.method"
+        "ctx.request.path"
+        "ctx.request.rawTarget"
         "Results.json"
         "export default app")
     string(FIND "${app_source}" "${required}" found_index)
@@ -34,6 +36,7 @@ foreach(required IN ITEMS
         "query.q"
         "receives `route.id` as the string"
         "last-wins"
+        "request.rawTarget"
         "body parsing"
         "not implemented")
     string(FIND "${readme_source}" "${required}" found_index)

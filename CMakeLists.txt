@@ -749,6 +749,47 @@ if(SLOPPY_ENABLE_TESTS)
             "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_main_contract_docs.cmake")
 
+    if(CARGO_EXECUTABLE)
+        function(sloppy_add_conformance_compile_test test_name case_name source_path)
+            add_test(
+                NAME ${test_name}
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                    "-DCARGO_EXECUTABLE=${CARGO_EXECUTABLE}"
+                    "-DSLOPPY_CONFORMANCE_CASE=${case_name}" "-DSLOPPY_SOURCE=${source_path}"
+                    -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_conformance_compile_artifacts.cmake")
+            set_tests_properties(${test_name} PROPERTIES LABELS "conformance")
+        endfunction()
+
+        function(sloppy_add_conformance_rejected_test test_name case_name source_path expected_error)
+            add_test(
+                NAME ${test_name}
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                    "-DCARGO_EXECUTABLE=${CARGO_EXECUTABLE}"
+                    "-DSLOPPY_CONFORMANCE_CASE=${case_name}" "-DSLOPPY_SOURCE=${source_path}"
+                    "-DSLOPPY_EXPECTED_ERROR=${expected_error}" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_conformance_compile_rejected.cmake")
+            set_tests_properties(${test_name} PROPERTIES LABELS "conformance")
+        endfunction()
+
+        sloppy_add_conformance_compile_test(
+            conformance.hello.compile_artifacts hello examples/compiler-hello/app.js)
+        sloppy_add_conformance_compile_test(
+            conformance.request_context.compile_artifacts request-context
+            examples/request-context/app.js)
+        sloppy_add_conformance_rejected_test(
+            conformance.unsupported.dynamic_route dynamic-route
+            compiler/tests/fixtures/unsupported-dynamic-route/input.js
+            SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN)
+        sloppy_add_conformance_rejected_test(
+            conformance.unsupported.bare_import bare-import
+            compiler/tests/fixtures/unsupported-import-specifier/input.js
+            SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER)
+    endif()
+
     add_test(
         NAME sloppy.cli.missing_metadata
         COMMAND
@@ -874,6 +915,48 @@ if(SLOPPY_ENABLE_TESTS)
         set_tests_properties(sloppy.run.v8_disabled_is_clear
                              PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     else()
+        if(CARGO_EXECUTABLE)
+            function(sloppy_add_conformance_run_once_test test_name case_name source_path method target
+                     expected_output)
+                add_test(
+                    NAME ${test_name}
+                    COMMAND
+                        "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                        "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                        "-DCARGO_EXECUTABLE=${CARGO_EXECUTABLE}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                        "-DSLOPPY_CONFORMANCE_CASE=${case_name}" "-DSLOPPY_SOURCE=${source_path}"
+                        "-DSLOPPY_ONCE_METHOD=${method}" "-DSLOPPY_ONCE_TARGET=${target}"
+                        "-DSLOPPY_EXPECTED_OUTPUT=${expected_output}" -P
+                        "${PROJECT_SOURCE_DIR}/tests/cmake/check_conformance_run_once.cmake")
+                set_tests_properties(${test_name} PROPERTIES LABELS "conformance;v8")
+            endfunction()
+
+            sloppy_add_conformance_run_once_test(
+                conformance.hello.run_once hello examples/compiler-hello/app.js GET /
+                "Hello from Sloppy")
+            sloppy_add_conformance_run_once_test(
+                conformance.request_context.run_once request-context examples/request-context/app.js GET
+                "/users/123?q=abc&q=last" "\"q\":\"last\"")
+        endif()
+
+        function(sloppy_add_conformance_existing_artifact_test test_name artifacts method target
+                 expected_output)
+            add_test(
+                NAME ${test_name}
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>" "-DSLOPPY_ARTIFACTS=${artifacts}"
+                    "-DSLOPPY_ONCE_METHOD=${method}" "-DSLOPPY_ONCE_TARGET=${target}"
+                    "-DSLOPPY_EXPECTED_OUTPUT=${expected_output}" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_conformance_existing_artifacts.cmake")
+            set_tests_properties(${test_name} PROPERTIES LABELS "conformance;v8")
+        endfunction()
+
+        sloppy_add_conformance_existing_artifact_test(
+            conformance.results.invalid_descriptor tests/integration/execution/invalid_descriptor GET /
+            "500 Internal Server Error")
+        sloppy_add_conformance_existing_artifact_test(
+            conformance.sqlite.bridge tests/integration/execution/sqlite_bridge GET /sqlite "Ada")
         add_test(
             NAME sloppy.run.once_hello
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts

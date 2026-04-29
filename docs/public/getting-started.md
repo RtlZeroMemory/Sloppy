@@ -86,6 +86,11 @@ body parsing, headers in handler context, streaming, middleware, hot reload, pac
 manager behavior, Node compatibility, or production response pipeline.
 
 The request-context compiler example lives at `examples/request-context/`.
+MAIN1-13 adds executable conformance around the public compiler examples: default tests
+compile the hello and request-context sources and verify deterministic artifacts, while
+V8-gated tests run those compiled artifacts through `sloppy run --artifacts --once`.
+SQLite has a real V8-gated bridge fixture, but the source-stdlib `examples/sqlite-basic/`
+example remains marked as API-shape/static until the compiler can emit that app shape.
 
 Related internal docs: `docs/architecture.md`, `docs/execution-model.md`,
 `docs/developer-ergonomics.md`.

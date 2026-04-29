@@ -52,6 +52,11 @@ Current tests:
 - CTest failure smoke for missing CLI metadata paths;
 - CTest failure smoke for invalid route metadata rejected through native Plan validation
   before OpenAPI output;
+- CTest conformance tests under `tests/conformance/`, including default compiler artifact
+  determinism for `examples/compiler-hello/app.js` and `examples/request-context/app.js`,
+  default unsupported compiler source rejection for dynamic route registration and
+  arbitrary bare imports, and V8-gated run-once conformance for hello, request context,
+  result failure, and SQLite bridge cases when V8 is enabled;
 - CTest default process tests for `sloppy run` help text, missing artifacts, missing
   `app.plan.json`, malformed plans, invalid artifact paths, hash mismatches, missing source
   map artifacts, runtime compatibility mismatches, source-input handoff deferral, and the
@@ -177,6 +182,10 @@ When V8 is explicitly enabled and a valid SDK is configured, CTest also register
 `engine.v8.smoke`. That test evaluates classic JavaScript source, calls a named global
 function returning `sloppy-ok`, and checks syntax errors, missing/non-callable globals,
 throwing functions, and unsupported result types fail with diagnostics instead of crashing.
+MAIN1-13 also registers V8-gated `conformance.*` process tests. Those tests compile
+supported public example sources with `sloppyc`, execute them through
+`sloppy run --artifacts --once`, verify hello text and request-context JSON behavior, and
+run the checked-in invalid-result and SQLite bridge artifact fixtures.
 MAIN1-08 extends that target with SQLite bridge coverage for `:memory:` open, create,
 insert, query/queryOne, close, stale/closed handles, and invalid argument diagnostics. The
 SQLite bridge is implemented as `src/engine/v8/intrinsics_sqlite.cc` registered through
@@ -336,6 +345,7 @@ Target layout:
 tests/
   unit/
   integration/
+  conformance/
   golden/
   fuzz/
   diagnostics/
@@ -608,6 +618,23 @@ EPIC-22 adds process-level `sloppy run` tests:
 - V8-gated tests use `--once` against `tests/integration/execution/compiler_mvp` to verify
   `GET /` returns the hello body, `GET /missing` returns a `404`, and `POST /` returns a
   `405`.
+
+MAIN1-13 adds the workflow-level conformance layout:
+
+```text
+tests/conformance/
+  README.md
+  hello/
+  request-context/
+  unsupported/
+  capability/
+  sqlite/
+```
+
+Default conformance compiles public example sources twice and rejects selected unsupported
+compiler inputs without writing success artifacts. V8-gated conformance runs compiled
+hello/request-context artifacts plus checked-in invalid-result and SQLite bridge fixtures
+through `sloppy run --artifacts --once`.
 
 The actual local socket server is intentionally smoke-tested manually when V8 is available.
 Deterministic CI should prefer `--once` until the server lifecycle has a broader harness.
