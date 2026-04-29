@@ -1,9 +1,18 @@
 {
   "findings": [
+    { "severity": "error", "code": "SLOPPY_AUDIT_ROUTE_CAPABILITY_MISSING", "message": "route references an undeclared capability", "path": "routes" },
     { "severity": "error", "code": "SLOPPY_AUDIT_DUPLICATE_ROUTE_NAME", "message": "duplicate route name", "path": "routes" },
     { "severity": "error", "code": "SLOPPY_AUDIT_DUPLICATE_ROUTE", "message": "duplicate route method and pattern", "path": "routes" },
     { "severity": "error", "code": "SLOPPY_AUDIT_MISSING_HANDLER", "message": "route references a missing handler id", "path": "routes" },
     { "severity": "error", "code": "SLOPPY_AUDIT_MISSING_MODULE_DEPENDENCY", "message": "module dependency is missing", "path": "modules" },
-    { "severity": "warn", "code": "SLOPPY_AUDIT_PROVIDER_INCOMPLETE", "message": "provider metadata is missing token, provider, or service", "path": "dataProviders" }
+    { "severity": "warn", "code": "SLOPPY_AUDIT_PROVIDER_INCOMPLETE", "message": "provider metadata is missing token, provider, or service", "path": "dataProviders" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_PROVIDER_MISMATCH", "message": "capability provider reference does not match data provider", "path": "capabilities" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_CAPABILITY_INSUFFICIENT", "message": "capability access is insufficient for provider operation", "path": "capabilities" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_DUPLICATE_CAPABILITY", "message": "duplicate capability token", "path": "capabilities" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_CAPABILITY_PROVIDER_MISSING", "message": "database capability references an undeclared provider", "path": "capabilities" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_CAPABILITY_PROVIDER_REQUIRED", "message": "database capability is missing required provider reference", "path": "capabilities" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_CAPABILITY_PROVIDER_FORBIDDEN", "message": "filesystem/network capabilities must not declare providers", "path": "capabilities" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_FILESYSTEM_SKELETON", "message": "filesystem capabilities are metadata/check-only; no filesystem API or OS sandbox is implemented", "path": "capabilities" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_NETWORK_SKELETON", "message": "network capabilities are metadata/check-only; no network API or OS sandbox is implemented", "path": "capabilities" }
   ]
 }

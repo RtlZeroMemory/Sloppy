@@ -11,6 +11,7 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `valid-route-section.plan.json` | success | `SLOPPY_NONE` | yes | Valid alpha `routes` metadata with one GET route. |
 | `valid-provider-section.plan.json` | success | `SLOPPY_NONE` | yes | Valid minimal `dataProviders` metadata. |
 | `valid-capability-section.plan.json` | success | `SLOPPY_NONE` | yes | Valid minimal `capabilities` metadata tied to a provider token. |
+| `valid-capability-skeletons.plan.json` | success | `SLOPPY_NONE` | yes | Valid filesystem and network skeleton capability metadata. |
 | `unknown-future-field.plan.json` | success | `SLOPPY_NONE` | yes | Unknown top-level and nested fields are ignored in Plan v1. |
 | `malformed-json.plan.json` | failure | `SLOPPY_E_MALFORMED_JSON` | yes | Invalid JSON bytes produce a diagnostic instead of a crash. |
 | `invalid-version.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_VERSION` | yes | Unsupported `schemaVersion` is rejected. |
@@ -34,6 +35,10 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `duplicate-provider-token.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Data provider tokens must be unique. |
 | `invalid-capability-kind.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability kinds are limited to `database`, `filesystem`, and `network`. |
 | `invalid-capability-access.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability access must match the capability kind. |
+| `missing-capability-token.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability entries require a token. |
+| `missing-capability-provider.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Database capabilities require a provider reference. |
+| `non-database-capability-provider.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Filesystem and network skeleton capabilities cannot reference data providers. |
+| `secret-bearing-provider-field.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Provider/capability plan metadata must not contain raw secret-bearing fields. |
 | `duplicate-capability-token.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability tokens must be unique. |
 
 ## Conventions

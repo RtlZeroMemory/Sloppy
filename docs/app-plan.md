@@ -89,6 +89,23 @@ The implemented native C shape in `include/sloppy/plan.h` is deliberately small:
 - optional `capabilities[].token`, `capabilities[].kind`, `capabilities[].access`, and
   `capabilities[].provider`.
 
+MAIN1-10 capability rules:
+
+- supported capability kinds are `database`, `filesystem`, and `network`;
+- database access is `read`, `write`, or `readwrite`;
+- filesystem skeleton access is `read`, `write`, or `readwrite`;
+- network skeleton access is `connect`, `listen`, or `connect-listen`;
+- database capabilities require `provider` and the value must reference
+  `dataProviders[].token`;
+- filesystem and network skeleton capabilities must not declare `provider`;
+- capability tokens use the same bounded token syntax as provider tokens and must not carry
+  secrets or connection strings.
+- obvious secret-bearing fields such as `connectionString`, password/PWD, secret, API key,
+  and access-token values are rejected in provider/capability metadata.
+
+These are Sloppy runtime policy checks, not OS sandbox rules. Filesystem and network
+entries are metadata/check-only until scoped APIs exist.
+
 All native `SlStr` fields are borrowed views in the struct model. Manually constructed
 plans borrow caller-owned storage. `sl_plan_parse_json` copies JSON strings and handler
 arrays into the supplied arena, so parsed plan lifetime is tied to that arena rather than
@@ -279,20 +296,24 @@ Capability declarations:
 - config key references;
 - path policy where applicable.
 
-MAIN1-02 implements a minimal metadata-only native `capabilities` section. Capability
-entries may carry:
+MAIN1-02 implements the native `capabilities` section and MAIN1-10 tightens it for runtime
+checks. Capability entries may carry:
 
 - `token`, required;
 - `kind`, required and limited to `database`, `filesystem`, or `network`;
 - `access`, required and validated for the kind;
-- optional `provider`, which must reference `dataProviders[].token` when present.
+- required `provider` for database capabilities, which must reference
+  `dataProviders[].token`;
+- no `provider` for filesystem or network skeleton capabilities.
 
-Database access values are `read`, `write`, `readwrite`, or `connect`; filesystem access
-values are `read`, `write`, or `readwrite`; network access values are `connect` or
-`listen`. Duplicate capability tokens are rejected.
+Database access values are `read`, `write`, or `readwrite`; filesystem access values are
+`read`, `write`, or `readwrite`; network access values are `connect`, `listen`, or
+`connect-listen`. Duplicate capability tokens are rejected.
 
-Capabilities are not enforced by this PR. They are startup/audit metadata for future
-MAIN1-10 enforcement and must not be described as a sandbox or permission gate yet.
+Capabilities can be loaded into the MAIN1-10 runtime registry and checked by token, kind,
+access mode, and database provider before provider bridge work. Filesystem and network
+entries are skeleton checks only; they do not create filesystem/network APIs or an OS
+sandbox.
 
 ### permissions
 
@@ -442,7 +463,8 @@ Current TASK 06.B parser validation checks, with TASK 06.C golden fixture covera
 - when `dataProviders` is present, it is an array with valid unique tokens and supported
   provider values (`sqlite`, `postgres`, `sqlserver`);
 - when `capabilities` is present, it is an array with valid unique tokens, supported kinds,
-  supported access values for each kind, and valid provider references when used;
+  supported access values for each kind, required database provider references, and no
+  provider references on filesystem/network skeleton entries;
 - malformed JSON fails with a diagnostic rather than crashing.
 
 Current TASK 06.B parser validation deliberately does not check target compatibility,

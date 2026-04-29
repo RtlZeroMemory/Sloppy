@@ -34,6 +34,7 @@
 #define SL_CLI_MAX_MODULES 64U
 #define SL_CLI_MAX_DEPS 16U
 #define SL_CLI_MAX_PROVIDERS 32U
+#define SL_CLI_MAX_CAPABILITIES 64U
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
@@ -69,6 +70,7 @@ typedef struct SlCliRoute
     SlHandlerId handler_id;
     SlCliSpan name;
     SlCliSpan module;
+    SlCliSpan capability;
 } SlCliRoute;
 
 typedef struct SlCliHandler
@@ -88,8 +90,18 @@ typedef struct SlCliProvider
 {
     SlCliSpan token;
     SlCliSpan provider;
+    SlCliSpan capability;
+    SlCliSpan required_access;
     SlCliSpan service;
 } SlCliProvider;
+
+typedef struct SlCliCapability
+{
+    SlCliSpan token;
+    SlCliSpan kind;
+    SlCliSpan access;
+    SlCliSpan provider;
+} SlCliCapability;
 
 typedef struct SlCliDoctorCheck
 {
@@ -108,6 +120,8 @@ typedef struct SlCliMetadata
     size_t module_count;
     SlCliProvider providers[SL_CLI_MAX_PROVIDERS];
     size_t provider_count;
+    SlCliCapability capabilities[SL_CLI_MAX_CAPABILITIES];
+    size_t capability_count;
     SlCliDoctorCheck doctor_checks[SL_CLI_MAX_DOCTOR_CHECKS];
     size_t doctor_check_count;
 } SlCliMetadata;
@@ -775,6 +789,7 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
         route.pattern = sl_cli_json_span(value, "pattern");
         route.name = sl_cli_json_span(value, "name");
         route.module = sl_cli_json_span(value, "module");
+        route.capability = sl_cli_json_span(value, "capability");
         route.handler_id = sl_cli_json_handler_id(value);
 
         if (sl_cli_span_empty(route.method) || sl_cli_span_empty(route.pattern) ||
@@ -868,9 +883,48 @@ static int sl_cli_parse_providers(yyjson_val* root, SlCliMetadata* metadata)
         }
         provider.token = sl_cli_json_span(value, "token");
         provider.provider = sl_cli_json_span(value, "provider");
+        provider.capability = sl_cli_json_span(value, "capability");
+        provider.required_access = sl_cli_json_span(value, "requiredAccess");
         provider.service = sl_cli_json_span(value, "service");
         metadata->providers[metadata->provider_count] = provider;
         metadata->provider_count += 1U;
+    }
+
+    return 0;
+}
+
+static int sl_cli_parse_capabilities(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* capabilities = yyjson_obj_get(root, "capabilities");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (capabilities == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(capabilities)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: capabilities must be an array\n");
+        return 1;
+    }
+
+    yyjson_arr_iter_init(capabilities, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliCapability capability = {0};
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed capability in metadata\n");
+            return 1;
+        }
+        if (metadata->capability_count >= SL_CLI_MAX_CAPABILITIES) {
+            sl_cli_write_cstr(stderr, "sloppy: too many capabilities in metadata\n");
+            return 1;
+        }
+        capability.token = sl_cli_json_span(value, "token");
+        capability.kind = sl_cli_json_span(value, "kind");
+        capability.access = sl_cli_json_span(value, "access");
+        capability.provider = sl_cli_json_span(value, "provider");
+        metadata->capabilities[metadata->capability_count] = capability;
+        metadata->capability_count += 1U;
     }
 
     return 0;
@@ -944,6 +998,7 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, y
         sl_cli_parse_routes(root, out_metadata) != 0 ||
         sl_cli_parse_modules(root, out_metadata) != 0 ||
         sl_cli_parse_providers(root, out_metadata) != 0 ||
+        sl_cli_parse_capabilities(root, out_metadata) != 0 ||
         sl_cli_parse_doctor_checks(root, out_metadata) != 0)
     {
         return 1;
@@ -2157,6 +2212,53 @@ static const SlCliModule* sl_cli_find_module(const SlCliMetadata* metadata, SlCl
     return NULL;
 }
 
+static const SlCliProvider* sl_cli_find_provider(const SlCliMetadata* metadata, SlCliSpan token)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->provider_count; index += 1U) {
+        if (sl_cli_span_equal(metadata->providers[index].token, token)) {
+            return &metadata->providers[index];
+        }
+    }
+
+    return NULL;
+}
+
+static const SlCliCapability* sl_cli_find_capability(const SlCliMetadata* metadata, SlCliSpan token)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->capability_count; index += 1U) {
+        if (sl_cli_span_equal(metadata->capabilities[index].token, token)) {
+            return &metadata->capabilities[index];
+        }
+    }
+
+    return NULL;
+}
+
+static bool sl_cli_capability_allows(SlCliSpan access, SlCliSpan operation)
+{
+    if (sl_cli_span_equal_cstr(operation, "read")) {
+        return sl_cli_span_equal_cstr(access, "read") ||
+               sl_cli_span_equal_cstr(access, "readwrite");
+    }
+    if (sl_cli_span_equal_cstr(operation, "write")) {
+        return sl_cli_span_equal_cstr(access, "write") ||
+               sl_cli_span_equal_cstr(access, "readwrite");
+    }
+    if (sl_cli_span_equal_cstr(operation, "connect")) {
+        return sl_cli_span_equal_cstr(access, "connect") ||
+               sl_cli_span_equal_cstr(access, "connect-listen");
+    }
+    if (sl_cli_span_equal_cstr(operation, "listen")) {
+        return sl_cli_span_equal_cstr(access, "listen") ||
+               sl_cli_span_equal_cstr(access, "connect-listen");
+    }
+    return false;
+}
+
 static int sl_cli_route_compare(const SlCliRoute* left, const SlCliRoute* right)
 {
     int result = strncmp(left->method.ptr, right->method.ptr,
@@ -2361,6 +2463,12 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
             sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_MISSING_HANDLER",
                               "route references a missing handler id", "routes", findings);
         }
+        if (!sl_cli_span_empty(metadata->routes[outer].capability) &&
+            sl_cli_find_capability(metadata, metadata->routes[outer].capability) == NULL)
+        {
+            sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_ROUTE_CAPABILITY_MISSING",
+                              "route references an undeclared capability", "routes", findings);
+        }
         for (inner = outer + 1U; inner < metadata->route_count; inner += 1U) {
             if (!sl_cli_span_empty(metadata->routes[outer].name) &&
                 sl_cli_span_equal(metadata->routes[outer].name, metadata->routes[inner].name))
@@ -2421,6 +2529,105 @@ static void sl_cli_audit_providers(const SlCliOptions* options, const SlCliMetad
                               "provider metadata is missing token, provider, or service",
                               "dataProviders", findings);
         }
+        if (!sl_cli_span_empty(metadata->providers[index].capability)) {
+            const SlCliCapability* capability =
+                sl_cli_find_capability(metadata, metadata->providers[index].capability);
+            if (capability == NULL) {
+                sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_PROVIDER_CAPABILITY_MISSING",
+                                  "data provider references an undeclared capability",
+                                  "dataProviders", findings);
+            }
+            else if (!sl_cli_span_equal_cstr(capability->kind, "database")) {
+                sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_PROVIDER_CAPABILITY_KIND",
+                                  "data provider capability is not a database capability",
+                                  "dataProviders", findings);
+            }
+            else {
+                if (!sl_cli_span_empty(capability->provider) &&
+                    !sl_cli_span_equal(capability->provider, metadata->providers[index].token))
+                {
+                    sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_PROVIDER_MISMATCH",
+                                      "capability provider reference does not match data provider",
+                                      "capabilities", findings);
+                }
+                if (!sl_cli_span_empty(metadata->providers[index].required_access) &&
+                    !sl_cli_capability_allows(capability->access,
+                                              metadata->providers[index].required_access))
+                {
+                    sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_INSUFFICIENT",
+                                      "capability access is insufficient for provider operation",
+                                      "capabilities", findings);
+                }
+            }
+        }
+    }
+}
+
+static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMetadata* metadata,
+                                      size_t* findings)
+{
+    size_t outer = 0U;
+    size_t inner = 0U;
+    bool has_filesystem = false;
+    bool has_network = false;
+
+    for (outer = 0U; outer < metadata->capability_count; outer += 1U) {
+        if (sl_cli_span_empty(metadata->capabilities[outer].token) ||
+            sl_cli_span_empty(metadata->capabilities[outer].kind) ||
+            sl_cli_span_empty(metadata->capabilities[outer].access))
+        {
+            sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_INCOMPLETE",
+                              "capability metadata is missing token, kind, or access",
+                              "capabilities", findings);
+        }
+        for (inner = outer + 1U; inner < metadata->capability_count; inner += 1U) {
+            if (!sl_cli_span_empty(metadata->capabilities[outer].token) &&
+                sl_cli_span_equal(metadata->capabilities[outer].token,
+                                  metadata->capabilities[inner].token))
+            {
+                sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_DUPLICATE_CAPABILITY",
+                                  "duplicate capability token", "capabilities", findings);
+            }
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "database")) {
+            if (sl_cli_span_empty(metadata->capabilities[outer].provider)) {
+                sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_REQUIRED",
+                                  "database capability is missing required provider reference",
+                                  "capabilities", findings);
+            }
+            else if (sl_cli_find_provider(metadata, metadata->capabilities[outer].provider) == NULL)
+            {
+                sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_MISSING",
+                                  "database capability references an undeclared provider",
+                                  "capabilities", findings);
+            }
+        }
+        else if ((sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "filesystem") ||
+                  sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "network")) &&
+                 !sl_cli_span_empty(metadata->capabilities[outer].provider))
+        {
+            sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_FORBIDDEN",
+                              "filesystem/network capabilities must not declare providers",
+                              "capabilities", findings);
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "filesystem")) {
+            has_filesystem = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "network")) {
+            has_network = true;
+        }
+    }
+    if (has_filesystem) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FILESYSTEM_SKELETON",
+                          "filesystem capabilities are metadata/check-only; no filesystem API or "
+                          "OS sandbox is implemented",
+                          "capabilities", findings);
+    }
+    if (has_network) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_NETWORK_SKELETON",
+                          "network capabilities are metadata/check-only; no network API or OS "
+                          "sandbox is implemented",
+                          "capabilities", findings);
     }
 }
 
@@ -2452,6 +2659,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_routes(options, &metadata, &findings);
     sl_cli_audit_modules(options, &metadata, &findings);
     sl_cli_audit_providers(options, &metadata, &findings);
+    sl_cli_audit_capabilities(options, &metadata, &findings);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {
         (void)printf("No findings.\n");

@@ -78,11 +78,18 @@ redaction, and a small `doctor(options)` shape as the intended public entry poin
 No native pointer is exposed to JavaScript and no fake SQL Server success is reported by the
 stdlib.
 
+MAIN1-10 adds the runtime capability registry used by future provider bridge calls.
+Database provider access policy is token-based: read operations require `read` or
+`readwrite`, write operations require `write` or `readwrite`, and a declared provider token
+must match the provider boundary being called. These hooks deny before provider work when
+called by a bridge or native host boundary. The existing direct native provider APIs remain
+low-level provider primitives and do not carry capability context in their signatures.
+
 ## Provider Support Classification
 
 | Provider | Native status | Default validation | Live validation | JS bridge status |
 | --- | --- | --- | --- | --- |
-| SQLite | Native C provider exists and is linked through the default build. | In-memory open/query/exec/transaction tests run in default CTest. | No external service is required for current provider tests. | Deferred until MAIN1-08; `data.sqlite.open(...)` fails with bridge-unavailable today. |
+| SQLite | Native C provider exists and is linked through the default build. | In-memory open/query/exec/transaction and capability hook tests run in default CTest. | No external service is required for current provider tests. | Deferred until MAIN1-08; `data.sqlite.open(...)` fails with bridge-unavailable today. Capability hook integration is ready for that bridge. |
 | PostgreSQL | Native libpq provider boundary exists. | Non-live option, doctor, redaction, use-after-close, and lifecycle tests run in default CTest. | Opt-in `data.postgres.live_provider` requires `SLOPPY_POSTGRES_TEST_URL`; when unset, CTest reports it skipped. | Deferred; `data.postgres.open(...)` validates/redacts and then fails with bridge-unavailable. |
 | SQL Server | Native ODBC provider boundary exists when `SLOPPY_ENABLE_SQLSERVER` is enabled; otherwise stubs report unavailable. | Windows default tests cover ODBC-enabled non-live diagnostics; Linux/macOS defaults cover unavailable/stub behavior. | Opt-in `data.sqlserver.live_provider` requires `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`, an ODBC driver, and a reachable SQL Server; when unset, CTest reports it skipped. | Deferred; `data.sqlserver.open(...)` validates/redacts and then fails with bridge-unavailable. |
 

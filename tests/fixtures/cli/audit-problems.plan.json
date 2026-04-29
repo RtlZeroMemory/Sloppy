@@ -30,7 +30,8 @@
       "pattern": "/users/{id:int}",
       "handlerId": 1,
       "name": "Users.Get",
-      "module": "users"
+      "module": "users",
+      "capability": "data.missing"
     },
     {
       "method": "GET",
@@ -49,7 +50,39 @@
   "dataProviders": [
     {
       "token": "data.main",
-      "provider": "sqlserver"
+      "provider": "sqlserver",
+      "capability": "data.main",
+      "requiredAccess": "write"
+    }
+  ],
+  "capabilities": [
+    {
+      "token": "data.main",
+      "kind": "database",
+      "access": "read",
+      "provider": "data.other"
+    },
+    {
+      "token": "data.main",
+      "kind": "database",
+      "access": "readwrite",
+      "provider": "data.main"
+    },
+    {
+      "token": "data.no_provider",
+      "kind": "database",
+      "access": "read"
+    },
+    {
+      "token": "files.uploads",
+      "kind": "filesystem",
+      "access": "read",
+      "provider": "data.main"
+    },
+    {
+      "token": "net.admin",
+      "kind": "network",
+      "access": "connect"
     }
   ]
 }

@@ -196,6 +196,8 @@ static int test_valid_fixture_matrix(void)
         {"tests/golden/plan/valid-provider-section.plan.json", 1U, "__sloppy_handler_1", "Home",
          NULL, NULL, 1U, 0U},
         {"tests/golden/plan/valid-capability-section.plan.json", 1U, "__sloppy_handler_1", "Home",
+         NULL, NULL, 1U, 0U},
+        {"tests/golden/plan/valid-capability-skeletons.plan.json", 1U, "__sloppy_handler_1", "Home",
          NULL, NULL, 1U, 0U}};
     size_t index = 0U;
 
@@ -263,6 +265,17 @@ static int test_valid_fixture_matrix(void)
         {
             return 67 + (int)index;
         }
+        if (sl_str_equal(
+                sl_str_from_cstr(cases[index].path),
+                sl_str_from_cstr("tests/golden/plan/valid-capability-skeletons.plan.json")) &&
+            (plan.capability_count != 2U ||
+             !sl_str_equal(plan.capabilities[0].kind, sl_str_from_cstr("filesystem")) ||
+             !sl_str_equal(plan.capabilities[0].access, sl_str_from_cstr("readwrite")) ||
+             !sl_str_equal(plan.capabilities[1].kind, sl_str_from_cstr("network")) ||
+             !sl_str_equal(plan.capabilities[1].access, sl_str_from_cstr("connect-listen"))))
+        {
+            return 68 + (int)index;
+        }
     }
 
     return 0;
@@ -315,6 +328,14 @@ static int test_invalid_fixture_matrix(void)
          SL_DIAG_INVALID_PLAN_FIELD, "unsupported app plan capability kind"},
         {"tests/golden/plan/invalid-capability-access.plan.json", SL_STATUS_INVALID_ARGUMENT,
          SL_DIAG_INVALID_PLAN_FIELD, "unsupported app plan capability access"},
+        {"tests/golden/plan/missing-capability-token.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "missing required app plan field"},
+        {"tests/golden/plan/missing-capability-provider.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "database capability is missing provider"},
+        {"tests/golden/plan/non-database-capability-provider.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "non-database capability has provider"},
+        {"tests/golden/plan/secret-bearing-provider-field.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "app plan contains secret-bearing field"},
         {"tests/golden/plan/duplicate-capability-token.plan.json", SL_STATUS_INVALID_ARGUMENT,
          SL_DIAG_INVALID_PLAN_FIELD, "duplicate app plan capability token"}};
     size_t index = 0U;

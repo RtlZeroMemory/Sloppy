@@ -29,8 +29,9 @@ state and an honest public-alpha path.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
-- Capability enforcement: declared capabilities must gate provider/filesystem/network
-  access before public docs imply a security model.
+- SQLite JS bridge capability integration: MAIN1-10 adds the runtime registry and provider
+  policy hook, but the JavaScript-to-native SQLite bridge must call it once MAIN1-08 exposes
+  the stable bridge boundary.
 - Live DB service infrastructure for PostgreSQL and SQL Server: opt-in local env vars and
   separate skipped CTest gates make reporting honest, but hosted service jobs are still
   needed for release confidence.
@@ -65,8 +66,8 @@ state and an honest public-alpha path.
   covers represented route/provider/capability metadata and duplicate provider service
   tokens, but bootstrap module graphs and real service lifetimes still need compiler-emitted
   metadata.
-- Provider/capability enforcement that turns MAIN1-02 metadata into denied-operation
-  behavior and diagnostics.
+- Stronger provider/capability enforcement for future provider bridges beyond the current
+  bridge-ready hook.
 - Source map strategy for compiler output and TypeScript remapping from V8 exceptions.
   MAIN1-05 reports generated `app.js` line/column only because current maps are
   placeholders.
