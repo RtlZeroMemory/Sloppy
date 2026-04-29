@@ -69,6 +69,26 @@ const PostgresModule = Sloppy.module("data.postgres")
   });
 ```
 
+SQL Server uses the same module phase shape with ODBC-specific metadata:
+
+```ts
+const SqlServerModule = Sloppy.module("data.sqlserver")
+  .capabilities(caps => {
+    caps.addDatabase("data.main", {
+      provider: "sqlserver",
+      configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
+      access: "readwrite",
+    });
+  })
+  .services(services => {
+    services.addSingleton("data.main", () => data.sqlserver.open({
+      connectionString:
+        "Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;Trusted_Connection=yes;TrustServerCertificate=yes;",
+      maxConnections: 2,
+    }));
+  });
+```
+
 Implemented behavior:
 
 - `Sloppy.module(name)` creates a declarative module object.
@@ -114,7 +134,7 @@ dependency names, phase names, and a short fix hint where practical.
 
 Not implemented yet: compiler extraction, automatic `app.plan.json` emission, native
 runtime module loading, module package distribution, native plugins, optional
-dependencies, version ranges, JavaScript-to-native SQLite/PostgreSQL calls, middleware,
-route filters, hot reload, and dynamic module loading after build.
+dependencies, version ranges, JavaScript-to-native SQLite/PostgreSQL/SQL Server calls,
+middleware, route filters, hot reload, and dynamic module loading after build.
 
 Related internal docs: `docs/modularity.md`, `docs/app-plan.md`.

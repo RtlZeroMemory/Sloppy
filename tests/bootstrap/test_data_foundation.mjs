@@ -210,6 +210,44 @@ function createForgedLoweredQuery() {
 }
 
 {
+    assert.equal(data.sqlserver.provider, "sqlserver");
+    assert.equal(data.sqlserver.placeholderStyle, "question");
+    assert.equal(data.sqlserver.supports.connectionString, true);
+    assert.equal(data.sqlserver.supports.odbc, true);
+    assert.equal(data.sqlserver.supports.transactions, true);
+    assert.equal(data.sqlserver.supports.pooling, "skeleton");
+    assert.equal(data.sqlserver.supports.nativeStdlibBridge, false);
+    assert.equal(data.sqlserver.__debug().nativeStdlibBridge, false);
+    assert.equal(sql.lower(["a ", " b"], ["x"], {
+        placeholderStyle: data.sqlserver.placeholderStyle,
+    }).text, "a ? b");
+    assert.equal(
+        data.sqlserver.redactConnectionString("Driver={ODBC Driver 18 for SQL Server};UID=sa;PWD=secret;Password={top;secret};Access Token=abc"),
+        "Driver={ODBC Driver 18 for SQL Server};UID=sa;PWD=<redacted>;Password=<redacted>;Access Token=<redacted>",
+    );
+    assert.equal(
+        data.sqlserver.redactConnectionString("Driver = {ODBC Driver 18 for SQL Server};UID=sa;PWD = secret;Password ={top;secret};Access Token = abc"),
+        "Driver = {ODBC Driver 18 for SQL Server};UID=sa;PWD = <redacted>;Password =<redacted>;Access Token = <redacted>",
+    );
+    const doctor = data.sqlserver.doctor({
+        connectionString: "Driver = {ODBC Driver 18 for SQL Server};Server=localhost;PWD = secret",
+    });
+    assert.equal(doctor.ok, false);
+    assert.equal(doctor.provider, "sqlserver");
+    assert.equal(doctor.driverManager, "native-check-unavailable");
+    assert.equal(doctor.driver, "unchecked");
+    assert.equal(doctor.connectionString.includes("secret"), false);
+    assertThrowsMessage(() => data.sqlserver.open({}), /connectionString must be a non-empty string/);
+    assertThrowsMessage(() => data.sqlserver.open({
+        connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost",
+        access: "admin",
+    }), /access must be read or readwrite/);
+    assertThrowsMessage(() => data.sqlserver.open({
+        connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=secret",
+    }), /sqlserver provider native bridge unavailable[\s\S]*PWD=<redacted>/);
+}
+
+{
     const received = [];
     const fakeDb = data.createFakeProvider({
         query(lowered) {
@@ -388,4 +426,34 @@ function createForgedLoweredQuery() {
     assert.equal(app.capabilities.get("data.main").metadata.connectionString, undefined);
     assert.deepEqual(app.__debug().modules[0].services, ["data.main"]);
     assertThrowsMessage(() => app.services.get("data.main"), /ada:<redacted>@localhost/);
+}
+
+{
+    const SqlServerModule = Sloppy.module("data.sqlserver")
+        .capabilities((caps) => {
+            caps.addDatabase("data.main", {
+                provider: "sqlserver",
+                configKey: "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
+                access: "readwrite",
+            });
+        })
+        .services((services) => {
+            services.addSingleton("data.main", () => data.sqlserver.open({
+                connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=secret;TrustServerCertificate=yes",
+                maxConnections: 2,
+            }));
+        });
+
+    const app = Sloppy.createBuilder()
+        .addModule(SqlServerModule)
+        .build();
+
+    assert.equal(app.capabilities.get("data.main").provider, "sqlserver");
+    assert.equal(
+        app.capabilities.get("data.main").metadata.configKey,
+        "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
+    );
+    assert.equal(app.capabilities.get("data.main").metadata.connectionString, undefined);
+    assert.deepEqual(app.__debug().modules[0].services, ["data.main"]);
+    assertThrowsMessage(() => app.services.get("data.main"), /PWD=<redacted>/);
 }

@@ -292,6 +292,16 @@ static int test_provider_code_names(void)
     {
         return 51;
     }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_SQLSERVER_PROVIDER_ERROR),
+                         sl_str_from_cstr("SLOPPY_E_SQLSERVER_PROVIDER")) != 0)
+    {
+        return 52;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_SQLSERVER_POOL_EXHAUSTED),
+                         sl_str_from_cstr("SLOPPY_E_SQLSERVER_POOL_EXHAUSTED")) != 0)
+    {
+        return 53;
+    }
 
     return 0;
 }

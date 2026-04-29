@@ -446,6 +446,12 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_POSTGRES_POOL_EXHAUSTED:
         return sl_diag_literal("SLOPPY_E_POSTGRES_POOL_EXHAUSTED",
                                sizeof("SLOPPY_E_POSTGRES_POOL_EXHAUSTED") - 1U);
+    case SL_DIAG_SQLSERVER_PROVIDER_ERROR:
+        return sl_diag_literal("SLOPPY_E_SQLSERVER_PROVIDER",
+                               sizeof("SLOPPY_E_SQLSERVER_PROVIDER") - 1U);
+    case SL_DIAG_SQLSERVER_POOL_EXHAUSTED:
+        return sl_diag_literal("SLOPPY_E_SQLSERVER_POOL_EXHAUSTED",
+                               sizeof("SLOPPY_E_SQLSERVER_POOL_EXHAUSTED") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

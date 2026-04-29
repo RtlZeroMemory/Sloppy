@@ -91,9 +91,11 @@ vcpkg manifest mode is reserved for normal C dependencies. TASK 06.B introduces 
 through the manifest for Plan JSON parsing. TASK 10.B introduces `llhttp` for HTTP/1
 request-head parsing and `libuv` for a dependency/link smoke ahead of the future event-loop
 backend. EPIC-16 introduces `sqlite3` for the native SQLite provider. EPIC-17 introduces
-`libpq` for the native PostgreSQL provider.
+`libpq` for the native PostgreSQL provider. EPIC-18 introduces ODBC discovery for the
+native SQL Server provider through the platform/toolchain rather than vcpkg driver
+packages.
 
-Do not add ODBC or other runtime dependencies until the relevant implementation phase. Do
+Do not add additional runtime dependencies before their relevant implementation phase. Do
 not add a second HTTP parser or a custom HTTP parser.
 
 PostgreSQL build and distribution notes:
@@ -104,6 +106,17 @@ PostgreSQL build and distribution notes:
 - Live PostgreSQL tests run only when `SLOPPY_POSTGRES_TEST_URL` is set.
 - Release packaging still needs an explicit libpq DLL/shared-library copy and license
   strategy; do not assume a system-global PostgreSQL installation will be present.
+
+SQL Server build and distribution notes:
+
+- `SLOPPY_ENABLE_SQLSERVER` defaults to `ON` on Windows and `OFF` elsewhere.
+- When enabled, CMake uses `find_package(ODBC REQUIRED)` and links `ODBC::ODBC`.
+- Sloppy does not install Microsoft ODBC Driver for SQL Server, require admin, vendor
+  driver binaries, or download drivers.
+- Default tests do not require a running SQL Server or installed SQL Server ODBC driver.
+- Live SQL Server tests run only when `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set.
+- Release packaging must document the external Microsoft ODBC Driver prerequisite and any
+  future non-Windows unixODBC/iODBC strategy before claiming packaged SQL Server support.
 
 ## V8 SDK Policy
 

@@ -54,7 +54,7 @@ foreach(required_pattern IN ITEMS
         "does not emit `app.plan.json`"
         "there is no real HTTP server yet"
         "stdlib cannot call the native SQLite provider"
-        "no PostgreSQL or SQL Server provider"
+        "PostgreSQL and SQL Server providers are covered"
         "no ORM, migrations, connection pooling")
     require_substring(
         "${example_readme_md}" "${required_pattern}"
