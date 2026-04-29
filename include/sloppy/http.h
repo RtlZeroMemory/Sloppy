@@ -14,6 +14,7 @@ extern "C" {
 #endif
 
 #define SL_HTTP_DEFAULT_MAX_HEADERS 32U
+#define SL_HTTP_DEFAULT_MAX_TARGET_LENGTH 2048U
 
 typedef enum SlHttpMethod
 {
@@ -53,6 +54,7 @@ typedef struct SlHttpRequestHead
 typedef struct SlHttpParseOptions
 {
     size_t max_headers;
+    size_t max_target_length;
 } SlHttpParseOptions;
 
 /*
@@ -60,10 +62,11 @@ typedef struct SlHttpParseOptions
  *
  * `arena`, `bytes`, and `out_request` are required. `bytes` must contain a complete request
  * line and headers ending in CRLF CRLF. Parsed strings and the header array are arena-owned.
- * `options` may be NULL, in which case SL_HTTP_DEFAULT_MAX_HEADERS is used. A zero
- * max_headers value permits no headers. Header overflow, malformed input, incomplete input,
- * empty/non-path request targets, and unsupported methods fail with SlStatus and, when
- * supplied, an arena-owned diagnostic.
+ * `options` may be NULL, in which case default limits are used. A zero max_headers value
+ * permits no headers. A zero max_target_length value uses
+ * SL_HTTP_DEFAULT_MAX_TARGET_LENGTH. Header overflow, target overflow, malformed input,
+ * incomplete input, empty/non-path request targets, and unsupported methods fail with
+ * SlStatus and, when supplied, an arena-owned diagnostic.
  *
  * The parser stores `raw_target` exactly as llhttp reports it. `path` is the portion before
  * `?`; EPIC-23 query parsing and percent decoding live in `http_context.h` so the request

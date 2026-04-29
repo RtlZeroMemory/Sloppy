@@ -1059,7 +1059,7 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
 
     if (!js_result->IsObject()) {
         return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
+            engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_UNSUPPORTED,
             sl_v8_literal("JavaScript handler returned an unsupported result type",
                           sizeof("JavaScript handler returned an unsupported result type") - 1U),
             sl_str_empty(),
@@ -1084,7 +1084,7 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
     v8::Local<v8::Object> object = js_result.As<v8::Object>();
     if (!sl_v8_has_marker(isolate, context, object)) {
         return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
+            engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_UNSUPPORTED,
             sl_v8_literal("JavaScript handler returned an unsupported result type",
                           sizeof("JavaScript handler returned an unsupported result type") - 1U),
             sl_str_empty(),
@@ -1099,7 +1099,7 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
         !sl_v8_get_object_status(isolate, context, object, &status_code))
     {
         return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             sl_v8_literal("JavaScript result descriptor is missing kind or status",
                           sizeof("JavaScript result descriptor is missing kind or status") - 1U),
             sl_str_empty(),
@@ -1110,7 +1110,7 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
 
     if (!sl_v8_http_status_supported(status_code)) {
         return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             sl_v8_literal("JavaScript result descriptor has an unsupported status",
                           sizeof("JavaScript result descriptor has an unsupported status") - 1U),
             sl_str_empty(),
@@ -1129,14 +1129,14 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
 
     if (!sl_v8_get_object_string(isolate, context, object, "contentType", &content_type)) {
         return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             sl_v8_literal("JavaScript result descriptor is missing contentType",
                           sizeof("JavaScript result descriptor is missing contentType") - 1U),
             sl_str_empty(), sl_str_empty());
     }
     if (!sl_v8_header_value_safe(content_type)) {
         return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             sl_v8_literal("JavaScript result descriptor has an invalid contentType",
                           sizeof("JavaScript result descriptor has an invalid contentType") - 1U),
             sl_str_empty(),
@@ -1155,7 +1155,7 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
     if (kind == "text") {
         if (!body->IsString()) {
             return sl_v8_write_diag(
-                engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+                engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
                 sl_v8_literal("Results.text body must be a string",
                               sizeof("Results.text body must be a string") - 1U),
                 sl_str_empty(), sl_str_empty());
@@ -1189,7 +1189,7 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
 
         if (!sl_v8_stringify_json(isolate, context, body, &json)) {
             return sl_v8_write_diag(
-                engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+                engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
                 sl_v8_literal("Results.json body could not be serialized",
                               sizeof("Results.json body could not be serialized") - 1U),
                 sl_str_empty(), sl_str_empty());
@@ -1207,7 +1207,7 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
     }
 
     return sl_v8_write_diag(
-        engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
+        engine->arena, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_UNSUPPORTED,
         sl_v8_literal("JavaScript result descriptor kind is unsupported",
                       sizeof("JavaScript result descriptor kind is unsupported") - 1U),
         sl_str_empty(),

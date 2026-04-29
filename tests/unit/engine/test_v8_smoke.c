@@ -362,7 +362,7 @@ static int test_unsupported_result_returns_call_diagnostic(void)
     }
 
     if (result.kind != SL_ENGINE_RESULT_NONE || diag.severity != SL_DIAG_SEVERITY_ERROR ||
-        diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
+        diag.code != SL_DIAG_INVALID_HTTP_RESULT ||
         expect_str_contains(diag.message, sl_str_from_cstr("unsupported result type")) != 0)
     {
         sl_engine_destroy(engine);

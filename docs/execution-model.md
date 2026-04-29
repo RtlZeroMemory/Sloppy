@@ -277,16 +277,17 @@ Current EPIC-22/23/24 `sloppy run` flow:
 1. accept an artifact directory through `--artifacts <dir>` or positional `<artifact-dir>`;
 2. load `<dir>/app.plan.json` through the native Plan parser;
 3. validate parsed Plan route/provider/capability metadata where those sections are present;
-4. parse Plan GET route patterns into a borrowed dev dispatch table;
+4. build a native dev route table from Plan GET route patterns, ordered by
+   literal-before-parameter precedence and stable source order when equal;
 5. read `bundle.path` and `sourceMap.path` and verify their `sha256:` hashes;
 6. create a V8 engine, load the configured bootstrap stdlib root, and evaluate
    `internal/runtime-classic.js`;
 7. evaluate the artifact `app.js` and validate all plan handler IDs were registered;
 8. either dispatch one synthetic `--once METHOD TARGET` request or start a local
    `127.0.0.1:5173` dev server by default;
-9. parse request heads, route GET paths, call handlers by numeric ID with route/query
-   context, convert supported descriptors, write a native HTTP response, and close the
-   connection.
+9. parse request heads, reject unsupported request bodies, route GET paths, call handlers by
+   numeric ID with route/query context, convert supported descriptors, write a native HTTP
+   response, and close the connection.
 
 Deferred dev-mode work:
 

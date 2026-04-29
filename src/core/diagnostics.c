@@ -485,6 +485,14 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_RESOURCE_TABLE_EXHAUSTED:
         return sl_diag_literal("SLOPPY_E_RESOURCE_TABLE_EXHAUSTED",
                                sizeof("SLOPPY_E_RESOURCE_TABLE_EXHAUSTED") - 1U);
+    case SL_DIAG_DUPLICATE_ROUTE:
+        return sl_diag_literal("SLOPPY_E_DUPLICATE_ROUTE", sizeof("SLOPPY_E_DUPLICATE_ROUTE") - 1U);
+    case SL_DIAG_HTTP_UNSUPPORTED_BODY:
+        return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_BODY",
+                               sizeof("SLOPPY_E_HTTP_UNSUPPORTED_BODY") - 1U);
+    case SL_DIAG_INVALID_HTTP_RESULT:
+        return sl_diag_literal("SLOPPY_E_INVALID_HTTP_RESULT",
+                               sizeof("SLOPPY_E_INVALID_HTTP_RESULT") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

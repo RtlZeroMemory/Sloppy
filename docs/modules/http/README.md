@@ -12,9 +12,11 @@ runtime-contract/engine boundary. EPIC-22 adds a dev-only `sloppy run` path that
 to accept one complete request head per connection. EPIC-23 adds the first native response
 descriptor/writer and minimal request context for that path: route params, query params,
 and method/path/rawTarget are passed to V8 handlers, supported descriptors become HTTP/1.1
-bytes, and the connection is closed. There is still no production HTTP server, body
-parsing, streaming parser API, middleware, public TypeScript `app.run`, or broad response
-framework.
+bytes, and the connection is closed. MAIN1-04 hardens that dev-only path with a native
+route table built from Plan route metadata, deterministic literal-before-parameter
+precedence, request-target and query bounds, unsupported-body diagnostics, and stricter
+result descriptor diagnostics. There is still no production HTTP server, body parsing,
+streaming parser API, middleware, public TypeScript `app.run`, or broad response framework.
 
 ## Purpose
 
@@ -39,11 +41,16 @@ Implemented now:
 - convert supported handler descriptors into `SlHttpResponse` values for `sloppy run`;
 - dev-only `sloppy run --artifacts <dir>` server over libuv;
 - deterministic `sloppy run --artifacts <dir> --once METHOD TARGET` synthetic dispatch;
+- startup route table construction from Plan v1 route metadata;
+- deterministic route precedence: literal patterns before parameter patterns, stable
+  source order when precedence is equal;
 - native `SlHttpResponse` descriptors for text, JSON, empty, and problem responses;
 - deterministic HTTP/1.1 response writing with status line, `Connection: close`,
   `Content-Type`, `Content-Length`, CRLF formatting, body bytes, and 204 no-body behavior;
-- minimal query parsing with `%XX`/`+` decoding and last-wins repeated keys;
+- minimal query parsing with `%XX`/`+` decoding, last-wins repeated keys, and
+  `SL_HTTP_DEFAULT_MAX_QUERY_PARAMS` pair bounds;
 - route/query/request context materialization for V8 handler calls.
+- unsupported request bodies rejected before handler execution.
 
 Future scope:
 
@@ -141,18 +148,22 @@ portion before `?`. TASK 10.B only accepts origin-form path targets that start w
 asterisk-form and absolute-form targets are rejected before returning success. Query
 parsing, percent decoding, URL normalization, and host validation are deferred.
 
-The dispatch helper accepts an already parsed `SlHttpRequestHead`, a borrowed route binding
-table, a parsed `SlPlan`, and an `SlEngine`. TASK 10.C supports only GET request dispatch.
-Route bindings borrow parsed `SlRoutePattern` values and carry a numeric `SlHandlerId`.
-The helper matches `request.path`, validates the handler ID exists in the plan before
-entering the engine, parses the query string, and then calls
+The dispatch helper accepts an already parsed `SlHttpRequestHead`, a route table, a parsed
+`SlPlan`, and an `SlEngine`. The route table is built from Plan v1 alpha route metadata
+before serving and parses each route pattern up front. MAIN1-04 supports only GET route
+entries. Duplicate method+pattern pairs are rejected as startup route-table failures.
+Literal routes sort before parameter routes, and equal-precedence routes keep source order.
+The helper rejects non-GET requests as `405`, rejects requests that declare a body as
+`501`, matches `request.path`, validates the handler ID exists in the plan before entering
+the engine, parses the query string, and then calls
 `sl_runtime_contract_call_handler_with_context`. Route parameters are passed to JavaScript
 as strings in `ctx.route`.
 
-`sloppy run` builds that manual binding table from the compiler-emitted `routes` metadata
-section. It now uses the native response writer: `200` for supported handler results,
-`404` for route misses, `405` for unsupported methods, and safe dev `500` text for
-malformed requests, malformed result descriptors, or handler/runtime failures.
+`sloppy run` builds that route table from the Plan `routes` section. It uses the native
+response writer: supported handler results use their descriptor status, route misses return
+`404`, unsupported methods return `405`, unsupported request bodies return `501`, and safe
+dev `500` text is used for malformed requests, malformed result descriptors, or
+handler/runtime failures.
 
 ## Ownership/Lifetime Rules
 
@@ -207,19 +218,22 @@ TASK 10.B adds small HTTP parser diagnostics:
 
 - invalid/malformed/incomplete HTTP request;
 - HTTP header count limit exceeded.
+- request target length exceeded.
 
-TASK 10.C adds small synthetic dispatch diagnostics:
+TASK 10.C and MAIN1-04 add small synthetic/dev dispatch diagnostics:
 
 - unsupported non-GET dispatch method;
+- unsupported request body;
 - no matching route;
 - matched route references a missing plan handler;
+- duplicate route table entries during startup;
+- malformed result descriptors returned by handlers;
 - missing/non-callable/throwing JavaScript functions through the existing engine diagnostic
   path.
 
 Future diagnostics:
 
-- duplicate routes;
-- ambiguous routes;
+- ambiguous routes beyond the current literal-vs-parameter precedence policy;
 - request conversion errors;
 - route conflict/source-span diagnostics.
 - route group/source metadata diagnostics once compiler extraction and plan route sections
@@ -242,11 +256,16 @@ Implemented CTest coverage:
 - malformed request lines, missing versions, invalid methods/tokens, invalid headers,
   incomplete requests, and empty targets;
 - max-header enforcement;
+- request target length enforcement;
 - parser diagnostics for malformed requests and header limits;
 - route matcher reuse with a parsed request path;
+- route table construction, duplicate route rejection, and literal-before-parameter
+  precedence;
+- query parameter limit enforcement;
 - libuv init/close smoke without network I/O;
 - synthetic dispatch no-route failure;
 - synthetic dispatch non-GET failure;
+- unsupported request body dispatch failure;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;

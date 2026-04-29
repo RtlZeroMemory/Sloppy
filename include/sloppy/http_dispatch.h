@@ -43,6 +43,24 @@ typedef struct SlHttpDispatchTable
 } SlHttpDispatchTable;
 
 /*
+ * Arena-owned route table materialized from Plan v1 alpha route metadata.
+ *
+ * `sl_http_route_table_build` parses supported route patterns, verifies handler references,
+ * and fills a dispatch table ordered by Sloppy's alpha precedence policy: literal patterns
+ * before parameter patterns, then stable source order for equal precedence. The returned
+ * table borrows arena-owned patterns and bindings and remains valid until the arena is reset
+ * or its backing storage ends.
+ */
+typedef struct SlHttpRouteTable
+{
+    SlHttpDispatchTable dispatch;
+    size_t route_count;
+} SlHttpRouteTable;
+
+SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRouteTable* out_table,
+                                   SlDiag* out_diag);
+
+/*
  * Dispatches one parsed in-memory HTTP request head to a Sloppy Plan handler ID.
  *
  * This is synthetic dispatch only: no sockets, no response writer, no body parsing, no
@@ -53,6 +71,7 @@ typedef struct SlHttpDispatchTable
  *
  * Failure behavior:
  * - non-GET requests fail with SL_STATUS_UNSUPPORTED;
+ * - requests that declare a body fail with SL_STATUS_UNSUPPORTED;
  * - no matching GET route fails with SL_STATUS_OUT_OF_RANGE;
  * - a matched route with a missing plan handler fails before entering the engine;
  * - missing/non-callable/throwing JavaScript handlers fail through the existing engine

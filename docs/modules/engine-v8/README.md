@@ -337,9 +337,10 @@ Current engine diagnostics include `SLOPPY_E_UNSUPPORTED_ENGINE` for unsupported
 operations, `SLOPPY_E_ENGINE_COMPILE_ERROR` for V8 syntax/compile failures,
 `SLOPPY_E_ENGINE_EXCEPTION` for thrown eval/function exceptions, and
 `SLOPPY_E_ENGINE_CALL_ERROR` for missing/non-callable smoke globals, missing registered
-handlers, and unsupported smoke result types. Eval-time intrinsic failures such as invalid
-`__sloppy_register_handler(...)` arguments or duplicate handler registration are reported
-as `SL_DIAG_ENGINE_EXCEPTION` because they are raised while evaluating the app module.
+handlers, and unsupported smoke result types. HTTP handler result descriptor conversion
+failures use `SLOPPY_E_INVALID_HTTP_RESULT`. Eval-time intrinsic failures such as invalid
+`__sloppy_register_handler(...)` arguments or duplicate handler registration are reported as
+`SL_DIAG_ENGINE_EXCEPTION` because they are raised while evaluating the app module.
 
 The mapping is intentionally basic. It captures V8 exception message text, generated
 source/resource name when available, 1-based line and column when V8 reports them, and a

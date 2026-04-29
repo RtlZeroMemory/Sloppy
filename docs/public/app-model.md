@@ -20,8 +20,10 @@ source matrix.
 Runtime status: `sloppy run --artifacts <dir>` can load EPIC-21/24 artifacts in a
 V8-enabled build, load the classic bootstrap runtime asset, evaluate the generated
 classic-script `app.js`, validate registered handler IDs, route GET request paths using the
-compiler-emitted route metadata, call handlers by numeric ID with a minimal
-route/query/request context, and return supported text/JSON/empty/problem responses.
+compiler-emitted route metadata, build a deterministic native route table, call handlers by
+numeric ID with a minimal route/query/request context, and return supported
+text/JSON/empty/problem responses. Unsupported request bodies fail before handler
+execution.
 Source input build handoff, native app-host validation, true bootstrap ESM loading,
 services, middleware, and `app.run` remain deferred.
 

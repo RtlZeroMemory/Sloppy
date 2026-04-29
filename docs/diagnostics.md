@@ -129,6 +129,9 @@ Implemented foundation codes:
 - `SLOPPY_E_HTTP_HEADER_LIMIT`;
 - `SLOPPY_E_HTTP_UNSUPPORTED_METHOD`;
 - `SLOPPY_E_HTTP_ROUTE_NOT_FOUND`;
+- `SLOPPY_E_DUPLICATE_ROUTE`;
+- `SLOPPY_E_HTTP_UNSUPPORTED_BODY`;
+- `SLOPPY_E_INVALID_HTTP_RESULT`;
 - `SLOPPY_E_SQLITE_PROVIDER`;
 - `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`;
 - `SLOPPY_E_POSTGRES_PROVIDER`;
@@ -299,6 +302,9 @@ Runtime diagnostics:
 - request scope leak in debug mode.
 - invalid route pattern in the native route parser;
 - duplicate route parameter names.
+- duplicate route method+pattern pairs during route table construction;
+- unsupported request bodies;
+- invalid HTTP result descriptors.
 
 V8 diagnostics:
 

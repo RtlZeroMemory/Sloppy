@@ -242,13 +242,38 @@ static int test_callback_allocation_failure_preserved(void)
     return 0;
 }
 
+static int test_max_target_length_enforced(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlDiag diag = {0};
+    SlHttpParseOptions options = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 52;
+    }
+
+    options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    options.max_target_length = 4U;
+    status = parse_request(&arena, "GET /toolong HTTP/1.1\r\n\r\n", &options, &request, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_INVALID_HTTP_REQUEST || request.raw_target.ptr != NULL)
+    {
+        return 53;
+    }
+
+    return 0;
+}
+
 static int test_max_headers_enforced(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
     SlHttpRequestHead request = {0};
     SlDiag diag = {0};
-    SlHttpParseOptions options = {1U};
+    SlHttpParseOptions options = {.max_headers = 1U};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
 
     if (!sl_status_is_ok(status)) {
@@ -419,6 +444,11 @@ int main(void)
     }
 
     result = test_callback_allocation_failure_preserved();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_max_target_length_enforced();
     if (result != 0) {
         return result;
     }

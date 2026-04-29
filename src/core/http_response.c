@@ -85,6 +85,8 @@ static const char* sl_http_response_reason(uint16_t status)
         return "Method Not Allowed";
     case 500U:
         return "Internal Server Error";
+    case 501U:
+        return "Not Implemented";
     default:
         return NULL;
     }

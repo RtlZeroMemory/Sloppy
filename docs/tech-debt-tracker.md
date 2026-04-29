@@ -57,9 +57,10 @@ state and an honest public-alpha path.
   policy and failure diagnostics.
 - Query parsing beyond EPIC-23 scalar last-wins values, including repeated-key arrays if
   the public API chooses them.
-- Request body parsing skeleton with explicit limits and unsupported-content diagnostics.
-- JSON serialization strategy for `Results.json`, including supported values, errors,
-  redaction, and benchmark plan.
+- Request body parsing skeleton with content-type/body-size policy. MAIN1-04 rejects
+  body-bearing requests clearly but does not parse bodies.
+- JSON serialization strategy beyond the current V8 `JSON.stringify` bridge, including
+  richer supported value errors, redaction, and benchmark plan.
 - Plan module/service sections and broader native app-host startup validation beyond the
   MAIN1-02 route/provider/capability metadata contract.
 - Provider/capability enforcement that turns MAIN1-02 metadata into denied-operation
@@ -86,7 +87,8 @@ state and an honest public-alpha path.
 - Full response pipeline: streaming, files, redirects, cookies, content negotiation,
   compression, keep-alive tuning, and middleware/result filters.
 - Full route table/trie optimization, catch-all routes, optional segments, regex
-  constraints, nested route groups, route precedence policy, and ambiguity diagnostics.
+  constraints, nested route groups, and ambiguity diagnostics beyond MAIN1-04's
+  literal-before-parameter precedence policy.
 - Full OpenAPI generation, request/response schema emission, examples, and security
   schemes.
 - Full validation engine behavior: body/query/headers/route binding, automatic problem

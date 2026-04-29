@@ -70,8 +70,10 @@ Native dev dispatch passes this implemented EPIC-23 runtime context to compiled 
 Route params and query values are strings. `{id:int}` validates the path segment but does
 not coerce `route.id` to a number. Query parsing splits on `&`, splits key/value on the
 first `=`, allows empty values, uses last-wins for repeated keys, decodes `%XX`, and treats
-`+` as a space. Invalid percent escapes fail safely. Request body parsing and headers in
-context are not implemented.
+`+` as a space. Invalid percent escapes fail safely. The dev runtime bounds request targets
+with `SL_HTTP_DEFAULT_MAX_TARGET_LENGTH` and query pairs with
+`SL_HTTP_DEFAULT_MAX_QUERY_PARAMS`. Request body parsing and headers in context are not
+implemented; requests that declare a body are rejected before handler execution.
 
 Route groups:
 
@@ -114,10 +116,14 @@ Dev-only run behavior:
 - parses each route pattern with the existing native route parser;
 - rejects malformed route sections, duplicate method/pattern pairs, duplicate non-empty
   route names, and missing handler references during plan startup validation;
+- builds a native route table before serving;
+- orders literal route patterns before parameter route patterns and preserves source order
+  when precedence is equal;
 - matches incoming request paths with strict trailing-slash behavior;
 - resolves the matched route to a numeric handler ID and validates that ID against the
   parsed Plan handler table before entering V8;
-- returns `404` when no GET route matches and `405` for unsupported methods;
+- returns `404` when no GET route matches, `405` for unsupported methods, and `501` for
+  unsupported request bodies;
 - returns safe dev `500` responses for handler exceptions or malformed/unsupported result
   descriptors.
 

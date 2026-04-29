@@ -89,9 +89,10 @@ keep-alive contract, no middleware, no hot reload, no package manager, no npm re
 no arbitrary import graph, and no Node compatibility.
 
 `--once METHOD TARGET` is a deterministic dev/test helper. It does not open a socket; it
-loads artifacts, dispatches one synthetic request target, prints the HTTP response bytes,
-and exits nonzero only for startup/tooling failures. Route misses print a `404` response,
-and unsupported methods print a `405` response.
+loads artifacts, builds the native dev route table, dispatches one synthetic request target,
+prints the HTTP response bytes, and exits nonzero only for startup/tooling failures. Route
+misses print a `404` response and unsupported methods print a `405` response. In socket
+mode, requests that declare a body print a `501` response.
 
 In non-V8 builds, `sloppy run` fails before serving with:
 
@@ -100,11 +101,11 @@ sloppy run: sloppy run requires V8-enabled build
 ```
 
 Missing stdlib assets, missing app modules, malformed plans, missing route metadata,
-invalid route patterns, missing plan handlers, missing registrations, duplicate handler
-registrations, intrinsic misuse, V8 evaluation failures, thrown handlers, malformed query
-strings, and malformed/unsupported result descriptors fail with stderr diagnostics or safe
-dev `500` responses depending on whether the failure happens during startup or request
-dispatch.
+duplicate route method/pattern pairs, invalid route patterns, missing plan handlers, missing
+registrations, duplicate handler registrations, intrinsic misuse, V8 evaluation failures,
+thrown handlers, malformed query strings, unsupported request bodies, and
+malformed/unsupported result descriptors fail with stderr diagnostics or safe dev HTTP
+responses depending on whether the failure happens during startup or request dispatch.
 
 ## Metadata Input
 

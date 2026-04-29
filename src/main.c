@@ -962,12 +962,6 @@ static const SlCliHandler* sl_cli_find_handler(const SlCliMetadata* metadata, Sl
     return NULL;
 }
 
-typedef struct SlRunRoute
-{
-    SlRoutePattern pattern;
-    SlHttpRouteBinding binding;
-} SlRunRoute;
-
 typedef struct SlRunApp
 {
     unsigned char plan_json_storage[SL_RUN_FILE_MAX_BYTES];
@@ -983,9 +977,7 @@ typedef struct SlRunApp
     SlPlan plan;
     SlBytes app_js_bytes;
     SlEngine* engine;
-    SlRunRoute routes[SL_CLI_MAX_ROUTES];
-    SlHttpRouteBinding bindings[SL_CLI_MAX_ROUTES];
-    SlHttpDispatchTable dispatch_table;
+    SlHttpRouteTable route_table;
 } SlRunApp;
 
 typedef struct SlRunServer SlRunServer;
@@ -1378,55 +1370,28 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
 
 static int sl_run_prepare_routes(SlRunApp* app)
 {
-    size_t index = 0U;
-    size_t count = 0U;
+    SlDiag diag = {0};
+    SlStatus status;
 
-    for (index = 0U; index < app->plan.route_count; index += 1U) {
-        const SlPlanRoute* route = &app->plan.routes[index];
-        const SlPlanHandler* handler = NULL;
-        SlStatus status;
-
-        if (!sl_str_equal(route->method, sl_str_from_cstr("GET"))) {
-            continue;
-        }
-
-        if (count >= SL_CLI_MAX_ROUTES) {
-            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json contains more GET routes than the "
-                                      "dev runtime can materialize\n");
-            return 1;
-        }
-
-        status = sl_plan_find_handler_by_id(&app->plan, route->handler_id, &handler);
-        if (!sl_status_is_ok(status)) {
-            sl_cli_write_cstr(stderr,
-                              "sloppy run: route metadata references a missing plan handler\n");
-            return 1;
-        }
-
-        status = sl_route_pattern_parse(&app->route_arena, route->pattern,
-                                        &app->routes[count].pattern, NULL);
-        if (!sl_status_is_ok(status)) {
-            sl_cli_write_cstr(stderr, "sloppy run: route metadata contains an invalid pattern: ");
-            sl_cli_write_span(stderr, sl_run_str_span(route->pattern));
-            sl_cli_write_cstr(stderr, "\n");
-            return 1;
-        }
-
-        app->routes[count].binding.method = SL_HTTP_METHOD_GET;
-        app->routes[count].binding.pattern = &app->routes[count].pattern;
-        app->routes[count].binding.handler_id = route->handler_id;
-        app->bindings[count] = app->routes[count].binding;
-        count += 1U;
+    if (app->plan.route_count > SL_CLI_MAX_ROUTES) {
+        sl_cli_write_cstr(
+            stderr, "sloppy run: app.plan.json contains more GET routes than the dev runtime can "
+                    "materialize\n");
+        return 1;
     }
 
-    if (count == 0U) {
+    status = sl_http_route_table_build(&app->route_arena, &app->plan, &app->route_table, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to build HTTP route table\n");
+        return 1;
+    }
+
+    if (app->route_table.route_count == 0U) {
         sl_cli_write_cstr(stderr,
                           "sloppy run: app.plan.json does not contain GET route metadata\n");
         return 1;
     }
 
-    app->dispatch_table.routes = app->bindings;
-    app->dispatch_table.route_count = count;
     return 0;
 }
 
@@ -1655,7 +1620,7 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
     }
 
     status = sl_http_dispatch_request_head(&dispatch_arena, app->engine, &app->plan,
-                                           &app->dispatch_table, request, &result, &diag);
+                                           &app->route_table.dispatch, request, &result, &diag);
     if (sl_status_is_ok(status)) {
         if (!sl_status_is_ok(sl_http_response_write(&result.response, (unsigned char*)response,
                                                     response_capacity, &response_bytes)))
@@ -1670,6 +1635,13 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
     {
         return sl_run_write_response(response, response_capacity, 405U, "text/plain; charset=utf-8",
                                      sl_str_from_cstr("Method Not Allowed\n"));
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag.code == SL_DIAG_HTTP_UNSUPPORTED_BODY)
+    {
+        return sl_run_write_response(response, response_capacity, 501U, "text/plain; charset=utf-8",
+                                     sl_str_from_cstr("Request body is not supported\n"));
     }
 
     if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
@@ -1771,6 +1743,118 @@ static void sl_run_client_alloc_cb(uv_handle_t* handle, size_t suggested_size, u
     *buf = uv_buf_init(client->request + client->request_length, (unsigned int)remaining);
 }
 
+static int sl_run_ascii_lower(int ch)
+{
+    if (ch >= 'A' && ch <= 'Z') {
+        return ch - 'A' + 'a';
+    }
+    return ch;
+}
+
+static bool sl_run_header_name_equal(const char* ptr, size_t length, const char* expected)
+{
+    size_t index = 0U;
+
+    if (ptr == NULL || expected == NULL) {
+        return false;
+    }
+
+    while (length > 0U && (ptr[length - 1U] == ' ' || ptr[length - 1U] == '\t')) {
+        length -= 1U;
+    }
+
+    while (index < length && expected[index] != '\0') {
+        if (sl_run_ascii_lower((unsigned char)ptr[index]) !=
+            sl_run_ascii_lower((unsigned char)expected[index]))
+        {
+            return false;
+        }
+        index += 1U;
+    }
+
+    return index == length && expected[index] == '\0';
+}
+
+static bool sl_run_content_length_declares_body(const char* ptr, size_t length)
+{
+    size_t index = 0U;
+
+    if (ptr == NULL && length != 0U) {
+        return true;
+    }
+
+    while (index < length && (ptr[index] == ' ' || ptr[index] == '\t')) {
+        index += 1U;
+    }
+
+    while (index < length) {
+        if (ptr[index] >= '1' && ptr[index] <= '9') {
+            return true;
+        }
+        if (ptr[index] != '0' && ptr[index] != ' ' && ptr[index] != '\t') {
+            return true;
+        }
+        index += 1U;
+    }
+
+    return false;
+}
+
+static bool sl_run_header_line_declares_body(const char* line, size_t length)
+{
+    size_t colon = 0U;
+
+    while (colon < length && line[colon] != ':') {
+        colon += 1U;
+    }
+    if (colon == length) {
+        return false;
+    }
+
+    if (sl_run_header_name_equal(line, colon, "Content-Length")) {
+        return sl_run_content_length_declares_body(line + colon + 1U, length - colon - 1U);
+    }
+
+    return sl_run_header_name_equal(line, colon, "Transfer-Encoding");
+}
+
+static bool sl_run_request_declares_body(const char* request, size_t length)
+{
+    size_t line_start = 0U;
+    size_t line_end = 0U;
+
+    if (request == NULL) {
+        return false;
+    }
+
+    while (line_end + 1U < length && !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
+    {
+        line_end += 1U;
+    }
+    if (line_end + 1U >= length) {
+        return false;
+    }
+
+    line_start = line_end + 2U;
+    while (line_start + 1U < length) {
+        line_end = line_start;
+        while (line_end + 1U < length &&
+               !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
+        {
+            line_end += 1U;
+        }
+        if (line_end + 1U >= length || line_end == line_start) {
+            return false;
+        }
+        if (sl_run_header_line_declares_body(request + line_start, line_end - line_start)) {
+            return true;
+        }
+        line_start = line_end + 2U;
+    }
+
+    return false;
+}
+
 static void sl_run_client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     SlRunClient* client = (SlRunClient*)stream->data;
@@ -1803,6 +1887,20 @@ static void sl_run_client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_b
             (void)uv_write(&client->write_request, stream, &response_buf, 1U,
                            sl_run_client_write_cb);
         }
+        return;
+    }
+
+    if (sl_run_request_declares_body(client->request, client->request_length)) {
+        response_length = sl_run_write_response(
+            client->response, sizeof(client->response), 501U, "text/plain; charset=utf-8",
+            sl_str_from_cstr("Request body is not supported\n"));
+        if (response_length < 0) {
+            uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
+            return;
+        }
+        response_buf = uv_buf_init(client->response, (unsigned int)response_length);
+        client->write_request.data = client;
+        (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
         return;
     }
 

@@ -13,6 +13,8 @@
 extern "C" {
 #endif
 
+#define SL_HTTP_DEFAULT_MAX_QUERY_PARAMS 64U
+
 typedef struct SlHttpQueryParam
 {
     SlStr name;
