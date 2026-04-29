@@ -145,7 +145,8 @@ Current tests:
 - experimental package smoke through `tools/windows/test-package.ps1`, which extracts a
   ZIP outside the checkout, runs `sloppy`/`sloppyc` version and help commands, verifies
   stdlib assets, validates manifest fields, checks excluded local/build directories, and
-  verifies `SHA256SUMS.txt` when present.
+  verifies `SHA256SUMS.txt` when present. This is package-layout smoke, not release
+  readiness, V8 runtime evidence, or live provider evidence.
 - CI provider gate reporting, which prints whether default provider tests run, whether
   PostgreSQL and SQL Server live tests are skipped or enabled by environment variables,
   and whether SQL Server ODBC execution is unavailable on the current non-Windows default
@@ -215,8 +216,16 @@ Packaging smoke:
 .\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
 ```
 
+The package script can run the outside-checkout smoke in one step:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration Release -Smoke
+```
+
 The package smoke must not require V8, live databases, a running HTTP server, admin
-privileges, global PATH mutation, or package-manager behavior.
+privileges, global PATH mutation, or package-manager behavior. Passing package smoke does
+not prove installers, signing/notarization, package-manager distribution, V8 runtime
+bundling, Linux/macOS package execution, or public release readiness.
 
 PostgreSQL live provider tests are gated by environment variable and are skipped by default:
 
@@ -262,7 +271,9 @@ Benchmark commands are manual/local performance-validation tools:
 ```
 
 Release builds are required for meaningful benchmark numbers. Debug and smoke output may
-be used to verify harness behavior only.
+be used to verify harness behavior only. Benchmark smoke/list checks are not public
+performance claims, and one-off local measurements are not external runtime comparison
+claims without a future methodology task.
 
 ## Test Layout
 

@@ -25,6 +25,11 @@ Default CI now runs Windows clang-cl, Linux clang, Linux gcc, and macOS clang no
 Benchmark list/smoke checks may run as correctness smoke, but performance deltas are not a
 normal hard gate yet.
 
+Default gate success must be reported as default non-V8 evidence. It does not prove V8
+runtime execution, live PostgreSQL or SQL Server behavior, package release readiness,
+benchmark/performance claims, or public alpha readiness. `docs/project/main-evidence.md`
+is the source document for reporting those evidence categories separately.
+
 ## Future Phase
 
 Future gates add sanitizers, fuzzing, diagnostics snapshots, compiler goldens, benchmarks,
@@ -113,6 +118,16 @@ The package smoke must extract outside the checkout, run basic CLI commands, ver
 assets and manifest fields, and verify the checksum file. It is a local artifact smoke, not
 a reproducible public-release claim.
 
+The package command may also run smoke directly:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration Release -Smoke
+```
+
+That smoke proves the local Windows archive layout starts basic packaged CLI commands
+outside the checkout. It does not prove V8 runtime packaging, live providers, installers,
+signing/notarization, package-manager distribution, or public alpha release readiness.
+
 ## Local Versus CI Behavior
 
 Locally, missing optional quality tools may print a clear skip warning. In CI, missing
@@ -180,6 +195,12 @@ Optional/gated jobs:
 - Live provider CTests must be registered as separate optional gates and use skip code `77`
   for not-configured environments. A skipped live provider test is a reported skip, not a
   pass claim.
+- Package smoke is not part of the default required CI matrix. A PR that reports package
+  evidence must list the package command and outside-checkout smoke result separately from
+  default CI.
+- Benchmark list/smoke checks are harness checks. Measured Release benchmark runs, when
+  scoped, must be reported separately and must not be described as public performance
+  claims.
 
 ## Documentation Freshness
 

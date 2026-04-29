@@ -1,14 +1,14 @@
-# MAIN Evidence
+# MAIN Evidence And Gate Report
 
-Status: MAIN-01 evidence contract for the executable artifact-path alpha verification.
+Status: ROADMAP MAIN evidence/reporting contract.
 
-MAIN-01 is an evidence PR. It proves, or explicitly separates, the smallest supported path:
-`examples/compiler-hello/app.js` -> `sloppyc build` -> deterministic artifacts ->
-V8-gated `sloppy run --artifacts --once GET /`.
+MAIN evidence must say exactly which gate ran and what that gate proves. Default non-V8
+success is useful, but it is not proof of V8 runtime execution, live database behavior,
+package release readiness, benchmark performance, or public alpha readiness.
 
-## Default Non-V8 Gates
+## Default Gates
 
-The default non-V8 gates are:
+The default Windows evidence set is:
 
 ```powershell
 .\tools\windows\bootstrap.ps1
@@ -25,17 +25,40 @@ cargo test --manifest-path compiler/Cargo.toml
 git diff --check
 ```
 
-These commands prove the default runtime/compiler/test surface, compiler artifact
-determinism, docs/static checks, unsupported compiler inputs, source-input run deferral,
-missing artifact diagnostics, malformed plan diagnostics, and the non-V8
-`sloppy run --artifacts` diagnostic.
+These commands prove:
 
-This default gate set does not prove V8 execution. A green default test run does not mean
-the MAIN hello handler executed through V8.
+- the default build configures, compiles, and runs its registered CTest suite;
+- default CTest covers portable runtime foundations, compiler artifact determinism,
+  default CLI/process diagnostics, default provider diagnostics, static/bootstrap checks,
+  and benchmark harness smoke where registered;
+- format, lint, artifact hygiene, platform/C standards, docs freshness, JS/TS standards,
+  and Rust standards checks passed;
+- Rust compiler formatting, clippy, and tests passed;
+- the default path is non-V8 unless V8 is explicitly enabled.
+
+These commands do not prove:
+
+- V8 runtime execution or the MAIN hello handler running through V8;
+- live PostgreSQL or SQL Server provider behavior;
+- package installability outside the checkout unless package smoke also ran;
+- package release readiness, signing, notarization, package-manager integration, or public
+  distribution readiness;
+- benchmark/performance claims;
+- public alpha readiness.
+
+When reporting default gate results, call them default non-V8 results. Do not collapse them
+into "MAIN passed" if optional V8, package, provider, or benchmark evidence was skipped.
 
 ## Compiler Artifact Smoke
 
-The MAIN artifact smoke command is:
+The MAIN artifact smoke builds the canonical supported compiler source shape:
+
+```powershell
+cargo run --manifest-path compiler/Cargo.toml -- build examples/compiler-hello/app.js --out .sloppy-main-smoke
+```
+
+When an installed `sloppyc` binary from the relevant build/package is the subject under
+test, the equivalent command is:
 
 ```powershell
 sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
@@ -46,50 +69,158 @@ builds must produce byte-identical artifact contents with stable handler IDs and
 absolute local paths, timestamps, random IDs, or checkout-specific paths.
 
 This proves deterministic compiler emission for the canonical supported source shape. It
-does not prove runtime execution.
+does not prove runtime execution, source-input `sloppy run`, broad TypeScript extraction,
+Node/npm resolution, package release readiness, or public alpha readiness.
 
-## V8-Gated Commands
+## V8-Gated Evidence
 
-The V8-gated commands are optional/manual unless the local build has a valid V8 SDK.
+V8 evidence exists only when the build is explicitly configured with an approved SDK.
+Default gates and required hosted CI leave V8 disabled.
 
-The positive MAIN run command is:
+Validate the SDK when a local SDK root is available:
 
 ```powershell
-sloppy run --artifacts .sloppy-main-smoke --once GET /
+.\tools\windows\fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>
 ```
 
-Run it only from a V8-enabled build. The expected response body is:
+Configure, build, and test the V8-enabled preset:
+
+```powershell
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8 -V8Root <sdk-root>
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
+
+The equivalent CMake selection is `SLOPPY_ENABLE_V8=ON` or `SLOPPY_ENGINE=v8` with
+`SLOPPY_V8_ROOT=<sdk-root>`. The current Windows source SDK is release/RelWithDebInfo
+compatible; do not use it with the default Debug `windows-dev` preset.
+
+Run the MAIN hello run-once smoke only from the V8-enabled build after creating the
+compiler smoke artifacts:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy-main-smoke --once GET /
+```
+
+The expected response body for the canonical fixture is:
 
 ```text
 Hello from Sloppy
 ```
 
-When V8 is not available, report the command as skipped or unavailable and run the default
-non-V8 diagnostic test instead. Do not infer V8 success from default gates.
+Successful V8 evidence proves the configured SDK was accepted, the V8-enabled build/test
+suite ran, and the supported compiler artifact path can execute the MAIN hello handler
+through the current classic bootstrap/runtime-contract path.
 
-## Unsupported Paths
+It does not prove true V8 ESM bootstrap module loading, Node/npm compatibility, arbitrary
+imports, source-input `sloppy run`, production HTTP serving, provider bridge execution,
+package release readiness, dynamic V8 runtime packaging, or public alpha readiness.
 
-MAIN evidence covers these unsupported paths:
+If the SDK is unavailable, report V8 evidence as skipped or unavailable. Do not infer V8
+success from default gates.
 
-- `sloppy run <source.js>`: source-input handoff to `sloppyc` is deferred.
-- dynamic route patterns in compiler input: rejected by compiler diagnostics.
-- arbitrary bare imports such as `express`, `fs`, or `node:fs`: rejected by compiler
-  diagnostics.
-- missing artifact directory or missing `app.plan.json`: command failure with stderr.
-- malformed `app.plan.json`: command failure with stderr.
-- missing `app.js`: V8-gated startup failure with stderr.
-- V8-disabled `sloppy run --artifacts`: command failure with the V8-required diagnostic.
-- unsupported run-once methods: safe `405 Method Not Allowed` response when V8 execution is
-  available.
+## Package Evidence
 
-## Out Of Scope Evidence
+The current Windows package command is:
 
-Package smoke is relevant only when packaging files or package behavior change. MAIN-01
-does not require package smoke unless a validation run explicitly chooses to add it to the
-report.
+```powershell
+.\tools\windows\package.ps1 -Configuration Release -Smoke
+```
 
-Live provider tests are not relevant to MAIN-01. MAIN does not exercise SQLite,
-PostgreSQL, SQL Server, provider bridges, credentials, or live database services.
+The explicit outside-checkout smoke command for an existing archive is:
 
-Benchmark claims are not relevant to MAIN-01. Benchmark list/smoke checks prove harness
-startup only and must not be reported as runtime performance evidence.
+```powershell
+.\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+```
+
+Package smoke extracts the ZIP under a temporary directory outside the checkout, runs
+`sloppy --version`, `sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies
+stdlib assets and manifest fields, checks excluded local/build directories are absent, and
+verifies `SHA256SUMS.txt` when present.
+
+Package smoke proves the local Windows archive layout can start the basic packaged CLI
+tools outside the source checkout. It does not prove V8 runtime execution, live providers,
+source-input run behavior, installers, signing/notarization, package-manager distribution,
+auto-update, reproducible release builds, or public release readiness.
+
+Linux/macOS packaging currently has an experimental TAR staging script:
+
+```sh
+tools/unix/package.sh --configuration Release
+```
+
+Hosted Linux/macOS default CI validates non-V8 configure/build/test, Cargo gates, and POSIX
+standards scanners. It does not yet run package execution smoke for Linux/macOS archives.
+
+V8 runtime packaging is not proven by default package smoke. The default local package is
+non-V8 and records no V8 SDK inclusion. Any V8 runtime packaging evidence must state the
+build, SDK/runtime files, package flags, and smoke command that actually ran.
+
+## Live Provider Evidence
+
+SQLite default evidence is in-memory native provider coverage through the default CTest
+suite. This is useful SQLite provider evidence, but it is not JavaScript-to-native bridge
+evidence and it is not a live external service check.
+
+PostgreSQL live provider coverage is opt-in:
+
+```powershell
+$env:SLOPPY_POSTGRES_TEST_URL="postgres://postgres:postgres@localhost:5432/sloppy_test"
+.\tools\windows\dev.ps1 test
+```
+
+SQL Server live provider coverage is opt-in and also depends on a local ODBC driver and a
+reachable server:
+
+```powershell
+$env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING="Driver={ODBC Driver 18 for SQL Server};Server=localhost;Database=sloppy_test;UID=sa;PWD=<secret>;TrustServerCertificate=yes;"
+.\tools\windows\dev.ps1 test
+```
+
+Default provider tests prove non-live provider diagnostics, redaction behavior, option
+validation, and unavailable/stub behavior where configured. They do not prove live
+PostgreSQL or SQL Server connectivity unless the relevant environment variable was set and
+the run reported that the live gate executed.
+
+Do not paste secrets into PR bodies, logs, fixtures, or docs. Reports should name the
+environment variable and use redacted placeholders.
+
+## Benchmark Evidence
+
+Benchmark smoke/list commands are:
+
+```powershell
+.\tools\windows\bench.ps1 -List
+.\tools\windows\bench.ps1 -Smoke -Json
+```
+
+Measured local benchmark commands use a Release build:
+
+```powershell
+.\tools\windows\bench.ps1 -Configuration Release
+.\tools\windows\bench.ps1 -Configuration Release -Json > .\benchmarks-local.json
+```
+
+List/smoke checks prove the benchmark harness starts, exposes expected benchmark names, and
+can execute tiny smoke iterations. They are harness correctness checks, not performance
+claims.
+
+Current measured scenarios are foundation microbenchmarks for route parsing/matching,
+complete-buffer HTTP request-head parsing, handler plan lookup/noop dispatch plumbing, and
+synthetic dispatch paths. V8 handler timing, real HTTP throughput, JSON serialization,
+live database benchmarks, trend gates, dashboards, and external runtime comparisons remain
+deferred unless a future scoped task adds methodology and evidence.
+
+Do not use benchmark smoke output, Debug numbers, or one-off local numbers as public
+performance claims.
+
+## Reporting Template
+
+Evidence reports and PR bodies should separate:
+
+- default non-V8 gates run or skipped;
+- V8-gated commands run or skipped;
+- package smoke run or skipped;
+- live provider gates run or skipped;
+- benchmark checks run or skipped;
+- non-goals, especially runtime/compiler/provider implementation changes.
