@@ -48,17 +48,22 @@ Current tests:
   source files exist and were copied to the build output support-data layout;
 - CTest structural check `bootstrap.stdlib.api_shape`, which statically verifies the tiny
   bootstrap API source shape for `Results.text/json`, `Sloppy.create`,
-  `Sloppy.createBuilder`, builder config/logging/services, `app.mapGet`, `.withName`,
-  `app.freeze`, route snapshots, index exports, and absence of deferred app-host APIs;
+  `Sloppy.createBuilder`, builder config/logging/services, `app.mapGet`, `app.mapGroup`,
+  route group metadata, `.withName`, `app.freeze`, route snapshots, `schema`, index
+  exports, and absence of deferred app-host APIs;
 - optional CTest executable check `bootstrap.stdlib.app_host_foundation` when `node` is
   available, which imports the ESM stdlib and verifies builder freeze, config behavior,
-  logging memory sinks, services singleton/transient behavior, route handler context, and
-  app freeze behavior. This is test infrastructure only and is not a Node compatibility
-  claim;
+  logging memory sinks, services singleton/transient behavior, route groups, result
+  helpers, schema validation, route handler context, and app freeze behavior. This is test
+  infrastructure only and is not a Node compatibility claim;
 - CTest structural check `examples.hello.api_shape`, which statically verifies the first
   hello example files exist, use the current relative stdlib import, use
   `Sloppy.createBuilder`, `builder.build`, `app.mapGet`, and `Results.text`, and do not
   introduce package-manager scope;
+- CTest structural check `examples.ergonomics.api_shape`, which statically verifies the
+  EPIC-13 example files exist, use the current relative stdlib import, demonstrate route
+  groups, result helpers, schema metadata, config/logging/services, and honestly document
+  that the example is not runnable through `sloppy run` yet;
 - Rust unit tests for placeholder CLI argument behavior;
 - platform-boundary scanner;
 - C standards scanner.
@@ -319,9 +324,9 @@ tests/bootstrap/test_app_host_foundation.mjs
 
 CMake registers it as `bootstrap.stdlib.app_host_foundation` only when `node` is available.
 It verifies documented bootstrap behavior for builder/app freeze, config, logging,
-services, route context, and `Sloppy.create()` consistency. It does not add package-manager
-behavior, npm dependencies, or a Node compatibility promise. V8-backed ESM bootstrap tests
-remain future work.
+services, route groups, result descriptors, schema validation, route context, and
+`Sloppy.create()` consistency. It does not add package-manager behavior, npm dependencies,
+or a Node compatibility promise. V8-backed ESM bootstrap tests remain future work.
 
 TASK 11.D adds the first public example structural check:
 
@@ -334,6 +339,17 @@ tests/cmake/check_hello_example.cmake
 It is intentionally static for the same ESM/module-loading reason. It verifies documented
 example intent and current API usage without requiring Node, npm, a bundler, `sloppy run`,
 compiler extraction, `app.plan.json` emission, or HTTP server behavior.
+
+EPIC-13 adds a second static example check:
+
+```text
+examples/ergonomics/app.js
+examples/ergonomics/README.md
+tests/cmake/check_ergonomics_example.cmake
+```
+
+It verifies the current route group, result helper, schema skeleton, and app-host foundation
+API shape without claiming runtime execution.
 
 Later integration tests cover HTTP, routing, modules, providers, and packaging.
 

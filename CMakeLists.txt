@@ -30,6 +30,7 @@ set(
     bootstrap.manifest.json
     index.js
     results.js
+    schema.js
     internal/intrinsics.js)
 
 find_program(CARGO_EXECUTABLE cargo)
@@ -579,6 +580,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.hello.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_hello_example.cmake")
+    add_test(
+        NAME examples.ergonomics.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_ergonomics_example.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

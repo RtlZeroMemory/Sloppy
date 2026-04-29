@@ -54,6 +54,9 @@ Future scope:
 - No route params passed to JavaScript, request context, route groups, route precedence,
   middleware, `Results.*`, response formatting, TCP/libuv server behavior, or public
   TypeScript API in TASK 10.C.
+- EPIC-13 route groups exist only in `stdlib/sloppy/app.js` as in-memory bootstrap
+  metadata. They do not alter the native route parser, matcher, synthetic dispatch helper,
+  HTTP route table, or request context.
 
 ## Public/Internal API
 
@@ -200,6 +203,8 @@ Future diagnostics:
 - ambiguous routes;
 - request conversion errors;
 - route conflict/source-span diagnostics.
+- route group/source metadata diagnostics once compiler extraction and plan route sections
+  exist.
 
 ## Tests
 

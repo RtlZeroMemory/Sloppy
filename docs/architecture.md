@@ -88,6 +88,13 @@ still JavaScript-only bootstrap state. It does not implement native app-host val
 `app.run`/`app.listen`, compiler extraction, `app.plan.json` emission, HTTP serving,
 modules, middleware, validation, data providers, config file/env providers, native logging,
 or real request-scoped service lifetimes.
+TASK 13.A/13.B/13.C/13.D adds the first developer ergonomics layer on top of that
+bootstrap state: in-memory route groups and grouped GET registration, a fuller bounded
+`Results.*` descriptor helper set, a small `schema` validation skeleton, route metadata
+storage for validation shapes, and `examples/ergonomics/`. It still does not implement
+compiler extraction, plan emission, native HTTP serving, middleware, modules, OpenAPI,
+request parsing, automatic validation responses, or route params in native JavaScript
+contexts.
 
 ## Future Phase
 

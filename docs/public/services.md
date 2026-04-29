@@ -37,6 +37,10 @@ Implemented behavior:
 The current scope object is a tiny resolution context only. It is not a real request
 lifetime and it does not own disposal.
 
+`examples/ergonomics/app.js` uses a singleton service from a grouped route handler to show
+the current bootstrap handler context shape. This is still JavaScript-only route snapshot
+behavior, not native request-scope DI.
+
 Not implemented yet: request-scoped lifetimes, disposal hooks, async factories, dependency
 graph validation, cycle diagnostics, typed tokens, decorators, module-owned services,
 capabilities, native service graph validation, and plan emission.

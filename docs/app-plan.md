@@ -245,6 +245,10 @@ Validation and OpenAPI metadata:
 - JSON-schema-like shape or Sloppy-specific compact representation;
 - diagnostics display name.
 
+TASK 13.C implements only the bootstrap JavaScript `schema` object shape and optional route
+metadata storage. The native Plan v1 parser still does not parse a `schemas` section, route
+validation binding, OpenAPI metadata, or schema references.
+
 ## File And Module Layout
 
 Likely implementation areas:
