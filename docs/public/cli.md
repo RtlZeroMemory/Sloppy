@@ -16,10 +16,11 @@ sloppy audit --plan <path> [--format text|json]
 sloppy openapi --plan <path> [--output <path>]
 ```
 
-`sloppy run` is a dev-only MVP that loads EPIC-21 artifacts, enters V8, dispatches GET
-routes, and writes tiny text/JSON-compatible HTTP responses. It requires a V8-enabled
-build. Source input handoff to `sloppyc` is deferred; use `sloppyc build ... --out
-<dir>` first, then run the emitted artifact directory.
+`sloppy run` is a dev-only MVP that loads EPIC-21/23 artifacts, enters V8, dispatches GET
+routes, passes a minimal route/query/request context, converts supported `Results.*`
+descriptors, and writes HTTP/1.1 responses through the native response writer. It requires
+a V8-enabled build. Source input handoff to `sloppyc` is deferred; use `sloppyc build ...
+--out <dir>` first, then run the emitted artifact directory.
 
 The other commands inspect plan-compatible metadata JSON only. They do not compile apps,
 run handlers, start an HTTP server, enter V8, connect to live databases, or execute
@@ -49,9 +50,10 @@ matcher, creates a V8 engine, evaluates `app.js` as the current classic-script a
 and dispatches requests by numeric handler ID through the existing runtime-contract path.
 
 Default server binding is `127.0.0.1:5173`. The server is single-process, dev-only, and
-intentionally tiny: HTTP/1 request heads only, GET dispatch only, no TLS, no body parsing,
-no streaming, no keep-alive contract, no middleware, no hot reload, no package manager, and
-no Node compatibility.
+intentionally tiny: HTTP/1 request heads only, GET dispatch only, route/query/request
+context only, no TLS, no body parsing, no headers in handler context, no streaming, no
+keep-alive contract, no middleware, no hot reload, no package manager, and no Node
+compatibility.
 
 `--once METHOD TARGET` is a deterministic dev/test helper. It does not open a socket; it
 loads artifacts, dispatches one synthetic request target, prints the HTTP response bytes,
@@ -65,9 +67,10 @@ sloppy run: sloppy run requires V8-enabled build
 ```
 
 Missing artifacts, malformed plans, missing route metadata, invalid route patterns, missing
-plan handlers, V8 evaluation failures, missing handler globals, and thrown handlers fail
-with stderr diagnostics or safe dev `500` responses depending on whether the failure
-happens during startup or request dispatch.
+plan handlers, V8 evaluation failures, missing handler globals, thrown handlers, malformed
+query strings, and malformed/unsupported result descriptors fail with stderr diagnostics or
+safe dev `500` responses depending on whether the failure happens during startup or
+request dispatch.
 
 ## Metadata Input
 

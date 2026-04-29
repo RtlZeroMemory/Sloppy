@@ -58,7 +58,9 @@ typedef struct SlHttpDispatchTable
  * - missing/non-callable/throwing JavaScript handlers fail through the existing engine
  *   diagnostic path.
  *
- * Route parameters may be matched internally, but they are not passed to JavaScript yet.
+ * Route parameters and query parameters are materialized into the EPIC-23 request context
+ * passed to JavaScript. Route parameter values are strings; `{id:int}` validates matching
+ * but does not coerce the JS value to a number.
  */
 SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const SlPlan* plan,
                                        const SlHttpDispatchTable* dispatch_table,

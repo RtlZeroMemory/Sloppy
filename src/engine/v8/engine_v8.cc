@@ -85,6 +85,34 @@ SlStatus sl_v8_copy_string(SlArena* arena, const std::string& src, SlStr* out)
     return sl_status_ok();
 }
 
+SlStatus sl_v8_copy_bytes(SlArena* arena, const std::string& src, SlBytes* out)
+{
+    void* memory = nullptr;
+    unsigned char* dst = nullptr;
+
+    if (arena == nullptr || out == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (src.empty()) {
+        *out = sl_bytes_empty();
+        return sl_status_ok();
+    }
+
+    SlStatus status = sl_arena_alloc(arena, src.size(), 1U, &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    dst = static_cast<unsigned char*>(memory);
+    for (size_t index = 0U; index < src.size(); index += 1U) {
+        dst[index] = static_cast<unsigned char>(src[index]);
+    }
+
+    *out = sl_bytes_from_parts(dst, src.size());
+    return sl_status_ok();
+}
+
 SlStatus sl_v8_write_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code,
                           SlStatusCode failure_code, SlStr message, SlStr source_name, SlStr hint)
 {
@@ -344,6 +372,189 @@ SlStatus sl_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::St
     return sl_status_ok();
 }
 
+bool sl_v8_set_string_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                               v8::Local<v8::Object> object, const char* name, SlStr value)
+{
+    v8::Local<v8::String> key;
+    v8::Local<v8::String> local_value;
+
+    if (!sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
+        !sl_status_is_ok(sl_v8_to_local_string(isolate, value, &local_value)))
+    {
+        return false;
+    }
+
+    return object->Set(context, key, local_value).FromMaybe(false);
+}
+
+bool sl_v8_set_object_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                               v8::Local<v8::Object> object, const char* name,
+                               v8::Local<v8::Object> value)
+{
+    v8::Local<v8::String> key;
+
+    if (!sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr(name), &key))) {
+        return false;
+    }
+
+    return object->Set(context, key, value).FromMaybe(false);
+}
+
+bool sl_v8_make_context_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                               const SlHttpRequestContext* request_context,
+                               v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Object> ctx = v8::Object::New(isolate);
+    v8::Local<v8::Object> route = v8::Object::New(isolate);
+    v8::Local<v8::Object> query = v8::Object::New(isolate);
+    v8::Local<v8::Object> request = v8::Object::New(isolate);
+    size_t index = 0U;
+
+    if (request_context == nullptr || request_context->request == nullptr || out == nullptr) {
+        return false;
+    }
+
+    for (index = 0U; index < request_context->route_param_count; index += 1U) {
+        const SlRouteParam* param = &request_context->route_params[index];
+        v8::Local<v8::String> key;
+        v8::Local<v8::String> value;
+        if (!sl_status_is_ok(sl_v8_to_local_string(isolate, param->name, &key)) ||
+            !sl_status_is_ok(sl_v8_to_local_string(isolate, param->value, &value)) ||
+            !route->Set(context, key, value).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+
+    for (index = 0U; index < request_context->query_param_count; index += 1U) {
+        const SlHttpQueryParam* param = &request_context->query_params[index];
+        v8::Local<v8::String> key;
+        v8::Local<v8::String> value;
+        if (!sl_status_is_ok(sl_v8_to_local_string(isolate, param->name, &key)) ||
+            !sl_status_is_ok(sl_v8_to_local_string(isolate, param->value, &value)) ||
+            !query->Set(context, key, value).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+
+    if (!sl_v8_set_string_property(isolate, context, request, "method", sl_str_from_cstr("GET")) ||
+        !sl_v8_set_string_property(isolate, context, request, "path",
+                                   request_context->request->path) ||
+        !sl_v8_set_string_property(isolate, context, request, "rawTarget",
+                                   request_context->request->raw_target) ||
+        !sl_v8_set_object_property(isolate, context, ctx, "route", route) ||
+        !sl_v8_set_object_property(isolate, context, ctx, "query", query) ||
+        !sl_v8_set_object_property(isolate, context, ctx, "request", request))
+    {
+        return false;
+    }
+
+    *out = ctx;
+    return true;
+}
+
+bool sl_v8_get_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             v8::Local<v8::Object> object, const char* name, std::string* out)
+{
+    v8::Local<v8::String> key;
+    v8::Local<v8::Value> value;
+
+    if (out == nullptr ||
+        !sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
+        !object->Get(context, key).ToLocal(&value) || !value->IsString())
+    {
+        return false;
+    }
+
+    v8::String::Utf8Value utf8(isolate, value);
+    if (*utf8 == nullptr) {
+        return false;
+    }
+
+    *out = std::string(*utf8, static_cast<size_t>(utf8.length()));
+    return true;
+}
+
+bool sl_v8_get_object_status(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             v8::Local<v8::Object> object, uint16_t* out)
+{
+    v8::Local<v8::String> key;
+    v8::Local<v8::Value> value;
+    int32_t status = 0;
+
+    if (out == nullptr ||
+        !sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr("status"), &key)) ||
+        !object->Get(context, key).ToLocal(&value) || !value->IsInt32())
+    {
+        return false;
+    }
+
+    status = value.As<v8::Int32>()->Value();
+    if (status < 100 || status > 999) {
+        return false;
+    }
+
+    *out = static_cast<uint16_t>(status);
+    return true;
+}
+
+bool sl_v8_has_marker(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                      v8::Local<v8::Object> object)
+{
+    v8::Local<v8::String> key;
+    v8::Local<v8::Value> value;
+
+    if (!sl_status_is_ok(
+            sl_v8_to_local_string(isolate, sl_str_from_cstr("__sloppyResult"), &key)) ||
+        !object->Get(context, key).ToLocal(&value))
+    {
+        return false;
+    }
+
+    return value->BooleanValue(isolate);
+}
+
+bool sl_v8_http_status_supported(uint16_t status)
+{
+    switch (status) {
+    case 200U:
+    case 201U:
+    case 202U:
+    case 204U:
+    case 400U:
+    case 404U:
+    case 405U:
+    case 500U:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool sl_v8_header_value_safe(const std::string& value)
+{
+    return value.find('\r') == std::string::npos && value.find('\n') == std::string::npos;
+}
+
+bool sl_v8_stringify_json(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                          v8::Local<v8::Value> value, std::string* out)
+{
+    v8::Local<v8::String> json;
+
+    if (out == nullptr || !v8::JSON::Stringify(context, value).ToLocal(&json)) {
+        return false;
+    }
+
+    v8::String::Utf8Value utf8(isolate, json);
+    if (*utf8 == nullptr) {
+        return false;
+    }
+
+    *out = std::string(*utf8, static_cast<size_t>(utf8.length()));
+    return true;
+}
+
 SlStatus sl_v8_platform_acquire(void)
 {
     std::lock_guard<std::mutex> lock(g_v8_platform_mutex);
@@ -545,6 +756,11 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
     return sl_status_ok();
 }
 
+static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                             SlEngine* engine, SlArena* arena,
+                                             v8::Local<v8::Value> js_result,
+                                             SlEngineResult* out_result, SlDiag* out_diag);
+
 extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena,
                                                 SlStr function_name, SlEngineResult* out_result,
                                                 SlDiag* out_diag)
@@ -627,28 +843,264 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
                     1U));
     }
 
-    if (!js_result->IsString()) {
-        return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
-            sl_v8_literal("JavaScript function returned an unsupported result type",
-                          sizeof("JavaScript function returned an unsupported result type") - 1U),
-            sl_str_empty(),
-            sl_v8_literal("TASK 07.C only supports copied string results.",
-                          sizeof("TASK 07.C only supports copied string results.") - 1U));
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, out_result,
+                                        out_diag);
+}
+
+static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                             SlEngine* engine, SlArena* arena,
+                                             v8::Local<v8::Value> js_result,
+                                             SlEngineResult* out_result, SlDiag* out_diag)
+{
+    if (js_result->IsString()) {
+        v8::String::Utf8Value utf8(isolate, js_result);
+        SlStatus status;
+
+        if (*utf8 == nullptr) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+
+        status = sl_v8_copy_string(arena, std::string(*utf8, static_cast<size_t>(utf8.length())),
+                                   &out_result->text);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+
+        out_result->kind = SL_ENGINE_RESULT_TEXT;
+        out_result->response = sl_http_response_text(200U, out_result->text);
+        return sl_status_ok();
     }
 
-    v8::String::Utf8Value utf8(isolate, js_result);
-    if (*utf8 == nullptr) {
+    if (!js_result->IsObject()) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
+            sl_v8_literal("JavaScript handler returned an unsupported result type",
+                          sizeof("JavaScript handler returned an unsupported result type") - 1U),
+            sl_str_empty(),
+            sl_v8_literal("Return a string or a supported Results.* descriptor.",
+                          sizeof("Return a string or a supported Results.* descriptor.") - 1U));
+    }
+
+    v8::Local<v8::Object> object = js_result.As<v8::Object>();
+    if (!sl_v8_has_marker(isolate, context, object)) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
+            sl_v8_literal("JavaScript handler returned an unsupported result type",
+                          sizeof("JavaScript handler returned an unsupported result type") - 1U),
+            sl_str_empty(),
+            sl_v8_literal("Result descriptors must include __sloppyResult: true.",
+                          sizeof("Result descriptors must include __sloppyResult: true.") - 1U));
+    }
+
+    std::string kind;
+    std::string content_type;
+    uint16_t status_code = 0U;
+    if (!sl_v8_get_object_string(isolate, context, object, "kind", &kind) ||
+        !sl_v8_get_object_status(isolate, context, object, &status_code))
+    {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            sl_v8_literal("JavaScript result descriptor is missing kind or status",
+                          sizeof("JavaScript result descriptor is missing kind or status") - 1U),
+            sl_str_empty(),
+            sl_v8_literal("Return a supported Results.* descriptor with kind and status.",
+                          sizeof("Return a supported Results.* descriptor with kind and status.") -
+                              1U));
+    }
+
+    if (!sl_v8_http_status_supported(status_code)) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            sl_v8_literal("JavaScript result descriptor has an unsupported status",
+                          sizeof("JavaScript result descriptor has an unsupported status") - 1U),
+            sl_str_empty(),
+            sl_v8_literal("Supported response statuses are 200, 201, 202, 204, 400, 404, 405, "
+                          "and 500.",
+                          sizeof("Supported response statuses are 200, 201, 202, 204, 400, 404, "
+                                 "405, and 500.") -
+                              1U));
+    }
+
+    if (kind == "empty") {
+        out_result->kind = SL_ENGINE_RESULT_NONE;
+        out_result->response = sl_http_response_empty(status_code);
+        return sl_status_ok();
+    }
+
+    if (!sl_v8_get_object_string(isolate, context, object, "contentType", &content_type)) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            sl_v8_literal("JavaScript result descriptor is missing contentType",
+                          sizeof("JavaScript result descriptor is missing contentType") - 1U),
+            sl_str_empty(), sl_str_empty());
+    }
+    if (!sl_v8_header_value_safe(content_type)) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            sl_v8_literal("JavaScript result descriptor has an invalid contentType",
+                          sizeof("JavaScript result descriptor has an invalid contentType") - 1U),
+            sl_str_empty(),
+            sl_v8_literal("Content-Type must not contain CR or LF characters.",
+                          sizeof("Content-Type must not contain CR or LF characters.") - 1U));
+    }
+
+    v8::Local<v8::String> body_key;
+    v8::Local<v8::Value> body;
+    if (!sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr("body"), &body_key)) ||
+        !object->Get(context, body_key).ToLocal(&body))
+    {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
-    status = sl_v8_copy_string(arena, std::string(*utf8, static_cast<size_t>(utf8.length())),
-                               &out_result->text);
+    if (kind == "text") {
+        if (!body->IsString()) {
+            return sl_v8_write_diag(
+                engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+                sl_v8_literal("Results.text body must be a string",
+                              sizeof("Results.text body must be a string") - 1U),
+                sl_str_empty(), sl_str_empty());
+        }
+
+        v8::String::Utf8Value utf8(isolate, body);
+        SlStatus status;
+        if (*utf8 == nullptr) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+
+        status = sl_v8_copy_string(arena, std::string(*utf8, static_cast<size_t>(utf8.length())),
+                                   &out_result->text);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+
+        out_result->kind = SL_ENGINE_RESULT_TEXT;
+        out_result->response = sl_http_response_text(status_code, out_result->text);
+        return sl_v8_copy_string(arena, content_type, &out_result->response.content_type);
+    }
+
+    if (kind == "json" || kind == "problem") {
+        std::string json;
+        SlBytes bytes = {nullptr, 0U};
+        SlStatus status;
+
+        if (!sl_v8_stringify_json(isolate, context, body, &json)) {
+            return sl_v8_write_diag(
+                engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+                sl_v8_literal("Results.json body could not be serialized",
+                              sizeof("Results.json body could not be serialized") - 1U),
+                sl_str_empty(), sl_str_empty());
+        }
+
+        status = sl_v8_copy_bytes(arena, json, &bytes);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+
+        out_result->kind = kind == "json" ? SL_ENGINE_RESULT_JSON : SL_ENGINE_RESULT_ERROR;
+        out_result->response = kind == "json" ? sl_http_response_json(status_code, bytes)
+                                              : sl_http_response_problem(status_code, bytes);
+        return sl_v8_copy_string(arena, content_type, &out_result->response.content_type);
+    }
+
+    return sl_v8_write_diag(
+        engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
+        sl_v8_literal("JavaScript result descriptor kind is unsupported",
+                      sizeof("JavaScript result descriptor kind is unsupported") - 1U),
+        sl_str_empty(),
+        sl_v8_literal("Supported EPIC-23 result kinds are text, json, empty, and problem.",
+                      sizeof("Supported EPIC-23 result kinds are text, json, empty, and "
+                             "problem.") -
+                          1U));
+}
+
+extern "C" SlStatus
+sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr function_name,
+                                        const SlHttpRequestContext* request_context,
+                                        SlEngineResult* out_result, SlDiag* out_diag)
+{
+    SlV8Engine* backend = sl_v8_backend(engine);
+    v8::Local<v8::String> name_string;
+    v8::Local<v8::Object> context_arg;
+    SlStatus status;
+
+    if (out_result == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_result = SlEngineResult{};
+
+    if (engine == nullptr || backend == nullptr || backend->isolate == nullptr ||
+        arena == nullptr || request_context == nullptr || function_name.length == 0U)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    v8::Isolate* isolate = backend->isolate;
+    v8::Isolate::Scope isolate_scope(isolate);
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = backend->context.Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::TryCatch try_catch(isolate);
+
+    status = sl_v8_to_local_string(isolate, function_name, &name_string);
     if (!sl_status_is_ok(status)) {
-        *out_result = SlEngineResult{};
         return status;
     }
 
-    out_result->kind = SL_ENGINE_RESULT_TEXT;
-    return sl_status_ok();
+    v8::MaybeLocal<v8::Value> maybe_value = context->Global()->Get(context, name_string);
+    v8::Local<v8::Value> value;
+    if (!maybe_value.ToLocal(&value)) {
+        return sl_v8_write_exception_diag(
+            engine, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE, isolate, context,
+            try_catch, sl_str_empty(), "JavaScript function lookup failed",
+            sl_v8_literal("EPIC-23 dispatch maps plan handler IDs to generated globals.",
+                          sizeof("EPIC-23 dispatch maps plan handler IDs to generated globals.") -
+                              1U));
+    }
+
+    if (value->IsUndefined()) {
+        std::string message = "JavaScript function was not found: " +
+                              std::string(function_name.ptr, function_name.length);
+        return sl_v8_write_diag_string(engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR,
+                                       SL_STATUS_INVALID_STATE, message, sl_str_empty(),
+                                       sl_v8_literal("Regenerate app artifacts or fix the plan "
+                                                     "handler export name.",
+                                                     sizeof("Regenerate app artifacts or fix the "
+                                                            "plan handler export name.") -
+                                                         1U));
+    }
+
+    if (!value->IsFunction()) {
+        std::string message = "JavaScript global is not callable: " +
+                              std::string(function_name.ptr, function_name.length);
+        return sl_v8_write_diag_string(engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR,
+                                       SL_STATUS_INVALID_STATE, message, sl_str_empty(),
+                                       sl_str_empty());
+    }
+
+    if (!sl_v8_make_context_object(isolate, context, request_context, &context_arg)) {
+        return sl_v8_write_diag(
+            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+            sl_v8_literal("failed to materialize JavaScript request context",
+                          sizeof("failed to materialize JavaScript request context") - 1U),
+            sl_str_empty(), sl_str_empty());
+    }
+
+    v8::Local<v8::Function> function = value.As<v8::Function>();
+    v8::Local<v8::Value> args[1] = {context_arg};
+    v8::MaybeLocal<v8::Value> maybe_result = function->Call(context, context->Global(), 1, args);
+    v8::Local<v8::Value> js_result;
+    if (!maybe_result.ToLocal(&js_result)) {
+        return sl_v8_write_exception_diag(
+            engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,
+            try_catch, sl_str_empty(), "JavaScript function threw",
+            sl_v8_literal(
+                "Generated JavaScript locations are reported without source-map remapping.",
+                sizeof("Generated JavaScript locations are reported without source-map "
+                       "remapping.") -
+                    1U));
+    }
+
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, out_result,
+                                        out_diag);
 }

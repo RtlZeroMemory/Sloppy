@@ -9,6 +9,8 @@ exception-to-`SlDiag` mapping skeleton for that smoke path. TASK 08.A adds the f
 handwritten `app.plan.json` + `app.js` execution smoke through the V8 bridge.
 EPIC-21 compiler output deliberately targets the same classic-script global-function shape
 for now. EPIC-22 `sloppy run` requires this V8-enabled path to execute compiler artifacts.
+EPIC-23 extends the bridge with a narrow handler call that materializes one plain request
+context object and converts supported result descriptors into native response descriptors.
 
 ## Purpose
 
@@ -40,7 +42,11 @@ Implemented now:
 - compiler-generated `app.js` artifacts can define `globalThis.__sloppy_handler_N`
   functions that match the current runtime-contract lookup shape.
 - `sloppy run --artifacts <dir>` creates a V8 engine, evaluates the artifact `app.js`, and
-  dispatches matched GET routes through `sl_runtime_contract_call_handler`.
+  dispatches matched GET routes through the runtime-contract helper with an EPIC-23
+  request context argument;
+- supported handler return values are plain strings or `Results.text/json/ok/noContent`
+  and `problem` descriptors. Unsupported descriptor kinds and malformed descriptors fail
+  safely with diagnostics.
 
 Later scope:
 
@@ -50,10 +56,10 @@ Later scope:
 
 ## Non-goals
 
-No public JS API bootstrap module loading, ESM resolver, full app host, request context,
-handler table registration, V8 Promise integration, microtask policy, workers, inspector,
-snapshots, Node compatibility, or package-manager behavior. EPIC-22 HTTP usage is limited
-to the dev-only CLI path and does not make this bridge a production server boundary.
+No public JS API bootstrap module loading, ESM resolver, full app host, handler table
+registration, V8 Promise integration, microtask policy, workers, inspector, snapshots,
+Node compatibility, or package-manager behavior. EPIC-22/23 HTTP usage is limited to the
+dev-only CLI path and does not make this bridge a production server boundary.
 
 ## Public/Internal API
 

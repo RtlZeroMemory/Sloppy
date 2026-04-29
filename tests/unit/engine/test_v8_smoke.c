@@ -157,7 +157,7 @@ static int test_missing_function_returns_diagnostic(void)
     SlArena result_arena = {0};
     SlEngineOptions options = v8_options();
     SlEngine* engine = NULL;
-    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
 
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||

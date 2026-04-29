@@ -145,7 +145,7 @@ static int test_noop_call_handler_is_unsupported(void)
     SlEngineOptions options = noop_options();
     SlEngine* engine = NULL;
     SlEngineHandlerCall call = {1U};
-    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
 
     if (init_arena(&arena, storage, sizeof(storage)) != 0) {
@@ -232,7 +232,7 @@ static int test_noop_eval_source_and_call_function_are_unsupported(void)
     SlArena result_arena = {0};
     SlEngineOptions options = noop_options();
     SlEngine* engine = NULL;
-    SlEngineResult result = {SL_ENGINE_RESULT_TEXT, sl_str_from_cstr("stale")};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
 
     if (init_arena(&arena, storage, sizeof(storage)) != 0 ||

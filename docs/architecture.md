@@ -27,7 +27,8 @@ This document covers:
 The current foundation/runtime-contract work still does not implement:
 
 - production V8 runtime startup with ESM module loading and bootstrap intrinsics;
-- a production HTTP server, full response writer, request body parser, or request context;
+- a production HTTP server, request body parser, middleware pipeline, or full framework
+  request/response model;
 - native app module execution from a compiler-emitted plan;
 - JavaScript-to-native database resource/intrinsic integration;
 - production Sloppy Plan loading from compiler output with compatibility/hash checks;

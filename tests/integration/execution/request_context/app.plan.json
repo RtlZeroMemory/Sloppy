@@ -1,0 +1,35 @@
+{
+  "bundle": {
+    "hash": "sha256-request-context-placeholder",
+    "id": "request-context-app-js",
+    "path": "app.js"
+  },
+  "compilerVersion": "sloppyc-0.8.0-request-context",
+  "handlers": [
+    {
+      "displayName": "GET /users/{id:int}",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    }
+  ],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": "Users.Get",
+      "pattern": "/users/{id:int}"
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceMap": {
+    "hash": "sha256-request-context-map-placeholder",
+    "id": "request-context-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

@@ -718,7 +718,7 @@ fn string_argument<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
 fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
-            if function_has_parameters(&function.params)
+            if function_has_too_many_parameters(&function.params)
                 || arrow_has_typescript_syntax(function)
                 || !handler_body_is_supported_arrow(function)
             {
@@ -730,7 +730,7 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
             })
         }
         Argument::FunctionExpression(function) => {
-            if function_has_parameters(&function.params)
+            if function_has_too_many_parameters(&function.params)
                 || function_has_typescript_syntax(function)
                 || !handler_body_is_supported_function(function)
             {
@@ -748,11 +748,11 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
 fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span) -> Diagnostic {
     let (code, message, hint) = match argument {
         Argument::ArrowFunctionExpression(function) => {
-            if function_has_parameters(&function.params) {
+            if function_has_too_many_parameters(&function.params) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                    "route handlers compiled by this MVP must not declare parameters",
-                    Some("The current runtime invokes compiled handlers with zero arguments."),
+                    "route handlers compiled by this MVP may declare at most one context parameter",
+                    Some("The current runtime passes one request context argument."),
                 )
             } else if arrow_has_typescript_syntax(function) {
                 (
@@ -775,11 +775,11 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             }
         }
         Argument::FunctionExpression(function) => {
-            if function_has_parameters(&function.params) {
+            if function_has_too_many_parameters(&function.params) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                    "route handlers compiled by this MVP must not declare parameters",
-                    Some("The current runtime invokes compiled handlers with zero arguments."),
+                    "route handlers compiled by this MVP may declare at most one context parameter",
+                    Some("The current runtime passes one request context argument."),
                 )
             } else if function_has_typescript_syntax(function) {
                 (
@@ -828,8 +828,8 @@ fn has_typescript_extension(path: &Path) -> bool {
         })
 }
 
-fn function_has_parameters(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
-    !parameters.items.is_empty() || parameters.rest.is_some()
+fn function_has_too_many_parameters(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
+    parameters.items.len() > 1 || parameters.rest.is_some()
 }
 
 fn arrow_has_typescript_syntax(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
@@ -1044,6 +1044,10 @@ fn argument_is_inline_json_safe_value(argument: &Argument<'_>) -> bool {
                 ObjectPropertyKind::SpreadProperty(_) => false,
             })
         }
+        Argument::StaticMemberExpression(_) => true,
+        Argument::ParenthesizedExpression(parenthesized) => {
+            expression_is_inline_json_safe_value(&parenthesized.expression)
+        }
         _ => false,
     }
 }
@@ -1101,6 +1105,7 @@ fn expression_is_inline_json_safe_value(expression: &Expression<'_>) -> bool {
         Expression::ParenthesizedExpression(parenthesized) => {
             expression_is_inline_json_safe_value(&parenthesized.expression)
         }
+        Expression::StaticMemberExpression(_) => true,
         _ => false,
     }
 }
@@ -1261,13 +1266,32 @@ fn emit_app_js(app: &ExtractedApp) -> String {
     let mut output = String::new();
     output.push_str("const Results = Object.freeze({\n");
     output.push_str("  text(body, options) {\n");
-    output.push_str("    void options;\n");
-    output.push_str("    return String(body);\n");
+    output.push_str("    return Object.freeze({\n");
+    output.push_str("      __sloppyResult: true,\n");
+    output.push_str("      kind: \"text\",\n");
+    output.push_str("      status: options?.status ?? 200,\n");
+    output.push_str("      body: String(body),\n");
+    output.push_str("      contentType: options?.contentType ?? \"text/plain; charset=utf-8\",\n");
+    output.push_str("    });\n");
     output.push_str("  },\n");
     output.push_str("  json(value, options) {\n");
-    output.push_str("    void options;\n");
-    output.push_str("    const encoded = JSON.stringify(value);\n");
-    output.push_str("    return encoded === undefined ? String(value) : encoded;\n");
+    output.push_str("    return Object.freeze({\n");
+    output.push_str("      __sloppyResult: true,\n");
+    output.push_str("      kind: \"json\",\n");
+    output.push_str("      status: options?.status ?? 200,\n");
+    output.push_str("      body: value,\n");
+    output.push_str(
+        "      contentType: options?.contentType ?? \"application/json; charset=utf-8\",\n",
+    );
+    output.push_str("    });\n");
+    output.push_str("  },\n");
+    output.push_str("  ok(value, options) {\n");
+    output.push_str("    return this.json(value, options);\n");
+    output.push_str("  },\n");
+    output.push_str("  noContent() {\n");
+    output.push_str(
+        "    return Object.freeze({ __sloppyResult: true, kind: \"empty\", status: 204 });\n",
+    );
     output.push_str("  },\n");
     output.push_str("});\n\n");
 

@@ -40,6 +40,12 @@ SlStatus sl_runtime_contract_call_handler(SlEngine* engine, SlArena* arena, cons
                                           SlHandlerId handler_id, SlEngineResult* out_result,
                                           SlDiag* out_diag);
 
+SlStatus sl_runtime_contract_call_handler_with_context(SlEngine* engine, SlArena* arena,
+                                                       const SlPlan* plan, SlHandlerId handler_id,
+                                                       const SlHttpRequestContext* request_context,
+                                                       SlEngineResult* out_result,
+                                                       SlDiag* out_diag);
+
 #ifdef __cplusplus
 }
 #endif

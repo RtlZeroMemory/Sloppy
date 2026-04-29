@@ -2,10 +2,9 @@
  * Sloppy CLI.
  *
  * EPIC-19 adds metadata-only introspection commands over plan-compatible JSON files.
- * EPIC-22 adds the dev-only `sloppy run` artifact path. The run path is intentionally
- * narrow: it loads EPIC-21 artifacts, requires V8, dispatches GET routes, writes a tiny
- * response, and avoids production HTTP, package-manager, Node-compatibility, middleware,
- * body parsing, and hot-reload behavior.
+ * EPIC-22 adds the dev-only `sloppy run` artifact path. EPIC-23 gives that path a small
+ * native response writer and request context while it still avoids production HTTP,
+ * package-manager, Node-compatibility, middleware, body parsing, streaming, and hot reload.
  */
 #include "sloppy/arena.h"
 #include "sloppy/compiler.h"
@@ -15,6 +14,7 @@
 #include "sloppy/engine.h"
 #include "sloppy/http.h"
 #include "sloppy/http_dispatch.h"
+#include "sloppy/http_response.h"
 #include "sloppy/plan.h"
 #include "sloppy/platform.h"
 #include "sloppy/route.h"
@@ -1284,153 +1284,25 @@ static int sl_run_load_app(const char* artifacts_path, SlRunApp* app)
     return sl_run_load_engine(app, app_js_path);
 }
 
-static bool sl_run_text_looks_json(SlStr text)
-{
-    size_t index = 0U;
-
-    while (index < text.length && (text.ptr[index] == ' ' || text.ptr[index] == '\t' ||
-                                   text.ptr[index] == '\r' || text.ptr[index] == '\n'))
-    {
-        index += 1U;
-    }
-
-    if (index >= text.length) {
-        return false;
-    }
-
-    return text.ptr[index] == '{' || text.ptr[index] == '[';
-}
-
-static const char* sl_run_status_reason(unsigned status)
-{
-    switch (status) {
-    case 200U:
-        return "OK";
-    case 404U:
-        return "Not Found";
-    case 405U:
-        return "Method Not Allowed";
-    case 500U:
-        return "Internal Server Error";
-    default:
-        return "OK";
-    }
-}
-
-static bool sl_run_append_byte(char* buffer, size_t capacity, size_t* length, char byte)
-{
-    if (buffer == NULL || length == NULL || *length + 1U >= capacity) {
-        return false;
-    }
-
-    buffer[*length] = byte;
-    *length += 1U;
-    buffer[*length] = '\0';
-    return true;
-}
-
-static bool sl_run_append_cstr(char* buffer, size_t capacity, size_t* length, const char* text)
-{
-    size_t index = 0U;
-
-    if (text == NULL) {
-        return false;
-    }
-
-    while (text[index] != '\0') {
-        if (!sl_run_append_byte(buffer, capacity, length, text[index])) {
-            return false;
-        }
-        index += 1U;
-    }
-
-    return true;
-}
-
-static bool sl_run_append_uint(char* buffer, size_t capacity, size_t* length, unsigned value)
-{
-    char digits[10];
-    size_t count = 0U;
-
-    do {
-        digits[count] = (char)('0' + (value % 10U));
-        value /= 10U;
-        count += 1U;
-    } while (value != 0U && count < sizeof(digits));
-
-    while (count > 0U) {
-        count -= 1U;
-        if (!sl_run_append_byte(buffer, capacity, length, digits[count])) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool sl_run_append_size(char* buffer, size_t capacity, size_t* length, size_t value)
-{
-    char digits[32];
-    size_t count = 0U;
-
-    do {
-        digits[count] = (char)('0' + (value % 10U));
-        value /= 10U;
-        count += 1U;
-    } while (value != 0U && count < sizeof(digits));
-
-    while (count > 0U) {
-        count -= 1U;
-        if (!sl_run_append_byte(buffer, capacity, length, digits[count])) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool sl_run_append_str(char* buffer, size_t capacity, size_t* length, SlStr text)
-{
-    size_t index = 0U;
-
-    if (text.ptr == NULL && text.length != 0U) {
-        return false;
-    }
-
-    for (index = 0U; index < text.length; index += 1U) {
-        if (!sl_run_append_byte(buffer, capacity, length, text.ptr[index])) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 static int sl_run_write_response(char* buffer, size_t capacity, unsigned status,
                                  const char* content_type, SlStr body)
 {
-    size_t length = 0U;
+    SlHttpResponse response = {0};
+    SlBytes bytes = {0};
+    SlStatus write_status;
 
-    if (buffer == NULL || content_type == NULL || (body.ptr == NULL && body.length != 0U)) {
+    if (buffer == NULL || content_type == NULL || status > UINT16_MAX) {
         return -1;
     }
 
-    buffer[0] = '\0';
-    if (!sl_run_append_cstr(buffer, capacity, &length, "HTTP/1.1 ") ||
-        !sl_run_append_uint(buffer, capacity, &length, status) ||
-        !sl_run_append_cstr(buffer, capacity, &length, " ") ||
-        !sl_run_append_cstr(buffer, capacity, &length, sl_run_status_reason(status)) ||
-        !sl_run_append_cstr(buffer, capacity, &length, "\r\nConnection: close\r\nContent-Type: ") ||
-        !sl_run_append_cstr(buffer, capacity, &length, content_type) ||
-        !sl_run_append_cstr(buffer, capacity, &length, "\r\nContent-Length: ") ||
-        !sl_run_append_size(buffer, capacity, &length, body.length) ||
-        !sl_run_append_cstr(buffer, capacity, &length, "\r\n\r\n") ||
-        !sl_run_append_str(buffer, capacity, &length, body))
-    {
+    response = sl_http_response_text((uint16_t)status, body);
+    response.content_type = sl_str_from_cstr(content_type);
+    write_status = sl_http_response_write(&response, (unsigned char*)buffer, capacity, &bytes);
+    if (!sl_status_is_ok(write_status) || bytes.length > (size_t)INT32_MAX) {
         return -1;
     }
 
-    return length > (size_t)INT32_MAX ? -1 : (int)length;
+    return (int)bytes.length;
 }
 
 static SlHttpMethod sl_run_method_from_cstr(const char* method)
@@ -1484,8 +1356,8 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
     SlArena dispatch_arena = {0};
     SlEngineResult result = {0};
     SlDiag diag = {0};
+    SlBytes response_bytes = {0};
     SlStatus status;
-    const char* content_type = "text/plain; charset=utf-8";
 
     if (app == NULL || request == NULL || response == NULL ||
         !sl_status_is_ok(
@@ -1496,11 +1368,13 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
 
     status = sl_http_dispatch_request_head(&dispatch_arena, app->engine, &app->plan,
                                            &app->dispatch_table, request, &result, &diag);
-    if (sl_status_is_ok(status) && result.kind == SL_ENGINE_RESULT_TEXT) {
-        if (sl_run_text_looks_json(result.text)) {
-            content_type = "application/json; charset=utf-8";
+    if (sl_status_is_ok(status)) {
+        if (!sl_status_is_ok(sl_http_response_write(&result.response, (unsigned char*)response,
+                                                    response_capacity, &response_bytes)))
+        {
+            return -1;
         }
-        return sl_run_write_response(response, response_capacity, 200U, content_type, result.text);
+        return response_bytes.length > (size_t)INT32_MAX ? -1 : (int)response_bytes.length;
     }
 
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED) {

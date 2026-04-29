@@ -9,10 +9,12 @@ first llhttp/libuv dependency integration skeleton and a complete-buffer HTTP/1 
 parser. TASK 10.C adds a synthetic in-memory GET dispatch helper that maps a parsed request
 head and manual route binding to a numeric Sloppy Plan handler ID, then calls the existing
 runtime-contract/engine boundary. EPIC-22 adds a dev-only `sloppy run` path that uses libuv
-to accept one complete request head per connection, dispatches GET routes from EPIC-21
-artifact metadata, writes a tiny text/JSON-compatible response, and closes the connection.
-There is still no production HTTP server, body parsing, streaming parser API, middleware,
-request context, public TypeScript `app.run`, or full response writer.
+to accept one complete request head per connection. EPIC-23 adds the first native response
+descriptor/writer and minimal request context for that path: route params, query params,
+and method/path/rawTarget are passed to V8 handlers, supported descriptors become HTTP/1.1
+bytes, and the connection is closed. There is still no production HTTP server, body
+parsing, streaming parser API, middleware, public TypeScript `app.run`, or broad response
+framework.
 
 ## Purpose
 
@@ -32,13 +34,16 @@ Implemented now:
 - run a minimal libuv loop init/close smoke to prove dependency linkage;
 - dispatch one parsed in-memory GET request head through a manual route binding table to a
   Sloppy Plan handler ID;
-- invoke the matched handler through the existing runtime-contract helper when an engine is
-  available;
-- return the existing simple `SlEngineResult` text shape from synthetic dispatch tests.
+- invoke the matched handler through the context-aware runtime-contract helper when an
+  engine is available;
+- convert supported handler descriptors into `SlHttpResponse` values for `sloppy run`;
 - dev-only `sloppy run --artifacts <dir>` server over libuv;
 - deterministic `sloppy run --artifacts <dir> --once METHOD TARGET` synthetic dispatch;
-- minimal HTTP responses with status line, `Content-Type`, `Content-Length`, body bytes,
-  and connection close.
+- native `SlHttpResponse` descriptors for text, JSON, empty, and problem responses;
+- deterministic HTTP/1.1 response writing with status line, `Connection: close`,
+  `Content-Type`, `Content-Length`, CRLF formatting, body bytes, and 204 no-body behavior;
+- minimal query parsing with `%XX`/`+` decoding and last-wins repeated keys;
+- route/query/request context materialization for V8 handler calls.
 
 Future scope:
 
@@ -47,7 +52,7 @@ Future scope:
 - request lifecycle;
 - production method dispatch and server hardening;
 - route table/trie or other optimized dispatch structure;
-- HTTP response conversion and writing.
+- production HTTP response conversion and writing beyond the current dev MVP.
 
 EPIC-14 module routes are bootstrap `app.mapGet` registrations only. They do not connect
 module routes to the native HTTP parser, synthetic dispatch helper, route params, or
@@ -55,8 +60,8 @@ response writer.
 
 ## Non-goals
 
-- No production HTTP server, body parsing, streaming parser, middleware, compiler work,
-  public TypeScript API, or app host behavior in TASK 10.B, TASK 10.C, or EPIC-22.
+- No production HTTP server, body parsing, streaming parser, middleware, broad public
+  TypeScript API, or app host behavior in TASK 10.B, TASK 10.C, EPIC-22, or EPIC-23.
 - No sockets, request/response objects, middleware, route groups, route table, trie,
   precedence engine, public TypeScript API, `app.mapGet`, validation, OpenAPI, V8, or
   compiler extraction in TASK 10.A or TASK 10.B.
@@ -140,13 +145,14 @@ The dispatch helper accepts an already parsed `SlHttpRequestHead`, a borrowed ro
 table, a parsed `SlPlan`, and an `SlEngine`. TASK 10.C supports only GET request dispatch.
 Route bindings borrow parsed `SlRoutePattern` values and carry a numeric `SlHandlerId`.
 The helper matches `request.path`, validates the handler ID exists in the plan before
-entering the engine, then calls `sl_runtime_contract_call_handler`. Route parameters may
-participate in matching but are not passed to JavaScript.
+entering the engine, parses the query string, and then calls
+`sl_runtime_contract_call_handler_with_context`. Route parameters are passed to JavaScript
+as strings in `ctx.route`.
 
 `sloppy run` builds that manual binding table from the compiler-emitted `routes` metadata
-section. Its response writer is deliberately local to the CLI MVP: `200` for handler text,
-`404` for route misses, `405` for unsupported methods, and safe `500` text for malformed
-requests or handler/runtime failures.
+section. It now uses the native response writer: `200` for supported handler results,
+`404` for route misses, `405` for unsupported methods, and safe dev `500` text for
+malformed requests, malformed result descriptors, or handler/runtime failures.
 
 ## Ownership/Lifetime Rules
 
@@ -166,8 +172,8 @@ the input buffer after success.
 
 HTTP dispatch tables borrow route bindings, parsed route patterns, plans, and engine
 handles for the duration of the call only. `sl_http_dispatch_request_head` does not retain
-request, route, plan, engine, or route-parameter storage. Successful V8 text results follow
-the existing engine/runtime-contract rule: text is copied into the caller-provided arena.
+request, route, plan, engine, route-parameter, or query-parameter storage. Successful V8
+text/JSON/problem response bodies are copied into the caller-provided arena.
 
 Request data must have documented ownership and may not outlive its scope unsafely once HTTP
 request handling grows beyond this skeleton.
@@ -242,26 +248,30 @@ Implemented CTest coverage:
 - synthetic dispatch no-route failure;
 - synthetic dispatch non-GET failure;
 - synthetic dispatch missing plan handler failure before engine entry;
-- route parameter match through dispatch without passing params to JavaScript;
+- route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;
 - V8-gated missing JavaScript function and throwing handler failures.
 - default CLI tests for `sloppy run` help text, missing artifacts, malformed artifacts,
   source-input deferral, and clear V8-disabled failure;
-- V8-gated `sloppy run --once` tests for hello, route miss, and unsupported method when the
-  build is configured with V8.
+- V8-gated `sloppy run --once` tests for hello, route miss, unsupported method,
+  request context, and invalid result descriptors when the build is configured with V8.
 
 EPIC-20 adds manual benchmarks for route matching and complete-buffer request-head parsing.
 The request-head benchmark is a parser microbenchmark only. It is not an HTTP server
 throughput benchmark and does not involve sockets, response writing, request bodies,
 middleware, or public TypeScript APIs.
 
+EPIC-23 tests add native response writer exact-byte coverage, query parser coverage for
+empty, repeated, decoded, and malformed query strings, and compiler/example coverage for
+request context shape.
+
 Future tests:
 
 - route table and ambiguity tests;
 - broader HTTP server/socket integration tests;
 - fuzz target for route patterns;
-- full response writer tests;
-- route params in handler context tests.
+- broader result descriptor conversion edge cases;
+- response writer behavior beyond the current dev-only MVP.
 
 ## Source Docs
 

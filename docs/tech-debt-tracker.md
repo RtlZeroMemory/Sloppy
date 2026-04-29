@@ -10,10 +10,11 @@ state and an honest public-alpha path.
   become compiler-produced plan metadata instead of in-memory debug snapshots.
 - `sloppy run` source/build handoff: EPIC-22 can load artifacts, but source input still
   needs a clean `sloppyc` handoff/cache story.
-- HTTP response writer: status, headers, content type, body writing, basic error handling,
-  and response descriptor conversion from current `Results.*` shapes.
-- Request context model: route params, query params, request metadata, services/config/log,
-  and a documented lifetime boundary.
+- HTTP production response pipeline beyond EPIC-23: custom headers, redirect helpers,
+  streaming/files, cookies, content negotiation, keep-alive policy, and production error
+  pages.
+- Request context model beyond EPIC-23: body/header access, typed/coerced route/query
+  binding, services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading and bootstrap runtime: load `stdlib/sloppy` reliably, define the bare
   import story, load app module entrypoint, bind intrinsics, and reject unsupported module
   shapes with diagnostics.
@@ -32,11 +33,13 @@ state and an honest public-alpha path.
 
 ## Should Fix Soon
 
-- Response/request diagnostics for missing handlers, result conversion failures, malformed
-  route params, unsupported methods, and app startup failures.
-- Route params in runtime handler context, including int parsing policy and failure
-  diagnostics.
-- Query parsing and route/query percent-decoding policy.
+- Response/request diagnostics beyond the EPIC-23 safe 500 path, including richer user
+  messages for result conversion failures, malformed route params, unsupported methods,
+  and app startup failures.
+- Route params in runtime handler context beyond MVP strings, including int conversion
+  policy and failure diagnostics.
+- Query parsing beyond EPIC-23 scalar last-wins values, including repeated-key arrays if
+  the public API chooses them.
 - Request body parsing skeleton with explicit limits and unsupported-content diagnostics.
 - JSON serialization strategy for `Results.json`, including supported values, errors,
   redaction, and benchmark plan.

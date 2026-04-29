@@ -129,12 +129,14 @@ handlers returning `Results.text(...)` or `Results.json(...)`. It does not imple
 TypeScript checking, package resolution, bundling, module extraction, services/data
 providers, V8 module loading, source-input `sloppy run`, or `app.run`.
 
-EPIC-22 adds the first dev-only run path for those artifacts. `sloppy run --artifacts
-<dir>` loads `app.plan.json`, reads the compiler-emitted `routes` metadata, evaluates
-`app.js` in a V8-enabled build, dispatches GET request paths through the native route
-matcher, calls handlers by numeric ID through the runtime-contract helper, writes a tiny
-HTTP response, and closes the connection. The deterministic `--once METHOD TARGET` mode
-performs the same dispatch without opening a socket.
+EPIC-22 adds the first dev-only run path for those artifacts. EPIC-23 extends it with the
+first real response/request boundary. `sloppy run --artifacts <dir>` loads
+`app.plan.json`, reads the compiler-emitted `routes` metadata, evaluates `app.js` in a
+V8-enabled build, dispatches GET request paths through the native route matcher, passes a
+minimal `{ route, query, request }` context to the handler, converts supported
+`Results.*` descriptors, writes a deterministic HTTP/1.1 response, and closes the
+connection. The deterministic `--once METHOD TARGET` mode performs the same dispatch
+without opening a socket.
 
 ## Current Handwritten Milestone
 
@@ -274,8 +276,9 @@ Current EPIC-22 `sloppy run` flow:
 5. create a V8 engine and evaluate the artifact `app.js`;
 6. either dispatch one synthetic `--once METHOD TARGET` request or start a local
    `127.0.0.1:5173` dev server by default;
-7. parse request heads, route GET paths, call handlers by numeric ID, write a tiny
-   text/JSON-compatible response, and close the connection.
+7. parse request heads, route GET paths, call handlers by numeric ID with route/query
+   context, convert supported descriptors, write a native HTTP response, and close the
+   connection.
 
 Deferred dev-mode work:
 
@@ -383,7 +386,7 @@ classic script text, `sl_runtime_contract_call_handler` maps a plan handler ID t
 loading, handler registration intrinsics, request/job context construction, or compiler
 output loading.
 
-TASK 10.C adds only the native HTTP prelude before that runtime-contract call:
+TASK 10.C adds only the native HTTP prelude before the first runtime-contract call:
 
 1. parse an in-memory HTTP request head;
 2. reject non-GET methods;
@@ -392,20 +395,25 @@ TASK 10.C adds only the native HTTP prelude before that runtime-contract call:
 5. verify that handler ID exists in the parsed plan;
 6. call the existing runtime-contract helper.
 
-Route params are not materialized into a JavaScript request context yet. The returned value
-is still the existing simple engine result, not an HTTP response.
+EPIC-23 extends this path for `sloppy run` only: route params, query params, and
+request method/path/rawTarget are materialized into a minimal JavaScript context, and
+supported handler result descriptors become native HTTP responses.
 
-EPIC-22 wraps that foundation in the dev-only CLI path:
+EPIC-22 and EPIC-23 wrap that foundation in the dev-only CLI path:
 
 1. parse artifact route metadata into route bindings;
 2. parse an HTTP/1 request head from `--once` or a libuv connection;
 3. reject non-GET dispatch as `405`;
 4. return `404` when no GET route matches;
-5. call the matched handler through `sl_runtime_contract_call_handler`;
-6. write a minimal response with status line, `Content-Type`, `Content-Length`, and body.
+5. materialize route params, query params, and request method/path/rawTarget;
+6. call the matched handler through the context-aware runtime-contract helper;
+7. convert plain string fallback or supported result descriptors;
+8. write a minimal native HTTP response with status line, `Connection: close`,
+   `Content-Type`, `Content-Length`, CRLF formatting, and body bytes.
 
-The response writer is intentionally local and tiny until EPIC-23 owns the request context
-and response descriptor boundary.
+The response writer remains deliberately small and dev-only. Body parsing, streaming,
+headers in context, middleware, production hardening, and content negotiation remain
+future work.
 
 ## Async And Promise Lifecycle
 

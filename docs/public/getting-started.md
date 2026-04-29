@@ -71,8 +71,12 @@ For deterministic smoke tests without opening a socket:
 ```
 
 `sloppy run` requires V8, loads prebuilt artifacts only in this MVP, and is not a
-production server. There is no HTTPS, request body parsing, streaming, middleware, hot
-reload, package manager behavior, Node compatibility, or full response pipeline.
+production server. EPIC-23 adds route/query/request context and supported
+`Results.text/json/ok/noContent/problem` response descriptors. There is no HTTPS, request
+body parsing, headers in handler context, streaming, middleware, hot reload, package
+manager behavior, Node compatibility, or production response pipeline.
+
+The request-context compiler example lives at `examples/request-context/`.
 
 Related internal docs: `docs/architecture.md`, `docs/execution-model.md`,
 `docs/developer-ergonomics.md`.

@@ -66,7 +66,8 @@ typedef struct SlHttpParseOptions
  * supplied, an arena-owned diagnostic.
  *
  * The parser stores `raw_target` exactly as llhttp reports it. `path` is the portion before
- * `?`; query parsing and percent decoding are intentionally deferred.
+ * `?`; EPIC-23 query parsing and percent decoding live in `http_context.h` so the request
+ * head parser stays focused on HTTP syntax.
  */
 SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
                                     const SlHttpParseOptions* options,
