@@ -114,6 +114,13 @@ Packaging workflow for EPIC-25 and later package changes:
 .\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
 ```
 
+Unix local package smoke:
+
+```sh
+tools/unix/package.sh --configuration Release
+tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-linux-x64.tar.gz
+```
+
 The package smoke must extract outside the checkout, run basic CLI commands, verify stdlib
 assets and manifest fields, and verify the checksum file. It is a local artifact smoke, not
 a reproducible public-release claim.
@@ -127,6 +134,18 @@ The package command may also run smoke directly:
 That smoke proves the local Windows archive layout starts basic packaged CLI commands
 outside the checkout. It does not prove V8 runtime packaging, live providers, installers,
 signing/notarization, package-manager distribution, or public alpha release readiness.
+
+V8 runtime package validation is optional and separate:
+
+```powershell
+.\tools\windows\package.ps1 -Configuration RelWithDebInfo -IncludeV8Runtime -V8Root <sdk-root> -Smoke
+.\tools\windows\test-package.ps1 -PackagePath <zip> -RequireV8Runtime
+```
+
+Those checks validate manifest/runtime-file layout only. A V8 package execution claim also
+requires a V8-enabled `sloppy run --artifacts ... --stdlib <extracted-package>/lib/sloppy/
+bootstrap/sloppy --once GET /` smoke from the extracted package. Default package smoke is
+non-V8 unless these V8-specific checks ran and passed.
 
 ## Local Versus CI Behavior
 
@@ -198,6 +217,8 @@ Optional/gated jobs:
 - Package smoke is not part of the default required CI matrix. A PR that reports package
   evidence must list the package command and outside-checkout smoke result separately from
   default CI.
+- Linux/macOS package smoke has local tooling but is not required in hosted CI until a
+  scoped package-smoke job is added.
 - Benchmark list/smoke checks are harness checks. Measured Release benchmark runs, when
   scoped, must be reported separately and must not be described as public performance
   claims.
@@ -407,8 +428,14 @@ explicit future flags or environment gates.
 
 ## Future Gates
 
-- ASan/UBSan builds;
-- fuzz tests;
+- ASan/UBSan builds. Start with non-V8 core/default builds on platforms where the compiler
+  and dependency stack support stable sanitizer output. Windows `windows-asan` is an
+  available local preset but is not a required hosted gate yet. UBSan is expected to start
+  on clang/gcc before becoming required.
+- fuzz tests. First candidates are route pattern parsing, HTTP request-head parsing, Plan
+  JSON parsing, diagnostics/source map parsing once richer source maps exist, and resource
+  ID/table validation. Fuzz targets should be short-running, deterministic, and isolated
+  from sockets, live providers, V8, package managers, or network access by default.
 - diagnostics snapshot tests;
 - compiler golden tests;
 - benchmark trend checks;
@@ -417,7 +444,8 @@ explicit future flags or environment gates.
 - V8 SDK cache or prebuilt artifact setup for the manual V8 job.
 
 Future sanitizer/fuzz gates should begin as opt-in local commands, then become CI jobs once
-they are stable enough not to create noisy false failures.
+they are stable enough not to create noisy false failures. Until then, default CI success
+must not be reported as sanitizer or fuzz coverage.
 
 ## Development Tasks
 

@@ -58,14 +58,15 @@ staged into one archive and smoke-tested outside the checkout.
 
 EPIC-26 adds hosted default non-V8 CI gates for Windows clang-cl, Linux clang, Linux gcc,
 and macOS clang. It also adds a manual optional V8 workflow path and explicit provider
-gate reporting. Default CI still does not prove V8 execution, live PostgreSQL, live SQL
-Server, or package-manager distribution.
+gate reporting. MAIN1-12 keeps that evidence split and hardens package-smoke policy.
+Default CI still does not prove V8 execution, live PostgreSQL, live SQL Server, package
+runtime readiness, or package-manager distribution.
 
 ## Future Phase
 
 Future phases add public release hardening, signed/notarized artifacts, installers,
-package smoke in hosted CI, and package-manager integrations after the local package
-contract is stable.
+required package smoke in hosted CI, and package-manager integrations after the local
+package contract is stable.
 
 ## Public API Shape
 
@@ -87,6 +88,16 @@ Packaging commands:
 ```
 
 The root `tools\package.ps1` wrapper forwards to `tools\windows\package.ps1`.
+
+Unix package commands:
+
+```sh
+tools/unix/package.sh --configuration Release
+tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-linux-x64.tar.gz
+```
+
+The Unix smoke command is local package-layout validation. It is not part of required
+hosted CI until a scoped Linux/macOS package-smoke job is added.
 
 Benchmark wrapper:
 
@@ -247,6 +258,14 @@ Distribution policy:
   into `lib/sloppy/engines/v8/`; it must not copy SDK headers or import libraries;
 - the default package is non-V8 unless the built `sloppy` executable was linked against V8
   and any required dynamic runtime files were explicitly included.
+- `tools/windows/test-package.ps1 -RequireV8Runtime` and
+  `tools/unix/test-package.sh --require-v8-runtime` validate that the package manifest and
+  runtime-file staging agree, but that check still does not execute V8 code.
+- V8 runtime packaging is validated only when a V8-enabled package is built from a
+  V8-enabled executable, dynamic runtime files are staged when required, the package smoke
+  runs outside the checkout with V8 runtime validation enabled, and a V8-gated
+  `sloppy run --artifacts ... --stdlib <package-root>/lib/sloppy/bootstrap/sloppy --once
+  GET /` smoke succeeds.
 
 CI policy:
 
@@ -408,10 +427,16 @@ support is real.
 ## Linux/macOS TAR Layout
 
 `tools/unix/package.sh` stages the same layout and writes a `.tar.gz` archive plus
-`SHA256SUMS.txt` when run on Linux or macOS with suitable build tools. This path is simple
-and intentionally not part of the required EPIC-26 default gate yet. Linux/macOS configure,
-build, test, Cargo, and standards checks are validated by CI; package smoke remains a
-separate follow-up.
+`SHA256SUMS.txt` when run on Linux or macOS with suitable build tools.
+`tools/unix/test-package.sh` extracts the archive outside the checkout, runs
+`sloppy --version`, `sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies
+stdlib assets, manifest fields, excluded build/dependency directories, and
+`SHA256SUMS.txt` when present.
+
+This path is simple and intentionally not part of the required default CI gate yet.
+Linux/macOS configure, build, test, Cargo, and standards checks are validated by CI;
+Linux/macOS package smoke remains local/manual until a scoped hosted job proves it on
+those runners.
 
 ## Source Archive Hygiene
 
@@ -478,13 +503,33 @@ Build/tooling tests currently include:
 - platform-boundary scanner.
 - Linux/macOS POSIX platform and C standards scanners in CI.
 - Windows package smoke from an extracted archive outside the checkout.
+- Local Linux/macOS package smoke from an extracted `.tar.gz` archive outside the checkout.
 
-Package smoke unpacks the ZIP under the system temp directory, runs `sloppy --version`,
-`sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies stdlib assets and
-manifest fields, checks excluded directories are absent, and verifies `SHA256SUMS.txt`
-when it is present. It does not require V8, live databases, SQL Server ODBC drivers,
-provider credentials, a running server, admin privileges, or global PATH mutation. Passing
-package smoke must not be reported as live provider availability.
+Default package smoke unpacks the archive under the system temp directory, runs
+`sloppy --version`, `sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies
+stdlib assets and manifest fields, checks excluded directories are absent, verifies V8 SDK
+headers/import libraries are absent, and verifies `SHA256SUMS.txt` when it is present. It
+does not require V8, live databases, SQL Server ODBC drivers, provider credentials, a
+running server, admin privileges, or global PATH mutation. Passing package smoke must not
+be reported as V8 execution, live provider availability, or release readiness.
+
+V8 package smoke is a separate optional evidence category. It requires a V8-enabled build,
+an archive whose manifest records the V8 runtime status accurately, package-smoke runtime
+file validation when dynamic V8 files are expected, and a V8-gated artifact execution
+smoke from the extracted package layout. If any of those pieces is not run, report V8
+package validation as skipped or incomplete.
+
+Sanitizer/fuzz gates are planned as opt-in hardening gates:
+
+- ASan first on core/default non-V8 builds where the platform toolchain supports it;
+- UBSan next on clang/gcc builds where dependencies and platform libraries are stable;
+- no default required sanitizer job until false positives and dependency/runtime behavior
+  are understood;
+- fuzz targets start with the untrusted parser/resource boundaries that already exist:
+  route pattern parsing, HTTP request-head parsing, Plan JSON parsing, diagnostics/source
+  map parsing when richer source maps land, and resource table ID decoding/validation;
+- fuzz corpora and crash artifacts must stay out of source control except for deliberate
+  small regression seeds.
 
 ## Implementation Tasks
 
@@ -493,7 +538,8 @@ package smoke must not be reported as live provider availability.
 - Limit manifest fields to small deterministic package metadata.
 - Use `tools/windows/package.ps1` for Windows ZIP creation and checksum generation.
 - Validate Windows archives with `tools/windows/test-package.ps1` outside the checkout.
-- Keep Linux/macOS TAR packaging in `tools/unix/package.sh` until package CI validates it.
+- Validate Unix archives locally with `tools/unix/test-package.sh` outside the checkout.
+- Keep Linux/macOS TAR packaging local/manual until package CI validates it.
 - Add packaging CI job after binaries become real.
 - Keep Linux/macOS presets limited to honest non-V8 default validation until release,
   sanitizer, or package-smoke jobs are separately scoped.
@@ -516,6 +562,7 @@ Build/distribution foundation is accepted when:
   headers/import libraries, and local IDE files;
 - package tooling writes a SHA256 checksum;
 - outside-checkout package smoke passes for available CLI commands.
+- default package smoke and V8-enabled package smoke are reported separately.
 - docs explain root wrapper and `tools/windows` policy consistently;
 - review/source archive hygiene is documented before release packaging exists.
 

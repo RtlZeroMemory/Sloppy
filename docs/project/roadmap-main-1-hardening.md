@@ -425,8 +425,7 @@ Task breakdown:
 
 - MAIN1-12.A: Linux/macOS package smoke in CI or explicit deferral.
 - MAIN1-12.B: V8 runtime packaging strategy and validation.
-- MAIN1-12.C: optional live provider CI service strategy.
-- MAIN1-12.D: sanitizer/fuzz gate plan for parsers/resource code.
+- MAIN1-12.C: sanitizer/fuzz gate plan for parsers/resource code.
 
 Non-goals: installers, signing, package-manager distribution.
 

@@ -133,10 +133,10 @@ The explicit outside-checkout smoke command for an existing archive is:
 .\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
 ```
 
-Package smoke extracts the ZIP under a temporary directory outside the checkout, runs
+Package smoke extracts the archive under a temporary directory outside the checkout, runs
 `sloppy --version`, `sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies
-stdlib assets and manifest fields, checks excluded local/build directories are absent, and
-verifies `SHA256SUMS.txt` when present.
+stdlib assets and manifest fields, checks excluded local/build directories and V8 SDK
+files are absent, and verifies `SHA256SUMS.txt` when present.
 
 Package smoke proves the local Windows archive layout can start the basic packaged CLI
 tools outside the source checkout. It does not prove V8 runtime execution, live providers,
@@ -147,6 +147,7 @@ Linux/macOS packaging currently has an experimental TAR staging script:
 
 ```sh
 tools/unix/package.sh --configuration Release
+tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-linux-x64.tar.gz
 ```
 
 Hosted Linux/macOS default CI validates non-V8 configure/build/test, Cargo gates, and POSIX
@@ -154,7 +155,9 @@ standards scanners. It does not yet run package execution smoke for Linux/macOS 
 
 V8 runtime packaging is not proven by default package smoke. The default local package is
 non-V8 and records no V8 SDK inclusion. Any V8 runtime packaging evidence must state the
-build, SDK/runtime files, package flags, and smoke command that actually ran.
+build, SDK/runtime files, package flags, V8 runtime-file validation command, and V8-gated
+package execution smoke that actually ran. Runtime-file presence alone is not V8 execution
+evidence.
 
 ## Live Provider Evidence
 
@@ -220,7 +223,9 @@ Evidence reports and PR bodies should separate:
 
 - default non-V8 gates run or skipped;
 - V8-gated commands run or skipped;
-- package smoke run or skipped;
+- default package smoke run or skipped;
+- V8 package smoke run or skipped;
+- sanitizer/fuzz gates run or skipped;
 - live provider gates run or skipped;
 - benchmark checks run or skipped;
 - non-goals, especially runtime/compiler/provider implementation changes.

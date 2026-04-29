@@ -296,6 +296,16 @@ The current default local package is non-V8 and records `containsV8Runtime: fals
 is intentionally gated on an explicit SDK root and copies only dynamic runtime files from
 `bin/`; monolithic/static SDK library content is never copied into packages.
 
+Package validation has two levels:
+
+- default package smoke validates archive layout, CLI startup/help, stdlib assets, manifest
+  fields, checksum entries, and V8 SDK exclusion outside the checkout. It does not prove
+  V8 execution.
+- V8 package smoke requires a V8-enabled package, runtime-file validation when dynamic V8
+  files are expected, and a V8-gated `sloppy run --artifacts ... --stdlib
+  <package-root>/lib/sloppy/bootstrap/sloppy --once GET /` execution from the extracted
+  package. If that command did not run, do not report packaged V8 runtime success.
+
 ## Diagnostics
 
 Current engine diagnostics include `SLOPPY_E_UNSUPPORTED_ENGINE` for unsupported noop

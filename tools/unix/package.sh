@@ -30,7 +30,8 @@ Usage: tools/unix/package.sh [--configuration Release|Debug] [--output-dir DIR] 
 
 Creates an experimental local tar.gz package from already supported Unix build outputs.
 This script is intentionally small and does not install dependencies, fetch V8, or claim a
-validated Linux/macOS release path until EPIC-26 adds cross-platform CI.
+validated Linux/macOS release path. Use tools/unix/test-package.sh for local package-layout
+smoke; hosted package CI remains a separate scoped task.
 USAGE
       exit 0
       ;;
