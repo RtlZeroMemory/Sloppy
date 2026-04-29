@@ -4,9 +4,10 @@ This directory is the home for Sloppy's test suites.
 
 No runtime feature tests exist yet because the repository is in the foundation phase. CMake
 now registers placeholder CLI smoke tests plus focused C unit tests for core primitives and
-diagnostics foundation behavior. The `bootstrap.stdlib.assets` CTest check also verifies
-that placeholder bootstrap stdlib assets exist in source and are copied into the build
-support-data layout.
+diagnostics foundation behavior. The `bootstrap.stdlib.assets` CTest check verifies that
+bootstrap stdlib assets exist in source and are copied into the build support-data layout.
+The `bootstrap.stdlib.api_shape` CTest check statically verifies the tiny bootstrap
+`Results` and `Sloppy` API shape until executable ESM stdlib tests exist.
 
 Future suites:
 

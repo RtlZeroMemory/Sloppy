@@ -568,6 +568,12 @@ if(SLOPPY_ENABLE_TESTS)
             "${CMAKE_COMMAND}" "-DSLOPPY_BOOTSTRAP_SOURCE_DIR=${SLOPPY_BOOTSTRAP_SOURCE_DIR}"
             "-DSLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_bootstrap_assets.cmake")
+    add_test(
+        NAME bootstrap.stdlib.api_shape
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_BOOTSTRAP_SOURCE_DIR=${SLOPPY_BOOTSTRAP_SOURCE_DIR}"
+            "-DSLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_bootstrap_api.cmake")
 
     if(CARGO_EXECUTABLE)
         add_test(

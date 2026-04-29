@@ -85,9 +85,11 @@ handler ID. A manual borrowed route binding table maps a parsed `SlRoutePattern`
 the parsed plan, and calls the existing runtime-contract helper. It is still in-memory test
 dispatch only: no TCP server, sockets, response writer, body parsing, request context,
 middleware, public TypeScript API, compiler extraction, or plan routes section exists.
-TASK 11.A adds only the bootstrap stdlib file layout. The runtime does not load these
-modules yet, and the V8 bridge does not bind intrinsics or resolve ESM imports from this
-directory.
+TASK 11.A adds only the bootstrap stdlib file layout. TASK 11.B/11.C adds a tiny public
+facade inside that layout: `Results.text/json` descriptors plus in-memory
+`Sloppy.create().mapGet(...)` route registration. The runtime still does not load these
+modules, the V8 bridge does not bind intrinsics or resolve ESM imports from this
+directory, and `app.mapGet` does not produce `app.plan.json`.
 
 ## Current Handwritten Milestone
 
@@ -275,7 +277,9 @@ Handler table consistency checks:
 
 TASK 11.A reserves `stdlib/sloppy/internal/intrinsics.js` as the future import boundary for
 runtime-provided registration and host intrinsics. That file currently exports an empty
-frozen placeholder object; no registration intrinsic exists yet.
+frozen placeholder object; no registration intrinsic exists yet. TASK 11.C route
+registration is therefore local JavaScript state only, exposed by `app.__getRoutes()` for
+bootstrap tests/debugging and not consumed by the runtime.
 
 ## Request Execution Flow
 

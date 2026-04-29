@@ -1,11 +1,11 @@
 # Getting Started
 
-Status: Planned / not implemented yet.
+Status: Partially implemented bootstrap API; runtime execution planned.
 
 Purpose: introduce the future Sloppy developer workflow from app source to build artifacts
 to runtime execution.
 
-Planned API example:
+Current bootstrap API shape:
 
 ```ts
 import { Sloppy, Results } from "sloppy";
@@ -13,11 +13,12 @@ import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
 
 app.mapGet("/", () => Results.text("Sloppy is alive"));
-
-await app.run();
 ```
 
-This example is aspirational and not currently implemented.
+`Sloppy.create()`, `app.mapGet(...)`, and `Results.text(...)` now exist in the bootstrap
+stdlib, but `app.run()` does not. The example remains aspirational as a runnable
+application until compiler extraction, `app.plan.json` emission, app host run/build/freeze,
+and HTTP server behavior land.
 
 Related internal docs: `docs/architecture.md`, `docs/execution-model.md`,
 `docs/developer-ergonomics.md`.

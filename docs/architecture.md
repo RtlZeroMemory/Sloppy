@@ -72,10 +72,12 @@ the parsed plan, and invokes the existing runtime-contract/engine boundary. It s
 not implement TCP sockets, a real HTTP server, response writing, body parsing, request
 contexts, middleware, public TypeScript API, plan route sections, or compiler extraction.
 TASK 11.A adds the source-controlled bootstrap stdlib layout under `stdlib/sloppy/` and
-copies it into the build tree at `lib/sloppy/bootstrap/sloppy/`. The modules are placeholder
-ES modules only: they expose empty frozen `Sloppy` and `Results` objects plus an internal
-intrinsics placeholder. They do not implement `Results.text/json`, `Sloppy.create`,
-`app.mapGet`, compiler import rewriting, runtime intrinsic binding, or module resolution.
+copies it into the build tree at `lib/sloppy/bootstrap/sloppy/`. TASK 11.B/11.C adds the
+first tiny ES module facade there: frozen `Results` helpers for text/json descriptors,
+`Sloppy.create()`, in-memory `app.mapGet(...)` route registration, `.withName(...)`, and
+`app.__getRoutes()` for bootstrap tests/debugging. It does not implement compiler import
+rewriting, `app.plan.json` emission, runtime intrinsic binding, module resolution, app
+run/build/freeze semantics, HTTP serving, modules, services, middleware, or validation.
 
 ## Future Phase
 
@@ -204,8 +206,10 @@ It will own:
 - ergonomic JS objects over native request/resource IDs.
 
 The bootstrap stdlib must not bypass the runtime's permission/resource model.
-The current checked-in modules are placeholders that reserve boundaries only. Public API
-behavior and intrinsic binding must be added by later task-specific PRs.
+The current checked-in modules provide only the bounded TASK 11.B/11.C public API shape.
+They deliberately stay as plain JavaScript descriptors and in-memory route registrations
+until compiler extraction, runtime intrinsic binding, and app-host graph freeze land in
+later task-specific PRs.
 
 ## App Host Responsibilities
 
