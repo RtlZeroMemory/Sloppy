@@ -204,8 +204,9 @@ Current checks:
   numeric handler ID, plus missing JavaScript function and throwing handler diagnostics.
 - `bootstrap.stdlib.assets` runs in the default CTest suite and verifies the bootstrap
   stdlib source files and copied build-tree assets exist. `bootstrap.stdlib.api_shape`
-  statically checks the tiny TASK 11.B/11.C JavaScript API shape. These checks do not
-  execute JavaScript or load ESM modules.
+  statically checks the bootstrap JavaScript API shape. When `node` is available,
+  `bootstrap.stdlib.app_host_foundation` executes the ESM stdlib to cover the JavaScript
+  app-host skeleton. These checks do not prove V8 ESM module loading.
 - `examples.hello.api_shape` runs in the default CTest suite and statically checks the
   first hello example. It also does not execute JavaScript or load ESM modules.
 

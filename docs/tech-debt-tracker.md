@@ -31,10 +31,13 @@
   precedence, plan route section, route params in handler context, HTTP response writer,
   request context, middleware, TCP server, sockets, body parsing, public TypeScript API, or
   compiler extraction yet.
-- The bootstrap stdlib now has tiny `Results.text/json`, `Sloppy.create`, and
-  in-memory `app.mapGet` facade behavior. It still has no handler registration, runtime
-  intrinsic binding, module resolver, compiler import rewriting, package-manager behavior,
-  app host build/freeze/run, HTTP response conversion, or `app.plan.json` emission yet.
+- The bootstrap stdlib now has `Results.text/json`, `Sloppy.create`,
+  `Sloppy.createBuilder`, builder build/freeze behavior, structural `app.freeze`, object
+  config, memory logging, string-token singleton/transient services, and in-memory
+  `app.mapGet` facade behavior. It still has no handler registration, runtime intrinsic
+  binding, module resolver, compiler import rewriting, package-manager behavior, native
+  app-host validation, app run/listen, HTTP response conversion, or `app.plan.json`
+  emission yet.
 - `examples/hello/` exists as a static bootstrap API-shape example. It is not compiled by
   `sloppyc`, does not emit `app.plan.json`, does not run through `sloppy run`, and is not
   served by an HTTP server.
@@ -131,10 +134,20 @@
 - Executable ESM/V8 tests for `stdlib/sloppy` are future work; TASK 11.B/11.C adds only a
   static CTest API-shape check because current V8 smoke execution does not load ESM
   modules.
+- V8-backed ESM tests for `stdlib/sloppy` remain future work. TASK 12 adds optional
+  executable ESM coverage through `node` when available, but that is not a runtime module
+  loading test or a Node compatibility promise.
 - `examples/hello/` should become executable through the Sloppy runtime once module
   loading, compiler extraction, plan emission, and HTTP serving exist.
-- `app.run`, `app.listen`, `app.build`, `app.freeze`, and app graph freeze are future
-  app-host work.
+- `app.run`, `app.listen`, `app.build`, native app graph validation, and native app graph
+  freeze are future app-host work.
+- Config file, environment variable, command-line, secret-manager, validation, and
+  redaction providers are future app-host work.
+- Console, file, native, timestamped, async, structured-export, scoped, and redacted
+  logging are future app-host work.
+- Request-scoped service lifetime, disposal hooks, async factories, dependency graph
+  validation, cycle diagnostics, typed tokens, decorators, and module-owned services are
+  future app-host work.
 - Automatic compiler extraction and `app.plan.json` emission from `app.mapGet` are future
   work.
 - Compiler import rewriting for `"sloppy"` is future work.

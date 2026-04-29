@@ -38,13 +38,26 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "createBuilder()"
+        "config,"
+        "logging,"
+        "services,"
+        "build()"
         "create()"
         "mapGet(pattern, handler)"
+        "freeze()"
+        "isFrozen()"
         "method: \"GET\""
         "name: null"
         "metadata: {}"
         "withName(name)"
         "__getRoutes()"
+        "addObject(object)"
+        "setMinimumLevel(level)"
+        "addMemorySink()"
+        "addSingleton(token, factoryOrValue)"
+        "addTransient(token, factory)"
+        "createScope()"
         "starting with '/'"
         "handler must be a function")
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
@@ -54,8 +67,8 @@ foreach(required_pattern IN ITEMS "export { Sloppy }" "export { Results }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 
-foreach(deferred_pattern IN ITEMS "app.run" "app.listen" "app.build" "app.freeze")
+foreach(deferred_pattern IN ITEMS "app.run" "app.listen" "app.build" "addJsonFile" "addEnv" "addConsole")
     reject_substring(
         "${app_js}" "${deferred_pattern}"
-        "app.js includes future app-host API outside TASK 11.B/11.C scope")
+        "app.js includes future app-host API outside EPIC-12 skeleton scope")
 endforeach()

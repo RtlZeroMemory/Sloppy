@@ -39,13 +39,16 @@ Sloppy ergonomics are not:
 ## Current Phase
 
 The repository contains placeholder CLIs and a source-controlled bootstrap stdlib layout.
-TASK 11.B/11.C adds the first tiny public JavaScript facade inside that stdlib:
+TASK 11.B/11.C added the first tiny public JavaScript facade inside that stdlib:
 `Results.text(...)`, `Results.json(...)`, `Sloppy.create()`, and `app.mapGet(...)`.
-This facade is in-memory and conceptual only. It does not run an app, emit a Sloppy Plan,
-serve HTTP, perform compiler extraction, validate requests, or integrate modules/services.
-TASK 11.D adds `examples/hello/` as the first checked-in bootstrap API-shape example. It
-uses a relative import from `stdlib/sloppy/index.js` because the public bare `"sloppy"`
-specifier remains future compiler/runtime behavior.
+TASK 12.A/12.B/12.C/12.D extends that facade with the first app-host foundation skeleton:
+`Sloppy.createBuilder()`, `builder.build()`, structural `app.freeze()`, object-backed
+config, deterministic memory logging, and string-token singleton/transient services.
+This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
+Plan, serve HTTP, perform compiler extraction, validate requests, or integrate modules.
+`examples/hello/` demonstrates the checked-in bootstrap API shape through a relative import
+from `stdlib/sloppy/index.js` because the public bare `"sloppy"` specifier remains future
+compiler/runtime behavior.
 
 ## Future Phase
 
@@ -100,8 +103,10 @@ stdlib/sloppy/
 
 TASK 11.B/11.C turns the first two placeholders into a minimal implemented API shape:
 `Results.text`, `Results.json`, `Sloppy.create`, `app.mapGet`, `.withName`, and
-`app.__getRoutes()` for tests/debugging. `Sloppy.create()` is not yet equivalent to a
-native default builder plus `build()`; that remains future app-host work.
+`app.__getRoutes()` for tests/debugging. TASK 12.A/12.B/12.C/12.D adds a bootstrap
+builder/app host skeleton. `Sloppy.create()` is now equivalent to a default bootstrap
+builder plus `build()`, but this is still a JavaScript-only structural facade rather than a
+native app graph.
 
 TASK 11.D adds the first checked-in tiny app example:
 
@@ -121,19 +126,20 @@ Structured apps use the builder:
 ```ts
 const builder = Sloppy.createBuilder();
 
-builder.config
-  .addJsonFile("sloppy.json", { optional: true })
-  .addEnv("APP_");
+builder.config.addObject({
+  "app.name": "hello",
+});
 
 builder.logging
-  .addConsole()
-  .setMinimumLevel("info");
+  .setMinimumLevel("info")
+  .addMemorySink();
+
+builder.services.addSingleton("message", () => "Hello from Sloppy");
 
 const app = builder.build();
 
-app.mapGet("/", () => Results.text("ok"));
-
-await app.run();
+app.mapGet("/", ({ services }) => Results.text(services.get("message")));
+app.freeze();
 ```
 
 The builder owns pre-run composition. The app owns the frozen graph after `build()`.
@@ -142,7 +148,10 @@ Implementation notes:
 
 - builder calls must be extractable into Sloppy Plan metadata where possible;
 - config keys may appear in the plan, but secret values must not;
-- `build()` is the freeze boundary for routes, services, permissions, and middleware;
+- current bootstrap `build()` freezes builder-side config/logging/services mutation;
+- current bootstrap `app.freeze()` freezes route registration and endpoint naming;
+- future native app-host work will make build/freeze part of startup validation and plan
+  emission;
 - errors detected before `run()` should be startup diagnostics, not request-time surprises.
 
 ## Route Groups

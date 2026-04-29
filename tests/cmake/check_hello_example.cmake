@@ -24,8 +24,12 @@ endfunction()
 
 foreach(required_pattern IN ITEMS
         "import { Sloppy, Results } from \"../../stdlib/sloppy/index.js\";"
-        "const app = Sloppy.create();"
-        "app.mapGet(\"/\", () => Results.text(\"Hello from Sloppy\"))"
+        "const builder = Sloppy.createBuilder();"
+        "builder.config.addObject"
+        "builder.logging.addMemorySink();"
+        "builder.services.addSingleton(\"message\", () => \"Hello from Sloppy\");"
+        "const app = builder.build();"
+        "app.mapGet(\"/\", ({ services }) => Results.text(services.get(\"message\")))"
         ".withName(\"Hello.Index\")"
         "export default app;")
     require_substring(
@@ -34,7 +38,7 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "Bootstrap API shape example"
+        "Bootstrap app-host skeleton example"
         "What works today"
         "What does not work yet"
         "`sloppy run` does not exist yet"

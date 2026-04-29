@@ -428,23 +428,32 @@ matches pending promises; docs and ADR remain aligned.
 - Deferred decisions: llhttp integration timing.
 - Reviewer checklist: parser is bounded; no HTTP feature creep beyond route foundation.
 
-## EPIC 12: Public TypeScript API Bootstrap
+## EPIC 12: App Host Foundation
 
-- Goal: introduce initial JS/TS bootstrap API facade.
-- Non-goals: full validation/modules/providers.
-- Prerequisites: EPIC 09 and EPIC 10.
-- Tasks: `Sloppy.createBuilder`; `Sloppy.create`; minimal `mapGet`; handler registration
-  shape; `Results.text`.
-- Suggested issue split: bootstrap package shape; tiny app fixture; Results.text; compiler
-  fake integration.
-- Files likely touched: future stdlib package, `compiler/src/emit/`, `src/engine/v8/`.
-- Tests required: tiny app fixture emits/runs; missing handler diagnostic.
-- Quality gates: golden artifacts; CTest integration.
-- Acceptance criteria: tiny app shape is represented in artifacts and runs through milestone
-  path.
-- Risks: public API churn.
-- Deferred decisions: package layout and module specifier resolution.
-- Reviewer checklist: API matches ergonomics spec or spec is updated.
+- Goal: build the first coherent bootstrap app-host foundation: builder/app freeze, config,
+  logging, and service skeletons.
+- Non-goals: app run/listen, real HTTP server, compiler extraction, `app.plan.json`
+  emission, modules, data providers, middleware, validation, package-manager behavior, and
+  Node compatibility.
+- Prerequisites: EPIC 11 public TypeScript API bootstrap tasks through `examples/hello`.
+- Tasks: builder/app freeze model; object config skeleton; memory logging skeleton;
+  string-token services skeleton.
+- Suggested issue split: one bounded PR per task, or one coherent app-host foundation PR
+  when the changes remain tightly related.
+- Files likely touched: `stdlib/sloppy/`, `examples/hello/`, `tests/`, and public/module
+  docs.
+- Tests required: bootstrap stdlib static shape checks, executable JS behavior checks where
+  available, and existing Results/Sloppy facade checks.
+- Quality gates: standard Windows workflow, cargo gates, docs freshness, no generated
+  artifacts, no platform/V8 leakage, and no future-phase scope creep.
+- Acceptance criteria: `Sloppy.createBuilder`, `builder.build`, config/logging/services
+  skeletons, and structural app freeze are implemented and documented honestly.
+- Risks: overbuilding a DI/config/logging framework too early, or implying native runtime
+  integration before it exists.
+- Deferred decisions: config env/file providers, console/native/file logging, request
+  scopes and disposal, modules, compiler plan emission, and app run/listen.
+- Reviewer checklist: API matches the app-host docs, tests protect documented behavior,
+  and non-goals remain absent.
 
 ## EPIC 13: Developer Ergonomics Layer: Results/Routes/Groups/Validation Shape
 
