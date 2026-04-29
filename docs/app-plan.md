@@ -47,9 +47,10 @@ runtime-contract callers continue to use the plan's `exportName` contract explic
 MAIN1-02 hardens that contract for alpha startup validation: the native parser now owns the
 Plan v1 alpha `routes`, `dataProviders`, and `capabilities` sections when present, and the
 supported `sloppy run --artifacts` path verifies `sha256:` hashes for `app.js` and
-`app.js.map` before creating the V8 engine. Minimal handler-only Plan v1 fixtures still
-parse for backward compatibility, but any present hardened section must satisfy its
-validation rules.
+`app.js.map` before creating the V8 engine. MAIN1-03 adds a native app-host startup
+validation pass over the parsed Plan before route materialization, V8/user execution, or
+request serving. Minimal handler-only Plan v1 fixtures still parse for backward
+compatibility, but runnable artifact apps must provide route metadata.
 
 ## Public API Shape
 
@@ -257,8 +258,11 @@ entries may carry:
 - optional `capability`, which must reference `capabilities[].token` when present.
 
 Tokens must be non-empty and may contain letters, digits, `.`, `_`, and `-`. Duplicate
-provider tokens are rejected. Plan files must reference config keys or redacted placeholders
-only; raw connection strings and other secrets do not belong in plan metadata.
+provider tokens are rejected. MAIN1-03 also treats non-empty `service` values as represented
+service metadata during runtime startup validation: service tokens must use the same token
+syntax and duplicate provider service tokens are rejected before serving. Plan files must
+reference config keys or redacted placeholders only; raw connection strings and other
+secrets do not belong in plan metadata.
 
 This section is parseable and validated metadata only. MAIN1-02 does not open providers,
 perform driver checks, enforce provider access policy, or implement any JavaScript-to-native
@@ -445,6 +449,14 @@ Current TASK 06.B parser validation deliberately does not check target compatibi
 runtime minimum version compatibility, stdlib availability, bundle hash contents, or source
 map hash contents. MAIN1-02 checks runtime compatibility and artifact hashes in the
 supported `sloppy run --artifacts` execution path where artifact bytes are available.
+MAIN1-03 then validates the parsed app graph before serving: supported target/runtime
+values, handler table presence, duplicate handler IDs, at least one runnable route,
+route-to-handler references, duplicate route method/pattern pairs, duplicate route names,
+provider/capability metadata consistency, and duplicate represented service tokens.
+
+Native module metadata is not represented in Plan v1 yet. Bootstrap module debug metadata
+remains JavaScript-only and is ignored by native startup validation until a future compiler
+task emits a real `modules` section.
 
 Future plan validation must check:
 

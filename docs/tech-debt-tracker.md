@@ -44,9 +44,9 @@ state and an honest public-alpha path.
 - Public alpha docs/examples: at least one executable hello must run through the real
   Sloppy toolchain, and the SQLite demo must either run through a real JS-native bridge or
   be explicitly documented as deferred.
-- Request/app resource ownership: MAIN1-07 adds the fixed table and handle safety layer, but
-  app-host/request-scope ownership, leak reports, and debug lifecycle integration remain
-  open.
+- Request/app resource ownership: MAIN1-07 adds the fixed table and handle safety layer, and
+  MAIN1-03 adds a minimal native request cleanup boundary, but provider handle wiring,
+  leak reports, async request-scope retention, and debug lifecycle integration remain open.
 
 ## Should Fix Soon
 
@@ -61,8 +61,10 @@ state and an honest public-alpha path.
   body-bearing requests clearly but does not parse bodies.
 - JSON serialization strategy beyond the current V8 `JSON.stringify` bridge, including
   richer supported value errors, redaction, and benchmark plan.
-- Plan module/service sections and broader native app-host startup validation beyond the
-  MAIN1-02 route/provider/capability metadata contract.
+- Plan module/service sections beyond the MAIN1-03 startup checks. Native validation now
+  covers represented route/provider/capability metadata and duplicate provider service
+  tokens, but bootstrap module graphs and real service lifetimes still need compiler-emitted
+  metadata.
 - Provider/capability enforcement that turns MAIN1-02 metadata into denied-operation
   behavior and diagnostics.
 - Source map strategy for compiler output and TypeScript remapping from V8 exceptions.

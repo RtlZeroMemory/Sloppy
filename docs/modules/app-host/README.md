@@ -2,8 +2,11 @@
 
 ## Status
 
-Bootstrap stdlib layout and the first app-host foundation skeleton exist. Full native
-app-host behavior is still planned / not implemented yet.
+Bootstrap stdlib layout and the first app-host foundation skeleton exist. MAIN1-03 adds a
+small native app-host hardening layer for the supported artifact runtime path:
+`sl_app_host_validate_startup` validates parsed Plan metadata before V8/user execution, and
+`SlAppRequestScope` gives native request dispatch a deterministic cleanup boundary.
+Full native app-host behavior is still not implemented.
 
 ## Purpose
 
@@ -76,26 +79,44 @@ when V8 is enabled. EPIC-24 does not make V8 load the public ESM stdlib directly
 artifacts still run as classic scripts after `sloppy run` loads
 `stdlib/sloppy/internal/runtime-classic.js` from the staged bootstrap stdlib root.
 
-Native app graph validation, `app.run`, `app.listen`, `app.build`, automatic
-`app.plan.json` emission from the bootstrap facade, real data providers, database
-connections from JavaScript, SQL execution from JavaScript, nested route groups, module
-package loading, native plugins,
-middleware, automatic validation/request binding, config file/env providers, console/file/native
-logging sinks, request-scoped service lifetimes, disposal hooks, async factories, and typed
-service tokens remain future work.
-MAIN1-02 validates compiler-emitted route/provider/capability plan metadata, but it does
-not make the bootstrap app host emit plans or enforce provider/capability access.
+`sloppy run --artifacts` now performs native app graph startup validation after plan and
+artifact metadata load and before route materialization, V8 creation, bootstrap evaluation,
+or request serving. The supported startup checks cover Plan v1 compatibility, supported
+target/runtime values, handler table presence and duplicate IDs, runnable GET route
+metadata, route-to-handler references, duplicate method/pattern pairs, duplicate non-empty
+route names, provider/capability token consistency, and duplicate provider service tokens
+when `dataProviders[].service` is represented.
+
+`app.run`, `app.listen`, `app.build`, automatic `app.plan.json` emission from the
+bootstrap facade, real data providers, database connections from JavaScript, SQL execution
+from JavaScript, nested route groups, module package loading, native plugins, middleware,
+automatic validation/request binding, config file/env providers, console/file/native
+logging sinks, async request lifetimes, async service factories, and typed service tokens
+remain future work. MAIN1-02 validates compiler-emitted route/provider/capability plan
+metadata, and MAIN1-03 validates that metadata at app-host startup, but neither PR makes
+the bootstrap app host emit plans, activates services, opens providers, implements DI, or
+enforces provider/capability access.
 
 ## Ownership/Lifetime Rules
 
 Current service lifetimes are JavaScript-only singleton and transient registrations.
-Capability metadata is copied and frozen for debug/introspection. Future real request
-scopes, service lifetimes, and capability enforcement must be explicit and plan-visible.
+Capability metadata is copied and frozen for debug/introspection. Native request execution
+now begins with a request scope and closes that scope after handler success or failure.
+Request-scope cleanup uses `SlScope` LIFO order and owns cleanup registrations only; cleanup
+payloads remain caller-owned. Request-scoped native resources must either be registered as
+scope cleanups or stored in a `SlResourceTable` entry that the scope closes later. No raw
+native pointer is exposed to JavaScript.
+
+Real service lifetimes, service disposal, async scope retention, and capability enforcement
+must be explicit and plan-visible before public app-host services can claim runtime
+lifetime semantics.
 
 ## Invariants
 
-The current bootstrap freeze is structural only. The future native app graph freezes before
-run in static plan mode.
+The current bootstrap freeze is structural only. The native startup validator freezes only
+the supported Plan-backed app graph for the dev runtime; it does not execute module phases
+or allow dynamic graph mutation. The future full native app graph freezes before run in
+static plan mode.
 
 ## Diagnostics
 
@@ -105,13 +126,19 @@ tokens, duplicate/missing capabilities, invalid database capability metadata, in
 template usage, fake data provider missing methods, transaction misuse, invalid routes,
 invalid route groups, invalid result status/header options, invalid schemas, duplicate
 module names, invalid module objects, missing module dependencies, module dependency
-cycles, phase callback failures, and mutation after freeze. Native diagnostics for missing
-service, duplicate route, invalid lifetime, missing config, validation failure, provider
-driver/config failures, and module graph errors remain future work.
+cycles, phase callback failures, and mutation after freeze. Native startup diagnostics now
+cover missing route handlers, duplicate routes, duplicate route names, invalid
+provider/capability metadata, duplicate provider service tokens, and startup validation
+failure summaries in `sloppy run`. Native diagnostics for a real module graph, missing
+service activation, invalid lifetime dependencies, missing config providers, automatic
+request validation, provider driver/config failures, and cleanup callback failure details
+remain future work.
 
 ## Tests
 
-CTest registers `bootstrap.stdlib.assets` to verify the source bootstrap files and copied
+CTest registers `core.app_host.hardening` to cover native app-host startup validation and
+request-scope cleanup on handler success and failure. CTest registers
+`bootstrap.stdlib.assets` to verify the source bootstrap files and copied
 build-tree assets exist. CTest also registers `bootstrap.stdlib.api_shape` to statically
 check the implemented bootstrap API names, descriptor fields, route registration/group
 shape, schema export, module API shape, and absence of future app-host APIs. When `node` is available, CTest

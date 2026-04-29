@@ -136,11 +136,12 @@ first real response/request boundary. EPIC-24 loads the classic bootstrap runtim
 before the generated app artifact and validates runtime-owned handler registrations.
 `sloppy run --artifacts <dir>` loads `app.plan.json`, reads the compiler-emitted `routes`
 metadata through the native Plan parser, verifies referenced artifact hashes before V8 is
-created, evaluates bootstrap runtime plus `app.js` in a V8-enabled build, dispatches GET
-request paths through the native route matcher, passes a minimal `{ route, query, request }`
-context to the handler, converts supported `Results.*` descriptors, writes a deterministic
-HTTP/1.1 response, and closes the connection. The deterministic `--once METHOD TARGET`
-mode performs the same dispatch without opening a socket.
+created, runs native app-host startup validation over the parsed app graph, evaluates
+bootstrap runtime plus `app.js` in a V8-enabled build, dispatches GET request paths through
+the native route matcher, passes a minimal `{ route, query, request }` context to the
+handler, converts supported `Results.*` descriptors, writes a deterministic HTTP/1.1
+response, and closes the connection. The deterministic `--once METHOD TARGET` mode
+performs the same dispatch without opening a socket.
 
 ## Current Handwritten Milestone
 
@@ -370,6 +371,12 @@ Target request flow:
 9. close request resources;
 10. release request arena;
 11. report debug leaks.
+
+MAIN1-03 implements the minimal native request-scope boundary for the current request
+dispatch path. The scope begins before the handler boundary and closes after success or
+failure. Cleanup callbacks use `SlScope` LIFO order. The scope owns cleanup registrations
+only; independently closable resources still belong in `SlResourceTable` entries and must
+be closed by registered cleanup callbacks when request-scoped.
 
 Before `sloppy run`, the synthetic execution flow was:
 
@@ -615,6 +622,9 @@ Execution tests should include:
 - missing plan field;
 - missing handler;
 - duplicate handler;
+- duplicate route or route name;
+- duplicate represented service token;
+- request scope cleanup on handler success and failure;
 - thrown JS exception;
 - rejected promise;
 - simple result conversion;
