@@ -302,6 +302,12 @@ set(
     src/data/sqlite.c
     src/engine/engine.c)
 
+if(WIN32)
+    list(APPEND SLOPPY_CORE_SOURCES src/platform/win32/time.c)
+else()
+    list(APPEND SLOPPY_CORE_SOURCES src/platform/posix/time.c)
+endif()
+
 if(SLOPPY_ENABLE_V8)
     list(APPEND SLOPPY_CORE_SOURCES src/engine/v8/engine_v8.cc)
 endif()
@@ -332,7 +338,10 @@ set(
     tests/unit/data/test_sqlserver.c
     tests/unit/core/test_assert.c
     tests/unit/core/test_assert_enabled_under_ndebug.c
-    tests/unit/data/test_sqlite.c)
+    tests/unit/data/test_sqlite.c
+    benchmarks/bench_main.c
+    benchmarks/bench_route_matcher.c
+    benchmarks/bench_handler_dispatch.c)
 
 if(SLOPPY_ENABLE_V8)
     list(
@@ -375,6 +384,16 @@ add_executable(sloppy src/main.c)
 target_link_libraries(sloppy PRIVATE sloppy_core)
 target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy PRIVATE c_std_17)
+
+add_executable(
+    sloppy_bench
+    benchmarks/bench_main.c
+    benchmarks/bench_route_matcher.c
+    benchmarks/bench_handler_dispatch.c)
+target_link_libraries(sloppy_bench PRIVATE sloppy_core)
+target_include_directories(
+    sloppy_bench PRIVATE "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/benchmarks")
+target_compile_features(sloppy_bench PRIVATE c_std_17)
 
 set(SLOPPY_BOOTSTRAP_OUTPUTS "")
 foreach(bootstrap_asset IN LISTS SLOPPY_BOOTSTRAP_ASSETS)
@@ -457,8 +476,10 @@ function(sloppy_apply_sanitizers target_name)
 endfunction()
 
 sloppy_apply_warnings(sloppy)
+sloppy_apply_warnings(sloppy_bench)
 sloppy_apply_warnings(sloppy_core)
 sloppy_apply_sanitizers(sloppy)
+sloppy_apply_sanitizers(sloppy_bench)
 sloppy_apply_sanitizers(sloppy_core)
 
 file(
@@ -471,6 +492,8 @@ file(
     "${PROJECT_SOURCE_DIR}/src/*.cc"
     "${PROJECT_SOURCE_DIR}/src/*.cpp"
     "${PROJECT_SOURCE_DIR}/src/*.hpp"
+    "${PROJECT_SOURCE_DIR}/benchmarks/*.c"
+    "${PROJECT_SOURCE_DIR}/benchmarks/*.h"
     "${PROJECT_SOURCE_DIR}/tests/*.c"
     "${PROJECT_SOURCE_DIR}/tests/*.h"
     "${PROJECT_SOURCE_DIR}/tests/*.cc"
@@ -599,6 +622,15 @@ if(SLOPPY_ENABLE_TESTS)
 
     add_test(NAME sloppy.cli.help COMMAND sloppy --help)
     set_tests_properties(sloppy.cli.help PROPERTIES PASS_REGULAR_EXPRESSION "Foundation build")
+
+    add_test(NAME benchmarks.sloppy_bench.list COMMAND sloppy_bench --list)
+    set_tests_properties(
+        benchmarks.sloppy_bench.list PROPERTIES PASS_REGULAR_EXPRESSION "route.match.static")
+
+    add_test(NAME benchmarks.sloppy_bench.smoke_json COMMAND sloppy_bench --smoke --format json)
+    set_tests_properties(
+        benchmarks.sloppy_bench.smoke_json
+        PROPERTIES PASS_REGULAR_EXPRESSION "\"sloppyBenchmarkVersion\": 1")
 
     add_test(
         NAME bootstrap.stdlib.assets

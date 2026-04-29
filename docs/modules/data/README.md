@@ -138,6 +138,11 @@ pool state behavior. When `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING` is set it co
 through ODBC and covers parameterized exec/query/queryOne, transactions, rollback, invalid
 SQL diagnostics, and tiny pool acquire/release.
 
+EPIC-20 does not add default database benchmarks. SQLite, PostgreSQL, and SQL Server
+benchmarking remains deferred until each benchmark can be clearly labeled as either a
+local microbenchmark or an env-gated live benchmark, with secrets redacted and no claims
+based on skipped or unavailable services.
+
 ## Source Docs
 
 - `docs/data-providers.md`;

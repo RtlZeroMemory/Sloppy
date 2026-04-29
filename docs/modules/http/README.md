@@ -237,6 +237,11 @@ Implemented CTest coverage:
 - V8-gated dispatch success returning `sloppy-ok`;
 - V8-gated missing JavaScript function and throwing handler failures.
 
+EPIC-20 adds manual benchmarks for route matching and complete-buffer request-head parsing.
+The request-head benchmark is a parser microbenchmark only. It is not an HTTP server
+throughput benchmark and does not involve sockets, response writing, request bodies,
+middleware, or public TypeScript APIs.
+
 Future tests:
 
 - route table and ambiguity tests;

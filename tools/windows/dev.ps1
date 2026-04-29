@@ -139,6 +139,7 @@ function Invoke-FormatCheck {
         $paths = @(
             (Join-Path $Root "include"),
             (Join-Path $Root "src"),
+            (Join-Path $Root "benchmarks"),
             (Join-Path $Root "tests")
         )
 
@@ -280,6 +281,8 @@ function Invoke-Lint {
             )
 
             $lintFiles += Get-ChildItem -Path (Join-Path $Root "src/core") -Filter "*.c" -File |
+                Select-Object -ExpandProperty FullName
+            $lintFiles += Get-ChildItem -Path (Join-Path $Root "benchmarks") -Filter "*.c" -File |
                 Select-Object -ExpandProperty FullName
 
             $testCorePath = Join-Path $Root "tests/unit/core"

@@ -72,6 +72,15 @@ Create the bounded Benchmark Harness slice for Benchmarks / Performance Validati
 - Docs/ADRs are updated if behavior or architecture changes.
 - The resulting PR is a bounded coherent review unit.
 
+## EPIC-20 Implementation Notes
+- `sloppy_bench` is the native benchmark executable.
+- `tools/windows/bench.ps1` is the documented local wrapper.
+- The harness supports `--list`, `--smoke`, text output, and JSON output.
+- Default CTest coverage is limited to list/smoke checks; measured benchmarks remain
+  manual/local and should be run in Release for meaningful numbers.
+- Output examples live under `benchmarks/fixtures/` and are explicitly sample shape, not
+  performance data.
+
 ## Reviewer Checklist
 - Check source-doc compliance.
 - Check non-goals and scope creep.

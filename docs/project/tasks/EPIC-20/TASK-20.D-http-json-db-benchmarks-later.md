@@ -72,6 +72,16 @@ Create the bounded HTTP/JSON/DB Benchmarks Later slice for Benchmarks / Performa
 - Docs/ADRs are updated if behavior or architecture changes.
 - The resulting PR is a bounded coherent review unit.
 
+## EPIC-20 Implementation Notes
+- `http.request_head.parse` is included as a safe complete-buffer parser microbenchmark.
+- Full HTTP server throughput remains deferred because there is no real server/socket
+  response path yet.
+- JSON serialization benchmarks remain deferred until a real implementation exists.
+- SQLite/PostgreSQL/SQL Server live benchmarks remain deferred and must be env-gated when
+  introduced.
+- External runtime comparisons remain deferred until comparable benchmarks exist and are
+  actually run.
+
 ## Reviewer Checklist
 - Check source-doc compliance.
 - Check non-goals and scope creep.
