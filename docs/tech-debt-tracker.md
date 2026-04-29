@@ -34,6 +34,9 @@ state and an honest public-alpha path.
 - Public alpha docs/examples: at least one executable hello must run through the real
   Sloppy toolchain, and the SQLite demo must either run through a real JS-native bridge or
   be explicitly documented as deferred.
+- Request/app resource ownership: MAIN1-07 adds the fixed table and handle safety layer, but
+  app-host/request-scope ownership, leak reports, and debug lifecycle integration remain
+  open.
 
 ## Should Fix Soon
 
@@ -130,7 +133,8 @@ state and an honest public-alpha path.
 
 ## Overengineering Watchlist
 
-- Avoid broad registries until the native app graph and resource table need them.
+- Avoid broad registries beyond the fixed MAIN1-07 resource table until native app graph and
+  request-scope ownership require them.
 - Avoid generic provider/vtable abstractions beyond documented provider boundaries.
 - Avoid macro DSLs or hidden cleanup paths in C.
 - Avoid API shape expansion before compiler/runtime integration catches up.
@@ -158,3 +162,6 @@ state and an honest public-alpha path.
 - Added EPIC-26 default cross-platform CI with Windows clang-cl, Linux clang/gcc, macOS
   clang, POSIX standards scanners, optional/manual V8 validation, and explicit provider
   gate reporting.
+- Added MAIN1-07 resource lifecycle foundation with `SlResourceId`, `SlResourceTable`,
+  generation/stale validation, wrong-kind diagnostics, close/reuse behavior, and cleanup
+  callback tests.

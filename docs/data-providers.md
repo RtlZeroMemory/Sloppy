@@ -485,8 +485,11 @@ Resources:
 - statement resource;
 - transaction scope/resource.
 
-All resources use the Sloppy resource table with generation counters. JS never receives raw
-C pointers.
+All future JS-visible provider resources use the Sloppy resource table with generation
+counters. JS never receives raw C pointers. The implemented MAIN1-07 table provides
+`SlResourceId { slot, generation }`, kind validation, stale-handle protection, wrong-kind
+diagnostics, close/reuse behavior, table exhaustion behavior, and deterministic cleanup of
+remaining live entries on table dispose.
 
 Resource rules:
 
@@ -496,6 +499,16 @@ Resource rules:
 - transaction resources pin a connection until commit/rollback;
 - debug builds report leaked statements, connections, and transactions at request or app
   shutdown.
+
+Bridge rules:
+
+- `data.sqlite.open(...)` and later provider bridge calls may expose only opaque JS handle
+  objects wrapping `SlResourceId`;
+- provider kind is validated by native table lookup, not by fields supplied by JS;
+- stale, closed, missing-slot, and wrong-kind IDs fail before provider code runs;
+- diagnostics must include operation/kind context where useful and must not include native
+  addresses;
+- SQLite MAIN1-08 bridge work depends on this table and should reuse it directly.
 
 ## Connection Pool Lifecycle
 

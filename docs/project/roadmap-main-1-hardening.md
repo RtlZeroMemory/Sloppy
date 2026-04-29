@@ -240,19 +240,26 @@ Prerequisites: `SlScope` and memory ownership docs.
 
 Task breakdown:
 
-- MAIN1-07.A: `SlResourceId` layout and resource table.
-- MAIN1-07.B: kind/generation/stale-handle validation.
-- MAIN1-07.C: cleanup/leak diagnostics.
-- MAIN1-07.D: JS bridge handle conventions.
+- MAIN1-07.A: `SlResourceId` layout and resource table. Implemented by the MAIN1-07
+  resource lifecycle PR.
+- MAIN1-07.B: kind/generation/stale-handle validation. Implemented by the MAIN1-07
+  resource lifecycle PR.
+- MAIN1-07.C: cleanup/leak diagnostics. Cleanup callbacks and deterministic
+  stale/wrong-kind diagnostics are implemented; app/request leak reporting remains a
+  follow-up.
+- MAIN1-07.D: JS bridge handle conventions. Implemented as bridge policy docs; provider
+  bridge consumption remains MAIN1-08.
 
 Non-goals: native plugin ABI.
 
 Files likely touched: `include/sloppy/`, `src/core/`, `docs/memory.md`,
 `docs/modules/resource/README.md`, `tests/unit/core/`.
 
-Tests required: stale ID, wrong kind, double close, leak reporting, request-scope lifetime.
+Tests required: stale ID, wrong kind, double close, cleanup, exhaustion, and request-scope
+lifetime. Request-scope leak reporting remains with app-host lifecycle work.
 
-Acceptance criteria: JS-visible native resources use IDs and generation checks.
+Acceptance criteria: JS-visible native resources use IDs and generation checks. MAIN1-07
+establishes the core table and policy; MAIN1-08 consumes it for SQLite JS-native handles.
 
 Risk: high.
 

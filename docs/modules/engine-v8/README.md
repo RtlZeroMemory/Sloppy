@@ -197,6 +197,14 @@ the JS argument. Returned views remain valid until that arena is reset or its ba
 storage ends. No V8 handle or raw native pointer escapes the bridge, handler functions are
 stored in a bridge-owned table, and JS never receives raw native pointers.
 
+Future JS-native resource intrinsics must expose only opaque JS objects that carry
+`SlResourceId { slot, generation }` values. V8 `External` pointers, pointer-sized numbers,
+or provider addresses are forbidden as JS-visible handles. The bridge must validate the
+resource table entry's slot, generation, live state, and expected kind before provider code
+runs. Stale and wrong-kind handles must fail with deterministic resource diagnostics. The
+SQLite MAIN1-08 bridge is expected to consume the MAIN1-07 table rather than adding a
+V8-specific handle registry.
+
 Diagnostics produced by the V8 bridge are built through `SlDiagBuilder` in the engine
 arena. Exception message text, generated source names, hints, and bounded stack summaries
 are copied before returning to C. They remain valid until the engine arena is reset; callers
@@ -305,6 +313,8 @@ Current checks:
 - `tools/windows/fetch-v8.ps1 -ValidateOnly -V8Root <sdk-root>` reports missing layout
   pieces;
 - C standards scanner rejects V8 headers and `v8::` references outside `src/engine/v8/`.
+- `core.resource.lifecycle` covers the V8-independent resource ID/table lifecycle that
+  future JS-native handle intrinsics must use.
 - `core.engine.abi` covers noop create/info/destroy, invalid options, V8 unsupported
   creation in non-V8 builds, noop handler-call unsupported behavior, noop eval/call
   unsupported behavior, and invalid handler-call arguments.

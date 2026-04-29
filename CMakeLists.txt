@@ -288,6 +288,7 @@ set(
     src/core/checked_math.c
     src/core/arena.c
     src/core/scope.c
+    src/core/resource.c
     src/core/loop.c
     src/core/async.c
     src/core/worker_pool.c
@@ -326,6 +327,7 @@ set(
     tests/unit/core/test_checked_math.c
     tests/unit/core/test_arena.c
     tests/unit/core/test_scope.c
+    tests/unit/core/test_resource.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
     tests/unit/core/test_worker_pool.c
@@ -561,6 +563,8 @@ if(SLOPPY_ENABLE_TESTS)
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
     sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
     sloppy_add_c_unit_test(core_scope_lifetime core.scope.lifetime tests/unit/core/test_scope.c)
+    sloppy_add_c_unit_test(
+        core_resource_lifecycle core.resource.lifecycle tests/unit/core/test_resource.c)
     sloppy_add_c_unit_test(
         core_loop_completion_queue core.loop.completion_queue tests/unit/core/test_loop.c)
     sloppy_add_c_unit_test(

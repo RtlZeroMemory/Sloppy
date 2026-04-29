@@ -79,6 +79,13 @@ and must be closed deterministically through `sl_sqlite_close`, `sl_postgres_clo
 environment handles are freed on every path. Future JS-visible real connections,
 statements, pools, and transactions are resource-table-owned and scoped explicitly.
 
+MAIN1-07 adds the core resource table that those future bridge handles must use. JS-facing
+data handles may wrap only `SlResourceId` values. They must never expose provider pointers,
+ODBC handles, `sqlite3*`, `sqlite3_stmt*`, `PGconn*`, `PGresult*`, or pointer-like integers
+to JavaScript. Every bridge entrypoint must validate kind, generation, and live state before
+calling provider code. SQLite MAIN1-08 should consume this layer for connections,
+statements, and transactions instead of creating a provider-specific handle registry.
+
 ## Invariants
 
 Template query APIs parameterize by default. Lowered query descriptors preserve text and
@@ -95,6 +102,10 @@ Implemented JavaScript errors cover invalid query template usage, fake provider 
 methods, duplicate/missing capability tokens, invalid database capability metadata,
 transaction callback misuse, nested transactions, use after closed transaction scope, and
 the missing stdlib native SQLite bridge.
+
+Native resource lookup diagnostics use `SL_DIAG_RESOURCE_INVALID_ID`,
+`SL_DIAG_RESOURCE_STALE_ID`, `SL_DIAG_RESOURCE_WRONG_KIND`, and `SL_DIAG_RESOURCE_CLOSED`.
+They report operation and resource kind context without printing native pointer values.
 
 Native SQLite diagnostics use `SL_DIAG_SQLITE_PROVIDER_ERROR` and
 `SL_DIAG_DATABASE_UNSUPPORTED_VALUE`. They include provider `sqlite`, operation, SQLite

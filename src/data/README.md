@@ -27,4 +27,7 @@ Still deferred:
 - production pooling, migrations, async worker offload, cancellation/deadlines, TLS option
   hardening, arrays, JSON, blob/date support, and SQL Server TVP/bulk support.
 
+Future JavaScript-visible provider handles must use `SlResourceId` entries in the core
+resource table. Provider pointers and driver handles must not be exposed to JavaScript.
+
 The current source of truth is `docs/data-providers.md`.

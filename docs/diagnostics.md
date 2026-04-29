@@ -306,6 +306,19 @@ Data provider diagnostics:
   diagnostics;
 - unsupported database parameter kinds use `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`.
 
+Resource lifecycle diagnostics:
+
+- invalid/null resource ID or missing slot uses `SLOPPY_E_RESOURCE_INVALID_ID`;
+- stale generation uses `SLOPPY_E_RESOURCE_STALE_ID`;
+- wrong expected kind uses `SLOPPY_E_RESOURCE_WRONG_KIND`;
+- closed current slot uses `SLOPPY_E_RESOURCE_CLOSED`;
+- table exhaustion is reported by status as `SL_STATUS_CAPACITY_EXCEEDED` and may use
+  `SLOPPY_E_RESOURCE_TABLE_EXHAUSTED` when a higher-level operation materializes a user
+  diagnostic.
+
+Resource diagnostics may include operation name and expected/actual resource kind names.
+They must not include native pointer values or provider handle addresses.
+
 Permissions diagnostics:
 
 - missing capability;
