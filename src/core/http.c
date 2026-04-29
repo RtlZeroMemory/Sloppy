@@ -26,6 +26,7 @@ typedef struct SlHttpParseContext
     SlArena* arena;
     SlHttpHeader* headers;
     size_t max_headers;
+    size_t max_target_length;
     size_t header_count;
     SlStr raw_target;
     SlStr current_header_name;
@@ -190,8 +191,22 @@ static void sl_http_record_callback_status(SlHttpParseContext* ctx, SlStatus sta
 static int sl_http_on_url(llhttp_t* parser, const char* at, size_t length)
 {
     SlHttpParseContext* ctx = (SlHttpParseContext*)parser->data;
-    SlStatus status = sl_http_append_str(ctx->arena, ctx->raw_target, sl_str_from_parts(at, length),
-                                         &ctx->raw_target);
+    size_t next_length = 0U;
+    SlStatus status = sl_checked_add_size(ctx->raw_target.length, length, &next_length);
+
+    if (sl_status_is_ok(status) && next_length > ctx->max_target_length) {
+        status = sl_http_set_error(
+            ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+            sl_http_literal("HTTP request target is too long",
+                            sizeof("HTTP request target is too long") - 1U),
+            sl_http_literal("the dev HTTP runtime bounds request targets before dispatch",
+                            sizeof("the dev HTTP runtime bounds request targets before dispatch") -
+                                1U));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_http_append_str(ctx->arena, ctx->raw_target, sl_str_from_parts(at, length),
+                                    &ctx->raw_target);
+    }
     if (!sl_status_is_ok(status)) {
         sl_http_record_callback_status(ctx, status);
     }
@@ -489,6 +504,7 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
                             : options->max_target_length;
     ctx.arena = arena;
     ctx.max_headers = max_headers;
+    ctx.max_target_length = max_target_length;
     ctx.callback_status = sl_status_ok();
     ctx.diag_code = SL_DIAG_NONE;
 
@@ -504,17 +520,6 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
 
     status = sl_http_validate_parsed_request(&ctx, &parser, &method);
     if (!sl_status_is_ok(status)) {
-        goto failure;
-    }
-
-    if (ctx.raw_target.length > max_target_length) {
-        status = sl_http_set_error(
-            &ctx, SL_DIAG_INVALID_HTTP_REQUEST,
-            sl_http_literal("HTTP request target is too long",
-                            sizeof("HTTP request target is too long") - 1U),
-            sl_http_literal("the dev HTTP runtime bounds request targets before dispatch",
-                            sizeof("the dev HTTP runtime bounds request targets before dispatch") -
-                                1U));
         goto failure;
     }
 

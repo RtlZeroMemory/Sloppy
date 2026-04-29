@@ -91,8 +91,8 @@ no arbitrary import graph, and no Node compatibility.
 `--once METHOD TARGET` is a deterministic dev/test helper. It does not open a socket; it
 loads artifacts, builds the native dev route table, dispatches one synthetic request target,
 prints the HTTP response bytes, and exits nonzero only for startup/tooling failures. Route
-misses print a `404` response, unsupported methods print a `405` response, and requests
-that declare a body in the socket path print a `501` response.
+misses print a `404` response and unsupported methods print a `405` response. In socket
+mode, requests that declare a body print a `501` response.
 
 In non-V8 builds, `sloppy run` fails before serving with:
 

@@ -102,8 +102,12 @@ static int test_invalid_percent_encoding_fails(void)
 
 static int test_query_param_limit_is_enforced(void)
 {
+    enum
+    {
+        TARGET_CAPACITY = 2 + ((SL_HTTP_DEFAULT_MAX_QUERY_PARAMS + 1) * 5) + 1
+    };
     unsigned char storage[TEST_ARENA_SIZE];
-    char target[1024];
+    char target[TARGET_CAPACITY];
     SlArena arena = {0};
     SlHttpQuery query = {0};
     size_t length = 0U;
