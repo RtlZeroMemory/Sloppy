@@ -31,7 +31,8 @@ state and an honest public-alpha path.
   and stable sanitizer/fuzz jobs remain open.
 - SQLite JS bridge capability integration: MAIN1-10 adds the runtime registry and provider
   policy hook, but the JavaScript-to-native SQLite bridge must call it once MAIN1-08 exposes
-  the stable bridge boundary.
+  the stable bridge boundary. MAIN1-13 records this as a deferred capability conformance
+  marker rather than claiming JavaScript bridge enforcement.
 - Live DB service infrastructure for PostgreSQL and SQL Server: opt-in local env vars and
   separate skipped CTest gates make reporting honest, but hosted service jobs are still
   needed for release confidence.
@@ -61,7 +62,9 @@ state and an honest public-alpha path.
 - Query parsing beyond EPIC-23 scalar last-wins values, including repeated-key arrays if
   the public API chooses them.
 - Request body parsing skeleton with content-type/body-size policy. MAIN1-04 rejects
-  body-bearing requests clearly but does not parse bodies.
+  body-bearing requests clearly but does not parse bodies. MAIN1-13 keeps body behavior as
+  negative HTTP parser/dispatch coverage until socket-mode conformance has a real
+  body-bearing request fixture.
 - JSON serialization strategy beyond the current V8 `JSON.stringify` bridge, including
   richer supported value errors, redaction, and benchmark plan.
 - Plan module/service sections beyond the MAIN1-03 startup checks. Native validation now

@@ -2,11 +2,13 @@ import { Sloppy, Results } from "sloppy";
 
 const app = Sloppy.create();
 
-app.mapGet("/users/{id:int}", ({ route, query, request }) => {
+app.mapGet("/users/{id:int}", (ctx) => {
     return Results.json({
-        id: route.id,
-        q: query.q,
-        path: request.path,
+        id: ctx.route.id,
+        q: ctx.query.q,
+        method: ctx.request.method,
+        path: ctx.request.path,
+        rawTarget: ctx.request.rawTarget,
     });
 }).withName("Users.Get");
 

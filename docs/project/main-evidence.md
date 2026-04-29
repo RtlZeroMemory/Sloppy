@@ -30,7 +30,7 @@ These commands prove:
 - the default build configures, compiles, and runs its registered CTest suite;
 - default CTest covers portable runtime foundations, compiler artifact determinism,
   default CLI/process diagnostics, default provider diagnostics, static/bootstrap checks,
-  and benchmark harness smoke where registered;
+  MAIN1-13 non-V8 conformance checks, and benchmark harness smoke where registered;
 - format, lint, artifact hygiene, platform/C standards, docs freshness, JS/TS standards,
   and Rust standards checks passed;
 - Rust compiler formatting, clippy, and tests passed;
@@ -114,10 +114,15 @@ Hello from Sloppy
 Successful V8 evidence proves the configured SDK was accepted, the V8-enabled build/test
 suite ran, and the supported compiler artifact path can execute the MAIN hello handler
 through the current classic bootstrap/runtime-contract path.
+MAIN1-13 V8-gated CTest conformance also proves the request-context example executes
+through the same artifact boundary, supported `Results.text` and `Results.json` descriptors
+serialize through the dev response path, invalid result descriptors fail safely, and the
+SQLite bridge fixture can run an in-memory create/insert/select/close flow.
 
 It does not prove true V8 ESM bootstrap module loading, Node/npm compatibility, arbitrary
-imports, source-input `sloppy run`, production HTTP serving, provider bridge execution,
-package release readiness, dynamic V8 runtime packaging, or public alpha readiness.
+imports, source-input `sloppy run`, production HTTP serving, provider bridge behavior
+beyond the checked-in SQLite conformance fixture, package release readiness, dynamic V8
+runtime packaging, or public alpha readiness.
 
 If the SDK is unavailable, report V8 evidence as skipped or unavailable. Do not infer V8
 success from default gates.

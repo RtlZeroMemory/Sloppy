@@ -75,6 +75,11 @@ with `SL_HTTP_DEFAULT_MAX_TARGET_LENGTH` and query pairs with
 `SL_HTTP_DEFAULT_MAX_QUERY_PARAMS`. Request body parsing and headers in context are not
 implemented; requests that declare a body are rejected before handler execution.
 
+MAIN1-13 conformance compiles `examples/request-context/app.js` and, when V8 is enabled,
+runs `GET /users/123?q=abc&q=last` through `sloppy run --artifacts --once` to verify
+route params, last-wins query behavior, method, path, and raw target through the real
+artifact boundary.
+
 Route groups:
 
 - `app.mapGroup(prefix)` requires a non-empty prefix starting with `/`.

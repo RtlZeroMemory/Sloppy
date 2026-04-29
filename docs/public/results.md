@@ -101,6 +101,10 @@ Implemented in the dev run path now:
 - invalid result descriptors fail safely with `SLOPPY_E_INVALID_HTTP_RESULT` and a safe dev
   `500` response.
 
+MAIN1-13 conformance verifies `Results.text` through the executable hello example,
+`Results.json` through the executable request-context example, and an invalid descriptor
+through a V8-gated checked-in artifact fixture that must return a safe dev `500`.
+
 Unsupported result descriptor kinds fail safely with a dev `500` response. `Results.html`,
 custom headers, streaming, files, redirects, cookies, content negotiation, and header
 normalization beyond Content-Type remain deferred.

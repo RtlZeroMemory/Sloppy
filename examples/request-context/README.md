@@ -6,7 +6,9 @@ This example demonstrates the EPIC-23 request context shape:
 
 - `route.id` comes from `/users/{id:int}`;
 - `query.q` comes from the query string;
+- `request.method` is the parsed HTTP method;
 - `request.path` comes from the parsed request target.
+- `request.rawTarget` preserves the original target string.
 
 Build artifacts:
 
