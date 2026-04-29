@@ -54,6 +54,11 @@ behavior, not native request-scope DI.
 `data.main` service alongside matching database capability metadata. This service is still
 an ordinary bootstrap singleton; it does not open a database connection.
 
+`examples/sqlite-basic/app.js` shows the intended SQLite service registration through
+`data.sqlite.open({ path: ":memory:" })`. That factory currently fails with an honest
+bridge-unavailable error if resolved from JavaScript. Native SQLite execution is covered by
+C tests until stdlib-to-native intrinsics exist.
+
 Not implemented yet: request-scoped lifetimes, disposal hooks, async factories, service
 dependency graph validation, service cycle diagnostics, typed tokens, decorators, native
 service graph validation, and real plan emission.

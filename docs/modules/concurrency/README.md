@@ -218,6 +218,10 @@ public callback contract (commit on resolve, rollback on throw/reject, no nested
 transactions, no use after close) without using `SlLoop`, worker pools, native resources,
 database connections, or SQL execution.
 
+EPIC-16 adds native SQLite transaction tests, but they are synchronous C provider tests and
+do not use `SlLoop`, `SlWorkerPool`, V8 promises, cancellation, deadlines, or JavaScript
+request scopes.
+
 ## Source Docs
 
 - `docs/concurrency.md`;

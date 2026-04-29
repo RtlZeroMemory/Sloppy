@@ -175,6 +175,9 @@ The bootstrap stdlib now also contains the EPIC-15 JavaScript-only data/capabili
 foundation: database capability metadata, query template lowering, fake providers, and
 transaction callback semantics. The compiler still does not extract capabilities, data
 provider registrations, or query template literals.
+EPIC-16 adds native SQLite provider tests and the `data.sqlite` stdlib shape, but the
+compiler still does not extract SQLite modules, emit data provider plan entries, or lower
+application template literals into native provider calls.
 `examples/ergonomics/app.js` follows the same rule for the EPIC-13 route group, result
 helper, and schema skeleton API shape. The compiler still does not extract route groups,
 schemas, services, or any `app.plan.json` metadata from these examples.

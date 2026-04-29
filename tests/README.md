@@ -20,11 +20,14 @@ When `node` is available, CTest also registers `bootstrap.stdlib.data_foundation
 executes the ESM stdlib and verifies database capability metadata, query template lowering,
 fake data provider behavior, transaction callback semantics, and module/service
 integration. This test is not a Node compatibility claim.
+CTest also registers `data.sqlite.provider`, which executes the native SQLite provider
+against `:memory:` databases and covers open/close, exec/query/queryOne, parameter binding,
+transactions, and diagnostics.
 The `examples.hello.api_shape`, `examples.ergonomics.api_shape`, and
-`examples.modules_basic.api_shape`, and `examples.data_foundation.api_shape` CTest checks
-statically verify the public examples use the current bootstrap API shape without requiring
-Node, npm, compiler extraction, app-plan emission, data provider connections, or HTTP
-runtime behavior.
+`examples.modules_basic.api_shape`, `examples.data_foundation.api_shape`, and
+`examples.sqlite_basic.api_shape` CTest checks statically verify the public examples use
+the current bootstrap API shape without requiring Node, npm, compiler extraction, app-plan
+emission, JavaScript data provider connections, or HTTP runtime behavior.
 
 Future suites:
 

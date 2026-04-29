@@ -103,13 +103,20 @@ storage for validation shapes, and `examples/ergonomics/`. It still does not imp
 compiler extraction, plan emission, native HTTP serving, middleware, modules, OpenAPI,
 request parsing, automatic validation responses, or route params in native JavaScript
 contexts.
-TASK 15.A/15.B/15.C/15.D adds the JavaScript-only data/capabilities foundation on top of
+TASK 15.A/15.B/15.C/15.D added the JavaScript-only data/capabilities foundation on top of
 the bootstrap app-host/module skeleton: database capability metadata, module capability
 phase attribution, query template lowering, a fake data provider contract for tests and
-examples, transaction callback semantics, and `examples/data-foundation/`. It still does
+examples, transaction callback semantics, and `examples/data-foundation/`. That slice did
 not implement real SQLite/PostgreSQL/SQL Server providers, database connections, SQL
-execution, native provider resources, permission enforcement, compiler template
-extraction, or app-plan data provider emission.
+execution, native provider resources, permission enforcement, compiler template extraction,
+or app-plan data provider emission.
+EPIC-16 adds the first real native SQLite provider boundary. It is a C/runtime provider
+backed by the vcpkg `sqlite3` dependency and covers in-memory open/close, exec, query,
+queryOne, primitive parameter binding, transaction commit/rollback, and diagnostics in
+native tests. The JavaScript stdlib exposes `data.sqlite` as the intended public entry
+point, but stdlib-to-native database intrinsics, JS-visible resource IDs, compiler
+extraction, app-plan data provider emission, and HTTP/app-host runtime integration remain
+future work.
 
 ## Future Phase
 
@@ -388,12 +395,11 @@ Required gates:
 - EPIC 13: Developer ergonomics layer.
 - EPIC 14: Modularity/app modules.
 - EPIC 15: Config/logging/services.
-- EPIC 16: Filesystem/capabilities.
-- EPIC 17: SQLite provider.
-- EPIC 18: PostgreSQL provider.
-- EPIC 19: SQL Server provider.
-- EPIC 20: CLI introspection.
-- EPIC 21: Benchmarks/performance validation.
+- EPIC 16: SQLite provider.
+- EPIC 17: PostgreSQL provider.
+- EPIC 18: SQL Server provider.
+- EPIC 19: CLI introspection.
+- EPIC 20: Benchmarks/performance validation.
 
 See `docs/roadmap.md` for full epic detail.
 

@@ -13,11 +13,14 @@ const DataModule = Sloppy.module("data")
   .capabilities(caps => {
     caps.addDatabase("data.main", {
       provider: "sqlite",
+      path: ":memory:",
       access: "readwrite",
     });
   })
   .services(services => {
-    services.addSingleton("data.users", () => new Map());
+    services.addSingleton("data.main", () => data.sqlite.open({
+      path: ":memory:",
+    }));
   });
 
 const UsersModule = Sloppy.module("users")
@@ -90,7 +93,7 @@ dependency names, phase names, and a short fix hint where practical.
 
 Not implemented yet: compiler extraction, automatic `app.plan.json` emission, native
 runtime module loading, module package distribution, native plugins, optional
-dependencies, version ranges, real data providers, middleware, route filters, hot reload,
-and dynamic module loading after build.
+dependencies, version ranges, JavaScript-to-native SQLite calls, middleware, route filters,
+hot reload, and dynamic module loading after build.
 
 Related internal docs: `docs/modularity.md`, `docs/app-plan.md`.

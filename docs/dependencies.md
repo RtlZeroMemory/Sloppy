@@ -47,7 +47,7 @@ Do not outsource:
 - libuv: future event loop abstraction backend;
 - llhttp: future HTTP/1 parser;
 - yyjson: current Plan v1 JSON parser and future config parser candidate;
-- sqlite3: future first-class SQLite integration;
+- sqlite3: current first-class native SQLite integration;
 - libpq: future PostgreSQL provider backend;
 - Microsoft ODBC Driver for SQL Server / ODBC API: future SQL Server provider backend on
   Windows;
@@ -93,11 +93,10 @@ V8 is enabled. Default builds still do not require the SDK. V8 tests are registe
 after the SDK gate succeeds, so CI can keep the non-V8 path green without local V8
 artifacts.
 
-SQLite may be consumed through vcpkg, a static build, or a bundled source strategy once the
-provider implementation phase begins. libpq may be a vcpkg/build dependency, but release
-packaging needs an explicit DLL strategy. SQL Server support depends on Microsoft ODBC
-Driver availability on Windows; `sloppy doctor` should later detect whether the external
-driver is installed and usable.
+SQLite is consumed through vcpkg manifest mode for the provider implementation phase. libpq
+may be a vcpkg/build dependency, but release packaging needs an explicit DLL strategy. SQL
+Server support depends on Microsoft ODBC Driver availability on Windows; `sloppy doctor`
+should later detect whether the external driver is installed and usable.
 
 All dependencies need explicit ownership, update, security, license, and test strategy
 before they become required in the default build.
@@ -220,6 +219,48 @@ Tests:
 
 - `tests/unit/core/test_http.c` calls `sl_http_libuv_smoke` to prove init/close linkage
   without network I/O.
+
+### sqlite3
+
+`sqlite3` is added in EPIC-16 through vcpkg manifest mode as the first real Sloppy data
+provider backend.
+
+Why it is used:
+
+- SQLite is the planned first provider after the common data/capability foundation;
+- using SQLite's library avoids hand-rolling SQL execution, storage, transactions, or
+  parameter binding;
+- Sloppy keeps the native API as `SlSqliteConnection`, `SlSqliteParam`, `SlSqliteResult`,
+  `SlStatus`, and `SlDiag`, so SQLite types do not leak through generic data headers.
+
+Build wiring:
+
+- `vcpkg.json` lists `sqlite3`;
+- CMake uses `find_package(unofficial-sqlite3 CONFIG REQUIRED)`;
+- `sloppy_core` links `unofficial::sqlite3::sqlite3`;
+- SQLite is part of the default dependency restore/build path.
+
+Ownership and lifetime:
+
+- `src/data/sqlite.c` is the only Sloppy source file that includes `sqlite3.h`;
+- `SlSqliteConnection` is caller-owned and closes deterministically through
+  `sl_sqlite_close`;
+- prepared statements are finalized on every path;
+- rows, column names, text values, and diagnostics are copied into caller-provided arenas;
+- JavaScript sees only the stdlib `data.sqlite` shape today, never a native pointer.
+
+License/update/security:
+
+- sqlite3 is consumed from the pinned vcpkg baseline;
+- broader update and release packaging policy remain lightweight until release packaging
+  begins.
+
+Tests:
+
+- `tests/unit/data/test_sqlite.c` covers in-memory open/close, use after close, exec,
+  parameterized insert, query row shape, queryOne found/missing behavior, primitive
+  parameter binding, unsupported parameter diagnostics, commit/rollback, nested transaction
+  rejection, transaction use after complete, SQL diagnostics, and invalid open diagnostics.
 
 ## Acceptance Criteria For Adding A Dependency
 

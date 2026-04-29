@@ -10,10 +10,11 @@ Implemented database capability metadata example:
 ```ts
 const DataModule = Sloppy.module("data")
   .capabilities(caps => {
-    caps.addDatabase("data.main", {
-      provider: "sqlite",
-      access: "readwrite",
-    });
+caps.addDatabase("data.main", {
+  provider: "sqlite",
+  path: ":memory:",
+  access: "readwrite",
+});
   });
 ```
 
@@ -27,6 +28,9 @@ Implemented behavior:
 - `app.capabilities.has(token)`, `get(token)`, and `list()` expose frozen debug metadata.
 - database capability metadata currently stores `token`, `kind`, `provider`, `access`,
   `module`, and copied options.
+- SQLite examples may include `path: ":memory:"` in copied metadata. This is provider
+  metadata only today; runtime permission enforcement and file database policy are still
+  deferred.
 
 Not implemented yet:
 
@@ -34,7 +38,7 @@ Not implemented yet:
 - no runtime permission enforcement;
 - no OS sandboxing;
 - no user prompts or grant sources;
-- no real database provider access checks.
+- no JavaScript database provider access checks.
 
 Related internal docs: `docs/modularity.md`, `docs/data-providers.md`,
 `docs/diagnostics.md`.

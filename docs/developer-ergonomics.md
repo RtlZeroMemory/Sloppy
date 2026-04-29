@@ -53,9 +53,12 @@ phase execution, module attribution, module debug metadata, and module graph err
 TASK 15.A/15.B/15.C/15.D adds database capability metadata, the module capabilities phase,
 query template lowering, the common fake-provider data API shape, and transaction callback
 semantics for tests/examples.
+EPIC-16 adds native SQLite provider execution in C tests and exposes `data.sqlite` as the
+future stdlib entry point; JavaScript-to-native database calls are still deferred until
+runtime intrinsics exist.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan, serve HTTP, perform compiler extraction, validate requests, load module packages, or
-integrate native modules or real database providers.
+integrate native modules or call real database providers from JavaScript.
 `examples/hello/` demonstrates the checked-in bootstrap API shape through a relative import
 from `stdlib/sloppy/index.js` because the public bare `"sloppy"` specifier remains future
 compiler/runtime behavior.
@@ -428,10 +431,13 @@ Current TASK 15 bootstrap behavior:
   for tests/examples.
 - transactions commit on resolved callbacks and roll back on thrown/rejected callbacks.
 - nested transactions and use after closed transaction scopes fail.
+- EPIC-16 native C tests prove SQLite `:memory:` open/close, exec/query/queryOne, primitive
+  binding, transactions, and diagnostics.
+- `data.sqlite.open(...)` exists but reports that the native stdlib bridge is unavailable.
 
-Still not implemented: real SQLite/PostgreSQL/SQL Server providers, database connections,
-SQL execution, migrations, pooling, native provider scheduling, permission enforcement, and
-compiler extraction of template literals.
+Still not implemented: JavaScript-to-native SQLite calls, PostgreSQL/SQL Server providers,
+migrations, pooling, native provider scheduling, permission enforcement, and compiler
+extraction of template literals.
 
 ## Diagnostics As Product UX
 

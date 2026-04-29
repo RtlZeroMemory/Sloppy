@@ -80,6 +80,7 @@ const DataModule = Sloppy.module("data")
   .capabilities(caps => {
     caps.addDatabase("data.main", {
       provider: "sqlite",
+      path: ":memory:",
       access: "readwrite",
     });
   });
@@ -87,7 +88,8 @@ const DataModule = Sloppy.module("data")
 
 The current registry stores metadata only. Capability tokens must be non-empty strings,
 duplicates fail, and `app.capabilities.has/get/list` exposes frozen debug metadata with the
-declaring module when applicable.
+declaring module when applicable. EPIC-16 native SQLite tests can open `:memory:` databases,
+but JavaScript permission enforcement and public file database policy remain future work.
 
 ## Permission Grants
 

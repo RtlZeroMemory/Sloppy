@@ -436,6 +436,13 @@ query descriptors with SQL text and parameters separated. No compiler transform 
 template literals, no native provider receives queries, no database connection is opened,
 and no SQL is executed.
 
+EPIC-16 adds native C SQLite execution for the provider boundary. Native tests pass lowered
+`?` SQL text and parameter arrays directly to the SQLite provider and verify exec, query,
+queryOne, and transactions. The JavaScript stdlib still cannot send descriptors to native
+SQLite because runtime intrinsics and JS-visible resource IDs are future work; the
+`data.sqlite.open(...)` stdlib entry point reports that bridge gap instead of pretending to
+open a database.
+
 ## Example Input
 
 ```ts

@@ -1,15 +1,15 @@
-set(example_dir "${PROJECT_SOURCE_DIR}/examples/data-foundation")
+set(example_dir "${PROJECT_SOURCE_DIR}/examples/sqlite-basic")
 set(example_app "${example_dir}/app.js")
 set(example_readme "${example_dir}/README.md")
 
 foreach(required_file IN ITEMS "${example_app}" "${example_readme}")
     if(NOT EXISTS "${required_file}")
-        message(FATAL_ERROR "Missing data-foundation example file: ${required_file}")
+        message(FATAL_ERROR "Missing sqlite-basic example file: ${required_file}")
     endif()
 endforeach()
 
 if(EXISTS "${example_dir}/package.json")
-    message(FATAL_ERROR "Data-foundation example must not introduce package-manager scope.")
+    message(FATAL_ERROR "sqlite-basic example must not introduce package-manager scope.")
 endif()
 
 file(READ "${example_app}" example_app_js)
@@ -23,49 +23,40 @@ function(require_substring haystack needle description)
 endfunction()
 
 foreach(required_pattern IN ITEMS
-        "import {"
-        "Sloppy"
-        "data"
-        "sql"
         "from \"../../stdlib/sloppy/index.js\";"
-        "Sloppy.module(\"data\")"
-        ".capabilities((caps)"
+        "Sloppy.module(\"data.sqlite\")"
         "caps.addDatabase(\"data.main\""
         "provider: \"sqlite\""
+        "path: \":memory:\""
         "access: \"readwrite\""
         "services.addSingleton(\"data.main\""
-        "data.createFakeProvider"
-        "query(lowered)"
-        "exec(lowered)"
+        "data.sqlite.open"
+        "db.exec`"
         "db.queryOne`"
-        "db.transaction(async (tx)"
-        "tx.exec`"
+        "Results.ok"
+        "Results.notFound"
         "const lowered = sql`"
+        ".addModule(SqliteModule)"
         ".addModule(UsersModule)"
-        ".addModule(DataModule)"
-        "const app = builder.build();"
         "export default app;")
     require_substring(
         "${example_app_js}" "${required_pattern}"
-        "examples/data-foundation/app.js is missing expected data foundation API shape")
+        "examples/sqlite-basic/app.js is missing expected SQLite API shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "Bootstrap data/capabilities foundation example"
-        "What works today"
-        "What does not work yet"
+        "SQLite provider API-shape example"
+        "native C SQLite provider opens `:memory:`"
+        "`data.sqlite.open({ path: \":memory:\" })` exists"
+        "fails honestly until native stdlib intrinsics are wired"
         "`sloppy run` does not exist yet"
         "`sloppyc` does not compile this example"
         "does not emit `app.plan.json`"
-        "there is no real HTTP server"
-        "real SQLite provider is covered by native C tests"
-        "no PostgreSQL or SQL Server provider yet"
-        "no database connection is opened"
-        "no SQL is executed"
-        "filesystem and network capabilities are not enforced"
-        "examples/sqlite-basic/"
-        "future bare `\"sloppy\"` import is planned only")
+        "there is no real HTTP server yet"
+        "stdlib cannot call the native SQLite provider"
+        "no PostgreSQL or SQL Server provider"
+        "no ORM, migrations, connection pooling")
     require_substring(
         "${example_readme_md}" "${required_pattern}"
-        "examples/data-foundation/README.md is missing required status text")
+        "examples/sqlite-basic/README.md is missing required status text")
 endforeach()

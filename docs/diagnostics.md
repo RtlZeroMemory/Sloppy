@@ -119,6 +119,8 @@ Implemented foundation codes:
 - `SLOPPY_E_HTTP_HEADER_LIMIT`;
 - `SLOPPY_E_HTTP_UNSUPPORTED_METHOD`;
 - `SLOPPY_E_HTTP_ROUTE_NOT_FOUND`;
+- `SLOPPY_E_SQLITE_PROVIDER`;
+- `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`;
 - `SLOPPY_E_MISSING_SERVICE`;
 - `SLOPPY_E_PERMISSION_DENIED`;
 - `SLOPPY_E_INTERNAL`.
@@ -288,6 +290,9 @@ Data provider diagnostics:
 - missing config;
 - parameter binding failure;
 - transaction misuse.
+- native SQLite provider failures use `SLOPPY_E_SQLITE_PROVIDER` with provider, operation,
+  SQLite error text when available, and SQL text without parameter values;
+- unsupported SQLite parameter kinds use `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`.
 
 Permissions diagnostics:
 

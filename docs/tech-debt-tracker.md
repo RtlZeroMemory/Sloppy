@@ -39,11 +39,15 @@
   `builder.addModule` skeleton with dependency ordering, services/routes phases,
   attribution, and module debug metadata, and the EPIC-15 data/capabilities foundation with
   database capability metadata, query template lowering, fake data providers, and
-  transaction callback semantics. It still has no handler registration, runtime intrinsic
-  binding, module resolver, compiler import rewriting, package-manager behavior, native
-  app-host validation, app run/listen, HTTP response conversion, automatic validation,
-  real database providers, database connections, SQL execution, or `app.plan.json` emission
-  yet.
+  transaction callback semantics. EPIC-16 adds `data.sqlite` metadata/open shape, but the
+  stdlib still has no JavaScript-to-native SQLite bridge. It still has no handler
+  registration, runtime intrinsic binding, module resolver, compiler import rewriting,
+  package-manager behavior, native app-host validation, app run/listen, HTTP response
+  conversion, automatic validation, JavaScript database connections, SQL execution from
+  JavaScript, or `app.plan.json` emission yet.
+- The native SQLite provider exists and is covered by C tests, but it is synchronous and
+  not yet connected to JS resource IDs, app-host service disposal, permission enforcement,
+  app-plan provider entries, or worker-pool/off-thread execution.
 - `examples/hello/` and `examples/ergonomics/` exist as static bootstrap API-shape
   examples. `examples/modules-basic/` exists as a static bootstrap module API-shape
   example. `examples/data-foundation/` exists as a static data/capabilities API-shape
@@ -167,12 +171,13 @@
   plugin modules are future work.
 - Data provider modules are future work; the modules-basic example uses only fake
   in-memory JavaScript services.
-- Real SQLite provider implementation is future EPIC-16 work; the current fake data
-  provider is only for tests/examples and does not execute SQL.
+- JavaScript-to-native SQLite provider binding is future work; the current native provider
+  executes SQL in C tests and the fake data provider remains for JS tests/examples.
 - PostgreSQL and SQL Server providers are future work.
-- Database connection pooling, cancellation/deadline propagation, isolation levels,
-  savepoints, parameter type mapping, raw SQL escape hatch, array expansion, migration
-  story, and provider-specific quoting remain future data-provider work.
+- Database connection pooling, migrations, file DB capability policy, blob support,
+  async worker offload, cancellation/deadline propagation, isolation levels, savepoints,
+  array expansion, raw SQL escape hatch, and provider-specific quoting remain future
+  data-provider work.
 - Capability enforcement, filesystem capabilities, network capabilities, permission grants,
   `sloppy audit`, and app-plan data provider/capability emission remain future work.
 - Compiler import rewriting for `"sloppy"` is future work.

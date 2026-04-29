@@ -137,6 +137,28 @@ function validateProviderDefinition(definition) {
     }
 }
 
+function validateSqliteOpenOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy sqlite.open options must be a plain object.");
+    }
+
+    if (typeof options.path !== "string" || options.path.length === 0) {
+        throw new TypeError("Sloppy sqlite.open path must be a non-empty string.");
+    }
+
+    const access = options.access ?? "readwrite";
+    if (access !== "read" && access !== "readwrite") {
+        throw new TypeError("Sloppy sqlite.open access must be read or readwrite.");
+    }
+
+    return Object.freeze({
+        provider: "sqlite",
+        path: options.path,
+        access,
+        placeholderStyle: "question",
+    });
+}
+
 function missingProviderMethod(method) {
     throw new Error(`sloppy: fake data provider method missing
 
@@ -146,6 +168,51 @@ Method:
 Fix:
   Pass a '${method}' function to data.createFakeProvider(...) for this test or example.`);
 }
+
+function createSqliteUnavailableError(operation) {
+    return new Error(`sloppy: sqlite provider native bridge unavailable
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}
+
+Reason:
+  The native SQLite provider exists for C/runtime tests, but stdlib-to-native database intrinsics are not wired yet.
+
+Fix:
+  Register SQLite as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);
+}
+
+function openSqlite(options) {
+    validateSqliteOpenOptions(options);
+    throw createSqliteUnavailableError("open");
+}
+
+const sqlite = Object.freeze({
+    provider: "sqlite",
+    placeholderStyle: "question",
+    supports: Object.freeze({
+        memory: true,
+        file: true,
+        queryTemplates: true,
+        parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
+        transactions: true,
+        pooling: false,
+        migrations: false,
+        orm: false,
+        nativeStdlibBridge: false,
+    }),
+    open: openSqlite,
+    __debug() {
+        return Object.freeze({
+            provider: "sqlite",
+            placeholderStyle: "question",
+            nativeStdlibBridge: false,
+        });
+    },
+});
 
 function createTransactionState(provider) {
     return {
@@ -350,4 +417,5 @@ export const data = Object.freeze({
     createFakeProvider,
     lowerQueryTemplate: createLoweredQuery,
     isQuery: isLoweredQuery,
+    sqlite,
 });
