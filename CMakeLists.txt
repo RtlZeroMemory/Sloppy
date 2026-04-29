@@ -762,6 +762,11 @@ if(SLOPPY_ENABLE_TESTS)
                     "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml" -- --version
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(sloppyc.cli.version PROPERTIES PASS_REGULAR_EXPRESSION "sloppyc")
+        add_test(
+            NAME sloppyc.compiler_extraction
+            COMMAND "${CARGO_EXECUTABLE}" test --manifest-path
+                    "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml"
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 endif()
 
@@ -773,7 +778,7 @@ if(SLOPPY_BUILD_COMPILER)
             COMMAND "${CARGO_EXECUTABLE}" build --manifest-path
                     "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml"
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/compiler"
-            COMMENT "Building sloppyc placeholder"
+            COMMENT "Building sloppyc compiler extraction MVP"
             VERBATIM)
     else()
         message(WARNING "Cargo was not found; the sloppyc CMake target will not be available.")

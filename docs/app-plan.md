@@ -33,6 +33,10 @@ evaluates handwritten `app.js`, maps handler ID `1` to the plan `exportName`, an
 that global JavaScript function through the engine boundary. The runtime still does not
 load production plans from disk, build routes, verify hashes, run HTTP, execute compiler
 output, or provide the final handler registration protocol.
+EPIC-21 adds the first `sloppyc build` compiler output. The emitted `app.plan.json`
+matches the required minimal handler/bundle/source-map fields and includes a narrow
+`routes` metadata section for future EPIC-22 handoff. The current native Plan v1 parser
+still ignores that unknown section.
 
 ## Public API Shape
 
@@ -153,6 +157,9 @@ table before engine entry. A future plan routes section will own this mapping.
 EPIC-19 CLI introspection can read an interim `routes` metadata section in plan-compatible
 JSON fixtures/artifacts, but the native Plan v1 parser still does not own or validate that
 section.
+EPIC-21 compiler output uses the same plan-compatible metadata idea for extracted routes:
+each MVP route entry records `method`, `pattern`, `handlerId`, and `name`. Handler IDs
+start at `1` and are assigned in source order after route group prefix composition.
 
 Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
 and `{name:int}`. Query strings, catch-all parameters, optional segments, regex

@@ -37,7 +37,9 @@ This document does not implement:
 
 ## Current Phase
 
-Only placeholder CLIs exist. The execution model is specified but not implemented. The
+`sloppyc` now has an EPIC-21 compiler extraction MVP. It can compile one tiny supported
+Sloppy source file into deterministic `app.plan.json`, `app.js`, and placeholder
+`app.js.map` artifacts. The execution model beyond artifact emission is still staged. The
 engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call shapes.
 The noop backend is always available. A V8-enabled build can run the TASK 07.C smoke path:
 evaluate a borrowed classic JavaScript source string and call a named global zero-argument
@@ -109,6 +111,24 @@ Route schemas and group metadata are stored only in bootstrap route snapshots. T
 emitted into `app.plan.json`, consumed by native HTTP dispatch, or converted into automatic
 request validation.
 
+EPIC-21 adds compiler extraction for the tiny public API bridge:
+
+```js
+import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+
+app.mapGet("/", () => Results.text("Hello from Sloppy"));
+
+export default app;
+```
+
+The MVP also supports `Sloppy.createBuilder()` plus `builder.build()`, simple
+`app.mapGroup(prefix)` variables, literal grouped `mapGet` routes, `.withName(...)`, and
+handlers returning `Results.text(...)` or `Results.json(...)`. It does not implement full
+TypeScript checking, package resolution, bundling, module extraction, services/data
+providers, V8 module loading, HTTP serving, `sloppy run`, or `app.run`.
+
 ## Current Handwritten Milestone
 
 The first real milestone is not full TypeScript compilation. It is now covered by a
@@ -156,6 +176,12 @@ V8 executes JavaScript, not TypeScript. TypeScript is never evaluated directly. 
 does not type-check. `sloppy check` later uses the official TypeScript checker through
 `tsgo` or `tsc`.
 
+Current EPIC-21 behavior covers only the first two pipeline steps for one source file. The
+generated `app.js` is a classic script with deterministic `globalThis.__sloppy_handler_N`
+functions and a tiny compiler-generated `Results.text/json` shim that returns strings for
+the current V8 global-function execution path. Full stdlib bootstrap loading is EPIC-24,
+and real result descriptor conversion is EPIC-23.
+
 ## Artifact Boundary
 
 `sloppyc` emits:
@@ -163,6 +189,10 @@ does not type-check. `sloppy check` later uses the official TypeScript checker t
 - `app.js`: executable JavaScript bundle;
 - `app.js.map`: source map for diagnostics;
 - `app.plan.json`: host graph contract.
+
+The MVP source map is a deterministic placeholder with no source mappings. It exists
+because the current minimal Plan v1 contract requires `sourceMap` fields. Source-map
+fidelity is deferred.
 
 The plan is authority for the native host graph. The bundle provides executable handler
 functions. Both must agree at startup.

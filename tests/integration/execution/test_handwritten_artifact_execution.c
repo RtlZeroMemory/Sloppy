@@ -84,40 +84,49 @@ static SlEngineOptions v8_options(void)
     return options;
 }
 
-static int load_handwritten_plan(SlArena* plan_arena, SlPlan* out_plan, SlDiag* out_diag)
+static int load_plan_from_path(const char* path, SlArena* plan_arena, SlPlan* out_plan,
+                               SlDiag* out_diag)
 {
     unsigned char json_storage[TEST_FILE_SIZE];
     SlBytes json = {0};
     SlPlanParseOptions options = {0};
 
-    if (read_file("tests/integration/execution/handwritten_smoke/app.plan.json", json_storage,
-                  sizeof(json_storage), &json) != 0)
-    {
+    if (read_file(path, json_storage, sizeof(json_storage), &json) != 0) {
         return 1;
     }
 
-    options.source_name =
-        sl_str_from_cstr("tests/integration/execution/handwritten_smoke/app.plan.json");
+    options.source_name = sl_str_from_cstr(path);
     return expect_status(sl_plan_parse_json(plan_arena, json, &options, out_plan, out_diag),
                          SL_STATUS_OK);
 }
 
-static int eval_handwritten_app(SlEngine* engine, SlDiag* out_diag)
+static int load_handwritten_plan(SlArena* plan_arena, SlPlan* out_plan, SlDiag* out_diag)
+{
+    return load_plan_from_path("tests/integration/execution/handwritten_smoke/app.plan.json",
+                               plan_arena, out_plan, out_diag);
+}
+
+static int eval_app_from_path(const char* path, const char* source_name, SlEngine* engine,
+                              SlDiag* out_diag)
 {
     unsigned char js_storage[TEST_FILE_SIZE];
     SlBytes js = {0};
     SlStr source = {0};
 
-    if (read_file("tests/integration/execution/handwritten_smoke/app.js", js_storage,
-                  sizeof(js_storage), &js) != 0)
-    {
+    if (read_file(path, js_storage, sizeof(js_storage), &js) != 0) {
         return 1;
     }
 
     source = sl_str_from_parts((const char*)js.ptr, js.length);
-    return expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("handwritten_smoke/app.js"),
-                                               source, out_diag),
-                         SL_STATUS_OK);
+    return expect_status(
+        sl_engine_eval_source(engine, sl_str_from_cstr(source_name), source, out_diag),
+        SL_STATUS_OK);
+}
+
+static int eval_handwritten_app(SlEngine* engine, SlDiag* out_diag)
+{
+    return eval_app_from_path("tests/integration/execution/handwritten_smoke/app.js",
+                              "handwritten_smoke/app.js", engine, out_diag);
 }
 
 static int create_v8_engine(SlArena* engine_arena, SlEngine** out_engine)
@@ -163,6 +172,55 @@ static int test_handwritten_plan_and_app_call_handler_1(void)
 
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(result.text, sl_str_from_cstr("sloppy-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 4;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_compiler_mvp_plan_and_app_call_handler_1(void)
+{
+    unsigned char engine_storage[TEST_ARENA_SIZE];
+    unsigned char plan_storage[TEST_ARENA_SIZE];
+    unsigned char result_storage[TEST_ARENA_SIZE];
+    SlArena engine_arena = {0};
+    SlArena plan_arena = {0};
+    SlArena result_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlan plan = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&plan_arena, plan_storage, sizeof(plan_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 1;
+    }
+
+    if (load_plan_from_path("tests/integration/execution/compiler_mvp/app.plan.json", &plan_arena,
+                            &plan, &diag) != 0 ||
+        create_v8_engine(&engine_arena, &engine) != 0 ||
+        eval_app_from_path("tests/integration/execution/compiler_mvp/app.js", "compiler_mvp/app.js",
+                           engine, &diag) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    if (expect_status(
+            sl_runtime_contract_call_handler(engine, &result_arena, &plan, 1U, &result, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 3;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("Hello from Sloppy")))
     {
         sl_engine_destroy(engine);
         return 4;
@@ -321,6 +379,10 @@ int main(void)
 {
     if (test_handwritten_plan_and_app_call_handler_1() != 0) {
         return 1;
+    }
+
+    if (test_compiler_mvp_plan_and_app_call_handler_1() != 0) {
+        return 5;
     }
 
     if (test_missing_handler_id_returns_diagnostic() != 0) {

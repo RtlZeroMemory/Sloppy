@@ -7,6 +7,8 @@ engine stub. TASK 07.C adds the first V8-backed smoke path when the build is exp
 configured with `SLOPPY_ENABLE_V8=ON` and a valid SDK. TASK 07.D adds the first basic V8
 exception-to-`SlDiag` mapping skeleton for that smoke path. TASK 08.A adds the first
 handwritten `app.plan.json` + `app.js` execution smoke through the V8 bridge.
+EPIC-21 compiler output deliberately targets the same classic-script global-function shape
+for now.
 
 ## Purpose
 
@@ -35,6 +37,8 @@ Implemented now:
   and invokes it through the engine boundary;
 - V8-gated handwritten artifact integration fixtures under
   `tests/integration/execution/handwritten_smoke/`.
+- compiler-generated `app.js` artifacts can define `globalThis.__sloppy_handler_N`
+  functions that match the current runtime-contract lookup shape.
 
 Later scope:
 
@@ -44,10 +48,9 @@ Later scope:
 
 ## Non-goals
 
-No HTTP, compiler extraction, public JS API bootstrap, module loading, ESM resolver, full
-app host, request context, route matcher, handler table registration, V8 Promise
-integration, microtask policy, workers, inspector, snapshots, Node compatibility, or
-package-manager behavior.
+No HTTP, public JS API bootstrap module loading, ESM resolver, full app host, request
+context, route matcher, handler table registration, V8 Promise integration, microtask
+policy, workers, inspector, snapshots, Node compatibility, or package-manager behavior.
 
 ## Public/Internal API
 
@@ -69,6 +72,10 @@ Current behavior:
   and copies a string return value into the caller-provided arena;
 - `sl_runtime_contract_call_handler` looks up a handler ID in `SlPlan`, validates the
   export name, and calls the named global through `sl_engine_call_function0`;
+- EPIC-21 generated `app.js` uses classic-script `globalThis.__sloppy_handler_N`
+  assignments plus a tiny compiler-generated `Results.text/json` shim that returns strings
+  for the current engine result boundary until EPIC-24 owns stdlib bootstrap module loading
+  and EPIC-23 owns descriptor conversion;
 - `sl_engine_call_handler` exists as a future engine-owned handler dispatch shape but
   still returns `SL_STATUS_UNSUPPORTED` for the noop engine.
 

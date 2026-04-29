@@ -47,6 +47,12 @@ Current tests:
   and `sloppy openapi` over deterministic metadata fixtures under `tests/fixtures/cli/`;
 - CTest failure smoke for missing CLI metadata paths;
 - CTest smoke for `sloppyc --version`;
+- CTest `sloppyc.compiler_extraction`, which runs the Rust compiler test suite covering
+  the EPIC-21 compiler extraction fixtures;
+- Rust compiler golden tests for `hello-mapget`, `builder-mapget`, and `grouped-route`
+  deterministic `app.plan.json` and `app.js` outputs;
+- Rust compiler diagnostic fixture tests for unsupported dynamic route patterns, missing
+  default app export, and multiple app objects;
 - CTest smoke for `sloppy_bench --list` and `sloppy_bench --smoke --format json`, which
   verifies the benchmark harness starts, exposes named benchmarks, and emits the versioned
   JSON envelope. These smoke checks are not performance regression gates;

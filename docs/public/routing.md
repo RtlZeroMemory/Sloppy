@@ -1,11 +1,12 @@
 # Routing
 
-Status: Bootstrap `mapGet` and route group shape implemented with structural app freeze.
+Status: Bootstrap `mapGet`, route group shape, and compiler extraction MVP implemented.
 
 Bootstrap status: `Sloppy.create()` and `Sloppy.createBuilder().build()` return an
 in-memory app facade with `app.mapGet(...)` and `app.mapGroup(...)`. Handler registration,
-HTTP dispatch integration, app-plan emission, and compiler extraction remain future work.
-Routes can also be contributed during a module routes phase through `builder.addModule(...)`.
+HTTP dispatch integration, and server execution remain future work. Routes can also be
+contributed during a module routes phase through `builder.addModule(...)`, but module route
+extraction is not part of the compiler MVP.
 
 Purpose: document current `app.mapGet`, route snapshots, handler context, and future route
 features.
@@ -68,17 +69,29 @@ Route groups:
 - Module-created grouped routes use the same shape and also include `metadata.module`.
 - Route groups are in-memory bootstrap metadata only.
 
+Compiler extraction MVP:
+
+- supports `app.mapGet("/literal", () => Results.text(...))`;
+- supports `app.mapGet("/literal", () => Results.json(...))`;
+- supports `const group = app.mapGroup("/prefix"); group.mapGet("/child", handler)`;
+- supports `.withName("Route.Name")`;
+- assigns handler IDs from `1` in source order;
+- emits route metadata into `app.plan.json` as `method`, `pattern`, `handlerId`, and
+  `name`;
+- rejects dynamic route strings, computed method names, unsupported handler bodies,
+  conditional route registration, loops, modules, middleware, and package resolution.
+
 Not implemented yet: `mapPost`, nested groups, middleware, filters, automatic validation,
-duplicate/ambiguity diagnostics, compiler extraction, automatic `app.plan.json` emission,
 native route table construction, HTTP server behavior, route dispatch integration, and
-route/module extraction.
+route/module extraction beyond the tiny compiler MVP shape above.
 
 ## CLI Introspection
 
 `sloppy routes --plan <path>` can print route metadata from a plan-compatible metadata
-fixture or artifact. This is inspection-only: it does not execute handlers, start HTTP,
-enter V8, or build a production native route table. Until compiler/app-host emission grows a
-real Plan route section, the command reads the documented interim `routes` metadata section.
+fixture or artifact, including the narrow route metadata emitted by the compiler MVP. This
+is inspection-only: it does not execute handlers, start HTTP, enter V8, or build a
+production native route table. Until native plan parsing grows a real route section, the
+command reads the documented interim `routes` metadata section.
 
 `sloppy openapi --plan <path>` uses the same route metadata to emit a minimal OpenAPI
 skeleton. It converts Sloppy route parameters such as `{id}` and `{id:int}` into OpenAPI

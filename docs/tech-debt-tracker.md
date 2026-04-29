@@ -6,11 +6,8 @@ state and an honest public-alpha path.
 
 ## Must Fix Before Public Alpha
 
-- Real `sloppyc` extraction MVP: parse/import public API source, discover
-  `Sloppy.createBuilder` / `Sloppy.create`, routes, groups, modules, handlers, and emit
-  deterministic `app.plan.json` plus `app.js`.
-- Public API to plan emission: bootstrap route/module/service/data metadata must become
-  compiler-produced plan metadata instead of in-memory debug snapshots.
+- Public API to plan emission beyond EPIC-21: bootstrap module/service/data metadata must
+  become compiler-produced plan metadata instead of in-memory debug snapshots.
 - `sloppy run` MVP: load source or build artifacts, start a local dev HTTP server, route
   GET requests, call the V8 handler, and return text/JSON responses.
 - HTTP response writer: status, headers, content type, body writing, basic error handling,
@@ -140,3 +137,5 @@ state and an honest public-alpha path.
 
 - Added JS/TS and Rust standards docs plus zero-dependency language standards scanners.
 - Wired JS/TS and Rust standards scanners into `tools/windows/dev.ps1 lint`.
+- Added the EPIC-21 `sloppyc` extraction MVP for one-file literal `mapGet` apps, builder
+  form, simple route groups, deterministic artifacts, and compiler diagnostics.
