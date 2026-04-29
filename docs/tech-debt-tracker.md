@@ -20,10 +20,12 @@ state and an honest public-alpha path.
 - Request context model beyond EPIC-23: body/header access, typed/coerced route/query
   binding, services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
-  maps, async/event-loop Promise support, and executable public examples through the final
-  bootstrap module shape remain open. MAIN1-05 documents and tests the current owner-thread,
-  lifecycle, generated-source diagnostic, and Promise-rejection policies, but does not add
-  full async JavaScript.
+  maps, required async/event-loop Promise support, and executable public examples through
+  the final bootstrap module shape remain open. MAIN1-05 documents and tests the current
+  owner-thread, lifecycle, generated-source diagnostic, and Promise-rejection policies, but
+  does not add full async JavaScript. Promise support is deferred, not optional: before
+  Sloppy claims async handlers, V8 Promise settlement, microtask policy, request-scope
+  lifetime, and rejected-promise diagnostics must be implemented and tested.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.

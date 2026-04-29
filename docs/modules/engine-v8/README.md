@@ -63,8 +63,9 @@ Later scope:
 
 - true V8 ESM module loading and a production module cache;
 - richer source-map remapping for generated app modules;
-- V8 Promise integration that maps resolved/rejected JS promises onto the native `SlAsync`
-  settlement model or a documented evolution of it;
+- required V8 Promise integration that maps resolved/rejected JS promises onto the native
+  `SlAsync` settlement model or a documented evolution of it before Sloppy claims async
+  handler support;
 - richer source-map fidelity once compiler source maps contain useful mappings.
 
 ## Non-goals
@@ -109,7 +110,9 @@ Current behavior:
   does not expose raw native pointers to JavaScript;
 - V8 handler calls that return a JavaScript Promise fail with `SL_STATUS_UNSUPPORTED` and a
   `SLOPPY_E_ENGINE_CALL_ERROR` diagnostic. The alpha bridge does not run microtasks to
-  settle Promise values and does not pretend async handlers completed;
+  settle Promise values and does not pretend async handlers completed. This is a temporary
+  hardening policy, not the final runtime shape: real Promise/microtask support is required
+  before async handlers become supported;
 - `sl_runtime_contract_call_handler` looks up a handler ID in `SlPlan`, validates the
   export name, and calls the named global with no arguments;
 - `sl_runtime_contract_call_handler_with_context` performs the same plan lookup and calls
@@ -251,7 +254,9 @@ TASK 09.B's `SlAsync` model lives in the C runtime core and does not include V8 
 MAIN1-05 chooses the alpha Promise policy: returned Promises and `async` handlers are
 unsupported and fail clearly. Future support should settle returned JS promises by posting
 back to the owning loop and must continue to keep V8 handles and microtask policy inside
-`src/engine/v8/`.
+`src/engine/v8/`. That support is deferred but required; Sloppy must not document or market
+async handler support until V8 Promise settlement, microtask policy, request-scope lifetime,
+and rejected-promise diagnostics are implemented and tested.
 
 V8 requires process-wide platform initialization. TASK 07.C initializes that state once,
 keeps it private to `src/engine/v8/`, and intentionally leaves it alive for process

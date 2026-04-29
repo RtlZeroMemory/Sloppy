@@ -104,7 +104,7 @@ Runtime execution:
 - native async settlement skeleton before V8 Promise integration;
 - inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;
-- V8 Promise settlement later;
+- V8 Promise settlement later, required before async handler support is claimed;
 - route-aware diagnostics.
 
 Plan schema fixtures:
