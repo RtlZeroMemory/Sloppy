@@ -410,6 +410,7 @@ static int test_builder_and_bounds(void)
     SlDiag diag;
     size_t index = 0U;
     SlStr bad = sl_str_from_parts(NULL, 3U);
+    SlOwnedStr owned_hint = {0};
 
     if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
         return 50;
@@ -460,34 +461,43 @@ static int test_builder_and_bounds(void)
         return 56;
     }
 
-    for (index = 0U; index < SL_DIAG_MAX_HINTS; index += 1U) {
+    if (expect_status(sl_str_copy_to_arena(&arena, sl_str_from_cstr("owned hint"), &owned_hint),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_add_hint_owned(&builder, sl_owned_str_as_view(owned_hint)),
+                      SL_STATUS_OK) != 0 ||
+        builder.diag.hints[0].ptr != owned_hint.ptr)
+    {
+        return 57;
+    }
+
+    for (index = 1U; index < SL_DIAG_MAX_HINTS; index += 1U) {
         if (expect_status(sl_diag_builder_add_hint(&builder, sl_str_from_cstr("hint")),
                           SL_STATUS_OK) != 0)
         {
-            return 57;
+            return 58;
         }
     }
 
     if (expect_status(sl_diag_builder_add_hint(&builder, sl_str_from_cstr("extra")),
                       SL_STATUS_OUT_OF_RANGE) != 0)
     {
-        return 58;
+        return 59;
     }
 
     if (expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0 ||
         diag.related_count != SL_DIAG_MAX_RELATED || diag.hint_count != SL_DIAG_MAX_HINTS)
     {
-        return 59;
+        return 60;
     }
 
     if (expect_status(sl_diag_builder_finish(&builder, NULL), SL_STATUS_INVALID_ARGUMENT) != 0) {
-        return 60;
+        return 61;
     }
 
     if (expect_status(sl_diag_builder_finish(&zero_builder, &diag), SL_STATUS_INVALID_ARGUMENT) !=
         0)
     {
-        return 61;
+        return 62;
     }
 
     return 0;

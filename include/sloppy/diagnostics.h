@@ -142,6 +142,14 @@ SlStatus sl_diag_builder_init(SlDiagBuilder* builder, SlArena* arena, SlDiagSeve
 SlStatus sl_diag_builder_set_primary_span(SlDiagBuilder* builder, SlSourceSpan span);
 SlStatus sl_diag_builder_add_related(SlDiagBuilder* builder, SlSourceSpan span, SlStr message);
 SlStatus sl_diag_builder_add_hint(SlDiagBuilder* builder, SlStr hint);
+/*
+ * Stores an already arena-owned hint without copying it again.
+ *
+ * `hint` must remain valid for the same lifetime as `builder->arena`. Callers should use
+ * this only when they just built the hint in the diagnostic arena and want to avoid a
+ * duplicate hot-path copy.
+ */
+SlStatus sl_diag_builder_add_hint_owned(SlDiagBuilder* builder, SlStr hint);
 SlStatus sl_diag_builder_finish(SlDiagBuilder* builder, SlDiag* out);
 
 /*

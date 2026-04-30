@@ -216,6 +216,11 @@ execute with tiny iteration counts. A benchmark must not become a public perform
 unless the exact command, build configuration, hardware/context, and output are reported.
 Release builds are required for meaningful local numbers.
 
+Allocation-aware smoke tests should use deterministic resource limits rather than timing or
+platform allocator behavior. For memory/string adoption work, prefer small caller-owned
+arenas, fixed builder capacities, and expected `SL_STATUS_CAPACITY_EXCEEDED` or successful
+low-capacity operation over heap-allocation counters.
+
 ## Acceptance Criteria for Phase 1 Testing
 
 For Phase 1 core primitives:

@@ -16,6 +16,9 @@
  */
 #include "sloppy/capability.h"
 
+#include "sloppy/builder.h"
+#include "sloppy/checked_math.h"
+
 static SlStr sl_capability_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -189,34 +192,39 @@ static bool sl_capability_access_allows(SlCapabilityAccess actual, SlCapabilityO
     return false;
 }
 
-static SlStatus sl_capability_add_hint_pair(SlDiagBuilder* builder, SlArena* arena, SlStr prefix,
-                                            SlStr value)
+static SlStatus sl_capability_add_hint_pair(SlDiagBuilder* builder, SlStr prefix, SlStr value)
 {
-    void* ptr = NULL;
-    char* buffer = NULL;
-    size_t index = 0U;
+    SlStringBuilder hint_builder = {0};
     SlStr hint = {0};
+    size_t hint_length = 0U;
     SlStatus status;
 
-    if (builder == NULL || arena == NULL || prefix.ptr == NULL ||
+    if (builder == NULL || builder->arena == NULL || prefix.ptr == NULL ||
         (value.length > 0U && value.ptr == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_arena_alloc(arena, prefix.length + value.length, 1U, &ptr);
+    status = sl_checked_add_size(prefix.length, value.length, &hint_length);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    buffer = (char*)ptr;
-    for (index = 0U; index < prefix.length; index += 1U) {
-        buffer[index] = prefix.ptr[index];
+
+    status = sl_string_builder_init_arena(&hint_builder, builder->arena, hint_length, hint_length);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    for (index = 0U; index < value.length; index += 1U) {
-        buffer[prefix.length + index] = value.ptr[index];
+    status = sl_string_builder_append_str(&hint_builder, prefix);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    hint = sl_str_from_parts(buffer, prefix.length + value.length);
-    return sl_diag_builder_add_hint(builder, hint);
+    status = sl_string_builder_append_str(&hint_builder, value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    hint = sl_string_builder_view(&hint_builder);
+    return sl_diag_builder_add_hint_owned(builder, hint);
 }
 
 static SlStatus sl_capability_denied(SlArena* arena, SlDiag* out_diag, SlStr token, SlStr kind,
@@ -237,28 +245,27 @@ static SlStatus sl_capability_denied(SlArena* arena, SlDiag* out_diag, SlStr tok
     }
     if (!sl_str_is_empty(token)) {
         status = sl_capability_add_hint_pair(
-            &builder, arena, sl_capability_literal("token: ", sizeof("token: ") - 1U), token);
+            &builder, sl_capability_literal("token: ", sizeof("token: ") - 1U), token);
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
     if (!sl_str_is_empty(kind) && (sl_str_is_empty(provider) || sl_str_is_empty(actual_access))) {
         status = sl_capability_add_hint_pair(
-            &builder, arena, sl_capability_literal("kind: ", sizeof("kind: ") - 1U), kind);
+            &builder, sl_capability_literal("kind: ", sizeof("kind: ") - 1U), kind);
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
     status = sl_capability_add_hint_pair(
-        &builder, arena, sl_capability_literal("operation: ", sizeof("operation: ") - 1U),
+        &builder, sl_capability_literal("operation: ", sizeof("operation: ") - 1U),
         sl_capability_operation_name(operation));
     if (!sl_status_is_ok(status)) {
         return status;
     }
     if (!sl_str_is_empty(actual_access)) {
         status = sl_capability_add_hint_pair(
-            &builder, arena,
-            sl_capability_literal("actual access: ", sizeof("actual access: ") - 1U),
+            &builder, sl_capability_literal("actual access: ", sizeof("actual access: ") - 1U),
             actual_access);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -266,8 +273,7 @@ static SlStatus sl_capability_denied(SlArena* arena, SlDiag* out_diag, SlStr tok
     }
     if (!sl_str_is_empty(provider)) {
         status = sl_capability_add_hint_pair(
-            &builder, arena, sl_capability_literal("provider: ", sizeof("provider: ") - 1U),
-            provider);
+            &builder, sl_capability_literal("provider: ", sizeof("provider: ") - 1U), provider);
         if (!sl_status_is_ok(status)) {
             return status;
         }

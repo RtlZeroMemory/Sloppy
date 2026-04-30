@@ -64,9 +64,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   covers the current complete-buffer HTTP parser/body/response/route hot paths, and
   ENGINE-22.C covers the current Plan parser, `sloppy run --artifacts` bundle/source-map
   loader path, and stable parsed-Plan metadata interning. ENGINE-22.D covers
-  provider-neutral V8 bridge string adoption. Backend ownership, SQLite result/parameter
-  adoption, remaining CLI output, and allocation-aware conformance/benchmark guards remain
-  open.
+  provider-neutral V8 bridge string adoption. ENGINE-22.F covers the non-SQLite cleanup
+  pass for capability denial hint construction, OpenAPI path skeleton normalization, and
+  the low-capacity denial-hint regression guard. Backend ownership, SQLite
+  result/parameter adoption, CLI-wide output unification, broader allocation-aware
+  conformance coverage, and benchmark methodology gates remain open.
 - SQLite end-to-end: public JS handler path through native provider, capability enforcement,
   cancellation-aware operation boundaries, app/request ownership, transactions/prepared
   statement decision, and executable users API conformance.
@@ -132,11 +134,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   lifecycle integration remain open.
 - Memory/string adoption completion: #32 is absorbed by ENGINE-21.C's primitive builder
   surface, #367 provides the V8/SQLite interop helper policy, ENGINE-22.A covers the
-  current complete-buffer HTTP parser/body/response/route hot paths, and ENGINE-22.C covers
+  current complete-buffer HTTP parser/body/response/route hot paths, ENGINE-22.C covers
   the current Plan/artifact/source-map loader path plus stable parsed-Plan metadata
-  interning. Public alpha should not claim top-notch memory/string hot-path behavior until
-  the remaining ENGINE-22 adoption passes conform to requirements or are explicitly scoped
-  down.
+  interning, ENGINE-22.D covers provider-neutral V8 bridge adoption, and ENGINE-22.F covers
+  a bounded non-SQLite cleanup/evidence pass. Public alpha should not claim top-notch
+  memory/string hot-path behavior until SQLite result/parameter adoption, CLI-wide output
+  cleanup, backend ownership, and broader allocation/conformance guards are completed or
+  explicitly scoped down.
 
 ## Should Fix Soon
 

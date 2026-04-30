@@ -660,6 +660,21 @@ SlStatus sl_diag_builder_add_hint(SlDiagBuilder* builder, SlStr hint)
     return sl_status_ok();
 }
 
+SlStatus sl_diag_builder_add_hint_owned(SlDiagBuilder* builder, SlStr hint)
+{
+    if (builder == NULL || builder->arena == NULL || !sl_diag_str_is_valid(hint)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (builder->diag.hint_count >= SL_DIAG_MAX_HINTS) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+
+    builder->diag.hints[builder->diag.hint_count] = hint;
+    builder->diag.hint_count += 1U;
+    return sl_status_ok();
+}
+
 SlStatus sl_diag_builder_finish(SlDiagBuilder* builder, SlDiag* out)
 {
     if (builder == NULL || builder->arena == NULL || out == NULL) {
