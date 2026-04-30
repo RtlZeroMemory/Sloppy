@@ -34,6 +34,12 @@ for safe hot paths. ENGINE-23 is now the provider execution/offload runtime prer
 between ENGINE-12 and SQLite/provider completion. These are prerequisites for public alpha
 unless explicitly scoped down with honest exclusions.
 
+2026-04-30 issue-hygiene update: completed/superseded tracker noise was reconciled in
+`docs/project/github-issue-hygiene-audit.md` and
+`docs/project/github-issue-cleanup-result.md`. The active tracker remains the ENGINE
+roadmap; public alpha docs, benchmark marketing, PostgreSQL/SQL Server JS bridges, and
+package/release claims remain blocked or deferred until their evidence gates exist.
+
 | Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
 | --- | --- | --- | --- | --- | --- |
 | Native C safety | Yellow | Core primitives, checked math, arena, resource table, diagnostics, plan parser, HTTP parser, providers, boundary-oriented tests, and local sanitizer options. | CTest, warnings, format, lint, C standards scanner, platform scanner. | Sanitizers are not required in CI, fuzz targets are not implemented, and allocator misuse checks, request-scope leak checks, and deeper cleanup integration are incomplete. | Add stable sanitizer/fuzz gates, allocator checks, request-scope resource leak checks, and scanner fixtures. |
@@ -71,9 +77,12 @@ packaging remain separate or experimental.
 ROADMAP MAIN and ROADMAP MAIN.1 are now historical input to the strategic ENGINE roadmap.
 Public alpha docs should not move ahead of the ENGINE roadmap unless a document explicitly
 says the relevant workflow is still deferred and not part of the alpha claim.
-ENGINE-13 through ENGINE-22 are the current issue-backed completion map for the remaining
-core foundation after ENGINE-12; default gates must still be reported separately from
-V8-gated, package, live-provider, stress, and benchmark evidence.
+ENGINE-13 through ENGINE-20 and ENGINE-23 are the current open issue-backed completion map
+for the remaining core foundation; ENGINE-21 and ENGINE-22 are closed with implementation
+evidence. Default gates must still be reported separately from V8-gated, package,
+live-provider, stress, and benchmark evidence. The issue cleanup record should be used to
+avoid reopening old MAIN, MAIN1, ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12,
+ENGINE-21, or ENGINE-22 work that is already closed with evidence.
 
 ## Gate Interpretation
 

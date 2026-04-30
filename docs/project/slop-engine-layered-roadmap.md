@@ -47,7 +47,8 @@ Tasks:
 
 - verify completed MAIN/MAIN1 parent issues were closed after review;
 - verify stale old EPIC leftovers were closed or narrowed;
-- keep only specific unfinished leftovers (#26 and #32 at cleanup time);
+- keep only specific unfinished leftovers (#26 after the 2026-04-30 hygiene pass; #32 is
+  now closed as completed by ENGINE-21.C);
 - verify benchmark/public-doc work is deferred;
 - make docs point to the engine-foundation roadmap.
 
@@ -58,9 +59,9 @@ Dependencies: none.
 
 Non-goals: no feature implementation, no new ENGINE issue creation before review.
 
-Acceptance criteria: cleanup commands are reviewed/applied; only #26 and #32 remain open
-from the old pre-ENGINE tracker; no duplicate ENGINE issues are created; public docs remain
-blocked.
+Acceptance criteria: cleanup commands are reviewed/applied; only #26 remains open from the
+old pre-ENGINE tracker unless later evidence proves it complete; no duplicate ENGINE issues
+are created; public docs remain blocked.
 
 Likely PR grouping: one issue-cleanup/comment pass in the strategy PR, then one issue
 creation pass after the dry-run is approved.
