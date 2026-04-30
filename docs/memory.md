@@ -12,8 +12,11 @@ This document covers:
 
 - `SlStr`;
 - `SlBytes`;
-- `SlBuf`;
+- `SlOwnedStr`;
+- `SlOwnedBytes`;
+- `SlByteBuilder`;
 - `SlStringBuilder`;
+- `SlInternTable`;
 - arena types;
 - scope cleanup registration storage;
 - allocator rules;
@@ -26,19 +29,24 @@ This document covers:
 
 ## Non-Goals
 
-This document does not implement allocators, string builders, or JS bindings.
+This document does not implement a heap allocator framework, JS bindings, broad subsystem
+adoption, or V8/SQLite bridge conversion helpers.
 
 ## Current Phase
 
 The core foundation now implements `SlStatus`, `SlSourceLoc`, borrowed `SlStr`, borrowed
-`SlBytes`, checked `size_t` arithmetic, assertion macros, a caller-backed `SlArena`, a
-fixed-capacity native cleanup `SlScope`, a fixed-capacity `SlResourceTable` with
-generation-counted `SlResourceId` handles, and a minimal `SlAppRequestScope` wrapper that
-closes request cleanups on handler success, failure, cancellation/deadline-style statuses,
-and unsupported pre-handler outcomes. `SlAppLifecycle` now gives the app host an explicit
-startup/shutdown cleanup scope for app-lifetime resources.
-`SlBuf`, string builders, bounded string interning, and allocator modules are not
-implemented yet.
+`SlBytes`, arena-owned string and byte copy helpers, deterministic string/byte hash helpers,
+checked `size_t` arithmetic, assertion macros, a caller-backed `SlArena`, bounded fixed or
+arena-backed `SlByteBuilder`/`SlStringBuilder` primitives, a bounded app/static-lifetime
+`SlInternTable`, a fixed-capacity native cleanup `SlScope`, a fixed-capacity
+`SlResourceTable` with generation-counted `SlResourceId` handles, and a minimal
+`SlAppRequestScope` wrapper that closes request cleanups on handler success, failure,
+cancellation/deadline-style statuses, and unsupported pre-handler outcomes.
+`SlAppLifecycle` now gives the app host an explicit startup/shutdown cleanup scope for
+app-lifetime resources.
+
+Allocator modules, a standalone heap-owned `SlBuf`, centralized V8/SQLite conversion
+helpers, and broad hot-path adoption remain deferred.
 
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 
@@ -56,10 +64,10 @@ intended primitive architecture is
 `docs/project/memory-string-foundation-architecture.md`. The adoption map is
 `docs/project/memory-string-adoption-map.md`.
 
-## Future Phase
+## Future Work
 
-Phase 1 starts with core C primitives. Memory APIs should be small, heavily tested, and
-independent of V8, HTTP, database providers, or app modules.
+Future memory work should keep APIs small, heavily tested, and independent of V8, HTTP,
+database providers, or app modules unless a scoped adoption task requires that boundary.
 
 ## Core Types
 
@@ -76,28 +84,47 @@ typedef struct SlBytes {
     size_t length;
 } SlBytes;
 
-typedef struct SlBuf {
-    unsigned char* data;
+typedef struct SlOwnedBytes {
+    unsigned char* ptr;
     size_t length;
-    size_t capacity;
-} SlBuf;
+} SlOwnedBytes;
 ```
 
 `SlStr` is a borrowed string view. It is not necessarily null-terminated and can contain
 embedded NUL bytes as data. `SlBytes` is a borrowed byte view. Neither view allocates,
-copies, frees, or transfers ownership. `SlBuf` is future work and will be a mutable owned or
-externally-backed buffer depending on API contract.
+copies, frees, or transfers ownership.
 
-## SlStringBuilder
+`SlOwnedStr` and `SlOwnedBytes` are ownership markers for memory owned by the documented
+producer lifetime. The current public producers are arena-copy helpers, so returned owned
+views remain valid until that arena is reset/disposed or its caller-owned backing storage
+ends. The type itself does not free memory.
 
-`SlStringBuilder` is a future arena-backed builder for diagnostics, paths, and generated
-messages. It should:
+`sl_str_copy_to_arena_nul` is the explicit C-string boundary adapter. The returned length
+excludes the appended NUL terminator; ordinary core logic must continue to use explicit
+lengths.
 
-- append `SlStr`;
-- append bytes only through explicit encoding-aware APIs;
-- check all size arithmetic;
-- expose a final `SlStr` view with documented lifetime;
-- never rely on implicit `strlen` except boundary adapters.
+## SlByteBuilder And SlStringBuilder
+
+`SlByteBuilder` and `SlStringBuilder` are implemented as bounded output targets for
+diagnostics, paths, response bytes, and generated small text. Builders can be initialized
+over caller-owned fixed storage or over an arena with an explicit maximum capacity.
+
+They:
+
+- append `SlBytes`, individual bytes, `SlStr`, chars, C-string boundary inputs, and small
+  decimal integer formatting helpers;
+- check all reserve, growth, and formatting size arithmetic;
+- expose borrowed `SlBytes` or `SlStr` views tied to the builder storage lifetime;
+- provide `sl_string_builder_view_with_nul` for explicit C-string boundary adapters;
+- remain valid after failed reserve/append calls, preserving the already-written prefix;
+- never use `sprintf` or hidden heap allocation.
+
+Arena builders allocate replacement buffers from the caller-supplied arena as they grow.
+Old arena buffers are abandoned until the arena resets; this is acceptable for scoped
+builder lifetimes and keeps ownership simple.
+
+`SlBuf` as a standalone heap/operation-owned buffer type remains deferred until a real
+heap allocator or operation-owned response/body buffer contract exists.
 
 ## Arena Types
 
@@ -131,6 +158,27 @@ Implemented TASK 03.A arena behavior:
 - assert-enabled builds poison allocated and reset memory ranges with simple byte patterns;
 - arenas are not thread-safe unless externally synchronized;
 - arena-backed data must not cross async boundaries unless the arena outlives the operation.
+- `sl_arena_dispose` invalidates the arena object without freeing caller-owned storage.
+
+## String Interning
+
+`SlInternTable` is implemented as a bounded app/static-lifetime table. The caller owns the
+table object and the arena; the table allocates metadata and copied string bytes from that
+arena and has no process-global pool.
+
+Interned strings are for stable metadata only:
+
+- route names and method tokens;
+- module names;
+- capability names;
+- provider names;
+- stable Plan keys;
+- diagnostic code/name metadata.
+
+Do not intern request bodies, secrets, connection strings, arbitrary user payloads, or
+transient diagnostic text. Pointer identity may accelerate lookup, but byte equality and
+stored hash/length remain the correctness rule. Symbols are stable only for metadata within
+the table owner's lifetime and become stale when the table is disposed/reinitialized.
 
 ## Ownership Rules
 
@@ -293,13 +341,16 @@ Implemented and planned Phase 1 files:
 include/sloppy/status.h
 include/sloppy/string.h
 include/sloppy/bytes.h
-include/sloppy/buf.h
+include/sloppy/builder.h
+include/sloppy/intern.h
 include/sloppy/allocator.h
 include/sloppy/arena.h
 include/sloppy/resource.h
 src/core/status.c
 src/core/string.c
-src/core/buf.c
+src/core/bytes.c
+src/core/builder.c
+src/core/intern.c
 src/core/allocator.c
 src/core/arena.c
 src/core/resource.c
@@ -331,8 +382,12 @@ Each primitive needs tests:
 
 - `SlStr`: empty, non-null-terminated, equality, prefix/suffix, invalid args;
 - `SlBytes`: empty, binary data with zero bytes, bounds;
-- `SlBuf`: append, reserve, overflow, ownership, cleanup;
-- `SlStringBuilder`: append, arena lifetime, overflow;
+- arena copy helpers: empty, non-NUL-terminated, binary data, capacity failure, unchanged
+  output on failure;
+- builders: append, reserve, growth, fixed capacity, optional NUL, formatting, overflow,
+  failed-append prefix preservation;
+- intern table: duplicate insertion, bucket collision/byte equality, capacity failure,
+  stale symbols, and unchanged output on failure;
 - arenas: allocate, reset, nested scope, high-water tracking;
 - scope cleanup: registration, LIFO close, idempotent close, reset behavior, capacity
   exhaustion;
@@ -355,12 +410,10 @@ Each primitive needs tests:
 - Add `SlStr` and tests. Done for borrowed views in TASK 02.A.
 - Add `SlBytes` and tests. Done for borrowed views in TASK 02.A.
 - Add arena skeleton. Done as a caller-backed `SlArena` in TASK 03.A.
-- Add `SlBuf` and tests.
+- Add standalone `SlBuf` only when a heap/operation-owned buffer contract exists.
 - Add allocator interface with a default bootstrap allocator.
 - Add debug allocation tags.
-- Complete ENGINE-21 memory/string primitive contracts and tests.
-- Add bounded app/static string interning and symbol-table tests for route, Plan, module,
-  capability, provider, and diagnostic metadata names.
+- Complete ENGINE-21.D V8/SQLite interop policy.
 - Complete ENGINE-22 adoption/refactor work for hot paths after ENGINE-21 lands.
 - Add resource ID layout and fixed-capacity resource table. Done in MAIN1-07 with
   slot/generation IDs, kind validation, cleanup callbacks, and bridge policy docs.

@@ -353,6 +353,46 @@ static int test_debug_poisoning(void)
     return 0;
 }
 
+static int test_dispose_invalidates_arena_object(void)
+{
+    unsigned char buffer[16];
+    SlArena arena;
+    SlArenaMark mark;
+    void* ptr = (void*)buffer;
+
+    fill_bytes(buffer, sizeof(buffer), 0U);
+
+    if (expect_status(sl_arena_init(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 70;
+    }
+
+    if (expect_status(sl_arena_alloc(&arena, 4U, 1U, &ptr), SL_STATUS_OK) != 0) {
+        return 71;
+    }
+
+    mark = sl_arena_mark(&arena);
+    sl_arena_dispose(&arena);
+    if (sl_arena_capacity(&arena) != 0U || sl_arena_used(&arena) != 0U ||
+        sl_arena_remaining(&arena) != 0U || sl_arena_high_water(&arena) != 0U)
+    {
+        return 72;
+    }
+
+    ptr = (void*)buffer;
+    if (expect_status(sl_arena_alloc(&arena, 1U, 1U, &ptr), SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        ptr != (void*)buffer)
+    {
+        return 73;
+    }
+
+    if (expect_status(sl_arena_reset_to(&arena, mark), SL_STATUS_INVALID_ARGUMENT) != 0) {
+        return 74;
+    }
+
+    sl_arena_dispose(NULL);
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -382,5 +422,10 @@ int main(void)
         return result;
     }
 
-    return test_debug_poisoning();
+    result = test_debug_poisoning();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_dispose_invalidates_arena_object();
 }

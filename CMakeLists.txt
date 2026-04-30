@@ -288,6 +288,8 @@ set(
     src/core/cancellation.c
     src/core/checked_math.c
     src/core/arena.c
+    src/core/builder.c
+    src/core/intern.c
     src/core/scope.c
     src/core/resource.c
     src/core/capability.c
@@ -336,6 +338,8 @@ set(
     tests/unit/core/test_cancellation.c
     tests/unit/core/test_checked_math.c
     tests/unit/core/test_arena.c
+    tests/unit/core/test_builder.c
+    tests/unit/core/test_intern.c
     tests/unit/core/test_scope.c
     tests/unit/core/test_resource.c
     tests/unit/core/test_capability.c
@@ -586,6 +590,9 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
     sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
+    sloppy_add_c_unit_test(core_builder_foundation core.builder.foundation
+                           tests/unit/core/test_builder.c)
+    sloppy_add_c_unit_test(core_intern_table core.intern.table tests/unit/core/test_intern.c)
     sloppy_add_c_unit_test(core_scope_lifetime core.scope.lifetime tests/unit/core/test_scope.c)
     sloppy_add_c_unit_test(
         core_resource_lifecycle core.resource.lifecycle tests/unit/core/test_resource.c)

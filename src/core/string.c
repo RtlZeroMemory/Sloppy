@@ -8,7 +8,17 @@
  */
 #include "sloppy/string.h"
 
+#include "sloppy/checked_math.h"
+
 #include <string.h>
+
+#define SL_STR_FNV1A_OFFSET 14695981039346656037ULL
+#define SL_STR_FNV1A_PRIME 1099511628211ULL
+
+static bool sl_str_has_valid_storage(SlStr str)
+{
+    return str.length == 0U || str.ptr != NULL;
+}
 
 SlStr sl_str_from_parts(const char* ptr, size_t length)
 {
@@ -68,4 +78,106 @@ bool sl_str_starts_with(SlStr str, SlStr prefix)
     }
 
     return memcmp(str.ptr, prefix.ptr, prefix.length) == 0;
+}
+
+bool sl_str_ends_with(SlStr str, SlStr suffix)
+{
+    size_t offset = 0U;
+
+    if (suffix.length == 0U) {
+        return true;
+    }
+
+    if (str.length < suffix.length || str.ptr == NULL || suffix.ptr == NULL) {
+        return false;
+    }
+
+    offset = str.length - suffix.length;
+    return memcmp(str.ptr + offset, suffix.ptr, suffix.length) == 0;
+}
+
+SlStr sl_owned_str_as_view(SlOwnedStr str)
+{
+    return sl_str_from_parts(str.ptr, str.length);
+}
+
+SlStatus sl_str_hash(SlStr str, uint64_t* out_hash)
+{
+    uint64_t hash = SL_STR_FNV1A_OFFSET;
+    size_t index = 0U;
+
+    if (out_hash == NULL || !sl_str_has_valid_storage(str)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < str.length; index += 1U) {
+        hash ^= (uint64_t)(unsigned char)str.ptr[index];
+        hash *= SL_STR_FNV1A_PRIME;
+    }
+
+    *out_hash = hash;
+    return sl_status_ok();
+}
+
+SlStatus sl_str_copy_to_arena(SlArena* arena, SlStr src, SlOwnedStr* out)
+{
+    void* copied = NULL;
+    size_t index = 0U;
+    SlOwnedStr result = {NULL, 0U};
+    SlStatus status;
+
+    if (arena == NULL || out == NULL || !sl_str_has_valid_storage(src)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (src.length == 0U) {
+        *out = result;
+        return sl_status_ok();
+    }
+
+    status = sl_arena_alloc(arena, src.length, _Alignof(char), &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    for (index = 0U; index < src.length; index += 1U) {
+        ((char*)copied)[index] = src.ptr[index];
+    }
+    result.ptr = (char*)copied;
+    result.length = src.length;
+    *out = result;
+    return sl_status_ok();
+}
+
+SlStatus sl_str_copy_to_arena_nul(SlArena* arena, SlStr src, SlOwnedStr* out)
+{
+    size_t alloc_size = 0U;
+    size_t index = 0U;
+    void* copied = NULL;
+    SlOwnedStr result = {NULL, 0U};
+    SlStatus status;
+
+    if (arena == NULL || out == NULL || !sl_str_has_valid_storage(src)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_checked_add_size(src.length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    for (index = 0U; index < src.length; index += 1U) {
+        ((char*)copied)[index] = src.ptr[index];
+    }
+    ((char*)copied)[src.length] = '\0';
+
+    result.ptr = (char*)copied;
+    result.length = src.length;
+    *out = result;
+    return sl_status_ok();
 }

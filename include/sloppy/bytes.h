@@ -1,8 +1,12 @@
 #ifndef SLOPPY_BYTES_H
 #define SLOPPY_BYTES_H
 
+#include "sloppy/arena.h"
+#include "sloppy/status.h"
+
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,10 +24,40 @@ typedef struct SlBytes
     size_t length;
 } SlBytes;
 
+/*
+ * SlOwnedBytes describes mutable bytes owned by the function/lifetime documented by the API
+ * that produced it. The type itself does not free memory. For arena-copy helpers below,
+ * `ptr` remains valid until the arena is reset or its backing storage ends.
+ */
+typedef struct SlOwnedBytes
+{
+    unsigned char* ptr;
+    size_t length;
+} SlOwnedBytes;
+
 SlBytes sl_bytes_from_parts(const unsigned char* ptr, size_t length);
 SlBytes sl_bytes_empty(void);
 bool sl_bytes_is_empty(SlBytes bytes);
 bool sl_bytes_equal(SlBytes left, SlBytes right);
+bool sl_bytes_starts_with(SlBytes bytes, SlBytes prefix);
+bool sl_bytes_ends_with(SlBytes bytes, SlBytes suffix);
+SlBytes sl_owned_bytes_as_view(SlOwnedBytes bytes);
+
+/*
+ * Hashes the exact bytes in `bytes` with a deterministic non-cryptographic hash.
+ *
+ * `out_hash` is required. Non-empty spans require a non-NULL pointer. Failed calls leave
+ * `*out_hash` unchanged.
+ */
+SlStatus sl_bytes_hash(SlBytes bytes, uint64_t* out_hash);
+
+/*
+ * Copies `src` into `arena` and writes an arena-owned byte buffer to `out`.
+ *
+ * Empty spans do not allocate. Binary data, including embedded zero bytes, is copied
+ * exactly. On failure, `out` is left unchanged.
+ */
+SlStatus sl_bytes_copy_to_arena(SlArena* arena, SlBytes src, SlOwnedBytes* out);
 
 #ifdef __cplusplus
 }
