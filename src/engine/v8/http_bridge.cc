@@ -704,22 +704,28 @@ SlStatus http_v8_get_optional_string_property(v8::Isolate* isolate, v8::Local<v8
     return sl_status_ok();
 }
 
-bool http_v8_get_object_string_copy(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                    SlArena* arena, v8::Local<v8::Object> object, const char* name,
-                                    SlStr* out)
+SlStatus http_v8_get_object_string_copy(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                        SlArena* arena, v8::Local<v8::Object> object,
+                                        const char* name, SlStr* out)
 {
     v8::Local<v8::String> key;
     v8::Local<v8::Value> value;
 
-    if (out == nullptr ||
-        !sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
-        !object->Get(context, key).ToLocal(&value) || !value->IsString() ||
-        !sl_status_is_ok(http_v8_copy_value_string(isolate, arena, value, out)))
-    {
-        return false;
+    if (out == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    return true;
+    if (!sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
+        !object->Get(context, key).ToLocal(&value))
+    {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+
+    if (!value->IsString()) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return http_v8_copy_value_string(isolate, arena, value, out);
 }
 
 SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -984,7 +990,9 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
     SlStr kind = sl_str_empty();
     SlStr content_type = sl_str_empty();
     uint16_t status_code = 0U;
-    if (!http_v8_get_object_string_copy(isolate, context, arena, object, "kind", &kind) ||
+    SlStatus kind_status =
+        http_v8_get_object_string_copy(isolate, context, arena, object, "kind", &kind);
+    if (sl_status_code(kind_status) == SL_STATUS_INVALID_ARGUMENT ||
         !http_v8_get_object_status(isolate, context, object, &status_code))
     {
         return http_v8_write_diag(
@@ -995,6 +1003,9 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                             sizeof("Return a supported Results.* descriptor with kind and "
                                    "status.") -
                                 1U));
+    }
+    if (!sl_status_is_ok(kind_status)) {
+        return kind_status;
     }
 
     if (!http_v8_status_supported(status_code)) {
@@ -1026,14 +1037,17 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return sl_status_ok();
     }
 
-    if (!http_v8_get_object_string_copy(isolate, context, arena, object, "contentType",
-                                        &content_type))
-    {
+    SlStatus content_type_status = http_v8_get_object_string_copy(isolate, context, arena, object,
+                                                                  "contentType", &content_type);
+    if (sl_status_code(content_type_status) == SL_STATUS_INVALID_ARGUMENT) {
         return http_v8_write_diag(
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             http_v8_literal("JavaScript result descriptor is missing contentType",
                             sizeof("JavaScript result descriptor is missing contentType") - 1U),
             sl_str_empty());
+    }
+    if (!sl_status_is_ok(content_type_status)) {
+        return content_type_status;
     }
     if (!http_v8_header_value_view_safe(content_type)) {
         return http_v8_write_diag(

@@ -457,7 +457,13 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
     v8::HandleScope handle_scope(isolate);
 
-    if (backend == nullptr || args.Length() != 2) {
+    if (backend == nullptr) {
+        isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
+            isolate, "__sloppy_register_handler requires handler ID and handler function")));
+        return;
+    }
+
+    if (args.Length() != 2) {
         (void)sl_v8_throw_type_error_from_native_view(
             backend,
             sl_v8_literal(
