@@ -173,8 +173,8 @@ Current behavior:
 - context-aware calls reject pre-cancelled request contexts before user code with
   `SLOPPY_E_ENGINE_CANCELLED` or `SLOPPY_E_ENGINE_BACKPRESSURE` depending on the native
   token reason. Deadlines cancel through the same token path. Request cleanup remains owned
-  by the caller's request scope and is exercised for resolve, reject, cancellation, and
-  pending-promise timeout paths.
+  by the caller's request scope and is exercised for sync throw, resolve, reject,
+  cancellation, and pending-promise timeout paths.
 - `sl_runtime_contract_call_handler` looks up a handler ID in `SlPlan`, validates the
   export name, and calls the named global with no arguments;
 - `sl_runtime_contract_call_handler_with_context` performs the same plan lookup and calls
@@ -420,7 +420,9 @@ failures use `SLOPPY_E_INVALID_HTTP_RESULT`. Promise rejections use
 `SLOPPY_E_ENGINE_PROMISE_REJECTION`; Promises that remain pending after the bounded
 microtask drain use `SLOPPY_E_ENGINE_PROMISE_PENDING`; pre-cancelled request contexts use
 `SLOPPY_E_ENGINE_CANCELLED` or `SLOPPY_E_ENGINE_BACKPRESSURE` depending on the cancellation
-reason. Eval-time intrinsic failures such as invalid `__sloppy_register_handler(...)`
+reason. Async diagnostics are ordinary `SlDiag` values and can be rendered through the
+stable JSON renderer; there is still no CLI-wide async diagnostic JSON mode. Eval-time
+intrinsic failures such as invalid `__sloppy_register_handler(...)`
 arguments or duplicate handler registration are reported as `SL_DIAG_ENGINE_EXCEPTION`
 because they are raised while evaluating the app module.
 
@@ -455,9 +457,10 @@ Current checks:
   missing function diagnostics, non-callable global diagnostics, thrown function
   diagnostics, unsupported result diagnostics, handler intrinsic misuse, duplicate handler
   registration, missing registered handler diagnostics, registered handler context
-  dispatch, Promise fulfillment/rejection/pending behavior, cancellation/deadline context
-  snapshots, request-scope cleanup across async success and failure paths, and
-  create/destroy/create lifecycle behavior.
+  dispatch, Promise fulfillment/rejection/pending behavior, stable JSON rendering for a
+  Promise rejection diagnostic, cancellation/deadline context snapshots, request-scope
+  cleanup across sync throw and async success/failure paths, and create/destroy/create
+  lifecycle behavior.
 - `engine.v8.owner_thread` is registered only when V8 is enabled and covers owner-thread
   lifecycle checks, wrong-thread eval rejection before entering V8, wrong-thread async
   handler call rejection before V8 microtasks run, and wrong-thread destroy deferral to the

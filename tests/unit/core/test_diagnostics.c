@@ -305,6 +305,12 @@ static int test_engine_async_code_names(void)
         return 48;
     }
 
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_APP_LIFECYCLE),
+                         sl_str_from_cstr("SLOPPY_E_APP_LIFECYCLE")) != 0)
+    {
+        return 49;
+    }
+
     return 0;
 }
 

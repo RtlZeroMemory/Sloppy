@@ -144,6 +144,7 @@ Implemented foundation codes:
 - `SLOPPY_E_ENGINE_PROMISE_PENDING`;
 - `SLOPPY_E_ENGINE_CANCELLED`;
 - `SLOPPY_E_ENGINE_BACKPRESSURE`;
+- `SLOPPY_E_APP_LIFECYCLE`;
 - `SLOPPY_E_INTERNAL`.
 
 `SLOPPY_NONE` is available for no-diagnostic cases and `SLOPPY_E_UNKNOWN` is returned for
@@ -265,15 +266,13 @@ Runtime exception flow:
 
 1. V8 reports generated JavaScript location;
 2. V8 bridge captures exception and stack;
-3. runtime maps generated location through `app.js.map`;
-4. diagnostic reports original TypeScript file/span;
-5. generated JS location appears as related detail;
-6. missing source map produces a separate diagnostic quality warning/error depending on
-   mode.
+3. diagnostic reports the generated JavaScript file/span when V8 provides one;
+4. bounded stack text may appear as related detail when available;
+5. runtime source-map consumption and original TypeScript spans remain deferred.
 
-V8 exception source-map remapping remains owned by MAIN1-05. MAIN1-06 source frames do not
-parse source maps and do not rewrite generated V8 stack locations to original TypeScript
-locations.
+V8 exception source-map remapping remains deferred to ENGINE-08. MAIN1-06 source frames do
+not parse source maps, and ENGINE-07 lifecycle/async diagnostics do not rewrite generated
+V8 stack locations to original TypeScript locations.
 
 ## Subsystem Expectations
 
@@ -303,6 +302,7 @@ Runtime diagnostics:
 
 - startup validation failure;
 - result conversion failure;
+- request/app lifecycle state errors and cleanup registration failures;
 - request scope leak in debug mode.
 - invalid route pattern in the native route parser;
 - duplicate route parameter names.
@@ -372,6 +372,15 @@ Resource lifecycle diagnostics:
 
 Resource diagnostics may include operation name and expected/actual resource kind names.
 They must not include native pointer values or provider handle addresses.
+
+App/request lifecycle diagnostics:
+
+- invalid app lifecycle state, such as cleanup registration before startup, uses
+  `SLOPPY_E_APP_LIFECYCLE`;
+- app lifecycle JSON diagnostics use the normal deterministic `sl_diag_render_json` field
+  order and include no timestamps, random IDs, raw native pointers, or provider handles;
+- lifecycle cleanup helpers close resources through `SlResourceTable` IDs rather than
+  logging native pointers.
 
 Permissions diagnostics:
 

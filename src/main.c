@@ -42,6 +42,7 @@
 #define SL_RUN_ARENA_BYTES 65536U
 #define SL_RUN_MAX_ROUTES SL_CLI_MAX_ROUTES
 #define SL_RUN_MAX_CLIENTS 16U
+#define SL_RUN_APP_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_MAX_BYTES 8192U
 #define SL_RUN_RESPONSE_MAX_BYTES 16384U
@@ -1063,12 +1064,14 @@ typedef struct SlRunApp
     unsigned char plan_arena_storage[SL_RUN_ARENA_BYTES];
     unsigned char route_arena_storage[SL_RUN_ARENA_BYTES];
     unsigned char engine_arena_storage[SL_RUN_ARENA_BYTES];
+    SlScopeCleanup app_cleanups[SL_RUN_APP_SCOPE_MAX_CLEANUPS];
     SlArena plan_arena;
     SlArena route_arena;
     SlArena engine_arena;
     SlPlan plan;
     SlBytes app_js_bytes;
     SlEngine* engine;
+    SlAppLifecycle lifecycle;
     SlHttpRouteTable route_table;
 } SlRunApp;
 
@@ -1420,6 +1423,17 @@ static SlEngineOptions sl_run_v8_options(void)
     return options;
 }
 
+static void sl_run_engine_cleanup(void* payload, void* user)
+{
+    SlEngine** engine = (SlEngine**)payload;
+
+    (void)user;
+    if (engine != NULL && *engine != NULL) {
+        sl_engine_destroy(*engine);
+        *engine = NULL;
+    }
+}
+
 static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
 {
     SlBytes json = {0};
@@ -1563,6 +1577,17 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
         return 1;
     }
 
+    /* app->lifecycle runs LIFO; register sl_run_engine_cleanup first so engine teardown runs last.
+     */
+    status = sl_app_lifecycle_add_cleanup(&app->lifecycle, sl_run_engine_cleanup,
+                                          (void*)&app->engine, NULL, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: failed to register engine shutdown cleanup: ", &diag);
+        sl_engine_destroy(app->engine);
+        app->engine = NULL;
+        return 1;
+    }
+
     if (sl_run_load_bootstrap_runtime(app, stdlib_root) != 0) {
         return 1;
     }
@@ -1590,6 +1615,7 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
     char source_map_path[1024];
     SlBytes app_js = {0};
     SlBytes source_map = {0};
+    SlDiag diag = {0};
 
     if (artifacts_path == NULL || app == NULL) {
         return 1;
@@ -1603,6 +1629,14 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
         !sl_status_is_ok(sl_arena_init(&app->engine_arena, app->engine_arena_storage,
                                        sizeof(app->engine_arena_storage))))
     {
+        return 1;
+    }
+
+    if (!sl_status_is_ok(sl_app_lifecycle_start(
+            &app->lifecycle, app->app_cleanups,
+            sizeof(app->app_cleanups) / sizeof(app->app_cleanups[0]), &diag)))
+    {
+        sl_run_print_diag("sloppy run: failed to start app lifecycle: ", &diag);
         return 1;
     }
 
@@ -2187,9 +2221,27 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
     return rc == 0 ? 0 : 1;
 }
 
+static int sl_run_shutdown_app(SlRunApp* app)
+{
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (app == NULL) {
+        return 1;
+    }
+
+    status = sl_app_lifecycle_shutdown(&app->lifecycle, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: app shutdown failed: ", &diag);
+        return 1;
+    }
+
+    return 0;
+}
+
 static int sl_cli_command_run(const SlCliOptions* options)
 {
-    SlRunApp app;
+    SlRunApp app = {0};
     const char* artifacts_path = options->artifacts_path;
     const char* stdlib_path = options->stdlib_path;
     int result = 0;
@@ -2218,7 +2270,7 @@ static int sl_cli_command_run(const SlCliOptions* options)
     }
 
     if (sl_run_load_app(artifacts_path, stdlib_path, &app) != 0) {
-        sl_engine_destroy(app.engine);
+        (void)sl_run_shutdown_app(&app);
         return 1;
     }
 
@@ -2229,7 +2281,9 @@ static int sl_cli_command_run(const SlCliOptions* options)
         result = sl_run_server(&app, options->host, options->port);
     }
 
-    sl_engine_destroy(app.engine);
+    if (sl_run_shutdown_app(&app) != 0 && result == 0) {
+        result = 1;
+    }
     return result;
 }
 

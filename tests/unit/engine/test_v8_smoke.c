@@ -485,15 +485,19 @@ static int test_promise_rejection_returns_diagnostic(void)
 {
     unsigned char engine_storage[8192];
     unsigned char result_storage[1024];
+    unsigned char json_storage[1024];
     SlArena engine_arena = {0};
     SlArena result_arena = {0};
+    SlArena json_arena = {0};
     SlEngineOptions options = v8_options();
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
+    SlStr json = {0};
 
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
-        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&json_arena, json_storage, sizeof(json_storage)) != 0)
     {
         return 65;
     }
@@ -526,6 +530,19 @@ static int test_promise_rejection_returns_diagnostic(void)
     {
         sl_engine_destroy(engine);
         return 69;
+    }
+
+    if (expect_status(sl_diag_render_json(&json_arena, &diag, &json), SL_STATUS_OK) != 0 ||
+        !sl_str_equal(json, sl_str_from_cstr(
+                                "{\"code\":\"SLOPPY_E_ENGINE_PROMISE_REJECTION\","
+                                "\"severity\":\"error\","
+                                "\"message\":\"JavaScript handler Promise rejected: Error: async "
+                                "boom\","
+                                "\"hints\":[\"Rejected async handlers produce a safe error "
+                                "response.\"]}\n")))
+    {
+        sl_engine_destroy(engine);
+        return 70;
     }
 
     sl_engine_destroy(engine);
@@ -1134,6 +1151,8 @@ static int test_request_scope_cleanup_runs_for_async_outcomes(void)
                           engine, sl_str_from_cstr("v8-scope-cleanup.js"),
                           sl_str_from_cstr("globalThis.sloppy_scope_resolve = async function () { "
                                            "return 'scope-ok'; };"
+                                           "globalThis.sloppy_scope_throw = function () { throw "
+                                           "new Error('scope throw'); };"
                                            "globalThis.sloppy_scope_reject = async function () { "
                                            "throw new Error('scope reject'); };"
                                            "globalThis.sloppy_scope_pending = function () { return "
@@ -1154,12 +1173,19 @@ static int test_request_scope_cleanup_runs_for_async_outcomes(void)
         return 96;
     }
 
+    if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_throw"),
+                               &context, SL_STATUS_INVALID_STATE, SL_DIAG_ENGINE_EXCEPTION) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 97;
+    }
+
     if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_reject"),
                                &context, SL_STATUS_INVALID_STATE,
                                SL_DIAG_ENGINE_PROMISE_REJECTION) != 0)
     {
         sl_engine_destroy(engine);
-        return 97;
+        return 98;
     }
 
     if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_pending"),
@@ -1167,7 +1193,7 @@ static int test_request_scope_cleanup_runs_for_async_outcomes(void)
                                SL_DIAG_ENGINE_PROMISE_PENDING) != 0)
     {
         sl_engine_destroy(engine);
-        return 98;
+        return 99;
     }
 
     sl_cancellation_token_init(&cancellation);
@@ -1176,7 +1202,7 @@ static int test_request_scope_cleanup_runs_for_async_outcomes(void)
                       SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        return 99;
+        return 100;
     }
     cancelled_context.cancellation = &cancellation;
     if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_cancel"),
@@ -1184,7 +1210,7 @@ static int test_request_scope_cleanup_runs_for_async_outcomes(void)
                                SL_DIAG_ENGINE_CANCELLED) != 0)
     {
         sl_engine_destroy(engine);
-        return 100;
+        return 101;
     }
 
     sl_engine_destroy(engine);
