@@ -129,8 +129,9 @@ SlStatus sl_engine_eval_source(SlEngine* engine, SlStr source_name, SlStr source
  * active. On success, supported primitive result data is copied into `arena`; result
  * string views remain valid until that arena is reset or its caller-owned backing storage
  * ends. V8 handles and values never escape this API. The current bridge supports concrete
- * strings and supported result descriptors. Promise returns are explicitly unsupported and
- * fail with `SL_STATUS_UNSUPPORTED`; the bridge does not run a JavaScript event loop.
+ * strings, supported result descriptors, and Promise values that settle during the
+ * owner-thread microtask drain. Pending Promises that require timers or native completion
+ * queues fail with `SL_STATUS_DEADLINE_EXCEEDED`.
  *
  * `out_diag` is optional. When provided, diagnostic text and source paths are copied into
  * the engine arena, not into the result arena passed to this call. Those diagnostic views
@@ -143,9 +144,11 @@ SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr functi
  * Calls a global JavaScript handler with one request context argument.
  *
  * The request context is borrowed for the duration of the call. The bridge materializes a
- * plain JS object with `route`, `query`, and `request` fields and never exposes native
- * pointers or handles. On success, supported `Results.*` descriptors and the plain-string
- * compatibility fallback are converted into `out_result->response`.
+ * plain JS object with `route`, `query`, `request`, `signal`, and `deadline` fields and
+ * never exposes native pointers or handles. If `request_context->cancellation` is already
+ * cancelled, the bridge fails before entering JavaScript. On success, supported
+ * `Results.*` descriptors and the plain-string compatibility fallback are converted into
+ * `out_result->response`.
  */
 SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr function_name,
                                               const SlHttpRequestContext* request_context,

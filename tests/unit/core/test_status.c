@@ -16,6 +16,8 @@ int main(void)
     SlStatus capacity = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     SlStatus stale = sl_status_from_code(SL_STATUS_STALE_RESOURCE);
     SlStatus wrong_kind = sl_status_from_code(SL_STATUS_WRONG_RESOURCE_KIND);
+    SlStatus cancelled = sl_status_from_code(SL_STATUS_CANCELLED);
+    SlStatus deadline = sl_status_from_code(SL_STATUS_DEADLINE_EXCEEDED);
 
     if (expect_true(sl_status_is_ok(ok)) != 0) {
         return 1;
@@ -51,6 +53,14 @@ int main(void)
 
     if (expect_true(sl_status_code(wrong_kind) == SL_STATUS_WRONG_RESOURCE_KIND) != 0) {
         return 9;
+    }
+
+    if (expect_true(sl_status_code(cancelled) == SL_STATUS_CANCELLED) != 0) {
+        return 10;
+    }
+
+    if (expect_true(sl_status_code(deadline) == SL_STATUS_DEADLINE_EXCEEDED) != 0) {
+        return 11;
     }
 
     return 0;

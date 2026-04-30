@@ -584,6 +584,59 @@
         "Use this EPIC to group several related task issues into mid-large bounded-context PRs.",
         "Split only when ownership, risk, or review size makes one chunk hard to validate."
       ]
+    },
+    {
+      "title": "EPIC ENGINE-12: Scalable Async Runtime",
+      "labels": [
+        "type:epic",
+        "area:engine-v8",
+        "area:concurrency",
+        "area:app-host",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review"
+      ],
+      "summary": "Turn ENGINE-03's bounded Promise/microtask support into the full scalable async runtime with native completions, owner-thread continuation dispatch, deadlines, shutdown drain, backpressure, provider/offload integration, and stress evidence.",
+      "goal": "Sloppy can aim at a full scalable async runtime without overclaiming the current ENGINE-03 microtask-only boundary.",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/concurrency.md",
+        "docs/execution-model.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/engine-framework-contract.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/modules/engine-v8/README.md",
+        "docs/diagnostics.md",
+        "docs/testing-strategy.md",
+        "docs/quality-gates.md",
+        "docs/quality-score.md",
+        "docs/tech-debt-tracker.md"
+      ],
+      "nonGoals": [
+        "No Node/npm compatibility unless explicitly scoped.",
+        "No package-manager behavior.",
+        "No public timers/fetch/fs/process/Buffer API unless a task explicitly scopes it.",
+        "No public alpha docs, benchmark claims, or scalability claims before evidence.",
+        "No PostgreSQL or SQL Server JS bridge work before SQLite and core async evidence are solid.",
+        "No generated/build artifacts."
+      ],
+      "implementationRequirements": [
+        "Start this EPIC only when a real external async source is ready to cross the runtime boundary.",
+        "Keep V8 entry on the owning engine thread.",
+        "Keep queues, buffers, resources, deadlines, shutdown, and provider/offload work bounded and diagnostic-driven.",
+        "Report default, V8-gated, live-provider, stress, and benchmark evidence separately."
+      ],
+      "acceptanceCriteria": [
+        "Native completions resume JavaScript only on the owning V8 thread.",
+        "Pending request scopes survive native async work and clean up exactly once on success, rejection, cancellation, timeout, overflow, and shutdown.",
+        "Cancellation, deadlines, overflow, and provider failures produce deterministic diagnostics and safe error responses.",
+        "Queue capacity/backpressure is bounded, documented, and tested.",
+        "Stress/perf evidence demonstrates the intended scalability shape without making external benchmark claims."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk I - Scalable async runtime: ENGINE-12.A through ENGINE-12.D as one large-coherent runtime PR only when native completions/provider offload/deadline/shutdown work is ready to cross the runtime boundary."
+      ]
     }
   ],
   "tasks": [
@@ -2906,6 +2959,272 @@
       "suggestedPrSize": "size:bounded",
       "recommendedPrGrouping": [
         "Chunk H - Public alpha gate: ENGINE-11.A and ENGINE-11.B as one docs-only gate after Layers 1-9 pass."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-12.A: Native Event Loop and Completion Queue Backend",
+      "parentEpic": "EPIC ENGINE-12: Scalable Async Runtime",
+      "labels": [
+        "type:task",
+        "area:concurrency",
+        "area:engine-v8",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Replace the current caller-drained async skeleton with a real native completion backend shape.",
+      "goal": "Native async sources can post completions without letting worker/provider threads enter V8.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/concurrency.md",
+        "docs/execution-model.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/modules/engine-v8/README.md",
+        "docs/testing-strategy.md",
+        "docs/quality-gates.md"
+      ],
+      "scope": [
+        "Define the runtime-owned event-loop/completion backend boundary.",
+        "Add thread-safe completion posting or an explicitly documented first backend that can evolve to it.",
+        "Define bounded queue capacity, overflow status, and diagnostics.",
+        "Add tests for posting, draining, overflow, cleanup, and shutdown behavior."
+      ],
+      "nonGoals": [
+        "No Node/libuv compatibility promise unless explicitly selected.",
+        "No public timers/fetch/fs/process/Buffer API.",
+        "No worker thread entering V8.",
+        "No unbounded queues.",
+        "No performance claims from smoke tests."
+      ],
+      "implementationRequirements": [
+        "Start when a real async source is ready to wire end to end: HTTP lifecycle events, timer/deadline wakeups, worker-pool offload, or provider work.",
+        "Preserve the one V8 owner-thread rule.",
+        "Keep default and V8-gated test reporting separate."
+      ],
+      "testsRequired": [
+        "Completion queue capacity/overflow tests.",
+        "Drain/discard cleanup tests.",
+        "V8-gated owner-thread integration tests when V8 dispatch is claimed.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "No OS APIs outside src/platform/*.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript.",
+        "Report default, V8-gated, stress, and benchmark evidence separately."
+      ],
+      "acceptanceCriteria": [
+        "Completion queue capacity is explicit and test-covered.",
+        "Overflow produces deterministic diagnostics/status.",
+        "Completion dispatch is owner-thread compatible.",
+        "Shutdown can drain or discard with documented cleanup.",
+        "Default and V8-gated test reporting remain separate."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk I - Scalable async runtime: group with ENGINE-12.B through ENGINE-12.D only if the backend, scheduler, cancellation, and evidence work remain one coherent reviewable runtime slice."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-12.B: Owner-Thread V8 Continuation Scheduler",
+      "parentEpic": "EPIC ENGINE-12: Scalable Async Runtime",
+      "labels": [
+        "type:task",
+        "area:engine-v8",
+        "area:concurrency",
+        "area:resource",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Resume JavaScript Promise continuations from native async completions only on the owning V8 engine thread.",
+      "goal": "Native async completion can settle handler Promises without wrong-thread V8 entry or request-scope leaks.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/concurrency.md",
+        "docs/execution-model.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/modules/engine-v8/README.md",
+        "docs/diagnostics.md",
+        "docs/testing-strategy.md"
+      ],
+      "scope": [
+        "Define scheduler entrypoints below src/engine/v8/ for resuming native async completions.",
+        "Keep V8 handles and microtask policy inside the V8 bridge.",
+        "Retain request/app scope across queued async work and release it exactly once.",
+        "Drain microtasks only at documented owner-thread boundaries.",
+        "Map fulfilled, rejected, and cancelled native completions to handler results or diagnostics."
+      ],
+      "nonGoals": [
+        "No arbitrary thread-pool continuation into V8.",
+        "No raw native pointers exposed to JavaScript.",
+        "No broad async stack/source-map overhaul beyond deterministic diagnostics needed for this task.",
+        "No multi-isolate scheduler unless separately scoped."
+      ],
+      "implementationRequirements": [
+        "Start after ENGINE-03 semantics are stable and ENGINE-12.A has a completion backend boundary.",
+        "Wrong-thread attempts fail clearly where detectable.",
+        "Cleanup remains runtime-owned across every terminal path."
+      ],
+      "testsRequired": [
+        "V8-gated owner-thread continuation tests.",
+        "Wrong-thread failure test if feasible.",
+        "Request-scope retention and cleanup tests.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "No V8 types outside src/engine/v8/*.",
+        "No raw native pointers exposed to JavaScript.",
+        "Default non-V8 tests must report V8 work as skipped/not configured, not passed."
+      ],
+      "acceptanceCriteria": [
+        "Wrong-thread attempts fail clearly where detectable.",
+        "Native completions resume JS only on the owner thread.",
+        "Request scope survives pending native async work and is cleaned on all terminal paths.",
+        "Promise rejection/cancellation is observable and deterministic.",
+        "V8-gated tests cover the continuation boundary."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk I - Scalable async runtime: pair with ENGINE-12.A when the backend and owner-thread scheduler need one shared implementation review."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-12.C: Cancellation, Deadline, and Shutdown Drain Policy",
+      "parentEpic": "EPIC ENGINE-12: Scalable Async Runtime",
+      "labels": [
+        "type:task",
+        "area:concurrency",
+        "area:app-host",
+        "area:diagnostics",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:bounded"
+      ],
+      "summary": "Make cancellation, deadlines, timeout diagnostics, and app shutdown behavior real across queued async runtime work.",
+      "goal": "Async work has bounded, deterministic terminal paths instead of hanging or leaking during shutdown and timeout.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/concurrency.md",
+        "docs/execution-model.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/diagnostics.md",
+        "docs/testing-strategy.md"
+      ],
+      "scope": [
+        "Define the native cancellation token/signal lifecycle for async requests.",
+        "Add deadline/timeout wakeup integration through the chosen completion backend.",
+        "Specify shutdown drain period, force-cancel behavior, and cleanup ordering.",
+        "Distinguish cancellation, timeout, overflow, shutdown, and provider failure diagnostics.",
+        "Add cleanup-once tests for resolve, reject, cancel, timeout, overflow, and shutdown paths."
+      ],
+      "nonGoals": [
+        "No provider-specific mid-operation interrupt guarantee until a provider task implements it.",
+        "No production server lifecycle breadth beyond the async runtime policy.",
+        "No public timeout helper API unless separately scoped."
+      ],
+      "implementationRequirements": [
+        "Start when HTTP disconnect/shutdown, timer/deadline, or provider cancellation must survive beyond the ENGINE-03 microtask boundary.",
+        "Deadlines and shutdown must use the same cancellation model rather than parallel ad hoc states.",
+        "Cleanup must be idempotent and observable in tests."
+      ],
+      "testsRequired": [
+        "Cancellation/deadline/shutdown cleanup tests.",
+        "Terminal diagnostic tests for cancel, timeout, overflow, shutdown, and provider failure.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "Report default, V8-gated, live-provider, stress, and benchmark evidence separately.",
+        "Do not claim mid-operation provider interruption until it exists."
+      ],
+      "acceptanceCriteria": [
+        "Cancellation and deadline state is visible to native work and JS request context where supported.",
+        "Shutdown behavior is bounded and deterministic.",
+        "Cleanup runs exactly once for every terminal path.",
+        "Diagnostics distinguish the terminal reasons.",
+        "Tests cover drain, cancel, timeout, overflow, and shutdown cleanup."
+      ],
+      "suggestedPrSize": "size:bounded",
+      "recommendedPrGrouping": [
+        "Chunk I - Scalable async runtime: group with ENGINE-12.A/B when cancellation and shutdown require the same backend and scheduler entrypoints."
+      ]
+    },
+    {
+      "title": "TASK ENGINE-12.D: Async Backpressure, Provider Offload, and Scalability Evidence",
+      "parentEpic": "EPIC ENGINE-12: Scalable Async Runtime",
+      "labels": [
+        "type:task",
+        "area:concurrency",
+        "area:data",
+        "area:testing",
+        "priority:p1",
+        "risk:high",
+        "status:needs-review",
+        "size:large-coherent"
+      ],
+      "summary": "Prove the scalable async shape with a real bounded async source without making benchmark marketing claims.",
+      "goal": "Backpressure and stress evidence show many pending operations do not become thread-per-request behavior.",
+      "milestone": "0.8 Planning / Consolidation",
+      "sourceDocs": [
+        "AGENTS.md",
+        "docs/concurrency.md",
+        "docs/execution-model.md",
+        "docs/project/slop-engine-final-shape.md",
+        "docs/project/slop-engine-layered-roadmap.md",
+        "docs/testing-strategy.md",
+        "docs/quality-gates.md",
+        "docs/quality-score.md"
+      ],
+      "scope": [
+        "Wire one realistic async source through the completion backend and owner-thread scheduler.",
+        "Enforce bounded admission and backpressure for queued async work.",
+        "Add stress tests showing many pending operations do not create thread-per-request behavior.",
+        "Add local/manual performance methodology if needed, clearly separated from product claims.",
+        "Document capacity defaults, tuning knobs if any, and overflow behavior."
+      ],
+      "nonGoals": [
+        "No external benchmark comparisons.",
+        "No production database pool policy unless separately scoped.",
+        "No PostgreSQL/SQL Server JS bridge expansion before SQLite/core async evidence is strong.",
+        "No unbounded queues or fake async facade claims."
+      ],
+      "implementationRequirements": [
+        "Start after owner-thread continuation scheduling, cancellation/deadline policy, and at least one native async source are ready to exercise real queued work.",
+        "Keep stress/performance evidence separate from public benchmark claims.",
+        "Report default, V8-gated, live-provider, stress, and benchmark evidence separately."
+      ],
+      "testsRequired": [
+        "Backpressure/overflow tests for queued async work.",
+        "Stress tests for many pending operations.",
+        "Provider/offload diagnostics tests if provider work is used.",
+        "git diff --check."
+      ],
+      "qualityGates": [
+        "Read AGENTS.md and the listed source docs before editing.",
+        "No fake async facade claims.",
+        "No benchmark claims from smoke/list checks.",
+        "Do not hide optional V8/live-provider/stress gate failures."
+      ],
+      "acceptanceCriteria": [
+        "A real async source exercises queue admission, completion, cancellation, and overflow.",
+        "Stress evidence demonstrates intended concurrency shape without overclaiming throughput.",
+        "Backpressure behavior is documented and test-covered.",
+        "Provider/offload diagnostics are deterministic and safe.",
+        "Default, V8-gated, live-provider, stress, and benchmark evidence are reported separately."
+      ],
+      "suggestedPrSize": "size:large-coherent",
+      "recommendedPrGrouping": [
+        "Chunk I - Scalable async runtime: pair with earlier ENGINE-12 tasks only when the first real async source is needed to prove the backend and scheduler together."
       ]
     }
   ]

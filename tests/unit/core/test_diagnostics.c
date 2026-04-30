@@ -259,20 +259,49 @@ static int test_names_and_spans(void)
     if (expect_str_equal(sl_diag_code_name(SL_DIAG_INVALID_ROUTE_PATTERN),
                          sl_str_from_cstr("SLOPPY_E_INVALID_ROUTE_PATTERN")) != 0)
     {
-        return 45;
+        return 49;
     }
 
     if (expect_str_equal(sl_diag_code_name(SL_DIAG_DUPLICATE_ROUTE_PARAM),
                          sl_str_from_cstr("SLOPPY_E_DUPLICATE_ROUTE_PARAM")) != 0)
     {
-        return 46;
+        return 50;
     }
 
     if (unknown.has_location || unknown.path.length != 0U) {
-        return 47;
+        return 51;
     }
 
     if (partial.has_location) {
+        return 52;
+    }
+
+    return 0;
+}
+
+static int test_engine_async_code_names(void)
+{
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_ENGINE_PROMISE_REJECTION),
+                         sl_str_from_cstr("SLOPPY_E_ENGINE_PROMISE_REJECTION")) != 0)
+    {
+        return 45;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_ENGINE_PROMISE_PENDING),
+                         sl_str_from_cstr("SLOPPY_E_ENGINE_PROMISE_PENDING")) != 0)
+    {
+        return 46;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_ENGINE_CANCELLED),
+                         sl_str_from_cstr("SLOPPY_E_ENGINE_CANCELLED")) != 0)
+    {
+        return 47;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_ENGINE_BACKPRESSURE),
+                         sl_str_from_cstr("SLOPPY_E_ENGINE_BACKPRESSURE")) != 0)
+    {
         return 48;
     }
 
@@ -695,6 +724,11 @@ int main(void)
     }
 
     result = test_provider_code_names();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_engine_async_code_names();
     if (result != 0) {
         return result;
     }

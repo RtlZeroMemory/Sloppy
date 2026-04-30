@@ -16,7 +16,13 @@ Current implementation evidence remains in the current-state docs and public sta
   source-map artifact emission for a supported one-file compiler subset.
 - `sloppy run --artifacts` has a dev-only V8-required artifact run path for GET routes.
 - the current request context has route/query/request basics only.
-- returned Promises are still unsupported in the runtime today.
+- ENGINE-03 adds V8-gated microtask-only Promise settlement for returned handler Promises;
+  timers, fetch, native async provider queues, and broader JS event-loop behavior remain
+  future work.
+- ENGINE-12 (#306 through #310) tracks the future scalable async runtime: native
+  completion/backend integration, owner-thread continuation scheduling, deadlines,
+  shutdown drain/cancel behavior, bounded queues/backpressure, provider/offload
+  integration, and stress/performance evidence.
 - SQLite has native provider coverage and a small V8-gated bridge, but capability-wired
   public API completion is still future work.
 
@@ -35,7 +41,7 @@ surface.
 | HTTP methods | GET, POST, PUT, PATCH, and DELETE are core. OPTIONS is framework-owned for allowed-method/preflight-style responses. HEAD is deferred until its body/metadata policy is explicit. |
 | Body support | JSON and text request bodies are core. Multipart/file upload, streaming uploads, and form binding are deferred. |
 | Results | Text, JSON, status, empty, and problem results are core. Files, streams, redirects, cookies, content negotiation, and filters are deferred. |
-| Async | Sync handlers and async handlers returning Promises are core. Pending Promises must settle through the V8 owner-thread/microtask policy. |
+| Async | Sync handlers and async handlers returning Promises are core. ENGINE-03 covers the bounded V8 owner-thread/microtask policy; ENGINE-12 owns scalable native async completions before Sloppy claims scalable async runtime behavior. |
 | Cancellation | Request cancellation signal and native cancellation token plumbing are required from the first real async/HTTP implementation cut. |
 | Limits/backpressure | Header, target, query, body, request, response, queue, and resource limits are core infrastructure. Exceeding a limit rejects work with diagnostics. |
 | SQLite | SQLite is the core database foundation. `data.sqlite.open`, `exec`, `query`, `queryOne`, `transaction`, and `close` are the foundation API. |
@@ -406,6 +412,12 @@ Rejected for the foundation:
 ENGINE-02 can implement compiler/Plan completion against this contract.
 
 ENGINE-03 can implement V8 Promise/microtask/cancellation behavior against this contract.
+
+ENGINE-12 can implement the scalable async runtime only after ENGINE-03 semantics are stable
+and a real external async source is ready to wire end-to-end. It is the required handoff for
+native completion queues, owner-thread continuation scheduling across queued work,
+deadline/shutdown drain policy, bounded async admission/backpressure, provider/offload
+integration, and stress evidence before any public scalability or performance claim.
 
 ENGINE-04 can implement HTTP methods, headers, bodies, result serialization, limits,
 backpressure, and error responses against this contract.

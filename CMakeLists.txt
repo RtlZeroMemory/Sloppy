@@ -285,6 +285,7 @@ set(
     src/core/source_loc.c
     src/core/string.c
     src/core/bytes.c
+    src/core/cancellation.c
     src/core/checked_math.c
     src/core/arena.c
     src/core/scope.c
@@ -331,6 +332,7 @@ set(
     tests/unit/core/test_source_loc.c
     tests/unit/core/test_string.c
     tests/unit/core/test_bytes.c
+    tests/unit/core/test_cancellation.c
     tests/unit/core/test_checked_math.c
     tests/unit/core/test_arena.c
     tests/unit/core/test_scope.c
@@ -579,6 +581,8 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(core_str_views core.str.views tests/unit/core/test_string.c)
     sloppy_add_c_unit_test(core_bytes_views core.bytes.views tests/unit/core/test_bytes.c)
     sloppy_add_c_unit_test(
+        core_cancellation_token core.cancellation.token tests/unit/core/test_cancellation.c)
+    sloppy_add_c_unit_test(
         core_checked_math_overflow core.checked_math.overflow tests/unit/core/test_checked_math.c)
     sloppy_add_c_unit_test(core_arena_foundation core.arena.foundation tests/unit/core/test_arena.c)
     sloppy_add_c_unit_test(core_scope_lifetime core.scope.lifetime tests/unit/core/test_scope.c)
@@ -718,11 +722,17 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.routes_compiler_json tests/golden/cli/routes-compiler-json.json routes --plan
         compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json)
+    set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text.txt)
+    set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json.json)
+    if(SLOPPY_ENABLE_V8)
+        set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text-v8.txt)
+        set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json-v8.json)
+    endif()
     sloppy_add_cli_golden_test(
-        sloppy.cli.doctor_text tests/golden/cli/doctor-text.txt doctor --plan
+        sloppy.cli.doctor_text ${SLOPPY_DOCTOR_TEXT_GOLDEN} doctor --plan
         tests/fixtures/cli/doctor.plan.json --format text)
     sloppy_add_cli_golden_test(
-        sloppy.cli.doctor_json tests/golden/cli/doctor-json.json doctor --plan
+        sloppy.cli.doctor_json ${SLOPPY_DOCTOR_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/doctor.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_text tests/golden/cli/audit-text.txt audit --plan
@@ -958,6 +968,9 @@ if(SLOPPY_ENABLE_TESTS)
                 conformance.request_context.run_once request-context examples/request-context/app.js GET
                 "/users/123?q=abc&q=last"
                 "\"id\":\"123\".*\"q\":\"last\".*\"method\":\"GET\".*\"path\":\"/users/123\".*\"rawTarget\":\"/users/123[?]q=abc&q=last\"")
+            sloppy_add_conformance_run_once_test(
+                conformance.async_handler.run_once async-handler
+                compiler/tests/fixtures/async-handler/input.js GET /async "\"ok\":true")
         endif()
 
         function(sloppy_add_conformance_existing_artifact_test test_name artifacts method target

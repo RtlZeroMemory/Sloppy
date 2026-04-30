@@ -14,12 +14,17 @@ ENGINE-01 locks the framework contract in
 `docs/project/engine-framework-contract.md`; future implementation debt should be tracked
 against that contract rather than reopening ambiguous "minimum alpha" scope.
 
-- Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02
-  metadata: source-input handoff/cache, module/service/schema extraction, runtime Promise
-  settlement, non-GET dispatch, and provider/capability enforcement.
-- V8 async runtime: Promise return support, microtask policy, owner-thread continuation,
-  cancellation-token propagation, bounded completion queues, rejected Promise diagnostics,
-  and request-scope retention until settlement.
+- Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02 and
+  ENGINE-03: source-input handoff/cache, module/service/schema extraction, broader async
+  source shapes, non-GET dispatch, and provider/capability enforcement.
+- Full scalable async runtime beyond ENGINE-03: ENGINE-12 (#306, tasks #307-#310) owns
+  native async completion queues/backends, owner-thread V8 continuation scheduling for
+  native completions, timer/fetch policy if ever scoped, HTTP disconnect/shutdown drain
+  behavior, richer deadline hooks, bounded queue/backpressure diagnostics, provider/offload
+  integration, stress evidence, source-remapped async diagnostics, and provider-backed
+  cancellation. ENGINE-03 covers returned Promises that settle during the owner-thread
+  microtask drain, rejection diagnostics, pending-Promise failure, cancellation snapshots,
+  and request-scope cleanup for the bounded call.
 - Framework HTTP API runtime: method dispatch, headers in context, JSON/text body policy,
   header/body limits, request cancellation signal, timeout hooks, backpressure behavior,
   result serialization, and error response contract.
@@ -51,16 +56,15 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Request context model beyond EPIC-23: body/header access, typed/coerced route/query
   binding, services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
-  maps, required async/event-loop Promise support, and executable public examples through
-  the final bootstrap module shape remain open. MAIN1-05 documents and tests the current
-  owner-thread, lifecycle, generated-source diagnostic, and Promise-rejection policies, but
-  does not add full async JavaScript. Promise support is deferred, not optional: before
-  Sloppy claims async handlers, V8 Promise settlement, microtask policy, request-scope
-  lifetime, cancellation propagation, bounded queues, and rejected-promise diagnostics must
-  be implemented and tested. ENGINE-03 must also revisit the ENGINE-02 compiler rejection
-  `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` and update the compiler syntax matrix,
-  diagnostics fixtures, and conformance fixtures when `await`, multi-statement async
-  bodies, and non-direct async returns become executable.
+  maps, native async completion queues, HTTP disconnect/shutdown cancellation, and
+  executable public examples through the final bootstrap module shape remain open.
+  ENGINE-03 adds microtask-only Promise settlement for direct async handlers; it does not
+  add full JavaScript event-loop behavior. ENGINE-12 should be implemented when real
+  external async sources are ready to cross the runtime boundary, and before Sloppy makes
+  scalable async, async provider, async HTTP lifecycle, or performance claims. The
+  compiler rejection `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` remains valid for `await`,
+  multi-statement async bodies, and non-direct async returns until those shapes become
+  executable.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
@@ -220,6 +224,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Added the ENGINE-01 framework contract source of truth for JS app API, Results, request
   context, async/microtasks, cancellation/deadlines, HTTP, SQLite, capabilities, and
   deferred behavior.
+- Added the ENGINE-03 V8 async runtime slice for microtask-only returned Promise
+  settlement, rejected/pending Promise diagnostics, owner-thread microtask drains,
+  cancellation snapshots, and bounded request-scope cleanup.
 - Added JS/TS and Rust standards docs plus zero-dependency language standards scanners.
 - Wired JS/TS and Rust standards scanners into `tools/windows/dev.ps1 lint`.
 - Added the EPIC-21 `sloppyc` extraction MVP for one-file literal `mapGet` apps, builder

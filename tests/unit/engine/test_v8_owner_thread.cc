@@ -50,6 +50,16 @@ static SlEngineOptions v8_options(void)
     return options;
 }
 
+static SlHttpRequestHead test_request(void)
+{
+    SlHttpRequestHead request = {};
+
+    request.method = SL_HTTP_METHOD_GET;
+    request.path = sl_str_from_cstr("/");
+    request.raw_target = sl_str_from_cstr("/");
+    return request;
+}
+
 static int test_wrong_thread_eval_fails_before_entering_v8(void)
 {
     unsigned char engine_storage[8192];
@@ -76,6 +86,56 @@ static int test_wrong_thread_eval_fails_before_entering_v8(void)
 
     if (expect_status(worker_status, SL_STATUS_INVALID_STATE) != 0 ||
         diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
+        expect_str_contains(diag.message, sl_str_from_cstr("non-owner thread")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_wrong_thread_async_handler_call_fails_before_microtasks(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {};
+    SlArena result_arena = {};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = nullptr;
+    SlDiag diag = {};
+    SlEngineResult result = {};
+    SlHttpRequestHead request = test_request();
+    SlHttpRequestContext context = {};
+    SlStatus worker_status = sl_status_ok();
+
+    context.request = &request;
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&result_arena, result_storage, sizeof(result_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == nullptr ||
+        expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("wrong-thread-async.js"),
+                          sl_str_from_cstr("__sloppy_register_handler(1, async function () { "
+                                           "return 'wrong'; });"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1;
+    }
+
+    std::thread worker([&]() {
+        worker_status = sl_engine_call_registered_handler_with_context(engine, &result_arena, 1U,
+                                                                       &context, &result, &diag);
+    });
+    worker.join();
+
+    if (expect_status(worker_status, SL_STATUS_INVALID_STATE) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
         expect_str_contains(diag.message, sl_str_from_cstr("non-owner thread")) != 0)
     {
         sl_engine_destroy(engine);
@@ -125,6 +185,11 @@ int main(void)
     result = test_wrong_thread_destroy_defers_to_owner_thread();
     if (result != 0) {
         return 10 + result;
+    }
+
+    result = test_wrong_thread_async_handler_call_fails_before_microtasks();
+    if (result != 0) {
+        return 20 + result;
     }
 
     return 0;

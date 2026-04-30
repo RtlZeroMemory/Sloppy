@@ -1,3 +1,4 @@
+#include "sloppy/app_host.h"
 #include "sloppy/engine.h"
 
 #include <stdbool.h>
@@ -373,7 +374,7 @@ static int test_unsupported_result_returns_call_diagnostic(void)
     return 0;
 }
 
-static int test_promise_result_returns_explicit_unsupported_diagnostic(void)
+static int test_promise_result_settles_text(void)
 {
     unsigned char engine_storage[8192];
     unsigned char result_storage[1024];
@@ -407,19 +408,230 @@ static int test_promise_result_returns_explicit_unsupported_diagnostic(void)
 
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
                                                sl_str_from_cstr("sloppy_promise"), &result, &diag),
-                      SL_STATUS_UNSUPPORTED) != 0)
+                      SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 58;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
-        expect_str_contains(diag.message, sl_str_from_cstr("Promise")) != 0 ||
-        expect_str_contains(diag.hints[0], sl_str_from_cstr("Async handlers")) != 0 ||
-        expect_str_contains(diag.message, sl_str_from_cstr("0x")) == 0)
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("later")))
     {
         sl_engine_destroy(engine);
         return 59;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_promise_result_settles_json_after_microtask(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 60;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 61;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-promise-json.js"),
+                sl_str_from_cstr("globalThis.sloppy_json_promise = function () {"
+                                 "  return Promise.resolve().then(() => ({ __sloppyResult: true, "
+                                 "    kind: 'json', status: 200, contentType: "
+                                 "    'application/json; charset=utf-8', body: { ok: true } }));"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 62;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_json_promise"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 63;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body, "{\"ok\":true}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 64;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_promise_rejection_returns_diagnostic(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 65;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 66;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-promise-reject.js"),
+                                  sl_str_from_cstr("globalThis.sloppy_reject = async function () "
+                                                   "{ throw new Error('async boom'); };"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 67;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_reject"), &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 68;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
+        expect_str_contains(diag.message, sl_str_from_cstr("async boom")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 69;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_pending_promise_returns_deadline_diagnostic(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 70;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 71;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-promise-pending.js"),
+                          sl_str_from_cstr("globalThis.sloppy_pending = function () { return new "
+                                           "Promise(() => {}); };"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 72;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_pending"), &result, &diag),
+                      SL_STATUS_DEADLINE_EXCEEDED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 73;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_PROMISE_PENDING ||
+        expect_str_contains(diag.message, sl_str_from_cstr("bounded microtask drain")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 74;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_recursive_microtasks_are_bounded(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 75;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 76;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-recursive-microtask.js"),
+                sl_str_from_cstr("globalThis.sloppy_recursive_microtask = function () {"
+                                 "  function loop() { return Promise.resolve().then(loop); }"
+                                 "  return Promise.resolve().then(loop);"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 77;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_recursive_microtask"),
+                                               &result, &diag),
+                      SL_STATUS_DEADLINE_EXCEEDED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 78;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_PROMISE_PENDING ||
+        expect_str_contains(diag.message, sl_str_from_cstr("bounded checkpoint limit")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 79;
     }
 
     sl_engine_destroy(engine);
@@ -546,6 +758,433 @@ static int test_request_context_reports_actual_method(void)
     {
         sl_engine_destroy(engine);
         return 74;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_request_context_exposes_signal_shape(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 75;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 76;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-context-signal.js"),
+                          sl_str_from_cstr("globalThis.sloppy_signal = function (ctx) {"
+                                           "  ctx.signal.throwIfAborted();"
+                                           "  return { __sloppyResult: true, kind: 'json', "
+                                           "    status: 200, contentType: "
+                                           "    'application/json; charset=utf-8',"
+                                           "    body: { aborted: ctx.signal.aborted, reason: "
+                                           "ctx.signal.reason, hasThrow: typeof "
+                                           "ctx.signal.throwIfAborted, deadline: ctx.deadline } };"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 77;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_signal"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 78;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body,
+                           "{\"aborted\":false,\"reason\":null,\"hasThrow\":\"function\","
+                           "\"deadline\":null}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 79;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_cancelled_request_fails_before_entering_handler(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlEngineResult called_result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    SlCancellationToken cancellation = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 80;
+    }
+
+    sl_cancellation_token_init(&cancellation);
+    if (expect_status(sl_cancellation_token_cancel(&cancellation, SL_CANCELLATION_REASON_CANCELLED,
+                                                   sl_str_from_cstr("test abort")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 81;
+    }
+    context.cancellation = &cancellation;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 82;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-cancelled.js"),
+                          sl_str_from_cstr("globalThis.sloppy_called = false;"
+                                           "globalThis.sloppy_cancelled = function () {"
+                                           "  globalThis.sloppy_called = true; return 'bad';"
+                                           "};"
+                                           "globalThis.sloppy_was_called = function () {"
+                                           "  return globalThis.sloppy_called ? 'yes' : 'no';"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 83;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_cancelled"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_CANCELLED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 84;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CANCELLED ||
+        expect_str_contains(diag.message, sl_str_from_cstr("test abort")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 85;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_was_called"),
+                                               &called_result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        !sl_str_equal(called_result.text, sl_str_from_cstr("no")))
+    {
+        sl_engine_destroy(engine);
+        return 86;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_deadline_cancelled_request_returns_deadline_status(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    SlCancellationToken cancellation = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 87;
+    }
+
+    sl_cancellation_token_init(&cancellation);
+    if (expect_status(sl_cancellation_token_cancel(&cancellation,
+                                                   SL_CANCELLATION_REASON_DEADLINE_EXCEEDED,
+                                                   sl_str_from_cstr("handler deadline elapsed")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 88;
+    }
+    context.cancellation = &cancellation;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 89;
+    }
+
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("v8-deadline.js"),
+                                            sl_str_from_cstr("globalThis.sloppy_deadline = "
+                                                             "function () { return 'bad'; };"),
+                                            &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 90;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_deadline"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_DEADLINE_EXCEEDED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 91;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CANCELLED ||
+        expect_str_contains(diag.message, sl_str_from_cstr("deadline")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 92;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_backpressure_request_returns_capacity_status(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    SlCancellationToken cancellation = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 101;
+    }
+
+    sl_cancellation_token_init(&cancellation);
+    if (expect_status(sl_cancellation_token_cancel(&cancellation,
+                                                   SL_CANCELLATION_REASON_BACKPRESSURE,
+                                                   sl_str_from_cstr("queue is full")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 102;
+    }
+    context.cancellation = &cancellation;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 103;
+    }
+
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("v8-backpressure.js"),
+                                            sl_str_from_cstr("globalThis.sloppy_backpressure = "
+                                                             "function () { return 'bad'; };"),
+                                            &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 104;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("sloppy_backpressure"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 105;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_BACKPRESSURE ||
+        expect_str_contains(diag.message, sl_str_from_cstr("queue is full")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 106;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+typedef struct SlV8ScopeHarness
+{
+    SlEngine* engine;
+    SlArena* result_arena;
+    SlStr function_name;
+    const SlHttpRequestContext* context;
+    SlEngineResult* result;
+    int* cleanup_count;
+} SlV8ScopeHarness;
+
+static void count_scope_cleanup(void* payload, void* user)
+{
+    int* cleanup_count = (int*)payload;
+
+    (void)user;
+    if (cleanup_count != NULL) {
+        *cleanup_count += 1;
+    }
+}
+
+static SlStatus call_v8_handler_in_request_scope(SlAppRequestScope* request_scope, void* user,
+                                                 SlDiag* out_diag)
+{
+    SlV8ScopeHarness* harness = (SlV8ScopeHarness*)user;
+    SlStatus status;
+
+    if (request_scope == NULL || harness == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_app_request_scope_add_cleanup(request_scope, count_scope_cleanup,
+                                              harness->cleanup_count, NULL);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_engine_call_function_with_context(harness->engine, harness->result_arena,
+                                                harness->function_name, harness->context,
+                                                harness->result, out_diag);
+}
+
+static int run_scope_cleanup_case(SlEngine* engine, SlArena* result_arena, SlStr function_name,
+                                  const SlHttpRequestContext* context, SlStatusCode expected_status,
+                                  SlDiagCode expected_diag)
+{
+    SlScopeCleanup cleanups[1];
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    int cleanup_count = 0;
+    SlV8ScopeHarness harness = {0};
+    SlStatus status;
+
+    harness.engine = engine;
+    harness.result_arena = result_arena;
+    harness.function_name = function_name;
+    harness.context = context;
+    harness.result = &result;
+    harness.cleanup_count = &cleanup_count;
+
+    status = sl_app_request_scope_execute(cleanups, 1U, call_v8_handler_in_request_scope, &harness,
+                                          &diag);
+    if (expect_status(status, expected_status) != 0 || cleanup_count != 1) {
+        return 1;
+    }
+    if (expected_diag != SL_DIAG_NONE && diag.code != expected_diag) {
+        return 2;
+    }
+
+    return 0;
+}
+
+static int test_request_scope_cleanup_runs_for_async_outcomes(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    SlHttpRequestContext cancelled_context = test_request_context(&request);
+    SlCancellationToken cancellation = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 93;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 94;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-scope-cleanup.js"),
+                          sl_str_from_cstr("globalThis.sloppy_scope_resolve = async function () { "
+                                           "return 'scope-ok'; };"
+                                           "globalThis.sloppy_scope_reject = async function () { "
+                                           "throw new Error('scope reject'); };"
+                                           "globalThis.sloppy_scope_pending = function () { return "
+                                           "new Promise(() => {}); };"
+                                           "globalThis.sloppy_scope_cancel = function () { return "
+                                           "'bad'; };"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 95;
+    }
+
+    if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_resolve"),
+                               &context, SL_STATUS_OK, SL_DIAG_NONE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 96;
+    }
+
+    if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_reject"),
+                               &context, SL_STATUS_INVALID_STATE,
+                               SL_DIAG_ENGINE_PROMISE_REJECTION) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 97;
+    }
+
+    if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_pending"),
+                               &context, SL_STATUS_DEADLINE_EXCEEDED,
+                               SL_DIAG_ENGINE_PROMISE_PENDING) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 98;
+    }
+
+    sl_cancellation_token_init(&cancellation);
+    if (expect_status(sl_cancellation_token_cancel(&cancellation, SL_CANCELLATION_REASON_CANCELLED,
+                                                   sl_str_from_cstr("scope cancel")),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 99;
+    }
+    cancelled_context.cancellation = &cancellation;
+    if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_cancel"),
+                               &cancelled_context, SL_STATUS_CANCELLED,
+                               SL_DIAG_ENGINE_CANCELLED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 100;
     }
 
     sl_engine_destroy(engine);
@@ -1063,7 +1702,27 @@ int main(void)
         return result;
     }
 
-    result = test_promise_result_returns_explicit_unsupported_diagnostic();
+    result = test_promise_result_settles_text();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_promise_result_settles_json_after_microtask();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_promise_rejection_returns_diagnostic();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_pending_promise_returns_deadline_diagnostic();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_recursive_microtasks_are_bounded();
     if (result != 0) {
         return result;
     }
@@ -1079,6 +1738,31 @@ int main(void)
     }
 
     result = test_request_context_reports_actual_method();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_context_exposes_signal_shape();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_cancelled_request_fails_before_entering_handler();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_deadline_cancelled_request_returns_deadline_status();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_backpressure_request_returns_capacity_status();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_scope_cleanup_runs_for_async_outcomes();
     if (result != 0) {
         return result;
     }

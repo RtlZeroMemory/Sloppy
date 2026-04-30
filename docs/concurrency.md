@@ -49,14 +49,27 @@ with a stack-local loop init/close smoke. It does not add a libuv backend for `S
 thread-safe posting, socket I/O, timers, owner-thread checks, or request lifecycle
 integration.
 
-The remaining event loop backend, real worker pool, request lifecycle, V8 promise
-integration, and async backend behavior is still future work. V8 Promise integration is
-deferred but required: Sloppy cannot claim async handler support until returned Promises
-settle through the runtime, microtasks have an explicit owner-thread policy, request scopes
-survive pending Promise work, and rejected Promises produce deterministic diagnostics.
-The same is true for cancellation tokens, deadline hooks, bounded queues, and backpressure:
-they are not implemented in the current skeleton, but they are foundational requirements
-for the first real async/HTTP runtime rather than later product polish.
+ENGINE-03 adds the first real V8 async handler boundary. Returned Promises that settle
+during the explicit owner-thread V8 microtask drain fulfill or reject deterministically;
+fulfilled values use normal result conversion, rejected Promises produce engine
+diagnostics, and still-pending Promises fail as deadline-style handler failures instead of
+being serialized as `[object Promise]` or reported as success. ENGINE-03 also exposes a
+native cancellation snapshot to request context and covers cleanup for the bounded
+microtask call path.
+
+ENGINE-03 is not the full scalable async runtime. It does not add a Node-style event loop,
+public timers/fetch/fs/process APIs, native provider completion queues, cross-thread
+posting, HTTP disconnect/shutdown drain behavior, worker-thread scheduling, or scalability
+evidence. The full async-runtime target is tracked by #306 and tasks #307 through #310.
+Those tasks own native completion/backend integration, owner-thread continuation
+scheduling for native completions, deadline/shutdown drain policy, bounded queues,
+backpressure, provider/offload integration, and stress evidence.
+
+Implement the full scalable async runtime when a real external async source is ready to
+wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
+async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes
+any public or alpha claim about scalable async behavior, production-ready async HTTP
+lifecycle, async provider execution, or performance with many pending requests.
 
 ## Core Decision
 
@@ -301,9 +314,14 @@ rejections should include route and handler context when possible.
 
 TASK 09.B does not implement this V8 behavior. It only defines the native settlement record
 and loop-continuation shape that future V8 Promise resolution can map onto or evolve.
-Implementing that bridge is required future runtime work, not optional polish. Until it
-lands, Promise-returning handlers must continue to fail clearly instead of completing as
-`[object Promise]` or silently dropping asynchronous failures.
+ENGINE-03 implements the first V8 bridge cut for microtask-only Promise settlement:
+handlers are invoked only on the isolate owner thread, V8 microtasks drain explicitly after
+app evaluation and handler calls, fulfilled Promises convert through the normal result
+path, rejected Promises become deterministic diagnostics, and Promises that remain pending
+after the bounded microtask drain fail as a deadline-style handler failure. This prevents
+`[object Promise]` success and silently dropped asynchronous failures without claiming a
+Node event loop, timers, fetch, filesystem APIs, or native async provider completion
+queues.
 
 ## Request Scope Lifetime
 
@@ -424,22 +442,27 @@ app-host level:
 - Phase 2: Event loop abstraction skeleton.
 - Phase 3: V8 bridge smoke; single isolate, single owner thread.
 - Phase 4: Handwritten handler execution.
-- Phase 5: Async Promise settlement model.
+- Phase 5: ENGINE-03 V8-gated Promise settlement for the bounded owner-thread microtask
+  boundary.
 - Phase 6: Native worker pool abstraction.
 - Phase 7: DB provider async strategy with cancellation-aware operation boundaries.
 - Phase 8: HTTP integration with request scopes, cancellation, deadlines, and backpressure.
-- Phase 9: Hardening for provider-specific cancellation, deadline policy, and overload
+- Phase 9: ENGINE-12 scalable async runtime: native completion backend, owner-thread V8
+  continuation scheduler, deadlines, shutdown drain/cancel, bounded queues, backpressure,
+  provider/offload integration, and stress evidence.
+- Phase 10: Hardening for provider-specific cancellation, deadline policy, and overload
   diagnostics.
-- Phase 10: Multiple workers/isolates.
+- Phase 11: Multiple workers/isolates.
 
 ## Testing Requirements
 
 - Unit tests for request scope lifetime later.
-- Native SlAsync settlement tests now; V8 Promise, microtask, and request-scope settlement
-  tests later. Those tests are required when async handler support is implemented, including
-  fulfilled Promise responses, rejected Promise diagnostics, owner-thread continuation, and
-  request-scope cleanup after settlement.
-- Cancellation cleanup tests are required with the first real async/HTTP implementation.
+- Native SlAsync settlement tests now; ENGINE-03 adds V8-gated Promise, microtask,
+  owner-thread, cancellation snapshot, and request-scope cleanup tests for the current
+  microtask-only async handler boundary.
+- ENGINE-12 must add broader cancellation cleanup tests with native async provider queues,
+  HTTP disconnect handling, deadline wakeups, queue overflow, and shutdown drain/cancel
+  behavior.
 - Worker pool no-V8-entry tests later.
 - Resource leak tests.
 - Async DB transaction rollback tests.
@@ -461,7 +484,12 @@ For future implementation:
 
 - One isolate has one owner thread.
 - Worker threads cannot call into V8.
-- Promise-returning handler keeps request scope alive.
-- Rejected promise produces route-aware diagnostic.
-- Request cancellation disposes scoped resources.
-- Stress tests show many pending async operations do not create thread-per-request behavior.
+- Promise-returning handler keeps request scope alive for the bounded V8 microtask drain;
+  future native completion queues must extend the same ownership rule across queued work.
+- Rejected promise produces deterministic diagnostics; route/source remapping remains a
+  later diagnostics quality layer where not already available.
+- Request cancellation disposes scoped resources in the current request-scope execution
+  path; future HTTP disconnect and shutdown cancellation paths must use the same token
+  model.
+- ENGINE-12 stress tests show many pending async operations do not create
+  thread-per-request behavior before Sloppy claims scalable async performance.

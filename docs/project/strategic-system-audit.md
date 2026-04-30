@@ -40,9 +40,9 @@ clear rejection for many unsupported shapes.
 Skeletal: source maps are not yet consumed by runtime diagnostics; the compiler is a
 single-file extractor, not a general JS/TS compiler or bundler.
 
-Deferred: runtime Promise settlement for async handlers, non-GET request dispatch, named
-handlers, imports beyond the Sloppy facade, modules/services/schema extraction, broad
-provider graph extraction, TypeScript checking/lowering, source-input `sloppy run`.
+Deferred: broader async handler source shapes, non-GET request dispatch, named handlers,
+imports beyond the Sloppy facade, modules/services/schema extraction, broad provider graph
+extraction, TypeScript checking/lowering, source-input `sloppy run`.
 
 Misleading risk: older compiler planning sections still read like implementation has not
 started; current docs must separate "MVP implemented" from "final compiler pipeline not
@@ -113,10 +113,12 @@ What works: V8 SDK validation, owner-thread checks, handler registration, genera
 exception diagnostics, request-context calls, SQLite intrinsic bridge.
 
 Skeletal: ESM module loading and module cache are not final; compiler source maps are not
-consumed for author-source remaps; Promise returns are explicitly unsupported.
+consumed for author-source remaps; ENGINE-03 Promise support is limited to returned handler
+Promises that settle during the explicit owner-thread microtask drain.
 
-Deferred: true ESM/bootstrap module graph, microtask integration, async stack/error policy,
-global platform teardown decision, packaged V8 runtime execution evidence.
+Deferred: true ESM/bootstrap module graph, native async completion queues, async
+stack/source-remap policy, global platform teardown decision, packaged V8 runtime execution
+evidence.
 
 Misleading risk: default non-V8 gates do not validate V8 execution.
 
@@ -129,24 +131,31 @@ features not needed by supported Sloppy apps.
 
 ### 5. Async / Promise / Event Loop Model
 
-Current state: native `SlLoop`, `SlAsync`, and inline worker-pool skeletons exist, but they
-do not settle JavaScript promises or drive V8 microtasks. V8 rejects Promise-returning
-handlers with an explicit unsupported diagnostic.
+Current state: native `SlLoop`, `SlAsync`, and inline worker-pool skeletons exist. ENGINE-03
+settles JavaScript handler Promises that complete during the V8 owner-thread microtask
+drain and fails rejected or still-pending Promises deterministically.
 
 What works: deterministic native completion queue and settlement contracts.
 
-Skeletal: no JS Promise lifecycle, no real worker threads, no thread-safe posting, no
-request-scope retention across pending async work.
+Skeletal: no native async provider queue, no timers/fetch event loop, no real worker
+threads, no thread-safe posting, and no cross-turn request-scope retention beyond the
+bounded microtask drain. ENGINE-12 (#306-#310) is the planned full scalable async runtime
+layer for those gaps.
 
-Deferred but foundation-required: cancellation-token propagation, deadline/timeout hooks,
-bounded queues, backpressure diagnostics, async database strategy, and public timer APIs.
+Deferred but foundation-required: richer cancellation-token propagation,
+deadline/timeout/shutdown hooks, bounded native queues, provider-backed backpressure,
+async database strategy, scalability/stress evidence, and public timer APIs if they are
+ever scoped.
 
-Misleading risk: "async skeleton" is not async handler support.
+Misleading risk: "microtask-only async handler support" is not a Node-style event loop or
+native provider async scheduler.
 
-Must complete for engine foundation: returned Promise semantics, microtask draining policy,
-owner-thread continuation dispatch, request cancellation propagation, deadline hooks,
-bounded completion queues, rejected Promise diagnostics, request-scope lifetime until
-settlement, cleanup on cancellation/error.
+Must complete before scalable async claims: native completion queue integration,
+owner-thread continuation dispatch for native completions, request cancellation
+propagation, deadline hooks, bounded completion queues, provider-backed rejection
+diagnostics, request-scope lifetime until native async settlement, cleanup on
+cancellation/error, and stress evidence that many pending operations are not
+thread-per-request behavior.
 
 Can postpone: broad public timer APIs, advanced provider-specific mid-operation
 interruption, multicore scaling.

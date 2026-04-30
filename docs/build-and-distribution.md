@@ -44,9 +44,10 @@ V8-enabled builds, EPIC-23 added the request/response boundary, and EPIC-24 load
 classic bootstrap runtime asset plus generated handler registrations in that V8-gated
 path. V8 is still not required for default builds.
 MAIN1-05 hardens that optional V8 path with owner-thread checks, per-engine lifecycle
-diagnostics, explicit Promise rejection, and generated-source exception locations. It does
-not make V8 required for default builds and does not add Node/npm, timers, fetch, fs, or
-runtime source-map remapping.
+diagnostics, explicit Promise rejection, and generated-source exception locations.
+ENGINE-03 adds V8-gated microtask-only Promise settlement for direct async handlers. These
+cuts do not make V8 required for default builds and do not add Node/npm, timers, fetch, fs,
+native async provider queues, or runtime source-map remapping.
 
 EPIC-20 also builds `sloppy_bench`, a native benchmark executable for manual performance
 validation. It is not installed or packaged as a user-facing CLI surface.

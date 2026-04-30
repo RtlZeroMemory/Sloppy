@@ -116,8 +116,8 @@ Compiler extraction:
   metadata;
 - supports `const group = app.mapGroup("/prefix"); group.mapGet("/child", handler)`;
 - supports `.withName("Route.Name")`;
-- supports direct async handlers as metadata/emitted JavaScript only; runtime Promise
-  settlement remains deferred;
+- supports direct async handlers as metadata/emitted JavaScript and V8-gated run-once
+  execution when the returned Promise settles during the owner-thread microtask drain;
 - allows compiled handlers to declare zero parameters or one simple identifier request
   context parameter;
 - supports inline JSON-safe literals, arrays, object literals, and simple context property

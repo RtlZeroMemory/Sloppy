@@ -765,15 +765,16 @@ Later integration tests cover HTTP, routing, modules, providers, and packaging.
 
 ## Async and Concurrency Tests
 
-Future concurrency tests should cover:
+Concurrency tests should cover:
 
 - native async settlement over `SlLoop`;
-- current alpha V8 Promise rejection as unsupported;
-- future V8 Promise settlement and rejected promise diagnostics when async support lands;
+- V8 Promise settlement through the owner-thread microtask drain for async handlers;
+- V8 rejected Promise diagnostics and still-pending Promise deadline diagnostics;
 - V8 owner-thread enforcement for wrong-thread calls;
 - V8 lifecycle behavior for double destroy and call after destroy;
 - request scope lifetime across pending promises;
-- cancellation cleanup;
+- cancellation snapshot behavior and cleanup across resolve/reject/pre-cancel/pending
+  failure paths;
 - worker-pool no-V8-entry contract;
 - async resource leak detection;
 - async DB transaction rollback;

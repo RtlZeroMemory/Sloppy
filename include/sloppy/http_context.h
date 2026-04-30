@@ -2,6 +2,7 @@
 #define SLOPPY_HTTP_CONTEXT_H
 
 #include "sloppy/arena.h"
+#include "sloppy/cancellation.h"
 #include "sloppy/http.h"
 #include "sloppy/route.h"
 #include "sloppy/status.h"
@@ -34,6 +35,12 @@ typedef struct SlHttpRequestContext
     size_t route_param_count;
     const SlHttpQueryParam* query_params;
     size_t query_param_count;
+    /*
+     * Optional borrowed request cancellation token. A cancelled token means the handler
+     * boundary must reject before entering JavaScript or before converting an async result.
+     * A NULL token represents a live request with no configured deadline.
+     */
+    const SlCancellationToken* cancellation;
 } SlHttpRequestContext;
 
 /*

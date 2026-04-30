@@ -2,7 +2,8 @@
 
 ## Status
 
-Partially implemented for TASK 09.A, TASK 09.B, and TASK 09.C.
+Partially implemented for TASK 09.A, TASK 09.B, TASK 09.C, and the ENGINE-03 V8 async
+runtime slice.
 
 TASK 10.B adds libuv as a vcpkg/CMake dependency and a minimal init/close smoke under the
 HTTP parser tests. It does not change the implemented `SlLoop`, `SlAsync`, or
@@ -26,19 +27,17 @@ Implemented now:
 - worker work item callbacks, completion callbacks, and result destroy callbacks;
 - deterministic completion-posting tests without real threads.
 
-Future scope still includes real event-loop backends, real worker threads, V8 Promise
-integration, microtask draining, request lifetime, cancellation tokens, deadlines,
-backpressure, and thread-safe posting.
-Cancellation tokens, deadline hooks, bounded queues, and backpressure are future only in
-the sense that the current skeleton does not implement them yet; they are required
-foundation for the first real async/HTTP runtime, not optional polish.
+Future scope still includes real event-loop backends, real worker threads, native async
+provider completion queues, richer deadline hooks, HTTP disconnect propagation, shutdown
+drain/cancel policy, and thread-safe posting. ENGINE-03 adds V8 owner-thread microtask
+draining for returned handler Promises plus a native cancellation-token snapshot shape, but
+it does not add timers, fetch, Node APIs, or queued native completions.
 
 ## Non-goals
 
-No libuv backend, OS event loop, timers, sockets, HTTP server behavior, real worker threads,
-atomics, locks, V8 Promise integration, V8 microtask draining, JS async handler execution,
-request lifecycle, cancellation token, deadline, backpressure, blocking DB/filesystem work,
-or cross-thread posting behavior in TASK 09.C or TASK 10.B.
+No libuv backend, OS event loop, timers, sockets, HTTP server behavior, real worker
+threads, atomics, locks, native provider async queues, blocking DB/filesystem work, or
+cross-thread posting behavior in TASK 09.C, TASK 10.B, or ENGINE-03.
 
 ## Public/Internal API
 
@@ -46,6 +45,7 @@ Implemented public header:
 
 - `include/sloppy/loop.h`
 - `include/sloppy/async.h`
+- `include/sloppy/cancellation.h`
 - `include/sloppy/worker_pool.h`
 
 Implemented API:
@@ -213,9 +213,12 @@ CTest registers `tests/unit/core/test_worker_pool.c`, covering:
 TASK 10.B also registers `core.http.parser`, which includes a libuv loop init/close smoke
 only to verify the dependency links.
 
-V8 Promise integration, V8 microtasks, request-scope retention, cancellation cleanup,
-thread-safe posting, real libuv/backend behavior, and no-V8-entry worker tests remain
-future work.
+ENGINE-03 V8-gated tests cover Promise settlement through the owner-thread microtask drain,
+rejection diagnostics, pending-Promise deadline diagnostics, wrong-thread rejection,
+cancellation snapshots, and request-scope cleanup across resolve/reject/pre-cancel/pending
+failure paths. Thread-safe posting, real libuv/backend behavior, native provider async
+queues, HTTP disconnect/shutdown cancellation, and no-V8-entry worker tests remain future
+work.
 
 EPIC-15 adds only JavaScript fake data-provider transaction tests. Those tests verify the
 public callback contract (commit on resolve, rollback on throw/reject, no nested
