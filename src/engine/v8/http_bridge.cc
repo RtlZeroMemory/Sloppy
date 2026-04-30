@@ -53,9 +53,16 @@ SlStatus http_v8_copy_string(SlArena* arena, const std::string& src, SlStr* out)
     return sl_v8_std_string_copy_to_arena(arena, src, out);
 }
 
-SlStatus http_v8_copy_bytes(SlArena* arena, const std::string& src, SlBytes* out)
+SlStatus http_v8_copy_value_string(v8::Isolate* isolate, SlArena* arena, v8::Local<v8::Value> value,
+                                   SlStr* out)
 {
-    return sl_v8_std_string_copy_bytes_to_arena(arena, src, out);
+    return sl_v8_string_from_value_copy_to_arena(isolate, arena, value, out);
+}
+
+SlStatus http_v8_copy_value_bytes(v8::Isolate* isolate, SlArena* arena, v8::Local<v8::Value> value,
+                                  SlBytes* out)
+{
+    return sl_v8_string_value_copy_bytes_to_arena(isolate, arena, value, out);
 }
 
 std::string http_v8_ascii_lower_string(SlStr str)
@@ -349,8 +356,14 @@ void http_v8_request_json_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
         !http_v8_get_private_value(isolate, context, args.This(), "__sloppyBody", &body) ||
         !body->IsString())
     {
-        isolate->ThrowException(v8::Exception::TypeError(
-            v8::String::NewFromUtf8Literal(isolate, "Request body is not available as JSON.")));
+        SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+        if (!sl_v8_throw_type_error_from_native_view(
+                backend, http_v8_literal("Request body is not available as JSON.",
+                                         sizeof("Request body is not available as JSON.") - 1U)))
+        {
+            isolate->ThrowException(v8::Exception::TypeError(
+                v8::String::NewFromUtf8Literal(isolate, "Request body is not available as JSON.")));
+        }
         return;
     }
 
@@ -390,11 +403,14 @@ void http_v8_signal_throw_if_aborted_callback(const v8::FunctionCallbackInfo<v8:
     }
 
     v8::Local<v8::String> error_message;
-    if (!v8::String::NewFromUtf8(isolate, message.c_str(), v8::NewStringType::kNormal,
-                                 static_cast<int>(message.size()))
-             .ToLocal(&error_message))
+    if (!sl_status_is_ok(
+            http_v8_to_local_string(isolate, http_v8_str_from_string(message), &error_message)))
     {
-        error_message = v8::String::NewFromUtf8Literal(isolate, "Sloppy request was cancelled");
+        SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+        (void)sl_v8_throw_error_from_native_view(
+            backend, http_v8_literal("Sloppy request was cancelled",
+                                     sizeof("Sloppy request was cancelled") - 1U));
+        return;
     }
     isolate->ThrowException(v8::Exception::Error(error_message));
 }
@@ -515,23 +531,6 @@ SlStr http_v8_request_body_kind_name(SlHttpRequestBodyKind body_kind)
     }
 }
 
-bool http_v8_get_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                               v8::Local<v8::Object> object, const char* name, std::string* out)
-{
-    v8::Local<v8::String> key;
-    v8::Local<v8::Value> value;
-
-    if (out == nullptr ||
-        !sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
-        !object->Get(context, key).ToLocal(&value) || !value->IsString())
-    {
-        return false;
-    }
-
-    *out = http_v8_value_to_string(isolate, value);
-    return true;
-}
-
 bool http_v8_get_object_status(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Object> object, uint16_t* out)
 {
@@ -594,6 +593,21 @@ bool http_v8_status_supported(uint16_t status)
 bool http_v8_header_value_safe(const std::string& value)
 {
     return value.find('\r') == std::string::npos && value.find('\n') == std::string::npos;
+}
+
+bool http_v8_header_value_view_safe(SlStr value)
+{
+    if (value.ptr == nullptr && value.length != 0U) {
+        return false;
+    }
+
+    for (size_t index = 0U; index < value.length; index += 1U) {
+        if (value.ptr[index] == '\r' || value.ptr[index] == '\n') {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool http_v8_header_name_char_safe(char ch)
@@ -692,6 +706,30 @@ SlStatus http_v8_get_optional_string_property(v8::Isolate* isolate, v8::Local<v8
     *out_present = true;
     *out = http_v8_value_to_string(isolate, value);
     return sl_status_ok();
+}
+
+SlStatus http_v8_get_object_string_copy(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                        SlArena* arena, v8::Local<v8::Object> object,
+                                        const char* name, SlStr* out)
+{
+    v8::Local<v8::String> key;
+    v8::Local<v8::Value> value;
+
+    if (out == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!sl_status_is_ok(http_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) ||
+        !object->Get(context, key).ToLocal(&value))
+    {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+
+    if (!value->IsString()) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return http_v8_copy_value_string(isolate, arena, value, out);
 }
 
 SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -812,16 +850,13 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
     return sl_status_ok();
 }
 
-bool http_v8_stringify_json(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                            v8::Local<v8::Value> value, std::string* out)
+bool http_v8_stringify_json(v8::Local<v8::Context> context, v8::Local<v8::Value> value,
+                            v8::Local<v8::String>* out)
 {
-    v8::Local<v8::String> json;
-
-    if (out == nullptr || !v8::JSON::Stringify(context, value).ToLocal(&json)) {
+    if (out == nullptr || !v8::JSON::Stringify(context, value).ToLocal(out)) {
         return false;
     }
 
-    *out = http_v8_value_to_string(isolate, json);
     return true;
 }
 
@@ -927,8 +962,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                                            SlEngineResult* out_result, SlDiag* out_diag)
 {
     if (js_result->IsString()) {
-        SlStatus status = http_v8_copy_string(arena, http_v8_value_to_string(isolate, js_result),
-                                              &out_result->text);
+        SlStatus status = http_v8_copy_value_string(isolate, arena, js_result, &out_result->text);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -957,10 +991,12 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                             sizeof("Result descriptors must include __sloppyResult: true.") - 1U));
     }
 
-    std::string kind;
-    std::string content_type;
+    SlStr kind = sl_str_empty();
+    SlStr content_type = sl_str_empty();
     uint16_t status_code = 0U;
-    if (!http_v8_get_object_string(isolate, context, object, "kind", &kind) ||
+    SlStatus kind_status =
+        http_v8_get_object_string_copy(isolate, context, arena, object, "kind", &kind);
+    if (sl_status_code(kind_status) == SL_STATUS_INVALID_ARGUMENT ||
         !http_v8_get_object_status(isolate, context, object, &status_code))
     {
         return http_v8_write_diag(
@@ -971,6 +1007,9 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                             sizeof("Return a supported Results.* descriptor with kind and "
                                    "status.") -
                                 1U));
+    }
+    if (!sl_status_is_ok(kind_status)) {
+        return kind_status;
     }
 
     if (!http_v8_status_supported(status_code)) {
@@ -994,7 +1033,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return header_status;
     }
 
-    if (kind == "empty") {
+    if (sl_str_equal(kind, sl_str_from_cstr("empty"))) {
         out_result->kind = SL_ENGINE_RESULT_NONE;
         out_result->response = sl_http_response_empty(status_code);
         out_result->response.headers = response_headers;
@@ -1002,14 +1041,19 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return sl_status_ok();
     }
 
-    if (!http_v8_get_object_string(isolate, context, object, "contentType", &content_type)) {
+    SlStatus content_type_status = http_v8_get_object_string_copy(isolate, context, arena, object,
+                                                                  "contentType", &content_type);
+    if (sl_status_code(content_type_status) == SL_STATUS_INVALID_ARGUMENT) {
         return http_v8_write_diag(
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             http_v8_literal("JavaScript result descriptor is missing contentType",
                             sizeof("JavaScript result descriptor is missing contentType") - 1U),
             sl_str_empty());
     }
-    if (!http_v8_header_value_safe(content_type)) {
+    if (!sl_status_is_ok(content_type_status)) {
+        return content_type_status;
+    }
+    if (!http_v8_header_value_view_safe(content_type)) {
         return http_v8_write_diag(
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             http_v8_literal("JavaScript result descriptor has an invalid contentType",
@@ -1026,7 +1070,9 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
-    if (kind == "text" || kind == "html") {
+    if (sl_str_equal(kind, sl_str_from_cstr("text")) ||
+        sl_str_equal(kind, sl_str_from_cstr("html")))
+    {
         if (!body->IsString()) {
             return http_v8_write_diag(
                 engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
@@ -1035,8 +1081,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                 sl_str_empty());
         }
 
-        SlStatus status =
-            http_v8_copy_string(arena, http_v8_value_to_string(isolate, body), &out_result->text);
+        SlStatus status = http_v8_copy_value_string(isolate, arena, body, &out_result->text);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -1045,11 +1090,14 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         out_result->response = sl_http_response_text(status_code, out_result->text);
         out_result->response.headers = response_headers;
         out_result->response.header_count = response_header_count;
-        return http_v8_copy_string(arena, content_type, &out_result->response.content_type);
+        out_result->response.content_type = content_type;
+        return sl_status_ok();
     }
 
-    if (kind == "json" || kind == "problem") {
-        std::string json;
+    bool is_json = sl_str_equal(kind, sl_str_from_cstr("json"));
+    bool is_problem = sl_str_equal(kind, sl_str_from_cstr("problem"));
+    if (is_json || is_problem) {
+        v8::Local<v8::String> json;
         SlBytes bytes = {nullptr, 0U};
         SlStatus status;
 
@@ -1057,7 +1105,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             body = v8::Null(isolate);
         }
 
-        if (!http_v8_stringify_json(isolate, context, body, &json)) {
+        if (!http_v8_stringify_json(context, body, &json)) {
             return http_v8_write_diag(
                 engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
                 http_v8_literal("Results.json body could not be serialized",
@@ -1065,17 +1113,18 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                 sl_str_empty());
         }
 
-        status = http_v8_copy_bytes(arena, json, &bytes);
+        status = http_v8_copy_value_bytes(isolate, arena, json, &bytes);
         if (!sl_status_is_ok(status)) {
             return status;
         }
 
-        out_result->kind = kind == "json" ? SL_ENGINE_RESULT_JSON : SL_ENGINE_RESULT_ERROR;
-        out_result->response = kind == "json" ? sl_http_response_json(status_code, bytes)
-                                              : sl_http_response_problem(status_code, bytes);
+        out_result->kind = is_json ? SL_ENGINE_RESULT_JSON : SL_ENGINE_RESULT_ERROR;
+        out_result->response = is_json ? sl_http_response_json(status_code, bytes)
+                                       : sl_http_response_problem(status_code, bytes);
         out_result->response.headers = response_headers;
         out_result->response.header_count = response_header_count;
-        return http_v8_copy_string(arena, content_type, &out_result->response.content_type);
+        out_result->response.content_type = content_type;
+        return sl_status_ok();
     }
 
     return http_v8_write_diag(

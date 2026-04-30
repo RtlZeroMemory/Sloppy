@@ -256,6 +256,61 @@ static int test_v8_string_interop_uses_explicit_lengths(void)
     return 0;
 }
 
+static int test_v8_string_interop_copies_utf8_to_native_result(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    const unsigned char expected[] = {'c', 'a', 'f', 0xC3U, 0xA9U};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 11;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == NULL)
+    {
+        return 12;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-utf8-interop.js"),
+                                  sl_str_from_cstr("globalThis.sloppy_utf8 = function () {"
+                                                   "  return 'caf\\u00e9';"
+                                                   "};"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 13;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_utf8"), &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 14;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT || result.text.length != sizeof(expected) ||
+        result.text.ptr == NULL || memcmp(result.text.ptr, expected, sizeof(expected)) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 15;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_eval_syntax_error_returns_diagnostic(void)
 {
     unsigned char engine_storage[8192];
@@ -2324,6 +2379,11 @@ int main(void)
     }
 
     result = test_v8_string_interop_uses_explicit_lengths();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_v8_string_interop_copies_utf8_to_native_result();
     if (result != 0) {
         return result;
     }

@@ -457,9 +457,18 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
     v8::HandleScope handle_scope(isolate);
 
-    if (backend == nullptr || args.Length() != 2) {
+    if (backend == nullptr) {
         isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
             isolate, "__sloppy_register_handler requires handler ID and handler function")));
+        return;
+    }
+
+    if (args.Length() != 2) {
+        (void)sl_v8_throw_type_error_from_native_view(
+            backend,
+            sl_v8_literal(
+                "__sloppy_register_handler requires handler ID and handler function",
+                sizeof("__sloppy_register_handler requires handler ID and handler function") - 1U));
         return;
     }
 
@@ -467,35 +476,47 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     v8::Local<v8::Value> handler_value = args[1];
 
     if (!id_value->IsUint32()) {
-        isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
-            isolate, "__sloppy_register_handler handler ID must be a positive integer")));
+        (void)sl_v8_throw_type_error_from_native_view(
+            backend,
+            sl_v8_literal(
+                "__sloppy_register_handler handler ID must be a positive integer",
+                sizeof("__sloppy_register_handler handler ID must be a positive integer") - 1U));
         return;
     }
 
     uint32_t handler_id = id_value.As<v8::Uint32>()->Value();
     if (handler_id == 0U) {
-        isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
-            isolate, "__sloppy_register_handler handler ID must be a positive integer")));
+        (void)sl_v8_throw_type_error_from_native_view(
+            backend,
+            sl_v8_literal(
+                "__sloppy_register_handler handler ID must be a positive integer",
+                sizeof("__sloppy_register_handler handler ID must be a positive integer") - 1U));
         return;
     }
 
     if (!handler_value->IsFunction()) {
-        isolate->ThrowException(v8::Exception::TypeError(v8::String::NewFromUtf8Literal(
-            isolate, "__sloppy_register_handler handler must be callable")));
+        (void)sl_v8_throw_type_error_from_native_view(
+            backend,
+            sl_v8_literal("__sloppy_register_handler handler must be callable",
+                          sizeof("__sloppy_register_handler handler must be callable") - 1U));
         return;
     }
 
     if (backend->pending_handlers == nullptr) {
-        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8Literal(
-            isolate, "__sloppy_register_handler is only valid during app evaluation")));
+        (void)sl_v8_throw_error_from_native_view(
+            backend,
+            sl_v8_literal("__sloppy_register_handler is only valid during app evaluation",
+                          sizeof("__sloppy_register_handler is only valid during app evaluation") -
+                              1U));
         return;
     }
 
     if (backend->handlers.find(handler_id) != backend->handlers.end() ||
         backend->pending_handlers->find(handler_id) != backend->pending_handlers->end())
     {
-        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8Literal(
-            isolate, "__sloppy_register_handler duplicate handler ID")));
+        (void)sl_v8_throw_error_from_native_view(
+            backend, sl_v8_literal("__sloppy_register_handler duplicate handler ID",
+                                   sizeof("__sloppy_register_handler duplicate handler ID") - 1U));
         return;
     }
 
@@ -507,8 +528,7 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
 bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context)
 {
     v8::Isolate* isolate = backend == nullptr ? nullptr : backend->isolate;
-    v8::Local<v8::String> name = v8::String::NewFromUtf8Literal(
-        isolate, "__sloppy_register_handler", v8::NewStringType::kInternalized);
+    v8::Local<v8::String> name;
     v8::Local<v8::FunctionTemplate> function_template =
         v8::FunctionTemplate::New(isolate, sl_v8_register_handler_callback);
     v8::Local<v8::Function> function;
@@ -517,7 +537,10 @@ bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> contex
     v8::Local<v8::Object> sloppy = v8::Object::New(isolate);
     v8::Local<v8::Object> data = v8::Object::New(isolate);
 
-    if (!function_template->GetFunction(context).ToLocal(&function)) {
+    if (!sl_status_is_ok(sl_v8_string_from_native_view(
+            backend, sl_str_from_cstr("__sloppy_register_handler"), &name)) ||
+        !function_template->GetFunction(context).ToLocal(&function))
+    {
         return false;
     }
 

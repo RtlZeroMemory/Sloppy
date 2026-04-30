@@ -80,6 +80,22 @@ SlStatus sl_v8_string_from_value_copy_to_arena(v8::Isolate* isolate, SlArena* ar
     return sl_v8_std_string_copy_to_arena(arena, value_text, out);
 }
 
+SlStatus sl_v8_string_value_copy_bytes_to_arena(v8::Isolate* isolate, SlArena* arena,
+                                                v8::Local<v8::Value> value, SlBytes* out)
+{
+    std::string value_text;
+
+    if (arena == nullptr || out == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!sl_v8_std_string_from_value(isolate, value, &value_text)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_v8_std_string_copy_bytes_to_arena(arena, value_text, out);
+}
+
 SlStatus sl_v8_std_string_copy_to_arena(SlArena* arena, const std::string& src, SlStr* out)
 {
     SlOwnedStr copied = {};
@@ -116,4 +132,28 @@ SlStatus sl_v8_std_string_copy_bytes_to_arena(SlArena* arena, const std::string&
 
     *out = sl_owned_bytes_as_view(copied);
     return sl_status_ok();
+}
+
+bool sl_v8_throw_type_error_from_native_view(SlV8Engine* backend, SlStr message)
+{
+    v8::Local<v8::String> local_message;
+
+    if (!sl_status_is_ok(sl_v8_string_from_native_view(backend, message, &local_message))) {
+        return false;
+    }
+
+    backend->isolate->ThrowException(v8::Exception::TypeError(local_message));
+    return true;
+}
+
+bool sl_v8_throw_error_from_native_view(SlV8Engine* backend, SlStr message)
+{
+    v8::Local<v8::String> local_message;
+
+    if (!sl_status_is_ok(sl_v8_string_from_native_view(backend, message, &local_message))) {
+        return false;
+    }
+
+    backend->isolate->ThrowException(v8::Exception::Error(local_message));
+    return true;
 }

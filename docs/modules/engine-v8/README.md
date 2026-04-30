@@ -89,6 +89,10 @@ Implemented now:
   V8/native string boundary: native views become V8 strings only on the engine owner
   thread, V8 strings copied back to C become arena-owned native views, and byte conversions
   copy before leaving the bridge helper.
+- ENGINE-22.D adopts those helpers in the provider-neutral bridge paths: engine intrinsics,
+  request context materialization, HTTP `Results.*` descriptor conversion, JSON response
+  bytes, and exception strings. SQLite result and parameter adoption stays scoped to
+  ENGINE-22.E.
 - V8 creation can borrow the parsed Plan and immutable capability registry through
   `SlEngineOptions`; provider bridges may use those pointers only as hook inputs while the
   app host keeps their storage alive.
@@ -344,6 +348,8 @@ String interop policy:
   thread;
 - V8 strings copied to native storage are staged only inside the private C++ bridge and
   then copied into caller/engine arenas before C observes them;
+- HTTP result descriptor `kind`, `contentType`, text bodies, JSON/problem serialized bytes,
+  custom headers, and exception message/source/stack text are copied before C observes them;
 - V8 objects never retain pointers into request, scratch, SQLite, or other transient
   native storage;
 - JavaScript still never receives raw native pointers, pointer-sized numbers, or V8

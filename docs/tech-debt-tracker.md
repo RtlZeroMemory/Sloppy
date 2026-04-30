@@ -61,8 +61,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   request parse/response write/body buffering, V8 conversions, SQLite row/result/parameter
   conversion, diagnostics/source frames/JSON, Plan/artifact loading, stable metadata
   lookup, CLI output, and allocation-aware conformance/benchmark guards. ENGINE-22.A
-  covers the current complete-buffer HTTP parser/body/response/route hot paths; backend
-  ownership and non-HTTP adoption remain open.
+  covers the current complete-buffer HTTP parser/body/response/route hot paths, and
+  ENGINE-22.D covers provider-neutral V8 bridge string adoption. Backend ownership,
+  SQLite result/parameter adoption, Plan/artifact adoption, stable metadata lookup, CLI
+  cleanup, and allocation-aware conformance/benchmark guards remain open.
 - SQLite end-to-end: public JS handler path through native provider, capability enforcement,
   cancellation-aware operation boundaries, app/request ownership, transactions/prepared
   statement decision, and executable users API conformance.
