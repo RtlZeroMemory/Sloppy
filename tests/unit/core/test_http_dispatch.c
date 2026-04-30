@@ -824,7 +824,7 @@ static int dispatch_noop_case(const char* request_text, SlHttpMethod route_metho
     SlHttpDispatchTable table = {0};
     SlPlanHandler handler = {0};
     SlPlan plan = one_handler_plan(&handler);
-    SlEngineResult result = {0};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
     SlDiag diag = {0};
     SlStatus status;
 
@@ -870,11 +870,13 @@ static int test_conformance_smoke_default_http_cases(void)
     static const DispatchCase cases[] = {
         {"GET /ok HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
          SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
-        {"POST /ok HTTP/1.1\r\nContent-Length: 0\r\n\r\n", SL_HTTP_METHOD_POST, "/ok",
-         SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
-        {"PUT /ok HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello",
+        {"POST /ok HTTP/1.1\r\nHost: example\r\nContent-Length: 0\r\n\r\n", SL_HTTP_METHOD_POST,
+         "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
+        {"PUT /ok HTTP/1.1\r\nHost: example\r\nContent-Type: text/plain\r\nContent-Length: "
+         "5\r\n\r\nhello",
          SL_HTTP_METHOD_PUT, "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
-        {"PATCH /ok HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n"
+        {"PATCH /ok HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\nContent-"
+         "Length: 11\r\n\r\n"
          "{\"ok\":true}",
          SL_HTTP_METHOD_PATCH, "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
         {"DELETE /ok HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_DELETE, "/ok",
@@ -883,11 +885,12 @@ static int test_conformance_smoke_default_http_cases(void)
          SL_STATUS_OUT_OF_RANGE, SL_DIAG_HTTP_ROUTE_NOT_FOUND},
         {"POST /ok HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
          SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_UNSUPPORTED_METHOD},
-        {"POST /ok HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 6\r\n\r\n"
+        {"POST /ok HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\nContent-"
+         "Length: 6\r\n\r\n"
          "{\"ok\":",
          SL_HTTP_METHOD_POST, "/ok", SL_STATUS_INVALID_ARGUMENT, SL_DIAG_MALFORMED_JSON},
-        {"POST /ok HTTP/1.1\r\nContent-Type: application/octet-stream\r\nContent-Length: "
-         "3\r\n\r\nabc",
+        {"POST /ok HTTP/1.1\r\nHost: example\r\nContent-Type: application/octet-stream\r\n"
+         "Content-Length: 3\r\n\r\nabc",
          SL_HTTP_METHOD_POST, "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE},
         {"GET /ok?q=%zz HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
          SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_HTTP_REQUEST},

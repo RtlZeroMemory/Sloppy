@@ -34,6 +34,20 @@ static int init_started_backend(SlHttpBackend* backend, const SlHttpBackendOptio
     return expect_status(sl_http_backend_start(backend, NULL, NULL), SL_STATUS_OK);
 }
 
+static int reset_connection_for_next_request(SlHttpBackend* backend, SlHttpConnection* connection)
+{
+    if (expect_status(sl_http_connection_close(connection, NULL), SL_STATUS_OK) != 0 ||
+        backend->active_connections != 0U ||
+        expect_status(sl_http_backend_accept_connection(backend, connection, NULL), SL_STATUS_OK) !=
+            0 ||
+        backend->active_connections != 1U)
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
 static int test_backend_init_start_stop_dispose(void)
 {
     SlHttpBackend backend = {0};
@@ -1030,7 +1044,9 @@ static int test_stress_repeated_body_policy_failures_are_deterministic(void)
             return 121;
         }
 
-        connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
+        if (reset_connection_for_next_request(&backend, &connection) != 0) {
+            return 122;
+        }
         request = (SlHttpRequestLifecycle){0};
         reader = (SlHttpBodyReader){0};
         diag = (SlDiag){0};
@@ -1047,7 +1063,9 @@ static int test_stress_repeated_body_policy_failures_are_deterministic(void)
         {
             return 122;
         }
-        connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
+        if (reset_connection_for_next_request(&backend, &connection) != 0) {
+            return 123;
+        }
     }
 
     return 0;
@@ -1138,7 +1156,6 @@ static int test_stress_repeated_shutdown_rejection_and_cleanup(void)
             return 140;
         }
 
-        connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
         if (expect_status(sl_http_request_begin(&connection, &arena, &rejected_request, &diag),
                           SL_STATUS_CANCELLED) != 0 ||
             diag.code != SL_DIAG_HTTP_SHUTDOWN || rejected_request.admitted ||

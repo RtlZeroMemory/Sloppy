@@ -728,6 +728,7 @@ static int test_stress_repeated_parser_limits_remain_enforced(void)
 
     for (index = 0U; index < ITERATIONS; index += 1U) {
         SlHttpRequestHead request = {0};
+        SlHttpParseOptions body_options = options;
         SlDiag diag = {0};
 
         sl_arena_reset(&arena);
@@ -752,11 +753,11 @@ static int test_stress_repeated_parser_limits_remain_enforced(void)
         sl_arena_reset(&arena);
         request = (SlHttpRequestHead){0};
         diag = (SlDiag){0};
-        options.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
-        options.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
-        options.max_total_header_bytes = SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES;
+        body_options.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
+        body_options.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
+        body_options.max_total_header_bytes = SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES;
         status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\n12345",
-                               &options, &request, &diag);
+                               &body_options, &request, &diag);
         if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
             diag.code != SL_DIAG_HTTP_BODY_LIMIT || request.body.ptr != NULL)
         {
