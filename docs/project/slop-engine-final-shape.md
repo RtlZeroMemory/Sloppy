@@ -60,6 +60,13 @@ work, or worker-pool offload. It is required before public alpha docs, benchmark
 methodology, or product language claim scalable async behavior, production-ready async HTTP
 lifecycle, async provider execution, or performance with many pending requests.
 
+ENGINE-13 through ENGINE-20 complete the rest of the engine foundation after that async
+backend layer: proper HTTP runtime backend, module/bootstrap completion, source maps and
+diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
+conformance compatibility, and the strong Plan strategic layer. The source document is
+`docs/project/engine-13-plus-architecture.md`; the created issue map is
+`docs/project/engine-13-plus-issue-index.md`.
+
 ## 2. Developer Workflow
 
 Target core workflow:

@@ -20,6 +20,14 @@ Recommended implementation chunks:
 | Compiler/Plan pipeline | ENGINE-02.A through ENGINE-02.D | One large-coherent compiler+Plan PR, or split source maps only if diagnostics risk dominates. |
 | V8 bounded Promise runtime | ENGINE-03.A through ENGINE-03.D plus ENGINE-08.B | One large-coherent V8 async PR covering returned-Promise settlement, owner-thread microtasks, cancellation snapshots, bounded pending-Promise failure, cleanup, and async diagnostics. |
 | Scalable async runtime | ENGINE-12.A through ENGINE-12.D | One large-coherent async-runtime PR only when native completions/provider offload/deadline/shutdown work is ready to cross the runtime boundary. |
+| Proper HTTP backend | ENGINE-13.A through ENGINE-13.F | One or more backend PRs for listener ownership, connection/request lifecycle, parser/body limits, cancellation, backpressure, graceful shutdown, diagnostics, and stress/conformance smoke. |
+| Module/bootstrap completion | ENGINE-14.A through ENGINE-14.E | One coherent V8/bootstrap PR sequence for stdlib asset loading, app module loading, ESM/classic decision, cache policy, intrinsic boundaries, source names, and diagnostics. |
+| Diagnostics/source maps | ENGINE-15.A through ENGINE-15.E | One or two PRs for source-map completion, V8 remapping, async diagnostic JSON/source frames, redaction, stable codes, and diagnostic goldens. |
+| App/resource lifetime | ENGINE-16.A through ENGINE-16.E | One lifecycle PR sequence for app startup/shutdown, request/app scopes, cleanup on success/error/cancel, leak-oriented hooks, and lifecycle diagnostics. |
+| SQLite completion | ENGINE-17.A through ENGINE-17.E | One large-coherent SQLite PR when JS API finalization, capability-wired open/use, transactions, result mapping, cleanup, and users API proof can move together. |
+| CLI/dev loop runtime | ENGINE-18.A through ENGINE-18.E | One or more tooling PRs for build/run UX, artifact inspection, source-input decision, doctor/audit checks, OpenAPI skeleton policy, and dev/watch decision. |
+| Conformance compatibility | ENGINE-19.A through ENGINE-19.E | One evidence PR sequence for default/V8-gated/runtime/package conformance once implementation layers exist. |
+| Strong Plan layer | ENGINE-20.A through ENGINE-20.E | One strategic Plan PR sequence for typed route/handler/capability/provider/artifact graphs, validation, compatibility, audit/doctor, and future hooks. |
 | HTTP API runtime | ENGINE-04.A through ENGINE-04.C | One large-coherent HTTP PR for methods, headers/body limits, cancellation/backpressure, result serialization, and error contract. |
 | SQLite and capabilities | ENGINE-05.A through ENGINE-05.C plus ENGINE-06.A | One large-coherent SQLite bridge PR so capability enforcement, cancellation-aware operations, cleanup, and users API conformance move together. |
 | Lifecycle/source diagnostics | ENGINE-07.A, ENGINE-07.B, ENGINE-08.A | One or two PRs depending on source-map/V8 diagnostic blast radius. |
@@ -259,6 +267,75 @@ owner-thread dispatch path.
 Risks: unbounded queues hidden behind async APIs, worker/provider threads entering V8,
 request-scope leaks across pending work, shutdown hangs, and benchmark-looking smoke tests
 being mistaken for scalability proof.
+
+## Layer 3C - Remaining Engine Foundation Completion
+
+Purpose: finish the rest of Sloppy's engine foundation after ENGINE-12 without turning the
+project into Node/npm compatibility, a production internet-edge server, ORM/migration
+stack, public alpha launch, or benchmark marketing project.
+
+Strategic source: `docs/project/engine-13-plus-architecture.md`.
+
+EPICs: ENGINE-13 through ENGINE-20.
+
+Proper async and proper HTTP remain separate layers. ENGINE-12 owns the generic native
+completion, owner-thread continuation, cancellation/deadline/shutdown, queue, provider
+offload, and stress-evidence backend. ENGINE-13 owns HTTP-specific listener, connection,
+request, parser, body, keep-alive, timeout, backpressure, graceful shutdown, and server
+diagnostic policy on top of those primitives.
+
+Tasks by EPIC:
+
+- ENGINE-13: proper HTTP runtime backend for listener/backend architecture,
+  connection/request lifecycle, parser/body limits, cancellation, backpressure, graceful
+  shutdown, diagnostics, and stress/conformance smoke.
+- ENGINE-14: module loading and runtime bootstrap completion for stdlib/bootstrap asset
+  loading, app module loading, ESM/classic decision, module cache, import rewrite and
+  intrinsic boundaries, source names, and startup diagnostics.
+- ENGINE-15: source maps and diagnostics completion across compiler, generated artifacts,
+  V8 exceptions, async errors, JSON diagnostics, redaction, source frames, CLI format, and
+  goldens.
+- ENGINE-16: app host and resource lifetime runtime for startup/shutdown, app/request
+  scopes, resource cleanup hooks, cancellation propagation, leak-oriented hooks, and
+  lifecycle diagnostics.
+- ENGINE-17: SQLite runtime and data access completion for public JS API, native bridge,
+  capability-wired open/use, query/exec/queryOne, transactions, prepared statement
+  decision, result mapping, file and memory policy, cleanup, cancellation, and users API
+  proof.
+- ENGINE-18: CLI and dev loop runtime for `sloppyc`/`sloppy run` UX, source-input run
+  decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, optional
+  watch/rebuild, and command diagnostics.
+- ENGINE-19: conformance harness and runtime compatibility suite for compiler to Plan to
+  runtime to V8 to HTTP behavior, async, HTTP body/header cases, SQLite, capability
+  denial, lifecycle cleanup, package outside-checkout smoke, and explicit default versus
+  optional gates.
+- ENGINE-20: strong Plan strategic layer for typed route, handler, capability, provider,
+  artifact graphs, static validation, future OpenAPI/optimization/policy/audit hooks,
+  versioning, compatibility, and internal tooling leverage.
+
+Prerequisites: ENGINE-01 contract, ENGINE-02/03 implementation evidence, ENGINE-12 when
+native async completion behavior is required, and the current issue index in
+`docs/project/engine-13-plus-issue-index.md`.
+
+Dependencies: HTTP, V8, core lifecycle/resource, data/SQLite, compiler, Plan, diagnostics,
+CLI, tests/conformance, package tooling, and quality gates.
+
+Non-goals: Node compatibility, npm/package-manager behavior, production reverse proxy or
+internet-edge claims, TLS/HTTP2/HTTP3/WebSockets/static file/compression work unless
+separately scoped, ORM/migrations, PostgreSQL/SQL Server JS bridge expansion, benchmark
+claims, and public alpha docs.
+
+Acceptance criteria: each EPIC has issue-backed tasks, implementation PRs update source
+docs and tests together, public alpha remains blocked until the foundation evidence gate
+passes, PostgreSQL/SQL Server stay deferred, and benchmark output stays non-claim evidence.
+
+Likely PR grouping: prefer bounded but coherent implementation PRs by ownership surface.
+Do not split one lifecycle or backend invariant across tiny PRs if that would leave fake
+success or untested cleanup paths.
+
+Parallelization: docs, diagnostics goldens, issue metadata, and conformance fixture
+planning can proceed while runtime owners work. Runtime behavior that crosses lifecycle,
+async, V8, or provider boundaries should wait for the dependent contracts to be stable.
 
 ## Layer 4 - HTTP Framework Runtime Completion
 
