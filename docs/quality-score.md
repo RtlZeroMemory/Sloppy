@@ -72,6 +72,12 @@ ENGINE-19.BC turns the current V8, HTTP, and async suites into matrix-visible CT
 entries. It does not add runtime behavior, but it makes default non-V8 synthetic HTTP,
 localhost transport MVP, default native async/backend, and V8-gated runtime/HTTP/async
 evidence directly selectable and reportable.
+ENGINE-19.D does the same for SQLite and capability evidence. It registers default native
+SQLite provider and capability-policy/provider-admission suites, and marks the existing
+V8-gated SQLite bridge, denied-capability, and users API localhost transport cases with
+SQLite/capability labels. This is executable conformance coverage, not async SQLite
+offload, PostgreSQL/SQL Server bridge, live-provider, package, benchmark, public alpha, or
+production-edge HTTP evidence.
 
 ## Current Summary
 
@@ -105,6 +111,9 @@ Passing the default Windows gates means:
   unsupported compiler inputs without requiring V8;
 - `sloppy run` startup/failure-mode tests passed without proving V8 execution;
 - V8-enabled tests did not necessarily run;
+- default SQLite/capability conformance ran only native provider and policy/admission
+  checks, not the V8 SQLite bridge or users API transport unless a V8-enabled lane also
+  ran;
 - PostgreSQL and SQL Server live tests did not necessarily run;
 - package smoke did not necessarily run and is not public release readiness or V8 execution
   evidence;

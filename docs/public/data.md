@@ -148,6 +148,10 @@ Implemented behavior:
   capability metadata. ENGINE-05 SQLite bridge calls that hook before open/read/write
   provider work and fails closed if the hook inputs are unavailable.
 - native C SQLite tests execute real SQLite against `:memory:` databases.
+- ENGINE-19.D exposes the native provider path as
+  `conformance.sqlite.native_provider` and the native capability/admission paths as
+  `conformance.capability.native_registry` and
+  `conformance.capability.provider_executor`.
 - V8-gated conformance executes checked-in SQLite bridge artifact fixtures against
   in-memory databases. The success fixture creates/inserts/selects rows, returns JSON from
   a handler, and closes the resource; the denied fixture verifies capability denial returns

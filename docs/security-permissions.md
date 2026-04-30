@@ -308,6 +308,14 @@ Security/permission tests must include:
 - audit fixture output;
 - dynamic mode warning.
 
+Current ENGINE-19.D executable coverage is visible through
+`conformance.capability.native_registry`, `conformance.capability.provider_executor`,
+V8-gated `conformance.sqlite.denied_capability`, and V8-gated localhost
+`conformance.users_api_sqlite.localhost_transport`. These names prove the current Sloppy
+capability checks before provider work; they do not prove OS sandboxing, filesystem/network
+API enforcement, PostgreSQL/SQL Server JavaScript bridges, live providers, or package
+readiness.
+
 ## Quality Gates
 
 - no JS raw native pointers;

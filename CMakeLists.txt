@@ -626,6 +626,12 @@ if(SLOPPY_ENABLE_TESTS)
         conformance.async.backend_completion PROPERTIES LABELS "conformance;async")
     sloppy_add_c_unit_test(
         core_provider_executor core.provider_executor tests/unit/core/test_provider_executor.c)
+    add_test(
+        NAME conformance.capability.provider_executor
+        COMMAND $<TARGET_FILE:core_provider_executor>)
+    set_tests_properties(
+        conformance.capability.provider_executor
+        PROPERTIES LABELS "conformance;capability;smoke")
     if(CMAKE_CXX_COMPILER)
         sloppy_add_cxx_unit_test(
             core_async_backend_libuv core.async.backend_libuv
@@ -724,6 +730,14 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(
         data.sqlserver.live_provider PROPERTIES SKIP_RETURN_CODE 77 LABELS "live-provider;sqlserver")
     sloppy_add_c_unit_test(data_sqlite_provider data.sqlite.provider tests/unit/data/test_sqlite.c)
+    add_test(NAME conformance.sqlite.native_provider COMMAND $<TARGET_FILE:data_sqlite_provider>)
+    set_tests_properties(
+        conformance.sqlite.native_provider PROPERTIES LABELS "conformance;sqlite")
+    add_test(
+        NAME conformance.capability.native_registry
+        COMMAND $<TARGET_FILE:core_capability_registry>)
+    set_tests_properties(
+        conformance.capability.native_registry PROPERTIES LABELS "conformance;capability")
     sloppy_add_c_unit_test(core_assert_compiles core.assert.compiles tests/unit/core/test_assert.c)
 
     add_executable(
@@ -1084,7 +1098,7 @@ if(SLOPPY_ENABLE_TESTS)
                     -ProjectSourceDir "${PROJECT_SOURCE_DIR}" -CMakeBinaryDir "${CMAKE_BINARY_DIR}"
                     -CargoExecutable "${CARGO_EXECUTABLE}" -SloppyCli "$<TARGET_FILE:sloppy>")
             set_tests_properties(conformance.users_api_sqlite.localhost_transport
-                                 PROPERTIES LABELS "conformance;v8;transport;sqlite")
+                                 PROPERTIES LABELS "conformance;v8;transport;sqlite;capability")
         endif()
 
         function(sloppy_add_conformance_existing_artifact_test test_name artifacts method target
@@ -1103,12 +1117,19 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_add_conformance_existing_artifact_test(
             conformance.results.invalid_descriptor tests/integration/execution/invalid_descriptor GET /
             "500 Internal Server Error")
+        set_tests_properties(
+            conformance.results.invalid_descriptor PROPERTIES LABELS "conformance;v8;results")
         sloppy_add_conformance_existing_artifact_test(
             conformance.sqlite.bridge tests/integration/execution/sqlite_bridge GET /sqlite "Ada")
+        set_tests_properties(
+            conformance.sqlite.bridge PROPERTIES LABELS "conformance;v8;sqlite;capability")
         sloppy_add_conformance_existing_artifact_test(
             conformance.sqlite.denied_capability
             tests/integration/execution/sqlite_denied_capability GET /sqlite-denied
             "500 Internal Server Error")
+        set_tests_properties(
+            conformance.sqlite.denied_capability
+            PROPERTIES LABELS "conformance;v8;sqlite;capability")
         add_test(
             NAME sloppy.run.once_hello
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts

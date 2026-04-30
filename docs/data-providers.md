@@ -752,6 +752,14 @@ ENGINE-17.E adds the users API runtime proof for SQLite. PostgreSQL and SQL Serv
 JavaScript bridges remain deferred and must follow the same provider executor and
 resource-table rules when scoped.
 
+ENGINE-19.D registers the existing SQLite/capability proof under matrix-visible CTest
+names: `conformance.sqlite.native_provider`,
+`conformance.capability.native_registry`, `conformance.capability.provider_executor`,
+V8-gated `conformance.sqlite.bridge` and `conformance.sqlite.denied_capability`, and
+V8-gated localhost `conformance.users_api_sqlite.localhost_transport`. These are evidence
+names for implemented behavior, not new PostgreSQL/SQL Server bridge, async SQLite
+offload, live-provider, package, benchmark, public alpha, or production-edge HTTP claims.
+
 ## Connection Pool Lifecycle
 
 Target lifecycle:
