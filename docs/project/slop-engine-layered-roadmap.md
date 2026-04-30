@@ -21,11 +21,12 @@ Recommended implementation chunks:
 | V8 bounded Promise runtime | ENGINE-03.A through ENGINE-03.D plus ENGINE-08.B | One large-coherent V8 async PR covering returned-Promise settlement, owner-thread microtasks, cancellation snapshots, bounded pending-Promise failure, cleanup, and async diagnostics. |
 | Scalable async runtime | ENGINE-12.A through ENGINE-12.D | One large-coherent async-runtime PR only when native completions/provider offload/deadline/shutdown work is ready to cross the runtime boundary. |
 | Provider execution runtime | ENGINE-23.A through ENGINE-23.H | One provider-runtime PR sequence after ENGINE-12 that turns provider/offload policy into operation descriptors, per-provider-instance executors, serialized SQLite-class blocking offload, bounded blocking pools, capability-gated admission, cancellation/late-completion semantics, and diagnostics/stress evidence. |
-| Proper HTTP backend | ENGINE-13.A through ENGINE-13.F | One or more backend PRs for listener ownership, connection/request lifecycle, parser/body limits, cancellation, backpressure, graceful shutdown, diagnostics, and stress/conformance smoke. |
+| Proper HTTP backend semantics | ENGINE-13.A through ENGINE-13.F | One or more backend PRs for listener ownership, connection/request lifecycle, parser/body limits, cancellation, backpressure, graceful shutdown, diagnostics, and stress/conformance smoke. |
 | Module/bootstrap completion | ENGINE-14.A through ENGINE-14.E | One coherent V8/bootstrap PR sequence for stdlib asset loading, app module loading, ESM/classic decision, cache policy, intrinsic boundaries, source names, and diagnostics. |
 | Diagnostics/source maps | ENGINE-15.A through ENGINE-15.E | One or two PRs for source-map completion, V8 remapping, async diagnostic JSON/source frames, redaction, stable codes, and diagnostic goldens. |
 | App/resource lifetime | ENGINE-16.A through ENGINE-16.E | One lifecycle PR sequence for app startup/shutdown, request/app scopes, cleanup on success/error/cancel, leak-oriented hooks, and lifecycle diagnostics. |
 | SQLite completion | ENGINE-17.A through ENGINE-17.E | One large-coherent SQLite PR when JS API finalization, capability-wired open/use, transactions, result mapping, cleanup, and users API proof can move together. |
+| HTTP transport runtime server | ENGINE-24.A through ENGINE-24.F/G | A bounded TCP/libuv HTTP/1.1 server foundation that consumes ENGINE-13 semantics and proves localhost socket/curl behavior before ENGINE-17.E claims end-to-end users API proof. |
 | CLI/dev loop runtime | ENGINE-18.A through ENGINE-18.E | One or more tooling PRs for build/run UX, artifact inspection, source-input decision, doctor/audit checks, OpenAPI skeleton policy, and dev/watch decision. |
 | Conformance compatibility | ENGINE-19.A through ENGINE-19.E | One evidence PR sequence for default/V8-gated/runtime/package conformance once implementation layers exist. |
 | Strong Plan layer | ENGINE-20.A through ENGINE-20.E | One strategic Plan PR sequence for typed route/handler/capability/provider/artifact graphs, validation, compatibility, audit/doctor, and future hooks. |
@@ -374,6 +375,11 @@ Tasks by EPIC:
   capability-wired open/use, query/exec/queryOne, transactions, prepared statement
   decision, result mapping, file and memory policy, cleanup, cancellation, and users API
   proof. ENGINE-17 depends on ENGINE-23 for scalable SQLite-class provider execution.
+- ENGINE-24: HTTP transport runtime server for libuv-backed TCP bind/listen/accept/read/
+  write/close, Content-Length-only HTTP/1.1, close-after-response, bounded transport
+  buffers/admission, disconnect cancellation, graceful active-socket shutdown, and
+  localhost socket/curl smoke. ENGINE-24 depends on ENGINE-13 semantics and gates
+  ENGINE-17.E users API proof over localhost transport.
 - ENGINE-18: CLI and dev loop runtime for `sloppyc`/`sloppy run` UX, source-input run
   decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, optional
   watch/rebuild, and command diagnostics.
@@ -506,7 +512,9 @@ server lifecycle and cancellation/backpressure tests.
 Parallelization: response/error contract and parser/body-limit work can be split if tests
 share fixtures carefully.
 
-Risks: growing into production HTTP server scope before framework API runtime is solid.
+Risks: growing into production HTTP server scope before framework API runtime is solid;
+claiming real app proof from ENGINE-13 semantic smoke without ENGINE-24 localhost
+transport evidence.
 
 ## Layer 5 - SQLite End-to-End Foundation
 

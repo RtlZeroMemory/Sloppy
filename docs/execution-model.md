@@ -225,6 +225,15 @@ as unsupported pipelining. A future HTTP/1.1 upgrade must add an explicit post-w
 read-resume transition, per-request state and arena reset, idle timeout, max requests per
 connection, shutdown drain behavior, and diagnostics before keep-alive is enabled.
 
+ENGINE-24 is the next HTTP execution layer. It owns the real TCP/libuv transport server
+that turns client socket bytes into ENGINE-13 request lifecycle work and writes serialized
+responses back to the socket. Its MVP is HTTP/1.1 over TCP, Content-Length only,
+close-after-response, bounded read/head/body/response storage, bounded max connections and
+active requests, deterministic malformed/overload/timeout behavior, disconnect
+cancellation, graceful listener stop and active-connection drain/cancel, and localhost
+socket or curl smoke. It does not add keep-alive, pipelining, TLS, HTTP/2/3, WebSockets,
+streaming bodies, static files, compression, reverse proxy behavior, or benchmark claims.
+
 ## Current Handwritten Milestone
 
 The first real milestone is not full TypeScript compilation. It is now covered by a
@@ -521,6 +530,10 @@ writes through the write callback and writes the final zero chunk before keep-al
 Public request streaming, public JS response streaming helpers, SSE/WebSockets/file
 streaming, keep-alive stress/conformance, and production graceful drain remain future
 HTTP-25 follow-ups.
+
+ENGINE-24 replaces or wraps that CLI-local socket loop with a reusable transport runtime
+boundary. `src/main.c` should become a caller of the transport server instead of the owner
+of HTTP transport policy once the server exists.
 
 The current shutdown policy is bounded and honest: shutdown stops acceptance and rejects
 new request work, then the backend reaches stopped when active connection/request counters

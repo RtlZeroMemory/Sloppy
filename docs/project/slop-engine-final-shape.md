@@ -252,6 +252,14 @@ Core HTTP foundation must define:
 - production hardening boundary: no TLS/HTTP2/keep-alive/compression/static-file claims
   until scoped.
 
+ENGINE-13 supplies the HTTP semantic foundation for that path: parser, lifecycle, body
+policy, cancellation/shutdown state, response serialization, and bounded smoke. ENGINE-24
+is the transport foundation that must turn those semantics into real TCP/libuv execution:
+bind/listen/accept/read/write/close, Content-Length-only request bodies, close-after-
+response, bounded buffers/admission, disconnect cancellation, graceful stop, and localhost
+socket/curl evidence. ENGINE-17.E users API proof should run over ENGINE-24 transport
+rather than the CLI-local dev socket loop.
+
 ## 6. V8 Model
 
 Final V8 foundation:
