@@ -81,6 +81,7 @@ typedef struct SlPlanDataProvider
     SlStr provider;
     SlStr capability;
     SlStr service;
+    SlStr database;
 } SlPlanDataProvider;
 
 typedef struct SlPlanCapability

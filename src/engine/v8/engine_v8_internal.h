@@ -12,7 +12,6 @@
 
 #include "../engine_internal.h"
 
-#include "sloppy/capability.h"
 #include "sloppy/resource.h"
 
 #include <v8.h>
@@ -30,8 +29,9 @@ struct SlV8Engine
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
     std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
     std::thread::id owner_thread;
-    // SlCapabilityRegistry is a non-owning view; backing plan storage must outlive SlV8Engine.
-    SlCapabilityRegistry capabilities = {};
+    /* Non-owning app metadata; both referenced objects must outlive this engine. */
+    const SlPlan* plan = nullptr;
+    const SlCapabilityRegistry* capabilities = nullptr;
     std::array<SlResourceEntry, 64U> resource_entries = {};
     SlResourceTable resources = {};
 };

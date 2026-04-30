@@ -3,6 +3,7 @@ import { Sloppy, Results, data } from "sloppy";
 const builder = Sloppy.createBuilder();
 builder.capabilities.addDatabase("users.db", {
   provider: "sqlite",
+  database: ":memory:",
   access: "readwrite"
 });
 

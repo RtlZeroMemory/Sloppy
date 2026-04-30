@@ -429,7 +429,7 @@ import { sqlite } from "sloppy:data/sqlite";
 builder.addModule(
   sqlite.module({
     token: "data.main",
-    path: "app.db",
+    database: "app.db",
   }),
 );
 ```

@@ -3,8 +3,9 @@
 ## Status
 
 Bootstrap data/capabilities foundation implemented. Native SQLite, PostgreSQL, and SQL
-Server providers are implemented for C/runtime tests. MAIN1-08 implements the first
-JavaScript stdlib-to-native database bridge for SQLite in V8-enabled runtime contexts.
+Server providers are implemented for C/runtime tests. SQLite has a V8-gated
+JavaScript-to-native bridge wired to Plan provider metadata, opaque resource IDs, and the
+native database capability hook.
 
 ## Purpose
 
@@ -29,19 +30,20 @@ Implemented bootstrap API:
 - fake provider methods: `query`, `queryOne`, `exec`, and `transaction`.
 - `builder.capabilities.addDatabase(token, options)` and module `.capabilities(...)`
   metadata declarations.
-- `data.sqlite` provider metadata and `data.sqlite.open(options)`. It validates options
-  and returns a safe SQLite connection wrapper when the V8 runtime installs
-  `__sloppy.data.sqlite`; otherwise it fails honestly with bridge-unavailable.
+- `data.sqlite("main")` provider shorthand and `data.sqlite.open(options)`. They validate
+  metadata/options and return a safe SQLite connection wrapper when the V8 runtime installs
+  `__sloppy.data.sqlite`; otherwise they fail honestly with bridge-unavailable.
 - `data.postgres` provider metadata, `$1` placeholder style, redaction helper, and
   `data.postgres.open(options)` as the future stdlib entry point. It validates options and
   fails honestly until the native bridge exists.
 - `data.sqlserver` provider metadata, ODBC `?` placeholder style, redaction and doctor
   helpers, and `data.sqlserver.open(options)` as the future stdlib entry point. It
   validates options and fails honestly until the native bridge exists.
-- Plan v1 alpha `dataProviders` and `capabilities` sections can describe provider and
-  authority metadata for startup validation/audit. MAIN1-10 adds a native capability
-  registry and check functions that future JS-native bridge calls must run before provider
-  work. Direct provider APIs remain low-level primitives without capability context.
+- Plan v1 alpha `dataProviders` and `capabilities` sections describe provider and
+  authority metadata for startup validation/audit. The V8 SQLite bridge receives the parsed
+  plan and native capability registry from the app host, resolves provider tokens, and
+  calls the database check hook before open/read/write work. Direct provider APIs remain
+  low-level primitives without capability context.
 
 Implemented native SQLite API:
 
@@ -59,10 +61,8 @@ Implemented SQLite JS bridge API:
   argument conversion, row materialization, resource lookup, cleanup, and provider calls.
   Future PostgreSQL/SQL Server bridges must add sibling intrinsic modules instead of
   expanding `engine_v8.cc`;
-- `data.sqlite.open({ path, capability, access? })` wrapper that checks the
-  runtime capability registry and stores only an opaque `SlResourceId` handle.
-  Optional `access` is `read` or `readwrite` and controls read versus write
-  capability checks;
+- `data.sqlite("main")` and `data.sqlite.open({ database, capability, access })` wrappers
+  that store only an opaque `SlResourceId` handle;
 - connection methods `exec(sql, params?)`, `query(sql, params?)`, `queryOne(sql, params?)`,
   and `close()`;
 - primitive parameter arrays for `null`, string, number, and boolean values;
@@ -106,10 +106,11 @@ MAIN1-08 consumes the MAIN1-07 core resource table for SQLite connection handles
 data handles wrap only `SlResourceId` values. They never expose provider pointers, ODBC
 handles, `sqlite3*`, `sqlite3_stmt*`, `PGconn*`, `PGresult*`, or pointer-like native
 addresses to JavaScript. Every SQLite bridge entrypoint validates kind, generation, and
-live state before calling provider code, and ENGINE-06 adds capability checks before
-open/read/write provider work. PostgreSQL and SQL Server JS bridges remain deferred. The V8
-engine owns the resource table; provider intrinsic modules may insert, look up, and close
-their own resource kinds through that table, but must not create separate handle registries.
+live state before calling provider code. ENGINE-05 stores capability/provider metadata
+beside the native connection resource so later reads and writes can re-check the hook.
+PostgreSQL and SQL Server JS bridges remain deferred. The V8 engine owns the resource
+table; provider intrinsic modules may insert, look up, and close their own resource kinds
+through that table, but must not create separate handle registries.
 
 ## Invariants
 
@@ -171,10 +172,11 @@ commit/rollback, nested transaction rejection, transaction use after complete, i
 missing table diagnostics, and invalid open diagnostics.
 
 `engine.v8.smoke` adds V8-gated SQLite bridge coverage when the SDK is enabled. Those tests
-prove that JavaScript can open `:memory:`, create a table, insert/query data through the
-stdlib bridge, close the wrapper, and receive deterministic stale/closed/invalid argument
-failures. They are reported separately from default provider tests because default gates do
-not enable V8.
+prove that JavaScript can resolve Plan provider metadata, pass the native capability hook,
+open `:memory:`, create a table, insert/query data through the stdlib bridge, close the
+wrapper, fail closed when hook metadata is absent, and receive deterministic
+stale/closed/invalid argument/capability-denied failures. They are reported separately from
+default provider tests because default gates do not enable V8.
 
 `core.capability.registry` covers the runtime capability registry, database read/write
 policy, provider mismatch denial, missing/wrong-kind/insufficient capability diagnostics,
@@ -226,6 +228,5 @@ based on skipped or unavailable services.
 
 ## Open Questions
 
-- Exact row/result JS shape once native stdlib intrinsics exist.
 - Exact app-host disposal/resource-table shape for PostgreSQL and SQL Server pool and
   connection handles.

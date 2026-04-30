@@ -992,6 +992,10 @@ if(SLOPPY_ENABLE_TESTS)
             "500 Internal Server Error")
         sloppy_add_conformance_existing_artifact_test(
             conformance.sqlite.bridge tests/integration/execution/sqlite_bridge GET /sqlite "Ada")
+        sloppy_add_conformance_existing_artifact_test(
+            conformance.sqlite.denied_capability
+            tests/integration/execution/sqlite_denied_capability GET /sqlite-denied
+            "500 Internal Server Error")
         add_test(
             NAME sloppy.run.once_hello
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
@@ -1027,7 +1031,16 @@ if(SLOPPY_ENABLE_TESTS)
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(
             sloppy.run.once_sqlite_bridge
-            PROPERTIES PASS_REGULAR_EXPRESSION "name.*Ada")
+            PROPERTIES PASS_REGULAR_EXPRESSION "name.*Ada.*name.*Grace")
+        add_test(
+            NAME sloppy.run.once_sqlite_denied_capability
+            COMMAND "$<TARGET_FILE:sloppy>" run --artifacts
+                    tests/integration/execution/sqlite_denied_capability --once GET
+                    /sqlite-denied
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(
+            sloppy.run.once_sqlite_denied_capability
+            PROPERTIES PASS_REGULAR_EXPRESSION "500 Internal Server Error")
         add_test(
             NAME sloppy.run.once_invalid_descriptor
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts

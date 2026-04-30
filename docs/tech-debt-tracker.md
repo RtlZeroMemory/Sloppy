@@ -40,10 +40,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - App/resource lifetime runtime: ENGINE-16 owns app startup/shutdown, request/app scopes,
   resource cleanup, cancellation propagation, leak-oriented hooks, and lifecycle
   diagnostics.
-- SQLite runtime completion: ENGINE-17 owns the public JS SQLite API, native bridge,
-  capability-wired open/use, query/exec/queryOne, transactions/prepared-statement
-  decision, result mapping, file and in-memory policy, cleanup, cancellation/deadline
-  behavior, and users API proof.
+- SQLite runtime hardening beyond ENGINE-05: JS transactions/prepared-statement decision,
+  file database policy, cancellation/deadline interruption beyond pre-call checks,
+  request-scope automatic cleanup/leak reporting, and richer production conformance.
 - CLI/dev loop runtime: ENGINE-18 owns `sloppyc`/`sloppy run` UX, source-input run
   decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, watch/dev
   decision, and command diagnostics.
@@ -101,10 +100,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
-- PostgreSQL/SQL Server JS bridge capability integration: ENGINE-06 wires the V8 SQLite
-  bridge to the runtime registry, but PostgreSQL and SQL Server still need their own
-  JavaScript-to-native bridges before JavaScript capability enforcement can exist for those
-  providers.
+- SQLite remaining hardening after ENGINE-05: capability-wired open/use is implemented for
+  the V8 bridge, but public file database policy, request-scope automatic provider cleanup,
+  cancellation/deadline interruption, JS transactions, and prepared statement handles
+  remain deferred.
 - Live DB service infrastructure for PostgreSQL and SQL Server: opt-in local env vars and
   separate skipped CTest gates make reporting honest, but hosted service jobs are still
   needed for release confidence.
@@ -285,3 +284,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Added MAIN1-07 resource lifecycle foundation with `SlResourceId`, `SlResourceTable`,
   generation/stale validation, wrong-kind diagnostics, close/reuse behavior, and cleanup
   callback tests.
+- Added ENGINE-05 SQLite end-to-end runtime wiring for V8-gated handlers: Plan provider
+  resolution, database capability hook checks, resource-table-owned handles, batched row
+  mapping, JSON handler fixture, denied-capability fixture, and fail-closed missing-hook
+  behavior.

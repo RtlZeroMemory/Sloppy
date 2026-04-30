@@ -73,6 +73,52 @@ Reason:
         return bridge;
     }
 
+    function normalizeSqliteProviderToken(name) {
+        if (typeof name !== "string" || name.length === 0) {
+            throw new TypeError("Sloppy data.sqlite provider name must be a non-empty string.");
+        }
+
+        return name.includes(".") ? name : `data.${name}`;
+    }
+
+    function normalizeSqliteOpenOptions(options) {
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy sqlite.open options must be a plain object.");
+        }
+
+        const database = options.database ?? options.path;
+        if (typeof database !== "string" || database.length === 0) {
+            throw new TypeError("Sloppy sqlite.open database must be a non-empty string.");
+        }
+
+        if (
+            typeof options.database === "string"
+            && typeof options.path === "string"
+            && options.database !== options.path
+        ) {
+            throw new TypeError(
+                "Sloppy sqlite.open database and path must match when both are supplied.",
+            );
+        }
+
+        if (typeof options.capability !== "string" || options.capability.length === 0) {
+            throw new TypeError("Sloppy sqlite.open capability must be a non-empty string.");
+        }
+
+        const access = options.access ?? "readwrite";
+        if (access !== "read" && access !== "write" && access !== "readwrite") {
+            throw new TypeError("Sloppy sqlite.open access must be read, write, or readwrite.");
+        }
+
+        return Object.freeze({
+            provider: "sqlite",
+            database,
+            path: database,
+            capability: options.capability,
+            access,
+        });
+    }
+
     function sqliteClosedError(operation) {
         return new Error(`sloppy: sqlite connection is closed
 
@@ -243,36 +289,23 @@ Operation:
         },
     });
 
+    function sqlite(name) {
+        const bridge = requireSqliteBridge();
+        return createSqliteConnection(bridge, bridge.open({
+            provider: normalizeSqliteProviderToken(name),
+        }));
+    }
+
+    sqlite.open = function open(options) {
+        const bridge = requireSqliteBridge();
+        const safeOptions = normalizeSqliteOpenOptions(options);
+        return createSqliteConnection(bridge, bridge.open(safeOptions));
+    };
+
+    Object.freeze(sqlite);
+
     const data = Object.freeze({
-        sqlite: Object.freeze({
-            open(options) {
-                if (!isPlainObject(options)) {
-                    throw new TypeError("Sloppy sqlite.open options must be a plain object.");
-                }
-
-                const databasePath = options.path;
-                const capability = options.capability;
-                const access = options.access ?? "readwrite";
-
-                if (typeof databasePath !== "string" || databasePath.length === 0) {
-                    throw new TypeError("Sloppy sqlite.open path must be a non-empty string.");
-                }
-
-                if (typeof capability !== "string" || capability.length === 0) {
-                    throw new TypeError("Sloppy sqlite.open capability must be a non-empty string.");
-                }
-
-                if (access !== "read" && access !== "readwrite") {
-                    throw new TypeError("Sloppy sqlite.open access must be read or readwrite.");
-                }
-
-                const bridge = requireSqliteBridge();
-                return createSqliteConnection(
-                    bridge,
-                    bridge.open({ path: databasePath, capability, access }),
-                );
-            },
-        }),
+        sqlite,
     });
 
     globalThis.__sloppy_runtime = Object.freeze({

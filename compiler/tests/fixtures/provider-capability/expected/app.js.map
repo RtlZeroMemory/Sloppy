@@ -1,12 +1,12 @@
 {
   "file": "app.js",
-  "mappings": ";;;;;;gCAUqB",
+  "mappings": ";;;;;;gCAWqB",
   "names": [],
   "sources": [
     "input.js"
   ],
   "sourcesContent": [
-    "import { Sloppy, Results, data } from \"sloppy\";\n\nconst builder = Sloppy.createBuilder();\nbuilder.capabilities.addDatabase(\"users.db\", {\n  provider: \"sqlite\",\n  access: \"readwrite\"\n});\n\nconst app = builder.build();\n\napp.mapGet(\"/users\", () => Results.json({ ok: true }));\n\nexport default app;\n"
+    "import { Sloppy, Results, data } from \"sloppy\";\n\nconst builder = Sloppy.createBuilder();\nbuilder.capabilities.addDatabase(\"users.db\", {\n  provider: \"sqlite\",\n  database: \":memory:\",\n  access: \"readwrite\"\n});\n\nconst app = builder.build();\n\napp.mapGet(\"/users\", () => Results.json({ ok: true }));\n\nexport default app;\n"
   ],
   "version": 3
 }

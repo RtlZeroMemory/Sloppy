@@ -4,13 +4,13 @@ export const SqliteModule = Sloppy.module("data.sqlite")
     .capabilities((caps) => {
         caps.addDatabase("data.main", {
             provider: "sqlite",
-            path: ":memory:",
+            database: ":memory:",
             access: "readwrite",
         });
     })
     .services((services) => {
         services.addSingleton("data.main", () => data.sqlite.open({
-            path: ":memory:",
+            database: ":memory:",
             capability: "data.main",
             access: "readwrite",
         }));

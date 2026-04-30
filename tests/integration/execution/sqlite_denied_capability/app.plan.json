@@ -1,25 +1,25 @@
 {
   "bundle": {
-    "hash": "sha256:c0866569c29a5f4f2c365598256b8f28e3e80844aa26413446be697d7fee1dee",
-    "id": "sloppyc-app-js",
+    "hash": "sha256:bb3cab1a604cda5577a27ae9af7d100aab8150d52aa8de0fc41ac99c38744795",
+    "id": "sqlite-denied-app-js",
     "path": "app.js"
   },
   "capabilities": [
     {
-      "access": "readwrite",
+      "access": "write",
       "kind": "database",
-      "provider": "users.db",
-      "token": "users.db"
+      "provider": "data.main",
+      "token": "data.main"
     }
   ],
-  "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "compilerVersion": "handwritten-engine-05-sqlite-denied",
   "dataProviders": [
     {
-      "capability": "users.db",
+      "capability": "data.main",
       "database": ":memory:",
       "provider": "sqlite",
       "service": null,
-      "token": "users.db"
+      "token": "data.main"
     }
   ],
   "features": {
@@ -30,15 +30,9 @@
   },
   "handlers": [
     {
-      "async": false,
-      "displayName": "GET /users",
+      "displayName": "GET /sqlite-denied",
       "exportName": "__sloppy_handler_1",
-      "id": 1,
-      "source": {
-        "column": 22,
-        "line": 12,
-        "path": "input.js"
-      }
+      "id": 1
     }
   ],
   "routes": [
@@ -46,19 +40,14 @@
       "handlerId": 1,
       "method": "GET",
       "name": null,
-      "pattern": "/users",
-      "source": {
-        "column": 1,
-        "line": 12,
-        "path": "input.js"
-      }
+      "pattern": "/sqlite-denied"
     }
   ],
   "runtimeMinimumVersion": "0.1.0",
   "schemaVersion": 1,
   "sourceMap": {
-    "hash": "sha256:1af5c229aded77279c6249641f447816606b86faa727f6055465d8d74295c7c5",
-    "id": "sloppyc-app-js-map",
+    "hash": "sha256:d12ed083a2040a2b479c50b3aa9050263e770438ac90a94db322c928dece70d6",
+    "id": "sqlite-denied-app-js-map",
     "path": "app.js.map"
   },
   "stdlibVersion": "0.1.0",

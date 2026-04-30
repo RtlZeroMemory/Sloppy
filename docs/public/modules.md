@@ -13,13 +13,13 @@ const DataModule = Sloppy.module("data")
   .capabilities(caps => {
     caps.addDatabase("data.main", {
       provider: "sqlite",
-      path: ":memory:",
+      database: ":memory:",
       access: "readwrite",
     });
   })
   .services(services => {
     services.addSingleton("data.main", () => data.sqlite.open({
-      path: ":memory:",
+      database: ":memory:",
       capability: "data.main",
     }));
   });
@@ -131,10 +131,11 @@ Debug module entries currently include:
 Diagnostics are JavaScript `Error`/`TypeError` values for now. They include module names,
 dependency names, phase names, and a short fix hint where practical.
 
-Not implemented yet: compiler extraction, automatic `app.plan.json` emission, native
-runtime module loading, module package distribution, native plugins, optional
-dependencies, version ranges, JavaScript-to-native SQLite/PostgreSQL/SQL Server calls,
-middleware, route filters, hot reload, and dynamic module loading after build.
+Not implemented yet: compiler extraction of full module graphs, automatic `app.plan.json`
+emission for this module API shape, native runtime module loading, module package
+distribution, native plugins, optional dependencies, version ranges, JavaScript-to-native
+PostgreSQL/SQL Server calls, middleware, route filters, hot reload, and dynamic module
+loading after build.
 
 CLI status: `sloppy audit --plan <path>` can inspect interim `modules` metadata for missing
 dependencies and direct dependency cycles. This uses metadata fixtures/artifacts only; it

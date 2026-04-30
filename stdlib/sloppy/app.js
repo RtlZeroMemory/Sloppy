@@ -8,7 +8,7 @@ const LOG_LEVEL_RANK = Object.freeze({
 const MEMORY_SINK_STATE = new WeakMap();
 const MODULE_STATE = new WeakMap();
 const MODULE_NAME_PATTERN = /^[a-z][a-z0-9.-]*$/u;
-const DATABASE_ACCESS_MODES = Object.freeze(["read", "readwrite"]);
+const DATABASE_ACCESS_MODES = Object.freeze(["read", "write", "readwrite"]);
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -53,7 +53,7 @@ function validateDatabaseCapabilityOptions(options) {
     }
 
     if (!DATABASE_ACCESS_MODES.includes(options.access)) {
-        throw new TypeError("Sloppy database capability access must be read or readwrite.");
+        throw new TypeError("Sloppy database capability access must be read, write, or readwrite.");
     }
 }
 

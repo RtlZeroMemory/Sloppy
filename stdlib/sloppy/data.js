@@ -142,8 +142,17 @@ function validateSqliteOpenOptions(options) {
         throw new TypeError("Sloppy sqlite.open options must be a plain object.");
     }
 
-    if (typeof options.path !== "string" || options.path.length === 0) {
-        throw new TypeError("Sloppy sqlite.open path must be a non-empty string.");
+    const database = options.database ?? options.path;
+    if (typeof database !== "string" || database.length === 0) {
+        throw new TypeError("Sloppy sqlite.open database must be a non-empty string.");
+    }
+
+    if (
+        typeof options.database === "string"
+        && typeof options.path === "string"
+        && options.database !== options.path
+    ) {
+        throw new TypeError("Sloppy sqlite.open database and path must match when both are supplied.");
     }
 
     if (typeof options.capability !== "string" || options.capability.length === 0) {
@@ -151,17 +160,26 @@ function validateSqliteOpenOptions(options) {
     }
 
     const access = options.access ?? "readwrite";
-    if (access !== "read" && access !== "readwrite") {
-        throw new TypeError("Sloppy sqlite.open access must be read or readwrite.");
+    if (access !== "read" && access !== "write" && access !== "readwrite") {
+        throw new TypeError("Sloppy sqlite.open access must be read, write, or readwrite.");
     }
 
     return Object.freeze({
         provider: "sqlite",
-        path: options.path,
+        database,
+        path: database,
         capability: options.capability,
         access,
         placeholderStyle: "question",
     });
+}
+
+function normalizeSqliteProviderToken(name) {
+    if (typeof name !== "string" || name.length === 0) {
+        throw new TypeError("Sloppy data.sqlite provider name must be a non-empty string.");
+    }
+
+    return name.includes(".") ? name : `data.${name}`;
 }
 
 function sqliteNativeBridge() {
@@ -281,7 +299,6 @@ function createSqliteConnection(nativeBridge, handle) {
                     slot: state.handle.slot,
                     generation: state.handle.generation,
                     kind: state.handle.kind,
-                    capability: state.handle.capability,
                 }),
             });
         },
@@ -452,6 +469,18 @@ function openSqlite(options) {
     return createSqliteConnection(nativeBridge, nativeBridge.open(safeOptions));
 }
 
+function openSqliteProvider(name) {
+    const nativeBridge = sqliteNativeBridge();
+
+    if (nativeBridge === null) {
+        throw createSqliteUnavailableError("open");
+    }
+
+    return createSqliteConnection(nativeBridge, nativeBridge.open({
+        provider: normalizeSqliteProviderToken(name),
+    }));
+}
+
 function openPostgres(options) {
     throw createPostgresUnavailableError("open", options);
 }
@@ -490,6 +519,7 @@ const sqliteSupports = {
     queryTemplates: true,
     parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
     transactions: true,
+    transactionsMode: "native-provider-only",
     pooling: false,
     migrations: false,
     orm: false,
@@ -502,19 +532,40 @@ Object.defineProperty(sqliteSupports, "nativeStdlibBridge", {
     },
 });
 
-const sqlite = Object.freeze({
-    provider: "sqlite",
-    placeholderStyle: "question",
-    supports: Object.freeze(sqliteSupports),
-    open: openSqlite,
-    __debug() {
-        return Object.freeze({
-            provider: "sqlite",
-            placeholderStyle: "question",
-            nativeStdlibBridge: sqliteNativeBridge() !== null,
-        });
+function sqlite(name) {
+    return openSqliteProvider(name);
+}
+
+Object.defineProperties(sqlite, {
+    provider: {
+        enumerable: true,
+        value: "sqlite",
+    },
+    placeholderStyle: {
+        enumerable: true,
+        value: "question",
+    },
+    supports: {
+        enumerable: true,
+        value: Object.freeze(sqliteSupports),
+    },
+    open: {
+        enumerable: true,
+        value: openSqlite,
+    },
+    __debug: {
+        enumerable: true,
+        value() {
+            return Object.freeze({
+                provider: "sqlite",
+                placeholderStyle: "question",
+                nativeStdlibBridge: sqliteNativeBridge() !== null,
+            });
+        },
     },
 });
+
+Object.freeze(sqlite);
 
 const postgres = Object.freeze({
     provider: "postgres",

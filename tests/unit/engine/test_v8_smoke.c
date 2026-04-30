@@ -1,5 +1,4 @@
 #include "sloppy/app_host.h"
-#include "sloppy/capability.h"
 #include "sloppy/engine.h"
 
 #include <stdbool.h>
@@ -109,40 +108,41 @@ static SlEngineOptions v8_options(void)
     return options;
 }
 
-static SlPlanDataProvider sqlite_provider(const char* token, const char* provider_kind)
+static void init_sqlite_plan(SlPlan* plan, SlPlanDataProvider* provider,
+                             SlPlanCapability* capability, const char* access)
 {
-    SlPlanDataProvider provider = {0};
-
-    provider.token = sl_str_from_cstr(token);
-    provider.provider = sl_str_from_cstr(provider_kind);
-    provider.capability = sl_str_empty();
-    provider.service = sl_str_from_cstr(token);
-    return provider;
+    *provider = (SlPlanDataProvider){
+        .token = sl_str_from_cstr("data.main"),
+        .provider = sl_str_from_cstr("sqlite"),
+        .capability = sl_str_from_cstr("data.main"),
+        .service = sl_str_empty(),
+        .database = sl_str_from_cstr(":memory:"),
+    };
+    *capability = (SlPlanCapability){
+        .token = sl_str_from_cstr("data.main"),
+        .kind = sl_str_from_cstr("database"),
+        .access = sl_str_from_cstr(access),
+        .provider = sl_str_from_cstr("data.main"),
+    };
+    *plan = (SlPlan){
+        .data_providers = provider,
+        .data_provider_count = 1U,
+        .capabilities = capability,
+        .capability_count = 1U,
+    };
 }
 
-static SlPlanCapability sqlite_capability(const char* token, const char* access,
-                                          const char* provider_token)
+static int attach_sqlite_plan(SlEngineOptions* options, SlPlan* plan,
+                              SlCapabilityRegistry* registry, SlPlanDataProvider* provider,
+                              SlPlanCapability* capability, const char* access)
 {
-    SlPlanCapability capability = {0};
-
-    capability.token = sl_str_from_cstr(token);
-    capability.kind = sl_str_from_cstr("database");
-    capability.access = sl_str_from_cstr(access);
-    capability.provider = sl_str_from_cstr(provider_token);
-    return capability;
-}
-
-static int init_sqlite_capabilities(SlCapabilityRegistry* registry, SlPlanDataProvider* providers,
-                                    size_t provider_count, SlPlanCapability* capabilities,
-                                    size_t capability_count)
-{
-    SlPlan plan = {0};
-
-    plan.data_providers = providers;
-    plan.data_provider_count = provider_count;
-    plan.capabilities = capabilities;
-    plan.capability_count = capability_count;
-    return expect_status(sl_capability_registry_init_from_plan(&plan, registry), SL_STATUS_OK);
+    init_sqlite_plan(plan, provider, capability, access);
+    if (expect_status(sl_capability_registry_init_from_plan(plan, registry), SL_STATUS_OK) != 0) {
+        return 1;
+    }
+    options->plan = plan;
+    options->capabilities = registry;
+    return 0;
 }
 
 static int test_eval_and_call_global_function(void)
@@ -1781,10 +1781,11 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
     unsigned char result_storage[4096];
     SlArena engine_arena = {0};
     SlArena result_arena = {0};
-    SlPlanDataProvider providers[] = {sqlite_provider("data.main", "sqlite")};
-    SlPlanCapability capabilities[] = {sqlite_capability("data.main", "readwrite", "data.main")};
-    SlCapabilityRegistry registry = {0};
     SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -1794,10 +1795,10 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
     {
         return 130;
     }
-    if (init_sqlite_capabilities(&registry, providers, 1U, capabilities, 1U) != 0) {
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
         return 131;
     }
-    options.capability_registry = &registry;
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
         return 132;
@@ -1808,8 +1809,8 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
                 engine, sl_str_from_cstr("sqlite-bridge.js"),
                 sl_str_from_cstr(
                     "globalThis.sqliteSmoke = function () {"
-                    "  const db = __sloppy.data.sqlite.open({ path: ':memory:', "
-                    "capability: 'data.main' });"
+                    "  const db = __sloppy.data.sqlite.open({ provider: 'sqlite', database: "
+                    "':memory:', capability: 'data.main' });"
                     "  __sloppy.data.sqlite.exec(db, 'create table users (id integer primary key, "
                     "name text not null)', []);"
                     "  __sloppy.data.sqlite.exec(db, 'insert into users (name) values (?)', "
@@ -1858,10 +1859,11 @@ static int test_sqlite_intrinsic_stale_handle_fails(void)
     unsigned char result_storage[1024];
     SlArena engine_arena = {0};
     SlArena result_arena = {0};
-    SlPlanDataProvider providers[] = {sqlite_provider("data.main", "sqlite")};
-    SlPlanCapability capabilities[] = {sqlite_capability("data.main", "readwrite", "data.main")};
-    SlCapabilityRegistry registry = {0};
     SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -1871,10 +1873,10 @@ static int test_sqlite_intrinsic_stale_handle_fails(void)
     {
         return 140;
     }
-    if (init_sqlite_capabilities(&registry, providers, 1U, capabilities, 1U) != 0) {
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
         return 141;
     }
-    options.capability_registry = &registry;
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
         return 142;
@@ -1883,8 +1885,8 @@ static int test_sqlite_intrinsic_stale_handle_fails(void)
     if (expect_status(sl_engine_eval_source(
                           engine, sl_str_from_cstr("sqlite-stale.js"),
                           sl_str_from_cstr("globalThis.sqliteStale = function () {"
-                                           "  const db = __sloppy.data.sqlite.open({ path: "
-                                           "':memory:', capability: 'data.main' });"
+                                           "  const db = __sloppy.data.sqlite.open({ provider: "
+                                           "'data.main' });"
                                            "  __sloppy.data.sqlite.close(db);"
                                            "  __sloppy.data.sqlite.queryOne(db, 'select 1', []);"
                                            "};"),
@@ -1920,10 +1922,11 @@ static int test_sqlite_intrinsic_invalid_arguments_fail(void)
     unsigned char result_storage[1024];
     SlArena engine_arena = {0};
     SlArena result_arena = {0};
-    SlPlanDataProvider providers[] = {sqlite_provider("data.main", "sqlite")};
-    SlPlanCapability capabilities[] = {sqlite_capability("data.main", "readwrite", "data.main")};
-    SlCapabilityRegistry registry = {0};
     SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -1933,10 +1936,10 @@ static int test_sqlite_intrinsic_invalid_arguments_fail(void)
     {
         return 150;
     }
-    if (init_sqlite_capabilities(&registry, providers, 1U, capabilities, 1U) != 0) {
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
         return 151;
     }
-    options.capability_registry = &registry;
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
         return 152;
@@ -1945,8 +1948,8 @@ static int test_sqlite_intrinsic_invalid_arguments_fail(void)
     if (expect_status(sl_engine_eval_source(
                           engine, sl_str_from_cstr("sqlite-invalid.js"),
                           sl_str_from_cstr("globalThis.sqliteInvalid = function () {"
-                                           "  const db = __sloppy.data.sqlite.open({ path: "
-                                           "':memory:', capability: 'data.main' });"
+                                           "  const db = __sloppy.data.sqlite.open({ provider: "
+                                           "'data.main' });"
                                            "  try {"
                                            "    __sloppy.data.sqlite.exec(db, 'select ?', [{}]);"
                                            "  } finally {"
@@ -1979,16 +1982,17 @@ static int test_sqlite_intrinsic_invalid_arguments_fail(void)
     return 0;
 }
 
-static int test_sqlite_intrinsic_denied_open_fails(void)
+static int test_sqlite_intrinsic_missing_provider_fails(void)
 {
     unsigned char engine_storage[16384];
     unsigned char result_storage[1024];
     SlArena engine_arena = {0};
     SlArena result_arena = {0};
-    SlPlanDataProvider providers[] = {sqlite_provider("data.main", "sqlite")};
-    SlPlanCapability capabilities[] = {sqlite_capability("data.read", "read", "data.main")};
-    SlCapabilityRegistry registry = {0};
     SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -1998,30 +2002,31 @@ static int test_sqlite_intrinsic_denied_open_fails(void)
     {
         return 160;
     }
-    if (init_sqlite_capabilities(&registry, providers, 1U, capabilities, 1U) != 0) {
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
         return 161;
     }
-    options.capability_registry = &registry;
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
         return 162;
     }
 
-    if (expect_status(sl_engine_eval_source(
-                          engine, sl_str_from_cstr("sqlite-denied.js"),
-                          sl_str_from_cstr("globalThis.sqliteDenied = function () {"
-                                           "  __sloppy.data.sqlite.open({ path: ':memory:', "
-                                           "capability: 'data.read' });"
-                                           "};"),
-                          &diag),
-                      SL_STATUS_OK) != 0)
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("sqlite-missing-provider.js"),
+                sl_str_from_cstr("globalThis.sqliteMissingProvider = function () {"
+                                 "  __sloppy.data.sqlite.open({ provider: 'data.missing' });"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 163;
     }
 
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
-                                               sl_str_from_cstr("sqliteDenied"), &result, &diag),
+                                               sl_str_from_cstr("sqliteMissingProvider"), &result,
+                                               &diag),
                       SL_STATUS_INVALID_STATE) != 0)
     {
         sl_engine_destroy(engine);
@@ -2029,11 +2034,222 @@ static int test_sqlite_intrinsic_denied_open_fails(void)
     }
 
     if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
-        expect_str_contains(diag.message, sl_str_from_cstr("insufficient access")) != 0 ||
-        expect_str_contains(diag.message, sl_str_from_cstr("operation: write")) != 0)
+        expect_str_contains(diag.message, sl_str_from_cstr("sqlite provider is not configured")) !=
+            0)
     {
         sl_engine_destroy(engine);
         return 165;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_sqlite_intrinsic_missing_capability_registry_fails_closed(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 170;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 171;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("sqlite-missing-registry.js"),
+                          sl_str_from_cstr("globalThis.sqliteMissingRegistry = function () {"
+                                           "  __sloppy.data.sqlite.open({ database: ':memory:', "
+                                           "capability: 'data.main' });"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 172;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteMissingRegistry"), &result,
+                                               &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 173;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(diag.message, sl_str_from_cstr("capability registry is unavailable")) !=
+            0)
+    {
+        sl_engine_destroy(engine);
+        return 174;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 180;
+    }
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "write") != 0) {
+        return 181;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 182;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("sqlite-denied.js"),
+                sl_str_from_cstr(
+                    "globalThis.sqliteDenied = function () {"
+                    "  const db = __sloppy.data.sqlite.open({ provider: 'sqlite', database: "
+                    "':memory:', capability: 'data.main', access: 'write' });"
+                    "  try {"
+                    "    __sloppy.data.sqlite.exec(db, 'create table users (id integer)', []);"
+                    "    __sloppy.data.sqlite.queryOne(db, 'select id from users', []);"
+                    "  } finally {"
+                    "    __sloppy.data.sqlite.close(db);"
+                    "  }"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 183;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteDenied"), &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 184;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(
+            diag.message, sl_str_from_cstr("capability access denied: insufficient access")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("operation: read")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 185;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_sqlite_intrinsic_read_capability_cannot_open_for_write(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 190;
+    }
+
+    providers[0] = (SlPlanDataProvider){
+        .token = sl_str_from_cstr("data.main"),
+        .provider = sl_str_from_cstr("sqlite"),
+        .capability = sl_str_from_cstr("data.read"),
+        .service = sl_str_empty(),
+        .database = sl_str_from_cstr(":memory:"),
+    };
+    capabilities[0] = (SlPlanCapability){
+        .token = sl_str_from_cstr("data.read"),
+        .kind = sl_str_from_cstr("database"),
+        .access = sl_str_from_cstr("read"),
+        .provider = sl_str_from_cstr("data.main"),
+    };
+    plan = (SlPlan){
+        .data_providers = providers,
+        .data_provider_count = 1U,
+        .capabilities = capabilities,
+        .capability_count = 1U,
+    };
+    if (expect_status(sl_capability_registry_init_from_plan(&plan, &registry), SL_STATUS_OK) != 0) {
+        return 191;
+    }
+    options.plan = &plan;
+    options.capabilities = &registry;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 192;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("sqlite-denied-open.js"),
+                          sl_str_from_cstr("globalThis.sqliteDeniedOpen = function () {"
+                                           "  __sloppy.data.sqlite.open({ provider: 'sqlite', "
+                                           "database: ':memory:', capability: 'data.read' });"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 193;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteDeniedOpen"), &result,
+                                               &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 194;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(
+            diag.message, sl_str_from_cstr("capability access denied: insufficient access")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("operation: write")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 195;
     }
 
     sl_engine_destroy(engine);
@@ -2199,5 +2415,20 @@ int main(void)
         return result;
     }
 
-    return test_sqlite_intrinsic_denied_open_fails();
+    result = test_sqlite_intrinsic_missing_provider_fails();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_missing_capability_registry_fails_closed();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_denied_capability_fails_before_read();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_sqlite_intrinsic_read_capability_cannot_open_for_write();
 }

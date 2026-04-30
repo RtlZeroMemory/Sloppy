@@ -15,7 +15,7 @@ deterministic `app.plan.json`, `app.js`, and handler-line `app.js.map` artifacts
 compiler supports literal GET/POST/PUT/PATCH/DELETE route metadata, simple route groups,
 direct async handler metadata, and minimal SQLite provider/capability metadata. It does not
 execute the bootstrap app object, extract modules/services/schema graphs, run `app.run`,
-settle Promises, serve non-GET requests, or open native providers from compiled handlers.
+serve non-GET requests, or open native providers while compiling.
 See `docs/compiler-supported-syntax.md` for the exact supported and rejected compiler
 source matrix.
 
@@ -25,7 +25,8 @@ classic-script `app.js`, validate registered handler IDs, route GET request path
 compiler-emitted route metadata, build a deterministic native route table, call handlers by
 numeric ID with a minimal route/query/request context, and return supported
 text/JSON/empty/problem responses. Unsupported request bodies fail before handler
-execution.
+execution. In V8-enabled builds with provider/capability metadata, handlers can use the
+minimal SQLite runtime bridge through `data.sqlite("main")`.
 Source input build handoff, full native app-host validation for complete framework graphs,
 true bootstrap ESM loading, services, middleware, and `app.run` remain deferred.
 
@@ -124,9 +125,9 @@ Not implemented yet: `app.run`, `app.listen`, native startup validation for the 
 host, true bootstrap ESM loading, nested route groups, middleware, filters, automatic
 validation, typed request binding beyond the EPIC-23 route/query/request context,
 config file/env providers, console/file/native logging, service disposal, async factories,
-real request-scoped lifetimes, module packages, data providers, native plugins, broad
-bundling, Node/npm package resolution, arbitrary import graphs, or full TypeScript type
-checking.
+real request-scoped lifetimes, module packages, PostgreSQL/SQL Server JavaScript data
+providers, native plugins, broad bundling, Node/npm package resolution, arbitrary import
+graphs, or full TypeScript type checking.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/modularity.md`,
 `docs/app-plan.md`.

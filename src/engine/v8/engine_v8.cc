@@ -652,9 +652,8 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
     backend->owner_thread = std::this_thread::get_id();
-    if (options != nullptr && options->capability_registry != nullptr) {
-        backend->capabilities = *options->capability_registry;
-    }
+    backend->plan = options == nullptr ? nullptr : options->plan;
+    backend->capabilities = options == nullptr ? nullptr : options->capabilities;
 
     status = sl_resource_table_init(&backend->resources, backend->resource_entries.data(),
                                     backend->resource_entries.size());

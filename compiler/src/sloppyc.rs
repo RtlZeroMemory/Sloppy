@@ -122,6 +122,7 @@ struct DatabaseCapability {
     token: String,
     provider: &'static str,
     access: String,
+    database: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -825,10 +826,30 @@ fn database_capability_call(
         .with_span(options.span));
     }
 
+    // `path` is a transitional alias: output canonicalizes to `database`, and conflicting
+    // dual-field values are rejected so generated plans stay unambiguous.
+    let database = optional_object_string_property(path, options, "database")?;
+    let path_option = optional_object_string_property(path, options, "path")?;
+    if let (Some(database), Some(path_option)) = (database, path_option) {
+        if database != path_option {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+                "database capability cannot declare different database and path values",
+            )
+            .with_path(path)
+            .with_span(options.span)
+            .with_hint(
+                "Use the canonical database option; path is accepted only as a transitional alias.",
+            ));
+        }
+    }
+    let database = database.or(path_option).map(|value| value.to_string());
+
     Ok(Some(DatabaseCapability {
         token: token.to_string(),
         provider: "sqlite",
         access,
+        database,
     }))
 }
 
@@ -1877,12 +1898,16 @@ fn emit_plan(
         .capabilities
         .iter()
         .map(|capability| {
-            json!({
+            let mut provider = json!({
                 "token": capability.token,
                 "provider": capability.provider,
                 "capability": capability.token,
                 "service": null
-            })
+            });
+            if let Some(database) = &capability.database {
+                provider["database"] = json!(database);
+            }
+            provider
         })
         .collect::<Vec<_>>();
 
@@ -2425,6 +2450,86 @@ export default app;
         assert!(plan.contains("\"asyncHandlers\": true"));
         assert!(plan.contains("\"method\": \"POST\""));
         assert!(plan.contains("\"provider\": \"sqlite\""));
+    }
+
+    #[test]
+    fn database_capability_accepts_matching_path_alias() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: ":memory:",
+  path: ":memory:",
+});
+const app = builder.build();
+app.mapGet("/ok", () => Results.ok({ ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+        assert_eq!(app.capabilities.len(), 1);
+        assert_eq!(app.capabilities[0].database.as_deref(), Some(":memory:"));
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        assert!(plan.contains("\"database\": \":memory:\""));
+    }
+
+    #[test]
+    fn database_capability_accepts_path_alias_only() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  path: ":memory:",
+});
+const app = builder.build();
+app.mapGet("/ok", () => Results.ok({ ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+        assert_eq!(app.capabilities.len(), 1);
+        assert_eq!(app.capabilities[0].database.as_deref(), Some(":memory:"));
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        assert!(plan.contains("\"database\": \":memory:\""));
+    }
+
+    #[test]
+    fn database_capability_rejects_mismatched_path_alias() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: ":memory:",
+  path: "app.db",
+});
+const app = builder.build();
+app.mapGet("/ok", () => Results.ok({ ok: true }));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("mismatched database/path alias should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE");
+        assert_eq!(
+            diagnostic.message,
+            "database capability cannot declare different database and path values"
+        );
     }
 
     #[test]
