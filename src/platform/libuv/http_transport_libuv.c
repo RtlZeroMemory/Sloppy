@@ -439,6 +439,13 @@ static SlStatus sl_http_transport_start_timer(SlHttpPlatformConnection* platform
 static void sl_http_transport_stop_timer(uv_timer_t* timer, bool* initialized);
 static void sl_http_transport_write_timeout_cb(uv_timer_t* timer);
 
+static bool sl_http_transport_request_terminal(SlHttpRequestState state)
+{
+    return state == SL_HTTP_REQUEST_STATE_CLOSED || state == SL_HTTP_REQUEST_STATE_COMPLETED ||
+           state == SL_HTTP_REQUEST_STATE_CANCELLED || state == SL_HTTP_REQUEST_STATE_TIMED_OUT ||
+           state == SL_HTTP_REQUEST_STATE_FAILED;
+}
+
 static void sl_http_transport_write_cb(uv_write_t* request, int status)
 {
     SlHttpPlatformConnection* platform =
@@ -457,18 +464,22 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
     }
 
     connection->write_completed = true;
-    if (status != 0) {
-        (void)sl_http_transport_connection_diag(
-            connection, &diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
-            sl_http_transport_literal("HTTP transport response write failed",
-                                      sizeof("HTTP transport response write failed") - 1U),
-            sl_http_transport_literal("socket details stay inside the platform boundary",
-                                      sizeof("socket details stay inside the platform boundary") -
-                                          1U));
-        (void)sl_http_request_fail(&connection->request, NULL);
-    }
-    else if (connection->request_started) {
-        (void)sl_http_request_complete(&connection->request, NULL);
+    if (connection->request_started &&
+        !sl_http_transport_request_terminal(connection->request.state))
+    {
+        if (status != 0) {
+            (void)sl_http_transport_connection_diag(
+                connection, &diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
+                sl_http_transport_literal("HTTP transport response write failed",
+                                          sizeof("HTTP transport response write failed") - 1U),
+                sl_http_transport_literal(
+                    "socket details stay inside the platform boundary",
+                    sizeof("socket details stay inside the platform boundary") - 1U));
+            (void)sl_http_request_fail(&connection->request, NULL);
+        }
+        else {
+            (void)sl_http_request_complete(&connection->request, NULL);
+        }
     }
 
     (void)sl_http_transport_connection_close(connection, NULL);
@@ -542,18 +553,6 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
 
     buffer = uv_buf_init((char*)connection->response_storage, (unsigned int)bytes.length);
     connection->platform->write.data = connection->platform;
-    connection->platform->writing = true;
-    connection->write_started = true;
-    rc = uv_write(&connection->platform->write, (uv_stream_t*)&connection->platform->handle,
-                  &buffer, 1U, sl_http_transport_write_cb);
-    if (rc != 0) {
-        connection->platform->writing = false;
-        return sl_http_transport_uv_status(
-            rc, out_diag, SL_DIAG_HTTP_WRITE_FAILED,
-            sl_http_transport_literal("HTTP transport response write failed to start",
-                                      sizeof("HTTP transport response write failed to start") -
-                                          1U));
-    }
     {
         SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
         status =
@@ -563,14 +562,26 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
                                           sl_http_transport_write_timeout_cb);
     }
     if (!sl_status_is_ok(status)) {
-        (void)sl_http_transport_connection_diag(
+        return sl_http_transport_connection_diag(
             connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, sl_status_code(status),
             sl_http_transport_literal("HTTP transport write timeout could not start",
                                       sizeof("HTTP transport write timeout could not start") - 1U),
-            sl_http_transport_literal("the connection will be closed",
-                                      sizeof("the connection will be closed") - 1U));
-        (void)sl_http_transport_connection_close(connection, NULL);
-        return status;
+            sl_http_transport_literal("the response write was not queued",
+                                      sizeof("the response write was not queued") - 1U));
+    }
+    connection->platform->writing = true;
+    connection->write_started = true;
+    rc = uv_write(&connection->platform->write, (uv_stream_t*)&connection->platform->handle,
+                  &buffer, 1U, sl_http_transport_write_cb);
+    if (rc != 0) {
+        connection->platform->writing = false;
+        sl_http_transport_stop_timer(&connection->platform->write_timer,
+                                     &connection->platform->write_timer_initialized);
+        return sl_http_transport_uv_status(
+            rc, out_diag, SL_DIAG_HTTP_WRITE_FAILED,
+            sl_http_transport_literal("HTTP transport response write failed to start",
+                                      sizeof("HTTP transport response write failed to start") -
+                                          1U));
     }
 
     return sl_status_ok();
@@ -615,22 +626,6 @@ static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection
 
     buffer = uv_buf_init((char*)connection->response_storage, (unsigned int)bytes.length);
     connection->platform->write.data = connection->platform;
-    connection->platform->writing = true;
-    connection->write_started = true;
-    connection->response_length = bytes.length;
-    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
-    if (uv_write(&connection->platform->write, (uv_stream_t*)&connection->platform->handle, &buffer,
-                 1U, sl_http_transport_write_cb) != 0)
-    {
-        connection->platform->writing = false;
-        return sl_http_transport_connection_diag(
-            connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
-            sl_http_transport_literal("HTTP transport response write failed to start",
-                                      sizeof("HTTP transport response write failed to start") - 1U),
-            sl_http_transport_literal("socket details stay inside the platform boundary",
-                                      sizeof("socket details stay inside the platform boundary") -
-                                          1U));
-    }
     {
         SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
         SlStatus timer_status =
@@ -639,16 +634,32 @@ static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection
                                           server == NULL ? 0U : server->config.write_timeout_ms,
                                           sl_http_transport_write_timeout_cb);
         if (!sl_status_is_ok(timer_status)) {
-            (void)sl_http_transport_connection_diag(
+            return sl_http_transport_connection_diag(
                 connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, sl_status_code(timer_status),
                 sl_http_transport_literal("HTTP transport write timeout could not start",
                                           sizeof("HTTP transport write timeout could not start") -
                                               1U),
-                sl_http_transport_literal("the connection will be closed",
-                                          sizeof("the connection will be closed") - 1U));
-            (void)sl_http_transport_connection_close(connection, NULL);
-            return timer_status;
+                sl_http_transport_literal("the response write was not queued",
+                                          sizeof("the response write was not queued") - 1U));
         }
+    }
+    connection->platform->writing = true;
+    connection->write_started = true;
+    connection->response_length = bytes.length;
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
+    if (uv_write(&connection->platform->write, (uv_stream_t*)&connection->platform->handle, &buffer,
+                 1U, sl_http_transport_write_cb) != 0)
+    {
+        connection->platform->writing = false;
+        sl_http_transport_stop_timer(&connection->platform->write_timer,
+                                     &connection->platform->write_timer_initialized);
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP transport response write failed to start",
+                                      sizeof("HTTP transport response write failed to start") - 1U),
+            sl_http_transport_literal("socket details stay inside the platform boundary",
+                                      sizeof("socket details stay inside the platform boundary") -
+                                          1U));
     }
     return sl_status_ok();
 }
@@ -1915,11 +1926,22 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
         (void)uv_read_stop((uv_stream_t*)&connection->platform->handle);
         connection->platform->reading = false;
     }
-    sl_http_transport_close_connection_timers(connection->platform);
     if (connection->platform != NULL && connection->platform->writing) {
+        sl_http_transport_close_timer(&connection->platform->header_timer,
+                                      &connection->platform->header_timer_initialized);
+        sl_http_transport_close_timer(&connection->platform->body_timer,
+                                      &connection->platform->body_timer_initialized);
+        sl_http_transport_close_timer(&connection->platform->request_timer,
+                                      &connection->platform->request_timer_initialized);
+        if (connection->request_started &&
+            !sl_http_transport_request_terminal(connection->request.state))
+        {
+            (void)sl_http_request_shutdown(&connection->request, NULL);
+        }
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING;
         return sl_status_ok();
     }
+    sl_http_transport_close_connection_timers(connection->platform);
     if (connection->body_reader_started && !connection->body_reader_finished) {
         (void)sl_http_request_body_reader_close(&connection->body_reader, NULL);
     }

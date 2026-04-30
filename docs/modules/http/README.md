@@ -42,7 +42,7 @@ closes safely, header/body/total-request/write timers transition to terminal cle
 timeout can write deterministic `408 Request Timeout` when the socket is still writable,
 server stop rejects new accepted work and immediate-cancels/drain-lite closes active
 connections, and late callbacks are cleanup-only. Localhost full smoke/conformance remains
-#417; keep-alive remains #418. This is not V8 transport conformance, benchmark evidence,
+issue #417; keep-alive remains #418. This is not V8 transport conformance, benchmark evidence,
 production graceful-drain evidence, or production-edge HTTP evidence.
 There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser
 API, middleware, cookies/sessions, static file server, compression, multipart upload,

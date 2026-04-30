@@ -1147,6 +1147,56 @@ static int test_header_and_body_timeout_write_408_or_close(void)
     return 0;
 }
 
+static int test_shutdown_during_response_write_is_cleanup_only(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    dispatch.status_code = SL_STATUS_OK;
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("ok\n"));
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    config.write_timeout_ms = 1000U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0], bytes_from_cstr("GET /write HTTP/1.1\r\n\r\n"), &diag),
+            SL_STATUS_OK) != 0 ||
+        server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE ||
+        !server.connections[0].write_started || server.connections[0].write_completed ||
+        server.backend.active_requests != 1U)
+    {
+        stop_one_connection(&server, &client);
+        return 140;
+    }
+
+    if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_state(&server) != SL_HTTP_TRANSPORT_SERVER_STATE_STOPPED ||
+        sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U ||
+        server.connections[0].request.state != SL_HTTP_REQUEST_STATE_CLOSED ||
+        !server.connections[0].write_completed)
+    {
+        close_client(&client);
+        return 141;
+    }
+
+    close_client(&client);
+    return expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK);
+}
+
 int main(void)
 {
     int result = test_config_validation_and_lifecycle();
@@ -1206,5 +1256,9 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_header_and_body_timeout_write_408_or_close();
+    result = test_header_and_body_timeout_write_408_or_close();
+    if (result != 0) {
+        return result;
+    }
+    return test_shutdown_during_response_write_is_cleanup_only();
 }
