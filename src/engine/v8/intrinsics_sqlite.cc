@@ -532,6 +532,14 @@ bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
     return true;
 }
 
+bool sqlite_v8_prepare_params(v8::Isolate* isolate, v8::Local<v8::Context> context, SlArena* arena,
+                              const v8::FunctionCallbackInfo<v8::Value>& args,
+                              std::vector<SlSqliteParam>* out)
+{
+    return sqlite_v8_convert_params(isolate, context, arena,
+                                    args.Length() == 3 ? args[2] : v8::Undefined(isolate), out);
+}
+
 bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
                         v8::Local<v8::Object> row, SlStr column_name, const SlSqliteValue* value)
 {
@@ -795,9 +803,7 @@ void sqlite_v8_exec_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    if (!sqlite_v8_convert_params(isolate, context, &arena,
-                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate), &params))
-    {
+    if (!sqlite_v8_prepare_params(isolate, context, &arena, args, &params)) {
         return;
     }
 
@@ -863,9 +869,7 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    if (!sqlite_v8_convert_params(isolate, context, &arena,
-                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate), &params))
-    {
+    if (!sqlite_v8_prepare_params(isolate, context, &arena, args, &params)) {
         return;
     }
 
@@ -926,9 +930,7 @@ void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
         return;
     }
 
-    if (!sqlite_v8_convert_params(isolate, context, &arena,
-                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate), &params))
-    {
+    if (!sqlite_v8_prepare_params(isolate, context, &arena, args, &params)) {
         return;
     }
 
