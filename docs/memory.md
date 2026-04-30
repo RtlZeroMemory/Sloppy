@@ -55,10 +55,10 @@ Allocator modules, a standalone heap-owned `SlBuf`, and remaining hot-path adopt
 deferred. ENGINE-21.D defines the narrow V8/native and SQLite/native string/blob interop
 helper policy. ENGINE-22.D adopts those helpers in provider-neutral V8 bridge internals,
 HTTP request context materialization, `Results.*` descriptor conversion, and exception
-strings. ENGINE-22.F removes a remaining non-SQLite capability diagnostic hint buffer,
-keeps OpenAPI path skeleton normalization on the bounded string builder, and adds a
-low-capacity denial-hint regression guard. SQLite result/parameter bridge adoption remains
-a separate ENGINE-22.E task.
+strings. ENGINE-22.E adopts SQLite result/parameter ownership across the native provider
+and V8 SQLite bridge. ENGINE-22.F removes a remaining non-SQLite capability diagnostic
+hint buffer, keeps OpenAPI path skeleton normalization on the bounded string builder, and
+adds a low-capacity denial-hint regression guard.
 
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 
@@ -70,9 +70,9 @@ ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
   adoption is implemented through ENGINE-22.A for current HTTP hot paths; Plan/artifact
   loader and stable parsed-Plan metadata adoption are implemented through ENGINE-22.C for
   the current `sloppy run --artifacts` path; provider-neutral V8 bridge string conversion
-  adoption is implemented through ENGINE-22.D. SQLite row/result/parameter conversion,
-  remaining diagnostics/source-frame expansion, broader CLI output, and
-  conformance/benchmark guards continue as later ENGINE-22 tasks.
+  adoption is implemented through ENGINE-22.D; SQLite row/result/parameter conversion is
+  implemented through ENGINE-22.E. Remaining diagnostics/source-frame expansion, broader
+  CLI output, and conformance/benchmark guards continue as later ENGINE-22 tasks.
 
 The current source audit is `docs/project/memory-string-current-state-audit.md`. The
 intended primitive architecture is

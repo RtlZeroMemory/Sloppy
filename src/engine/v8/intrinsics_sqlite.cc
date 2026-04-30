@@ -444,19 +444,17 @@ SqliteV8ConnectionResource* sqlite_v8_lookup_connection(v8::Isolate* isolate,
     return static_cast<SqliteV8ConnectionResource*>(ptr);
 }
 
-bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                              v8::Local<v8::Value> value, std::vector<std::string>* text_storage,
-                              std::vector<SlSqliteParam>* out)
+bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context, SlArena* arena,
+                              v8::Local<v8::Value> value, std::vector<SlSqliteParam>* out)
 {
     v8::Local<v8::Array> array;
     uint32_t length = 0U;
 
-    if (out == nullptr || text_storage == nullptr) {
+    if (out == nullptr || arena == nullptr) {
         return false;
     }
 
     out->clear();
-    text_storage->clear();
 
     if (value->IsUndefined() || value->IsNull()) {
         return true;
@@ -470,7 +468,6 @@ bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
     array = value.As<v8::Array>();
     length = array->Length();
     out->reserve(length);
-    text_storage->reserve(length);
 
     for (uint32_t index = 0U; index < length; index += 1U) {
         v8::Local<v8::Value> item;
@@ -506,14 +503,18 @@ bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
             }
         }
         else if (item->IsString()) {
-            std::string text;
-            if (!sqlite_v8_value_to_std_string(isolate, item, &text)) {
+            SlStr text = {};
+            SlStatus status = sl_v8_string_from_value_copy_to_arena(isolate, arena, item, &text);
+            if (!sl_status_is_ok(status)) {
+                sqlite_v8_throw_error(isolate, "sqlite bridge could not copy parameter text");
                 return false;
             }
-            text_storage->push_back(std::move(text));
-            const std::string& stored = text_storage->back();
-            param.kind = SL_SQLITE_PARAM_TEXT;
-            param.value.text = sl_str_from_parts(stored.data(), stored.size());
+            status = sl_sqlite_param_copy_text_to_arena(arena, text, &param);
+            if (!sl_status_is_ok(status)) {
+                sqlite_v8_throw_error(isolate,
+                                      "sqlite bridge could not make an owned parameter value");
+                return false;
+            }
         }
         else {
             sqlite_v8_throw_type_error(
@@ -768,7 +769,6 @@ void sqlite_v8_exec_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     std::string sql;
-    std::vector<std::string> text_storage;
     std::vector<SlSqliteParam> params;
     SlSqliteExecResult result = {};
     SqliteV8ConnectionResource* resource = nullptr;
@@ -783,16 +783,18 @@ void sqlite_v8_exec_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
 
     resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
-    if (resource == nullptr ||
-        !sqlite_v8_convert_params(isolate, context,
-                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate),
-                                  &text_storage, &params))
-    {
+    if (resource == nullptr) {
         return;
     }
 
     if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
         sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_convert_params(isolate, context, &arena,
+                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate), &params))
+    {
         return;
     }
 
@@ -834,7 +836,6 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     std::string sql;
-    std::vector<std::string> text_storage;
     std::vector<SlSqliteParam> params;
     SlSqliteResult result = {};
     SqliteV8ConnectionResource* resource = nullptr;
@@ -850,16 +851,18 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
 
     resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
-    if (resource == nullptr ||
-        !sqlite_v8_convert_params(isolate, context,
-                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate),
-                                  &text_storage, &params))
-    {
+    if (resource == nullptr) {
         return;
     }
 
     if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
         sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_convert_params(isolate, context, &arena,
+                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate), &params))
+    {
         return;
     }
 
@@ -896,7 +899,6 @@ void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     std::string sql;
-    std::vector<std::string> text_storage;
     std::vector<SlSqliteParam> params;
     SlSqliteQueryOneResult result = {};
     SqliteV8ConnectionResource* resource = nullptr;
@@ -912,16 +914,18 @@ void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     }
 
     resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
-    if (resource == nullptr ||
-        !sqlite_v8_convert_params(isolate, context,
-                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate),
-                                  &text_storage, &params))
-    {
+    if (resource == nullptr) {
         return;
     }
 
     if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
         sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_convert_params(isolate, context, &arena,
+                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate), &params))
+    {
         return;
     }
 

@@ -64,11 +64,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   covers the current complete-buffer HTTP parser/body/response/route hot paths, and
   ENGINE-22.C covers the current Plan parser, `sloppy run --artifacts` bundle/source-map
   loader path, and stable parsed-Plan metadata interning. ENGINE-22.D covers
-  provider-neutral V8 bridge string adoption. ENGINE-22.F covers the non-SQLite cleanup
-  pass for capability denial hint construction, OpenAPI path skeleton normalization, and
-  the low-capacity denial-hint regression guard. Backend ownership, SQLite
-  result/parameter adoption, CLI-wide output unification, broader allocation-aware
-  conformance coverage, and benchmark methodology gates remain open.
+  provider-neutral V8 bridge string adoption. ENGINE-22.E covers SQLite result/parameter
+  ownership adoption for the current native provider and V8 bridge. ENGINE-22.F covers the
+  non-SQLite cleanup pass for capability denial hint construction, OpenAPI path skeleton
+  normalization, and the low-capacity denial-hint regression guard. Backend ownership,
+  remaining CLI output, and allocation-aware conformance/benchmark guards remain open.
 - SQLite end-to-end: public JS handler path through native provider, capability enforcement,
   cancellation-aware operation boundaries, app/request ownership, transactions/prepared
   statement decision, and executable users API conformance.
