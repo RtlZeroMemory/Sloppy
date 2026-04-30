@@ -29,11 +29,13 @@ stops the backend. Dispose stops as needed and then disposes backend state.
 
 ## Config
 
-Omitted config uses `127.0.0.1`, port `5173`, default backend connection/request caps, and
-a bounded backlog, and bounded per-connection response storage. Tests may pass port `0`
+Omitted config uses `127.0.0.1`, port `5173`, default backend connection/request caps, a
+bounded backlog, bounded per-connection response storage, and bounded transport timers for
+header read, body read, total request, and response write phases. Tests may pass port `0`
 for an OS-selected localhost port and read it through `sl_http_transport_server_bound_port`.
 Invalid host/address, port above `65535`, zero connection/request/response capacity, and
-invalid backlog fail before serving work.
+invalid backlog fail before serving work. Timer values of zero use the bounded defaults;
+there is no public idle-timeout or production tuning surface yet.
 
 These are foundation defaults, not production-edge defaults.
 
@@ -89,13 +91,26 @@ through the reusable transport remains #417; this slice proves the transport dis
 lifecycle with native/fake dispatch callbacks and the existing response serializer without
 claiming V8 transport success.
 
-Connections can be closed directly, by server stop, by client disconnect, by read/parse/body
-failure, dispatch failure, write completion, write failure, or dispose. Cleanup stops reads
-before closing the handle, preserves the response buffer until the libuv write callback,
-closes any unfinished body reader, closes the request lifecycle, and releases backend
-connection/request admission exactly once. A disconnect while reading the head or body
-produces a deterministic connection-closed diagnostic and does not enter V8. No V8 work
-runs from the write callback.
+ENGINE-24.E adds the transport terminal-state layer. Connections can be closed directly, by
+server stop, by client disconnect, by read/parse/body failure, dispatch failure, timeout,
+write completion, write failure, or dispose. Cleanup stops reads and timers before closing
+the handle, preserves the response buffer until the libuv write callback, closes any
+unfinished body reader, closes/cancels/times out the request lifecycle when one exists, and
+releases backend connection/request admission exactly once. A disconnect while reading the
+head or body produces a deterministic connection-closed diagnostic, cancels any active
+request, closes the connection, and does not write a handler-failure response. Timeout
+callbacks are owner-loop libuv timers; header/body/total-request timeouts write a
+deterministic `408 Request Timeout` response when the connection is still writable,
+otherwise they close. Write timeout/failure marks the request terminal and treats later
+write completion as cleanup-only. No V8 work runs from read, timer, or write callbacks.
+
+Server shutdown is an immediate-cancel/drain-lite MVP policy. `stop` stops accepting,
+rejects any accepted-after-shutdown work through the overflow close path, moves the backend
+to stopping, cancels active request work through the existing shutdown token path when a
+request lifecycle exists, closes idle/reading/dispatching/writing connections, drains close
+callbacks, and disposes listener/server state exactly once. It is not a production graceful
+drain implementation: there is no configurable drain window, half-close policy, idle
+keep-alive pool, signal integration, or production edge claim.
 
 ## Diagnostics
 
@@ -106,6 +121,7 @@ Transport diagnostics use stable Sloppy diagnostic codes:
 - `SLOPPY_E_HTTP_LISTEN_FAILED`;
 - `SLOPPY_E_HTTP_ACCEPT_FAILED`;
 - `SLOPPY_E_HTTP_CONNECTION_CLOSED` for read errors or client disconnect;
+- `SLOPPY_E_HTTP_REQUEST_TIMEOUT` for header, body, and total-request transport timeouts;
 - `SLOPPY_E_HTTP_HEADER_BYTES_LIMIT` for oversized accumulated request heads;
 - `SLOPPY_E_INVALID_HTTP_REQUEST` for malformed heads or invalid Content-Length;
 - `SLOPPY_E_HTTP_UNSUPPORTED_BODY` for Transfer-Encoding/chunked;
@@ -115,7 +131,8 @@ Transport diagnostics use stable Sloppy diagnostic codes:
 - `SLOPPY_E_HTTP_DISPATCH_FAILED` for missing/invalid transport dispatch wiring;
 - `SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED` for response writer/buffer-capacity
   failures;
-- `SLOPPY_E_HTTP_WRITE_FAILED` for write-start or write-completion failures;
+- `SLOPPY_E_HTTP_WRITE_FAILED` for write-start, write-timeout, or write-completion
+  failures;
 - `SLOPPY_E_HTTP_CLOSE_FAILED` is reserved for detectable close-after-write lifecycle
   failures;
 - existing `SLOPPY_E_HTTP_OVERLOAD` for backend admission pressure;

@@ -36,9 +36,14 @@ the accepted-connection read loop and accumulates real TCP chunks into one bound
 request-ready state using the existing ENGINE-13 parser and body policy. ENGINE-24.D
 consumes request-ready state through a narrow dispatch callback, serializes
 `SlHttpResponse` values with the existing response writer, writes bytes back through libuv,
-and closes the TCP connection after the write. Timeout/shutdown completion remains #416;
-localhost full smoke/conformance remains #417; keep-alive remains #418. This is not V8
-transport conformance, benchmark evidence, or production-edge HTTP evidence.
+and closes the TCP connection after the write. ENGINE-24.E adds transport cancellation,
+timeout, and shutdown semantics: client disconnect during head/body read cancels and
+closes safely, header/body/total-request/write timers transition to terminal cleanup,
+timeout can write deterministic `408 Request Timeout` when the socket is still writable,
+server stop rejects new accepted work and immediate-cancels/drain-lite closes active
+connections, and late callbacks are cleanup-only. Localhost full smoke/conformance remains
+#417; keep-alive remains #418. This is not V8 transport conformance, benchmark evidence,
+production graceful-drain evidence, or production-edge HTTP evidence.
 There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser
 API, middleware, cookies/sessions, static file server, compression, multipart upload,
 streaming responses, public TypeScript `app.run`, or broad response framework.
@@ -91,6 +96,11 @@ Implemented now:
   unsupported media before dispatch, observe cancellation/deadline/shutdown before and
   during body reads, reject new request work after shutdown starts, and cancel active
   request work through deterministic cleanup-once terminal paths.
+- ENGINE-24.E transport terminal model: libuv timers cover header read, body read, total
+  request, and response write phases; disconnects during read cancel/close without entering
+  V8; shutdown stops accepting and closes active transport connections using the backend
+  shutdown token path when a request lifecycle exists. The policy is immediate-cancel/
+  drain-lite, not production graceful drain.
 - ENGINE-13.F stress/conformance smoke evidence: bounded repeated valid requests, repeated
   malformed requests, repeated parser-limit failures, repeated body/media policy failures,
   overload rejection without queue growth, shutdown rejection/cancellation cleanup, and
@@ -369,8 +379,8 @@ Transport listener storage is arena-owned for the server lifetime. `sl_http_tran
 copies the bind host as a NUL-terminated boundary adapter for libuv and allocates fixed
 listener/connection storage from the caller arena. Accepted connection placeholders own one
 backend admission slot until explicitly closed or until server stop/dispose closes them.
-The platform TCP handles are independently closed by the transport layer; JavaScript never
-receives raw pointers or native handles.
+Per-connection libuv TCP/timer handles are independently closed by the transport layer;
+JavaScript never receives raw pointers or native handles.
 
 Each transport connection owns fixed server-arena storage for read chunks, request-byte
 accumulation, response bytes, and a request arena. The accumulation buffer is driven
@@ -380,6 +390,10 @@ or the connection is closed. ENGINE-24.D writes response bytes from connection-o
 storage that remains valid until the libuv write callback. One request is served per
 connection; extra bytes after the first complete request are treated as unsupported
 pipelining.
+
+Transport timeout responses are serialized through the existing `SlHttpResponse` writer and
+connection-owned response buffer. Timeout diagnostics do not expose socket internals. If a
+timeout fires after the connection is already terminal, the callback is cleanup-only.
 
 HTTP dispatch tables borrow route bindings, parsed route patterns, plans, and engine
 handles for the duration of the call only. `sl_http_dispatch_request_head` does not retain
@@ -470,6 +484,16 @@ ENGINE-24.D adds transport dispatch/write diagnostics:
 - response serialization or response-buffer-capacity failure;
 - response write-start or write-completion failure;
 - reserved close-after-write lifecycle failure if that becomes detectable.
+
+ENGINE-24.E adds transport cancellation/timeout/shutdown diagnostics:
+
+- client disconnect during head/body read uses `SLOPPY_E_HTTP_CONNECTION_CLOSED`;
+- header, body, and total request timeouts use `SLOPPY_E_HTTP_REQUEST_TIMEOUT` and return
+  `408` when safe;
+- write timeout/failure uses `SLOPPY_E_HTTP_WRITE_FAILED`;
+- shutdown rejection/cancellation uses `SLOPPY_E_HTTP_SHUTDOWN` through the backend
+  lifecycle where a request exists;
+- invalid lifecycle transitions remain `SLOPPY_E_APP_LIFECYCLE`.
 
 ## Tests
 

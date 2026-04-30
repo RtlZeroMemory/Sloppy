@@ -16,10 +16,18 @@ struct SlHttpPlatformConnection
 {
     uv_tcp_t handle;
     uv_write_t write;
+    uv_timer_t header_timer;
+    uv_timer_t body_timer;
+    uv_timer_t request_timer;
+    uv_timer_t write_timer;
     SlHttpTransportConnection* owner;
     unsigned char* read_buffer;
     size_t read_buffer_size;
     bool initialized;
+    bool header_timer_initialized;
+    bool body_timer_initialized;
+    bool request_timer_initialized;
+    bool write_timer_initialized;
     bool closing;
     bool reading;
     bool writing;
@@ -133,6 +141,10 @@ static SlHttpTransportConfig sl_http_transport_config_defaults(void)
     config.request_arena_bytes = SL_HTTP_TRANSPORT_DEFAULT_REQUEST_ARENA_BYTES;
     config.read_chunk_bytes = SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES;
     config.max_response_bytes = SL_HTTP_TRANSPORT_DEFAULT_RESPONSE_BYTES;
+    config.header_read_timeout_ms = SL_HTTP_TRANSPORT_DEFAULT_HEADER_READ_TIMEOUT_MS;
+    config.body_read_timeout_ms = SL_HTTP_TRANSPORT_DEFAULT_BODY_READ_TIMEOUT_MS;
+    config.request_timeout_ms = SL_HTTP_TRANSPORT_DEFAULT_REQUEST_TIMEOUT_MS;
+    config.write_timeout_ms = SL_HTTP_TRANSPORT_DEFAULT_WRITE_TIMEOUT_MS;
     config.connection_capacity = SL_HTTP_BACKEND_DEFAULT_MAX_CONNECTIONS;
     config.backlog = SL_HTTP_TRANSPORT_DEFAULT_BACKLOG;
     return config;
@@ -179,6 +191,16 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
             input->read_chunk_bytes == 0U ? config.read_chunk_bytes : input->read_chunk_bytes;
         config.max_response_bytes =
             input->max_response_bytes == 0U ? config.max_response_bytes : input->max_response_bytes;
+        config.header_read_timeout_ms = input->header_read_timeout_ms == 0U
+                                            ? config.header_read_timeout_ms
+                                            : input->header_read_timeout_ms;
+        config.body_read_timeout_ms = input->body_read_timeout_ms == 0U
+                                          ? config.body_read_timeout_ms
+                                          : input->body_read_timeout_ms;
+        config.request_timeout_ms =
+            input->request_timeout_ms == 0U ? config.request_timeout_ms : input->request_timeout_ms;
+        config.write_timeout_ms =
+            input->write_timeout_ms == 0U ? config.write_timeout_ms : input->write_timeout_ms;
         config.connection_capacity = input->connection_capacity;
         config.backlog = input->backlog;
         config.on_request_ready = input->on_request_ready;
@@ -300,6 +322,8 @@ static SlStr sl_http_transport_body_for_status(uint16_t status)
     case 405U:
         return sl_http_transport_literal("Method Not Allowed\n",
                                          sizeof("Method Not Allowed\n") - 1U);
+    case 408U:
+        return sl_http_transport_literal("Request Timeout\n", sizeof("Request Timeout\n") - 1U);
     case 413U:
         return sl_http_transport_literal("Payload Too Large\n", sizeof("Payload Too Large\n") - 1U);
     case 415U:
@@ -407,6 +431,14 @@ static bool sl_http_transport_has_header(const SlHttpRequestHead* head, SlStr na
     return sl_http_transport_header_value(head, name, &value);
 }
 
+static SlHttpTransportServer*
+sl_http_transport_connection_server(const SlHttpTransportConnection* connection);
+static SlStatus sl_http_transport_start_timer(SlHttpPlatformConnection* platform, uv_timer_t* timer,
+                                              bool* initialized, uint64_t timeout_ms,
+                                              uv_timer_cb callback);
+static void sl_http_transport_stop_timer(uv_timer_t* timer, bool* initialized);
+static void sl_http_transport_write_timeout_cb(uv_timer_t* timer);
+
 static void sl_http_transport_write_cb(uv_write_t* request, int status)
 {
     SlHttpPlatformConnection* platform =
@@ -416,6 +448,9 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
 
     if (platform != NULL) {
         platform->writing = false;
+        sl_http_transport_stop_timer(&platform->write_timer, &platform->write_timer_initialized);
+        sl_http_transport_stop_timer(&platform->request_timer,
+                                     &platform->request_timer_initialized);
     }
     if (connection == NULL) {
         return;
@@ -519,6 +554,24 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
                                       sizeof("HTTP transport response write failed to start") -
                                           1U));
     }
+    {
+        SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+        status =
+            sl_http_transport_start_timer(connection->platform, &connection->platform->write_timer,
+                                          &connection->platform->write_timer_initialized,
+                                          server == NULL ? 0U : server->config.write_timeout_ms,
+                                          sl_http_transport_write_timeout_cb);
+    }
+    if (!sl_status_is_ok(status)) {
+        (void)sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, sl_status_code(status),
+            sl_http_transport_literal("HTTP transport write timeout could not start",
+                                      sizeof("HTTP transport write timeout could not start") - 1U),
+            sl_http_transport_literal("the connection will be closed",
+                                      sizeof("the connection will be closed") - 1U));
+        (void)sl_http_transport_connection_close(connection, NULL);
+        return status;
+    }
 
     return sl_status_ok();
 }
@@ -578,7 +631,210 @@ static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection
                                       sizeof("socket details stay inside the platform boundary") -
                                           1U));
     }
+    {
+        SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+        SlStatus timer_status =
+            sl_http_transport_start_timer(connection->platform, &connection->platform->write_timer,
+                                          &connection->platform->write_timer_initialized,
+                                          server == NULL ? 0U : server->config.write_timeout_ms,
+                                          sl_http_transport_write_timeout_cb);
+        if (!sl_status_is_ok(timer_status)) {
+            (void)sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, sl_status_code(timer_status),
+                sl_http_transport_literal("HTTP transport write timeout could not start",
+                                          sizeof("HTTP transport write timeout could not start") -
+                                              1U),
+                sl_http_transport_literal("the connection will be closed",
+                                          sizeof("the connection will be closed") - 1U));
+            (void)sl_http_transport_connection_close(connection, NULL);
+            return timer_status;
+        }
+    }
     return sl_status_ok();
+}
+
+static void sl_http_transport_timer_close_cb(uv_handle_t* handle)
+{
+    (void)handle;
+}
+
+static void sl_http_transport_stop_timer(uv_timer_t* timer, bool* initialized)
+{
+    if (timer == NULL || initialized == NULL || !*initialized) {
+        return;
+    }
+    (void)uv_timer_stop(timer);
+}
+
+static void sl_http_transport_close_timer(uv_timer_t* timer, bool* initialized)
+{
+    if (timer == NULL || initialized == NULL || !*initialized) {
+        return;
+    }
+    (void)uv_timer_stop(timer);
+    if (!uv_is_closing((uv_handle_t*)timer)) {
+        uv_close((uv_handle_t*)timer, sl_http_transport_timer_close_cb);
+    }
+    *initialized = false;
+}
+
+static void sl_http_transport_stop_connection_timers(SlHttpPlatformConnection* platform)
+{
+    if (platform == NULL) {
+        return;
+    }
+    sl_http_transport_stop_timer(&platform->header_timer, &platform->header_timer_initialized);
+    sl_http_transport_stop_timer(&platform->body_timer, &platform->body_timer_initialized);
+    sl_http_transport_stop_timer(&platform->request_timer, &platform->request_timer_initialized);
+    sl_http_transport_stop_timer(&platform->write_timer, &platform->write_timer_initialized);
+}
+
+static void sl_http_transport_close_connection_timers(SlHttpPlatformConnection* platform)
+{
+    if (platform == NULL) {
+        return;
+    }
+    sl_http_transport_close_timer(&platform->header_timer, &platform->header_timer_initialized);
+    sl_http_transport_close_timer(&platform->body_timer, &platform->body_timer_initialized);
+    sl_http_transport_close_timer(&platform->request_timer, &platform->request_timer_initialized);
+    sl_http_transport_close_timer(&platform->write_timer, &platform->write_timer_initialized);
+}
+
+static SlStatus sl_http_transport_start_timer(SlHttpPlatformConnection* platform, uv_timer_t* timer,
+                                              bool* initialized, uint64_t timeout_ms,
+                                              uv_timer_cb callback)
+{
+    if (platform == NULL || timer == NULL || initialized == NULL || callback == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!*initialized) {
+        int rc = uv_timer_init(platform->handle.loop, timer);
+        if (rc != 0) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        timer->data = platform;
+        *initialized = true;
+    }
+    (void)uv_timer_stop(timer);
+    if (timeout_ms == 0U) {
+        return sl_status_ok();
+    }
+    if (uv_timer_start(timer, callback, timeout_ms, 0U) != 0) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    return sl_status_ok();
+}
+
+static bool sl_http_transport_connection_terminal(const SlHttpTransportConnection* connection)
+{
+    return connection == NULL || connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING ||
+           connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED ||
+           connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
+}
+
+static SlHttpTransportServer*
+sl_http_transport_connection_server(const SlHttpTransportConnection* connection)
+{
+    if (connection == NULL || connection->core.backend == NULL ||
+        connection->core.backend->listener.platform == NULL)
+    {
+        return NULL;
+    }
+    return ((SlHttpPlatformListener*)connection->core.backend->listener.platform)->server;
+}
+
+static void sl_http_transport_timeout_connection(SlHttpTransportConnection* connection, SlStr phase)
+{
+    SlDiag diag = {0};
+    SlDiag write_diag = {0};
+
+    if (sl_http_transport_connection_terminal(connection)) {
+        return;
+    }
+    (void)sl_http_transport_connection_diag(
+        connection, &diag, SL_DIAG_HTTP_REQUEST_TIMEOUT, SL_STATUS_DEADLINE_EXCEEDED,
+        sl_http_transport_literal("HTTP transport request timed out",
+                                  sizeof("HTTP transport request timed out") - 1U),
+        phase);
+    if (connection->platform != NULL && connection->platform->reading) {
+        (void)uv_read_stop((uv_stream_t*)&connection->platform->handle);
+        connection->platform->reading = false;
+    }
+    if (connection->request_started && connection->request.state != SL_HTTP_REQUEST_STATE_CLOSED &&
+        connection->request.state != SL_HTTP_REQUEST_STATE_COMPLETED &&
+        connection->request.state != SL_HTTP_REQUEST_STATE_CANCELLED &&
+        connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT &&
+        connection->request.state != SL_HTTP_REQUEST_STATE_FAILED)
+    {
+        (void)sl_http_request_timeout(&connection->request, phase, NULL);
+    }
+    sl_http_transport_stop_connection_timers(connection->platform);
+    if (connection->platform != NULL && connection->platform->initialized &&
+        !connection->platform->closing && !connection->platform->writing &&
+        connection->response_storage != NULL && connection->response_storage_size != 0U)
+    {
+        if (sl_status_is_ok(sl_http_transport_write_error_response(connection, 408U, &write_diag)))
+        {
+            return;
+        }
+    }
+    (void)sl_http_transport_connection_close(connection, NULL);
+}
+
+static void sl_http_transport_header_timeout_cb(uv_timer_t* timer)
+{
+    SlHttpPlatformConnection* platform =
+        timer == NULL ? NULL : (SlHttpPlatformConnection*)timer->data;
+    sl_http_transport_timeout_connection(
+        platform == NULL ? NULL : platform->owner,
+        sl_http_transport_literal("HTTP transport header read timeout",
+                                  sizeof("HTTP transport header read timeout") - 1U));
+}
+
+static void sl_http_transport_body_timeout_cb(uv_timer_t* timer)
+{
+    SlHttpPlatformConnection* platform =
+        timer == NULL ? NULL : (SlHttpPlatformConnection*)timer->data;
+    sl_http_transport_timeout_connection(
+        platform == NULL ? NULL : platform->owner,
+        sl_http_transport_literal("HTTP transport body read timeout",
+                                  sizeof("HTTP transport body read timeout") - 1U));
+}
+
+static void sl_http_transport_request_timeout_cb(uv_timer_t* timer)
+{
+    SlHttpPlatformConnection* platform =
+        timer == NULL ? NULL : (SlHttpPlatformConnection*)timer->data;
+    sl_http_transport_timeout_connection(
+        platform == NULL ? NULL : platform->owner,
+        sl_http_transport_literal("HTTP transport request timeout",
+                                  sizeof("HTTP transport request timeout") - 1U));
+}
+
+static void sl_http_transport_write_timeout_cb(uv_timer_t* timer)
+{
+    SlHttpPlatformConnection* platform =
+        timer == NULL ? NULL : (SlHttpPlatformConnection*)timer->data;
+    SlHttpTransportConnection* connection = platform == NULL ? NULL : platform->owner;
+    SlDiag diag = {0};
+
+    if (sl_http_transport_connection_terminal(connection)) {
+        return;
+    }
+    (void)sl_http_transport_connection_diag(
+        connection, &diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_DEADLINE_EXCEEDED,
+        sl_http_transport_literal("HTTP transport response write timed out",
+                                  sizeof("HTTP transport response write timed out") - 1U),
+        sl_http_transport_literal("late write completion is cleanup-only",
+                                  sizeof("late write completion is cleanup-only") - 1U));
+    if (connection->request_started) {
+        (void)sl_http_request_timeout(
+            &connection->request,
+            sl_http_transport_literal("HTTP transport write timeout",
+                                      sizeof("HTTP transport write timeout") - 1U),
+            NULL);
+    }
+    (void)sl_http_transport_connection_close(connection, NULL);
 }
 
 static bool sl_http_transport_parse_size_decimal(SlStr value, size_t* out)
@@ -943,6 +1199,8 @@ static SlStatus sl_http_transport_try_complete_request(SlHttpTransportConnection
                     "the transport rejects request heads above the configured cap",
                     sizeof("the transport rejects request heads above the configured cap") - 1U));
         }
+        sl_http_transport_stop_timer(&connection->platform->header_timer,
+                                     &connection->platform->header_timer_initialized);
     }
 
     if (sl_http_transport_head_header_value(
@@ -997,6 +1255,19 @@ static SlStatus sl_http_transport_try_complete_request(SlHttpTransportConnection
     }
     if (connection->accumulation_length < total_needed) {
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY;
+        status = sl_http_transport_start_timer(
+            connection->platform, &connection->platform->body_timer,
+            &connection->platform->body_timer_initialized, server->config.body_read_timeout_ms,
+            sl_http_transport_body_timeout_cb);
+        if (!sl_status_is_ok(status)) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_REQUEST_TIMEOUT, sl_status_code(status),
+                sl_http_transport_literal("HTTP transport body timeout could not start",
+                                          sizeof("HTTP transport body timeout could not start") -
+                                              1U),
+                sl_http_transport_literal("the connection will be closed",
+                                          sizeof("the connection will be closed") - 1U));
+        }
         return sl_status_ok();
     }
     if (connection->accumulation_length > total_needed) {
@@ -1011,6 +1282,8 @@ static SlStatus sl_http_transport_try_complete_request(SlHttpTransportConnection
                                           1U));
     }
 
+    sl_http_transport_stop_timer(&connection->platform->body_timer,
+                                 &connection->platform->body_timer_initialized);
     return sl_http_transport_parse_accumulated(connection, out_diag);
 }
 
@@ -1174,7 +1447,20 @@ static void sl_http_transport_on_read(uv_stream_t* stream, ssize_t nread, const 
             sl_http_transport_literal("request cleanup still runs after disconnect",
                                       sizeof("request cleanup still runs after disconnect") - 1U));
         (void)status;
-        sl_http_transport_fail_and_close(connection, &diag);
+        if (connection->request_started &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_CLOSED &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_COMPLETED &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_CANCELLED &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_FAILED)
+        {
+            (void)sl_http_request_cancel(
+                &connection->request, SL_CANCELLATION_REASON_CANCELLED,
+                sl_http_transport_literal("HTTP client disconnected",
+                                          sizeof("HTTP client disconnected") - 1U),
+                NULL);
+        }
+        (void)sl_http_transport_connection_close(connection, NULL);
         return;
     }
 
@@ -1191,6 +1477,8 @@ static void sl_http_transport_on_read(uv_stream_t* stream, ssize_t nread, const 
 static SlStatus sl_http_transport_start_read(SlHttpTransportConnection* connection,
                                              SlDiag* out_diag)
 {
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+    SlStatus status;
     int rc = 0;
 
     if (connection == NULL || connection->platform == NULL || !connection->platform->initialized) {
@@ -1215,6 +1503,34 @@ static SlStatus sl_http_transport_start_read(SlHttpTransportConnection* connecti
     }
     connection->platform->reading = true;
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_HEAD;
+    if (server != NULL) {
+        status = sl_http_transport_start_timer(
+            connection->platform, &connection->platform->header_timer,
+            &connection->platform->header_timer_initialized, server->config.header_read_timeout_ms,
+            sl_http_transport_header_timeout_cb);
+        if (!sl_status_is_ok(status)) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_REQUEST_TIMEOUT, sl_status_code(status),
+                sl_http_transport_literal("HTTP transport header timeout could not start",
+                                          sizeof("HTTP transport header timeout could not start") -
+                                              1U),
+                sl_http_transport_literal("the connection will be closed",
+                                          sizeof("the connection will be closed") - 1U));
+        }
+        status = sl_http_transport_start_timer(
+            connection->platform, &connection->platform->request_timer,
+            &connection->platform->request_timer_initialized, server->config.request_timeout_ms,
+            sl_http_transport_request_timeout_cb);
+        if (!sl_status_is_ok(status)) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_REQUEST_TIMEOUT, sl_status_code(status),
+                sl_http_transport_literal("HTTP transport request timeout could not start",
+                                          sizeof("HTTP transport request timeout could not start") -
+                                              1U),
+                sl_http_transport_literal("the connection will be closed",
+                                          sizeof("the connection will be closed") - 1U));
+        }
+    }
     return sl_status_ok();
 }
 
@@ -1235,6 +1551,15 @@ static void sl_http_transport_on_connection(uv_stream_t* listener, int status)
     }
     if (status < 0) {
         server->accept_failures += 1U;
+        return;
+    }
+    if (server->state == SL_HTTP_TRANSPORT_SERVER_STATE_STOPPING ||
+        server->state == SL_HTTP_TRANSPORT_SERVER_STATE_STOPPED ||
+        server->backend.state == SL_HTTP_BACKEND_STATE_STOPPING ||
+        server->backend.state == SL_HTTP_BACKEND_STATE_STOPPED)
+    {
+        server->rejected_connections += 1U;
+        sl_http_transport_reject_pending(listener, platform);
         return;
     }
 
@@ -1279,9 +1604,7 @@ static void sl_http_transport_on_connection(uv_stream_t* listener, int status)
     if (!sl_status_is_ok(sl_http_transport_start_read(connection, NULL))) {
         (void)sl_http_connection_fail(&connection->core, NULL);
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
-        connection->platform->closing = true;
-        uv_close((uv_handle_t*)&connection->platform->handle,
-                 sl_http_transport_connection_close_cb);
+        (void)sl_http_transport_connection_close(connection, NULL);
         server->accept_failures += 1U;
     }
 }
@@ -1337,6 +1660,9 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     backend_options.max_connections = server->config.max_connections;
     backend_options.max_active_requests = server->config.max_active_requests;
     backend_options.parse = server->config.parse;
+    backend_options.read_timeout_ms = server->config.body_read_timeout_ms;
+    backend_options.header_timeout_ms = server->config.header_read_timeout_ms;
+    backend_options.request_timeout_ms = server->config.request_timeout_ms;
     status = sl_http_backend_init(&server->backend, &backend_options, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -1589,6 +1915,7 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
         (void)uv_read_stop((uv_stream_t*)&connection->platform->handle);
         connection->platform->reading = false;
     }
+    sl_http_transport_close_connection_timers(connection->platform);
     if (connection->platform != NULL && connection->platform->writing) {
         connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING;
         return sl_status_ok();
@@ -1597,7 +1924,19 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
         (void)sl_http_request_body_reader_close(&connection->body_reader, NULL);
     }
     if (connection->request_started) {
-        (void)sl_http_request_close(&connection->request, NULL);
+        if (connection->core.backend != NULL &&
+            connection->core.backend->state == SL_HTTP_BACKEND_STATE_STOPPING &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_CLOSED &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_COMPLETED &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_CANCELLED &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT &&
+            connection->request.state != SL_HTTP_REQUEST_STATE_FAILED)
+        {
+            (void)sl_http_request_shutdown(&connection->request, NULL);
+        }
+        else {
+            (void)sl_http_request_close(&connection->request, NULL);
+        }
     }
     (void)sl_http_connection_close(&connection->core, out_diag);
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING;
@@ -1668,20 +2007,21 @@ SlStatus sl_http_transport_server_stop(SlHttpTransportServer* server, SlDiag* ou
         return sl_status_ok();
     }
     if (server->state != SL_HTTP_TRANSPORT_SERVER_STATE_LISTENING &&
+        server->state != SL_HTTP_TRANSPORT_SERVER_STATE_STOPPING &&
         server->state != SL_HTTP_TRANSPORT_SERVER_STATE_ERROR)
     {
         return sl_http_transport_invalid_state(out_diag);
     }
 
     server->state = SL_HTTP_TRANSPORT_SERVER_STATE_STOPPING;
-    for (size_t index = 0U; index < server->connection_capacity; index += 1U) {
-        (void)sl_http_transport_connection_close(&server->connections[index], NULL);
-    }
-
     if (server->backend.state == SL_HTTP_BACKEND_STATE_STARTED ||
         server->backend.state == SL_HTTP_BACKEND_STATE_STOPPING)
     {
         status = sl_http_backend_stop(&server->backend, out_diag);
+    }
+
+    for (size_t index = 0U; index < server->connection_capacity; index += 1U) {
+        (void)sl_http_transport_connection_close(&server->connections[index], NULL);
     }
 
     if (server->platform != NULL) {
