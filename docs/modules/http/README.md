@@ -50,6 +50,12 @@ policy is the intended ENGINE-24 MVP and that HTTP/1.1 keep-alive, pipelining, c
 bodies, and streaming are deferred to a future upgrade plan. This is not V8 transport
 conformance, benchmark evidence, production graceful-drain evidence, or production-edge
 HTTP evidence.
+ENGINE-17.E adds a V8-gated users API proof over `sloppy run --artifacts` and real
+localhost TCP requests for SQLite-backed GET/POST JSON handlers. It proves the current
+close-after-response localhost path can carry a small app through compiler artifacts,
+request parsing/body policy, V8 handler execution, SQLite calls, response serialization,
+and TCP response bytes. It does not add keep-alive, streaming, TLS, HTTP/2/3, WebSockets,
+middleware, benchmark evidence, or production-edge HTTP readiness.
 There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser
 API, middleware, cookies/sessions, static file server, compression, multipart upload,
 streaming responses, public TypeScript `app.run`, or broad response framework.
@@ -146,9 +152,9 @@ Future scope:
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
 
-The next real application proof is not a benchmark. It is an HTTP + SQLite users API path
-through ENGINE-17.E and the broader ENGINE-19 conformance matrix after SQLite runtime
-completion lands.
+The current real application proof is not a benchmark. ENGINE-17.E covers the HTTP +
+SQLite users API path as a V8-gated localhost transport test. The broader ENGINE-19
+conformance matrix remains future work after this runtime proof.
 
 EPIC-14 module routes are bootstrap `app.mapGet` registrations only. They do not connect
 module routes to the native HTTP parser, synthetic dispatch helper, route params, or

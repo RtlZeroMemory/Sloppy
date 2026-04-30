@@ -2,6 +2,8 @@
 
 Status: Bootstrap data/capabilities foundation, native SQLite/PostgreSQL/SQL Server
 providers, and a Plan/capability-wired V8-gated SQLite JavaScript bridge implemented.
+ENGINE-17.E adds a V8-gated, source-built SQLite users API example that runs over
+`sloppy run --artifacts` and real localhost TCP in the conformance lane.
 
 Purpose: document future data provider modules, query templates, transactions, and
 provider-specific limitations.
@@ -21,6 +23,8 @@ ENGINE-01 target contract:
   exists.
 - public prepared statement handles, ORM, migrations, query builders, PostgreSQL JavaScript
   bridge, and SQL Server JavaScript bridge remain deferred.
+- the users API proof is not a public alpha, production HTTP edge, benchmark, ORM,
+  migration, PostgreSQL bridge, or SQL Server bridge claim.
 
 Implemented bootstrap API example:
 

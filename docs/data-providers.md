@@ -60,6 +60,14 @@ JavaScript receives only an opaque slot/generation handle object wrapped by the 
 facade; it does not receive `sqlite3*`, `sqlite3_stmt*`, or any native pointer.
 Non-V8/bootstrap-only contexts still fail honestly with a bridge-unavailable error.
 
+ENGINE-17.E adds the first V8-gated users API runtime proof fixture at
+`examples/users-api-sqlite/`. The proof builds a source app with `sloppyc`, emits
+SQLite provider/capability metadata, runs `sloppy run --artifacts`, sends real localhost
+TCP HTTP requests, dispatches handlers in V8, calls the capability-gated SQLite bridge,
+serializes JSON responses, and verifies clean shutdown. The SQLite bridge remains
+synchronous in this proof; it is not async/offload, live PostgreSQL, live SQL Server,
+benchmark, ORM, migration, production HTTP edge, or public alpha evidence.
+
 EPIC-17 adds the second real provider boundary: native C PostgreSQL support backed by
 libpq from the repo-approved vcpkg manifest. The native provider opens connection strings,
 executes parameterized `$1` queries, materializes small result sets, supports explicit
@@ -129,7 +137,7 @@ policy. PostgreSQL/SQL Server JavaScript bridges remain deferred.
 
 | Provider | Native status | Default validation | Live validation | JS bridge status |
 | --- | --- | --- | --- | --- |
-| SQLite | Native C provider exists and is linked through the default build. V8-enabled runtime contexts install a JS bridge for open/exec/query/queryOne/transaction/close. | In-memory open/query/exec/transaction, resource-table, capability hook, and stdlib wrapper tests run in default CTest/Node gates. | No external service is required for current provider tests. V8 execution is a separate optional gate. | Implemented for V8-enabled SQLite only. The bridge requires Plan provider metadata and a capability registry, calls the database capability hook before open/read/write/transaction provider work, records resource access mode, and fails closed if the hook inputs are absent. |
+| SQLite | Native C provider exists and is linked through the default build. V8-enabled runtime contexts install a JS bridge for open/exec/query/queryOne/transaction/close. | In-memory open/query/exec/transaction, resource-table, capability hook, and stdlib wrapper tests run in default CTest/Node gates. | No external service is required for current provider tests. V8 execution and the users API localhost proof are separate optional gates. | Implemented for V8-enabled SQLite only. The bridge requires Plan provider metadata and a capability registry, calls the database capability hook before open/read/write/transaction provider work, records resource access mode, and fails closed if the hook inputs are absent. |
 | PostgreSQL | Native libpq provider boundary exists. | Non-live option, doctor, redaction, use-after-close, and lifecycle tests run in default CTest. | Opt-in `data.postgres.live_provider` requires `SLOPPY_POSTGRES_TEST_URL`; when unset, CTest reports it skipped. | Deferred; `data.postgres.open(...)` validates/redacts and then fails with bridge-unavailable. |
 | SQL Server | Native ODBC provider boundary exists when `SLOPPY_ENABLE_SQLSERVER` is enabled; otherwise stubs report unavailable. | Windows default tests cover ODBC-enabled non-live diagnostics; Linux/macOS defaults cover unavailable/stub behavior. | Opt-in `data.sqlserver.live_provider` requires `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`, an ODBC driver, and a reachable SQL Server; when unset, CTest reports it skipped. | Deferred; `data.sqlserver.open(...)` validates/redacts and then fails with bridge-unavailable. |
 
@@ -740,10 +748,9 @@ Bridge rules:
   create ad hoc handle maps and must not place provider lookup/conversion code in
   `engine_v8.cc`.
 
-ENGINE-17.A/C and ENGINE-17.B/D do not start the users API runtime proof. That executable
-route-level proof remains ENGINE-17.E after this SQLite capability/result/error policy
-slice. PostgreSQL and SQL Server JavaScript bridges remain deferred and must follow the
-same provider executor and resource-table rules when scoped.
+ENGINE-17.E adds the users API runtime proof for SQLite. PostgreSQL and SQL Server
+JavaScript bridges remain deferred and must follow the same provider executor and
+resource-table rules when scoped.
 
 ## Connection Pool Lifecycle
 

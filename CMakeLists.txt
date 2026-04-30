@@ -841,6 +841,9 @@ if(SLOPPY_ENABLE_TESTS)
             conformance.provider_capability.compile_artifacts provider-capability
             compiler/tests/fixtures/provider-capability/input.js)
         sloppy_add_conformance_compile_test(
+            conformance.users_api_sqlite.compile_artifacts users-api-sqlite
+            examples/users-api-sqlite/app.js)
+        sloppy_add_conformance_compile_test(
             conformance.source_map.compile_artifacts source-map
             compiler/tests/fixtures/source-map/input.js)
         sloppy_add_conformance_rejected_test(
@@ -1032,6 +1035,15 @@ if(SLOPPY_ENABLE_TESTS)
             sloppy_add_conformance_run_once_test(
                 conformance.async_handler.run_once async-handler
                 compiler/tests/fixtures/async-handler/input.js GET /async "\"ok\":true")
+            add_test(
+                NAME conformance.users_api_sqlite.localhost_transport
+                COMMAND
+                    powershell -NoProfile -ExecutionPolicy Bypass -File
+                    "${PROJECT_SOURCE_DIR}/tests/scripts/test_users_api_sqlite_transport.ps1"
+                    -ProjectSourceDir "${PROJECT_SOURCE_DIR}" -CMakeBinaryDir "${CMAKE_BINARY_DIR}"
+                    -CargoExecutable "${CARGO_EXECUTABLE}" -SloppyCli "$<TARGET_FILE:sloppy>")
+            set_tests_properties(conformance.users_api_sqlite.localhost_transport
+                                 PROPERTIES LABELS "conformance;v8;transport;sqlite")
         endif()
 
         function(sloppy_add_conformance_existing_artifact_test test_name artifacts method target

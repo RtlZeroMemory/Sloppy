@@ -20,6 +20,11 @@ ENGINE-23.G/H adds provider-executor diagnostics/counters, bounded stress smoke,
 Server bridge work. Current SQLite bridge calls are still synchronous until ENGINE-17
 converts them to the executor; PostgreSQL and SQL Server JavaScript bridges remain
 deferred.
+ENGINE-17.E adds `examples/users-api-sqlite/` plus V8-gated localhost transport evidence
+for a small source-built SQLite users API. It proves the current synchronous SQLite bridge
+can serve GET/POST JSON handlers over real TCP through `sloppy run --artifacts`; it does
+not prove async/offload SQLite, public alpha readiness, PostgreSQL/SQL Server JS bridges,
+ORM/migrations, production HTTP edge behavior, or benchmark performance.
 
 ## Purpose
 
@@ -258,6 +263,11 @@ wrapper, fail closed when hook metadata is absent, preserve requested read/write
 handle policy, and receive deterministic stale/closed/invalid argument/capability-denied
 failures. They are reported separately from default provider tests because default gates do
 not enable V8.
+
+`conformance.users_api_sqlite.localhost_transport` is V8-gated and builds
+`examples/users-api-sqlite/app.js` before starting `sloppy run --artifacts` on localhost.
+It verifies seeded reads, route lookup, 404, POST JSON insertion, follow-up read visibility,
+invalid JSON, denied capability behavior, and server cleanup over real TCP bytes.
 
 `core.provider_executor` is the default native ENGINE-23 provider/offload source. It covers
 execution-mode parsing, operation-kind metadata, descriptor helper failure preservation,

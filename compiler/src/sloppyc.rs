@@ -578,7 +578,9 @@ fn extract_expression_statement(
         _ => (&statement.expression, None),
     };
 
-    let Some((receiver, method, pattern, handler)) = route_call(route_expr, source) else {
+    let Some((receiver, method, pattern, handler)) =
+        route_call(route_expr, source, state.data_imported)
+    else {
         if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
         {
             return Err(diagnostic);
@@ -696,7 +698,7 @@ fn unsupported_route_call_diagnostic(
     if call
         .arguments
         .get(1)
-        .and_then(|argument| handler_from_argument(argument, source))
+        .and_then(|argument| handler_from_argument(argument, source, state.data_imported))
         .is_none()
     {
         let handler_argument = call.arguments.get(1)?;
@@ -712,7 +714,7 @@ fn validate_supported_initializer(
     state: &AppState,
     init: &Expression<'_>,
 ) -> Result<(), Diagnostic> {
-    if let Some((_, _, _, _)) = route_call(init, source) {
+    if let Some((_, _, _, _)) = route_call(init, source, state.data_imported) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE",
             "route registration must be a top-level statement, not a variable initializer",
@@ -966,6 +968,7 @@ fn app_group_call<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a st
 fn route_call<'a>(
     expression: &'a Expression<'a>,
     source: &str,
+    allow_data_handler_body: bool,
 ) -> Option<(&'a str, &'static str, &'a str, Handler)> {
     let Expression::CallExpression(call) = expression else {
         return None;
@@ -978,7 +981,7 @@ fn route_call<'a>(
 
     let pattern = string_argument(call.arguments.first()?)?;
     let handler_arg = call.arguments.get(1)?;
-    let handler = handler_from_argument(handler_arg, source)?;
+    let handler = handler_from_argument(handler_arg, source, allow_data_handler_body)?;
     Some((receiver, method, pattern, handler))
 }
 
@@ -1217,12 +1220,16 @@ fn route_segment_supported(segment: &str) -> bool {
         && matches!(kind, "str" | "int")
 }
 
-fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handler> {
+fn handler_from_argument(
+    argument: &Argument<'_>,
+    source: &str,
+    allow_data_handler_body: bool,
+) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
             if handler_parameters_are_unsupported(&function.params)
                 || arrow_has_typescript_syntax(function)
-                || !handler_body_is_supported_arrow(function)
+                || (!allow_data_handler_body && !handler_body_is_supported_arrow(function))
             {
                 return None;
             }
@@ -1235,7 +1242,7 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
         Argument::FunctionExpression(function) => {
             if handler_parameters_are_unsupported(&function.params)
                 || function_has_typescript_syntax(function)
-                || !handler_body_is_supported_function(function)
+                || (!allow_data_handler_body && !handler_body_is_supported_function(function))
             {
                 return None;
             }
@@ -2450,6 +2457,40 @@ export default app;
         assert!(plan.contains("\"asyncHandlers\": true"));
         assert!(plan.contains("\"method\": \"POST\""));
         assert!(plan.contains("\"provider\": \"sqlite\""));
+    }
+
+    #[test]
+    fn data_backed_handlers_may_preserve_runtime_body_shape() {
+        let source = r#"import { Sloppy, Results, data } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: "users-api-sqlite-runtime.db",
+});
+const app = builder.build();
+app.mapPost("/users", (ctx) => {
+  const body = ctx.request.json();
+  const db = data.sqlite("main");
+  try {
+    db.exec("create table if not exists users (id integer primary key, name text not null)", []);
+    db.exec("insert into users (name) values (?)", [body.name]);
+    return Results.created("/users/1", db.queryOne("select id, name from users where id = last_insert_rowid()", []));
+  } finally {
+    db.close();
+  }
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("data-backed handler body should be preserved for runtime execution");
+        assert_eq!(app.routes.len(), 1);
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("data.sqlite(\"main\")"));
+        assert!(app.routes[0].handler.source.contains("ctx.request.json()"));
+        assert_eq!(app.capabilities.len(), 1);
     }
 
     #[test]
