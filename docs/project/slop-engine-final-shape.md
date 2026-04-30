@@ -67,6 +67,17 @@ conformance compatibility, and the strong Plan strategic layer. The source docum
 `docs/project/engine-13-plus-architecture.md`; the created issue map is
 `docs/project/engine-13-plus-issue-index.md`.
 
+ENGINE-21 and ENGINE-22 make memory/string handling explicit foundation work rather than
+miscellaneous helper cleanup. ENGINE-21 defines app/request/temp/static/V8/SQLite/
+diagnostic lifetimes, allocation and failure rules, string/byte/owned-buffer primitives,
+builders, formatting helpers, bounded app/static string interning and symbol tables, and
+V8/SQLite conversion policy. ENGINE-22 adopts those primitives in hot paths: HTTP
+parse/write/body, V8 conversions, SQLite rows/parameters, diagnostics/source frames/JSON,
+Plan/artifact loading, stable metadata lookup, CLI output, and allocation-aware
+conformance. The issue map is `docs/project/engine-21-22-issue-index.md`. Public alpha docs
+remain blocked until this layer is complete or explicitly scoped down with honest
+exclusions.
+
 ## 2. Developer Workflow
 
 Target core workflow:

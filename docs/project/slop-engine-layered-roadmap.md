@@ -28,6 +28,8 @@ Recommended implementation chunks:
 | CLI/dev loop runtime | ENGINE-18.A through ENGINE-18.E | One or more tooling PRs for build/run UX, artifact inspection, source-input decision, doctor/audit checks, OpenAPI skeleton policy, and dev/watch decision. |
 | Conformance compatibility | ENGINE-19.A through ENGINE-19.E | One evidence PR sequence for default/V8-gated/runtime/package conformance once implementation layers exist. |
 | Strong Plan layer | ENGINE-20.A through ENGINE-20.E | One strategic Plan PR sequence for typed route/handler/capability/provider/artifact graphs, validation, compatibility, audit/doctor, and future hooks. |
+| Memory/string foundations | ENGINE-21.A through ENGINE-21.F | One primitive-foundation PR sequence for lifetime/allocation policy, owned string/byte views, builders, bounded string interning/symbol tables, V8/SQLite conversion policy, and safety/stress evidence. |
+| Memory/string adoption | ENGINE-22.A through ENGINE-22.F | One adoption PR sequence for HTTP, diagnostics/CLI, Plan/artifact, V8, SQLite, and hot-path cleanup after ENGINE-21 primitives land. |
 | HTTP API runtime | ENGINE-04.A through ENGINE-04.C | One large-coherent HTTP PR for methods, headers/body limits, cancellation/backpressure, result serialization, and error contract. |
 | SQLite and capabilities | ENGINE-05.A through ENGINE-05.C plus ENGINE-06.A | One large-coherent SQLite bridge PR so capability enforcement, cancellation-aware operations, cleanup, and users API conformance move together. |
 | Lifecycle/source diagnostics | ENGINE-07.A, ENGINE-07.B, ENGINE-08.A | One or two PRs depending on source-map/V8 diagnostic blast radius. |
@@ -276,7 +278,8 @@ stack, public alpha launch, or benchmark marketing project.
 
 Strategic source: `docs/project/engine-13-plus-architecture.md`.
 
-EPICs: ENGINE-13 through ENGINE-20.
+EPICs: ENGINE-13 through ENGINE-20, plus the cross-cutting memory/string foundation in
+ENGINE-21 and ENGINE-22.
 
 Proper async and proper HTTP remain separate layers. ENGINE-12 owns the generic native
 completion, owner-thread continuation, cancellation/deadline/shutdown, queue, provider
@@ -312,13 +315,20 @@ Tasks by EPIC:
 - ENGINE-20: strong Plan strategic layer for typed route, handler, capability, provider,
   artifact graphs, static validation, future OpenAPI/optimization/policy/audit hooks,
   versioning, compatibility, and internal tooling leverage.
+- ENGINE-21: memory and string runtime foundations for app/request/temp lifetimes,
+  allocation policy, string/byte views, owned string/buffer rules, builders, formatting,
+  bounded string interning/symbol tables, V8/SQLite interop policy, and safety/stress
+  evidence.
+- ENGINE-22: memory/string adoption and hot-path refactor for HTTP parse/write, V8
+  conversions, SQLite result/parameter mapping, diagnostics/source frames/JSON, Plan and
+  artifact loading, CLI output, and conformance/benchmark guards.
 
 Prerequisites: ENGINE-01 contract, ENGINE-02/03 implementation evidence, ENGINE-12 when
 native async completion behavior is required, and the current issue index in
 `docs/project/engine-13-plus-issue-index.md`.
 
 Dependencies: HTTP, V8, core lifecycle/resource, data/SQLite, compiler, Plan, diagnostics,
-CLI, tests/conformance, package tooling, and quality gates.
+CLI, tests/conformance, package tooling, memory/string primitives, and quality gates.
 
 Non-goals: Node compatibility, npm/package-manager behavior, production reverse proxy or
 internet-edge claims, TLS/HTTP2/HTTP3/WebSockets/static file/compression work unless
@@ -327,7 +337,8 @@ claims, and public alpha docs.
 
 Acceptance criteria: each EPIC has issue-backed tasks, implementation PRs update source
 docs and tests together, public alpha remains blocked until the foundation evidence gate
-passes, PostgreSQL/SQL Server stay deferred, and benchmark output stays non-claim evidence.
+passes, PostgreSQL/SQL Server stay deferred, benchmark output stays non-claim evidence, and
+hot-path memory/string adoption is complete or explicitly deferred with honest evidence.
 
 Likely PR grouping: prefer bounded but coherent implementation PRs by ownership surface.
 Do not split one lifecycle or backend invariant across tiny PRs if that would leave fake
@@ -336,6 +347,56 @@ success or untested cleanup paths.
 Parallelization: docs, diagnostics goldens, issue metadata, and conformance fixture
 planning can proceed while runtime owners work. Runtime behavior that crosses lifecycle,
 async, V8, or provider boundaries should wait for the dependent contracts to be stable.
+
+## Layer 3D - Memory/String Foundation And Adoption
+
+Purpose: make memory and string handling a deliberate engine foundation rather than a set
+of local helpers.
+
+Strategic sources:
+
+- `docs/project/memory-string-current-state-audit.md`;
+- `docs/project/memory-string-foundation-architecture.md`;
+- `docs/project/memory-string-adoption-map.md`.
+- `docs/project/engine-21-22-issue-index.md`.
+
+EPICs: ENGINE-21 and ENGINE-22.
+
+ENGINE-21 is primitive work. It defines app/request/temp/static/V8/SQLite/diagnostic
+lifetimes, allocation and failure policy, string and byte views, owned strings/buffers,
+byte and string builders, formatting helpers, bounded app/static string interning and
+symbol tables, V8/native conversion policy, SQLite text/blob ownership, and memory
+safety/stress tests.
+
+ENGINE-22 is adoption work. It migrates HTTP parser/request/response paths, V8 bridge
+conversions, SQLite row/result/parameter conversion, diagnostics/source-frame/JSON
+formatting, Plan/artifact loading, CLI output, and allocation-aware conformance/benchmark
+guards after ENGINE-21 primitives land.
+
+Prerequisites: existing `SlStr`, `SlBytes`, `SlArena`, checked math, diagnostics,
+resource-table, HTTP, V8, SQLite, Plan, and CLI foundations.
+
+Dependencies: ENGINE-13 HTTP backend, ENGINE-14 module/bootstrap, ENGINE-15 diagnostics,
+ENGINE-16 lifecycle, ENGINE-17 SQLite, ENGINE-19 conformance, and ENGINE-20 Plan.
+
+Non-goals: general-purpose STL clone, complex allocator framework, lock-free allocator,
+full Unicode library, JSON DOM library, ORM/migrations, Node Buffer compatibility,
+package-manager behavior, or broad runtime/compiler/provider refactors in the architecture
+PR.
+
+Acceptance criteria: the primitive contracts are documented and issue-backed; old #32
+string/buffer work is absorbed or superseded; adoption tasks identify hot paths and
+dependency order; public alpha docs remain blocked until memory/string adoption and
+conformance evidence pass or are honestly scoped down.
+
+Likely PR grouping: one docs/issue roadmap PR; one or more ENGINE-21 primitive PRs; then
+ENGINE-22 adoption PRs by subsystem.
+
+Parallelization: ENGINE-21.A/B/C can be designed together. ENGINE-21.F should wait for
+hash/equality and lifetime contracts from ENGINE-21.B/A before implementation. ENGINE-22
+subsystem adoption should wait for builder, ownership, and symbol-table contracts. V8 and
+SQLite bridge adoption should not edit the same intrinsic bridge in parallel without a
+shared owner.
 
 ## Layer 4 - HTTP Framework Runtime Completion
 

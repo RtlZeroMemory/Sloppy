@@ -40,11 +40,14 @@ async lifecycle behavior.
 ENGINE-13 through ENGINE-20 now track the remaining full engine foundation after
 ENGINE-12: proper HTTP runtime backend, module/bootstrap completion, source maps and
 diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
-conformance compatibility, and the strong Plan strategic layer. Proper async and proper
-HTTP are intentionally separate: ENGINE-12 owns native async completion and owner-thread
-continuation mechanics, while ENGINE-13 owns HTTP listener, connection, parser, body,
-keep-alive, timeout, cancellation, backpressure, graceful shutdown, and server diagnostic
-policy.
+conformance compatibility, and the strong Plan strategic layer. ENGINE-21 and ENGINE-22 add
+the cross-cutting memory/string foundation: primitive lifetime/allocation/string/builder
+contracts and bounded app/static string interning first, then adoption in HTTP, V8,
+SQLite, diagnostics, Plan/artifact loading, CLI, and hot-path conformance. Proper async and
+proper HTTP are intentionally separate:
+ENGINE-12 owns native async completion and owner-thread continuation mechanics, while
+ENGINE-13 owns HTTP listener, connection, parser, body, keep-alive, timeout, cancellation,
+backpressure, graceful shutdown, and server diagnostic policy.
 
 Direct source-input `sloppy run app.js` remains unsupported today, but is now tracked by
 #302 as a compiler/CLI handoff task once the compiler can emit complete artifacts for
@@ -52,8 +55,9 @@ realistic supported apps. The current supported workflow remains explicit `slopp
 plus `sloppy run --artifacts`.
 
 Public alpha docs remain blocked. PostgreSQL and SQL Server JS bridges, benchmark claims,
-ORM/migrations, package-manager behavior, Node compatibility, and production-grade HTTP
-server breadth are deferred until the engine foundation is coherent.
+ORM/migrations, package-manager behavior, Node compatibility, production-grade HTTP server
+breadth, and memory/string hot-path adoption claims are deferred until the engine
+foundation is coherent.
 
 ## Status Key
 
@@ -72,7 +76,7 @@ server breadth are deferred until the engine foundation is coherent.
 | EPIC-00 Foundation / Harness / Tooling | Mostly done | AGENTS, standards, project docs, GitHub ceremony tooling, review helpers, and source-only archive tooling exist. Several original GitHub task issues remain open and should be reconciled rather than treated as current blockers. |
 | EPIC-01 Platform Abstraction | Partial | Platform directories, boundary docs, scanner checks, and a small platform time abstraction exist. Scanner fixtures/self-tests, broader OS API taxonomy, and CI/platform expansion remain open. |
 | EPIC-02 Core Native Foundation | Done | Core status, source locations, strings, bytes, checked math, and assertion behavior exist with CTest coverage. |
-| EPIC-03 Memory Foundation | Partial | `SlArena` exists with tests and docs. String builder/buffer foundation and fuller allocator policy remain open. |
+| EPIC-03 Memory Foundation | Partial | `SlArena` exists with tests and docs. String builder/buffer foundation and fuller allocator policy remain open and are superseded by ENGINE-21/22 for the strategic engine foundation. |
 | EPIC-04 Diagnostics Foundation | Partial | Diagnostic builder, stable codes, text rendering, redaction placeholder, and snapshot fixtures exist. Source frames, JSON diagnostics, source maps, and richer metadata remain open. |
 | EPIC-05 Resource Lifecycle Foundation | Partial | `SlScope` cleanup/lifetime skeleton exists with tests. Generation-counted resource table and leak reporting remain open. |
 | EPIC-06 Plan Schema and Loader | Mostly done | Minimal Plan v1 structs, JSON parsing, validation, arena-owned parsed strings, handler lookup, and golden fixture matrix exist. File-based loading, compatibility checks, hashes, routes/modules/providers, and source-map diagnostics remain deferred. |
@@ -133,8 +137,11 @@ tracking, alignment checks, and release-visible tests.
 
 Works now: arena behavior is covered in default tests.
 
-Deferred: allocator interface, string builder/buffer foundation, stricter raw allocation
-enforcement, sanitizer matrix, and request/app lifetime integration.
+Deferred: allocator interface, string builder/buffer foundation, bounded string
+interning/symbol tables, owned string/buffer policy, stricter raw allocation enforcement,
+sanitizer/fuzz matrix, hot-path adoption, and request/app lifetime integration. ENGINE-21
+owns the primitive memory/string foundation and ENGINE-22 owns adoption/refactor across
+HTTP, V8, SQLite, diagnostics, Plan/artifacts, CLI, and conformance.
 
 ### Diagnostics
 

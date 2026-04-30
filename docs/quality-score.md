@@ -28,12 +28,15 @@ conformance examples, and packaged runtime evidence. PostgreSQL and SQL Server J
 and benchmark claims are not immediate readiness blockers.
 ENGINE-13 through ENGINE-20 now split the remaining foundation into explicit proper HTTP
 backend, bootstrap/module loading, diagnostics/source maps, app/resource lifetime,
-SQLite, CLI/dev loop, conformance, and strong Plan layers. These are prerequisites for
-public alpha unless explicitly scoped down with honest exclusions.
+SQLite, CLI/dev loop, conformance, and strong Plan layers. ENGINE-21 and ENGINE-22 add the
+cross-cutting memory/string primitive, bounded string interning, and adoption layers needed
+for safe hot paths. These are prerequisites for public alpha unless explicitly scoped down
+with honest exclusions.
 
 | Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
 | --- | --- | --- | --- | --- | --- |
 | Native C safety | Yellow | Core primitives, checked math, arena, resource table, diagnostics, plan parser, HTTP parser, providers, boundary-oriented tests, and local sanitizer options. | CTest, warnings, format, lint, C standards scanner, platform scanner. | Sanitizers are not required in CI, fuzz targets are not implemented, and allocator misuse checks, request-scope leak checks, and deeper cleanup integration are incomplete. | Add stable sanitizer/fuzz gates, allocator checks, request-scope resource leak checks, and scanner fixtures. |
+| Memory/string foundations | Yellow | Borrowed `SlStr`/`SlBytes`, checked math, caller-backed `SlArena`, arena rollback patterns, diagnostic arena builders, arena-owned Plan/HTTP/SQLite outputs, and JS-safe resource IDs. | Core C tests, diagnostics tests, Plan parser tests, HTTP parser/response tests, SQLite provider tests, C standards scanner warnings for raw allocation. | No `SlBuf`, no string/byte builder, no owned string/buffer policy, no bounded string interning/symbol table, no centralized V8/SQLite conversion policy, no full request/app/temp arena model, no allocator misuse hard failure, and no hot-path adoption pass. | Complete ENGINE-21 primitive contracts, including bounded app/static interning, and ENGINE-22 adoption across HTTP, V8, SQLite, diagnostics, Plan/artifacts, CLI, and conformance. |
 | Diagnostics | Yellow | Stable C diagnostic codes, text rendering, JSON diagnostic rendering, single-line source frames, compiler source-frame fixture output, ENGINE-02 handler-line source-map artifacts, V8 generated-source exception spans, and representative redaction helpers/tests. | `core.diagnostics.foundation`, diagnostics golden snapshots, compiler diagnostic/source-map fixtures, provider redaction tests, and V8-gated exception/source checks when SDK is available. | CLI-wide diagnostic-format selection, richer related compiler spans, localization, structured fixes, and TypeScript source-map remapping remain deferred because runtime diagnostics do not consume compiler maps yet. | Add CLI format plumbing when command error paths share the renderer, then add source-map parsing/remapping in the V8 diagnostic path. |
 | Platform boundaries | Yellow | `src/platform/*` structure, platform docs, Windows/POSIX scanners, platform time abstraction, and default Windows/Linux/macOS CI. | Lint checks common forbidden OS headers outside platform directories; POSIX CI runs shell scanners. | Scanner self-tests, sanitizer/fuzz platform jobs, and richer platform API categories are missing. | Add scanner fixtures, sanitizer/fuzz jobs, and documented platform API categories. |
 | Docs freshness | Yellow | Source docs, public docs, module docs, ADRs, quality score, and tech-debt tracker exist. | Lightweight docs freshness structure check. | Semantic stale-doc detection and link checking are not implemented. | Add link checker and targeted semantic checks for examples/API claims. |
@@ -67,7 +70,7 @@ packaging remain separate or experimental.
 ROADMAP MAIN and ROADMAP MAIN.1 are now historical input to the strategic ENGINE roadmap.
 Public alpha docs should not move ahead of the ENGINE roadmap unless a document explicitly
 says the relevant workflow is still deferred and not part of the alpha claim.
-ENGINE-13 through ENGINE-20 are the current issue-backed completion map for the remaining
+ENGINE-13 through ENGINE-22 are the current issue-backed completion map for the remaining
 core foundation after ENGINE-12; default gates must still be reported separately from
 V8-gated, package, live-provider, stress, and benchmark evidence.
 
