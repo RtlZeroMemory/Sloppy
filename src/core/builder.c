@@ -110,7 +110,7 @@ static SlStatus sl_byte_builder_grow(SlByteBuilder* builder, size_t required)
     return sl_status_ok();
 }
 
-SlStatus sl_byte_builder_init_fixed(SlByteBuilder* builder, void* buffer, size_t capacity)
+SlStatus sl_byte_builder_init_fixed(SlByteBuilder* builder, unsigned char* buffer, size_t capacity)
 {
     SlByteBuilder result = {0U};
 
@@ -118,7 +118,7 @@ SlStatus sl_byte_builder_init_fixed(SlByteBuilder* builder, void* buffer, size_t
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    result.data = (unsigned char*)buffer;
+    result.data = buffer;
     result.capacity = capacity;
     result.max_capacity = capacity;
     result.storage = SL_BUILDER_STORAGE_FIXED;
@@ -249,7 +249,7 @@ SlStatus sl_string_builder_init_fixed(SlStringBuilder* builder, char* buffer, si
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    return sl_byte_builder_init_fixed(&builder->bytes, buffer, capacity);
+    return sl_byte_builder_init_fixed(&builder->bytes, (unsigned char*)buffer, capacity);
 }
 
 SlStatus sl_string_builder_init_arena(SlStringBuilder* builder, SlArena* arena,
@@ -332,7 +332,7 @@ SlStatus sl_string_builder_append_str(SlStringBuilder* builder, SlStr str)
 
 SlStatus sl_string_builder_append_cstr(SlStringBuilder* builder, const char* cstr)
 {
-    if (builder == NULL) {
+    if (builder == NULL || cstr == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 

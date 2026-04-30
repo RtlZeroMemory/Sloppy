@@ -85,7 +85,13 @@ void sl_arena_reset(SlArena* arena)
 
 #if SL_ENABLE_ASSERTS
     if (arena->base != NULL && arena->offset != 0U) {
-        sl_arena_poison(arena->base, arena->offset, SL_ARENA_POISON_RESET);
+        size_t poison_size = arena->offset;
+        if (poison_size > arena->capacity) {
+            poison_size = arena->capacity;
+        }
+        if (poison_size != 0U) {
+            sl_arena_poison(arena->base, poison_size, SL_ARENA_POISON_RESET);
+        }
     }
 #endif
 

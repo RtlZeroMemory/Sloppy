@@ -13,6 +13,12 @@ static int expect_status(SlStatus status, SlStatusCode code)
     return expect_true(sl_status_code(status) == code);
 }
 
+static int expect_interned_string(SlInternedString actual, SlInternedString expected)
+{
+    return expect_true(sl_symbol_equal(actual.symbol, expected.symbol) &&
+                       sl_str_equal(actual.text, expected.text) && actual.hash == expected.hash);
+}
+
 static int test_duplicate_interning_returns_stable_symbol(void)
 {
     unsigned char storage[256];
@@ -104,11 +110,13 @@ static int test_capacity_and_failure_outputs(void)
     SlInternTable table = {0U};
     SlInternedString first;
     SlInternedString sentinel;
+    SlInternedString expected;
 
     sentinel.symbol.index = 99U;
     sentinel.symbol.generation = 99U;
     sentinel.text = sl_str_from_cstr("sentinel");
     sentinel.hash = 99U;
+    expected = sentinel;
 
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
         expect_status(sl_intern_table_init(&table, &arena, 1U, 1U), SL_STATUS_OK) != 0)
@@ -124,21 +132,21 @@ static int test_capacity_and_failure_outputs(void)
 
     if (expect_status(sl_intern_table_intern(&table, sl_str_from_cstr("two"), &sentinel),
                       SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
-        sentinel.symbol.index != 99U || sentinel.hash != 99U || sl_intern_table_count(&table) != 1U)
+        expect_interned_string(sentinel, expected) != 0 || sl_intern_table_count(&table) != 1U)
     {
         return 22;
     }
 
     if (expect_status(sl_intern_table_find(&table, sl_str_from_cstr("missing"), &sentinel),
                       SL_STATUS_OUT_OF_RANGE) != 0 ||
-        sentinel.symbol.index != 99U || sentinel.hash != 99U)
+        expect_interned_string(sentinel, expected) != 0)
     {
         return 23;
     }
 
     if (expect_status(sl_intern_table_intern(&table, sl_str_from_parts(NULL, 3U), &sentinel),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
-        sentinel.symbol.index != 99U || sentinel.hash != 99U)
+        expect_interned_string(sentinel, expected) != 0)
     {
         return 24;
     }

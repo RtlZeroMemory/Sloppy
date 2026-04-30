@@ -50,7 +50,7 @@ typedef struct SlStringBuilder
     SlByteBuilder bytes;
 } SlStringBuilder;
 
-SlStatus sl_byte_builder_init_fixed(SlByteBuilder* builder, void* buffer, size_t capacity);
+SlStatus sl_byte_builder_init_fixed(SlByteBuilder* builder, unsigned char* buffer, size_t capacity);
 SlStatus sl_byte_builder_init_arena(SlByteBuilder* builder, SlArena* arena, size_t initial_capacity,
                                     size_t max_capacity);
 void sl_byte_builder_reset(SlByteBuilder* builder);
@@ -68,9 +68,21 @@ void sl_string_builder_reset(SlStringBuilder* builder);
 size_t sl_string_builder_length(const SlStringBuilder* builder);
 size_t sl_string_builder_capacity(const SlStringBuilder* builder);
 SlStr sl_string_builder_view(const SlStringBuilder* builder);
+/*
+ * Produces a view whose storage has a trailing NUL byte after the returned length.
+ *
+ * `builder` and `out` are required. NULL inputs return INVALID_ARGUMENT. If the builder
+ * cannot reserve the terminator, the reserve failure is returned and `out` is unchanged.
+ */
 SlStatus sl_string_builder_view_with_nul(SlStringBuilder* builder, SlStr* out);
 SlStatus sl_string_builder_reserve(SlStringBuilder* builder, size_t additional);
 SlStatus sl_string_builder_append_str(SlStringBuilder* builder, SlStr str);
+/*
+ * Appends a boundary C string.
+ *
+ * `cstr` must be a valid NUL-terminated string. NULL or malformed builder inputs return
+ * INVALID_ARGUMENT; reservation/allocation failures leave the builder prefix unchanged.
+ */
 SlStatus sl_string_builder_append_cstr(SlStringBuilder* builder, const char* cstr);
 SlStatus sl_string_builder_append_char(SlStringBuilder* builder, char value);
 SlStatus sl_string_builder_append_u64(SlStringBuilder* builder, uint64_t value);

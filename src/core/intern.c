@@ -150,7 +150,8 @@ size_t sl_intern_table_capacity(const SlInternTable* table)
     return table == NULL || !table->initialized ? 0U : table->capacity;
 }
 
-SlStatus sl_intern_table_find(const SlInternTable* table, SlStr text, SlInternedString* out)
+static SlStatus sl_intern_table_find_hashed(const SlInternTable* table, SlStr text,
+                                            SlInternedString* out, uint64_t* out_hash)
 {
     uint64_t hash = 0U;
     size_t bucket_index = 0U;
@@ -170,6 +171,9 @@ SlStatus sl_intern_table_find(const SlInternTable* table, SlStr text, SlInterned
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (out_hash != NULL) {
+        *out_hash = hash;
+    }
 
     bucket_index = (size_t)(hash % (uint64_t)table->bucket_count);
     entry_index = table->buckets[bucket_index];
@@ -187,6 +191,11 @@ SlStatus sl_intern_table_find(const SlInternTable* table, SlStr text, SlInterned
     return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
 }
 
+SlStatus sl_intern_table_find(const SlInternTable* table, SlStr text, SlInternedString* out)
+{
+    return sl_intern_table_find_hashed(table, text, out, NULL);
+}
+
 SlStatus sl_intern_table_intern(SlInternTable* table, SlStr text, SlInternedString* out)
 {
     SlInternedString existing;
@@ -200,7 +209,7 @@ SlStatus sl_intern_table_intern(SlInternTable* table, SlStr text, SlInternedStri
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_intern_table_find(table, text, &existing);
+    status = sl_intern_table_find_hashed(table, text, &existing, &hash);
     if (sl_status_is_ok(status)) {
         *out = existing;
         return sl_status_ok();
@@ -212,11 +221,6 @@ SlStatus sl_intern_table_intern(SlInternTable* table, SlStr text, SlInternedStri
 
     if (table->count >= table->capacity) {
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
-    }
-
-    status = sl_str_hash(text, &hash);
-    if (!sl_status_is_ok(status)) {
-        return status;
     }
 
     status = sl_str_copy_to_arena(table->arena, text, &copied);

@@ -137,10 +137,18 @@ static int test_arena_copies(void)
         return 24;
     }
 
+    owned = sentinel;
+    if (expect_status(sl_str_copy_to_arena_nul(&arena, sl_str_from_parts(NULL, 1U), &owned),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        owned.ptr != sentinel.ptr || owned.length != sentinel.length)
+    {
+        return 25;
+    }
+
     if (expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
                       SL_STATUS_OK) != 0)
     {
-        return 25;
+        return 26;
     }
 
     owned = sentinel;
@@ -148,7 +156,7 @@ static int test_arena_copies(void)
                       SL_STATUS_OUT_OF_MEMORY) != 0 ||
         owned.ptr != sentinel.ptr || owned.length != sentinel.length)
     {
-        return 26;
+        return 27;
     }
 
     return 0;

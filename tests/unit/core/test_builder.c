@@ -34,12 +34,14 @@ static int test_fixed_byte_builder(void)
     const unsigned char overflow[] = {3U, 4U};
     SlByteBuilder builder;
 
+    /* --- Arrange. --- */
     if (expect_status(sl_byte_builder_init_fixed(&builder, storage, sizeof(storage)),
                       SL_STATUS_OK) != 0)
     {
         return 1;
     }
 
+    /* --- Act and assert. --- */
     if (expect_status(sl_byte_builder_append_bytes(&builder, sl_bytes_from_parts(binary, 3U)),
                       SL_STATUS_OK) != 0 ||
         expect_bytes(sl_byte_builder_view(&builder), binary, 3U) != 0)
@@ -85,6 +87,7 @@ static int test_arena_byte_builder_growth_and_failures(void)
     SlArena arena;
     SlByteBuilder builder;
 
+    /* --- Arrange. --- */
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
         0)
     {
@@ -95,6 +98,7 @@ static int test_arena_byte_builder_growth_and_failures(void)
         return 11;
     }
 
+    /* --- Act and assert growth. --- */
     if (expect_status(sl_byte_builder_append_bytes(&builder, sl_bytes_from_parts(first, 2U)),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_byte_builder_append_bytes(&builder, sl_bytes_from_parts(second, 3U)),
@@ -105,6 +109,7 @@ static int test_arena_byte_builder_growth_and_failures(void)
         return 12;
     }
 
+    /* --- Assert failure behavior. --- */
     if (expect_status(sl_byte_builder_reserve(&builder, SIZE_MAX), SL_STATUS_OVERFLOW) != 0 ||
         expect_bytes(sl_byte_builder_view(&builder), expected, sizeof(expected)) != 0)
     {
@@ -136,12 +141,14 @@ static int test_string_builder_formatting_and_nul(void)
     SlStr view;
     SlStr sentinel = sl_str_from_cstr("sentinel");
 
+    /* --- Arrange. --- */
     if (expect_status(sl_string_builder_init_fixed(&builder, storage, sizeof(storage)),
                       SL_STATUS_OK) != 0)
     {
         return 20;
     }
 
+    /* --- Act and assert formatting. --- */
     if (expect_status(sl_string_builder_append_str(&builder, sl_str_from_parts("ab", 2U)),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_string_builder_append_char(&builder, ':'), SL_STATUS_OK) != 0 ||
@@ -158,6 +165,7 @@ static int test_string_builder_formatting_and_nul(void)
         return 22;
     }
 
+    /* --- Assert boundary NUL behavior. --- */
     view = sentinel;
     if (expect_status(sl_string_builder_view_with_nul(&builder, &view), SL_STATUS_OK) != 0 ||
         view.ptr[view.length] != '\0' || expect_str(view, "ab:42:-17:5", 11U) != 0)
@@ -191,6 +199,7 @@ static int test_string_builder_arena_growth_preserves_failed_prefix(void)
     SlArena arena;
     SlStringBuilder builder;
 
+    /* --- Arrange. --- */
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
         0)
     {
@@ -201,14 +210,70 @@ static int test_string_builder_arena_growth_preserves_failed_prefix(void)
         return 31;
     }
 
+    /* --- Act and assert preserved prefix. --- */
     if (expect_status(sl_string_builder_append_cstr(&builder, "abc"), SL_STATUS_OK) != 0 ||
         expect_status(sl_string_builder_append_i64(&builder, -9223372036854775807LL - 1LL),
                       SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        expect_str(sl_string_builder_view(&builder), "abc", 3U) != 0 ||
+        expect_status(sl_string_builder_append_cstr(&builder, NULL), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
         expect_str(sl_string_builder_view(&builder), "abc", 3U) != 0 ||
         expect_status(sl_string_builder_append_cstr(&builder, "def"), SL_STATUS_OK) != 0 ||
         expect_str(sl_string_builder_view(&builder), "abcdef", 6U) != 0)
     {
         return 32;
+    }
+
+    return 0;
+}
+
+static int test_arena_builders_fail_cleanly_after_dispose(void)
+{
+    unsigned char byte_arena_storage[64];
+    unsigned char string_arena_storage[64];
+    const unsigned char first[] = {'a', 'b'};
+    const unsigned char grow[] = {'c', 'd', 'e'};
+    SlArena byte_arena;
+    SlArena string_arena;
+    SlByteBuilder byte_builder;
+    SlStringBuilder string_builder;
+
+    if (expect_status(sl_arena_init(&byte_arena, byte_arena_storage, sizeof(byte_arena_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_byte_builder_init_arena(&byte_builder, &byte_arena, 2U, 8U),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_byte_builder_append_bytes(&byte_builder, sl_bytes_from_parts(first, 2U)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 40;
+    }
+
+    sl_arena_dispose(&byte_arena);
+    /* Arena-backed builder views are invalid after arena dispose; only status is checked. */
+    if (expect_status(sl_byte_builder_append_bytes(&byte_builder, sl_bytes_from_parts(grow, 3U)),
+                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        expect_status(sl_byte_builder_reserve(&byte_builder, 3U), SL_STATUS_OUT_OF_MEMORY) != 0)
+    {
+        return 41;
+    }
+
+    if (expect_status(
+            sl_arena_init(&string_arena, string_arena_storage, sizeof(string_arena_storage)),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_init_arena(&string_builder, &string_arena, 2U, 8U),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_cstr(&string_builder, "ab"), SL_STATUS_OK) != 0)
+    {
+        return 42;
+    }
+
+    sl_arena_dispose(&string_arena);
+    /* Arena-backed builder views are invalid after arena dispose; only status is checked. */
+    if (expect_status(sl_string_builder_append_cstr(&string_builder, "cde"),
+                      SL_STATUS_OUT_OF_MEMORY) != 0 ||
+        expect_status(sl_string_builder_reserve(&string_builder, 3U), SL_STATUS_OUT_OF_MEMORY) != 0)
+    {
+        return 43;
     }
 
     return 0;
@@ -231,5 +296,10 @@ int main(void)
         return result;
     }
 
-    return test_string_builder_arena_growth_preserves_failed_prefix();
+    result = test_string_builder_arena_growth_preserves_failed_prefix();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_arena_builders_fail_cleanly_after_dispose();
 }
