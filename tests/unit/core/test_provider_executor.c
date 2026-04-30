@@ -1,5 +1,6 @@
 #include "sloppy/provider_executor.h"
 
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -18,12 +19,19 @@ typedef struct ProviderRecord
 typedef struct ProviderWorkPayload
 {
     ProviderRecord* record;
+    atomic_int* active_count;
+    atomic_int* max_active_count;
+    atomic_int* started_count;
+    atomic_bool* release;
+    SlPlatformMutex* record_mutex;
+    SlStr message;
     int value;
     SlStatusCode status_code;
     SlDiagCode diag_code;
-    SlStr message;
     bool cancel_before_success;
 } ProviderWorkPayload;
+
+typedef int (*ProviderTestFn)(void);
 
 static int expect_true(bool condition)
 {
@@ -87,9 +95,30 @@ static SlStatus run_provider_like_operation(SlProviderOperation* operation, void
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
+    if (payload->record_mutex != NULL) {
+        sl_platform_mutex_lock(payload->record_mutex);
+    }
     index = record->worker_count;
     record->worker_values[index] = payload->value;
     record->worker_count += 1U;
+    if (payload->record_mutex != NULL) {
+        sl_platform_mutex_unlock(payload->record_mutex);
+    }
+    if (payload->active_count != NULL) {
+        int active = atomic_fetch_add(payload->active_count, 1) + 1;
+        if (payload->max_active_count != NULL) {
+            int observed = atomic_load(payload->max_active_count);
+            while (active > observed &&
+                   !atomic_compare_exchange_weak(payload->max_active_count, &observed, active))
+            {
+            }
+        }
+    }
+    if (payload->started_count != NULL) {
+        atomic_fetch_add(payload->started_count, 1);
+    }
+    while (payload->release != NULL && !atomic_load(payload->release)) {
+    }
     if (payload->cancel_before_success) {
         (void)sl_provider_operation_cancel(operation, sl_str_from_cstr("worker cancelled"));
     }
@@ -99,7 +128,25 @@ static SlStatus run_provider_like_operation(SlProviderOperation* operation, void
     if (out_message != NULL) {
         *out_message = payload->message;
     }
+    if (payload->active_count != NULL) {
+        atomic_fetch_sub(payload->active_count, 1);
+    }
     return sl_status_from_code(payload->status_code);
+}
+
+static ProviderWorkPayload provider_payload_basic(ProviderRecord* record, int value,
+                                                  SlStatusCode status_code, SlDiagCode diag_code,
+                                                  SlStr message, bool cancel_before_success)
+{
+    ProviderWorkPayload payload = {0};
+
+    payload.record = record;
+    payload.value = value;
+    payload.status_code = status_code;
+    payload.diag_code = diag_code;
+    payload.message = message;
+    payload.cancel_before_success = cancel_before_success;
+    return payload;
 }
 
 static int make_descriptor_for(ProviderRecord* record, SlBytes input, SlCancellationToken* token,
@@ -164,6 +211,38 @@ static int make_worker_descriptor(ProviderRecord* record, ProviderWorkPayload* p
                          SL_STATUS_OK);
 }
 
+static int make_worker_descriptor_for(ProviderRecord* record, ProviderWorkPayload* payload,
+                                      SlStr instance_id, SlStr provider_kind,
+                                      SlProviderExecutionMode mode,
+                                      SlProviderOperationDescriptor* out_descriptor)
+{
+    if (make_descriptor_for(record, sl_bytes_empty(), NULL, instance_id, provider_kind, mode,
+                            out_descriptor) != 0)
+    {
+        return 1;
+    }
+    return expect_status(sl_provider_operation_descriptor_attach_run(
+                             out_descriptor, run_provider_like_operation, payload),
+                         SL_STATUS_OK);
+}
+
+static int wait_until_atomic_at_least(atomic_int* value, int expected)
+{
+    size_t attempts = 0U;
+
+    if (value == NULL) {
+        return 1;
+    }
+
+    for (attempts = 0U; attempts < 10000000U; attempts += 1U) {
+        if (atomic_load(value) >= expected) {
+            return 0;
+        }
+    }
+
+    return 2;
+}
+
 static int drain_until_dispatch_count(SlAsyncLoop* loop, ProviderRecord* record, size_t expected)
 {
     size_t attempts = 0U;
@@ -219,6 +298,35 @@ static int init_executor(SlArena* arena, SlAsyncLoop** loop, SlProviderInstanceE
 {
     return init_executor_with_backend(arena, loop, executor, slots, completions, capacity,
                                       SL_ASYNC_BACKEND_TEST);
+}
+
+static int init_blocking_pool_executor(SlArena* arena, SlAsyncLoop** loop,
+                                       SlProviderInstanceExecutor* executor,
+                                       SlProviderExecutorSlot* slots,
+                                       SlAsyncCompletion* completions, size_t capacity,
+                                       size_t worker_count, size_t max_in_flight)
+{
+    SlProviderExecutorConfig config = {0};
+
+    config.instance_id = sl_str_from_cstr("postgres:main");
+    config.provider_kind = sl_str_from_cstr("postgres");
+    config.mode = SL_PROVIDER_EXECUTION_BLOCKING_POOL;
+    config.queue_capacity = capacity;
+    config.worker_count = worker_count;
+    config.max_in_flight = max_in_flight;
+    if (expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_LIBUV, arena, completions, 16U, loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (expect_status(sl_provider_executor_init(executor, arena, &config, slots, *loop),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_async_loop_dispose(*loop);
+        *loop = NULL;
+        return 2;
+    }
+    return 0;
 }
 
 static int test_execution_mode_parse_and_validation(void)
@@ -291,7 +399,7 @@ static int test_invalid_descriptor_fields_fail_without_cleanup(void)
     SlArena arena;
     SlAsyncCompletion completions[16];
     SlAsyncLoop* loop = NULL;
-    SlProviderInstanceExecutor executor;
+    SlProviderInstanceExecutor executor = {0};
     SlProviderExecutorSlot slots[1];
     ProviderRecord record = {0};
     SlProviderOperation* op = (SlProviderOperation*)1;
@@ -344,13 +452,67 @@ static int test_invalid_descriptor_fields_fail_without_cleanup(void)
     return 0;
 }
 
+static int test_blocking_pool_invalid_config_rejected(void)
+{
+    unsigned char arena_storage[8192];
+    SlArena arena;
+    SlAsyncCompletion completions[1];
+    SlAsyncLoop* loop = NULL;
+    SlProviderExecutorConfig config = {0};
+    SlProviderInstanceExecutor executor = {0};
+    SlProviderExecutorSlot slots[1];
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_LIBUV, &arena, completions, 1U, &loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 150;
+    }
+
+    config.instance_id = sl_str_from_cstr("postgres:main");
+    config.provider_kind = sl_str_from_cstr("postgres");
+    config.mode = SL_PROVIDER_EXECUTION_BLOCKING_POOL;
+    config.queue_capacity = 1U;
+    config.worker_count = 0U;
+    config.max_in_flight = 0U;
+    if (expect_status(sl_provider_executor_init(&executor, &arena, &config, slots, loop),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        sl_async_loop_dispose(loop);
+        return 151;
+    }
+
+    config.worker_count = 1U;
+    config.max_in_flight = 2U;
+    if (expect_status(sl_provider_executor_init(&executor, &arena, &config, slots, loop),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        sl_async_loop_dispose(loop);
+        return 152;
+    }
+
+    config.mode = SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING;
+    config.worker_count = 1U;
+    config.max_in_flight = 2U;
+    if (expect_status(sl_provider_executor_init(&executor, &arena, &config, slots, loop),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        sl_async_loop_dispose(loop);
+        return 153;
+    }
+
+    sl_async_loop_dispose(loop);
+    return 0;
+}
+
 static int test_serialized_admission_overflow_and_recovery(void)
 {
     unsigned char arena_storage[8192];
     SlArena arena;
     SlAsyncCompletion completions[16];
     SlAsyncLoop* loop = NULL;
-    SlProviderInstanceExecutor executor;
+    SlProviderInstanceExecutor executor = {0};
     SlProviderExecutorSlot slots[2];
     ProviderRecord record = {0};
     unsigned char first_bytes[] = {'s', 'e', 'l', '1'};
@@ -613,6 +775,191 @@ static int test_blocking_pool_promotes_queued_when_slot_frees(void)
     return 0;
 }
 
+static int test_blocking_pool_workers_cap_parallel_execution_and_fifo_queue(void)
+{
+    unsigned char arena_storage[32768];
+    SlArena arena;
+    SlAsyncCompletion completions[16];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor;
+    SlProviderExecutorSlot slots[4];
+    ProviderRecord record = {0};
+    SlPlatformMutex* record_mutex = NULL;
+    atomic_int active_count;
+    atomic_int max_active_count;
+    atomic_int started_count;
+    atomic_bool release;
+    ProviderWorkPayload payloads[4];
+    SlProviderOperation* operations[4] = {NULL, NULL, NULL, NULL};
+    SlProviderOperationDescriptor descriptors[4];
+    size_t index = 0U;
+
+    atomic_init(&active_count, 0);
+    atomic_init(&max_active_count, 0);
+    atomic_init(&started_count, 0);
+    atomic_init(&release, false);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_platform_mutex_create(&arena, &record_mutex), SL_STATUS_OK) != 0 ||
+        init_blocking_pool_executor(&arena, &loop, &executor, slots, completions, 4U, 2U, 2U) != 0)
+    {
+        return 160;
+    }
+
+    for (index = 0U; index < 4U; index += 1U) {
+        payloads[index] = provider_payload_basic(&record, (int)(index + 1U), SL_STATUS_OK,
+                                                 SL_DIAG_NONE, sl_str_from_cstr("ok"), false);
+        payloads[index].active_count = &active_count;
+        payloads[index].max_active_count = &max_active_count;
+        payloads[index].started_count = &started_count;
+        payloads[index].release = &release;
+        payloads[index].record_mutex = record_mutex;
+        if (make_worker_descriptor_for(&record, &payloads[index], sl_str_from_cstr("postgres:main"),
+                                       sl_str_from_cstr("postgres"),
+                                       SL_PROVIDER_EXECUTION_BLOCKING_POOL,
+                                       &descriptors[index]) != 0 ||
+            expect_status(sl_provider_executor_submit(&executor, &arena, &descriptors[index],
+                                                      &operations[index]),
+                          SL_STATUS_OK) != 0)
+        {
+            return 161;
+        }
+    }
+
+    if (wait_until_atomic_at_least(&started_count, 2) != 0 ||
+        sl_provider_executor_in_flight_count(&executor) != 2U ||
+        sl_provider_executor_pending_count(&executor) != 4U ||
+        sl_provider_operation_state(operations[0]) != SL_PROVIDER_OPERATION_ACTIVE ||
+        sl_provider_operation_state(operations[1]) != SL_PROVIDER_OPERATION_ACTIVE ||
+        sl_provider_operation_state(operations[2]) != SL_PROVIDER_OPERATION_QUEUED ||
+        sl_provider_operation_state(operations[3]) != SL_PROVIDER_OPERATION_QUEUED ||
+        executor.worker_started_count != 2U)
+    {
+        return 162;
+    }
+
+    atomic_store(&release, true);
+    if (drain_until_dispatch_count(loop, &record, 4U) != 0 || record.dispatch_count != 4U ||
+        record.cleanup_count != 4U || atomic_load(&max_active_count) != 2 ||
+        sl_provider_executor_in_flight_count(&executor) != 0U ||
+        sl_provider_executor_pending_count(&executor) != 0U)
+    {
+        return 163;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    if (executor.worker_stopped_count != 2U) {
+        return 164;
+    }
+    sl_async_loop_dispose(loop);
+    return 0;
+}
+
+static int test_blocking_pool_overflow_shutdown_and_cleanup_once(void)
+{
+    unsigned char arena_storage[32768];
+    SlArena arena;
+    SlAsyncCompletion completions[16];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor;
+    SlProviderExecutorSlot slots[3];
+    ProviderRecord record = {0};
+    SlPlatformMutex* record_mutex = NULL;
+    atomic_int active_count;
+    atomic_int max_active_count;
+    atomic_int started_count;
+    atomic_bool release;
+    ProviderWorkPayload payloads[4];
+    SlProviderOperation* first = NULL;
+    SlProviderOperation* second = NULL;
+    SlProviderOperation* third = NULL;
+    SlProviderOperation* overflow = NULL;
+    SlProviderOperation* rejected = NULL;
+    SlProviderOperationDescriptor descs[4];
+
+    atomic_init(&active_count, 0);
+    atomic_init(&max_active_count, 0);
+    atomic_init(&started_count, 0);
+    atomic_init(&release, false);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_platform_mutex_create(&arena, &record_mutex), SL_STATUS_OK) != 0 ||
+        init_blocking_pool_executor(&arena, &loop, &executor, slots, completions, 3U, 2U, 2U) != 0)
+    {
+        return 170;
+    }
+
+    for (size_t index = 0U; index < 4U; index += 1U) {
+        payloads[index] = provider_payload_basic(
+            &record, (int)(index + 10U), index == 0U ? SL_STATUS_INTERNAL : SL_STATUS_OK,
+            index == 0U ? SL_DIAG_POSTGRES_PROVIDER_ERROR : SL_DIAG_NONE,
+            index == 0U ? sl_str_from_cstr("provider failed") : sl_str_from_cstr("ok"), false);
+        payloads[index].active_count = &active_count;
+        payloads[index].max_active_count = &max_active_count;
+        payloads[index].started_count = &started_count;
+        payloads[index].release = &release;
+        payloads[index].record_mutex = record_mutex;
+        if (make_worker_descriptor_for(&record, &payloads[index], sl_str_from_cstr("postgres:main"),
+                                       sl_str_from_cstr("postgres"),
+                                       SL_PROVIDER_EXECUTION_BLOCKING_POOL, &descs[index]) != 0)
+        {
+            return 171;
+        }
+    }
+
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &descs[0], &first),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &descs[1], &second),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &descs[2], &third),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &descs[3], &overflow),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        overflow != NULL || executor.overflow_count != 1U || record.cleanup_count != 0U)
+    {
+        return 172;
+    }
+
+    if (wait_until_atomic_at_least(&started_count, 2) != 0 ||
+        sl_provider_operation_state(third) != SL_PROVIDER_OPERATION_QUEUED)
+    {
+        return 173;
+    }
+
+    if (expect_status(sl_provider_executor_shutdown(&executor,
+                                                    SL_PROVIDER_EXECUTOR_SHUTDOWN_IMMEDIATE_CANCEL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &descs[3], &rejected),
+                      SL_STATUS_CANCELLED) != 0 ||
+        rejected != NULL || !sl_provider_executor_is_shutting_down(&executor))
+    {
+        return 174;
+    }
+
+    if (drain_until_dispatch_count(loop, &record, 1U) != 0 || record.cleanup_count != 1U ||
+        record.statuses[0] != SL_STATUS_CANCELLED || record.diag_codes[0] != SL_DIAG_APP_LIFECYCLE)
+    {
+        return 175;
+    }
+
+    atomic_store(&release, true);
+    if (drain_until_dispatch_count(loop, &record, 3U) != 0 || record.dispatch_count != 3U ||
+        record.cleanup_count != 3U || executor.worker_failure_count != 1U ||
+        sl_provider_executor_pending_count(&executor) != 0U ||
+        sl_provider_executor_in_flight_count(&executor) != 0U)
+    {
+        return 176;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
+    (void)first;
+    (void)second;
+    return 0;
+}
+
 static int test_serialized_worker_executes_one_at_a_time_fifo(void)
 {
     unsigned char arena_storage[16384];
@@ -622,12 +969,12 @@ static int test_serialized_worker_executes_one_at_a_time_fifo(void)
     SlProviderInstanceExecutor executor;
     SlProviderExecutorSlot slots[3];
     ProviderRecord record = {0};
-    ProviderWorkPayload first_payload = {
-        &record, 1, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("one"), false};
-    ProviderWorkPayload second_payload = {
-        &record, 2, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("two"), false};
-    ProviderWorkPayload third_payload = {
-        &record, 3, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("three"), false};
+    ProviderWorkPayload first_payload = provider_payload_basic(
+        &record, 1, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("one"), false);
+    ProviderWorkPayload second_payload = provider_payload_basic(
+        &record, 2, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("two"), false);
+    ProviderWorkPayload third_payload = provider_payload_basic(
+        &record, 3, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("three"), false);
     SlProviderOperation* first = NULL;
     SlProviderOperation* second = NULL;
     SlProviderOperation* third = NULL;
@@ -685,10 +1032,10 @@ static int test_serialized_worker_capacity_and_reject_ownership(void)
     SlProviderInstanceExecutor executor;
     SlProviderExecutorSlot slots[1];
     ProviderRecord record = {0};
-    ProviderWorkPayload first_payload = {
-        &record, 10, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("ten"), false};
-    ProviderWorkPayload rejected_payload = {
-        &record, 11, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("eleven"), false};
+    ProviderWorkPayload first_payload = provider_payload_basic(
+        &record, 10, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("ten"), false);
+    ProviderWorkPayload rejected_payload = provider_payload_basic(
+        &record, 11, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("eleven"), false);
     SlProviderOperation* first = NULL;
     SlProviderOperation* rejected = NULL;
     SlProviderOperationDescriptor first_desc;
@@ -733,14 +1080,11 @@ static int test_serialized_worker_failure_and_late_completion_cleanup_once(void)
     SlProviderInstanceExecutor executor;
     SlProviderExecutorSlot slots[2];
     ProviderRecord record = {0};
-    ProviderWorkPayload failure_payload = {&record,
-                                           20,
-                                           SL_STATUS_INTERNAL,
-                                           SL_DIAG_SQLITE_PROVIDER_ERROR,
-                                           sl_str_from_cstr("provider failure"),
-                                           false};
-    ProviderWorkPayload late_payload = {
-        &record, 21, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("late success"), true};
+    ProviderWorkPayload failure_payload =
+        provider_payload_basic(&record, 20, SL_STATUS_INTERNAL, SL_DIAG_SQLITE_PROVIDER_ERROR,
+                               sl_str_from_cstr("provider failure"), false);
+    ProviderWorkPayload late_payload = provider_payload_basic(
+        &record, 21, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("late success"), true);
     SlProviderOperation* failure = NULL;
     SlProviderOperation* late = NULL;
     SlProviderOperationDescriptor failure_desc;
@@ -883,8 +1227,8 @@ static int test_shutdown_leaves_worker_claimed_operation_for_worker_completion(v
     SlProviderInstanceExecutor executor;
     SlProviderExecutorSlot slots[1];
     ProviderRecord record = {0};
-    ProviderWorkPayload payload = {&record, 60, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("ok"),
-                                   false};
+    ProviderWorkPayload payload = provider_payload_basic(&record, 60, SL_STATUS_OK, SL_DIAG_NONE,
+                                                         sl_str_from_cstr("ok"), false);
     SlProviderOperation* operation = NULL;
     SlProviderOperationDescriptor desc;
 
@@ -920,6 +1264,87 @@ static int test_shutdown_leaves_worker_claimed_operation_for_worker_completion(v
 
     sl_async_loop_dispose(loop);
     return 0;
+}
+
+static int test_shutdown_of_queued_operation_preserves_active_in_flight(void)
+{
+    unsigned char arena_storage[16384];
+    SlArena arena;
+    SlAsyncCompletion completions[16];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor = {0};
+    SlProviderExecutorSlot slots[2];
+    ProviderRecord record = {0};
+    atomic_int started_count;
+    atomic_bool release;
+    ProviderWorkPayload active_payload;
+    ProviderWorkPayload queued_payload;
+    SlProviderOperation* active = NULL;
+    SlProviderOperation* queued = NULL;
+    SlProviderOperationDescriptor active_desc;
+    SlProviderOperationDescriptor queued_desc;
+    int result = 0;
+
+    atomic_init(&started_count, 0);
+    atomic_init(&release, false);
+    active_payload = provider_payload_basic(&record, 70, SL_STATUS_OK, SL_DIAG_NONE,
+                                            sl_str_from_cstr("active done"), false);
+    active_payload.started_count = &started_count;
+    active_payload.release = &release;
+    queued_payload = provider_payload_basic(&record, 71, SL_STATUS_OK, SL_DIAG_NONE,
+                                            sl_str_from_cstr("queued done"), false);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        init_executor_with_backend(&arena, &loop, &executor, slots, completions, 2U,
+                                   SL_ASYNC_BACKEND_LIBUV) != 0 ||
+        make_worker_descriptor(&record, &active_payload, &active_desc) != 0 ||
+        make_worker_descriptor(&record, &queued_payload, &queued_desc) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &active_desc, &active),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &queued_desc, &queued),
+                      SL_STATUS_OK) != 0 ||
+        wait_until_atomic_at_least(&started_count, 1) != 0)
+    {
+        result = 180;
+        goto cleanup;
+    }
+
+    if (sl_provider_executor_in_flight_count(&executor) != 1U ||
+        sl_provider_operation_state(queued) != SL_PROVIDER_OPERATION_QUEUED)
+    {
+        result = 181;
+        goto cleanup;
+    }
+
+    if (expect_status(sl_provider_executor_shutdown(&executor,
+                                                    SL_PROVIDER_EXECUTOR_SHUTDOWN_IMMEDIATE_CANCEL),
+                      SL_STATUS_OK) != 0 ||
+        drain_until_dispatch_count(loop, &record, 1U) != 0 ||
+        record.statuses[0] != SL_STATUS_CANCELLED ||
+        record.diag_codes[0] != SL_DIAG_APP_LIFECYCLE ||
+        sl_provider_executor_in_flight_count(&executor) != 1U ||
+        sl_provider_executor_pending_count(&executor) != 1U)
+    {
+        result = 182;
+        goto cleanup;
+    }
+
+    atomic_store(&release, true);
+    if (drain_until_dispatch_count(loop, &record, 2U) != 0 ||
+        sl_provider_executor_in_flight_count(&executor) != 0U ||
+        sl_provider_executor_pending_count(&executor) != 0U || record.cleanup_count != 2U)
+    {
+        result = 183;
+        goto cleanup;
+    }
+
+cleanup:
+    atomic_store(&release, true);
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
+    (void)active;
+    return result;
 }
 
 static int test_serialized_dispose_stops_zero_capacity_worker(void)
@@ -970,8 +1395,8 @@ static int test_serialized_run_requires_thread_safe_async_backend(void)
     SlProviderInstanceExecutor executor;
     SlProviderExecutorSlot slots[1];
     ProviderRecord record = {0};
-    ProviderWorkPayload payload = {&record, 30, SL_STATUS_OK, SL_DIAG_NONE, sl_str_from_cstr("ok"),
-                                   false};
+    ProviderWorkPayload payload = provider_payload_basic(&record, 30, SL_STATUS_OK, SL_DIAG_NONE,
+                                                         sl_str_from_cstr("ok"), false);
     SlProviderOperation* operation = NULL;
     SlProviderOperationDescriptor desc;
 
@@ -1062,76 +1487,33 @@ static int test_per_instance_isolation(void)
 
 int main(void)
 {
-    int result = test_execution_mode_parse_and_validation();
+    ProviderTestFn tests[] = {test_execution_mode_parse_and_validation,
+                              test_serialized_admission_overflow_and_recovery,
+                              test_descriptor_helpers_preserve_outputs_on_failure,
+                              test_invalid_descriptor_fields_fail_without_cleanup,
+                              test_blocking_pool_invalid_config_rejected,
+                              test_cancel_timeout_and_late_completion_cleanup_once,
+                              test_shutdown_rejects_new_work_and_cancels_pending,
+                              test_blocking_pool_promotes_queued_when_slot_frees,
+                              test_blocking_pool_workers_cap_parallel_execution_and_fifo_queue,
+                              test_blocking_pool_overflow_shutdown_and_cleanup_once,
+                              test_serialized_worker_executes_one_at_a_time_fifo,
+                              test_serialized_worker_capacity_and_reject_ownership,
+                              test_serialized_worker_failure_and_late_completion_cleanup_once,
+                              test_completion_post_failure_releases_claimed_active_operation,
+                              test_shutdown_leaves_worker_claimed_operation_for_worker_completion,
+                              test_shutdown_of_queued_operation_preserves_active_in_flight,
+                              test_serialized_dispose_stops_zero_capacity_worker,
+                              test_serialized_run_requires_thread_safe_async_backend,
+                              test_per_instance_isolation};
+    size_t index = 0U;
 
-    if (result != 0) {
-        return result;
+    for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {
+        int result = tests[index]();
+        if (result != 0) {
+            return result;
+        }
     }
 
-    result = test_serialized_admission_overflow_and_recovery();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_descriptor_helpers_preserve_outputs_on_failure();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_invalid_descriptor_fields_fail_without_cleanup();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_cancel_timeout_and_late_completion_cleanup_once();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_shutdown_rejects_new_work_and_cancels_pending();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_blocking_pool_promotes_queued_when_slot_frees();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_serialized_worker_executes_one_at_a_time_fifo();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_serialized_worker_capacity_and_reject_ownership();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_serialized_worker_failure_and_late_completion_cleanup_once();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_completion_post_failure_releases_claimed_active_operation();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_shutdown_leaves_worker_claimed_operation_for_worker_completion();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_serialized_dispose_stops_zero_capacity_worker();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_serialized_run_requires_thread_safe_async_backend();
-    if (result != 0) {
-        return result;
-    }
-
-    return test_per_instance_isolation();
+    return 0;
 }

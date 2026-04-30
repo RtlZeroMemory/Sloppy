@@ -1,7 +1,8 @@
 # Provider Execution Runtime Architecture
 
-Status: ENGINE-23 strategic architecture with ENGINE-23.A/B descriptor/admission and
-ENGINE-23.C serialized blocking execution implemented.
+Status: ENGINE-23 strategic architecture with ENGINE-23.A/B descriptor/admission,
+ENGINE-23.C serialized blocking execution, and ENGINE-23.D blocking pool execution
+implemented.
 
 ENGINE-23 creates Slop's provider execution and blocking offload runtime. It sits after
 ENGINE-12's generic async backend and before deeper provider, SQLite, HTTP, and public
@@ -201,13 +202,14 @@ Implemented in ENGINE-23.A/B:
   bridge, HTTP backend, green threads, Node/npm behavior, public alpha docs, or benchmark
   claims are introduced by this foundation.
 
-Implemented in ENGINE-23.C:
+Implemented in ENGINE-23.C/D:
 
 - descriptors may attach a native provider run callback used only by the serialized
-  blocking executor path;
-- accepted serialized work transfers ownership to the executor before the worker can run;
-- rejected run callbacks on non-serialized modes or unsafe completion backends return a
-  deterministic unsupported status without ownership transfer;
+  blocking and blocking pool executor paths;
+- accepted serialized or pool work transfers ownership to the executor before a worker can
+  run;
+- rejected run callbacks on non-worker modes or unsafe (non-thread-safe) completion
+  backends return a deterministic unsupported status without ownership transfer;
 - worker callbacks receive only `SlProviderOperation` and caller-owned provider payload
   context; they must not touch V8 or JS handles.
 
@@ -255,8 +257,22 @@ Implemented in ENGINE-23.C:
   owning any submission-side payload;
 - dispose requests worker stop, joins the worker, then discards any remaining admitted
   pending/active operations exactly once;
-- the worker is per provider instance, not per operation, and `BLOCKING_POOL` remains
-  unimplemented until #394.
+- the worker is per provider instance, not per operation.
+
+Implemented in ENGINE-23.D:
+
+- `BLOCKING_POOL` starts a bounded number of long-lived workers per provider instance;
+- queue capacity remains fixed and admission rejects overflow before ownership transfer;
+- `max_in_flight` defaults to worker count and cannot exceed worker count for pool
+  executors;
+- workers consume active operations without entering V8 or touching JS handles;
+- accepted operation cleanup remains executor-owned and runs exactly once through terminal
+  completion cleanup or shutdown/dispose discard;
+- pending work is cancelled on shutdown/dispose, while already-running worker callbacks
+  complete safely and post through the same async completion path;
+- native provider-like tests cover worker caps, queue caps, deterministic overflow,
+  cleanup-once success/failure/shutdown behavior, and libuv completion posting without
+  requiring V8 or live databases.
 
 `SERIALIZED_BLOCKING` behavior:
 
@@ -270,14 +286,18 @@ Implemented in ENGINE-23.C:
 - SQLite single-connection providers use this mode by default, but real SQLite bridge
   conversion remains ENGINE-17.
 
-`BLOCKING_POOL` requirements:
+`BLOCKING_POOL` behavior:
 
 - bounded worker count;
 - bounded queue;
-- bounded max in-flight operations;
+- bounded max in-flight operations no larger than worker count;
 - no thread-per-request behavior;
 - overflow is deterministic and diagnostic-backed;
-- shutdown drains or cancels without orphaning worker-owned state.
+- shutdown rejects new work, cancels pending work through terminal completions, lets
+  already-running worker callbacks complete safely under the current immediate-cancel
+  policy, and preserves cleanup-once behavior;
+- provider-like tests prove parallel active execution is capped by configured workers and
+  queued work is promoted without creating one thread per operation.
 
 `NONBLOCKING_IO` requirements:
 
@@ -404,7 +424,9 @@ Recommended implementation order:
 1. `TASK ENGINE-23.A`: Provider Operation Descriptor and Ownership Contract.
 2. `TASK ENGINE-23.B`: Per-Provider-Instance Executor Model.
 3. `TASK ENGINE-23.C`: Serialized Blocking Executor for SQLite-Class Providers.
-4. `TASK ENGINE-23.D`: Blocking Pool Executor and Admission Policy.
+4. `TASK ENGINE-23.D`: Blocking Pool Executor and Admission Policy. Done for the native
+   provider-like executor: per-instance workers, bounded queue/in-flight counts,
+   deterministic overflow, shutdown/dispose cleanup, and libuv completion posting.
 5. `TASK ENGINE-23.E`: Provider Cancellation, Timeout, and Late Completion Semantics.
 6. `TASK ENGINE-23.F`: Capability-Gated Provider Dispatch.
 7. `TASK ENGINE-23.G`: Provider Executor Diagnostics and Stress Evidence.

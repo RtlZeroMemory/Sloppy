@@ -2,13 +2,14 @@
  * src/core/provider_executor.c
  *
  * Implements Sloppy's bounded provider/offload executor model. SERIALIZED_BLOCKING owns
- * one long-lived worker per provider instance and posts terminal completions through the
- * owning SlAsyncLoop. Other execution modes retain the ENGINE-23.AB admission/status
- * model until their later execution engines are implemented.
+ * one long-lived worker per provider instance, and BLOCKING_POOL owns a bounded set of
+ * long-lived workers per provider instance. Worker completions are posted through the
+ * owning SlAsyncLoop; worker code never enters V8.
  */
 #include "sloppy/provider_executor.h"
 
 #include "sloppy/assert.h"
+#include "sloppy/checked_math.h"
 
 static bool sl_provider_str_valid(SlStr value)
 {
@@ -366,6 +367,7 @@ static void sl_provider_executor_activate_next(SlProviderInstanceExecutor* execu
             return;
         }
         next->state = SL_PROVIDER_OPERATION_ACTIVE;
+        next->counted_in_flight = true;
         executor->in_flight += 1U;
         sl_provider_executor_signal_worker(executor);
     }
@@ -393,8 +395,9 @@ static void sl_provider_executor_finish_terminal_locked(SlProviderInstanceExecut
     if (executor->count != 0U) {
         executor->count -= 1U;
     }
-    if (operation->state == SL_PROVIDER_OPERATION_TERMINAL && executor->in_flight != 0U) {
+    if (operation->counted_in_flight && executor->in_flight != 0U) {
         executor->in_flight -= 1U;
+        operation->counted_in_flight = false;
     }
     executor->completed_count += 1U;
     sl_provider_executor_activate_next(executor);
@@ -418,7 +421,50 @@ static size_t sl_provider_executor_default_max_in_flight(SlProviderExecutionMode
     return 1U;
 }
 
-static void sl_provider_serialized_worker_main(void* user)
+static size_t sl_provider_executor_effective_worker_count(const SlProviderExecutorConfig* config)
+{
+    if (config == NULL) {
+        return 0U;
+    }
+
+    if (config->mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) {
+        return 1U;
+    }
+
+    if (config->mode == SL_PROVIDER_EXECUTION_BLOCKING_POOL) {
+        return config->worker_count;
+    }
+
+    return 0U;
+}
+
+static bool sl_provider_executor_config_valid(const SlProviderExecutorConfig* config)
+{
+    if (config == NULL || !sl_provider_execution_mode_is_supported(config->mode) ||
+        config->instance_id.length == 0U || config->provider_kind.length == 0U ||
+        !sl_provider_str_valid(config->instance_id) ||
+        !sl_provider_str_valid(config->provider_kind))
+    {
+        return false;
+    }
+
+    if (config->mode == SL_PROVIDER_EXECUTION_BLOCKING_POOL) {
+        if (config->worker_count == 0U) {
+            return false;
+        }
+        if (config->max_in_flight != 0U && config->max_in_flight > config->worker_count) {
+            return false;
+        }
+    }
+
+    if (config->mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING && config->max_in_flight > 1U) {
+        return false;
+    }
+
+    return true;
+}
+
+static void sl_provider_worker_main(void* user)
 {
     SlProviderInstanceExecutor* executor = (SlProviderInstanceExecutor*)user;
 
@@ -482,13 +528,50 @@ static void sl_provider_serialized_worker_main(void* user)
     sl_provider_executor_unlock(executor);
 }
 
-static SlStatus sl_provider_executor_start_serialized_worker(SlProviderInstanceExecutor* executor,
-                                                             SlArena* arena)
+static void sl_provider_executor_destroy_sync(SlProviderInstanceExecutor* executor)
 {
+    if (executor == NULL) {
+        return;
+    }
+
+    sl_platform_cond_destroy(executor->worker_cond);
+    sl_platform_mutex_destroy(executor->mutex);
+    executor->worker_threads = NULL;
+    executor->worker_cond = NULL;
+    executor->mutex = NULL;
+}
+
+static void sl_provider_executor_stop_started_workers(SlProviderInstanceExecutor* executor,
+                                                      size_t started_count)
+{
+    if (executor == NULL) {
+        return;
+    }
+
+    sl_provider_executor_lock(executor);
+    executor->worker_stop_requested = true;
+    sl_provider_executor_broadcast_worker(executor);
+    sl_provider_executor_unlock(executor);
+    while (started_count > 0U) {
+        started_count -= 1U;
+        sl_platform_thread_join(executor->worker_threads[started_count]);
+    }
+}
+
+static SlStatus sl_provider_executor_start_workers(SlProviderInstanceExecutor* executor,
+                                                   SlArena* arena, size_t worker_count)
+{
+    void* memory = NULL;
+    size_t worker_bytes = 0U;
+    size_t index = 0U;
     SlStatus status;
 
     if (executor == NULL || arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (worker_count == 0U) {
+        return sl_status_ok();
     }
 
     status = sl_platform_mutex_create(arena, &executor->mutex);
@@ -501,17 +584,37 @@ static SlStatus sl_provider_executor_start_serialized_worker(SlProviderInstanceE
         executor->mutex = NULL;
         return status;
     }
-    status = sl_platform_thread_start(arena, sl_provider_serialized_worker_main, executor,
-                                      &executor->worker_thread);
+
+    status = sl_checked_mul_size(sizeof(SlPlatformThread*), worker_count, &worker_bytes);
     if (!sl_status_is_ok(status)) {
-        sl_platform_cond_destroy(executor->worker_cond);
-        sl_platform_mutex_destroy(executor->mutex);
-        executor->worker_cond = NULL;
-        executor->mutex = NULL;
+        sl_provider_executor_destroy_sync(executor);
         return status;
     }
 
-    executor->worker_started_count += 1U;
+    status = sl_arena_alloc(arena, worker_bytes, _Alignof(SlPlatformThread*), &memory);
+    if (!sl_status_is_ok(status)) {
+        sl_provider_executor_destroy_sync(executor);
+        return status;
+    }
+
+    executor->worker_threads = (SlPlatformThread**)memory;
+    for (index = 0U; index < worker_count; index += 1U) {
+        executor->worker_threads[index] = NULL;
+    }
+
+    for (index = 0U; index < worker_count; index += 1U) {
+        status = sl_platform_thread_start(arena, sl_provider_worker_main, executor,
+                                          &executor->worker_threads[index]);
+        if (!sl_status_is_ok(status)) {
+            sl_provider_executor_stop_started_workers(executor, index);
+            sl_provider_executor_destroy_sync(executor);
+            return status;
+        }
+
+        executor->worker_started_count += 1U;
+    }
+
+    executor->worker_thread = executor->worker_threads[0];
     return sl_status_ok();
 }
 
@@ -522,12 +625,9 @@ SlStatus sl_provider_executor_init(SlProviderInstanceExecutor* executor, SlArena
     size_t index = 0U;
     SlStatus status;
 
-    if (executor == NULL || arena == NULL || config == NULL || completion_loop == NULL ||
-        !sl_provider_execution_mode_is_supported(config->mode) ||
-        config->instance_id.length == 0U || config->provider_kind.length == 0U ||
-        (slots == NULL && config->queue_capacity != 0U) ||
-        !sl_provider_str_valid(config->instance_id) ||
-        !sl_provider_str_valid(config->provider_kind))
+    if (executor == NULL || arena == NULL || completion_loop == NULL ||
+        !sl_provider_executor_config_valid(config) ||
+        (slots == NULL && config->queue_capacity != 0U))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -555,8 +655,11 @@ SlStatus sl_provider_executor_init(SlProviderInstanceExecutor* executor, SlArena
         slots[index] = (SlProviderExecutorSlot){0};
     }
 
-    if (config->mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) {
-        status = sl_provider_executor_start_serialized_worker(executor, arena);
+    if (config->mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING ||
+        config->mode == SL_PROVIDER_EXECUTION_BLOCKING_POOL)
+    {
+        status = sl_provider_executor_start_workers(
+            executor, arena, sl_provider_executor_effective_worker_count(config));
         if (!sl_status_is_ok(status)) {
             *executor = (SlProviderInstanceExecutor){0};
             return status;
@@ -605,7 +708,11 @@ void sl_provider_executor_dispose(SlProviderInstanceExecutor* executor)
     sl_provider_executor_broadcast_worker(executor);
     sl_provider_executor_unlock(executor);
 
-    sl_platform_thread_join(executor->worker_thread);
+    for (index = 0U; executor->worker_threads != NULL && index < executor->worker_started_count;
+         index += 1U)
+    {
+        sl_platform_thread_join(executor->worker_threads[index]);
+    }
 
     sl_provider_executor_lock(executor);
     for (index = 0U; executor->slots != NULL && index < executor->capacity; index += 1U) {
@@ -742,7 +849,8 @@ sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor,
     }
 
     if (descriptor->run != NULL &&
-        descriptor->execution_mode != SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING)
+        descriptor->execution_mode != SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING &&
+        descriptor->execution_mode != SL_PROVIDER_EXECUTION_BLOCKING_POOL)
     {
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
