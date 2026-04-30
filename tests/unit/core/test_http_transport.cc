@@ -432,9 +432,13 @@ static void stop_one_connection(SlHttpTransportServer* server, ClientConnect* cl
 {
     SlDiag diag = {};
 
-    if (server != nullptr) {
-        (void)sl_http_transport_connection_close(&server->connections[0], &diag);
-        (void)sl_http_transport_server_poll(server, &diag);
+    if (server != nullptr &&
+        sl_http_transport_server_state(server) != SL_HTTP_TRANSPORT_SERVER_STATE_NONE)
+    {
+        if (server->connections != nullptr && server->connection_capacity > 0U) {
+            (void)sl_http_transport_connection_close(&server->connections[0], &diag);
+            (void)sl_http_transport_server_poll(server, &diag);
+        }
         (void)sl_http_transport_server_stop(server, &diag);
         (void)sl_http_transport_server_dispose(server, &diag);
     }
