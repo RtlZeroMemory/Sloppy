@@ -350,6 +350,8 @@ sl_provider_executor_next_runnable_locked(const SlProviderInstanceExecutor* exec
     return best;
 }
 
+static void sl_provider_operation_run_cleanup_once(SlProviderOperation* operation);
+
 static void sl_provider_executor_activate_next(SlProviderInstanceExecutor* executor)
 {
     SlProviderOperation* next = NULL;
@@ -367,6 +369,35 @@ static void sl_provider_executor_activate_next(SlProviderInstanceExecutor* execu
         executor->in_flight += 1U;
         sl_provider_executor_signal_worker(executor);
     }
+}
+
+static void sl_provider_executor_finish_terminal_locked(SlProviderInstanceExecutor* executor,
+                                                        SlProviderOperation* operation)
+{
+    SlProviderExecutorSlot* slot = NULL;
+
+    if (executor == NULL || operation == NULL) {
+        return;
+    }
+
+    sl_provider_operation_run_cleanup_once(operation);
+    slot = sl_provider_executor_find_operation_slot(executor, operation);
+    if (slot != NULL) {
+        slot->operation = NULL;
+    }
+    /*
+     * Completion posting can fail before the async loop owns cleanup. The executor must
+     * still release its admitted operation so one failed post cannot stall the provider
+     * instance behind a permanently active, worker-claimed operation.
+     */
+    if (executor->count != 0U) {
+        executor->count -= 1U;
+    }
+    if (operation->state == SL_PROVIDER_OPERATION_TERMINAL && executor->in_flight != 0U) {
+        executor->in_flight -= 1U;
+    }
+    executor->completed_count += 1U;
+    sl_provider_executor_activate_next(executor);
 }
 
 static size_t sl_provider_executor_default_max_in_flight(SlProviderExecutionMode mode,
@@ -823,7 +854,6 @@ static void sl_provider_completion_cleanup(const SlAsyncCompletion* completion, 
 {
     SlProviderOperation* operation = (SlProviderOperation*)user;
     SlProviderInstanceExecutor* executor = operation == NULL ? NULL : operation->executor;
-    SlProviderExecutorSlot* slot = NULL;
 
     (void)completion;
     if (operation == NULL || executor == NULL) {
@@ -831,23 +861,7 @@ static void sl_provider_completion_cleanup(const SlAsyncCompletion* completion, 
     }
 
     sl_provider_executor_lock(executor);
-    sl_provider_operation_run_cleanup_once(operation);
-    slot = sl_provider_executor_find_operation_slot(executor, operation);
-    if (slot != NULL) {
-        slot->operation = NULL;
-    }
-    /*
-     * These guards preserve cleanup-once disposal after unusual completion paths. They are
-     * not synchronization; provider executor calls are externally serialized by contract.
-     */
-    if (executor->count != 0U) {
-        executor->count -= 1U;
-    }
-    if (operation->state == SL_PROVIDER_OPERATION_TERMINAL && executor->in_flight != 0U) {
-        executor->in_flight -= 1U;
-    }
-    executor->completed_count += 1U;
-    sl_provider_executor_activate_next(executor);
+    sl_provider_executor_finish_terminal_locked(executor, operation);
     sl_provider_executor_unlock(executor);
 }
 
@@ -897,9 +911,16 @@ static SlStatus sl_provider_operation_post_terminal(SlProviderOperation* operati
 
     post_status = sl_async_loop_post(operation->executor->completion_loop, &completion);
     if (!sl_status_is_ok(post_status)) {
-        operation->terminal_status = sl_status_ok();
+        SlDiagCode post_diag_code = sl_status_code(post_status) == SL_STATUS_CAPACITY_EXCEEDED
+                                        ? SL_DIAG_ENGINE_BACKPRESSURE
+                                        : SL_DIAG_INTERNAL_ERROR;
+
+        operation->terminal_status = post_status;
         operation->terminal_reason = SL_CANCELLATION_REASON_NONE;
-        operation->diag = (SlDiag){0};
+        operation->diag =
+            sl_provider_diag(post_diag_code, sl_str_from_cstr("provider completion post failed"));
+        operation->state = SL_PROVIDER_OPERATION_TERMINAL;
+        sl_provider_executor_finish_terminal_locked(operation->executor, operation);
         operation->executor->completion_post_failure_count += 1U;
         sl_provider_executor_unlock(operation->executor);
         return post_status;

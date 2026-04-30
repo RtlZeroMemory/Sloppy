@@ -57,6 +57,15 @@ static SlStatus record_provider_completion(SlAsyncLoop* loop, const SlAsyncCompl
     return sl_status_ok();
 }
 
+static SlStatus noop_async_completion(SlAsyncLoop* loop, const SlAsyncCompletion* completion,
+                                      void* user)
+{
+    (void)loop;
+    (void)completion;
+    (void)user;
+    return sl_status_ok();
+}
+
 static void cleanup_provider_operation(SlProviderOperation* operation, void* user)
 {
     ProviderRecord* record = (ProviderRecord*)user;
@@ -765,6 +774,100 @@ static int test_serialized_worker_failure_and_late_completion_cleanup_once(void)
     return 0;
 }
 
+static int test_completion_post_failure_releases_claimed_active_operation(void)
+{
+    unsigned char arena_storage[16384];
+    SlArena arena;
+    SlAsyncCompletion completions[1];
+    SlAsyncLoop* loop = NULL;
+    SlProviderExecutorConfig config = {0};
+    SlProviderInstanceExecutor executor;
+    SlProviderExecutorSlot slots[1];
+    ProviderRecord record = {0};
+    SlAsyncCompletion blocker = {0};
+    SlProviderOperation* operation = NULL;
+    SlProviderOperation* recovery = NULL;
+    SlProviderOperationDescriptor desc;
+    size_t ran = 0U;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, completions, 1U, &loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 130;
+    }
+
+    config.instance_id = sl_str_from_cstr("sqlite:main");
+    config.provider_kind = sl_str_from_cstr("sqlite");
+    config.mode = SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING;
+    config.queue_capacity = 1U;
+    config.worker_count = 1U;
+    config.max_in_flight = 1U;
+    if (expect_status(sl_provider_executor_init(&executor, &arena, &config, slots, loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 131;
+    }
+
+    blocker.kind = SL_ASYNC_COMPLETION_TEST;
+    blocker.operation_kind = SL_ASYNC_OPERATION_INTERNAL_COMPLETION;
+    blocker.dispatch = noop_async_completion;
+    if (expect_status(sl_async_loop_post(loop, &blocker), SL_STATUS_OK) != 0 ||
+        make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &operation),
+                      SL_STATUS_OK) != 0 ||
+        operation == NULL)
+    {
+        return 132;
+    }
+
+    operation->worker_claimed = true;
+    if (expect_status(sl_provider_operation_complete(operation, sl_status_ok(), SL_DIAG_NONE,
+                                                     sl_str_from_cstr("queue saturated")),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        executor.completion_post_failure_count != 1U)
+    {
+        return 133;
+    }
+    if (executor.in_flight != 0U) {
+        return 135;
+    }
+    if (executor.count != 0U) {
+        return 136;
+    }
+    if (record.worker_count != 0U) {
+        return 137;
+    }
+    if (record.cleanup_count != 1U) {
+        return 138;
+    }
+    if (record.dispatch_count != 0U) {
+        return 139;
+    }
+    if (sl_provider_operation_state(operation) != SL_PROVIDER_OPERATION_TERMINAL) {
+        return 140;
+    }
+
+    if (expect_status(sl_async_loop_drain(loop, 1U, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+        make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &recovery),
+                      SL_STATUS_OK) != 0 ||
+        recovery == NULL ||
+        expect_status(sl_provider_operation_complete(recovery, sl_status_ok(), SL_DIAG_NONE,
+                                                     sl_str_from_cstr("recovered")),
+                      SL_STATUS_OK) != 0 ||
+        drain_until_dispatch_count(loop, &record, 1U) != 0 || record.dispatch_count != 1U ||
+        record.cleanup_count != 2U || executor.in_flight != 0U || executor.count != 0U)
+    {
+        return 134;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
+    return 0;
+}
+
 static int test_serialized_run_requires_thread_safe_async_backend(void)
 {
     unsigned char arena_storage[8192];
@@ -913,6 +1016,11 @@ int main(void)
     }
 
     result = test_serialized_worker_failure_and_late_completion_cleanup_once();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_completion_post_failure_releases_claimed_active_operation();
     if (result != 0) {
         return result;
     }
