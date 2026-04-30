@@ -4,13 +4,18 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+enum
+{
+    PROVIDER_RECORD_CAPACITY = 64
+};
+
 typedef struct ProviderRecord
 {
-    SlStatusCode statuses[64];
-    SlDiagCode diag_codes[64];
-    SlAsyncOperationKind operation_kinds[64];
-    SlStr messages[64];
-    int worker_values[64];
+    SlStatusCode statuses[PROVIDER_RECORD_CAPACITY];
+    SlDiagCode diag_codes[PROVIDER_RECORD_CAPACITY];
+    SlAsyncOperationKind operation_kinds[PROVIDER_RECORD_CAPACITY];
+    SlStr messages[PROVIDER_RECORD_CAPACITY];
+    int worker_values[PROVIDER_RECORD_CAPACITY];
     size_t worker_count;
     size_t dispatch_count;
     size_t cleanup_count;
@@ -124,20 +129,35 @@ static bool provider_diag_has_hint(const SlDiag* diag, const char* expected)
     return false;
 }
 
-static bool provider_str_contains_cstr(SlStr text, const char* expected)
+static char provider_ascii_lower(char value)
+{
+    if (value >= 'A' && value <= 'Z') {
+        return (char)(value - 'A' + 'a');
+    }
+    return value;
+}
+
+static bool provider_str_contains_cstr_ignore_case(SlStr text, const char* expected)
 {
     SlStr needle = sl_str_from_cstr(expected);
     size_t index = 0U;
+    size_t offset = 0U;
 
     if (text.ptr == NULL || expected == NULL || needle.length == 0U || needle.length > text.length)
     {
         return false;
     }
     for (index = 0U; index <= text.length - needle.length; index += 1U) {
-        if (sl_bytes_equal(
-                sl_bytes_from_parts((const unsigned char*)text.ptr + index, needle.length),
-                sl_bytes_from_parts((const unsigned char*)needle.ptr, needle.length)))
-        {
+        bool matched = true;
+        for (offset = 0U; offset < needle.length; offset += 1U) {
+            if (provider_ascii_lower(text.ptr[index + offset]) !=
+                provider_ascii_lower(needle.ptr[offset]))
+            {
+                matched = false;
+                break;
+            }
+        }
+        if (matched) {
             return true;
         }
     }
@@ -151,14 +171,14 @@ static bool provider_diag_mentions_unsafe_text(const SlDiag* diag)
     if (diag == NULL) {
         return false;
     }
-    if (provider_str_contains_cstr(diag->message, "secret") ||
-        provider_str_contains_cstr(diag->message, "0x"))
+    if (provider_str_contains_cstr_ignore_case(diag->message, "secret") ||
+        provider_str_contains_cstr_ignore_case(diag->message, "0x"))
     {
         return true;
     }
     for (index = 0U; index < diag->hint_count; index += 1U) {
-        if (provider_str_contains_cstr(diag->hints[index], "secret") ||
-            provider_str_contains_cstr(diag->hints[index], "0x"))
+        if (provider_str_contains_cstr_ignore_case(diag->hints[index], "secret") ||
+            provider_str_contains_cstr_ignore_case(diag->hints[index], "0x"))
         {
             return true;
         }
@@ -219,7 +239,7 @@ static SlStatus record_provider_completion(SlAsyncLoop* loop, const SlAsyncCompl
 
     (void)loop;
     if (record == NULL || completion == NULL || completion->operation == NULL ||
-        record->dispatch_count >= 64U)
+        record->dispatch_count >= PROVIDER_RECORD_CAPACITY)
     {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
@@ -259,12 +279,18 @@ static SlStatus run_provider_like_operation(SlProviderOperation* operation, void
     ProviderRecord* record = payload == NULL ? NULL : payload->record;
     size_t index = 0U;
 
-    if (operation == NULL || payload == NULL || record == NULL || record->worker_count >= 64U) {
+    if (operation == NULL || payload == NULL || record == NULL) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     if (payload->record_mutex != NULL) {
         sl_platform_mutex_lock(payload->record_mutex);
+    }
+    if (record->worker_count >= PROVIDER_RECORD_CAPACITY) {
+        if (payload->record_mutex != NULL) {
+            sl_platform_mutex_unlock(payload->record_mutex);
+        }
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     index = record->worker_count;
     record->worker_values[index] = payload->value;
@@ -1235,9 +1261,13 @@ static int test_provider_executor_admission_diagnostics_and_counters(void)
     SlProviderOperation* rejected = (SlProviderOperation*)1;
     SlProviderOperationDescriptor desc;
     SlDiag diag = {0};
+    unsigned char tiny_storage[1];
+    SlArena tiny_arena;
 
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
             0 ||
+        expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0 ||
         init_executor(&arena, &loop, &executor, slots, completions, 1U) != 0)
     {
         return 300;
@@ -1247,7 +1277,7 @@ static int test_provider_executor_admission_diagnostics_and_counters(void)
         expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_provider_operation_descriptor_set_diagnostic_context(
-                          &desc, sl_str_from_cstr("password=secret 0x1234")),
+                          &desc, sl_str_from_cstr("PASSWORD=SECRET 0X1234")),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &accepted),
                       SL_STATUS_OK) != 0 ||
@@ -1259,6 +1289,17 @@ static int test_provider_executor_admission_diagnostics_and_counters(void)
         provider_diag_mentions_unsafe_text(&diag))
     {
         return 301;
+    }
+
+    rejected = (SlProviderOperation*)1;
+    diag = (SlDiag){0};
+    if (expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &tiny_arena, &desc, &rejected),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        rejected != NULL)
+    {
+        return 304;
     }
 
     rejected = (SlProviderOperation*)1;
@@ -1286,6 +1327,13 @@ static int test_provider_executor_admission_diagnostics_and_counters(void)
         provider_diag_mentions_unsafe_text(&diag))
     {
         return 303;
+    }
+
+    diag = (SlDiag){0};
+    if (expect_status(sl_provider_executor_submit(&executor, &tiny_arena, &desc, &rejected),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 305;
     }
 
     sl_provider_executor_dispose(&executor);

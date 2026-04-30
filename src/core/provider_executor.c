@@ -1023,9 +1023,7 @@ sl_provider_executor_reject_with_diag(SlArena* arena,
 {
     SlStatus status = sl_provider_build_admission_diag(arena, descriptor->admission_diag,
                                                        descriptor, diag_code, message);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
+    (void)status;
     return sl_status_from_code(status_code);
 }
 
@@ -1152,9 +1150,7 @@ static SlStatus sl_provider_executor_reserve_slot(SlProviderInstanceExecutor* ex
             arena, descriptor == NULL ? NULL : descriptor->admission_diag, descriptor,
             SL_DIAG_ENGINE_BACKPRESSURE,
             sl_str_from_cstr("provider operation rejected: executor queue full"));
-        if (!sl_status_is_ok(diag_status)) {
-            return diag_status;
-        }
+        (void)diag_status;
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
 
@@ -1358,7 +1354,9 @@ SlStatus sl_provider_operation_cancel(SlProviderOperation* operation, SlStr deta
         return post_status;
     }
     if (operation->executor != NULL) {
+        sl_provider_executor_lock(operation->executor);
         operation->executor->cancelled_count += 1U;
+        sl_provider_executor_unlock(operation->executor);
     }
 
     return cancel_status;
