@@ -105,18 +105,18 @@ availability, or JavaScript-to-native provider execution.
 
 Sloppy uses libuv internally for eventing, timers, wakeups, and async completion plumbing.
 libuv's global threadpool is not Sloppy's provider runtime. Provider work must be admitted
-through Slop-owned provider executors, complete through `SlAsyncCompletion`, and resume
+through Sloppy-owned provider executors, complete through `SlAsyncCompletion`, and resume
 JavaScript only on the V8 owner thread.
 
 Execution modes:
 
 | Mode | Semantics |
 | --- | --- |
-| `InlineFast` | Bounded metadata/config work only. It must not block on I/O, database calls, disk, network, or contended locks. |
-| `SerializedBlocking` | One operation at a time for one provider instance. This is the default for a single SQLite connection unless a later SQLite task changes the policy. |
-| `BlockingPool` | Future bounded worker pool for one provider instance when the provider is safe to parallelize blocking calls. |
-| `NonBlockingIo` | True async provider/client path through socket readiness or provider async APIs. No worker is occupied while waiting. |
-| `ExternalManaged` | Future escape hatch for external runtimes/pools. It still must use Slop admission, completion, diagnostics, cancellation, and lifetime rules. |
+| `INLINE_FAST` | Bounded metadata/config work only. It must not block on I/O, database calls, disk, network, or contended locks. |
+| `SERIALIZED_BLOCKING` | One operation at a time for one provider instance. This is the default for a single SQLite connection unless a later SQLite task changes the policy. |
+| `BLOCKING_POOL` | Future bounded worker pool for one provider instance when the provider is safe to parallelize blocking calls. |
+| `NONBLOCKING_IO` | True async provider/client path through socket readiness or provider async APIs. No worker is occupied while waiting. |
+| `EXTERNAL_MANAGED` | Future escape hatch for external runtimes/pools. It still must use Sloppy admission, completion, diagnostics, cancellation, and lifetime rules. |
 
 Provider instances are per logical configured resource: `sqlite:main`, `sqlite:audit`,
 future `postgres:main`, or future `sqlserver:reporting`. Each instance has its own queue

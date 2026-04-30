@@ -7,6 +7,8 @@
  */
 #include "sloppy/provider_executor.h"
 
+#include "sloppy/assert.h"
+
 static bool sl_provider_str_valid(SlStr value)
 {
     return value.length == 0U || value.ptr != NULL;
@@ -130,6 +132,15 @@ sl_provider_executor_find_operation_slot(SlProviderInstanceExecutor* executor,
     return NULL;
 }
 
+static bool sl_provider_sequence_before(size_t candidate, size_t current)
+{
+    const size_t max_size = ~(size_t)0;
+    const size_t half_range = max_size / 2U;
+    const size_t diff = candidate - current;
+
+    return candidate != current && diff > half_range;
+}
+
 static SlProviderOperation*
 sl_provider_executor_next_queued(const SlProviderInstanceExecutor* executor)
 {
@@ -143,7 +154,7 @@ sl_provider_executor_next_queued(const SlProviderInstanceExecutor* executor)
     for (index = 0U; index < executor->capacity; index += 1U) {
         SlProviderOperation* candidate = executor->slots[index].operation;
         if (candidate != NULL && candidate->state == SL_PROVIDER_OPERATION_QUEUED &&
-            (best == NULL || candidate->sequence < best->sequence))
+            (best == NULL || sl_provider_sequence_before(candidate->sequence, best->sequence)))
         {
             best = candidate;
         }
@@ -365,7 +376,7 @@ SlStatus sl_provider_executor_submit(SlProviderInstanceExecutor* executor, SlAre
 
     slot = sl_provider_executor_find_free_slot(executor);
     if (slot == NULL) {
-        executor->overflow_count += 1U;
+        SL_ASSERT_MSG(false, "provider executor count/slot invariant violated");
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
 
@@ -410,6 +421,10 @@ static void sl_provider_completion_cleanup(const SlAsyncCompletion* completion, 
     if (slot != NULL) {
         slot->operation = NULL;
     }
+    /*
+     * These guards preserve cleanup-once disposal after unusual completion paths. They are
+     * not synchronization; provider executor calls are externally serialized by contract.
+     */
     if (executor->count != 0U) {
         executor->count -= 1U;
     }
@@ -486,7 +501,8 @@ SlStatus sl_provider_operation_complete(SlProviderOperation* operation, SlStatus
 
 SlStatus sl_provider_operation_cancel(SlProviderOperation* operation, SlStr detail)
 {
-    SlStatus status;
+    SlStatus cancel_status = sl_status_ok();
+    SlStatus post_status;
 
     if (operation == NULL || !sl_provider_str_valid(detail)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -495,21 +511,24 @@ SlStatus sl_provider_operation_cancel(SlProviderOperation* operation, SlStr deta
     if (operation->cancellation != NULL &&
         !sl_cancellation_token_is_cancelled(operation->cancellation))
     {
-        status = sl_cancellation_token_cancel(operation->cancellation,
-                                              SL_CANCELLATION_REASON_CANCELLED, detail);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
+        cancel_status = sl_cancellation_token_cancel(operation->cancellation,
+                                                     SL_CANCELLATION_REASON_CANCELLED, detail);
     }
 
-    return sl_provider_operation_post_terminal(operation, sl_status_from_code(SL_STATUS_CANCELLED),
-                                               SL_CANCELLATION_REASON_CANCELLED,
-                                               SL_DIAG_ENGINE_CANCELLED, detail);
+    post_status = sl_provider_operation_post_terminal(
+        operation, sl_status_from_code(SL_STATUS_CANCELLED), SL_CANCELLATION_REASON_CANCELLED,
+        SL_DIAG_ENGINE_CANCELLED, detail);
+    if (!sl_status_is_ok(post_status)) {
+        return post_status;
+    }
+
+    return cancel_status;
 }
 
 SlStatus sl_provider_operation_timeout(SlProviderOperation* operation, SlStr detail)
 {
-    SlStatus status;
+    SlStatus cancel_status = sl_status_ok();
+    SlStatus post_status;
 
     if (operation == NULL || !sl_provider_str_valid(detail)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -518,19 +537,21 @@ SlStatus sl_provider_operation_timeout(SlProviderOperation* operation, SlStr det
     if (operation->cancellation != NULL &&
         !sl_cancellation_token_is_cancelled(operation->cancellation))
     {
-        status = sl_cancellation_token_cancel(operation->cancellation,
-                                              SL_CANCELLATION_REASON_DEADLINE_EXCEEDED, detail);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
+        cancel_status = sl_cancellation_token_cancel(
+            operation->cancellation, SL_CANCELLATION_REASON_DEADLINE_EXCEEDED, detail);
     }
 
     if (operation->executor != NULL) {
         operation->executor->timed_out_count += 1U;
     }
-    return sl_provider_operation_post_terminal(
+    post_status = sl_provider_operation_post_terminal(
         operation, sl_status_from_code(SL_STATUS_DEADLINE_EXCEEDED),
         SL_CANCELLATION_REASON_DEADLINE_EXCEEDED, SL_DIAG_ENGINE_PROMISE_PENDING, detail);
+    if (!sl_status_is_ok(post_status)) {
+        return post_status;
+    }
+
+    return cancel_status;
 }
 
 SlStatus sl_provider_executor_shutdown(SlProviderInstanceExecutor* executor,

@@ -131,6 +131,11 @@ bool sl_provider_execution_mode_is_supported(SlProviderExecutionMode mode);
  * The executor does not start worker threads. It models admission, serialized activation,
  * terminal completion posting, and shutdown policy. `arena`, `slots`, and
  * `completion_loop` must outlive the executor.
+ *
+ * Threading contract: this executor is caller-serialized. `init`, `dispose`, `submit`,
+ * `complete`, `cancel`, `timeout`, `shutdown`, and query calls must not race with each
+ * other on the same executor or operation. The caller owns any required synchronization,
+ * descriptor-memory visibility before submission, and executor lifetime.
  */
 SlStatus sl_provider_executor_init(SlProviderInstanceExecutor* executor, SlArena* arena,
                                    const SlProviderExecutorConfig* config,
