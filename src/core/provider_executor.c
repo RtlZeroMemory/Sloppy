@@ -817,6 +817,32 @@ static SlStatus sl_provider_add_hint_pair(SlDiagBuilder* builder, SlStr prefix, 
     return sl_diag_builder_add_hint_owned(builder, hint);
 }
 
+static bool sl_provider_hint_value_safe(SlStr value)
+{
+    size_t index = 0U;
+
+    if (!sl_provider_str_valid(value) || value.length > 128U) {
+        return false;
+    }
+    for (index = 0U; index < value.length; index += 1U) {
+        char ch = value.ptr[index];
+        bool safe = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-' || ch == ':';
+        if (!safe) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static SlStr sl_provider_safe_hint_value(SlStr value)
+{
+    if (!sl_provider_hint_value_safe(value)) {
+        return sl_str_from_cstr("<redacted>");
+    }
+    return value;
+}
+
 static SlStatus sl_provider_build_denied_diag(SlArena* arena, SlDiag* out_diag,
                                               const SlProviderOperationDescriptor* descriptor,
                                               SlStr provider_token, SlStr reason)
@@ -838,30 +864,32 @@ static SlStatus sl_provider_build_denied_diag(SlArena* arena, SlDiag* out_diag,
         return status;
     }
     if (!sl_str_is_empty(descriptor->capability.token)) {
-        status = sl_provider_add_hint_pair(&builder, sl_str_from_cstr("token: "),
-                                           descriptor->capability.token);
+        status =
+            sl_provider_add_hint_pair(&builder, sl_str_from_cstr("token: "),
+                                      sl_provider_safe_hint_value(descriptor->capability.token));
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
     status = sl_provider_add_hint_pair(&builder, sl_str_from_cstr("operation: "),
-                                       descriptor->operation_name);
+                                       sl_provider_safe_hint_value(descriptor->operation_name));
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_provider_add_hint_pair(&builder, sl_str_from_cstr("provider instance: "),
-                                       descriptor->provider_instance_id);
+    status =
+        sl_provider_add_hint_pair(&builder, sl_str_from_cstr("provider instance: "),
+                                  sl_provider_safe_hint_value(descriptor->provider_instance_id));
     if (!sl_status_is_ok(status)) {
         return status;
     }
     status = sl_provider_add_hint_pair(&builder, sl_str_from_cstr("provider kind: "),
-                                       descriptor->provider_kind);
+                                       sl_provider_safe_hint_value(descriptor->provider_kind));
     if (!sl_status_is_ok(status)) {
         return status;
     }
     if (!sl_str_is_empty(provider_token)) {
-        status =
-            sl_provider_add_hint_pair(&builder, sl_str_from_cstr("provider: "), provider_token);
+        status = sl_provider_add_hint_pair(&builder, sl_str_from_cstr("provider: "),
+                                           sl_provider_safe_hint_value(provider_token));
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -969,6 +997,18 @@ sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor, S
     }
 
     provider_token = sl_owned_str_as_view(executor->provider_token);
+    if (executor->shutting_down) {
+        executor->shutdown_rejected_count += 1U;
+        return sl_status_from_code(SL_STATUS_CANCELLED);
+    }
+
+    if (descriptor->cancellation != NULL &&
+        sl_cancellation_token_is_cancelled(descriptor->cancellation))
+    {
+        return sl_status_from_code(
+            sl_cancellation_status_code(sl_cancellation_token_reason(descriptor->cancellation)));
+    }
+
     if (executor->capability_check != NULL) {
         if (sl_str_is_empty(descriptor->capability.token)) {
             status = sl_provider_build_denied_diag(
@@ -987,18 +1027,6 @@ sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor, S
         if (!sl_status_is_ok(status)) {
             return status;
         }
-    }
-
-    if (executor->shutting_down) {
-        executor->shutdown_rejected_count += 1U;
-        return sl_status_from_code(SL_STATUS_CANCELLED);
-    }
-
-    if (descriptor->cancellation != NULL &&
-        sl_cancellation_token_is_cancelled(descriptor->cancellation))
-    {
-        return sl_status_from_code(
-            sl_cancellation_status_code(sl_cancellation_token_reason(descriptor->cancellation)));
     }
 
     if (descriptor->run != NULL &&
@@ -1139,12 +1167,6 @@ static SlStatus sl_provider_operation_post_terminal(SlProviderOperation* operati
 
     sl_provider_executor_lock(operation->executor);
     if (operation->state == SL_PROVIDER_OPERATION_TERMINAL) {
-        if (operation->worker_claimed) {
-            operation->worker_claimed = false;
-            if (operation->terminal_completion_drained) {
-                sl_provider_executor_finish_terminal_locked(operation->executor, operation);
-            }
-        }
         sl_provider_executor_unlock(operation->executor);
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }

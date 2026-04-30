@@ -612,6 +612,7 @@ static int test_pre_cancelled_and_expired_deadline_reject_before_enqueue(void)
     SlCancellationToken expired;
     SlProviderOperation* op = (SlProviderOperation*)1;
     SlProviderOperationDescriptor desc;
+    SlDiag diag = {0};
 
     sl_cancellation_token_init(&cancelled);
     sl_cancellation_token_init(&expired);
@@ -646,6 +647,60 @@ static int test_pre_cancelled_and_expired_deadline_reject_before_enqueue(void)
         record.cleanup_count != 0U)
     {
         return 202;
+    }
+
+    op = (SlProviderOperation*)1;
+    diag = (SlDiag){0};
+    if (make_descriptor(&record, sl_bytes_empty(), &cancelled, &desc) != 0 ||
+        expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 203;
+    }
+    desc.capability.token = sl_str_empty();
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
+                      SL_STATUS_CANCELLED) != 0 ||
+        op != NULL || diag.code == SL_DIAG_PERMISSION_DENIED ||
+        sl_provider_executor_pending_count(&executor) != 0U)
+    {
+        return 204;
+    }
+
+    op = (SlProviderOperation*)1;
+    diag = (SlDiag){0};
+    if (make_descriptor(&record, sl_bytes_empty(), &expired, &desc) != 0 ||
+        expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 205;
+    }
+    desc.capability.token = sl_str_empty();
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
+                      SL_STATUS_DEADLINE_EXCEEDED) != 0 ||
+        op != NULL || diag.code == SL_DIAG_PERMISSION_DENIED ||
+        sl_provider_executor_pending_count(&executor) != 0U)
+    {
+        return 206;
+    }
+
+    op = (SlProviderOperation*)1;
+    diag = (SlDiag){0};
+    if (expect_status(sl_provider_executor_shutdown(&executor,
+                                                    SL_PROVIDER_EXECUTOR_SHUTDOWN_IMMEDIATE_CANCEL),
+                      SL_STATUS_OK) != 0 ||
+        make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0 ||
+        expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 207;
+    }
+    desc.capability.token = sl_str_empty();
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
+                      SL_STATUS_CANCELLED) != 0 ||
+        op != NULL || diag.code == SL_DIAG_PERMISSION_DENIED ||
+        executor.shutdown_rejected_count != 1U)
+    {
+        return 208;
     }
 
     sl_provider_executor_dispose(&executor);
@@ -759,6 +814,66 @@ static int test_capability_denials_reject_before_enqueue(void)
         !provider_diag_has_hint(&diag, "operation: readwrite"))
     {
         return 215;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
+    return 0;
+}
+
+static int test_missing_capability_redacts_unsafe_admission_hints(void)
+{
+    unsigned char arena_storage[8192];
+    SlArena arena;
+    SlAsyncCompletion completions[4];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor = {0};
+    SlProviderExecutorSlot slots[1];
+    SlProviderExecutorConfig config = {0};
+    ProviderRecord record = {0};
+    ProviderPolicyHook hook = {0};
+    SlProviderOperationDescriptor desc;
+    SlProviderOperation* op = (SlProviderOperation*)1;
+    SlDiag diag = {0};
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, completions, 4U, &loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 216;
+    }
+
+    config.instance_id = sl_str_from_cstr("addon:main");
+    config.provider_kind = sl_str_from_cstr("native-addon");
+    config.provider_token = sl_str_from_cstr("postgres://user:secret@example/db");
+    config.mode = SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING;
+    config.queue_capacity = 1U;
+    config.worker_count = 1U;
+    config.max_in_flight = 1U;
+    config.capability_check = provider_test_capability_check;
+    config.capability_check_user = &hook;
+    if (expect_status(sl_provider_executor_init(&executor, &arena, &config, slots, loop),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_async_loop_dispose(loop);
+        return 217;
+    }
+
+    desc = sl_provider_operation_descriptor_init(
+        config.instance_id, config.provider_kind, SL_PROVIDER_OPERATION_KIND_INTERNAL,
+        sl_str_from_cstr("load secret"), config.mode, record_provider_completion, &record);
+    if (expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        op != NULL || diag.code != SL_DIAG_PERMISSION_DENIED ||
+        !provider_diag_has_hint(&diag, "operation: <redacted>") ||
+        !provider_diag_has_hint(&diag, "provider: <redacted>"))
+    {
+        sl_provider_executor_dispose(&executor);
+        sl_async_loop_dispose(loop);
+        return 218;
     }
 
     sl_provider_executor_dispose(&executor);
@@ -1744,14 +1859,17 @@ static int test_shutdown_leaves_worker_claimed_operation_for_worker_completion(v
     if (expect_status(sl_provider_operation_complete(operation, sl_status_ok(), SL_DIAG_NONE,
                                                      sl_str_from_cstr("late shutdown")),
                       SL_STATUS_INVALID_STATE) != 0 ||
-        executor.late_completion_count != 0U || record.cleanup_count != 1U ||
-        sl_provider_executor_pending_count(&executor) != 0U ||
-        sl_provider_executor_in_flight_count(&executor) != 0U)
+        executor.late_completion_count != 0U || record.cleanup_count != 0U ||
+        sl_provider_executor_pending_count(&executor) != 1U ||
+        sl_provider_executor_in_flight_count(&executor) != 1U || !operation->worker_claimed)
     {
         return 143;
     }
 
     sl_provider_executor_dispose(&executor);
+    if (record.cleanup_count != 1U) {
+        return 144;
+    }
     sl_async_loop_dispose(loop);
     return 0;
 }
@@ -1998,6 +2116,7 @@ int main(void)
                               test_invalid_descriptor_fields_fail_without_cleanup,
                               test_pre_cancelled_and_expired_deadline_reject_before_enqueue,
                               test_capability_denials_reject_before_enqueue,
+                              test_missing_capability_redacts_unsafe_admission_hints,
                               test_custom_capability_hook_allows_non_database_provider,
                               test_blocking_pool_invalid_config_rejected,
                               test_cancel_timeout_and_late_completion_cleanup_once,
