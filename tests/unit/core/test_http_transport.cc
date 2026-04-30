@@ -96,6 +96,13 @@ typedef struct ClientConnect
     bool closed;
 } ClientConnect;
 
+typedef struct ClientWrite
+{
+    uv_write_t request;
+    bool done;
+    int status;
+} ClientWrite;
+
 static void client_connect_cb(uv_connect_t* request, int status)
 {
     ClientConnect* client = static_cast<ClientConnect*>(request->data);
@@ -143,6 +150,16 @@ static void client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
     }
 }
 
+static void client_write_cb(uv_write_t* request, int status)
+{
+    ClientWrite* write = static_cast<ClientWrite*>(request->data);
+
+    if (write != nullptr) {
+        write->done = true;
+        write->status = status;
+    }
+}
+
 static int connect_client(uint32_t port, ClientConnect* client)
 {
     struct sockaddr_in address;
@@ -181,6 +198,33 @@ static int start_client_read(ClientConnect* client)
                          client_read_cb) == 0
                ? 0
                : 2;
+}
+
+static int write_client_bytes(ClientConnect* client, const char* text)
+{
+    ClientWrite write = {};
+    SlStr bytes = {};
+    uv_buf_t buffer = {};
+
+    if (client == nullptr || !client->connected || text == nullptr) {
+        return 1;
+    }
+    bytes = sl_str_from_cstr(text);
+    buffer = uv_buf_init(const_cast<char*>(bytes.ptr), static_cast<unsigned int>(bytes.length));
+    write.request.data = &write;
+    if (uv_write(&write.request, reinterpret_cast<uv_stream_t*>(&client->handle), &buffer, 1U,
+                 client_write_cb) != 0)
+    {
+        return 2;
+    }
+    for (size_t index = 0U; index < 128U && !write.done; index += 1U) {
+        (void)uv_run(&client->loop, UV_RUN_NOWAIT);
+        uv_sleep(1U);
+    }
+    if (!write.done) {
+        return 4;
+    }
+    return write.status == 0 ? 0 : 3;
 }
 
 static void close_client(ClientConnect* client)
@@ -245,6 +289,24 @@ static int poll_server_and_client_until_closed(SlHttpTransportServer* server, Cl
         if (server->connections[0].write_completed && client->closed) {
             return 0;
         }
+    }
+    return 2;
+}
+
+static int poll_server_and_client_until_response(SlHttpTransportServer* server,
+                                                 ClientConnect* client)
+{
+    SlDiag diag = {};
+
+    for (size_t index = 0U; index < 512U; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(server, &diag), SL_STATUS_OK) != 0) {
+            return 1;
+        }
+        (void)uv_run(&client->loop, UV_RUN_NOWAIT);
+        if (server->connections[0].write_completed || client->closed) {
+            return 0;
+        }
+        uv_sleep(1U);
     }
     return 2;
 }
@@ -954,6 +1016,187 @@ static int test_response_buffer_capacity_failure_is_deterministic(void)
     return 0;
 }
 
+static int test_shutdown_rejects_new_accepts_and_closes_head_read(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    ClientConnect first = {};
+    ClientConnect second = {};
+    SlDiag diag = {};
+    uint32_t port = 0U;
+
+    config = small_config(nullptr);
+    config.max_connections = 2U;
+    config.max_active_requests = 2U;
+    config.connection_capacity = 2U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        return 110;
+    }
+    port = sl_http_transport_server_bound_port(&server);
+    if (connect_client(port, &first) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_HEAD ||
+        expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_state(&server) != SL_HTTP_TRANSPORT_SERVER_STATE_STOPPED ||
+        sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U)
+    {
+        close_client(&first);
+        return 111;
+    }
+    if (connect_client(port, &second) == 0) {
+        close_client(&second);
+        close_client(&first);
+        return 112;
+    }
+
+    close_client(&first);
+    return expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK);
+}
+
+static int test_shutdown_during_body_read_cancels_cleanup_once(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    ClientConnect client = {};
+    SlDiag diag = {};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        start_one_connection(&arena, &server, &client, nullptr) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("POST /body HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                                          "Content-Length: 5\r\n\r\nhe"),
+                          &diag),
+                      SL_STATUS_OK) != 0 ||
+        server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY ||
+        expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U ||
+        expect_status(sl_http_transport_connection_close(&server.connections[0], &diag),
+                      SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_active_connections(&server) != 0U)
+    {
+        close_client(&client);
+        return 120;
+    }
+
+    close_client(&client);
+    return expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK);
+}
+
+static int test_header_and_body_timeout_write_408_or_close(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 408 Request Timeout\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 16\r\n\r\nRequest Timeout\n";
+
+    for (size_t index = 0U; index < 3U; index += 1U) {
+        unsigned char storage[65536];
+        SlArena arena = {};
+        SlHttpTransportConfig config = {};
+        SlHttpTransportServer server = {};
+        ClientConnect client = {};
+        SlDiag diag = {};
+
+        config = small_config(nullptr);
+        config.header_read_timeout_ms = index == 0U ? 1U : 1000U;
+        config.body_read_timeout_ms = index == 1U ? 1U : 1000U;
+        config.request_timeout_ms = index == 2U ? 1U : 1000U;
+
+        if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+            connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+            start_client_read(&client) != 0 ||
+            expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0)
+        {
+            close_client(&client);
+            return 130 + (int)index;
+        }
+        if (index == 1U || index == 2U) {
+            if (write_client_bytes(&client, "POST /slow HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                                            "Content-Length: 5\r\n\r\nhe") != 0)
+            {
+                stop_one_connection(&server, &client);
+                return 132;
+            }
+        }
+        if (poll_server_and_client_until_response(&server, &client) != 0 ||
+            server.connections[0].last_diag.code != SL_DIAG_HTTP_REQUEST_TIMEOUT ||
+            expect_bytes_equal(sl_bytes_from_parts(client.read_buffer, client.read_length),
+                               expected) != 0 ||
+            sl_http_transport_server_active_connections(&server) != 0U ||
+            server.backend.active_requests != 0U)
+        {
+            stop_one_connection(&server, &client);
+            return 133 + (int)index;
+        }
+        stop_one_connection(&server, &client);
+    }
+
+    return 0;
+}
+
+static int test_shutdown_during_response_write_is_cleanup_only(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    dispatch.status_code = SL_STATUS_OK;
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("ok\n"));
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    config.write_timeout_ms = 1000U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0], bytes_from_cstr("GET /write HTTP/1.1\r\n\r\n"), &diag),
+            SL_STATUS_OK) != 0 ||
+        server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE ||
+        !server.connections[0].write_started || server.connections[0].write_completed ||
+        server.backend.active_requests != 1U)
+    {
+        stop_one_connection(&server, &client);
+        return 140;
+    }
+
+    if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_state(&server) != SL_HTTP_TRANSPORT_SERVER_STATE_STOPPED ||
+        sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U ||
+        server.connections[0].request.state != SL_HTTP_REQUEST_STATE_CLOSED ||
+        !server.connections[0].write_completed)
+    {
+        close_client(&client);
+        return 141;
+    }
+
+    close_client(&client);
+    return expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK);
+}
+
 int main(void)
 {
     int result = test_config_validation_and_lifecycle();
@@ -1001,5 +1244,21 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_response_buffer_capacity_failure_is_deterministic();
+    result = test_response_buffer_capacity_failure_is_deterministic();
+    if (result != 0) {
+        return result;
+    }
+    result = test_shutdown_rejects_new_accepts_and_closes_head_read();
+    if (result != 0) {
+        return result;
+    }
+    result = test_shutdown_during_body_read_cancels_cleanup_once();
+    if (result != 0) {
+        return result;
+    }
+    result = test_header_and_body_timeout_write_408_or_close();
+    if (result != 0) {
+        return result;
+    }
+    return test_shutdown_during_response_write_is_cleanup_only();
 }

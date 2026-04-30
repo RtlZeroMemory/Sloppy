@@ -403,6 +403,13 @@ Runtime diagnostics:
   write-start/write-completion failure, and reserved close-after-write lifecycle failure
   when detectable. These diagnostics stay redacted and do not include libuv handles, socket
   internals, native pointers, response bodies, request bodies, or secret values;
+- HTTP transport cancellation/timeout/shutdown diagnostics cover client disconnect during
+  head/body read as `SLOPPY_E_HTTP_CONNECTION_CLOSED`, header/body/total request timeout as
+  `SLOPPY_E_HTTP_REQUEST_TIMEOUT`, write timeout/failure as `SLOPPY_E_HTTP_WRITE_FAILED`,
+  and backend shutdown rejection/cancellation as `SLOPPY_E_HTTP_SHUTDOWN` where a request
+  lifecycle exists. Timeout responses may be deterministic `408 Request Timeout` responses,
+  but diagnostics still avoid libuv handles, socket internals, native pointers, request
+  bodies, response bodies, and secret values;
 - unsupported request bodies;
 - unsupported request content types;
 - request body size limit failures;

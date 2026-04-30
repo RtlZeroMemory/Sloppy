@@ -22,6 +22,10 @@ extern "C" {
 #define SL_HTTP_TRANSPORT_DEFAULT_REQUEST_ARENA_BYTES 131072U
 #define SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES 4096U
 #define SL_HTTP_TRANSPORT_DEFAULT_RESPONSE_BYTES 131072U
+#define SL_HTTP_TRANSPORT_DEFAULT_HEADER_READ_TIMEOUT_MS 30000U
+#define SL_HTTP_TRANSPORT_DEFAULT_BODY_READ_TIMEOUT_MS 30000U
+#define SL_HTTP_TRANSPORT_DEFAULT_REQUEST_TIMEOUT_MS 60000U
+#define SL_HTTP_TRANSPORT_DEFAULT_WRITE_TIMEOUT_MS 30000U
 
 typedef struct SlHttpPlatformConnection SlHttpPlatformConnection;
 typedef struct SlHttpTransportConnection SlHttpTransportConnection;
@@ -74,6 +78,15 @@ typedef struct SlHttpTransportConfig
     size_t request_arena_bytes;
     size_t read_chunk_bytes;
     size_t max_response_bytes;
+    /*
+     * Timeout hooks in milliseconds. Zero uses the bounded transport defaults. Timers are
+     * enforced by the platform transport loop and transition the connection/request to a
+     * terminal cleanup path; they are not production graceful-drain tuning knobs.
+     */
+    uint64_t header_read_timeout_ms;
+    uint64_t body_read_timeout_ms;
+    uint64_t request_timeout_ms;
+    uint64_t write_timeout_ms;
     /* Caller/arena-backed table size for accepted connection placeholders. */
     size_t connection_capacity;
     int backlog;

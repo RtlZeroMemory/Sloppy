@@ -50,11 +50,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   accepted-connection placeholders, overflow close, and stop/dispose cleanup. ENGINE-24.C
   adds the accepted-connection read loop and bounded request accumulation for one parsed
   Content-Length request-ready state. ENGINE-24.D adds dispatch/write/close-after-response
-  over a narrow internal dispatch callback and the existing response writer. Remaining HTTP
-  transport debt is transport cancellation/timeout/shutdown completion (#416), localhost
-  conformance (#417), keep-alive decision (#418), real timer/disconnect propagation,
-  graceful drain timeout behavior beyond the core state model, production hardening, and
-  middleware policy if ever scoped. This is separate from ENGINE-12 because HTTP has
+  over a narrow internal dispatch callback and the existing response writer. ENGINE-24.E
+  adds transport disconnect cancellation, header/body/request/write timeout hooks,
+  deterministic 408 timeout responses where safe, shutdown rejection, active connection
+  close, and cleanup-once terminal paths. Remaining HTTP transport debt is localhost
+  conformance (#417), keep-alive decision (#418), production graceful-drain policy,
+  production hardening, and middleware policy if ever scoped. This is separate from ENGINE-12 because HTTP has
   parser, connection, body, and shutdown policy that sits above generic async completions.
 - Module/bootstrap completion: ENGINE-14 owns stdlib/bootstrap asset loading, app module
   loading, ESM/classic decision, module cache, import rewrite and intrinsic boundaries,
@@ -117,10 +118,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   handoff task after the compiler emits full supported-app artifacts. Implementing direct
   source input still needs a scoped compiler handoff, cache keys, stale-artifact checks,
   source diagnostics, cleanup policy, and rebuild policy.
-- HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F and ENGINE-24.A/B/C/D:
+- HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F and ENGINE-24.A/B/C/D/E:
   redirect helpers, streaming/files, cookies, content negotiation, keep-alive production
-  policy, graceful drain timeout behavior beyond bounded core smoke, localhost/V8
-  conformance proof, users API proof, and production error pages.
+  policy, graceful drain behavior beyond immediate-cancel/drain-lite transport shutdown,
+  localhost/V8 conformance proof, users API proof, and production error pages.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
   services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
@@ -217,8 +218,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 ## Deferred By Design
 
 - Production HTTP server behavior beyond the dev-only MVP, ENGINE-13 backend
-  state/admission foundation, and ENGINE-24.A/B/C/D listener/read/dispatch/write
-  foundation.
+  state/admission foundation, and ENGINE-24.A/B/C/D/E listener/read/dispatch/write/
+  terminal-state foundation.
 - Full response pipeline: streaming, files, redirects, cookies, content negotiation,
   compression, keep-alive tuning, and middleware/result filters.
 - Full route table/trie optimization, catch-all routes, optional segments, regex

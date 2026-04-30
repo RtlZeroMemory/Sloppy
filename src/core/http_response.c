@@ -86,6 +86,8 @@ static const char* sl_http_response_reason(uint16_t status)
         return "Not Found";
     case 405U:
         return "Method Not Allowed";
+    case 408U:
+        return "Request Timeout";
     case 413U:
         return "Payload Too Large";
     case 415U:

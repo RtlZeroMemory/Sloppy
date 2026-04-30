@@ -136,6 +136,17 @@ callback performs lifecycle completion and close cleanup only; it must not enter
 MVP policy remains one request per connection, close-after-response, no keep-alive, no
 pipelining, and no streaming response body.
 
+ENGINE-24.E adds the first real transport cancellation/timeout/shutdown hooks for that
+libuv-backed server. Header-read, body-read, total-request, and write timeouts are libuv
+timers owned by the transport connection on the owner loop. Timer callbacks, read
+disconnects, and write callbacks never enter V8; they mark the request/connection terminal,
+cancel or time out the backend request lifecycle when one exists, release counters exactly
+once, and treat late callbacks after terminal close as cleanup-only. Server stop uses an
+immediate-cancel/drain-lite policy: stop accepting, reject new accepted work, cancel active
+request lifecycles through the backend shutdown path when present, close idle/reading/
+dispatching/writing transport connections, and drain close callbacks. This is not
+production graceful drain, keep-alive idle management, or scalable async HTTP evidence.
+
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
 async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes

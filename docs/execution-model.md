@@ -184,8 +184,8 @@ ENGINE-24.A/B adds the first HTTP transport listener foundation below the curren
 execution pipeline. A `SlHttpTransportServer` can initialize, bind/listen on localhost,
 accept TCP sockets into bounded placeholder connections, reject overflow by closing the
 accepted socket, stop, and dispose. Accepted connections stop at `ACCEPTED`; request byte
-timeout/shutdown completion remains #416, localhost conformance remains #417, and
-keep-alive policy remains #418.
+handling arrives in later slices, localhost conformance remains #417, and keep-alive
+policy remains #418.
 ENGINE-24.C advances that transport state through the read/request-accumulation boundary.
 Accepted connections start reading, append TCP chunks into bounded per-connection storage,
 parse exactly one Content-Length request through existing ENGINE-13 parser/body rules, and
@@ -196,6 +196,15 @@ bytes into connection-owned storage, libuv writes those bytes, the write callbac
 completes the request lifecycle, and the connection closes. Without dispatch, the parsed
 request is closed immediately to release admission. Extra bytes after the first complete
 request are unsupported pipelining.
+ENGINE-24.E completes the current transport terminal semantics for cancellation, timeout,
+and shutdown. Client disconnect during read cancels/closes without dispatch. Header-read,
+body-read, total-request, and write timers transition the connection/request to terminal
+state; header/body/request timeouts write `408 Request Timeout` when the socket is still
+writable and otherwise close. Server stop is immediate-cancel/drain-lite: it stops
+accepting, rejects newly accepted work, cancels active request lifecycles through the
+backend shutdown token path when present, closes active transport connections, and drains
+close callbacks. This is not production graceful drain, localhost conformance, V8 transport
+execution, keep-alive, streaming, or benchmark evidence.
 
 ## Current Handwritten Milestone
 
@@ -466,9 +475,9 @@ Current ENGINE-13.A/B/C backend foundation makes the native prelude explicit:
 ENGINE-24.A/B wires only the first two platform-facing pieces of that prelude: listener
 bind/listen and accepted connection admission. ENGINE-24.C wires the read/accumulation
 piece and parks the request. ENGINE-24.D wires dispatch/write/close-after-response through
-a narrow internal dispatch callback and the existing response writer. V8 transport
-conformance, provider proof, timeout/shutdown hardening, keep-alive, and streaming remain
-deferred.
+a narrow internal dispatch callback and the existing response writer. ENGINE-24.E wires
+transport disconnect, timeout, and shutdown terminal paths. V8 transport conformance,
+provider proof, keep-alive, streaming, and production graceful drain remain deferred.
 
 The current CLI socket loop still writes `Connection: close`; keep-alive policy remains
 honestly disabled/deferred even though the backend state model can return a completed
@@ -477,8 +486,9 @@ connection to `OPEN`.
 The current shutdown policy is bounded and honest: shutdown stops acceptance and rejects
 new request work, then the backend reaches stopped when active connection/request counters
 are released. Active requests may finish normally, fail, time out, close, or be cancelled
-through the request shutdown hook. There is no real drain timeout or stress/conformance
-claim yet; #324 owns that evidence.
+through the request shutdown hook. The transport now closes active TCP connections during
+stop, but this remains immediate-cancel/drain-lite rather than production graceful drain;
+localhost smoke/conformance remains #417.
 
 ENGINE-01 target handler context contains `route`, `query`, `request`, `signal`,
 `deadline`, and future request-owned `resources`. The foundation request lifecycle must
