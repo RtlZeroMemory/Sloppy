@@ -104,8 +104,13 @@ export default app;
         if (-not $runProcess.Start()) {
             throw "packaged sloppy run failed to start."
         }
-        $runOutput = @($runProcess.StandardOutput.ReadToEnd(), $runProcess.StandardError.ReadToEnd())
+        $stdoutTask = $runProcess.StandardOutput.ReadToEndAsync()
+        $stderrTask = $runProcess.StandardError.ReadToEndAsync()
         $runProcess.WaitForExit()
+        $runOutput = @(
+            $stdoutTask.GetAwaiter().GetResult(),
+            $stderrTask.GetAwaiter().GetResult()
+        )
         $runExit = $runProcess.ExitCode
     } finally {
         $runProcess.Dispose()
