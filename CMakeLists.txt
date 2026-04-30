@@ -799,6 +799,11 @@ if(SLOPPY_ENABLE_TESTS)
         COMMAND
             "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_main_contract_docs.cmake")
+    add_test(
+        NAME docs.engine19_conformance_matrix
+        COMMAND
+            "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_engine19_conformance_matrix_docs.cmake")
 
     if(CARGO_EXECUTABLE)
         function(sloppy_add_conformance_compile_test test_name case_name source_path)

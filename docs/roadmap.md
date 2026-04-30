@@ -65,6 +65,12 @@ provider/offload execution, and ENGINE-13 owns HTTP listener, connection, parser
 keep-alive, timeout, cancellation, backpressure, graceful shutdown, and server diagnostic
 policy.
 
+ENGINE-19.A now defines the conformance evidence matrix in
+`docs/project/engine-19-conformance-matrix.md`. The matrix is source-of-truth for reporting
+default non-V8, V8-gated, localhost transport, SQLite/capability, package
+outside-checkout, live-provider optional, stress/smoke, and benchmark harness evidence
+without turning skipped optional gates into pass claims.
+
 Direct source-input `sloppy run app.js` remains unsupported today, but is now tracked by
 #302 as a compiler/CLI handoff task once the compiler can emit complete artifacts for
 realistic supported apps. The current supported workflow remains explicit `sloppyc build`

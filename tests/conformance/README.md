@@ -2,6 +2,12 @@
 
 Status: MAIN1-13 executable conformance layout.
 
+Evidence lanes and naming policy are defined by
+`docs/project/engine-19-conformance-matrix.md`. This README describes current cases; the
+matrix owns default non-V8, V8-gated, localhost transport, SQLite/capability, package
+outside-checkout, live-provider optional, stress/smoke, and benchmark harness reporting
+rules.
+
 This suite protects the alpha-supported workflow through the real toolchain:
 
 ```powershell

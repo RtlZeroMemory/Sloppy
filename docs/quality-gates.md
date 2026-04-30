@@ -49,6 +49,11 @@ with `sloppyc`, starts `sloppy run --artifacts`, sends real localhost TCP HTTP r
 and verifies SQLite/capability/result/body behavior. Passing it does not prove default
 non-V8 V8 execution, async/offload SQLite, PostgreSQL/SQL Server JS bridges, public alpha
 readiness, benchmark performance, or production-edge HTTP behavior.
+ENGINE-19.A adds the conformance evidence matrix in
+`docs/project/engine-19-conformance-matrix.md`. That matrix owns the naming, skip, and
+PR-reporting rules for default non-V8, V8-gated, localhost transport, SQLite/capability,
+package outside-checkout, live-provider optional, stress/smoke, and benchmark harness
+evidence. Skipped optional gates are not pass claims.
 
 ## Future Phase
 

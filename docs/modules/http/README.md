@@ -153,8 +153,10 @@ Future scope:
 - production HTTP response conversion and writing beyond the current dev MVP.
 
 The current real application proof is not a benchmark. ENGINE-17.E covers the HTTP +
-SQLite users API path as a V8-gated localhost transport test. The broader ENGINE-19
-conformance matrix remains future work after this runtime proof.
+SQLite users API path as a V8-gated localhost transport test. ENGINE-19.A defines the
+broader conformance matrix in `docs/project/engine-19-conformance-matrix.md`; later
+ENGINE-19 slices expand executable HTTP/async cases without treating localhost transport
+proof as production-edge HTTP evidence.
 
 EPIC-14 module routes are bootstrap `app.mapGet` registrations only. They do not connect
 module routes to the native HTTP parser, synthetic dispatch helper, route params, or
