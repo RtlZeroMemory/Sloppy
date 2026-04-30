@@ -18,6 +18,7 @@
  */
 #include "sloppy/http.h"
 
+#include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 
 #include <llhttp.h>
@@ -31,6 +32,10 @@ typedef struct SlHttpParseContext
     size_t max_target_length;
     size_t max_body_length;
     size_t header_count;
+    SlStringBuilder raw_target_builder;
+    SlStringBuilder current_header_name_builder;
+    SlStringBuilder current_header_value_builder;
+    SlByteBuilder body_builder;
     SlStr raw_target;
     SlBytes body;
     SlStr current_header_name;
@@ -134,85 +139,58 @@ SlStatus sl_http_method_from_str(SlStr method, SlHttpMethod* out_method)
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);
 }
 
-static SlStatus sl_http_copy_str(SlArena* arena, SlStr src, SlStr* out)
+static SlStatus sl_http_copy_str_view(SlArena* arena, SlStr src, SlStr* out)
 {
-    void* ptr = NULL;
-    char* dst = NULL;
-    size_t index = 0U;
+    SlOwnedStr owned = {0};
     SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_http_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (src.length == 0U) {
-        *out = sl_str_empty();
-        return sl_status_ok();
-    }
-
-    status = sl_arena_alloc(arena, src.length, 1U, &ptr);
+    status = sl_str_copy_to_arena(arena, src, &owned);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    dst = (char*)ptr;
-    for (index = 0U; index < src.length; index += 1U) {
-        dst[index] = src.ptr[index];
-    }
-
-    *out = sl_str_from_parts(dst, src.length);
+    *out = sl_owned_str_as_view(owned);
     return sl_status_ok();
 }
 
-static SlStatus sl_http_append_str(SlArena* arena, SlStr current, SlStr chunk, SlStr* out)
+static SlStatus sl_http_init_parse_builders(SlHttpParseContext* ctx)
 {
-    void* ptr = NULL;
-    char* dst = NULL;
-    size_t total = 0U;
-    size_t index = 0U;
     SlStatus status;
 
-    if (arena == NULL || out == NULL || !sl_http_str_valid(current) || !sl_http_str_valid(chunk)) {
+    if (ctx == NULL || ctx->arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (current.length == 0U) {
-        return sl_http_copy_str(arena, chunk, out);
+    status = sl_string_builder_init_arena(&ctx->raw_target_builder, ctx->arena, 0U,
+                                          ctx->max_target_length);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-
-    if (chunk.length == 0U) {
-        *out = current;
-        return sl_status_ok();
+    status = sl_string_builder_init_arena(&ctx->current_header_name_builder, ctx->arena, 0U,
+                                          sl_arena_remaining(ctx->arena));
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-
-    status = sl_checked_add_size(current.length, chunk.length, &total);
+    status = sl_string_builder_init_arena(&ctx->current_header_value_builder, ctx->arena, 0U,
+                                          sl_arena_remaining(ctx->arena));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_byte_builder_init_arena(&ctx->body_builder, ctx->arena, 0U, ctx->max_body_length);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_arena_alloc(arena, total, 1U, &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    dst = (char*)ptr;
-    for (index = 0U; index < current.length; index += 1U) {
-        dst[index] = current.ptr[index];
-    }
-    for (index = 0U; index < chunk.length; index += 1U) {
-        dst[current.length + index] = chunk.ptr[index];
-    }
-
-    *out = sl_str_from_parts(dst, total);
     return sl_status_ok();
 }
 
 static SlStatus sl_http_append_body(SlHttpParseContext* ctx, SlBytes chunk)
 {
-    void* ptr = NULL;
-    unsigned char* dst = NULL;
     size_t next_length = 0U;
-    size_t index = 0U;
     SlStatus status;
 
     if (ctx == NULL || (chunk.ptr == NULL && chunk.length != 0U)) {
@@ -234,25 +212,19 @@ static SlStatus sl_http_append_body(SlHttpParseContext* ctx, SlBytes chunk)
         return status;
     }
 
-    status = sl_arena_alloc(ctx->arena, next_length, 1U, &ptr);
+    status = sl_byte_builder_append_bytes(&ctx->body_builder, chunk);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    dst = (unsigned char*)ptr;
-    for (index = 0U; index < ctx->body.length; index += 1U) {
-        dst[index] = ctx->body.ptr[index];
-    }
-    for (index = 0U; index < chunk.length; index += 1U) {
-        dst[ctx->body.length + index] = chunk.ptr[index];
-    }
-
-    ctx->body = sl_bytes_from_parts(dst, next_length);
+    ctx->body = sl_byte_builder_view(&ctx->body_builder);
     return sl_status_ok();
 }
 
 static SlStatus sl_http_finish_current_header(SlHttpParseContext* ctx)
 {
+    SlStatus status;
+
     if (ctx == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -280,11 +252,22 @@ static SlStatus sl_http_finish_current_header(SlHttpParseContext* ctx)
                 sizeof("increase max_headers only when the caller can bound memory use") - 1U));
     }
 
-    ctx->headers[ctx->header_count].name = ctx->current_header_name;
-    ctx->headers[ctx->header_count].value = ctx->current_header_value;
+    status = sl_http_copy_str_view(ctx->arena, ctx->current_header_name,
+                                   &ctx->headers[ctx->header_count].name);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_copy_str_view(ctx->arena, ctx->current_header_value,
+                                   &ctx->headers[ctx->header_count].value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
     ctx->header_count += 1U;
     ctx->current_header_name = sl_str_empty();
     ctx->current_header_value = sl_str_empty();
+    sl_string_builder_reset(&ctx->current_header_name_builder);
+    sl_string_builder_reset(&ctx->current_header_value_builder);
     ctx->saw_header_value = false;
     return sl_status_ok();
 }
@@ -318,8 +301,11 @@ static int sl_http_on_url(llhttp_t* parser, const char* at, size_t length)
                                 1U));
     }
     if (sl_status_is_ok(status)) {
-        status = sl_http_append_str(ctx->arena, ctx->raw_target, sl_str_from_parts(at, length),
-                                    &ctx->raw_target);
+        status =
+            sl_string_builder_append_str(&ctx->raw_target_builder, sl_str_from_parts(at, length));
+        if (sl_status_is_ok(status)) {
+            ctx->raw_target = sl_string_builder_view(&ctx->raw_target_builder);
+        }
     }
     if (!sl_status_is_ok(status)) {
         sl_http_record_callback_status(ctx, status);
@@ -341,8 +327,11 @@ static int sl_http_on_header_field(llhttp_t* parser, const char* at, size_t leng
         }
     }
 
-    status = sl_http_append_str(ctx->arena, ctx->current_header_name, sl_str_from_parts(at, length),
-                                &ctx->current_header_name);
+    status = sl_string_builder_append_str(&ctx->current_header_name_builder,
+                                          sl_str_from_parts(at, length));
+    if (sl_status_is_ok(status)) {
+        ctx->current_header_name = sl_string_builder_view(&ctx->current_header_name_builder);
+    }
     if (!sl_status_is_ok(status)) {
         sl_http_record_callback_status(ctx, status);
     }
@@ -356,8 +345,11 @@ static int sl_http_on_header_value(llhttp_t* parser, const char* at, size_t leng
     SlStatus status;
 
     ctx->saw_header_value = true;
-    status = sl_http_append_str(ctx->arena, ctx->current_header_value,
-                                sl_str_from_parts(at, length), &ctx->current_header_value);
+    status = sl_string_builder_append_str(&ctx->current_header_value_builder,
+                                          sl_str_from_parts(at, length));
+    if (sl_status_is_ok(status)) {
+        ctx->current_header_value = sl_string_builder_view(&ctx->current_header_value_builder);
+    }
     if (!sl_status_is_ok(status)) {
         sl_http_record_callback_status(ctx, status);
     }
@@ -501,6 +493,31 @@ static void sl_http_settings_prepare(llhttp_settings_t* settings)
     settings->on_message_complete = sl_http_on_message_complete;
 }
 
+static void sl_http_parse_context_init(SlHttpParseContext* ctx, SlArena* arena,
+                                       const SlHttpParseOptions* options)
+{
+    size_t max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    size_t max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
+    size_t max_body_length = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
+
+    if (options != NULL) {
+        /* Zero max_headers is an explicit no-headers limit; target/body zero use defaults. */
+        max_headers = options->max_headers;
+        max_target_length = options->max_target_length == 0U ? SL_HTTP_DEFAULT_MAX_TARGET_LENGTH
+                                                             : options->max_target_length;
+        max_body_length = options->max_body_length == 0U ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
+                                                         : options->max_body_length;
+    }
+
+    *ctx = (SlHttpParseContext){0};
+    ctx->arena = arena;
+    ctx->max_headers = max_headers;
+    ctx->max_target_length = max_target_length;
+    ctx->max_body_length = max_body_length;
+    ctx->callback_status = sl_status_ok();
+    ctx->diag_code = SL_DIAG_NONE;
+}
+
 static SlStatus sl_http_parse_with_llhttp(SlHttpParseContext* ctx, SlBytes bytes,
                                           llhttp_t* out_parser)
 {
@@ -605,9 +622,6 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
     SlHttpParseContext ctx = {0};
     SlArenaMark mark = {0};
     SlHttpMethod method = SL_HTTP_METHOD_UNKNOWN;
-    size_t max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
-    size_t max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
-    size_t max_body_length = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
     SlStatus status;
     SlStatus reset_status;
 
@@ -625,21 +639,13 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
     }
 
     mark = sl_arena_mark(arena);
-    max_headers = options == NULL ? SL_HTTP_DEFAULT_MAX_HEADERS : options->max_headers;
-    max_target_length = options == NULL || options->max_target_length == 0U
-                            ? SL_HTTP_DEFAULT_MAX_TARGET_LENGTH
-                            : options->max_target_length;
-    max_body_length = options == NULL || options->max_body_length == 0U
-                          ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
-                          : options->max_body_length;
-    ctx.arena = arena;
-    ctx.max_headers = max_headers;
-    ctx.max_target_length = max_target_length;
-    ctx.max_body_length = max_body_length;
-    ctx.callback_status = sl_status_ok();
-    ctx.diag_code = SL_DIAG_NONE;
+    sl_http_parse_context_init(&ctx, arena, options);
 
-    status = sl_http_prepare_headers(arena, max_headers, &ctx.headers);
+    status = sl_http_prepare_headers(arena, ctx.max_headers, &ctx.headers);
+    if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+    status = sl_http_init_parse_builders(&ctx);
     if (!sl_status_is_ok(status)) {
         goto failure;
     }

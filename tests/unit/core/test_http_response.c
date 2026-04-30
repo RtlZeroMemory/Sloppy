@@ -29,6 +29,20 @@ static int expect_response(SlHttpResponse response, const char* expected)
                        memcmp(bytes.ptr, expected, bytes.length) == 0);
 }
 
+static int expect_response_bytes(SlHttpResponse response, SlBytes expected)
+{
+    unsigned char buffer[1024];
+    SlBytes bytes = {0};
+
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+
+    return expect_true(sl_bytes_equal(bytes, expected));
+}
+
 static int test_text_200_exact_bytes(void)
 {
     return expect_response(sl_http_response_text(200U, sl_str_from_cstr("hello")),
@@ -43,6 +57,23 @@ static int test_json_200_exact_bytes(void)
                                                         sizeof("{\"ok\":true}") - 1U)),
         "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json; "
         "charset=utf-8\r\nContent-Length: 11\r\n\r\n{\"ok\":true}");
+}
+
+static int test_binary_body_exact_bytes(void)
+{
+    static const unsigned char body[] = {'A', '\0', 'B'};
+    static const unsigned char expected[] = {
+        'H',  'T',  'T',  'P',  '/',  '1',  '.',  '1',  ' ', '2',  '0', '0', ' ', 'O', 'K', '\r',
+        '\n', 'C',  'o',  'n',  'n',  'e',  'c',  't',  'i', 'o',  'n', ':', ' ', 'c', 'l', 'o',
+        's',  'e',  '\r', '\n', 'C',  'o',  'n',  't',  'e', 'n',  't', '-', 'T', 'y', 'p', 'e',
+        ':',  ' ',  'a',  'p',  'p',  'l',  'i',  'c',  'a', 't',  'i', 'o', 'n', '/', 'j', 's',
+        'o',  'n',  ';',  ' ',  'c',  'h',  'a',  'r',  's', 'e',  't', '=', 'u', 't', 'f', '-',
+        '8',  '\r', '\n', 'C',  'o',  'n',  't',  'e',  'n', 't',  '-', 'L', 'e', 'n', 'g', 't',
+        'h',  ':',  ' ',  '3',  '\r', '\n', '\r', '\n', 'A', '\0', 'B'};
+
+    return expect_response_bytes(
+        sl_http_response_json(200U, sl_bytes_from_parts(body, sizeof(body))),
+        sl_bytes_from_parts(expected, sizeof(expected)));
 }
 
 static int test_no_content_writes_no_body_or_content_type(void)
@@ -163,6 +194,21 @@ static int test_invalid_custom_headers_are_rejected(void)
                          SL_STATUS_INVALID_ARGUMENT);
 }
 
+static int test_capacity_failure_returns_empty_output(void)
+{
+    unsigned char buffer[8];
+    SlBytes bytes = sl_bytes_from_parts((const unsigned char*)"stale", sizeof("stale") - 1U);
+    SlHttpResponse response = sl_http_response_text(200U, sl_str_from_cstr("hello"));
+
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0)
+    {
+        return 1;
+    }
+
+    return expect_true(bytes.ptr == NULL && bytes.length == 0U);
+}
+
 static int run_test(const char* name, int (*test)(void))
 {
     int result = test();
@@ -186,6 +232,11 @@ int main(void)
     }
 
     result = run_test("test_json_200_exact_bytes", test_json_200_exact_bytes);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_binary_body_exact_bytes", test_binary_body_exact_bytes);
     if (result != 0) {
         return result;
     }
@@ -218,6 +269,12 @@ int main(void)
         return result;
     }
 
-    return run_test("test_invalid_custom_headers_are_rejected",
-                    test_invalid_custom_headers_are_rejected);
+    result = run_test("test_invalid_custom_headers_are_rejected",
+                      test_invalid_custom_headers_are_rejected);
+    if (result != 0) {
+        return result;
+    }
+
+    return run_test("test_capacity_failure_returns_empty_output",
+                    test_capacity_failure_returns_empty_output);
 }

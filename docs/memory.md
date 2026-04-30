@@ -44,9 +44,12 @@ arena-backed `SlByteBuilder`/`SlStringBuilder` primitives, a bounded app/static-
 `SlAppRequestScope` wrapper that closes request cleanups on handler success, failure,
 cancellation/deadline-style statuses, and unsupported pre-handler outcomes.
 `SlAppLifecycle` now gives the app host an explicit startup/shutdown cleanup scope for
-app-lifetime resources.
+app-lifetime resources. ENGINE-22.A has adopted the shared string/byte copy and builder
+primitives in the HTTP parser, request body accumulation, route-pattern copies, route
+matching edge tests, and dev response writer while preserving the current complete-buffer
+HTTP behavior.
 
-Allocator modules, a standalone heap-owned `SlBuf`, and broad hot-path adoption remain
+Allocator modules, a standalone heap-owned `SlBuf`, and non-HTTP hot-path adoption remain
 deferred. ENGINE-21.D now defines the narrow V8/native and SQLite/native string/blob
 interop helper policy used by later ENGINE-22 adoption.
 
@@ -56,8 +59,9 @@ ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
   allocation and failure policy, string/byte/owned-buffer primitives, byte and string
   builders, formatting utilities, bounded app/static string interning and symbol tables,
   V8/native conversion policy, SQLite text/blob ownership, and memory safety/stress tests.
-- ENGINE-22 adopts those primitives in hot paths after they exist: HTTP parse/write/body,
-  V8 string conversions, SQLite row/result/parameter conversion, diagnostics/source
+- ENGINE-22 adopts those primitives in hot paths after they exist: HTTP parse/write/body
+  adoption is implemented through ENGINE-22.A for current HTTP hot paths; V8 string conversions, SQLite
+  row/result/parameter conversion, diagnostics/source
   frames/JSON, Plan and artifact loading, stable metadata lookup, CLI output, and
   conformance/benchmark guards.
 

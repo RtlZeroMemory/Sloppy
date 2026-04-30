@@ -60,7 +60,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Memory/string adoption and hot-path refactor: ENGINE-22 owns adoption across HTTP
   request parse/response write/body buffering, V8 conversions, SQLite row/result/parameter
   conversion, diagnostics/source frames/JSON, Plan/artifact loading, stable metadata
-  lookup, CLI output, and allocation-aware conformance/benchmark guards.
+  lookup, CLI output, and allocation-aware conformance/benchmark guards. ENGINE-22.A
+  covers the current complete-buffer HTTP parser/body/response/route hot paths; backend
+  ownership and non-HTTP adoption remain open.
 - SQLite end-to-end: public JS handler path through native provider, capability enforcement,
   cancellation-aware operation boundaries, app/request ownership, transactions/prepared
   statement decision, and executable users API conformance.
@@ -125,9 +127,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   handle ownership policy, leak reports, broader async request-scope retention, and debug
   lifecycle integration remain open.
 - Memory/string adoption completion: #32 is absorbed by ENGINE-21.C's primitive builder
-  surface, and #367 provides the V8/SQLite interop helper policy. Public alpha should not
-  claim top-notch memory/string hot-path behavior until ENGINE-22 adoption passes
-  conformance or is explicitly scoped down.
+  surface, #367 provides the V8/SQLite interop helper policy, and ENGINE-22.A covers the
+  current complete-buffer HTTP parser/body/response/route hot paths. Public alpha should
+  not claim top-notch memory/string hot-path behavior until the remaining ENGINE-22
+  adoption passes conform to requirements or are explicitly scoped down.
 
 ## Should Fix Soon
 
