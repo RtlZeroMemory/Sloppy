@@ -483,6 +483,7 @@ bool sqlite_v8_check_database_capability(v8::Isolate* isolate, SlV8Engine* backe
     SlDiag empty_diag = {};
 
     if (backend == nullptr || arena == nullptr || token.empty()) {
+        sqlite_v8_throw_error(isolate, "invalid sqlite capability check state");
         return false;
     }
 

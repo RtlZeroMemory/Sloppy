@@ -323,8 +323,9 @@ Database access values are `read`, `write`, or `readwrite`; filesystem access va
 `connect-listen`. Duplicate capability tokens are rejected.
 
 Capabilities are loaded into the runtime registry and checked by token, kind, access mode,
-and database provider before V8 SQLite bridge work. Filesystem and network entries are
-skeleton checks only; they do not create filesystem/network APIs or an OS sandbox.
+and database provider within the V8 SQLite bridge before provider calls. Filesystem and
+network entries are skeleton checks only; they do not create filesystem/network APIs or an
+OS sandbox.
 
 ### permissions
 

@@ -246,7 +246,7 @@ Operation:
     const data = Object.freeze({
         sqlite: Object.freeze({
             open(options) {
-                if (options === null || typeof options !== "object" || Array.isArray(options)) {
+                if (!isPlainObject(options)) {
                     throw new TypeError("Sloppy sqlite.open options must be a plain object.");
                 }
 

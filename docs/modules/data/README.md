@@ -59,8 +59,10 @@ Implemented SQLite JS bridge API:
   argument conversion, row materialization, resource lookup, cleanup, and provider calls.
   Future PostgreSQL/SQL Server bridges must add sibling intrinsic modules instead of
   expanding `engine_v8.cc`;
-- `data.sqlite.open({ path, capability })` wrapper that checks the runtime capability
-  registry and stores only an opaque `SlResourceId` handle;
+- `data.sqlite.open({ path, capability, access? })` wrapper that checks the
+  runtime capability registry and stores only an opaque `SlResourceId` handle.
+  Optional `access` is `read` or `readwrite` and controls read versus write
+  capability checks;
 - connection methods `exec(sql, params?)`, `query(sql, params?)`, `queryOne(sql, params?)`,
   and `close()`;
 - primitive parameter arrays for `null`, string, number, and boolean values;

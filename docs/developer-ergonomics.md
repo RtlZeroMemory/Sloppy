@@ -494,6 +494,8 @@ Current TASK 15 bootstrap behavior:
 - `data.sqlite.open(...)` opens a native resource only in V8-enabled contexts that install
   the SQLite bridge and pass the declared capability check; bootstrap-only and non-V8
   contexts report that the native stdlib bridge is unavailable.
+- `data.sqlite.open({ access: "read" })` performs read-capability checks only; the default
+  `readwrite` open path requires write capability.
 
 Still not implemented: JavaScript-to-native PostgreSQL/SQL Server calls, production
 pooling, migrations, native provider scheduling/async offload, filesystem/network

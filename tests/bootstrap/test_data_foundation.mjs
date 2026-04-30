@@ -173,6 +173,10 @@ function createForgedLoweredQuery() {
     }), /capability must be a non-empty string/);
     assertThrowsMessage(() => data.sqlite.open({
         path: ":memory:",
+        capability: "",
+    }), /capability must be a non-empty string/);
+    assertThrowsMessage(() => data.sqlite.open({
+        path: ":memory:",
         capability: "data.main",
     }), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
 }

@@ -30,6 +30,7 @@ struct SlV8Engine
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
     std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
     std::thread::id owner_thread;
+    // SlCapabilityRegistry is a non-owning view; backing plan storage must outlive SlV8Engine.
     SlCapabilityRegistry capabilities = {};
     std::array<SlResourceEntry, 64U> resource_entries = {};
     SlResourceTable resources = {};

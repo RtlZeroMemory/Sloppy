@@ -1575,6 +1575,7 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
     SlDiag diag = {0};
     SlStatus status;
 
+    /* options.capability_registry borrows app->capability_registry and its plan-backed storage. */
     options.capability_registry = &app->capability_registry;
 
     status = sl_engine_create(&options, &app->engine_arena, &app->engine);

@@ -89,10 +89,12 @@ const DataModule = Sloppy.module("data")
   });
 ```
 
-The current registry stores metadata only. Capability tokens must be non-empty strings,
-duplicates fail, and `app.capabilities.has/get/list` exposes frozen debug metadata with the
-declaring module when applicable. EPIC-16 native SQLite tests can open `:memory:` databases,
-but JavaScript permission enforcement and public file database policy remain future work.
+The current registry is immutable after startup and is consumed by the V8-gated SQLite
+bridge. Capability tokens must be non-empty strings, duplicates fail, and
+`app.capabilities.has/get/list` exposes frozen debug metadata with the declaring module when
+applicable. `__sloppy.data.sqlite` and `data.sqlite.open(...)` enforce declared SQLite
+database capabilities before native provider work; PostgreSQL/SQL Server JavaScript bridges
+and public file database policy remain future work.
 
 ## Permission Grants
 
