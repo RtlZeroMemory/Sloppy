@@ -14,7 +14,7 @@ platform-boundary expectations, and acceptance criteria for adding a new depende
 
 The foundation phase did not add V8, Oxc, sqlite, libpq, ODBC, TLS, compression, or other
 runtime dependencies before their relevant phases. libuv and llhttp are now allowed for the
-HTTP router foundation slice started by TASK 10.B. ODBC is allowed for EPIC-18 SQL Server
+HTTP/router and async-runtime foundation slices. ODBC is allowed for EPIC-18 SQL Server
 provider work and remains isolated to that provider boundary.
 
 Use dependencies for:
@@ -45,7 +45,7 @@ Do not outsource:
 
 - V8: first JavaScript engine backend;
 - Oxc: primary TypeScript parser, transform, and app-plan extraction foundation;
-- libuv: future event loop abstraction backend;
+- libuv: current primary internal async backend implementation;
 - llhttp: future HTTP/1 parser;
 - yyjson: current Plan v1 JSON parser and future config parser candidate;
 - sqlite3: current first-class native SQLite integration;
@@ -202,9 +202,10 @@ Tests:
   and unknown field allowance.
 
 Cross-platform dependencies do not remove the need for Sloppy-owned platform boundaries.
-libuv may hide event-loop details internally, but Sloppy still owns the future `SlLoop`
-abstraction. Core runtime modules should depend on Sloppy abstractions rather than direct OS
-APIs or dependency-specific platform behavior.
+libuv hides backend wakeup details internally, but Sloppy owns `SlAsyncLoop`,
+`SlAsyncCompletion`, queue capacity, completion ownership, and the V8 owner-thread rule.
+Core runtime modules should depend on Sloppy abstractions rather than direct OS APIs or
+dependency-specific platform behavior.
 
 ### llhttp
 
@@ -246,26 +247,31 @@ Tests:
 
 ### libuv
 
-`libuv` is added in TASK 10.B through vcpkg manifest mode as the future event-loop backend
-dependency and current build/link smoke for the HTTP foundation.
+`libuv` is added through vcpkg manifest mode and is now the primary internal
+implementation for the ENGINE-12 async backend abstraction.
 
 Why it is used:
 
-- docs identify libuv as the planned first event-loop backend;
-- TASK 10.B is allowed to prove dependency availability without building a server or
-  replacing `SlLoop`.
+- libuv provides a mature cross-platform loop and thread-safe async wakeup primitive;
+- Sloppy still owns the async model, queue capacity, completion ownership, diagnostics, and
+  V8 owner-thread rule;
+- using libuv internally avoids inventing low-level platform wakeup behavior while keeping
+  JS/framework APIs independent of libuv.
 
 Build wiring:
 
 - `vcpkg.json` lists `libuv`;
 - CMake uses `find_package(libuv CONFIG REQUIRED)`;
-- `sloppy_core` links `libuv::uv_a` when available, otherwise `libuv::uv`.
+- `sloppy_core` links `libuv::uv_a` when available, otherwise `libuv::uv`;
+- `src/platform/libuv/async_backend_libuv.c` contains the backend implementation.
 
 Ownership and lifetime:
 
-- TASK 10.B only initializes and closes a stack-local `uv_loop_t` in `sl_http_libuv_smoke`;
-- no libuv handle, loop, socket, callback, or platform-specific state is exposed to Sloppy
-  public/internal APIs.
+- `uv_loop_t`, `uv_async_t`, `uv_handle_t`, mutexes, and thread IDs stay inside
+  `src/platform/libuv/async_backend_libuv.c`;
+- public code uses `include/sloppy/async_backend.h`, `SlAsyncLoop`, and
+  `SlAsyncCompletion`;
+- no libuv type or compatibility promise is exposed to JavaScript or framework contracts.
 
 License/update/security:
 
@@ -275,8 +281,9 @@ License/update/security:
 
 Tests:
 
-- `tests/unit/core/test_http.c` calls `sl_http_libuv_smoke` to prove init/close linkage
-  without network I/O.
+- `core.async.backend_libuv` covers libuv loop create/dispose, cross-thread completion
+  posting, owner-thread dispatch, deterministic overflow, and discard cleanup;
+- existing HTTP parser tests still cover the older libuv smoke without network I/O.
 
 ### sqlite3
 

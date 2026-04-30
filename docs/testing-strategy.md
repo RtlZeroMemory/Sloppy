@@ -109,11 +109,18 @@ Runtime execution:
 
 - handwritten artifacts first;
 - native completion queue skeleton before real async backends;
+- async backend tests must separate deterministic test-backend coverage from libuv-backed
+  coverage. Default native tests cover bounded capacity, overflow, cleanup-once behavior,
+  scope retain/release, and libuv cross-thread post/owner-thread dispatch without
+  requiring V8;
 - native async settlement skeleton before V8 Promise integration;
 - inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;
 - V8 Promise settlement through the owner-thread microtask drain before async handler
   support is claimed;
+- V8-gated native continuation tests must prove native completions settle or reject
+  Promises only through the owner-thread scheduler and that wrong-thread dispatch fails
+  before entering V8;
 - route-aware diagnostics.
 
 Plan schema fixtures:

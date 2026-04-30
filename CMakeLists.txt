@@ -296,6 +296,7 @@ set(
     src/core/app_host.c
     src/core/loop.c
     src/core/async.c
+    src/core/async_backend.c
     src/core/worker_pool.c
     src/core/http.c
     src/core/http_context.c
@@ -309,7 +310,8 @@ set(
     src/data/postgres.c
     src/data/sqlserver.c
     src/data/sqlite.c
-    src/engine/engine.c)
+    src/engine/engine.c
+    src/platform/libuv/async_backend_libuv.c)
 
 if(WIN32)
     list(APPEND SLOPPY_CORE_SOURCES src/platform/win32/time.c)
@@ -322,6 +324,7 @@ if(SLOPPY_ENABLE_V8)
         APPEND
         SLOPPY_CORE_SOURCES
         src/engine/v8/engine_v8.cc
+        src/engine/v8/async_scheduler.cc
         src/engine/v8/http_bridge.cc
         src/engine/v8/string_interop.cc
         src/engine/v8/intrinsics.cc
@@ -347,6 +350,7 @@ set(
     tests/unit/core/test_app_host.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
+    tests/unit/core/test_async_backend.c
     tests/unit/core/test_worker_pool.c
     tests/unit/core/test_http.c
     tests/unit/core/test_http_context.c
@@ -606,6 +610,13 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(
         core_async_settlement core.async.settlement tests/unit/core/test_async.c)
     sloppy_add_c_unit_test(
+        core_async_backend core.async.backend tests/unit/core/test_async_backend.c)
+    if(CMAKE_CXX_COMPILER)
+        sloppy_add_cxx_unit_test(
+            core_async_backend_libuv core.async.backend_libuv
+            tests/unit/core/test_async_backend_libuv.cc)
+    endif()
+    sloppy_add_c_unit_test(
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
     sloppy_add_c_unit_test(
@@ -630,6 +641,11 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_add_cxx_unit_test(
             engine_v8_owner_thread engine.v8.owner_thread
             tests/unit/engine/test_v8_owner_thread.cc)
+        sloppy_add_cxx_unit_test(
+            engine_v8_async_scheduler engine.v8.async_scheduler
+            tests/unit/engine/test_v8_async_scheduler.cc)
+        target_link_libraries(engine_v8_async_scheduler PRIVATE Sloppy::V8)
+        target_compile_features(engine_v8_async_scheduler PRIVATE cxx_std_20)
         sloppy_add_c_unit_test(
             execution_handwritten_artifact execution.handwritten_artifact
             tests/integration/execution/test_handwritten_artifact_execution.c)

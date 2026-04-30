@@ -45,9 +45,12 @@ classic bootstrap runtime asset plus generated handler registrations in that V8-
 path. V8 is still not required for default builds.
 MAIN1-05 hardens that optional V8 path with owner-thread checks, per-engine lifecycle
 diagnostics, explicit Promise rejection, and generated-source exception locations.
-ENGINE-03 adds V8-gated microtask-only Promise settlement for direct async handlers. These
-cuts do not make V8 required for default builds and do not add Node/npm, timers, fetch, fs,
-native async provider queues, or runtime source-map remapping.
+ENGINE-03 adds V8-gated microtask-only Promise settlement for direct async handlers.
+ENGINE-12.AB adds the default-build native async backend abstraction, a libuv backend, and
+a V8-gated owner-thread continuation scheduler test path. These cuts do not make V8
+required for default builds and do not add Node/npm, timers, fetch, fs, native async
+provider offload, full cancellation/deadline/shutdown policy, or runtime source-map
+remapping.
 
 EPIC-20 also builds `sloppy_bench`, a native benchmark executable for manual performance
 validation. It is not installed or packaged as a user-facing CLI surface.
@@ -55,7 +58,9 @@ validation. It is not installed or packaged as a user-facing CLI surface.
 TASK 07.A adds optional V8 SDK detection. The default build keeps the V8 bridge disabled.
 TASK 07.C compiles the V8 bridge and V8-gated smoke test only when V8 is explicitly enabled
 and the SDK gate passes. TASK 10.B adds required vcpkg manifest dependencies for yyjson,
-llhttp, and libuv in the normal non-V8 build.
+llhttp, and libuv in the normal non-V8 build. ENGINE-12.AB uses that libuv dependency for
+`src/platform/libuv/async_backend_libuv.c`; package and CI setup still restore it through
+the existing vcpkg manifest path rather than vendoring source.
 
 EPIC-25 adds the first local package layout and smoke tooling. These packages are
 experimental development artifacts, not public release artifacts. They prove that the
@@ -143,8 +148,8 @@ coverage.
 
 vcpkg manifest mode is reserved for normal C dependencies. TASK 06.B introduces `yyjson`
 through the manifest for Plan JSON parsing. TASK 10.B introduces `llhttp` for HTTP/1
-request-head parsing and `libuv` for a dependency/link smoke ahead of the future event-loop
-backend. EPIC-16 introduces `sqlite3` for the native SQLite provider. EPIC-17 introduces
+request-head parsing and `libuv`; ENGINE-12.AB makes libuv the primary internal async
+backend behind Slop-owned abstractions. EPIC-16 introduces `sqlite3` for the native SQLite provider. EPIC-17 introduces
 `libpq` for the native PostgreSQL provider. EPIC-18 introduces ODBC discovery for the
 native SQL Server provider through the platform/toolchain rather than vcpkg driver
 packages.
