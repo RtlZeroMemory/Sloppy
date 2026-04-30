@@ -17,14 +17,14 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02 and
   ENGINE-03: source-input handoff/cache, module/service/schema extraction, broader async
   source shapes, non-GET dispatch, and provider/capability enforcement.
-- Full scalable async runtime beyond ENGINE-03: ENGINE-12 (#306, tasks #307-#310) owns
-  native async completion queues/backends, owner-thread V8 continuation scheduling for
-  native completions, timer/fetch policy if ever scoped, HTTP disconnect/shutdown drain
-  behavior, richer deadline hooks, bounded queue/backpressure diagnostics, provider/offload
-  integration, stress evidence, source-remapped async diagnostics, and provider-backed
-  cancellation. ENGINE-03 covers returned Promises that settle during the owner-thread
-  microtask drain, rejection diagnostics, pending-Promise failure, cancellation snapshots,
-  and request-scope cleanup for the bounded call.
+- Full scalable async runtime beyond ENGINE-03: ENGINE-12.AB adds the first bounded
+  `SlAsyncLoop` backend abstraction, libuv backend, and owner-thread V8 continuation
+  scheduler. Remaining ENGINE-12 work is #309 cancellation/deadline/shutdown drain policy
+  and #310 queue/backpressure diagnostics, provider/offload integration, stress evidence,
+  source-remapped async diagnostics, and provider-backed cancellation. ENGINE-03 covers
+  returned Promises that settle during the owner-thread microtask drain, rejection
+  diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
+  for the bounded call.
 - Proper HTTP runtime backend beyond ENGINE-04: ENGINE-13 owns listener/backend
   architecture, connection and request lifecycle, parser limits, richer header/body
   buffering policy, keep-alive, deadlines, disconnect/shutdown propagation, backpressure,
@@ -96,12 +96,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
   services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
-  maps, native async completion queues, HTTP disconnect/shutdown cancellation, and
-  executable public examples through the final bootstrap module shape remain open.
-  ENGINE-03 adds microtask-only Promise settlement for direct async handlers; it does not
-  add full JavaScript event-loop behavior. ENGINE-12 should be implemented when real
-  external async sources are ready to cross the runtime boundary, and before Sloppy makes
-  scalable async, async provider, async HTTP lifecycle, or performance claims. The
+  maps, real public async sources, HTTP disconnect/shutdown cancellation, and executable
+  public examples through the final bootstrap module shape remain open. ENGINE-03 adds
+  microtask-only Promise settlement for direct async handlers; ENGINE-12.AB adds native
+  test-completion settlement through the owner-thread scheduler. The remaining ENGINE-12
+  policy/evidence tasks must land before Sloppy makes scalable async, async provider,
+  async HTTP lifecycle, or performance claims. The
   compiler rejection `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` remains valid for `await`,
   multi-statement async bodies, and non-direct async returns until those shapes become
   executable.

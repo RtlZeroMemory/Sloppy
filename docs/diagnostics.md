@@ -53,6 +53,13 @@ and source-frame rendering. The renderers still preflight output size determinis
 return `SL_STATUS_CAPACITY_EXCEEDED` on bounded builder exhaustion instead of allocating
 recursively through diagnostic paths.
 
+ENGINE-12.AB does not add new public diagnostic codes. Async backend failures use existing
+machine-checkable statuses: `SL_STATUS_CAPACITY_EXCEEDED` for bounded queue overflow,
+`SL_STATUS_INVALID_STATE` for disposed loops or detectable wrong-thread dispatch, and
+`SL_STATUS_INTERNAL` for unexpected backend failures. Future #309 cancellation/deadline and
+shutdown policy may add richer diagnostics when those terminal paths become product
+behavior.
+
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic
 `--diagnostic-format json` flag for every error path.

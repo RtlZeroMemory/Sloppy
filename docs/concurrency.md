@@ -19,8 +19,8 @@ differences from ASP.NET Core, Node, Bun, and Deno.
 - No parallel execution of JS callbacks inside one isolate.
 - No worker implementation in v0.1.
 - No custom event loop implementation in this spec pass.
-- No libuv integration in this task.
 - No CPU-parallel JS execution in a single isolate.
+- No Node/libuv compatibility promise, and no public timers/fetch/fs/process APIs.
 
 ## Current Implementation
 
@@ -49,6 +49,16 @@ with a stack-local loop init/close smoke. It does not add a libuv backend for `S
 thread-safe posting, socket I/O, timers, owner-thread checks, or request lifecycle
 integration.
 
+ENGINE-12.AB adds the first real async backend foundation beside the older skeletons.
+`include/sloppy/async_backend.h` defines an opaque `SlAsyncLoop` with a bounded Slop-owned
+completion queue, deterministic overflow (`SL_STATUS_CAPACITY_EXCEEDED`), cleanup-once
+completion ownership, and optional scope retain/release hooks for request/app lifetime
+retention. The deterministic test backend is available for default unit tests. The primary
+runtime backend is libuv, implemented under `src/platform/libuv/`; `uv_loop_t`,
+`uv_async_t`, `uv_handle_t`, and other libuv types do not appear in public Sloppy headers
+or JavaScript/framework contracts. Libuv is used for internal cross-thread wakeup/posting,
+not as a public API model.
+
 ENGINE-03 adds the first real V8 async handler boundary. Returned Promises that settle
 during the explicit owner-thread V8 microtask drain fulfill or reject deterministically;
 fulfilled values use normal result conversion, rejected Promises produce engine
@@ -61,9 +71,10 @@ ENGINE-03 is not the full scalable async runtime. It does not add a Node-style e
 public timers/fetch/fs/process APIs, native provider completion queues, cross-thread
 posting, HTTP disconnect/shutdown drain behavior, worker-thread scheduling, or scalability
 evidence. The full async-runtime target is tracked by #306 and tasks #307 through #310.
-Those tasks own native completion/backend integration, owner-thread continuation
-scheduling for native completions, deadline/shutdown drain policy, bounded queues,
-backpressure, provider/offload integration, and stress evidence.
+ENGINE-12.AB owns the first native completion/backend integration and owner-thread
+continuation boundary. #309 still owns full cancellation, deadline, shutdown drain/cancel,
+and cleanup policy. #310 still owns async backpressure, provider/offload integration, and
+stress evidence.
 
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
@@ -134,8 +145,10 @@ Native event loop/backend:
 
 - handles socket readiness/completions;
 - drives timers;
-- posts work completion.
-- future work; TASK 09.A only provides a synchronous test-loop completion queue.
+- posts native completions into a bounded Slop-owned completion queue.
+- ENGINE-12.AB uses libuv internally as the primary backend and keeps the deterministic
+  test backend for unit tests. This is not Node compatibility and does not expose timers,
+  fetch, fs, process, or libuv handles to JavaScript.
 
 Native worker pool:
 
@@ -170,10 +183,11 @@ enforcement. Callers must treat the engine as single-thread-owned until the late
 event-loop tasks add explicit checks.
 
 TASK 09.A adds the first native completion queue shape that later backends can post into,
-but the current skeleton is still single-threaded. Cross-thread posting, owner-thread
-identity checks, wakeups, and worker-thread-safe APIs are not implemented yet. Completion
-callbacks in the skeleton run on the caller thread, so they must not be used to bypass the
-V8 owner-thread rule.
+but that skeleton remains single-threaded. ENGINE-12.AB adds `SlAsyncLoop`, a bounded
+backend abstraction with a libuv implementation that supports cross-thread completion
+posting and owner-thread drain checks. Completion callbacks still run only when the owner
+drains the loop; native worker/provider code may post completion data but must not enter
+V8.
 
 TASK 09.C adds an inline worker-pool skeleton on top of this queue. The work callback also
 runs on the caller thread today, but its completion is still queued to `SlLoop`. Future real
@@ -241,9 +255,11 @@ The settlement semantics are:
   copied the original state and result for dispatch.
 
 `SlAsync` is not thread-safe. Settlement must occur on the owning runtime thread for now.
-Cross-thread settlement and thread-safe completion queues are future worker-pool/event-loop
-work. Current completion callbacks run on the loop caller thread, so this skeleton must not
-be used to bypass the V8 isolate owner-thread rule.
+Cross-thread native completion posting exists at the `SlAsyncLoop` boundary. Full
+worker-pool/offload policy, cancellation/deadline propagation, shutdown drain/cancel, and
+backpressure remain future ENGINE-12 tasks. Current `SlLoop` callbacks still run on the
+loop caller thread, so the older skeleton must not be used to bypass the V8 isolate
+owner-thread rule.
 
 ## Current SlWorkerPool Inline Skeleton Semantics
 

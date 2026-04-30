@@ -60,6 +60,15 @@ and V8 SQLite bridge. ENGINE-22.F removes a remaining non-SQLite capability diag
 hint buffer, keeps OpenAPI path skeleton normalization on the bounded string builder, and
 adds a low-capacity denial-hint regression guard.
 
+ENGINE-12.AB adds queued native completion ownership rules. `SlAsyncLoop` stores bounded
+completion records in caller-owned storage and takes ownership only after a post succeeds.
+On successful post it may retain a request/app scope through `SlAsyncScopeRef`; dispatch or
+discard releases that scope exactly once and runs the completion cleanup callback exactly
+once. Failed posts, including overflow and disposed-loop posts, do not take ownership, so
+the caller remains responsible for cleanup. Queued completions must own or retain any
+memory needed after the caller returns; borrowed request-arena views must not be placed in
+queued work unless the owning request/app scope is explicitly retained.
+
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 
 - ENGINE-21 defines the app/request/temp/static/V8/SQLite/diagnostic lifetime model,

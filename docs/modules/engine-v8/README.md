@@ -23,12 +23,13 @@ failure rather than `[object Promise]` success.
 ENGINE-05 wires the SQLite V8 bridge to Plan provider metadata and the native database
 capability hook. The bridge fails closed when hook inputs are absent and keeps all
 provider-specific logic inside `src/engine/v8/intrinsics_sqlite.cc`.
-ENGINE-12 (#306 through #310) is the future full scalable async-runtime layer. It owns
-native completion queues/backends, owner-thread continuation scheduling for native
-completions, deadline/shutdown drain behavior, backpressure, provider/offload integration,
-and stress/performance evidence. That work should start when a real external async source
-needs to cross the runtime boundary, and before Sloppy claims scalable async performance or
-production-ready async lifecycle behavior.
+ENGINE-12.AB adds the first native completion/backend and V8 owner-thread continuation
+boundary. Native code can post a completion through `SlAsyncLoop`; V8 Promise
+fulfillment/rejection happens only in `src/engine/v8/async_scheduler.cc` when the owning
+engine thread drains that completion. The libuv backend is internal to
+`src/platform/libuv/` and does not create Node/libuv public compatibility. #309 still owns
+full cancellation/deadline/shutdown drain policy, and #310 still owns
+backpressure/provider-offload/scalability evidence.
 
 ## Purpose
 
@@ -96,17 +97,21 @@ Implemented now:
 - V8 creation can borrow the parsed Plan and immutable capability registry through
   `SlEngineOptions`; provider bridges may use those pointers only as hook inputs while the
   app host keeps their storage alive.
+- `async_scheduler.cc` owns the native-completion-to-Promise scheduler boundary. Its
+  queued records keep V8 resolver handles inside the V8 module, use `SlAsyncLoop` only as
+  a native completion transport, retain/release native scope hooks across queued work, and
+  reject detectable wrong-thread dispatch before entering V8.
 
 Later scope:
 
 - true V8 ESM module loading and a production module cache;
 - richer source-map remapping for generated app modules;
-- mapping future native async provider completions onto `SlAsync` or a documented evolution
-  of it. ENGINE-03 settles microtask-only handler Promises but does not add timers, fetch,
-  Node APIs, cross-thread posting, or provider completion queues;
-- ENGINE-12 scalable async runtime work: native completion backend, owner-thread V8
-  continuation scheduler, cancellation/deadline/shutdown drain policy, bounded queues,
-  provider/offload integration, and stress evidence for many pending operations;
+- mapping real provider/HTTP/timer completions onto the new async backend. ENGINE-12.AB
+  proves the transport/scheduler boundary with native test completions only; it does not
+  add timers, fetch, Node APIs, provider offload, or public async sources;
+- ENGINE-12 follow-up work: cancellation/deadline/shutdown drain policy in #309, then
+  backpressure, provider/offload integration, and stress evidence for many pending
+  operations in #310;
 - runtime source-map remapping now that compiler source maps contain handler mappings.
 
 ## Non-goals
@@ -135,6 +140,8 @@ Framework and provider bridge code belongs in sibling V8 modules:
 - `intrinsics_sqlite.cc` owns SQLite-specific argument validation, parameter conversion,
   row materialization, Plan provider lookup, capability checks, resource-table lookup,
   cleanup callback, and native provider calls.
+- `async_scheduler.cc` owns owner-thread native continuation scheduling and Promise
+  settlement from native completions.
 
 Future framework-specific V8 bridge code must add a dedicated sibling module, not expand
 `engine_v8.cc`.

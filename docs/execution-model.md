@@ -81,6 +81,13 @@ the completion to `SlLoop`; the completion callback runs only when the loop drai
 not implement real threads, cross-thread posting, blocking DB/filesystem work, libuv, or
 V8 Promise settlement.
 
+ENGINE-12.AB adds the first real async backend boundary. `SlAsyncLoop` is a Slop-owned,
+opaque, fixed-capacity completion loop created over caller-owned completion storage. The
+deterministic test backend remains available for unit tests, and the primary runtime
+backend uses libuv internally under `src/platform/libuv/` for cross-thread wakeup. Libuv
+handles and loop types do not escape the backend implementation, and the public/runtime
+model is still Sloppy's model rather than Node or libuv compatibility.
+
 TASK 10.A adds a pure-C route pattern parser and matcher foundation for later native route
 dispatch. It supports only a minimal path-pattern subset and one-pattern matching. It does
 not add HTTP parsing, request lifecycle, method matching, route table/trie dispatch,
@@ -496,9 +503,12 @@ Current Promise lifecycle requirements:
 - cancellation semantics are specified in `docs/concurrency.md` and required with the first
   real async/HTTP implementation.
 
-Future native async completion queues must post back to the JS owner before JS resumes.
-ENGINE-03 intentionally does not add timers, fetch, native provider completion queues,
-worker-thread scheduling, or Node compatibility.
+Native async completions now post through `SlAsyncLoop` and resume JavaScript only through
+the V8 owner-thread continuation scheduler under `src/engine/v8/`. Worker/provider/native
+threads may post completions, but only the owning V8 thread drains and settles the Promise.
+ENGINE-12.AB does not add public timers, fetch, fs, process, Node APIs, provider offload,
+or production scalability evidence. #309 owns cancellation/deadline/shutdown drain policy,
+and #310 owns backpressure/provider-offload/scalability evidence.
 
 ENGINE-12 (#306, tasks #307-#310) owns the full scalable async runtime target. That work
 should begin only when at least one real external async source needs to cross the native
@@ -533,10 +543,12 @@ Current native skeleton:
 - discarded worker completions require an explicit `sl_worker_pool_reset_inline` cleanup
   after the owning `SlLoop` is reset.
 
-Current V8 Promise handling resolves or rejects only at the bounded owner-thread microtask
-checkpoint. Future native async completions must use this model or a documented evolution
-of it so request cleanup remains owned by the runtime across queued work; tests must
-continue to reject fake success, unresolved Promise success, and wrong-thread V8 entry.
+Current V8 Promise handling resolves or rejects at documented owner-thread boundaries:
+ENGINE-03 covers bounded microtask checkpoints, and ENGINE-12.AB covers native completion
+continuations posted through `SlAsyncLoop`. Request/app scope retention across queued work
+uses explicit native retain/release hooks until #309 defines the full terminal drain and
+cancel policy; tests must continue to reject fake success, unresolved Promise success, and
+wrong-thread V8 entry.
 
 ## Source Map Diagnostic Flow
 
