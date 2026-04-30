@@ -4,6 +4,7 @@
 #include "sloppy/arena.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/plan.h"
+#include "sloppy/resource.h"
 #include "sloppy/scope.h"
 #include "sloppy/status.h"
 
@@ -32,6 +33,50 @@ typedef struct SlAppHostStartupValidation
 SlStatus sl_app_host_validate_startup(const SlPlan* plan, const SlAppHostStartupValidation* options,
                                       SlDiag* out_diag);
 
+typedef enum SlAppLifecycleState
+{
+    SL_APP_LIFECYCLE_STATE_UNINITIALIZED = 0,
+    SL_APP_LIFECYCLE_STATE_STARTED = 1,
+    SL_APP_LIFECYCLE_STATE_SHUTDOWN = 2
+} SlAppLifecycleState;
+
+/*
+ * Caller-owned resource cleanup payload for app and request scopes.
+ *
+ * The payload borrows `table` and stores one JS-safe resource ID. The table and payload must
+ * outlive the scope cleanup that owns the registration. Cleanup closes the resource through
+ * SlResourceTable and invalidates `id`; it never exposes or logs native pointers.
+ */
+typedef struct SlAppResourceCleanup
+{
+    SlResourceTable* table;
+    SlResourceId id;
+} SlAppResourceCleanup;
+
+typedef struct SlAppLifecycle
+{
+    SlScope cleanups;
+    SlAppLifecycleState state;
+} SlAppLifecycle;
+
+/*
+ * Starts an app lifecycle over caller-owned cleanup storage.
+ *
+ * The lifecycle owns cleanup registrations only. Callback payloads remain caller-owned and
+ * must outlive shutdown. Shutdown is deterministic LIFO, idempotent after success, and safe
+ * to call on a zero-initialized lifecycle.
+ */
+SlStatus sl_app_lifecycle_start(SlAppLifecycle* lifecycle, SlScopeCleanup* storage,
+                                size_t cleanup_capacity, SlDiag* out_diag);
+SlStatus sl_app_lifecycle_add_cleanup(SlAppLifecycle* lifecycle, SlScopeCleanupFn fn, void* payload,
+                                      void* user, SlDiag* out_diag);
+SlStatus sl_app_lifecycle_add_resource_cleanup(SlAppLifecycle* lifecycle,
+                                               SlAppResourceCleanup* resource, SlDiag* out_diag);
+SlStatus sl_app_lifecycle_shutdown(SlAppLifecycle* lifecycle, SlDiag* out_diag);
+SlAppLifecycleState sl_app_lifecycle_state(const SlAppLifecycle* lifecycle);
+bool sl_app_lifecycle_is_started(const SlAppLifecycle* lifecycle);
+bool sl_app_lifecycle_is_shutdown(const SlAppLifecycle* lifecycle);
+
 typedef struct SlAppRequestScope
 {
     SlScope cleanups;
@@ -45,6 +90,8 @@ SlStatus sl_app_request_scope_init(SlAppRequestScope* request_scope, SlScopeClea
                                    size_t cleanup_capacity);
 SlStatus sl_app_request_scope_add_cleanup(SlAppRequestScope* request_scope, SlScopeCleanupFn fn,
                                           void* payload, void* user);
+SlStatus sl_app_request_scope_add_resource_cleanup(SlAppRequestScope* request_scope,
+                                                   SlAppResourceCleanup* resource);
 SlStatus sl_app_request_scope_close(SlAppRequestScope* request_scope, SlDiag* out_diag);
 bool sl_app_request_scope_is_active(const SlAppRequestScope* request_scope);
 

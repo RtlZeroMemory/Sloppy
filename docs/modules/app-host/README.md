@@ -6,6 +6,8 @@ Bootstrap stdlib layout and the first app-host foundation skeleton exist. MAIN1-
 small native app-host hardening layer for the supported artifact runtime path:
 `sl_app_host_validate_startup` validates parsed Plan metadata before V8/user execution, and
 `SlAppRequestScope` gives native request dispatch a deterministic cleanup boundary.
+ENGINE-07 adds `SlAppLifecycle`, an explicit app startup/shutdown cleanup scope used by
+`sloppy run` to release app-scoped resources such as the engine.
 Full native app-host behavior is still not implemented.
 
 ## Purpose
@@ -79,13 +81,14 @@ when V8 is enabled. EPIC-24 does not make V8 load the public ESM stdlib directly
 artifacts still run as classic scripts after `sloppy run` loads
 `stdlib/sloppy/internal/runtime-classic.js` from the staged bootstrap stdlib root.
 
-`sloppy run --artifacts` now performs native app graph startup validation after plan and
-artifact metadata load and before route materialization, V8 creation, bootstrap evaluation,
-or request serving. The supported startup checks cover Plan v1 compatibility, supported
-target/runtime values, handler table presence and duplicate IDs, runnable GET route
-metadata, route-to-handler references, duplicate method/pattern pairs, duplicate non-empty
-route names, provider/capability token consistency, and duplicate provider service tokens
-when `dataProviders[].service` is represented.
+`sloppy run --artifacts` now starts a native app lifecycle, performs native app graph
+startup validation after plan and artifact metadata load and before route materialization,
+V8 creation, bootstrap evaluation, or request serving, then shuts that lifecycle down on
+command exit or startup failure. The supported startup checks cover Plan v1 compatibility,
+supported target/runtime values, handler table presence and duplicate IDs, runnable GET
+route metadata, route-to-handler references, duplicate method/pattern pairs, duplicate
+non-empty route names, provider/capability token consistency, and duplicate provider
+service tokens when `dataProviders[].service` is represented.
 
 MAIN1-10 adds a native capability registry that future provider bridge calls can receive
 from the parsed plan. The registry is immutable after startup and has no global mutable
@@ -107,11 +110,14 @@ enforces provider/capability access.
 
 Current service lifetimes are JavaScript-only singleton and transient registrations.
 Capability metadata is copied and frozen for debug/introspection. Native request execution
-now begins with a request scope and closes that scope after handler success or failure.
-Request-scope cleanup uses `SlScope` LIFO order and owns cleanup registrations only; cleanup
-payloads remain caller-owned. Request-scoped native resources must either be registered as
-scope cleanups or stored in a `SlResourceTable` entry that the scope closes later. No raw
-native pointer is exposed to JavaScript.
+now begins with a request scope and closes that scope after handler success, sync failure,
+bounded async resolve/reject/pending failure, cancellation/deadline-style statuses, and
+unsupported pre-handler outcomes. Request-scope cleanup uses `SlScope` LIFO order and owns
+cleanup registrations only; cleanup payloads remain caller-owned. Request-scoped native
+resources are closed through caller-owned `SlAppResourceCleanup` payloads that call
+`SlResourceTable` by `SlResourceId`. `SlAppLifecycle` applies the same cleanup model to
+app-scoped resources and makes shutdown idempotent. No raw native pointer is exposed to
+JavaScript.
 
 Real service lifetimes, service disposal, async scope retention, and capability enforcement
 must be explicit and plan-visible before public app-host services can claim runtime
@@ -135,15 +141,19 @@ module names, invalid module objects, missing module dependencies, module depend
 cycles, phase callback failures, and mutation after freeze. Native startup diagnostics now
 cover missing route handlers, duplicate routes, duplicate route names, invalid
 provider/capability metadata, duplicate provider service tokens, and startup validation
-failure summaries in `sloppy run`. Native diagnostics for a real module graph, missing
-service activation, invalid lifetime dependencies, missing config providers, automatic
-request validation, provider driver/config failures, and cleanup callback failure details
-remain future work.
+failure summaries in `sloppy run`. `SLOPPY_E_APP_LIFECYCLE` covers native app lifecycle
+state errors such as registering cleanup before startup and renders through the stable JSON
+diagnostic renderer. Native diagnostics for a real module graph, missing service
+activation, invalid lifetime dependencies, missing config providers, automatic request
+validation, provider driver/config failures, and cleanup callback failure details remain
+future work.
 
 ## Tests
 
-CTest registers `core.app_host.hardening` to cover native app-host startup validation and
-request-scope cleanup on handler success and failure. CTest registers
+CTest registers `core.app_host.hardening` to cover native app-host startup validation,
+request-scope cleanup on handler success/failure/cancellation/deadline/unsupported
+outcomes, app shutdown cleanup of app-scoped resource IDs, idempotent shutdown, and stable
+lifecycle diagnostic JSON. CTest registers
 `bootstrap.stdlib.assets` to verify the source bootstrap files and copied
 build-tree assets exist. CTest also registers `bootstrap.stdlib.api_shape` to statically
 check the implemented bootstrap API names, descriptor fields, route registration/group

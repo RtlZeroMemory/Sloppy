@@ -454,6 +454,13 @@ EPIC-22 and EPIC-23 wrap that foundation in the dev-only CLI path:
 8. write a minimal native HTTP response with status line, `Connection: close`,
    `Content-Type`, `Content-Length`, CRLF formatting, and body bytes.
 
+ENGINE-07 adds an explicit native app lifecycle boundary around this dev-only run path.
+`sloppy run` starts an app lifecycle before Plan-backed startup validation and registers
+engine destruction as an app shutdown cleanup after V8 creation succeeds. Command exit,
+startup aborts after engine creation, and dev-server loop exit all run app shutdown through
+that lifecycle. Shutdown is idempotent; app-scoped cleanup callbacks use the same
+`SlScope` LIFO contract as request scopes.
+
 The response writer remains deliberately small and dev-only. Body parsing, streaming,
 headers in context, middleware, production hardening, and content negotiation remain
 future work.
@@ -476,6 +483,8 @@ Current Promise lifecycle requirements:
 - continuations run on the owning JS event-loop thread;
 - cleanup runs exactly once;
 - rejected promises become diagnostics;
+- async diagnostics are ordinary `SlDiag` values and can be rendered through the stable JSON
+  renderer, but a CLI-wide async diagnostic JSON mode remains deferred;
 - microtask draining is controlled by the V8 bridge;
 - cancellation semantics are specified in `docs/concurrency.md` and required with the first
   real async/HTTP implementation.
@@ -538,9 +547,11 @@ Runtime exception flow:
 MAIN1-05 behavior stops after generated source name, 1-based line/column, message, and a
 bounded stack note. ENGINE-02 compiler `app.js.map` files are hashed artifacts with real
 handler-line mappings, but TypeScript source remapping, map consumption by the V8
-diagnostic path, and code frames remain future work. ENGINE-03 adds deterministic Promise
-rejection and pending-Promise diagnostics for the bounded microtask path; async
-stack/source-remapping across native completions remains future ENGINE-12/ENGINE-08 work.
+diagnostic path, and code frames remain future work. ENGINE-07 keeps lifecycle diagnostics
+honest by using generated locations when V8 reports them and by not claiming author-source
+remapping. ENGINE-03 adds deterministic Promise rejection and pending-Promise diagnostics
+for the bounded microtask path; async stack/source-remapping across native completions
+remains future ENGINE-12/ENGINE-08 work.
 
 Source map task boundaries:
 

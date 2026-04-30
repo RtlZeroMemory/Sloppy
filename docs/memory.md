@@ -34,7 +34,9 @@ The core foundation now implements `SlStatus`, `SlSourceLoc`, borrowed `SlStr`, 
 `SlBytes`, checked `size_t` arithmetic, assertion macros, a caller-backed `SlArena`, a
 fixed-capacity native cleanup `SlScope`, a fixed-capacity `SlResourceTable` with
 generation-counted `SlResourceId` handles, and a minimal `SlAppRequestScope` wrapper that
-closes request cleanups on handler success or failure.
+closes request cleanups on handler success, failure, cancellation/deadline-style statuses,
+and unsupported pre-handler outcomes. `SlAppLifecycle` now gives the app host an explicit
+startup/shutdown cleanup scope for app-lifetime resources.
 `SlBuf`, string builders, and allocator modules are not implemented yet.
 
 ## Future Phase
@@ -192,8 +194,11 @@ Future JS/native bridges must use the resource table rather than inventing ad ho
   pools, request-lifetime checked-out resources, and statement/transaction resources cannot
   share an implicit global registry.
 - Request-scoped native resources should be represented by `SlResourceId` entries and paired
-  with a request-scope cleanup that closes the ID. MAIN1-03 adds the cleanup boundary but
-  does not wire provider handles into request scope yet.
+  with a request-scope cleanup that closes the ID. The app-host lifecycle helpers provide
+  caller-owned `SlAppResourceCleanup` payloads that close `SlResourceId` entries through
+  `SlScope` on request completion or app shutdown. Provider bridges still need to decide
+  which concrete handles are request-scoped versus app-scoped before public APIs claim
+  automatic provider lifetime behavior.
 - MAIN1-08 SQLite bridge work consumes `SlResourceId`/`SlResourceTable`; it must not
   reinvent handle storage or expose SQLite pointers.
 - V8 owns the common resource table on the engine backend. Provider-specific bridge modules
@@ -239,11 +244,15 @@ Target request lifecycle:
 7. detect leaked statements/connections/handles in debug builds;
 8. release request arena.
 
-Implemented MAIN1-03 request-scope behavior is smaller: a native request scope begins
-before the handler boundary and closes after handler success or failure. Cleanup callbacks
-run in `SlScope` LIFO order. The scope owns cleanup registrations only; cleanup payloads
-and user data remain caller-owned and must outlive cleanup execution. Cleanup callbacks are
-currently void/no-fail, so rich cleanup-failure diagnostics remain deferred.
+Implemented request-scope behavior is still intentionally small: a native request scope
+begins before the handler boundary and closes after handler success, synchronous failure,
+unsupported pre-handler outcomes, cancellation/deadline-style statuses, and the bounded V8
+Promise resolve/reject/pending paths. Cleanup callbacks run in `SlScope` LIFO order. The
+scope owns cleanup registrations only; cleanup payloads and user data remain caller-owned
+and must outlive cleanup execution. `SlAppLifecycle` provides the matching app startup and
+shutdown cleanup scope; shutdown is idempotent and uses the same LIFO cleanup contract.
+Cleanup callbacks are currently void/no-fail, so rich cleanup-failure diagnostics remain
+deferred.
 
 ## Forbidden Patterns
 

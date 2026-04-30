@@ -2,10 +2,9 @@
  * src/core/app_host.c
  *
  * Native app-host hardening for the current Plan-backed runtime path. This module validates
- * app graph metadata that already exists in native Plan structs and provides the minimal
- * request-scope lifecycle wrapper used by request execution. It intentionally does not
- * implement DI, middleware, provider opening, module execution, HTTP precedence, or V8
- * behavior.
+ * app graph metadata that already exists in native Plan structs and provides app/request
+ * lifecycle cleanup wrappers used by request execution. It intentionally does not implement
+ * DI, middleware, provider opening, module execution, HTTP precedence, or V8 behavior.
  */
 #include "sloppy/app_host.h"
 
@@ -495,6 +494,175 @@ SlStatus sl_app_host_validate_startup(const SlPlan* plan, const SlAppHostStartup
     return sl_app_host_validate_metadata(plan, options, out_diag);
 }
 
+static SlStatus sl_app_lifecycle_diag(SlDiag* out_diag, SlStr message, SlStr hint,
+                                      SlStatusCode status_code)
+{
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+        out_diag->severity = SL_DIAG_SEVERITY_ERROR;
+        out_diag->code = SL_DIAG_APP_LIFECYCLE;
+        out_diag->message = message;
+        if (!sl_str_is_empty(hint)) {
+            out_diag->hints[0] = hint;
+            out_diag->hint_count = 1U;
+        }
+    }
+    return sl_status_from_code(status_code);
+}
+
+static bool sl_app_resource_cleanup_valid(const SlAppResourceCleanup* resource)
+{
+    return resource != NULL && resource->table != NULL && sl_resource_id_is_valid(resource->id);
+}
+
+static void sl_app_resource_cleanup_close(void* payload, void* user)
+{
+    SlAppResourceCleanup* resource = (SlAppResourceCleanup*)payload;
+
+    (void)user;
+    if (!sl_app_resource_cleanup_valid(resource)) {
+        return;
+    }
+
+    (void)sl_resource_table_close(resource->table, resource->id, NULL);
+    resource->id = sl_resource_id_invalid();
+}
+
+SlStatus sl_app_lifecycle_start(SlAppLifecycle* lifecycle, SlScopeCleanup* storage,
+                                size_t cleanup_capacity, SlDiag* out_diag)
+{
+    SlStatus status;
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (lifecycle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (lifecycle->state == SL_APP_LIFECYCLE_STATE_STARTED) {
+        return sl_app_lifecycle_diag(
+            out_diag,
+            sl_app_host_literal("app lifecycle is already started",
+                                sizeof("app lifecycle is already started") - 1U),
+            sl_app_host_literal("shutdown the current app lifecycle before starting another one",
+                                sizeof("shutdown the current app lifecycle before starting another "
+                                       "one") -
+                                    1U),
+            SL_STATUS_INVALID_STATE);
+    }
+    if (lifecycle->state == SL_APP_LIFECYCLE_STATE_SHUTDOWN) {
+        return sl_app_lifecycle_diag(
+            out_diag,
+            sl_app_host_literal("app lifecycle is already shut down",
+                                sizeof("app lifecycle is already shut down") - 1U),
+            sl_app_host_literal("use a fresh zero-initialized lifecycle for the next app",
+                                sizeof("use a fresh zero-initialized lifecycle for the next app") -
+                                    1U),
+            SL_STATUS_INVALID_STATE);
+    }
+
+    status = sl_scope_init(&lifecycle->cleanups, storage, cleanup_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    lifecycle->state = SL_APP_LIFECYCLE_STATE_STARTED;
+    return sl_status_ok();
+}
+
+SlStatus sl_app_lifecycle_add_cleanup(SlAppLifecycle* lifecycle, SlScopeCleanupFn fn, void* payload,
+                                      void* user, SlDiag* out_diag)
+{
+    SlStatus status;
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (lifecycle == NULL || fn == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (lifecycle->state != SL_APP_LIFECYCLE_STATE_STARTED) {
+        return sl_app_lifecycle_diag(
+            out_diag,
+            sl_app_host_literal("app lifecycle is not active",
+                                sizeof("app lifecycle is not active") - 1U),
+            sl_app_host_literal("start the app lifecycle before registering cleanup",
+                                sizeof("start the app lifecycle before registering cleanup") - 1U),
+            SL_STATUS_INVALID_STATE);
+    }
+
+    status = sl_scope_add_cleanup(&lifecycle->cleanups, fn, payload, user);
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+        return sl_app_lifecycle_diag(
+            out_diag,
+            sl_app_host_literal("app lifecycle cleanup capacity was exceeded",
+                                sizeof("app lifecycle cleanup capacity was exceeded") - 1U),
+            sl_app_host_literal("raise the app lifecycle cleanup capacity for this host",
+                                sizeof("raise the app lifecycle cleanup capacity for this host") -
+                                    1U),
+            SL_STATUS_CAPACITY_EXCEEDED);
+    }
+
+    return status;
+}
+
+SlStatus sl_app_lifecycle_add_resource_cleanup(SlAppLifecycle* lifecycle,
+                                               SlAppResourceCleanup* resource, SlDiag* out_diag)
+{
+    if (!sl_app_resource_cleanup_valid(resource)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_app_lifecycle_add_cleanup(lifecycle, sl_app_resource_cleanup_close, resource, NULL,
+                                        out_diag);
+}
+
+SlStatus sl_app_lifecycle_shutdown(SlAppLifecycle* lifecycle, SlDiag* out_diag)
+{
+    SlStatus status;
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (lifecycle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (lifecycle->state != SL_APP_LIFECYCLE_STATE_STARTED) {
+        lifecycle->state = SL_APP_LIFECYCLE_STATE_SHUTDOWN;
+        return sl_status_ok();
+    }
+
+    status = sl_scope_close(&lifecycle->cleanups);
+    lifecycle->state = SL_APP_LIFECYCLE_STATE_SHUTDOWN;
+    if (!sl_status_is_ok(status)) {
+        return sl_app_lifecycle_diag(
+            out_diag,
+            sl_app_host_literal("app lifecycle cleanup failed",
+                                sizeof("app lifecycle cleanup failed") - 1U),
+            sl_app_host_literal("app shutdown cleanup callbacks must be deterministic",
+                                sizeof("app shutdown cleanup callbacks must be deterministic") -
+                                    1U),
+            SL_STATUS_INVALID_STATE);
+    }
+
+    return sl_status_ok();
+}
+
+SlAppLifecycleState sl_app_lifecycle_state(const SlAppLifecycle* lifecycle)
+{
+    return lifecycle == NULL ? SL_APP_LIFECYCLE_STATE_UNINITIALIZED : lifecycle->state;
+}
+
+bool sl_app_lifecycle_is_started(const SlAppLifecycle* lifecycle)
+{
+    return sl_app_lifecycle_state(lifecycle) == SL_APP_LIFECYCLE_STATE_STARTED;
+}
+
+bool sl_app_lifecycle_is_shutdown(const SlAppLifecycle* lifecycle)
+{
+    return sl_app_lifecycle_state(lifecycle) == SL_APP_LIFECYCLE_STATE_SHUTDOWN;
+}
+
 static SlStatus sl_app_request_scope_diag(SlDiag* out_diag, SlDiagCode code, SlStr message)
 {
     if (out_diag != NULL) {
@@ -532,6 +700,17 @@ SlStatus sl_app_request_scope_add_cleanup(SlAppRequestScope* request_scope, SlSc
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     return sl_scope_add_cleanup(&request_scope->cleanups, fn, payload, user);
+}
+
+SlStatus sl_app_request_scope_add_resource_cleanup(SlAppRequestScope* request_scope,
+                                                   SlAppResourceCleanup* resource)
+{
+    if (!sl_app_resource_cleanup_valid(resource)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_app_request_scope_add_cleanup(request_scope, sl_app_resource_cleanup_close, resource,
+                                            NULL);
 }
 
 SlStatus sl_app_request_scope_close(SlAppRequestScope* request_scope, SlDiag* out_diag)
