@@ -47,11 +47,12 @@ statements, query rows, return the first row or no-row for `queryOne`, bind prim
 parameters, and commit or roll back explicit transactions.
 
 MAIN1-08 adds the first JavaScript-to-native data bridge for SQLite in V8-enabled runtime
-contexts. `data.sqlite.open({ path: ":memory:" })` now creates a generation-checked
-resource-table connection handle when the V8 bridge installs SQLite intrinsics. JavaScript
-receives only an opaque slot/generation handle object wrapped by the stdlib facade; it does
-not receive `sqlite3*` or any native pointer. Non-V8/bootstrap-only contexts still fail
-honestly with a bridge-unavailable error.
+contexts. ENGINE-06 makes that bridge capability-enforced:
+`data.sqlite.open({ path: ":memory:", capability: "data.main" })` creates a
+generation-checked resource-table connection handle only after the V8 bridge checks the
+plan-backed capability registry. JavaScript receives only an opaque slot/generation handle
+object wrapped by the stdlib facade; it does not receive `sqlite3*` or any native pointer.
+Non-V8/bootstrap-only contexts still fail honestly with a bridge-unavailable error.
 
 EPIC-17 adds the second real provider boundary: native C PostgreSQL support backed by
 libpq from the repo-approved vcpkg manifest. The native provider opens connection strings,
@@ -80,18 +81,19 @@ redaction, and a small `doctor(options)` shape as the intended public entry poin
 No native pointer is exposed to JavaScript and no fake SQL Server success is reported by the
 stdlib.
 
-MAIN1-10 adds the runtime capability registry used by future provider bridge calls.
+MAIN1-10 adds the runtime capability registry used by provider bridge calls.
 Database provider access policy is token-based: read operations require `read` or
 `readwrite`, write operations require `write` or `readwrite`, and a declared provider token
-must match the provider boundary being called. These hooks deny before provider work when
-called by a bridge or native host boundary. The existing direct native provider APIs remain
-low-level provider primitives and do not carry capability context in their signatures.
+must match the provider boundary being called. ENGINE-06 wires these hooks into the V8
+SQLite bridge so `open`, `exec`, `query`, and `queryOne` deny before provider work. The
+existing direct native provider APIs remain low-level provider primitives and do not carry
+capability context in their signatures.
 
 ## Provider Support Classification
 
 | Provider | Native status | Default validation | Live validation | JS bridge status |
 | --- | --- | --- | --- | --- |
-| SQLite | Native C provider exists and is linked through the default build. V8-enabled runtime contexts install a minimal JS bridge for open/exec/query/queryOne/close. | In-memory open/query/exec/transaction and capability hook tests run in default CTest; JS wrapper closed-state behavior is covered by bootstrap tests with a mocked bridge. | No external service is required for current provider tests. V8 execution is a separate optional gate. | Implemented for V8-enabled SQLite only; default non-V8 contexts report bridge-unavailable. Capability hook integration is ready but not called by the bridge yet. |
+| SQLite | Native C provider exists and is linked through the default build. V8-enabled runtime contexts install a minimal JS bridge for open/exec/query/queryOne/close. | In-memory open/query/exec/transaction and capability hook tests run in default CTest; JS wrapper closed-state behavior is covered by bootstrap tests with a mocked bridge. | No external service is required for current provider tests. V8 execution is a separate optional gate. | Implemented for V8-enabled SQLite only; default non-V8 contexts report bridge-unavailable. The bridge checks declared capabilities before open/read/write provider calls. |
 | PostgreSQL | Native libpq provider boundary exists. | Non-live option, doctor, redaction, use-after-close, and lifecycle tests run in default CTest. | Opt-in `data.postgres.live_provider` requires `SLOPPY_POSTGRES_TEST_URL`; when unset, CTest reports it skipped. | Deferred; `data.postgres.open(...)` validates/redacts and then fails with bridge-unavailable. |
 | SQL Server | Native ODBC provider boundary exists when `SLOPPY_ENABLE_SQLSERVER` is enabled; otherwise stubs report unavailable. | Windows default tests cover ODBC-enabled non-live diagnostics; Linux/macOS defaults cover unavailable/stub behavior. | Opt-in `data.sqlserver.live_provider` requires `SLOPPY_SQLSERVER_TEST_CONNECTION_STRING`, an ODBC driver, and a reachable SQL Server; when unset, CTest reports it skipped. | Deferred; `data.sqlserver.open(...)` validates/redacts and then fails with bridge-unavailable. |
 
@@ -151,6 +153,7 @@ const SqliteModule = Sloppy.module("data.sqlite")
   .services(services => {
     services.addSingleton("data.main", () => data.sqlite.open({
       path: ":memory:",
+      capability: "data.main",
       access: "readwrite",
     }));
   })
@@ -285,7 +288,8 @@ Current bootstrap behavior:
 - `data.sqlite.open(options)` validates SQLite options. In V8-enabled runtime contexts
   where `globalThis.__sloppy.data.sqlite` is installed, it opens a native SQLite
   connection through the resource-table bridge. In bootstrap-only or non-V8 contexts it
-  reports that the bridge is unavailable.
+  reports that the bridge is unavailable. The options must include a capability token, and
+  V8-enabled bridge calls check that token before SQLite provider work.
 - `data.postgres.open(options)` validates PostgreSQL connection string options, redacts
   credentials, and then reports that the native stdlib bridge is unavailable.
 - `data.sqlserver.open(options)` validates SQL Server ODBC connection string options,
@@ -322,7 +326,8 @@ SQLite JS bridge behavior:
   validation, parameter conversion, resource lookup, cleanup, and native provider calls.
   Future PostgreSQL and SQL Server JS bridges must add their own intrinsic modules instead
   of adding provider logic to `engine_v8.cc`;
-- public stdlib facade: `data.sqlite.open({ path })` returns a frozen connection wrapper;
+- public stdlib facade: `data.sqlite.open({ path, capability })` returns a frozen
+  connection wrapper after native capability checks pass;
 - supported operations: `exec(sql, params?)`, `query(sql, params?)`, `queryOne(sql, params?)`,
   and `close()`;
 - `query` returns arrays of plain objects keyed by deterministic column names;
@@ -339,11 +344,12 @@ SQLite JS bridge behavior:
 
 Capability status:
 
-- the bridge is capability-ready because provider access goes through one narrow native
-  intrinsic namespace and resource kind, but MAIN1-08 does not duplicate the MAIN1-10
-  policy engine;
-- current docs must not claim SQLite access is permission-enforced until MAIN1-10 wires
-  provider capability checks into this hook.
+- the bridge calls the runtime capability registry before `open`, `exec`, `query`, and
+  `queryOne`;
+- missing capability, wrong kind, insufficient access, and provider mismatch denials are
+  reported before SQLite provider execution;
+- filesystem and network capabilities remain metadata/check-only skeletons; no filesystem
+  or network API is implemented.
 
 Native PostgreSQL behavior:
 

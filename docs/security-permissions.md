@@ -89,10 +89,12 @@ const DataModule = Sloppy.module("data")
   });
 ```
 
-The current registry stores metadata only. Capability tokens must be non-empty strings,
-duplicates fail, and `app.capabilities.has/get/list` exposes frozen debug metadata with the
-declaring module when applicable. EPIC-16 native SQLite tests can open `:memory:` databases,
-but JavaScript permission enforcement and public file database policy remain future work.
+The current registry is immutable after startup and is consumed by the V8-gated SQLite
+bridge. Capability tokens must be non-empty strings, duplicates fail, and
+`app.capabilities.has/get/list` exposes frozen debug metadata with the declaring module when
+applicable. `__sloppy.data.sqlite` and `data.sqlite.open(...)` enforce declared SQLite
+database capabilities before native provider work; PostgreSQL/SQL Server JavaScript bridges
+and public file database policy remain future work.
 
 ## Permission Grants
 
@@ -137,16 +139,20 @@ Plan entries must reference config keys, provider tokens, or already-redacted pl
 not connection string values. Raw secrets do not belong in `app.plan.json`.
 
 Current bootstrap metadata does not open databases or validate config keys. Runtime
-capability checks can deny database access by token, provider, and read/write mode before a
-caller invokes provider work. The JavaScript-to-native SQLite bridge remains the next place
-to call those hooks once MAIN1-08 exposes a stable bridge boundary.
+capability checks can deny database access by token, provider kind, and read/write mode
+before a caller invokes provider work.
 
-MAIN1-08 adds a V8-gated SQLite bridge hook under `__sloppy.data.sqlite`, but it does not
-implement the MAIN1-10 capability policy engine. The hook is intentionally narrow:
-provider-specific V8 bridge code lives in `src/engine/v8/intrinsics_<provider>.cc`, while
-`engine_v8.cc` stays provider-neutral. Future provider capability checks should be called
-from those intrinsic modules or their shared aggregator before opening or using native
-provider resources; this document must not claim enforcement until that integration exists.
+ENGINE-06 wires those checks into the V8-gated SQLite bridge under
+`__sloppy.data.sqlite`. `data.sqlite.open(...)` requires a declared capability token, and
+the bridge checks the plan-backed immutable registry before opening a native SQLite
+connection and before `exec`, `query`, or `queryOne` uses an existing connection. Denials
+cover missing capability, wrong kind, insufficient access, and provider mismatch, and they
+are emitted before SQLite provider execution.
+
+Provider-specific V8 bridge code lives in `src/engine/v8/intrinsics_<provider>.cc`, while
+`engine_v8.cc` stays provider-neutral. PostgreSQL and SQL Server do not have JavaScript
+provider bridges yet; their native provider APIs remain low-level C boundaries without JS
+capability enforcement.
 
 ## Environment And Config Secrets
 

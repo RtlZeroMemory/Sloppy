@@ -101,10 +101,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
-- SQLite JS bridge capability integration: MAIN1-10 adds the runtime registry and provider
-  policy hook, but the JavaScript-to-native SQLite bridge must call it once MAIN1-08 exposes
-  the stable bridge boundary. MAIN1-13 records this as a deferred capability conformance
-  marker rather than claiming JavaScript bridge enforcement.
+- PostgreSQL/SQL Server JS bridge capability integration: ENGINE-06 wires the V8 SQLite
+  bridge to the runtime registry, but PostgreSQL and SQL Server still need their own
+  JavaScript-to-native bridges before JavaScript capability enforcement can exist for those
+  providers.
 - Live DB service infrastructure for PostgreSQL and SQL Server: opt-in local env vars and
   separate skipped CTest gates make reporting honest, but hosted service jobs are still
   needed for release confidence.

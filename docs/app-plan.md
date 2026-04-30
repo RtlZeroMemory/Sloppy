@@ -55,8 +55,8 @@ ENGINE-02 expands compiler-emitted Plan metadata without widening the runtime ex
 claim: supported apps can now emit GET/POST/PUT/PATCH/DELETE route metadata, async handler
 flags, declaration source locations, feature flags, and minimal SQLite
 data-provider/capability metadata. The current dev host still serves GET route metadata
-only, and provider/capability entries remain metadata until later runtime/provider work
-uses them.
+only. ENGINE-06 uses provider/capability entries for V8 SQLite bridge enforcement; other
+providers remain metadata until their JavaScript bridges exist.
 
 ## Public API Shape
 
@@ -292,9 +292,10 @@ syntax and duplicate provider service tokens are rejected before serving. Plan f
 reference config keys or redacted placeholders only; raw connection strings and other
 secrets do not belong in plan metadata.
 
-This section is parseable and validated metadata only. MAIN1-02 does not open providers,
-perform driver checks, enforce provider access policy, or implement any JavaScript-to-native
-provider bridge.
+This section is parseable and validated metadata. MAIN1-02 does not open providers or
+perform driver checks. ENGINE-06 loads the parsed `dataProviders` section into the runtime
+capability registry so the V8 SQLite bridge can deny mismatched provider access before
+calling SQLite. PostgreSQL and SQL Server JavaScript bridges remain deferred.
 
 ### capabilities
 
@@ -321,10 +322,10 @@ Database access values are `read`, `write`, or `readwrite`; filesystem access va
 `read`, `write`, or `readwrite`; network access values are `connect`, `listen`, or
 `connect-listen`. Duplicate capability tokens are rejected.
 
-Capabilities can be loaded into the MAIN1-10 runtime registry and checked by token, kind,
-access mode, and database provider before provider bridge work. Filesystem and network
-entries are skeleton checks only; they do not create filesystem/network APIs or an OS
-sandbox.
+Capabilities are loaded into the runtime registry and checked by token, kind, access mode,
+and database provider within the V8 SQLite bridge before provider calls. Filesystem and
+network entries are skeleton checks only; they do not create filesystem/network APIs or an
+OS sandbox.
 
 ### permissions
 

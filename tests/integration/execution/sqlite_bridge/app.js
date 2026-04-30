@@ -5,7 +5,11 @@ if (__sloppyRuntime === undefined) {
 const { Results, data } = __sloppyRuntime;
 
 globalThis.__sloppy_handler_1 = () => {
-  const db = data.sqlite.open(":memory:");
+  const db = data.sqlite.open({
+    path: ":memory:",
+    capability: "data.main",
+    access: "readwrite",
+  });
   try {
     db.exec("create table users (id integer primary key, name text not null)");
     db.exec("insert into users (name) values (?)", ["Ada"]);

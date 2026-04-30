@@ -60,6 +60,7 @@ const SqliteModule = Sloppy.module("data.sqlite")
   .services(services => {
     services.addSingleton("data.main", () => data.sqlite.open({
       path: ":memory:",
+      capability: "data.main",
       access: "readwrite",
     }));
   });
@@ -118,8 +119,9 @@ Implemented behavior:
 - `data.createFakeProvider(...)` creates a JS-only fake provider for tests/examples with
   `query`, `queryOne`, `exec`, and `transaction`.
 - `data.sqlite` exposes SQLite provider metadata plus `open(options)`. In a V8-enabled
-  Sloppy runtime that installs SQLite intrinsics, it returns a safe SQLite connection
-  wrapper. In bootstrap-only or non-V8 contexts, it fails with a bridge-unavailable error.
+  Sloppy runtime that installs SQLite intrinsics, it checks the declared capability token
+  and returns a safe SQLite connection wrapper. In bootstrap-only or non-V8 contexts, it
+  fails with a bridge-unavailable error.
 - `data.postgres` exposes PostgreSQL provider metadata, `$1` placeholder style, connection
   string redaction, and `open(options)` as the future stdlib entry point.
 - `data.sqlserver` exposes SQL Server provider metadata, ODBC `?` placeholder style,
@@ -134,6 +136,7 @@ Implemented behavior:
 - MAIN1-10 adds a native capability registry and provider policy check hook for plan
   capability metadata. Database checks cover token lookup, read/write access, and provider
   mismatch denial before provider work when a bridge calls the hook.
+- ENGINE-06 wires those checks into the V8 SQLite bridge for open/read/write operations.
 - native C SQLite tests execute real SQLite against `:memory:` databases.
 - MAIN1-13 V8-gated conformance executes the checked-in SQLite bridge artifact fixture
   against an in-memory database, creates/inserts/selects one row, returns a JSON result,
@@ -160,7 +163,10 @@ Implemented behavior:
 SQLite JS bridge support:
 
 ```ts
-const db = data.sqlite.open({ path: ":memory:" });
+const db = data.sqlite.open({
+  path: ":memory:",
+  capability: "data.main",
+});
 
 db.exec("create table users (id integer primary key, name text)");
 db.exec("insert into users (name) values (?)", ["Ada"]);
@@ -173,9 +179,10 @@ db.close();
 The bridge is intentionally small. It supports `open`, `close`, `exec`, `query`, and
 `queryOne` for SQLite only. It returns arrays/plain objects, maps SQLite `NULL` to
 JavaScript `null`, and supports primitive positional parameters: `null`, string, number,
-and boolean. The wrapper stores only an opaque resource ID object; stale, closed, invalid,
-or wrong-kind handles fail before provider code runs. Double close is idempotent at the
-wrapper level.
+and boolean. `open`, `exec`, `query`, and `queryOne` check the plan-backed runtime
+capability registry before SQLite provider work. The wrapper stores only an opaque resource
+ID object; stale, closed, invalid, or wrong-kind handles fail before provider code runs.
+Double close is idempotent at the wrapper level.
 
 Layering matters for future providers: the public stdlib wrapper is JavaScript, the native
 resource table is engine-owned, and provider-specific V8 conversion code lives in
@@ -191,7 +198,7 @@ Not implemented yet:
 - no SQL parser, ORM, migrations, production pooling, cancellation, isolation levels,
   transactions through the JS wrapper, or PostgreSQL/SQL Server native SQL execution from
   JavaScript;
-- no JavaScript provider bridge calls the native capability hook yet;
+- no JavaScript provider bridge for PostgreSQL or SQL Server yet;
 - no public file database policy beyond the native provider accepting SQLite paths;
 - no compiler extraction of JavaScript template literals.
 

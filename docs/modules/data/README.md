@@ -59,7 +59,10 @@ Implemented SQLite JS bridge API:
   argument conversion, row materialization, resource lookup, cleanup, and provider calls.
   Future PostgreSQL/SQL Server bridges must add sibling intrinsic modules instead of
   expanding `engine_v8.cc`;
-- `data.sqlite.open({ path })` wrapper that stores only an opaque `SlResourceId` handle;
+- `data.sqlite.open({ path, capability, access? })` wrapper that checks the
+  runtime capability registry and stores only an opaque `SlResourceId` handle.
+  Optional `access` is `read` or `readwrite` and controls read versus write
+  capability checks;
 - connection methods `exec(sql, params?)`, `query(sql, params?)`, `queryOne(sql, params?)`,
   and `close()`;
 - primitive parameter arrays for `null`, string, number, and boolean values;
@@ -103,10 +106,10 @@ MAIN1-08 consumes the MAIN1-07 core resource table for SQLite connection handles
 data handles wrap only `SlResourceId` values. They never expose provider pointers, ODBC
 handles, `sqlite3*`, `sqlite3_stmt*`, `PGconn*`, `PGresult*`, or pointer-like native
 addresses to JavaScript. Every SQLite bridge entrypoint validates kind, generation, and
-live state before calling provider code. PostgreSQL and SQL Server JS bridges remain
-deferred. The V8 engine owns the resource table; provider intrinsic modules may insert,
-look up, and close their own resource kinds through that table, but must not create separate
-handle registries.
+live state before calling provider code, and ENGINE-06 adds capability checks before
+open/read/write provider work. PostgreSQL and SQL Server JS bridges remain deferred. The V8
+engine owns the resource table; provider intrinsic modules may insert, look up, and close
+their own resource kinds through that table, but must not create separate handle registries.
 
 ## Invariants
 

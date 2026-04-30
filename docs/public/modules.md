@@ -18,10 +18,9 @@ const DataModule = Sloppy.module("data")
     });
   })
   .services(services => {
-    // Current bootstrap shape only: this throws bridge-unavailable until the
-    // JavaScript-to-native SQLite resource bridge lands.
     services.addSingleton("data.main", () => data.sqlite.open({
       path: ":memory:",
+      capability: "data.main",
     }));
   });
 

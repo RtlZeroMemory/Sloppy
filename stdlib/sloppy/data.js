@@ -146,6 +146,10 @@ function validateSqliteOpenOptions(options) {
         throw new TypeError("Sloppy sqlite.open path must be a non-empty string.");
     }
 
+    if (typeof options.capability !== "string" || options.capability.length === 0) {
+        throw new TypeError("Sloppy sqlite.open capability must be a non-empty string.");
+    }
+
     const access = options.access ?? "readwrite";
     if (access !== "read" && access !== "readwrite") {
         throw new TypeError("Sloppy sqlite.open access must be read or readwrite.");
@@ -154,6 +158,7 @@ function validateSqliteOpenOptions(options) {
     return Object.freeze({
         provider: "sqlite",
         path: options.path,
+        capability: options.capability,
         access,
         placeholderStyle: "question",
     });
@@ -276,6 +281,7 @@ function createSqliteConnection(nativeBridge, handle) {
                     slot: state.handle.slot,
                     generation: state.handle.generation,
                     kind: state.handle.kind,
+                    capability: state.handle.capability,
                 }),
             });
         },
@@ -436,9 +442,7 @@ Fix:
 }
 
 function openSqlite(options) {
-    const safeOptions = validateSqliteOpenOptions(
-        typeof options === "string" ? { path: options } : options,
-    );
+    const safeOptions = validateSqliteOpenOptions(options);
     const nativeBridge = sqliteNativeBridge();
 
     if (nativeBridge === null) {

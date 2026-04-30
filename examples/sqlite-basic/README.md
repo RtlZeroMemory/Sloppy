@@ -14,8 +14,9 @@ What works today:
 - V8-enabled runtime tests cover the real SQLite JS-to-native bridge through
   `__sloppy.data.sqlite` and safe resource IDs;
 - `Sloppy.module("data.sqlite").capabilities(...)` declares SQLite database metadata;
-- `data.sqlite.open({ path: ":memory:" })` opens a native SQLite connection only when the
-  V8 runtime installs the SQLite bridge intrinsics;
+- `data.sqlite.open({ path: ":memory:", capability: "data.main" })` opens a native SQLite
+  connection only when the V8 runtime installs the SQLite bridge intrinsics and the plan
+  capability allows access;
 - query templates lower to `?` placeholders without interpolating values.
 
 What does not work yet:

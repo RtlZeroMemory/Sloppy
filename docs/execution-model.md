@@ -596,10 +596,11 @@ and no SQL is executed.
 EPIC-16 adds native C SQLite execution for the provider boundary. Native tests pass lowered
 `?` SQL text and parameter arrays directly to the SQLite provider and verify exec, query,
 queryOne, and transactions. MAIN1-08 adds the first V8-gated JS-to-native bridge for
-SQLite: `data.sqlite.open({ path })` can create a generation-checked resource handle and
-call native `exec`, `query`, and `queryOne` when the V8 runtime installs
-`__sloppy.data.sqlite`. Bootstrap-only and non-V8 contexts still report the bridge gap
-instead of pretending to open a database.
+SQLite, and ENGINE-06 wires it to capability checks:
+`data.sqlite.open({ path, capability })` can create a generation-checked resource handle
+and call native `exec`, `query`, and `queryOne` only when the V8 runtime installs
+`__sloppy.data.sqlite` and the plan-backed capability allows the operation. Bootstrap-only
+and non-V8 contexts still report the bridge gap instead of pretending to open a database.
 
 The V8 engine layering is provider-neutral and framework-bridge code is split by feature.
 `engine_v8.cc` owns engine lifecycle, context setup, handler registration, and Promise

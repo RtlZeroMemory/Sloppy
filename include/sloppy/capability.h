@@ -35,12 +35,15 @@ typedef enum SlCapabilityOperation
 /*
  * Immutable runtime view of Plan capability metadata.
  *
- * The registry borrows the parsed SlPlan capability array. Callers must keep the parsed
- * plan arena alive for at least as long as the registry. No global mutable registry is
- * created; app hosts and future JS-native bridge entrypoints pass the registry explicitly.
+ * The registry borrows the parsed SlPlan provider and capability arrays. Callers must keep
+ * the parsed plan arena alive for at least as long as the registry. No global mutable
+ * registry is created; app hosts and JS-native bridge entrypoints pass the registry
+ * explicitly.
  */
 typedef struct SlCapabilityRegistry
 {
+    const SlPlanDataProvider* data_providers;
+    size_t data_provider_count;
     const SlPlanCapability* capabilities;
     size_t capability_count;
 } SlCapabilityRegistry;
@@ -52,6 +55,10 @@ SlStatus sl_capability_registry_find(const SlCapabilityRegistry* registry, SlStr
 SlStatus sl_capability_check_database(const SlCapabilityRegistry* registry, SlArena* diag_arena,
                                       SlStr token, SlCapabilityOperation operation, SlStr provider,
                                       SlDiag* out_diag);
+SlStatus sl_capability_check_database_provider(const SlCapabilityRegistry* registry,
+                                               SlArena* diag_arena, SlStr token,
+                                               SlCapabilityOperation operation, SlStr provider_kind,
+                                               SlDiag* out_diag);
 SlStatus sl_capability_check_filesystem(const SlCapabilityRegistry* registry, SlArena* diag_arena,
                                         SlStr token, SlCapabilityOperation operation,
                                         SlDiag* out_diag);

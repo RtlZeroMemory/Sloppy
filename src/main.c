@@ -7,6 +7,7 @@
  * package-manager, Node-compatibility, middleware, streaming, and hot reload.
  */
 #include "sloppy/arena.h"
+#include "sloppy/capability.h"
 #include "sloppy/compiler.h"
 #include "sloppy/data_postgres.h"
 #include "sloppy/data_sqlserver.h"
@@ -1069,6 +1070,7 @@ typedef struct SlRunApp
     SlArena route_arena;
     SlArena engine_arena;
     SlPlan plan;
+    SlCapabilityRegistry capability_registry;
     SlBytes app_js_bytes;
     SlEngine* engine;
     SlAppLifecycle lifecycle;
@@ -1494,6 +1496,12 @@ static int sl_run_validate_startup(SlRunApp* app)
         return 1;
     }
 
+    status = sl_capability_registry_init_from_plan(&app->plan, &app->capability_registry);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: capability registry initialization failed\n");
+        return 1;
+    }
+
     return 0;
 }
 
@@ -1566,6 +1574,9 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
     SlEngineOptions options = sl_run_v8_options();
     SlDiag diag = {0};
     SlStatus status;
+
+    /* options.capability_registry borrows app->capability_registry and its plan-backed storage. */
+    options.capability_registry = &app->capability_registry;
 
     status = sl_engine_create(&options, &app->engine_arena, &app->engine);
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED) {

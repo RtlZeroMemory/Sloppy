@@ -245,15 +245,21 @@ Operation:
 
     const data = Object.freeze({
         sqlite: Object.freeze({
-            open(pathOrOptions) {
-                const databasePath =
-                    typeof pathOrOptions === "string" ? pathOrOptions : pathOrOptions?.path;
-                const access = typeof pathOrOptions === "object" && pathOrOptions !== null
-                    ? pathOrOptions.access ?? "readwrite"
-                    : "readwrite";
+            open(options) {
+                if (!isPlainObject(options)) {
+                    throw new TypeError("Sloppy sqlite.open options must be a plain object.");
+                }
+
+                const databasePath = options.path;
+                const capability = options.capability;
+                const access = options.access ?? "readwrite";
 
                 if (typeof databasePath !== "string" || databasePath.length === 0) {
                     throw new TypeError("Sloppy sqlite.open path must be a non-empty string.");
+                }
+
+                if (typeof capability !== "string" || capability.length === 0) {
+                    throw new TypeError("Sloppy sqlite.open capability must be a non-empty string.");
                 }
 
                 if (access !== "read" && access !== "readwrite") {
@@ -261,7 +267,10 @@ Operation:
                 }
 
                 const bridge = requireSqliteBridge();
-                return createSqliteConnection(bridge, bridge.open({ path: databasePath, access }));
+                return createSqliteConnection(
+                    bridge,
+                    bridge.open({ path: databasePath, capability, access }),
+                );
             },
         }),
     });
