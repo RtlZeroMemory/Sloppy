@@ -392,7 +392,7 @@ static int test_transfer_encoding_body_is_rejected_before_handler_call(void)
     SlArena engine_arena = {0};
     SlEngine* engine = NULL;
     SlHttpRequestHead request = {0};
-    SlHttpHeader headers[1];
+    SlHttpHeader headers[2];
     SlRoutePattern pattern = {0};
     SlHttpRouteBinding route = {0};
     SlHttpDispatchTable table = {0};
@@ -545,7 +545,7 @@ static int test_unsupported_body_content_type_fails_before_handler_call(void)
     SlArena engine_arena = {0};
     SlEngine* engine = NULL;
     SlHttpRequestHead request = {0};
-    SlHttpHeader headers[1];
+    SlHttpHeader headers[2];
     SlRoutePattern pattern = {0};
     SlHttpRouteBinding route = {0};
     SlHttpDispatchTable table = {0};
@@ -565,11 +565,13 @@ static int test_unsupported_body_content_type_fails_before_handler_call(void)
 
     headers[0].name = sl_str_from_cstr("Content-Type");
     headers[0].value = sl_str_from_cstr("application/octet-stream");
+    headers[1].name = sl_str_from_cstr("Content-Length");
+    headers[1].value = sl_str_from_cstr("3");
     request.method = SL_HTTP_METHOD_POST;
     request.path = sl_str_from_cstr("/hello");
     request.raw_target = sl_str_from_cstr("/hello");
     request.headers = headers;
-    request.header_count = 1U;
+    request.header_count = 2U;
     request.body = bytes_from_cstr("abc");
 
     route.method = SL_HTTP_METHOD_POST;
@@ -591,11 +593,10 @@ static int test_unsupported_body_content_type_fails_before_handler_call(void)
     return 0;
 }
 
-static int test_body_too_large_fails_before_handler_call(void)
+static int test_non_empty_body_without_content_length_fails_before_handler_call(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     unsigned char engine_storage[1024];
-    static const unsigned char body_byte = 'x';
     SlArena arena = {0};
     SlArena engine_arena = {0};
     SlEngine* engine = NULL;
@@ -615,7 +616,7 @@ static int test_body_too_large_fails_before_handler_call(void)
         parse_pattern(&arena, "/hello", &pattern) != 0)
     {
         sl_engine_destroy(engine);
-        return 96;
+        return 101;
     }
 
     headers[0].name = sl_str_from_cstr("Content-Type");
@@ -625,6 +626,68 @@ static int test_body_too_large_fails_before_handler_call(void)
     request.raw_target = sl_str_from_cstr("/hello");
     request.headers = headers;
     request.header_count = 1U;
+    request.body = bytes_from_cstr("abc");
+
+    route.method = SL_HTTP_METHOD_POST;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    if (expect_status(
+            sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request, &result, &diag),
+            SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_UNSUPPORTED_BODY)
+    {
+        sl_engine_destroy(engine);
+        return 102;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_body_too_large_fails_before_handler_call(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    static const unsigned char body_byte = 'x';
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpHeader headers[2];
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_pattern(&arena, "/hello", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 96;
+    }
+
+    headers[0].name = sl_str_from_cstr("Content-Type");
+    headers[0].value = sl_str_from_cstr("text/plain");
+    headers[1].name = sl_str_from_cstr("Content-Length");
+    headers[1].value = sl_str_from_cstr("65537");
+    request.method = SL_HTTP_METHOD_POST;
+    request.path = sl_str_from_cstr("/hello");
+    request.raw_target = sl_str_from_cstr("/hello");
+    request.headers = headers;
+    request.header_count = 2U;
+    /*
+     * test_body_too_large_fails_before_handler_call intentionally points the
+     * oversized SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1 body at one valid byte:
+     * sl_http_dispatch_apply_body_policy rejects the length before dereference.
+     */
     request.body = sl_bytes_from_parts(&body_byte, SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U);
 
     route.method = SL_HTTP_METHOD_POST;
@@ -799,6 +862,11 @@ int main(void)
     }
 
     result = test_unsupported_body_content_type_fails_before_handler_call();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_non_empty_body_without_content_length_fails_before_handler_call();
     if (result != 0) {
         return result;
     }

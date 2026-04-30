@@ -2179,6 +2179,11 @@ static SlRunReadState sl_run_client_request_read_state(SlRunClient* client, uv_s
     }
 
     *out_complete_length = head_end + content_length;
+    if (client->request_length > *out_complete_length) {
+        (void)sl_run_client_write_text_response(client, stream, 400U,
+                                                sl_str_from_cstr("Malformed HTTP request\n"));
+        return SL_RUN_READ_RESPONDED;
+    }
     return client->request_length < *out_complete_length ? SL_RUN_READ_WAIT : SL_RUN_READ_READY;
 }
 

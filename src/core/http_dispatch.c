@@ -128,50 +128,17 @@ static bool sl_http_plan_route_is_runnable(const SlPlanRoute* route)
 
 static bool sl_http_dispatch_method_runnable(SlHttpMethod method)
 {
-    switch (method) {
-    case SL_HTTP_METHOD_GET:
-    case SL_HTTP_METHOD_POST:
-    case SL_HTTP_METHOD_PUT:
-    case SL_HTTP_METHOD_DELETE:
-    case SL_HTTP_METHOD_PATCH:
-        return true;
-    case SL_HTTP_METHOD_UNKNOWN:
-    case SL_HTTP_METHOD_OPTIONS:
-    case SL_HTTP_METHOD_HEAD:
-    default:
-        return false;
-    }
+    return sl_http_method_supported(method);
 }
 
 static SlStatus sl_http_dispatch_method_from_plan(SlStr method, SlHttpMethod* out_method)
 {
-    if (out_method == NULL) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    SlStatus status = sl_http_method_from_str(method, out_method);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-
-    *out_method = SL_HTTP_METHOD_UNKNOWN;
-    if (sl_str_equal(method, sl_str_from_cstr("GET"))) {
-        *out_method = SL_HTTP_METHOD_GET;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("POST"))) {
-        *out_method = SL_HTTP_METHOD_POST;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("PUT"))) {
-        *out_method = SL_HTTP_METHOD_PUT;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("PATCH"))) {
-        *out_method = SL_HTTP_METHOD_PATCH;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(method, sl_str_from_cstr("DELETE"))) {
-        *out_method = SL_HTTP_METHOD_DELETE;
-        return sl_status_ok();
-    }
-
-    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    return sl_http_method_supported(*out_method) ? sl_status_ok()
+                                                 : sl_status_from_code(SL_STATUS_UNSUPPORTED);
 }
 
 static SlStatus sl_http_dispatch_missing_handler(SlArena* arena, SlDiag* out_diag)
@@ -451,6 +418,7 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
                                                    SlHttpRequestBodyKind* out_body_kind,
                                                    SlDiag* out_diag)
 {
+    SlStr content_length = {0};
     SlStr content_type = {0};
     SlStr media_type = {0};
 
@@ -472,6 +440,12 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     }
     if (request->body.ptr == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!sl_http_dispatch_find_header(request, sl_str_from_cstr("Content-Length"),
+                                      &content_length) ||
+        sl_str_is_empty(sl_http_dispatch_trim_ascii_space(content_length)))
+    {
+        return sl_http_dispatch_unsupported_body(arena, out_diag);
     }
     if (request->body.length > SL_HTTP_DEFAULT_MAX_BODY_LENGTH) {
         return sl_http_dispatch_body_too_large(arena, out_diag);

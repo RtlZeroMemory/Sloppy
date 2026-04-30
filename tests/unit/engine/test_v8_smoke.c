@@ -814,7 +814,7 @@ static int test_request_context_exposes_headers_and_body(void)
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
-    SlHttpHeader headers[4];
+    SlHttpHeader headers[5];
     SlHttpRequestHead request = test_request(SL_HTTP_METHOD_POST);
     SlHttpRequestContext context = {0};
 
@@ -826,8 +826,10 @@ static int test_request_context_exposes_headers_and_body(void)
     headers[2].value = sl_str_from_cstr("one");
     headers[3].name = sl_str_from_cstr("x-trace");
     headers[3].value = sl_str_from_cstr("two");
+    headers[4].name = sl_str_from_cstr("Accept");
+    headers[4].value = sl_str_from_cstr("application/json");
     request.headers = headers;
-    request.header_count = 4U;
+    request.header_count = 5U;
     request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
     context = test_request_context(&request);
     context.body_kind = SL_HTTP_REQUEST_BODY_JSON;
@@ -876,7 +878,8 @@ static int test_request_context_exposes_headers_and_body(void)
                            "\"trace\":\"one, two\",\"missing\":null,"
                            "\"entries\":[[\"host\",\"example\"],[\"content-type\","
                            "\"application/json; charset=utf-8\"],[\"x-trace\","
-                           "\"one, two\"]],\"text\":\"{\\\"id\\\":123}\","
+                           "\"one, two\"],[\"accept\",\"application/json\"]],"
+                           "\"text\":\"{\\\"id\\\":123}\","
                            "\"json\":{\"id\":123}}") != 0)
     {
         sl_engine_destroy(engine);

@@ -823,6 +823,27 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
         name: null,
     };
 
+    function createMapMethod(method) {
+        return function mapRoute(pattern, optionsOrHandler, maybeHandler) {
+            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule(),
+                method,
+                fullPattern,
+                optionsOrHandler,
+                maybeHandler,
+                {
+                    prefix: groupMetadata.prefix,
+                    tags: groupMetadata.tags,
+                    name: groupMetadata.name,
+                },
+            );
+        };
+    }
+
     const group = {
         get prefix() {
             return groupMetadata.prefix;
@@ -847,100 +868,11 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
             return group;
         },
 
-        mapGet(pattern, optionsOrHandler, maybeHandler) {
-            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
-            return registerRoute(
-                routes,
-                host,
-                assertAppMutable,
-                getCurrentModule(),
-                "GET",
-                fullPattern,
-                optionsOrHandler,
-                maybeHandler,
-                {
-                    prefix: groupMetadata.prefix,
-                    tags: groupMetadata.tags,
-                    name: groupMetadata.name,
-                },
-            );
-        },
-
-        mapPost(pattern, optionsOrHandler, maybeHandler) {
-            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
-            return registerRoute(
-                routes,
-                host,
-                assertAppMutable,
-                getCurrentModule(),
-                "POST",
-                fullPattern,
-                optionsOrHandler,
-                maybeHandler,
-                {
-                    prefix: groupMetadata.prefix,
-                    tags: groupMetadata.tags,
-                    name: groupMetadata.name,
-                },
-            );
-        },
-
-        mapPut(pattern, optionsOrHandler, maybeHandler) {
-            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
-            return registerRoute(
-                routes,
-                host,
-                assertAppMutable,
-                getCurrentModule(),
-                "PUT",
-                fullPattern,
-                optionsOrHandler,
-                maybeHandler,
-                {
-                    prefix: groupMetadata.prefix,
-                    tags: groupMetadata.tags,
-                    name: groupMetadata.name,
-                },
-            );
-        },
-
-        mapPatch(pattern, optionsOrHandler, maybeHandler) {
-            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
-            return registerRoute(
-                routes,
-                host,
-                assertAppMutable,
-                getCurrentModule(),
-                "PATCH",
-                fullPattern,
-                optionsOrHandler,
-                maybeHandler,
-                {
-                    prefix: groupMetadata.prefix,
-                    tags: groupMetadata.tags,
-                    name: groupMetadata.name,
-                },
-            );
-        },
-
-        mapDelete(pattern, optionsOrHandler, maybeHandler) {
-            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
-            return registerRoute(
-                routes,
-                host,
-                assertAppMutable,
-                getCurrentModule(),
-                "DELETE",
-                fullPattern,
-                optionsOrHandler,
-                maybeHandler,
-                {
-                    prefix: groupMetadata.prefix,
-                    tags: groupMetadata.tags,
-                    name: groupMetadata.name,
-                },
-            );
-        },
+        mapGet: createMapMethod("GET"),
+        mapPost: createMapMethod("POST"),
+        mapPut: createMapMethod("PUT"),
+        mapPatch: createMapMethod("PATCH"),
+        mapDelete: createMapMethod("DELETE"),
     };
 
     return Object.freeze(group);

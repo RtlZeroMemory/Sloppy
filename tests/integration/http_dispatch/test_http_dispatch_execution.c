@@ -28,8 +28,10 @@ static int expect_bytes_equal(SlBytes actual, const char* expected)
 {
     size_t expected_length = strlen(expected);
 
-    return expect_true(actual.length == expected_length && actual.ptr != NULL &&
-                       memcmp(actual.ptr, expected, expected_length) == 0);
+    return expect_true(
+        actual.length == expected_length &&
+        (expected_length == 0U ||
+         (actual.ptr != NULL && memcmp(actual.ptr, expected, expected_length) == 0)));
 }
 
 static int read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)

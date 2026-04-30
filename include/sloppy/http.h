@@ -7,6 +7,7 @@
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -28,6 +29,14 @@ typedef enum SlHttpMethod
     SL_HTTP_METHOD_OPTIONS = 6,
     SL_HTTP_METHOD_HEAD = 7
 } SlHttpMethod;
+
+/*
+ * Shared ENGINE-04 framework method set. These helpers intentionally return false for
+ * HEAD/OPTIONS even though the parser recognizes those tokens: the current runtime only
+ * dispatches GET, POST, PUT, PATCH, and DELETE route metadata.
+ */
+bool sl_http_method_supported(SlHttpMethod method);
+SlStatus sl_http_method_from_str(SlStr method, SlHttpMethod* out_method);
 
 typedef struct SlHttpHeader
 {

@@ -347,6 +347,17 @@ static int test_max_body_length_enforced(void)
         return 55;
     }
 
+    sl_arena_reset(&arena);
+    request = (SlHttpRequestHead){0};
+    diag = (SlDiag){0};
+    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 4\r\n\r\n1234", &options,
+                           &request, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code == SL_DIAG_HTTP_BODY_LIMIT ||
+        request.body.length != 4U)
+    {
+        return 56;
+    }
+
     return 0;
 }
 

@@ -143,6 +143,22 @@ static int test_invalid_custom_headers_are_rejected(void)
 
     header.name = sl_str_from_cstr("X-Test");
     header.value = sl_str_from_cstr("bad\r\nX-Injected: yes");
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 2;
+    }
+
+    header.name = sl_str_from_cstr("Connection");
+    header.value = sl_str_from_cstr("keep-alive");
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 3;
+    }
+
+    header.name = sl_str_from_cstr("Content-Type");
+    header.value = sl_str_from_cstr("text/html");
     return expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
                          SL_STATUS_INVALID_ARGUMENT);
 }

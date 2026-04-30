@@ -78,6 +78,62 @@ static SlStatus sl_http_set_error(SlHttpParseContext* ctx, SlDiagCode code, SlSt
     return sl_status_from_code(sl_http_status_code_for_diag(code));
 }
 
+bool sl_http_method_supported(SlHttpMethod method)
+{
+    switch (method) {
+    case SL_HTTP_METHOD_GET:
+    case SL_HTTP_METHOD_POST:
+    case SL_HTTP_METHOD_PUT:
+    case SL_HTTP_METHOD_PATCH:
+    case SL_HTTP_METHOD_DELETE:
+        return true;
+    case SL_HTTP_METHOD_UNKNOWN:
+    case SL_HTTP_METHOD_OPTIONS:
+    case SL_HTTP_METHOD_HEAD:
+    default:
+        return false;
+    }
+}
+
+SlStatus sl_http_method_from_str(SlStr method, SlHttpMethod* out_method)
+{
+    if (out_method == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_method = SL_HTTP_METHOD_UNKNOWN;
+    if (sl_str_equal(method, sl_str_from_cstr("GET"))) {
+        *out_method = SL_HTTP_METHOD_GET;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("POST"))) {
+        *out_method = SL_HTTP_METHOD_POST;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("PUT"))) {
+        *out_method = SL_HTTP_METHOD_PUT;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("PATCH"))) {
+        *out_method = SL_HTTP_METHOD_PATCH;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("DELETE"))) {
+        *out_method = SL_HTTP_METHOD_DELETE;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("OPTIONS"))) {
+        *out_method = SL_HTTP_METHOD_OPTIONS;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("HEAD"))) {
+        *out_method = SL_HTTP_METHOD_HEAD;
+        return sl_status_ok();
+    }
+
+    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+}
+
 static SlStatus sl_http_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
     void* ptr = NULL;
