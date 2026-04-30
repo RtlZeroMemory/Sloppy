@@ -303,7 +303,9 @@ static int sl_http_on_url(llhttp_t* parser, const char* at, size_t length)
     if (sl_status_is_ok(status)) {
         status =
             sl_string_builder_append_str(&ctx->raw_target_builder, sl_str_from_parts(at, length));
-        ctx->raw_target = sl_string_builder_view(&ctx->raw_target_builder);
+        if (sl_status_is_ok(status)) {
+            ctx->raw_target = sl_string_builder_view(&ctx->raw_target_builder);
+        }
     }
     if (!sl_status_is_ok(status)) {
         sl_http_record_callback_status(ctx, status);
@@ -327,7 +329,9 @@ static int sl_http_on_header_field(llhttp_t* parser, const char* at, size_t leng
 
     status = sl_string_builder_append_str(&ctx->current_header_name_builder,
                                           sl_str_from_parts(at, length));
-    ctx->current_header_name = sl_string_builder_view(&ctx->current_header_name_builder);
+    if (sl_status_is_ok(status)) {
+        ctx->current_header_name = sl_string_builder_view(&ctx->current_header_name_builder);
+    }
     if (!sl_status_is_ok(status)) {
         sl_http_record_callback_status(ctx, status);
     }
@@ -343,7 +347,9 @@ static int sl_http_on_header_value(llhttp_t* parser, const char* at, size_t leng
     ctx->saw_header_value = true;
     status = sl_string_builder_append_str(&ctx->current_header_value_builder,
                                           sl_str_from_parts(at, length));
-    ctx->current_header_value = sl_string_builder_view(&ctx->current_header_value_builder);
+    if (sl_status_is_ok(status)) {
+        ctx->current_header_value = sl_string_builder_view(&ctx->current_header_value_builder);
+    }
     if (!sl_status_is_ok(status)) {
         sl_http_record_callback_status(ctx, status);
     }
