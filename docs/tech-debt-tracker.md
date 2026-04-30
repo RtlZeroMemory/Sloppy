@@ -62,9 +62,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   conversion, diagnostics/source frames/JSON, Plan/artifact loading, stable metadata
   lookup, CLI output, and allocation-aware conformance/benchmark guards. ENGINE-22.A
   covers the current complete-buffer HTTP parser/body/response/route hot paths, and
-  ENGINE-22.D covers provider-neutral V8 bridge string adoption. Backend ownership,
-  SQLite result/parameter adoption, Plan/artifact adoption, stable metadata lookup, CLI
-  cleanup, and allocation-aware conformance/benchmark guards remain open.
+  ENGINE-22.C covers the current Plan parser, `sloppy run --artifacts` bundle/source-map
+  loader path, and stable parsed-Plan metadata interning. ENGINE-22.D covers
+  provider-neutral V8 bridge string adoption. Backend ownership, SQLite result/parameter
+  adoption, remaining CLI output, and allocation-aware conformance/benchmark guards remain
+  open.
 - SQLite end-to-end: public JS handler path through native provider, capability enforcement,
   cancellation-aware operation boundaries, app/request ownership, transactions/prepared
   statement decision, and executable users API conformance.
@@ -129,10 +131,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   handle ownership policy, leak reports, broader async request-scope retention, and debug
   lifecycle integration remain open.
 - Memory/string adoption completion: #32 is absorbed by ENGINE-21.C's primitive builder
-  surface, #367 provides the V8/SQLite interop helper policy, and ENGINE-22.A covers the
-  current complete-buffer HTTP parser/body/response/route hot paths. Public alpha should
-  not claim top-notch memory/string hot-path behavior until the remaining ENGINE-22
-  adoption passes conform to requirements or are explicitly scoped down.
+  surface, #367 provides the V8/SQLite interop helper policy, ENGINE-22.A covers the
+  current complete-buffer HTTP parser/body/response/route hot paths, and ENGINE-22.C covers
+  the current Plan/artifact/source-map loader path plus stable parsed-Plan metadata
+  interning. Public alpha should not claim top-notch memory/string hot-path behavior until
+  the remaining ENGINE-22 adoption passes conform to requirements or are explicitly scoped
+  down.
 
 ## Should Fix Soon
 

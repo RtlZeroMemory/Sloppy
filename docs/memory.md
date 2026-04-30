@@ -47,7 +47,9 @@ cancellation/deadline-style statuses, and unsupported pre-handler outcomes.
 app-lifetime resources. ENGINE-22.A has adopted the shared string/byte copy and builder
 primitives in the HTTP parser, request body accumulation, route-pattern copies, route
 matching edge tests, and dev response writer while preserving the current complete-buffer
-HTTP behavior.
+HTTP behavior. ENGINE-22.C has adopted shared arena string copies in Plan parsing, bounded
+string builders for artifact/source-map/stdlib path assembly in the current loader, and a
+post-parse bounded intern table for stable Plan metadata.
 
 Allocator modules, a standalone heap-owned `SlBuf`, and remaining hot-path adoption remain
 deferred. ENGINE-21.D defines the narrow V8/native and SQLite/native string/blob interop
@@ -62,11 +64,12 @@ ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
   builders, formatting utilities, bounded app/static string interning and symbol tables,
   V8/native conversion policy, SQLite text/blob ownership, and memory safety/stress tests.
 - ENGINE-22 adopts those primitives in hot paths after they exist: HTTP parse/write/body
-  adoption is implemented through ENGINE-22.A for current HTTP hot paths; provider-neutral
-  V8 bridge string conversion adoption is implemented through ENGINE-22.D; SQLite
-  row/result/parameter conversion, diagnostics/source
-  frames/JSON, Plan and artifact loading, stable metadata lookup, CLI output, and
-  conformance/benchmark guards.
+  adoption is implemented through ENGINE-22.A for current HTTP hot paths; Plan/artifact
+  loader and stable parsed-Plan metadata adoption are implemented through ENGINE-22.C for
+  the current `sloppy run --artifacts` path; provider-neutral V8 bridge string conversion
+  adoption is implemented through ENGINE-22.D. SQLite row/result/parameter conversion,
+  remaining diagnostics/source-frame expansion, broader CLI output, and
+  conformance/benchmark guards continue as later ENGINE-22 tasks.
 
 The current source audit is `docs/project/memory-string-current-state-audit.md`. The
 intended primitive architecture is

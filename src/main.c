@@ -7,7 +7,9 @@
  * package-manager, Node-compatibility, middleware, streaming, and hot reload.
  */
 #include "sloppy/arena.h"
+#include "sloppy/builder.h"
 #include "sloppy/capability.h"
+#include "sloppy/checked_math.h"
 #include "sloppy/compiler.h"
 #include "sloppy/data_postgres.h"
 #include "sloppy/data_sqlserver.h"
@@ -47,6 +49,7 @@
 #define SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_MAX_BYTES 8192U
 #define SL_RUN_RESPONSE_MAX_BYTES 16384U
+#define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
 #ifndef SLOPPY_BOOTSTRAP_BUILD_DIR
@@ -1010,6 +1013,7 @@ typedef struct SlRunApp
     SlArena route_arena;
     SlArena engine_arena;
     SlPlan plan;
+    SlInternTable plan_metadata_interns;
     SlCapabilityRegistry capability_registry;
     SlBytes app_js_bytes;
     SlEngine* engine;
@@ -1089,10 +1093,12 @@ static bool sl_run_relative_artifact_path_is_safe(SlCliSpan leaf)
 
 static bool sl_run_join_path(char* buffer, size_t capacity, const char* dir, SlCliSpan leaf)
 {
+    SlStringBuilder builder = {0};
+    SlStr joined = {0};
     size_t dir_length = 0U;
-    size_t out = 0U;
     size_t index = 0U;
     bool needs_separator = true;
+    SlStatus status;
 
     if (buffer == NULL || capacity == 0U || dir == NULL || leaf.ptr == NULL || leaf.length == 0U) {
         return false;
@@ -1108,29 +1114,34 @@ static bool sl_run_join_path(char* buffer, size_t capacity, const char* dir, SlC
     }
 
     needs_separator = dir[dir_length - 1U] != '/' && dir[dir_length - 1U] != '\\';
-    if (dir_length + (needs_separator ? 1U : 0U) + leaf.length + 1U > capacity) {
+
+    status = sl_string_builder_init_fixed(&builder, buffer, capacity);
+    if (!sl_status_is_ok(status)) {
         return false;
     }
-
-    for (index = 0U; index < dir_length; index += 1U) {
-        buffer[out] = dir[index];
-        out += 1U;
+    status = sl_string_builder_append_cstr(&builder, dir);
+    if (!sl_status_is_ok(status)) {
+        return false;
     }
     if (needs_separator) {
-        buffer[out] = '/';
-        out += 1U;
+        status = sl_string_builder_append_char(&builder, '/');
+        if (!sl_status_is_ok(status)) {
+            return false;
+        }
     }
     for (index = 0U; index < leaf.length; index += 1U) {
-        if (leaf.ptr[index] == '\\') {
-            buffer[out] = '/';
+        char ch = leaf.ptr[index];
+        if (ch == '\\') {
+            ch = '/';
         }
-        else {
-            buffer[out] = leaf.ptr[index];
+        status = sl_string_builder_append_char(&builder, ch);
+        if (!sl_status_is_ok(status)) {
+            return false;
         }
-        out += 1U;
     }
-    buffer[out] = '\0';
-    return true;
+
+    status = sl_string_builder_view_with_nul(&builder, &joined);
+    return sl_status_is_ok(status) && joined.ptr == buffer;
 }
 
 static SlCliSpan sl_run_str_span(SlStr str)
@@ -1438,12 +1449,86 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
         return 1;
     }
 
-    status = sl_capability_registry_init_from_plan(&app->plan, &app->capability_registry);
+    return 0;
+}
+
+static SlStatus sl_run_plan_intern_capacity(const SlPlan* plan, size_t* out_capacity)
+{
+    size_t capacity = SL_RUN_PLAN_INTERN_BASE_FIELDS;
+    size_t addend = 0U;
+    SlStatus status;
+
+    if (plan == NULL || out_capacity == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_checked_mul_size(plan->handler_count, 2U, &addend);
     if (!sl_status_is_ok(status)) {
-        sl_cli_write_cstr(stderr, "sloppy run: failed to initialize app capability registry\n");
+        return status;
+    }
+    status = sl_checked_add_size(capacity, addend, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_mul_size(plan->route_count, 3U, &addend);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(capacity, addend, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_mul_size(plan->data_provider_count, 4U, &addend);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(capacity, addend, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_mul_size(plan->capability_count, 4U, &addend);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(capacity, addend, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out_capacity = capacity;
+    return sl_status_ok();
+}
+
+static int sl_run_intern_plan_metadata(SlRunApp* app)
+{
+    SlPlan interned_plan = {0};
+    SlInternTable intern_table = {0};
+    size_t capacity = 0U;
+    SlStatus status;
+
+    if (app == NULL) {
         return 1;
     }
 
+    status = sl_run_plan_intern_capacity(&app->plan, &capacity);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to size stable app plan metadata table\n");
+        return 1;
+    }
+
+    intern_table = app->plan_metadata_interns;
+    status = sl_plan_intern_metadata(&app->plan_arena, &app->plan, capacity, capacity,
+                                     &interned_plan, &intern_table);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to intern stable app plan metadata\n");
+        return 1;
+    }
+
+    app->plan = interned_plan;
+    app->plan_metadata_interns = intern_table;
     return 0;
 }
 
@@ -1465,6 +1550,17 @@ static int sl_run_validate_startup(SlRunApp* app)
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: app graph startup validation failed: ", &app->engine_arena,
                           &diag);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_run_init_capability_registry(SlRunApp* app)
+{
+    SlStatus status;
+
+    if (app == NULL) {
         return 1;
     }
 
@@ -1629,6 +1725,7 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
     }
 
     if (sl_run_load_plan(app, plan_path) != 0 || sl_run_validate_startup(app) != 0 ||
+        sl_run_intern_plan_metadata(app) != 0 || sl_run_init_capability_registry(app) != 0 ||
         sl_run_prepare_routes(app) != 0)
     {
         return 1;

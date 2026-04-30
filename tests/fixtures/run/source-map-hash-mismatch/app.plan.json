@@ -1,0 +1,35 @@
+{
+  "bundle": {
+    "hash": "sha256:1324b02d6dda29d817f24cdb2d9ff74ff0edb32026bd6ea5048af3d7d37c311f",
+    "id": "source-map-hash-mismatch-app-js",
+    "path": "app.js"
+  },
+  "compilerVersion": "sloppyc-0.8.0-compiler-extraction-mvp",
+  "handlers": [
+    {
+      "displayName": "GET /",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    }
+  ],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": null,
+      "pattern": "/"
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceMap": {
+    "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "id": "source-map-hash-mismatch-app-js-map",
+    "path": "app.js"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}
