@@ -159,12 +159,23 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlite.placeholderStyle, "question");
     assert.equal(data.sqlite.supports.memory, true);
     assert.equal(data.sqlite.supports.transactions, true);
-    assert.equal(data.sqlite.supports.transactionsMode, "native-provider-only");
+    assert.equal(data.sqlite.supports.transactionsMode, "callback");
+    assert.equal(data.sqlite.supports.preparedStatements, false);
     assert.equal(data.sqlite.supports.pooling, false);
     assert.equal(data.sqlite.supports.nativeStdlibBridge, false);
     assert.equal(data.sqlite.__debug().nativeStdlibBridge, false);
     assertThrowsMessage(() => data.sqlite.open(":memory:"), /options must be a plain object/);
     assertThrowsMessage(() => data.sqlite.open({}), /database must be a non-empty string/);
+    assertThrowsMessage(() => data.sqlite.open({
+        database: ":memory:",
+        capability: "data.main",
+        timeoutMs: 100,
+    }), /option 'timeoutMs' is not supported/);
+    assertThrowsMessage(() => data.sqlite.open({
+        database: ":memory:",
+        path: "other.db",
+        capability: "data.main",
+    }), /database and path must match/);
     assertThrowsMessage(() => data.sqlite.open({
         database: ":memory:",
         capability: "data.main",
@@ -215,6 +226,27 @@ function createForgedLoweredQuery() {
                 close(handle) {
                     calls.push(["close", handle.slot]);
                 },
+                transactionBegin(handle) {
+                    calls.push(["begin", handle.slot]);
+                },
+                transactionCommit(handle) {
+                    calls.push(["commit", handle.slot]);
+                },
+                transactionRollback(handle) {
+                    calls.push(["rollback", handle.slot]);
+                },
+                transactionExec(handle, text, params) {
+                    calls.push(["txExec", handle.slot, text, params]);
+                    return { affectedRows: 1 };
+                },
+                transactionQuery(handle, text, params) {
+                    calls.push(["txQuery", handle.slot, text, params]);
+                    return [{ tx: true, text }];
+                },
+                transactionQueryOne(handle, text, params) {
+                    calls.push(["txQueryOne", handle.slot, text, params]);
+                    return { tx: true, text };
+                },
             },
         },
     };
@@ -239,7 +271,34 @@ function createForgedLoweredQuery() {
         });
         assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
         assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
+        let capturedTx;
+        const txResult = await db.transaction(async (tx) => {
+            capturedTx = tx;
+            assert.deepEqual(tx.exec("insert into users (name) values (?)", ["Grace"]), {
+                affectedRows: 1,
+            });
+            assert.deepEqual(tx.query("select name from users", []), [{
+                tx: true,
+                text: "select name from users",
+            }]);
+            assert.deepEqual(tx.queryOne(sql`select name from users where id = ${2}`), {
+                tx: true,
+                text: "select name from users where id = ?",
+            });
+            assertThrowsMessage(() => tx.transaction(() => {}), /nested transactions/);
+            return "committed";
+        });
+        assert.equal(txResult, "committed");
+        assertThrowsMessage(() => capturedTx.exec("select 1"), /transaction scope is closed/);
+        await assertRejectsMessage(() => db.transaction(async () => {
+            throw new Error("rollback requested");
+        }), /rollback requested/);
+        await assertRejectsMessage(() => db.transaction(async () => {
+            await db.transaction(async () => {});
+        }), /nested transactions/);
+        assert.equal(db.prepare, undefined);
         assert.equal(db.__debug().resource.kind, "sqlite.connection");
+        assert.equal(db.__debug().transactionActive, false);
         db.close();
         db.close();
         assertThrowsMessage(() => db.query("select 1"), /sqlite connection is closed/);
@@ -252,6 +311,15 @@ function createForgedLoweredQuery() {
             ["exec", 1, "insert into users (name) values (?)", ["Ada"]],
             ["query", 1, "select name from users", []],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
+            ["begin", 1],
+            ["txExec", 1, "insert into users (name) values (?)", ["Grace"]],
+            ["txQuery", 1, "select name from users", []],
+            ["txQueryOne", 1, "select name from users where id = ?", [2]],
+            ["commit", 1],
+            ["begin", 1],
+            ["rollback", 1],
+            ["begin", 1],
+            ["rollback", 1],
             ["close", 1],
         ]);
     } finally {

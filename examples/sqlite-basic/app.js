@@ -26,9 +26,11 @@ export const UsersModule = Sloppy.module("users")
                 create table if not exists users (id integer primary key, name text not null)
             `;
 
-            await db.exec`
-                insert or ignore into users (id, name) values (${1}, ${"Ada"})
-            `;
+            await db.transaction(async (tx) => {
+                await tx.exec`
+                    insert or ignore into users (id, name) values (${1}, ${"Ada"})
+                `;
+            });
 
             const user = await db.queryOne`
                 select id, name

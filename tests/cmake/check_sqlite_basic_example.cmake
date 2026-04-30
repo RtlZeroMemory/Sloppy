@@ -33,6 +33,8 @@ foreach(required_pattern IN ITEMS
         "services.addSingleton(\"data.main\""
         "data.sqlite.open"
         "db.exec`"
+        "db.transaction"
+        "tx.exec`"
         "db.queryOne`"
         "Results.ok"
         "Results.notFound"

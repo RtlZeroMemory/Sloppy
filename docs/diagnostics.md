@@ -411,6 +411,10 @@ Data provider diagnostics:
 - missing config;
 - parameter binding failure;
 - transaction misuse.
+- SQLite JavaScript transaction diagnostics distinguish nested transactions, rollback on
+  callback throw/reject, transaction use after commit/rollback, stale/closed connection
+  handles, capability denial, and native provider failures. They must not expose native
+  pointers, SQL parameter values, or secret-bearing configuration.
 - native SQLite provider failures use `SLOPPY_E_SQLITE_PROVIDER` with provider, operation,
   SQLite error text when available, and SQL text without parameter values;
 - native PostgreSQL provider failures use `SLOPPY_E_POSTGRES_PROVIDER` with provider,

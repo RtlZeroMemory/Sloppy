@@ -4,8 +4,8 @@
 
 Bootstrap data/capabilities foundation implemented. Native SQLite, PostgreSQL, and SQL
 Server providers are implemented for C/runtime tests. SQLite has a V8-gated
-JavaScript-to-native bridge wired to Plan provider metadata, opaque resource IDs, and the
-native database capability hook.
+JavaScript-to-native bridge wired to Plan provider metadata, opaque resource IDs, callback
+transactions, and the native database capability hook.
 ENGINE-23.A/B defines the native provider/offload descriptor and bounded
 per-provider-instance admission model that future SQLite, PostgreSQL, and SQL Server
 runtime bridge work must use. ENGINE-23.C implements the serialized SQLite-class blocking
@@ -47,6 +47,9 @@ Implemented bootstrap API:
 - `data.sqlite("main")` provider shorthand and `data.sqlite.open(options)`. They validate
   metadata/options and return a safe SQLite connection wrapper when the V8 runtime installs
   `__sloppy.data.sqlite`; otherwise they fail honestly with bridge-unavailable.
+  `database` is canonical for explicit open, `path` is only a transitional alias,
+  `capability` is required, `access` defaults to `readwrite`, and unsupported fields fail
+  before bridge work.
 - `data.postgres` provider metadata, `$1` placeholder style, redaction helper, and
   `data.postgres.open(options)` as the future stdlib entry point. It validates options and
   fails honestly until the native bridge exists.
@@ -80,7 +83,15 @@ Implemented SQLite JS bridge API:
 - `data.sqlite("main")` and `data.sqlite.open({ database, capability, access })` wrappers
   that store only an opaque `SlResourceId` handle;
 - connection methods `exec(sql, params?)`, `query(sql, params?)`, `queryOne(sql, params?)`,
-  and `close()`;
+  `transaction(callback)`, and `close()`;
+- transaction callback semantics are implemented on the current synchronous SQLite bridge:
+  callback success commits, callback throw/reject rolls back, nested transactions are
+  rejected, transaction objects expose `exec`, `query`, and `queryOne`, and transaction
+  objects reject use after commit/rollback. Async/offloaded SQLite execution through
+  ENGINE-23 remains future ENGINE-17 work;
+- public prepared statement handles are explicitly deferred. Statement preparation,
+  binding, stepping, and finalization remain internal to each provider operation until a
+  later task implements JS-visible statement resource lifetime and tests;
 - primitive parameter arrays for `null`, string, number, and boolean values;
 - `query` rows as arrays of plain objects, `queryOne` as one plain object or `null`;
 - deterministic closed/stale/invalid-handle failure behavior before provider calls.
@@ -123,7 +134,8 @@ data handles wrap only `SlResourceId` values. They never expose provider pointer
 handles, `sqlite3*`, `sqlite3_stmt*`, `PGconn*`, `PGresult*`, or pointer-like native
 addresses to JavaScript. Every SQLite bridge entrypoint validates kind, generation, and
 live state before calling provider code. ENGINE-05 stores capability/provider metadata
-beside the native connection resource so later reads and writes can re-check the hook.
+beside the native connection resource so later reads, writes, and transaction operations can
+re-check the hook.
 PostgreSQL and SQL Server JS bridges remain deferred. The V8 engine owns the resource
 table; provider intrinsic modules may insert, look up, and close their own resource kinds
 through that table, but must not create separate handle registries.
@@ -191,8 +203,8 @@ Provider-specific APIs stay namespaced.
 Implemented JavaScript errors cover invalid query template usage, fake provider missing
 methods, duplicate/missing capability tokens, invalid database capability metadata,
 transaction callback misuse, nested transactions, use after closed transaction scope,
-bridge-unavailable contexts, SQLite wrapper use after close, and invalid SQLite bridge
-parameters.
+bridge-unavailable contexts, SQLite wrapper use after close, invalid SQLite open option
+fields, and invalid SQLite bridge parameters.
 
 Native resource lookup diagnostics use `SL_DIAG_RESOURCE_INVALID_ID`,
 `SL_DIAG_RESOURCE_STALE_ID`, `SL_DIAG_RESOURCE_WRONG_KIND`, and `SL_DIAG_RESOURCE_CLOSED`.
@@ -226,8 +238,9 @@ environment gates.
 covers capability metadata, query lowering, fake provider method dispatch, transaction
 commit/rollback, rejected async callbacks, nested transaction rejection, use after close,
 module/service integration, the honest `data.sqlite.open(...)` bridge-unavailable path,
-and SQLite wrapper behavior against a mocked native bridge. This remains Node test
-infrastructure only, not a Node compatibility claim.
+SQLite explicit-open option validation, absent public prepared handles, and SQLite wrapper
+behavior against a mocked native bridge. This remains Node test infrastructure only, not a
+Node compatibility claim.
 
 `data.sqlite.provider` is a native CTest target that links SQLite and covers in-memory
 open/close, use after close, exec, parameterized insert, query row shape, queryOne found and

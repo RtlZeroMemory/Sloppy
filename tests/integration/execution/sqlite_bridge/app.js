@@ -9,7 +9,9 @@ globalThis.__sloppy_handler_1 = async () => {
   try {
     db.exec("create table users (id integer primary key, name text not null)");
     db.exec("insert into users (name) values (?)", ["Ada"]);
-    db.exec("insert into users (name) values (?)", ["Grace"]);
+    await db.transaction(tx => {
+      tx.exec("insert into users (name) values (?)", ["Grace"]);
+    });
     const users = await db.query("select id, name from users order by id", []);
     return Results.json(users);
   } finally {
