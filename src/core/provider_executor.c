@@ -290,16 +290,17 @@ static void sl_provider_executor_activate_next(SlProviderInstanceExecutor* execu
 {
     SlProviderOperation* next = NULL;
 
-    if (executor == NULL || executor->mode != SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING ||
-        executor->in_flight != 0U)
-    {
+    if (executor == NULL) {
         return;
     }
 
-    next = sl_provider_executor_next_queued(executor);
-    if (next != NULL) {
+    while (executor->in_flight < executor->max_in_flight) {
+        next = sl_provider_executor_next_queued(executor);
+        if (next == NULL) {
+            return;
+        }
         next->state = SL_PROVIDER_OPERATION_ACTIVE;
-        executor->in_flight = 1U;
+        executor->in_flight += 1U;
     }
 }
 
@@ -492,13 +493,8 @@ sl_provider_operation_copy_descriptor(SlArena* arena, SlProviderOperation* opera
 static void sl_provider_executor_activate_submitted(SlProviderInstanceExecutor* executor,
                                                     SlProviderOperation* operation)
 {
-    if (executor->mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) {
-        sl_provider_executor_activate_next(executor);
-    }
-    else if (executor->in_flight < executor->max_in_flight) {
-        operation->state = SL_PROVIDER_OPERATION_ACTIVE;
-        executor->in_flight += 1U;
-    }
+    (void)operation;
+    sl_provider_executor_activate_next(executor);
 }
 
 SlStatus sl_provider_executor_submit(SlProviderInstanceExecutor* executor, SlArena* arena,
