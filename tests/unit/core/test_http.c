@@ -40,6 +40,14 @@ static SlStatus parse_request(SlArena* arena, const char* text, const SlHttpPars
     return sl_http_parse_request_head(arena, bytes_from_cstr(text), options, out, out_diag);
 }
 
+static SlStatus parse_request_bytes(SlArena* arena, const unsigned char* bytes, size_t length,
+                                    const SlHttpParseOptions* options, SlHttpRequestHead* out,
+                                    SlDiag* out_diag)
+{
+    return sl_http_parse_request_head(arena, sl_bytes_from_parts(bytes, length), options, out,
+                                      out_diag);
+}
+
 static int test_parse_valid_targets(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -130,6 +138,91 @@ static int test_parse_body_bytes(void)
         expect_bytes_equal(request.body, "{\"ok\":true}") != 0)
     {
         return 14;
+    }
+
+    return 0;
+}
+
+static int test_parse_non_nul_terminated_request_storage(void)
+{
+    static const unsigned char input[] = {'G', 'E', 'T', ' ', '/',  'n',  'o',  'n',  'n', 'u',
+                                          'l', '?', 'x', '=', '1',  ' ',  'H',  'T',  'T', 'P',
+                                          '/', '1', '.', '1', '\r', '\n', 'H',  'o',  's', 't',
+                                          ':', ' ', 'e', 'x', '\r', '\n', '\r', '\n', 'Z'};
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 15;
+    }
+
+    status = parse_request_bytes(&arena, input, sizeof(input) - 1U, NULL, &request, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_str_equal(request.raw_target, "/nonnul?x=1") != 0 ||
+        expect_str_equal(request.path, "/nonnul") != 0 ||
+        request.raw_target.ptr == (const char*)input || request.headers[0].name.ptr == NULL ||
+        request.headers[0].name.ptr == (const char*)input + 26U)
+    {
+        return 16;
+    }
+
+    return 0;
+}
+
+static int test_parse_binary_body_bytes(void)
+{
+    static const unsigned char input[] = {
+        'P', 'O', 'S', 'T',  ' ',  '/', 'b', 'i',  'n',  ' ',  'H',  'T', 'T',  'P', '/',
+        '1', '.', '1', '\r', '\n', 'C', 'o', 'n',  't',  'e',  'n',  't', '-',  'L', 'e',
+        'n', 'g', 't', 'h',  ':',  ' ', '4', '\r', '\n', '\r', '\n', 'A', '\0', 'B', 0xffU};
+    static const unsigned char expected[] = {'A', '\0', 'B', 0xffU};
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 17;
+    }
+
+    status = parse_request_bytes(&arena, input, sizeof(input), NULL, &request, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        request.body.ptr == input + sizeof(input) - sizeof(expected) ||
+        !sl_bytes_equal(request.body, sl_bytes_from_parts(expected, sizeof(expected))))
+    {
+        return 18;
+    }
+
+    return 0;
+}
+
+static int test_failed_parse_rolls_back_transient_builder_memory(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlDiag diag = {0};
+    SlHttpParseOptions options = {0};
+    size_t used_before = 0U;
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 19;
+    }
+
+    used_before = sl_arena_used(&arena);
+    options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    options.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
+    options.max_body_length = 2U;
+    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 3\r\n\r\nabc", &options,
+                           &request, &diag);
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        diag.code != SL_DIAG_HTTP_BODY_LIMIT || sl_arena_used(&arena) <= used_before ||
+        request.body.ptr != NULL)
+    {
+        return 20;
     }
 
     return 0;
@@ -481,77 +574,41 @@ static int test_libuv_smoke(void)
     return expect_status(sl_http_libuv_smoke(), SL_STATUS_OK) == 0 ? 0 : 90;
 }
 
+typedef int (*HttpTestFn)(void);
+
+typedef struct HttpTestCase
+{
+    HttpTestFn fn;
+} HttpTestCase;
+
 int main(void)
 {
-    int result = test_parse_valid_targets();
-    if (result != 0) {
-        return result;
+    static const HttpTestCase tests[] = {{test_parse_valid_targets},
+                                         {test_parse_headers},
+                                         {test_parse_body_bytes},
+                                         {test_parse_non_nul_terminated_request_storage},
+                                         {test_parse_binary_body_bytes},
+                                         {test_failed_parse_rolls_back_transient_builder_memory},
+                                         {test_supported_method_mapping},
+                                         {test_rejects_invalid_requests},
+                                         {test_rejects_unsupported_method},
+                                         {test_rejects_non_path_targets},
+                                         {test_callback_allocation_failure_preserved},
+                                         {test_max_target_length_enforced},
+                                         {test_max_headers_enforced},
+                                         {test_max_body_length_enforced},
+                                         {test_zero_header_limit_allows_no_headers},
+                                         {test_invalid_arguments},
+                                         {test_parsed_path_can_feed_route_matcher},
+                                         {test_libuv_smoke}};
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {
+        int result = tests[index].fn();
+        if (result != 0) {
+            return result;
+        }
     }
 
-    result = test_parse_headers();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_parse_body_bytes();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_supported_method_mapping();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_rejects_invalid_requests();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_rejects_unsupported_method();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_rejects_non_path_targets();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_callback_allocation_failure_preserved();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_max_target_length_enforced();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_max_headers_enforced();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_max_body_length_enforced();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_zero_header_limit_allows_no_headers();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_invalid_arguments();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_parsed_path_can_feed_route_matcher();
-    if (result != 0) {
-        return result;
-    }
-
-    return test_libuv_smoke();
+    return 0;
 }

@@ -1,6 +1,7 @@
 # Memory/String Adoption Map
 
-Status: strategic design for ENGINE-22 after the ENGINE-21.A/B/C/E/F primitive slice.
+Status: strategic design for ENGINE-22 after the ENGINE-21.A/B/C/E/F primitive slice, with
+ENGINE-22.A HTTP adoption implemented as the first subsystem pass.
 
 ENGINE-22 is the migration layer after ENGINE-21 primitives land. ENGINE-21.A/B/C/E/F now
 provide view/copy/hash helpers, bounded builders, bounded interning, and focused safety
@@ -12,7 +13,7 @@ Hot paths are marked with `hot`.
 
 | Subsystem | Current files | Current primitive/pattern | Problem/risk | Target primitive | Expected benefit | Migration risk | Suggested task | Must be done before |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| HTTP parser/request/response `hot` | `src/core/http.c`, `src/core/http_context.c`, `src/core/http_response.c`, `src/main.c` | Arena copies for request head, manual append helpers, fixed response buffers, CLI socket buffers. | Fragmented header/target append can allocate/copy repeatedly; response writer has ad hoc byte builder; body buffer policy is still future. | Byte/string builder, request-owned buffer policy, response builder target, header/body lifetime rules. | Lower allocation pressure, one response/body policy, clearer request lifetime. | High: touches HTTP parse/write behavior and golden responses. | ENGINE-22.A | ENGINE-13 proper HTTP backend and ENGINE-19 HTTP conformance. |
+| HTTP parser/request/response `hot` | `src/core/http.c`, `src/core/http_context.c`, `src/core/http_response.c`, `src/core/route.c`, `src/main.c` | ENGINE-22.A now uses `SlStringBuilder` for segmented request target/header accumulation, `SlByteBuilder` for bounded body accumulation and response output, `sl_str_copy_to_arena` for stable request/route-owned strings, and exact `SlBytes` output for responses. CLI socket buffers remain dev-path fixed buffers. | Complete-buffer parsing is still the current dev runtime shape; streaming/backend ownership, keep-alive, and socket lifecycle are ENGINE-13 work. | Request-owned buffer policy, builder-backed parser/response output, header/body lifetime rules, and later backend-owned response target. | Lower duplicate append logic, clearer request/body/response lifetime, non-NUL/binary edge coverage. | Medium/high: behavior is preserved, but future backend adoption must not race this writer ownership. | ENGINE-22.A implemented; backend continuation belongs to ENGINE-13 and ENGINE-22.F cleanup. | ENGINE-13 proper HTTP backend and ENGINE-19 HTTP conformance. |
 | V8 bridge string conversions `hot` | `src/engine/v8/engine_v8.cc`, `src/engine/v8/intrinsics_sqlite.cc` | `std::string`, `std::vector<std::string>`, V8 `Utf8Value`, arena copy helpers. | Duplicated conversion rules; transient `std::string` storage is correct now but not enough for async/offload. | Central V8 string conversion helpers and arena/request-owned native strings. | Predictable native/V8 lifetime, fewer duplicated helpers, safer async evolution. | High: V8-gated behavior and owner-thread policy. | ENGINE-22.D | ENGINE-14 module/bootstrap, ENGINE-15 diagnostics, ENGINE-17 SQLite bridge. |
 | SQLite row/result conversion `hot` | `src/data/sqlite.c`, `include/sloppy/data_sqlite.h`, `src/engine/v8/intrinsics_sqlite.cc` | Arena-owned text results; JS bridge materializes V8 row objects; parameter text lives in vector storage for sync call. | Blob policy absent; async/provider offload would need copied operation ownership; JS row conversion duplicates string conversion. | SQLite text/blob ownership policy, owned parameter buffers, V8 conversion helpers. | Safe provider offload path, clear result lifetime, stable row mapping. | High: provider and V8 bridge interaction. | ENGINE-22.E | ENGINE-17 SQLite runtime completion and ENGINE-19 SQLite conformance. |
 | Diagnostics/source frames/JSON `hot on failures` | `src/core/diagnostics.c`, `src/core/capability.c`, `src/core/http.c`, `src/core/route.c`, `src/core/plan_parse.c` | Diagnostic builder plus private text/JSON/source-frame writers and local hint builders. | Repeated length/write logic; future JSON/source-map diagnostics will expand duplication. | String builder, formatter, redaction builder. | Stable output with less repeated formatting code. | Medium/high: golden snapshot drift risk. | ENGINE-22.B | ENGINE-15 diagnostic completion. |
@@ -27,7 +28,8 @@ Hot paths are marked with `hot`.
 
 1. ENGINE-21.D locks V8/SQLite conversion policy on top of the implemented primitive
    layer.
-2. ENGINE-22.A migrates HTTP parser/request/response paths.
+2. ENGINE-22.A migrates HTTP parser/request/response paths. Done for the current
+   complete-buffer dev runtime; ENGINE-13 owns backend/socket lifecycle continuation.
 3. ENGINE-22.B migrates diagnostics and CLI output.
 4. ENGINE-22.C migrates Plan/artifact/source-map loader patterns and starts interned
    metadata adoption where byte-equality behavior stays unchanged.
