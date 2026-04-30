@@ -142,15 +142,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   lifecycle shutdown plus resource-table-backed request/app cleanup helpers. Provider
   handle ownership policy, leak reports, broader async request-scope retention, and debug
   lifecycle integration remain open.
-- Memory/string adoption completion: #32 is absorbed by ENGINE-21.C's primitive builder
-  surface, #367 provides the V8/SQLite interop helper policy, ENGINE-22.A covers the
-  current complete-buffer HTTP parser/body/response/route hot paths, ENGINE-22.C covers
-  the current Plan/artifact/source-map loader path plus stable parsed-Plan metadata
-  interning, ENGINE-22.D covers provider-neutral V8 bridge adoption, and ENGINE-22.F covers
-  a bounded non-SQLite cleanup/evidence pass. Public alpha should not claim top-notch
-  memory/string hot-path behavior until SQLite result/parameter adoption, CLI-wide output
-  cleanup, backend ownership, and broader allocation/conformance guards are completed or
-  explicitly scoped down.
+- Memory/string adoption completion: #32 is closed as completed by ENGINE-21.C's primitive
+  builder surface. ENGINE-21.D and ENGINE-22.A through ENGINE-22.F have also landed for the
+  current HTTP, diagnostics/CLI, Plan/artifact, V8, SQLite, and bounded cleanup paths.
+  Public alpha should still avoid broad memory/string hot-path claims until future backend,
+  provider, and conformance work proves those later paths.
 
 ## Should Fix Soon
 
@@ -190,11 +186,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - MAIN1-14 benchmark methodology hardening: release-only measured runs, local artifact
   policy, hardware/build metadata, trend policy, and no external comparisons until
   comparable paths exist. This is deferred behind Slop Engine foundation completion.
-- GitHub issue cleanup: close implemented child/parent issues, relabel deferred follow-ups,
-  and create only deduped MAIN/MAIN.1 issues after the roadmap and cleanup plan are
-  approved. EPIC-21 through EPIC-26 implementation issues should not be recreated. The
-  strategic replacement is `tools/github/slop-engine-roadmap-issues.json`; apply only after
-  review.
+- GitHub issue cleanup follow-through: #26 still needs scanner fixture/self-test proof or
+  implementation, and #295 needs owner review before closure or narrowing. The 2026-04-30
+  cleanup record is `docs/project/github-issue-cleanup-result.md`.
 
 ## Deferred By Design
 
@@ -258,13 +252,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 ## Cleanup Candidates
 
-- Reconcile stale GitHub issue labels: many open parent EPICs still say `status:deferred`
-  after their scoped child tasks closed.
-- Decide whether to close or retitle superseded open tasks that are now covered by
-  EPIC-21 onward.
-- Review `docs/project/current-issue-state-audit.md` and
-  `docs/project/main-main1-issue-cleanup-plan.md`, then apply approved GitHub issue cleanup
-  separately.
+- Reconcile stale GitHub issue labels on closed issues if label hygiene becomes useful for
+  reporting.
+- Review #26 for platform scanner fixture/self-test completion.
+- Review #295 for async diagnostic JSON scope after the narrow ENGINE-07 contribution.
 - Remove duplicate or contradictory "Current Phase" paragraphs as docs continue to evolve.
 
 ## Overengineering Watchlist
@@ -285,6 +276,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 ## Completed Cleanup
 
+- Applied the 2026-04-30 GitHub issue hygiene pass after ENGINE-23 roadmap creation:
+  closed completed ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12, ENGINE-21,
+  ENGINE-22, and old #32 with evidence comments; documented kept-open and human-review
+  issues in `docs/project/github-issue-hygiene-audit.md` and
+  `docs/project/github-issue-cleanup-result.md`.
 - Added the ENGINE-01 framework contract source of truth for JS app API, Results, request
   context, async/microtasks, cancellation/deadlines, HTTP, SQLite, capabilities, and
   deferred behavior.

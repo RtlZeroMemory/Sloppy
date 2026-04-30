@@ -44,6 +44,14 @@ SQLite-class providers, bounded blocking pools, nonblocking provider mode,
 capability-gated admission, cancellation/timeout/shutdown/late-completion semantics,
 worker lifecycle, diagnostics, and stress evidence without benchmark claims.
 
+2026-04-30 issue-hygiene update: the GitHub tracker has been reconciled after ENGINE-23
+roadmap creation. Completed ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12, ENGINE-21,
+ENGINE-22, and the old #32 string/buffer task were closed with evidence comments. The
+active tracker remains the ENGINE roadmap: #259/#302, #265/#295, #266-#268, #300/#301,
+ENGINE-13 through ENGINE-20, and ENGINE-23. See
+`docs/project/github-issue-hygiene-audit.md` and
+`docs/project/github-issue-cleanup-result.md`.
+
 ENGINE-13 through ENGINE-20 now track the remaining full engine foundation after
 ENGINE-12 and ENGINE-23: proper HTTP runtime backend, module/bootstrap completion, source
 maps and diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
@@ -292,10 +300,13 @@ completed-but-open parent issues #167/#168/#180-#192, blocked public-alpha issue
 leftovers needing focused review.
 
 After review in PR #256, completed/superseded stale issues were closed with evidence or
-replacement-roadmap comments. The remaining pre-ENGINE open issues are #26 and #32 because
-they still represent focused unfinished platform-scanner and string/buffer work. See
-`docs/project/strategic-current-state-audit.md` and
-`docs/project/strategic-issue-cleanup-plan.md` for the cleanup record.
+replacement-roadmap comments. The 2026-04-30 hygiene pass closed #32 as completed by the
+ENGINE-21.C builder work. The remaining pre-ENGINE open issue is #26 because scanner
+fixture/self-test hardening is still not proven complete. See
+`docs/project/strategic-current-state-audit.md`,
+`docs/project/strategic-issue-cleanup-plan.md`,
+`docs/project/github-issue-hygiene-audit.md`, and
+`docs/project/github-issue-cleanup-result.md` for the cleanup records.
 
 ## Next Roadmap
 
