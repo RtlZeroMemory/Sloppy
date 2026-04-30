@@ -38,6 +38,12 @@ core backend/parser/dispatch state model. It is reported separately from V8-gate
 `sloppy run` execution, live-provider evidence, package smoke, and benchmark evidence. It
 does not introduce throughput, latency, external-runtime comparison, or production-edge HTTP
 claims.
+ENGINE-24.F localhost transport smoke is default non-V8 correctness evidence over the
+libuv-backed loopback TCP transport MVP. It proves bounded local request/response bytes,
+one-request-per-connection, close-after-response, Content-Length-only bodies, deterministic
+failure responses, and cleanup coherence. It is still separate from V8 transport execution,
+benchmark/performance evidence, keep-alive/pipelining/streaming support, live-provider
+evidence, and production-edge HTTP readiness.
 
 ## Future Phase
 

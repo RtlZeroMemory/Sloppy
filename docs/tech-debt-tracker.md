@@ -53,9 +53,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   over a narrow internal dispatch callback and the existing response writer. ENGINE-24.E
   adds transport disconnect cancellation, header/body/request/write timeout hooks,
   deterministic 408 timeout responses where safe, shutdown rejection, active connection
-  close, and cleanup-once terminal paths. Remaining HTTP transport debt is localhost
-  conformance (#417), keep-alive decision (#418), production graceful-drain policy,
-  production hardening, and middleware policy if ever scoped. This is separate from ENGINE-12 because HTTP has
+  close, and cleanup-once terminal paths. ENGINE-24.F/#417 is now bounded localhost TCP
+  smoke/conformance evidence only. Remaining HTTP transport debt is keep-alive decision
+  (#418), production graceful-drain policy, production hardening, and middleware policy if
+  ever scoped. This is separate from ENGINE-12 because HTTP has
   parser, connection, body, and shutdown policy that sits above generic async completions.
 - Module/bootstrap completion: ENGINE-14 owns stdlib/bootstrap asset loading, app module
   loading, ESM/classic decision, module cache, import rewrite and intrinsic boundaries,
@@ -121,7 +122,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F and ENGINE-24.A/B/C/D/E:
   redirect helpers, streaming/files, cookies, content negotiation, keep-alive production
   policy, graceful drain behavior beyond immediate-cancel/drain-lite transport shutdown,
-  localhost/V8 conformance proof, users API proof, and production error pages.
+  V8 transport conformance proof, users API proof, and production error pages.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
   services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source

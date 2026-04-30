@@ -41,9 +41,13 @@ timeout, and shutdown semantics: client disconnect during head/body read cancels
 closes safely, header/body/total-request/write timers transition to terminal cleanup,
 timeout can write deterministic `408 Request Timeout` when the socket is still writable,
 server stop rejects new accepted work and immediate-cancels/drain-lite closes active
-connections, and late callbacks are cleanup-only. Localhost full smoke/conformance remains
-issue #417; keep-alive remains #418. This is not V8 transport conformance, benchmark evidence,
-production graceful-drain evidence, or production-edge HTTP evidence.
+connections, and late callbacks are cleanup-only. ENGINE-24.F/#417 adds bounded localhost
+TCP transport smoke/conformance for the implemented MVP path: raw client bytes, simple GET,
+route miss, method mismatch, POST text body success, malformed input, body limits,
+unsupported media, unsupported `Transfer-Encoding`, close-after-response, one request per
+connection, and shutdown cleanup. Keep-alive remains #418. This is not V8 transport
+conformance, benchmark evidence, production graceful-drain evidence, or production-edge
+HTTP evidence.
 There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser
 API, middleware, cookies/sessions, static file server, compression, multipart upload,
 streaming responses, public TypeScript `app.run`, or broad response framework.
@@ -127,8 +131,6 @@ Future scope:
 - streaming HTTP parser state;
 - production-edge HTTP proof beyond ENGINE-13.F's bounded smoke;
 - production server hardening if explicitly scoped later;
-- timeout/shutdown completion beyond listener cleanup (#416);
-- localhost conformance beyond the bounded unit smoke (#417);
 - keep-alive decision and any HTTP/1.1 upgrade plan (#418);
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
@@ -562,6 +564,12 @@ Implemented CTest coverage:
   close-after-response cleanup, response buffer lifetime through write callback,
   no dispatch after close, no second request after close, and response buffer capacity
   diagnostics;
+- localhost TCP transport smoke/conformance tests for raw client request bytes, GET
+  success, 404 route miss, 405 method mismatch, POST text body success, malformed input,
+  body-too-large, unsupported media type, unsupported `Transfer-Encoding`/chunked framing,
+  explicit `Connection: keep-alive` still closing after response, response
+  `Content-Length`/`Connection: close` bytes, and cleanup/counter coherence; the same
+  transport target also covers unsupported pipelining through the deterministic feed path;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;
