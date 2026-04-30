@@ -37,6 +37,15 @@ external async source must cross the runtime boundary, and before any public alp
 benchmark, or product claim says Sloppy has scalable async performance or production-ready
 async lifecycle behavior.
 
+ENGINE-13 through ENGINE-20 now track the remaining full engine foundation after
+ENGINE-12: proper HTTP runtime backend, module/bootstrap completion, source maps and
+diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
+conformance compatibility, and the strong Plan strategic layer. Proper async and proper
+HTTP are intentionally separate: ENGINE-12 owns native async completion and owner-thread
+continuation mechanics, while ENGINE-13 owns HTTP listener, connection, parser, body,
+keep-alive, timeout, cancellation, backpressure, graceful shutdown, and server diagnostic
+policy.
+
 Direct source-input `sloppy run app.js` remains unsupported today, but is now tracked by
 #302 as a compiler/CLI handoff task once the compiler can emit complete artifacts for
 realistic supported apps. The current supported workflow remains explicit `sloppyc build`

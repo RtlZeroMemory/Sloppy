@@ -26,6 +26,10 @@ runtime, SQLite capability-wired end-to-end execution, app/request lifecycle cle
 diagnostics/source maps, cancellation/backpressure/resource-limit infrastructure,
 conformance examples, and packaged runtime evidence. PostgreSQL and SQL Server JS bridges
 and benchmark claims are not immediate readiness blockers.
+ENGINE-13 through ENGINE-20 now split the remaining foundation into explicit proper HTTP
+backend, bootstrap/module loading, diagnostics/source maps, app/resource lifetime,
+SQLite, CLI/dev loop, conformance, and strong Plan layers. These are prerequisites for
+public alpha unless explicitly scoped down with honest exclusions.
 
 | Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
 | --- | --- | --- | --- | --- | --- |
@@ -63,6 +67,9 @@ packaging remain separate or experimental.
 ROADMAP MAIN and ROADMAP MAIN.1 are now historical input to the strategic ENGINE roadmap.
 Public alpha docs should not move ahead of the ENGINE roadmap unless a document explicitly
 says the relevant workflow is still deferred and not part of the alpha claim.
+ENGINE-13 through ENGINE-20 are the current issue-backed completion map for the remaining
+core foundation after ENGINE-12; default gates must still be reported separately from
+V8-gated, package, live-provider, stress, and benchmark evidence.
 
 ## Gate Interpretation
 

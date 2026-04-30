@@ -25,6 +25,33 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   cancellation. ENGINE-03 covers returned Promises that settle during the owner-thread
   microtask drain, rejection diagnostics, pending-Promise failure, cancellation snapshots,
   and request-scope cleanup for the bounded call.
+- Proper HTTP runtime backend: ENGINE-13 owns listener/backend architecture, connection and
+  request lifecycle, parser limits, header/body buffering policy, keep-alive, deadlines,
+  cancellation, backpressure, graceful shutdown, server diagnostics, and stress/conformance
+  smoke. This is separate from ENGINE-12 because HTTP has parser, connection, body, and
+  shutdown policy that sits above generic async completions.
+- Module/bootstrap completion: ENGINE-14 owns stdlib/bootstrap asset loading, app module
+  loading, ESM/classic decision, module cache, import rewrite and intrinsic boundaries,
+  source names, reload/dev-loop implications, and V8 startup diagnostics.
+- Source maps and diagnostics completion: ENGINE-15 owns compiler maps, generated
+  artifact mapping, V8 exception remapping, async diagnostic JSON/source frames, redaction,
+  stable codes, CLI diagnostic format, and diagnostic goldens.
+- App/resource lifetime runtime: ENGINE-16 owns app startup/shutdown, request/app scopes,
+  resource cleanup, cancellation propagation, leak-oriented hooks, and lifecycle
+  diagnostics.
+- SQLite runtime completion: ENGINE-17 owns the public JS SQLite API, native bridge,
+  capability-wired open/use, query/exec/queryOne, transactions/prepared-statement
+  decision, result mapping, file and in-memory policy, cleanup, cancellation/deadline
+  behavior, and users API proof.
+- CLI/dev loop runtime: ENGINE-18 owns `sloppyc`/`sloppy run` UX, source-input run
+  decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, watch/dev
+  decision, and command diagnostics.
+- Conformance compatibility suite: ENGINE-19 owns compiler to Plan to runtime to V8 to
+  HTTP evidence, async/body/header/SQLite/capability/lifecycle/package cases, and default
+  versus optional gate reporting.
+- Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
+  artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
+  optimization hooks, versioning, and internal tooling leverage.
 - Framework HTTP API runtime: method dispatch, headers in context, JSON/text body policy,
   header/body limits, request cancellation signal, timeout hooks, backpressure behavior,
   result serialization, and error response contract.
