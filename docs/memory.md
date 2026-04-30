@@ -29,8 +29,9 @@ This document covers:
 
 ## Non-Goals
 
-This document does not implement a heap allocator framework, JS bindings, broad subsystem
-adoption, or V8/SQLite bridge conversion helpers.
+This document does not implement a heap allocator framework, JS bindings, or broad subsystem
+adoption. V8/SQLite bridge conversion helpers exist through ENGINE-21.D; broad call-site
+adoption and refactoring remain deferred to ENGINE-22.
 
 ## Current Phase
 
@@ -48,8 +49,9 @@ primitives in the HTTP parser, request body accumulation, route-pattern copies, 
 matching edge tests, and dev response writer while preserving the current complete-buffer
 HTTP behavior.
 
-Allocator modules, a standalone heap-owned `SlBuf`, centralized V8/SQLite conversion
-helpers, and non-HTTP hot-path adoption remain deferred.
+Allocator modules, a standalone heap-owned `SlBuf`, and non-HTTP hot-path adoption remain
+deferred. ENGINE-21.D now defines the narrow V8/native and SQLite/native string/blob
+interop helper policy used by later ENGINE-22 adoption.
 
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 
@@ -417,7 +419,8 @@ Each primitive needs tests:
 - Add standalone `SlBuf` only when a heap/operation-owned buffer contract exists.
 - Add allocator interface with a default bootstrap allocator.
 - Add debug allocation tags.
-- Complete ENGINE-21.D V8/SQLite interop policy.
+- Complete ENGINE-21.D V8/SQLite interop policy. Done: private V8 conversion helpers and
+  SQLite text/blob copy helpers exist; broad call-site adoption remains ENGINE-22.
 - Complete ENGINE-22 adoption/refactor work for hot paths after ENGINE-21 lands.
 - Add resource ID layout and fixed-capacity resource table. Done in MAIN1-07 with
   slot/generation IDs, kind validation, cleanup callbacks, and bridge policy docs.

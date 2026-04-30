@@ -2,6 +2,7 @@
 #define SLOPPY_DATA_SQLITE_H
 
 #include "sloppy/arena.h"
+#include "sloppy/bytes.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -49,6 +50,7 @@ typedef enum SlSqliteParamKind
     SL_SQLITE_PARAM_INTEGER = 2,
     SL_SQLITE_PARAM_FLOAT = 3,
     SL_SQLITE_PARAM_BOOL = 4,
+    SL_SQLITE_PARAM_BLOB = 5,
     SL_SQLITE_PARAM_UNSUPPORTED = 255
 } SlSqliteParamKind;
 
@@ -60,6 +62,7 @@ typedef struct SlSqliteParam
         int64_t integer;
         double number;
         bool boolean;
+        SlBytes blob;
     } value;
 } SlSqliteParam;
 
@@ -68,7 +71,8 @@ typedef enum SlSqliteValueKind
     SL_SQLITE_VALUE_NULL = 0,
     SL_SQLITE_VALUE_TEXT = 1,
     SL_SQLITE_VALUE_INTEGER = 2,
-    SL_SQLITE_VALUE_FLOAT = 3
+    SL_SQLITE_VALUE_FLOAT = 3,
+    SL_SQLITE_VALUE_BLOB = 4
 } SlSqliteValueKind;
 
 typedef struct SlSqliteValue
@@ -77,6 +81,7 @@ typedef struct SlSqliteValue
     union {
         /* Text values returned by query APIs are copied into the caller arena. */
         SlStr text;
+        SlBytes blob;
         int64_t integer;
         double number;
     } value;
@@ -133,6 +138,32 @@ typedef struct SlSqliteTransaction
 } SlSqliteTransaction;
 
 SlSqliteOpenOptions sl_sqlite_open_options_memory(void);
+
+/*
+ * Copies SQLite transient text/blob result storage into `arena`.
+ *
+ * These helpers are the provider boundary adapters for sqlite3_column_text/blob and future
+ * statement-owned result storage. They use explicit lengths, make no NUL-termination
+ * assumption, and leave `out` unchanged on failure. Returned views are arena-owned and
+ * invalid when that arena is reset or its backing storage ends.
+ * Zero-length inputs may use NULL storage and are treated as empty views. Zero-length
+ * outputs have length zero and may return NULL storage; callers must not assume
+ * NUL-termination.
+ */
+SlStatus sl_sqlite_copy_result_text_to_arena(SlArena* arena, SlStr text, SlStr* out);
+SlStatus sl_sqlite_copy_result_blob_to_arena(SlArena* arena, SlBytes blob, SlBytes* out);
+
+/*
+ * Copies text/blob parameters into `arena` and writes an operation-owned parameter view.
+ *
+ * Synchronous SQLite calls may bind borrowed text/blob with SQLITE_TRANSIENT, but future
+ * async/offloaded provider work must copy parameters before submission. These helpers
+ * encode that rule for ENGINE-22 adoption. On failure, `out_param` is left unchanged.
+ * Zero-length text/blob inputs may use NULL storage; nonzero length requires non-NULL
+ * storage.
+ */
+SlStatus sl_sqlite_param_copy_text_to_arena(SlArena* arena, SlStr text, SlSqliteParam* out_param);
+SlStatus sl_sqlite_param_copy_blob_to_arena(SlArena* arena, SlBytes blob, SlSqliteParam* out_param);
 
 SlStatus sl_sqlite_open(SlArena* diag_arena, const SlSqliteOpenOptions* options,
                         SlSqliteConnection* out_connection, SlDiag* out_diag);

@@ -198,6 +198,64 @@ static int test_eval_and_call_global_function(void)
     return 0;
 }
 
+static int test_v8_string_interop_uses_explicit_lengths(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    const char source[] =
+        "globalThis.sloppy_embedded = function () { return 'pre\\u0000post'; }; trailing";
+    const char function_name[] = {'s', 'l', 'o', 'p', 'p', 'y', '_', 'e',
+                                  'm', 'b', 'e', 'd', 'd', 'e', 'd'};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 6;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == NULL)
+    {
+        return 7;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-string-interop.js"),
+                          sl_str_from_parts(source, sizeof(source) - sizeof(" trailing")), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 8;
+    }
+
+    if (expect_status(sl_engine_call_function0(
+                          engine, &result_arena,
+                          sl_str_from_parts(function_name, sizeof(function_name)), &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 9;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        result.text.length != sizeof("pre") - 1U + 1U + sizeof("post") - 1U ||
+        result.text.ptr == NULL || memcmp(result.text.ptr, "pre", 3U) != 0 ||
+        result.text.ptr[3] != '\0' || memcmp(result.text.ptr + 4, "post", 4U) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 10;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_eval_syntax_error_returns_diagnostic(void)
 {
     unsigned char engine_storage[8192];
@@ -2261,6 +2319,11 @@ int main(void)
     int result = 0;
 
     result = test_eval_and_call_global_function();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_v8_string_interop_uses_explicit_lengths();
     if (result != 0) {
         return result;
     }

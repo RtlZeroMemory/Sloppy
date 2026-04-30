@@ -85,6 +85,10 @@ Implemented now:
 - provider-specific intrinsic modules are split out of `engine_v8.cc`. `intrinsics.cc`
   aggregates bridge registration and `intrinsics_sqlite.cc` installs the SQLite bridge
   under `__sloppy.data.sqlite`.
+- private string interop helpers under `src/engine/v8/string_interop.*` define the
+  V8/native string boundary: native views become V8 strings only on the engine owner
+  thread, V8 strings copied back to C become arena-owned native views, and byte conversions
+  copy before leaving the bridge helper.
 - V8 creation can borrow the parsed Plan and immutable capability registry through
   `SlEngineOptions`; provider bridges may use those pointers only as hook inputs while the
   app host keeps their storage alive.
@@ -331,6 +335,19 @@ arena. Exception message text, generated source names, hints, and bounded stack 
 are copied before returning to C. They remain valid until the engine arena is reset; callers
 may still pass `out_diag == NULL`, in which case the bridge returns the failure status
 without materializing a diagnostic.
+
+String interop policy:
+
+- native `SlStr` values passed into V8 use explicit lengths and do not require NUL
+  termination;
+- conversion into V8 is an owner-thread operation and fails before V8 entry from any other
+  thread;
+- V8 strings copied to native storage are staged only inside the private C++ bridge and
+  then copied into caller/engine arenas before C observes them;
+- V8 objects never retain pointers into request, scratch, SQLite, or other transient
+  native storage;
+- JavaScript still never receives raw native pointers, pointer-sized numbers, or V8
+  `External` handles as Sloppy resources.
 
 ## Invariants
 

@@ -20,12 +20,12 @@
  * Tests: tests/unit/engine/test_v8_smoke.c when SLOPPY_ENABLE_V8 is enabled.
  */
 #include "engine_v8_internal.h"
+#include "string_interop.h"
 
 #include <libplatform/libplatform.h>
 #include <v8.h>
 
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -51,42 +51,9 @@ SlStr sl_v8_literal(const char* ptr, size_t length)
     return sl_str_from_parts(ptr, length);
 }
 
-bool sl_v8_str_valid(SlStr str)
-{
-    return str.length == 0U || str.ptr != nullptr;
-}
-
 SlStr sl_v8_str_from_string(const std::string& str)
 {
     return sl_str_from_parts(str.data(), str.size());
-}
-
-SlStatus sl_v8_copy_string(SlArena* arena, const std::string& src, SlStr* out)
-{
-    void* memory = nullptr;
-    char* dst = nullptr;
-
-    if (arena == nullptr || out == nullptr) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    if (src.empty()) {
-        *out = sl_str_empty();
-        return sl_status_ok();
-    }
-
-    SlStatus status = sl_arena_alloc(arena, src.size(), 1U, &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    dst = static_cast<char*>(memory);
-    for (size_t index = 0U; index < src.size(); index += 1U) {
-        dst[index] = src[index];
-    }
-
-    *out = sl_str_from_parts(dst, src.size());
-    return sl_status_ok();
 }
 
 SlStatus sl_v8_write_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code,
@@ -191,7 +158,7 @@ SlStatus sl_v8_write_diag_string(SlArena* arena, SlDiag* out_diag, SlDiagCode co
         return sl_status_from_code(failure_code);
     }
 
-    status = sl_v8_copy_string(arena, message, &copied_message);
+    status = sl_v8_std_string_copy_to_arena(arena, message, &copied_message);
 
     if (!sl_status_is_ok(status)) {
         return status;
@@ -212,7 +179,7 @@ SlStatus sl_v8_write_diag_string_with_span(SlArena* arena, SlDiag* out_diag, SlD
         return sl_status_from_code(failure_code);
     }
 
-    status = sl_v8_copy_string(arena, message, &copied_message);
+    status = sl_v8_std_string_copy_to_arena(arena, message, &copied_message);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -223,13 +190,13 @@ SlStatus sl_v8_write_diag_string_with_span(SlArena* arena, SlDiag* out_diag, SlD
 
 std::string sl_v8_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value)
 {
-    v8::String::Utf8Value utf8(isolate, value);
+    std::string text;
 
-    if (*utf8 == nullptr) {
+    if (!sl_v8_std_string_from_value(isolate, value, &text)) {
         return std::string("JavaScript exception");
     }
 
-    return std::string(*utf8, static_cast<size_t>(utf8.length()));
+    return text;
 }
 
 std::string sl_v8_maybe_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value)
@@ -328,24 +295,6 @@ SlStatus sl_v8_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCo
 
     return sl_v8_write_diag_string_with_span(engine->arena, out_diag, code, failure_code, message,
                                              span, hint, stack_summary);
-}
-
-SlStatus sl_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
-{
-    if (!sl_v8_str_valid(str) ||
-        str.length > static_cast<size_t>(std::numeric_limits<int>::max()) || out == nullptr)
-    {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    v8::MaybeLocal<v8::String> maybe =
-        v8::String::NewFromUtf8(isolate, str.ptr == nullptr ? "" : str.ptr,
-                                v8::NewStringType::kNormal, static_cast<int>(str.length));
-    if (!maybe.ToLocal(out)) {
-        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
-    }
-
-    return sl_status_ok();
 }
 
 void sl_v8_microtask_drain_promise_hook(v8::PromiseHookType type, v8::Local<v8::Promise> promise,
@@ -555,8 +504,9 @@ void sl_v8_register_handler_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     args.GetReturnValue().Set(v8::Undefined(isolate));
 }
 
-bool sl_v8_install_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context)
+bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context)
 {
+    v8::Isolate* isolate = backend == nullptr ? nullptr : backend->isolate;
     v8::Local<v8::String> name = v8::String::NewFromUtf8Literal(
         isolate, "__sloppy_register_handler", v8::NewStringType::kInternalized);
     v8::Local<v8::FunctionTemplate> function_template =
@@ -576,8 +526,9 @@ bool sl_v8_install_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> conte
     }
 
     if (!sl_status_is_ok(
-            sl_v8_to_local_string(isolate, sl_str_from_cstr("__sloppy"), &sloppy_key)) ||
-        !sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr("data"), &data_key)))
+            sl_v8_string_from_native_view(backend, sl_str_from_cstr("__sloppy"), &sloppy_key)) ||
+        !sl_status_is_ok(
+            sl_v8_string_from_native_view(backend, sl_str_from_cstr("data"), &data_key)))
     {
         return false;
     }
@@ -686,7 +637,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         backend->isolate->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
         v8::Local<v8::Context> context = v8::Context::New(backend->isolate);
         v8::Context::Scope context_scope(context);
-        if (!sl_v8_install_intrinsics(backend->isolate, context)) {
+        if (!sl_v8_install_intrinsics(backend, context)) {
             backend->isolate->SetData(0, nullptr);
             backend->isolate->Dispose();
             sl_resource_table_dispose(&backend->resources);
@@ -796,12 +747,12 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
     v8::TryCatch try_catch(isolate);
     v8::Local<v8::String> source_name_string;
 
-    status = sl_v8_to_local_string(isolate, source, &source_string);
+    status = sl_v8_string_from_native_view(backend, source, &source_string);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    status = sl_v8_to_local_string(isolate, source_name, &source_name_string);
+    status = sl_v8_string_from_native_view(backend, source_name, &source_name_string);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -956,7 +907,7 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
     v8::Context::Scope context_scope(context);
     v8::TryCatch try_catch(isolate);
 
-    status = sl_v8_to_local_string(isolate, function_name, &name_string);
+    status = sl_v8_string_from_native_view(backend, function_name, &name_string);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1079,7 +1030,7 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
     v8::Context::Scope context_scope(context);
     v8::TryCatch try_catch(isolate);
 
-    status = sl_v8_to_local_string(isolate, function_name, &name_string);
+    status = sl_v8_string_from_native_view(backend, function_name, &name_string);
     if (!sl_status_is_ok(status)) {
         return status;
     }

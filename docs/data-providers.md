@@ -316,6 +316,9 @@ Current bootstrap behavior:
   JavaScript; native C tests cover real ODBC driver-manager/driver detection.
 - native SQLite provider tests use the same `?` placeholder lowering contract at the C
   boundary.
+- native SQLite result text/blob values are copied into caller arenas before SQLite
+  statement finalization, and helper functions exist for future operation-owned text/blob
+  parameters before async/offloaded submission.
 - native PostgreSQL provider tests use the same `$1`, `$2`, ... placeholder lowering
   contract at the C boundary.
 - native SQL Server provider tests use the same `?` placeholder lowering contract at the C
@@ -329,7 +332,8 @@ Native SQLite behavior:
 - `exec` returns SQLite `changes`;
 - `query` returns arena-owned rows with stable column names and values;
 - `queryOne` returns the first row or `found = false`;
-- parameters support null, text, integer, float, and boolean as 0/1;
+- parameters support null, text, blob, integer, float, and boolean as 0/1;
+- text and blob results are arena-owned copies, not SQLite transient statement pointers;
 - unsupported parameter kinds fail before unsafe coercion;
 - nested transactions are rejected for now;
 - statements are finalized on all paths and close is deterministic.
@@ -350,7 +354,8 @@ SQLite JS bridge behavior:
 - `query` returns arrays of plain objects keyed by deterministic column names;
 - `queryOne` returns one plain object or `null`;
 - SQLite `NULL` maps to JavaScript `null`; integer and float values map to JavaScript
-  numbers; text maps to strings;
+  numbers; text maps to strings; blob values map to V8-owned `Uint8Array` instances when a
+  bridge path materializes them;
 - parameters are positional arrays containing only `null`, string, number, or boolean
   values;
 - wrapper double close is deterministic and idempotent; query/exec/queryOne after close

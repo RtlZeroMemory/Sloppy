@@ -52,11 +52,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
   artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
   optimization hooks, versioning, and internal tooling leverage.
-- Memory and string runtime follow-through: ENGINE-21.A/B/C/E/F now provide the primitive
+- Memory and string runtime follow-through: ENGINE-21.A/B/C/D/E/F now provide the primitive
   layer for app/request/temp/static lifetime rules, allocation policy, string/byte views,
   arena-owned copies, byte and string builders, formatting utilities, bounded app/static
-  string interning/symbol tables, and focused safety/stress tests. ENGINE-21.D still owns
-  V8/native conversion policy and SQLite text/blob ownership policy.
+  string interning/symbol tables, focused safety/stress tests, private V8/native string
+  conversion helpers, and SQLite text/blob ownership helpers.
 - Memory/string adoption and hot-path refactor: ENGINE-22 owns adoption across HTTP
   request parse/response write/body buffering, V8 conversions, SQLite row/result/parameter
   conversion, diagnostics/source frames/JSON, Plan/artifact loading, stable metadata
@@ -127,9 +127,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   handle ownership policy, leak reports, broader async request-scope retention, and debug
   lifecycle integration remain open.
 - Memory/string adoption completion: #32 is absorbed by ENGINE-21.C's primitive builder
-  surface, and ENGINE-22.A covers the current HTTP parser/body/response/route hot paths.
-  Public alpha should not claim top-notch memory/string hot-path behavior until #367
-  V8/SQLite interop policy is approved and the remaining ENGINE-22 adoption passes either
+  surface, #367 provides the V8/SQLite interop helper policy, and ENGINE-22.A covers the
+  current HTTP parser/body/response/route hot paths. Public alpha should not claim
+  top-notch memory/string hot-path behavior until the remaining ENGINE-22 adoption passes
   conform to requirements or are explicitly scoped down.
 
 ## Should Fix Soon

@@ -12,7 +12,9 @@
  * Safety invariants:
  * - sqlite3 headers and native handle casts stay in this provider-specific file;
  * - SQLite statements are finalized on every path;
- * - result rows, column names, diagnostics, and text values are copied into caller arenas;
+ * - result rows, column names, diagnostics, and text/blob values are copied into caller
+ *   arenas before SQLite statement lifetime can invalidate them;
+ * - parameter text/blob copy helpers provide operation-owned inputs for future offload;
  * - JavaScript-facing bootstrap code never receives this module's native pointer.
  *
  * Tests: tests/unit/data/test_sqlite.c.
@@ -23,6 +25,8 @@
 
 #include <limits.h>
 #include <sqlite3.h>
+
+static const unsigned char sl_sqlite_empty_blob_sentinel = 0U;
 
 static SlStr sl_sqlite_literal(const char* ptr, size_t length)
 {
@@ -41,36 +45,6 @@ static sqlite3* sl_sqlite_db(SlSqliteConnection* connection)
     }
 
     return (sqlite3*)connection->handle;
-}
-
-static SlStatus sl_sqlite_copy_str(SlArena* arena, SlStr src, SlStr* out)
-{
-    void* ptr = NULL;
-    char* dst = NULL;
-    size_t index = 0U;
-    SlStatus status;
-
-    if (arena == NULL || out == NULL || !sl_sqlite_str_valid(src)) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    if (src.length == 0U) {
-        *out = sl_str_empty();
-        return sl_status_ok();
-    }
-
-    status = sl_arena_alloc(arena, src.length, 1U, &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    dst = (char*)ptr;
-    for (index = 0U; index < src.length; index += 1U) {
-        dst[index] = src.ptr[index];
-    }
-
-    *out = sl_str_from_parts(dst, src.length);
-    return sl_status_ok();
 }
 
 static SlStatus sl_sqlite_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code, SlStr message,
@@ -206,6 +180,21 @@ static SlStatus sl_sqlite_bind_params(sqlite3_stmt* stmt, const SlSqliteParam* p
         case SL_SQLITE_PARAM_BOOL:
             rc = sqlite3_bind_int(stmt, sqlite_index, param->value.boolean ? 1 : 0);
             break;
+        case SL_SQLITE_PARAM_BLOB:
+            if ((param->value.blob.length != 0U && param->value.blob.ptr == NULL) ||
+                param->value.blob.length > (size_t)INT_MAX)
+            {
+                return sl_sqlite_diag(
+                    arena, out_diag, SL_DIAG_DATABASE_UNSUPPORTED_VALUE,
+                    sl_sqlite_literal("unsupported sqlite parameter value",
+                                      sizeof("unsupported sqlite parameter value") - 1U),
+                    operation, NULL, sql, sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+            }
+            rc = sqlite3_bind_blob(stmt, sqlite_index,
+                                   param->value.blob.length == 0U ? &sl_sqlite_empty_blob_sentinel
+                                                                  : param->value.blob.ptr,
+                                   (int)param->value.blob.length, SQLITE_TRANSIENT);
+            break;
         default:
             return sl_sqlite_diag(
                 arena, out_diag, SL_DIAG_DATABASE_UNSUPPORTED_VALUE,
@@ -314,7 +303,7 @@ static SlStatus sl_sqlite_copy_columns(SlArena* arena, sqlite3_stmt* stmt, size_
     names = (SlStr*)ptr;
     for (index = 0U; index < column_count; index += 1U) {
         const char* name = sqlite3_column_name(stmt, (int)index);
-        status = sl_sqlite_copy_str(arena, sl_str_from_cstr(name), &names[index]);
+        status = sl_sqlite_copy_result_text_to_arena(arena, sl_str_from_cstr(name), &names[index]);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -330,6 +319,7 @@ static SlStatus sl_sqlite_copy_value(SlArena* arena, sqlite3_stmt* stmt, size_t 
     int type = SQLITE_NULL;
     int byte_count = 0;
     const unsigned char* text = NULL;
+    const void* blob = NULL;
 
     if (arena == NULL || stmt == NULL || out == NULL || column > (size_t)INT_MAX) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -355,8 +345,18 @@ static SlStatus sl_sqlite_copy_value(SlArena* arena, sqlite3_stmt* stmt, size_t 
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         out->kind = SL_SQLITE_VALUE_TEXT;
-        return sl_sqlite_copy_str(arena, sl_str_from_parts((const char*)text, (size_t)byte_count),
-                                  &out->value.text);
+        return sl_sqlite_copy_result_text_to_arena(
+            arena, sl_str_from_parts((const char*)text, (size_t)byte_count), &out->value.text);
+    case SQLITE_BLOB:
+        blob = sqlite3_column_blob(stmt, (int)column);
+        byte_count = sqlite3_column_bytes(stmt, (int)column);
+        if (byte_count < 0) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        out->kind = SL_SQLITE_VALUE_BLOB;
+        return sl_sqlite_copy_result_blob_to_arena(
+            arena, sl_bytes_from_parts((const unsigned char*)blob, (size_t)byte_count),
+            &out->value.blob);
     default:
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
@@ -415,6 +415,78 @@ SlSqliteOpenOptions sl_sqlite_open_options_memory(void)
     options.path = sl_str_from_cstr(":memory:");
     options.access = SL_SQLITE_ACCESS_READWRITE;
     return options;
+}
+
+SlStatus sl_sqlite_copy_result_text_to_arena(SlArena* arena, SlStr text, SlStr* out)
+{
+    SlOwnedStr copied = {0};
+    SlStatus status;
+
+    if (arena == NULL || out == NULL || !sl_sqlite_str_valid(text)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_str_copy_to_arena(arena, text, &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out = sl_owned_str_as_view(copied);
+    return sl_status_ok();
+}
+
+SlStatus sl_sqlite_copy_result_blob_to_arena(SlArena* arena, SlBytes blob, SlBytes* out)
+{
+    SlOwnedBytes copied = {0};
+    SlStatus status;
+
+    if (arena == NULL || out == NULL || (blob.length != 0U && blob.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_bytes_copy_to_arena(arena, blob, &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out = sl_owned_bytes_as_view(copied);
+    return sl_status_ok();
+}
+
+SlStatus sl_sqlite_param_copy_text_to_arena(SlArena* arena, SlStr text, SlSqliteParam* out_param)
+{
+    SlStr copied = {0};
+    SlStatus status;
+
+    if (out_param == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_sqlite_copy_result_text_to_arena(arena, text, &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out_param = (SlSqliteParam){.kind = SL_SQLITE_PARAM_TEXT, .value.text = copied};
+    return sl_status_ok();
+}
+
+SlStatus sl_sqlite_param_copy_blob_to_arena(SlArena* arena, SlBytes blob, SlSqliteParam* out_param)
+{
+    SlBytes copied = {0};
+    SlStatus status;
+
+    if (out_param == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_sqlite_copy_result_blob_to_arena(arena, blob, &copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out_param = (SlSqliteParam){.kind = SL_SQLITE_PARAM_BLOB, .value.blob = copied};
+    return sl_status_ok();
 }
 
 SlStatus sl_sqlite_open(SlArena* diag_arena, const SlSqliteOpenOptions* options,
