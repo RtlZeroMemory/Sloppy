@@ -1,11 +1,11 @@
 # Memory/String Adoption Map
 
-Status: strategic design for ENGINE-22 after the ENGINE-21.A/B/C/E/F primitive slice.
+Status: strategic design for ENGINE-22 after the ENGINE-21.A/B/C/D/E/F primitive slice.
 
-ENGINE-22 is the migration layer after ENGINE-21 primitives land. ENGINE-21.A/B/C/E/F now
-provide view/copy/hash helpers, bounded builders, bounded interning, and focused safety
-tests. ENGINE-21.D V8/SQLite interop policy remains a follow-up. ENGINE-22 should not be
-started by inventing helper code in individual subsystems; start with the primitive
+ENGINE-22 is the migration layer after ENGINE-21 primitives land. ENGINE-21.A/B/C/D/E/F now
+provide view/copy/hash helpers, bounded builders, bounded interning, focused safety tests,
+private V8 string interop helpers, and SQLite text/blob copy helpers. ENGINE-22 should not
+be started by inventing helper code in individual subsystems; start with the primitive
 contracts, then move hot paths in bounded PRs.
 
 Hot paths are marked with `hot`.
@@ -13,8 +13,8 @@ Hot paths are marked with `hot`.
 | Subsystem | Current files | Current primitive/pattern | Problem/risk | Target primitive | Expected benefit | Migration risk | Suggested task | Must be done before |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | HTTP parser/request/response `hot` | `src/core/http.c`, `src/core/http_context.c`, `src/core/http_response.c`, `src/main.c` | Arena copies for request head, manual append helpers, fixed response buffers, CLI socket buffers. | Fragmented header/target append can allocate/copy repeatedly; response writer has ad hoc byte builder; body buffer policy is still future. | Byte/string builder, request-owned buffer policy, response builder target, header/body lifetime rules. | Lower allocation pressure, one response/body policy, clearer request lifetime. | High: touches HTTP parse/write behavior and golden responses. | ENGINE-22.A | ENGINE-13 proper HTTP backend and ENGINE-19 HTTP conformance. |
-| V8 bridge string conversions `hot` | `src/engine/v8/engine_v8.cc`, `src/engine/v8/intrinsics_sqlite.cc` | `std::string`, `std::vector<std::string>`, V8 `Utf8Value`, arena copy helpers. | Duplicated conversion rules; transient `std::string` storage is correct now but not enough for async/offload. | Central V8 string conversion helpers and arena/request-owned native strings. | Predictable native/V8 lifetime, fewer duplicated helpers, safer async evolution. | High: V8-gated behavior and owner-thread policy. | ENGINE-22.D | ENGINE-14 module/bootstrap, ENGINE-15 diagnostics, ENGINE-17 SQLite bridge. |
-| SQLite row/result conversion `hot` | `src/data/sqlite.c`, `include/sloppy/data_sqlite.h`, `src/engine/v8/intrinsics_sqlite.cc` | Arena-owned text results; JS bridge materializes V8 row objects; parameter text lives in vector storage for sync call. | Blob policy absent; async/provider offload would need copied operation ownership; JS row conversion duplicates string conversion. | SQLite text/blob ownership policy, owned parameter buffers, V8 conversion helpers. | Safe provider offload path, clear result lifetime, stable row mapping. | High: provider and V8 bridge interaction. | ENGINE-22.E | ENGINE-17 SQLite runtime completion and ENGINE-19 SQLite conformance. |
+| V8 bridge string conversions `hot` | `src/engine/v8/engine_v8.cc`, `src/engine/v8/http_bridge.cc`, `src/engine/v8/intrinsics_sqlite.cc`, `src/engine/v8/string_interop.*` | Private V8 string interop helpers now own native view to V8 strings, V8 value to `std::string` staging, and arena-owned native text/byte copies. Some call sites still use local staging before full adoption. | ENGINE-22.D still needs to finish replacing remaining ad hoc staging and make conversion diagnostics consistent across bridge modules. | Central V8 string conversion helpers and arena/request-owned native strings everywhere. | Predictable native/V8 lifetime, fewer duplicated helpers, safer async evolution. | High: V8-gated behavior and owner-thread policy. | ENGINE-22.D | ENGINE-14 module/bootstrap, ENGINE-15 diagnostics, ENGINE-17 SQLite bridge. |
+| SQLite row/result conversion `hot` | `src/data/sqlite.c`, `include/sloppy/data_sqlite.h`, `src/engine/v8/intrinsics_sqlite.cc` | Arena-owned text/blob result cells, SQLite transient text/blob copy helpers, parameter text/blob copy helpers for future operation-owned submission, and JS bridge blob materialization as V8-owned bytes. | ENGINE-22.E still needs broader adoption for operation-owned parameters, prepared/async policy, row-shape decisions, and request/app ownership integration. | SQLite text/blob ownership policy, owned parameter buffers, V8 conversion helpers. | Safe provider offload path, clear result lifetime, stable row mapping. | High: provider and V8 bridge interaction. | ENGINE-22.E | ENGINE-17 SQLite runtime completion and ENGINE-19 SQLite conformance. |
 | Diagnostics/source frames/JSON `hot on failures` | `src/core/diagnostics.c`, `src/core/capability.c`, `src/core/http.c`, `src/core/route.c`, `src/core/plan_parse.c` | Diagnostic builder plus private text/JSON/source-frame writers and local hint builders. | Repeated length/write logic; future JSON/source-map diagnostics will expand duplication. | String builder, formatter, redaction builder. | Stable output with less repeated formatting code. | Medium/high: golden snapshot drift risk. | ENGINE-22.B | ENGINE-15 diagnostic completion. |
 | Plan parser/artifact loader | `src/core/plan_parse.c`, `include/sloppy/plan.h`, `src/main.c` | yyjson strings copied into arena; CLI loads fixed buffers and joins paths manually. | Plan parser is good; artifact loader/path/hash strings are ad hoc and CLI-local. | Arena copy helpers, path/string builder policy for artifact paths, stable byte spans for loaded assets. | Preserve parser safety while reducing CLI duplication. | Medium: startup failures and artifact diagnostics are sensitive. | ENGINE-22.C | ENGINE-14 bootstrap loading, ENGINE-18 CLI/dev loop, ENGINE-20 strong Plan. |
 | Plan/route/module/provider symbols `hot at startup and lookup` | `src/core/plan_parse.c`, `src/core/route.c`, `src/core/app_host.c`, `src/core/capability.c`, `src/core/runtime_registry.c` | Repeated app-lifetime strings are copied/views and compared by bytes; no stable interned symbol abstraction exists. | Route/Plan/provider graphs can accumulate duplicate names and repeated byte comparisons; later typed Plan work needs stable metadata identity. | Bounded app/static intern table, symbol IDs or interned views, collision-safe hash/equality helpers. | Lower duplicate metadata ownership, faster stable graph lookup, clearer app lifetime. | High: public behavior must remain byte-equality correct and secrets must never be interned. | ENGINE-21.F then ENGINE-22.C/F | ENGINE-20 strong Plan, ENGINE-14 module/bootstrap, ENGINE-16 lifecycle. |
@@ -26,7 +26,7 @@ Hot paths are marked with `hot`.
 ## Recommended Implementation Order
 
 1. ENGINE-21.D locks V8/SQLite conversion policy on top of the implemented primitive
-   layer.
+   layer. Done; continue with adoption rather than adding new subsystem-local helpers.
 2. ENGINE-22.A migrates HTTP parser/request/response paths.
 3. ENGINE-22.B migrates diagnostics and CLI output.
 4. ENGINE-22.C migrates Plan/artifact/source-map loader patterns and starts interned

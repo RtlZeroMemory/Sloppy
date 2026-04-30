@@ -20,6 +20,23 @@ static int expect_str_equal(SlStr actual, const char* expected)
     return expect_true(sl_str_equal(actual, sl_str_from_cstr(expected)));
 }
 
+static int expect_bytes_equal(SlBytes actual, const unsigned char* expected, size_t length)
+{
+    size_t index = 0U;
+
+    if (actual.length != length || (length != 0U && (actual.ptr == NULL || expected == NULL))) {
+        return 1;
+    }
+
+    for (index = 0U; index < length; index += 1U) {
+        if (actual.ptr[index] != expected[index]) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static bool diag_has_hint(const SlDiag* diag, const char* hint)
 {
     size_t index = 0U;
@@ -44,6 +61,15 @@ static SlSqliteParam text_param(const char* value)
 
     param.kind = SL_SQLITE_PARAM_TEXT;
     param.value.text = sl_str_from_cstr(value);
+    return param;
+}
+
+static SlSqliteParam blob_param(const unsigned char* value, size_t length)
+{
+    SlSqliteParam param = {0};
+
+    param.kind = SL_SQLITE_PARAM_BLOB;
+    param.value.blob = sl_bytes_from_parts(value, length);
     return param;
 }
 
@@ -220,8 +246,11 @@ static int test_parameter_binding_and_types(void)
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
     SlSqliteConnection connection = {0};
-    SlSqliteParam params[] = {null_param(), text_param("Ada'); drop table values_test; --"),
-                              int_param(42), float_param(3.5), bool_param(true)};
+    unsigned char blob_bytes[] = {0x00U, 0x41U, 0xffU, 0x20U};
+    unsigned char expected_blob[] = {0x00U, 0x41U, 0xffU, 0x20U};
+    SlSqliteParam params[] = {null_param(),     text_param("Ada'); drop table values_test; --"),
+                              int_param(42),    float_param(3.5),
+                              bool_param(true), blob_param(blob_bytes, sizeof(blob_bytes))};
     SlSqliteExecResult exec_result = {0};
     SlSqliteQueryOneResult row = {0};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
@@ -233,30 +262,35 @@ static int test_parameter_binding_and_types(void)
         return 21;
     }
     if (exec_sql(&arena, &connection,
-                 "create table values_test (n, s text, i integer, f real, b integer)") != 0)
+                 "create table values_test (n, s text, i integer, f real, b integer, raw blob)") !=
+        0)
     {
         return close_and_return(&connection, 22);
     }
 
     status = sl_sqlite_exec(
         &arena, &connection,
-        sl_str_from_cstr("insert into values_test (n, s, i, f, b) values (?, ?, ?, ?, ?)"), params,
-        5U, &exec_result, NULL);
+        sl_str_from_cstr("insert into values_test (n, s, i, f, b, raw) values (?, ?, ?, ?, ?, ?)"),
+        params, 6U, &exec_result, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
         return close_and_return(&connection, 23);
     }
 
+    blob_bytes[1] = 0x5aU;
+
     status = sl_sqlite_query_one(&arena, &connection,
-                                 sl_str_from_cstr("select n, s, i, f, b from values_test"), NULL,
-                                 0U, &row, NULL);
-    if (expect_status(status, SL_STATUS_OK) != 0 || !row.found || row.column_count != 5U) {
+                                 sl_str_from_cstr("select n, s, i, f, b, raw from values_test"),
+                                 NULL, 0U, &row, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !row.found || row.column_count != 6U) {
         return close_and_return(&connection, 24);
     }
     if (row.values[0].kind != SL_SQLITE_VALUE_NULL || row.values[1].kind != SL_SQLITE_VALUE_TEXT ||
         expect_str_equal(row.values[1].value.text, "Ada'); drop table values_test; --") != 0 ||
         row.values[2].kind != SL_SQLITE_VALUE_INTEGER || row.values[2].value.integer != 42 ||
         row.values[3].kind != SL_SQLITE_VALUE_FLOAT || row.values[3].value.number != 3.5 ||
-        row.values[4].kind != SL_SQLITE_VALUE_INTEGER || row.values[4].value.integer != 1)
+        row.values[4].kind != SL_SQLITE_VALUE_INTEGER || row.values[4].value.integer != 1 ||
+        row.values[5].kind != SL_SQLITE_VALUE_BLOB ||
+        expect_bytes_equal(row.values[5].value.blob, expected_blob, sizeof(expected_blob)) != 0)
     {
         return close_and_return(&connection, 25);
     }
@@ -270,6 +304,53 @@ static int test_parameter_binding_and_types(void)
     }
 
     return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 27;
+}
+
+static int test_sqlite_text_blob_interop_helpers(void)
+{
+    unsigned char storage[128];
+    SlArena arena = {0};
+    SlStr text = sl_str_from_cstr("owned-text");
+    SlStr copied_text = sl_str_from_cstr("stale-text");
+    SlBytes blob = sl_bytes_from_parts((const unsigned char*)"abc", 3U);
+    SlBytes copied_blob = sl_bytes_from_parts((const unsigned char*)"old", 3U);
+    SlSqliteParam param = {.kind = SL_SQLITE_PARAM_INTEGER, .value.integer = 99};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 110;
+    }
+
+    status = sl_sqlite_copy_result_text_to_arena(&arena, text, &copied_text);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        !sl_str_equal(copied_text, sl_str_from_cstr("owned-text")) || copied_text.ptr == text.ptr)
+    {
+        return 111;
+    }
+
+    status = sl_sqlite_copy_result_blob_to_arena(&arena, blob, &copied_blob);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_bytes_equal(copied_blob, blob.ptr, blob.length) != 0 || copied_blob.ptr == blob.ptr)
+    {
+        return 112;
+    }
+
+    status = sl_sqlite_param_copy_text_to_arena(&arena, sl_str_from_parts(NULL, 4U), &param);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        param.kind != SL_SQLITE_PARAM_INTEGER || param.value.integer != 99)
+    {
+        return 113;
+    }
+
+    status = sl_sqlite_param_copy_blob_to_arena(&arena, blob, &param);
+    if (expect_status(status, SL_STATUS_OK) != 0 || param.kind != SL_SQLITE_PARAM_BLOB ||
+        expect_bytes_equal(param.value.blob, blob.ptr, blob.length) != 0 ||
+        param.value.blob.ptr == blob.ptr)
+    {
+        return 114;
+    }
+
+    return 0;
 }
 
 static int test_unsupported_parameter_diagnostic(void)
@@ -650,6 +731,11 @@ int main(void)
     }
 
     result = test_generic_sql_resynchronizes_transaction_state();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_text_blob_interop_helpers();
     if (result != 0) {
         return result;
     }

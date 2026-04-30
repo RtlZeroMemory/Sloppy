@@ -1,14 +1,14 @@
 # Memory/String Foundation Architecture
 
-Status: strategic design for ENGINE-21, with ENGINE-21.A/B/C/E/F primitive foundations
+Status: strategic design for ENGINE-21, with ENGINE-21.A/B/C/D/E/F primitive foundations
 implemented.
 
 ENGINE-21 makes memory and string handling a first-class engine foundation layer. It is not
 a bag of helper utilities. It defines the ownership, lifetime, allocation, and conversion
 rules that HTTP, V8, SQLite, diagnostics, Plan, CLI, and conformance work can depend on.
 This implementation slice provides the core lifetime/allocation rules, view/copy/hash
-helpers, bounded builders, bounded interning, and safety tests. V8/SQLite interop policy
-remains tracked by ENGINE-21.D / #367, and subsystem adoption remains ENGINE-22.
+helpers, bounded builders, bounded interning, V8/SQLite interop policy helpers, and safety
+tests. Broad subsystem adoption remains ENGINE-22.
 
 Core rule:
 
@@ -183,6 +183,9 @@ Native to V8:
 - Use explicit length when constructing V8 strings; do not rely on NUL termination.
 - Treat invalid conversion as a deterministic bridge failure or thrown JS exception.
 - Do not let V8 persist a pointer into native transient memory.
+- ENGINE-21.D provides the private `src/engine/v8/string_interop.*` helpers for native
+  view to V8 string conversion. They validate owner-thread entry through `SlV8Engine`, use
+  explicit byte lengths, and return no persistent native-backed V8 object.
 
 V8 to native:
 
@@ -192,18 +195,21 @@ V8 to native:
   when it is allowed and ENGINE-22 should remove duplicated conversion helpers.
 - Exception messages, stack summaries, result bodies, and SQLite parameters must cross the
   boundary with explicit copied ownership.
+- ENGINE-21.D keeps `std::string` as a private V8-module staging type only and centralizes
+  copy-to-arena helpers for text and bytes. Outputs remain unchanged on failed helper calls.
 
 Encoding:
 
 - V8 conversions are UTF-8 by construction where V8 APIs produce UTF-8 bytes.
 - Slop core string views remain byte-length views unless a specific API validates UTF-8.
+- No Sloppy helper currently performs Unicode normalization, validation, or collation.
 
 ## SQLite Interop Strategy
 
 SQLite text/blob ownership:
 
-- SQLite `text` and future `blob` values are valid only according to SQLite statement
-  lifetime rules and must be copied before statement step/finalize invalidates them.
+- SQLite `text` and `blob` values are valid only according to SQLite statement lifetime
+  rules and must be copied before statement step/finalize invalidates them.
 - Query results exposed to C or JS should be arena/request-owned unless the API explicitly
   returns an independently owned result object.
 - Statement/transaction strings and parameter text/blob values must outlive the provider
@@ -211,6 +217,14 @@ SQLite text/blob ownership:
   ownership before submission.
 - JS row materialization must copy from native result arenas into V8 objects on the owner
   thread; no V8 object should reference native row memory after conversion.
+- ENGINE-21.D provides `sl_sqlite_copy_result_text_to_arena`,
+  `sl_sqlite_copy_result_blob_to_arena`, `sl_sqlite_param_copy_text_to_arena`, and
+  `sl_sqlite_param_copy_blob_to_arena`. The synchronous native provider binds text/blob
+  parameters with SQLite transient ownership, and the helper API encodes the future
+  operation-owned async/offload rule before ENGINE-22.E migrates broader provider paths.
+- SQLite result rows now support arena-owned text and blob cells. The V8 SQLite bridge
+  materializes blob cells as V8-owned `Uint8Array` values, copying the bytes again rather
+  than retaining native arena pointers.
 
 Prepared statement policy remains an ENGINE-17 decision. ENGINE-21 only defines memory
 lifetime requirements so prepared statements cannot accidentally borrow short-lived SQL or
@@ -257,11 +271,11 @@ avoidance of copies.
 
 Implementation status:
 
-- ENGINE-21.A/B/C/E/F primitive work is implemented in `include/sloppy/string.h`,
+- ENGINE-21.A/B/C/D/E/F primitive work is implemented in `include/sloppy/string.h`,
   `include/sloppy/bytes.h`, `include/sloppy/builder.h`, `include/sloppy/intern.h`,
-  `src/core/string.c`, `src/core/bytes.c`, `src/core/builder.c`, `src/core/intern.c`, and
-  focused unit tests.
-- ENGINE-21.D remains a follow-up for V8/native and SQLite text/blob helper policy.
+  `include/sloppy/data_sqlite.h`, `src/core/string.c`, `src/core/bytes.c`,
+  `src/core/builder.c`, `src/core/intern.c`, `src/data/sqlite.c`,
+  `src/engine/v8/string_interop.*`, and focused unit tests.
 - ENGINE-22 remains the adoption layer for HTTP, diagnostics/CLI, Plan/artifacts, V8,
   SQLite, and cleanup/regression guards.
 

@@ -6,8 +6,8 @@
  * owner-thread checks, and Promise orchestration; HTTP-specific JS shapes live here.
  */
 #include "engine_v8_internal.h"
+#include "string_interop.h"
 
-#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,11 +19,6 @@ struct HttpV8HeaderEntry
     std::string name;
     std::string value;
 };
-
-bool http_v8_str_valid(SlStr str)
-{
-    return str.length == 0U || str.ptr != nullptr;
-}
 
 SlStr http_v8_literal(const char* ptr, size_t length)
 {
@@ -37,31 +32,30 @@ SlStr http_v8_str_from_string(const std::string& str)
 
 SlStatus http_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
-    if (isolate == nullptr || out == nullptr || !http_v8_str_valid(str) ||
-        str.length > static_cast<size_t>(std::numeric_limits<int>::max()))
-    {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    v8::MaybeLocal<v8::String> maybe =
-        v8::String::NewFromUtf8(isolate, str.ptr == nullptr ? "" : str.ptr,
-                                v8::NewStringType::kNormal, static_cast<int>(str.length));
-    if (!maybe.ToLocal(out)) {
-        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
-    }
-
-    return sl_status_ok();
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+    return sl_v8_string_from_native_view(backend, str, out);
 }
 
 std::string http_v8_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value)
 {
-    v8::String::Utf8Value utf8(isolate, value);
+    std::string text;
 
-    if (*utf8 == nullptr) {
+    if (!sl_v8_std_string_from_value(isolate, value, &text)) {
         return std::string();
     }
 
-    return std::string(*utf8, static_cast<size_t>(utf8.length()));
+    return text;
+}
+
+SlStatus http_v8_copy_string(SlArena* arena, const std::string& src, SlStr* out)
+{
+    return sl_v8_std_string_copy_to_arena(arena, src, out);
+}
+
+SlStatus http_v8_copy_bytes(SlArena* arena, const std::string& src, SlBytes* out)
+{
+    return sl_v8_std_string_copy_bytes_to_arena(arena, src, out);
 }
 
 std::string http_v8_ascii_lower_string(SlStr str)
@@ -96,62 +90,6 @@ std::string http_v8_ascii_lower_value(v8::Isolate* isolate, v8::Local<v8::Value>
     }
 
     return lowered;
-}
-
-SlStatus http_v8_copy_string(SlArena* arena, const std::string& src, SlStr* out)
-{
-    void* memory = nullptr;
-    char* dst = nullptr;
-
-    if (arena == nullptr || out == nullptr) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    if (src.empty()) {
-        *out = sl_str_empty();
-        return sl_status_ok();
-    }
-
-    SlStatus status = sl_arena_alloc(arena, src.size(), 1U, &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    dst = static_cast<char*>(memory);
-    for (size_t index = 0U; index < src.size(); index += 1U) {
-        dst[index] = src[index];
-    }
-
-    *out = sl_str_from_parts(dst, src.size());
-    return sl_status_ok();
-}
-
-SlStatus http_v8_copy_bytes(SlArena* arena, const std::string& src, SlBytes* out)
-{
-    void* memory = nullptr;
-    unsigned char* dst = nullptr;
-
-    if (arena == nullptr || out == nullptr) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    if (src.empty()) {
-        *out = sl_bytes_empty();
-        return sl_status_ok();
-    }
-
-    SlStatus status = sl_arena_alloc(arena, src.size(), 1U, &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    dst = static_cast<unsigned char*>(memory);
-    for (size_t index = 0U; index < src.size(); index += 1U) {
-        dst[index] = static_cast<unsigned char>(src[index]);
-    }
-
-    *out = sl_bytes_from_parts(dst, src.size());
-    return sl_status_ok();
 }
 
 SlStatus http_v8_write_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCode code,

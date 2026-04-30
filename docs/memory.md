@@ -45,8 +45,9 @@ cancellation/deadline-style statuses, and unsupported pre-handler outcomes.
 `SlAppLifecycle` now gives the app host an explicit startup/shutdown cleanup scope for
 app-lifetime resources.
 
-Allocator modules, a standalone heap-owned `SlBuf`, centralized V8/SQLite conversion
-helpers, and broad hot-path adoption remain deferred.
+Allocator modules, a standalone heap-owned `SlBuf`, and broad hot-path adoption remain
+deferred. ENGINE-21.D now defines the narrow V8/native and SQLite/native string/blob
+interop helper policy used by later ENGINE-22 adoption.
 
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 
@@ -413,7 +414,8 @@ Each primitive needs tests:
 - Add standalone `SlBuf` only when a heap/operation-owned buffer contract exists.
 - Add allocator interface with a default bootstrap allocator.
 - Add debug allocation tags.
-- Complete ENGINE-21.D V8/SQLite interop policy.
+- Complete ENGINE-21.D V8/SQLite interop policy. Done: private V8 conversion helpers and
+  SQLite text/blob copy helpers exist; broad call-site adoption remains ENGINE-22.
 - Complete ENGINE-22 adoption/refactor work for hot paths after ENGINE-21 lands.
 - Add resource ID layout and fixed-capacity resource table. Done in MAIN1-07 with
   slot/generation IDs, kind validation, cleanup callbacks, and bridge policy docs.
