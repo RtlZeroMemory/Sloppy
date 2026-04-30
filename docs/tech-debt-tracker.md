@@ -27,10 +27,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   returned Promises that settle during the owner-thread microtask drain, rejection
   diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
   for the bounded call.
-- Provider execution runtime beyond ENGINE-23.A/B/C serialized admission/execution:
+- Provider execution runtime beyond ENGINE-23.A/B/C/D serialized and blocking-pool
+  admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded
-  admission, and serialized SQLite-class blocking execution now exist. Remaining
-  ENGINE-23 work owns bounded blocking pools (#394), cancellation/timeout/late-completion
+  admission, serialized SQLite-class blocking execution, and bounded blocking-pool
+  execution now exist. Remaining ENGINE-23 work owns cancellation/timeout/late-completion
   detail (#395), capability-gated dispatch (#396), and diagnostics/stress evidence (#397).
   This must land before ENGINE-17 claims scalable SQLite provider execution or future
   PostgreSQL/SQL Server bridges depend on provider runtime behavior.
@@ -222,12 +223,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   EPIC-24 classic bootstrap runtime handoff.
 - V8 process shutdown policy and whether process-wide platform teardown is ever attempted.
   Per-engine destroy is defined; global V8 platform teardown remains deliberately deferred.
-- Threading model evolution beyond the serialized provider worker: bounded blocking pools,
-  provider-specific cancellation, stress evidence, and owner-thread continuation evidence
-  for real provider bridges.
+- Threading model evolution beyond provider worker execution: provider-specific
+  cancellation, stress evidence, and owner-thread continuation evidence for real provider
+  bridges.
 - Async provider strategy under ENGINE-23: serialized SQLite-class blocking calls,
-  bounded blocking pools, nonblocking libpq/socket integration, and
-  cancellation/deadline semantics by provider.
+  bounded blocking pools for parallel-safe providers, nonblocking libpq/socket integration,
+  and cancellation/deadline semantics by provider.
 - Cross-platform SQL Server support versus Windows-first ODBC-only policy.
 - Filesystem/network capability semantics: path normalization, symlinks, config/env
   access, and honest non-sandboxing language.

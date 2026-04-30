@@ -90,24 +90,24 @@ typedef struct SlProviderExecutorConfig
  */
 typedef struct SlProviderOperationDescriptor
 {
-    SlStr provider_instance_id;
-    SlStr provider_kind;
-    SlStr operation_name;
-    SlProviderOperationKind operation_kind;
-    SlProviderCapabilityRequirement capability;
-    SlProviderExecutionMode execution_mode;
     void* request_or_app_scope;
-    SlAsyncScopeRef scope;
     SlCancellationToken* cancellation;
     void* deadline;
-    SlBytes input;
     SlAsyncCompletionDispatchFn completion_dispatch;
     void* completion_dispatch_user;
-    SlStr diagnostic_context;
     SlProviderOperationRunFn run;
     void* run_user;
     SlProviderOperationCleanupFn cleanup;
     void* cleanup_user;
+    SlStr provider_instance_id;
+    SlStr provider_kind;
+    SlStr operation_name;
+    SlBytes input;
+    SlStr diagnostic_context;
+    SlProviderCapabilityRequirement capability;
+    SlAsyncScopeRef scope;
+    SlProviderOperationKind operation_kind;
+    SlProviderExecutionMode execution_mode;
 } SlProviderOperationDescriptor;
 
 typedef struct SlProviderExecutorSlot
@@ -173,6 +173,7 @@ struct SlProviderInstanceExecutor
     bool worker_running;
     SlPlatformMutex* mutex;
     SlPlatformCond* worker_cond;
+    SlPlatformThread** worker_threads;
     SlPlatformThread* worker_thread;
     SlOwnedStr instance_id;
     SlOwnedStr provider_kind;
@@ -212,11 +213,13 @@ sl_provider_operation_descriptor_set_diagnostic_context(SlProviderOperationDescr
 /*
  * Initializes a bounded per-provider-instance executor over caller-owned slot storage.
  *
- * SERIALIZED_BLOCKING starts one long-lived worker on init. Other modes currently model
- * per-provider-instance admission, mode metadata, pending/in-flight counts, terminal
- * completion posting, and shutdown policy without execution engines. `arena`, `slots`,
- * and `completion_loop` must outlive the executor. Provider work admitted here must never
- * block the V8 owner thread, and workers must never enter V8.
+ * SERIALIZED_BLOCKING starts one long-lived worker on init. BLOCKING_POOL starts a bounded
+ * number of long-lived workers on init and caps active work to configured max_in_flight,
+ * which must not exceed worker_count. Other modes currently model per-provider-instance
+ * admission, mode metadata, pending/in-flight counts, terminal completion posting, and
+ * shutdown policy without execution engines. `arena`, `slots`, and `completion_loop` must
+ * outlive the executor. Provider work admitted here must never block the V8 owner thread,
+ * and workers must never enter V8.
  *
  * Threading contract: this executor is caller-serialized. `init`, `dispose`, `submit`,
  * `complete`, `cancel`, `timeout`, `shutdown`, and query calls must not race with each

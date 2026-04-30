@@ -82,8 +82,11 @@ execution modes and a bounded per-provider-instance executor abstraction. ENGINE
 the `SERIALIZED_BLOCKING` worker lifecycle: one long-lived worker per provider instance,
 one active operation at a time, FIFO activation, completion posting through `SlAsyncLoop`,
 and cleanup-once behavior for success, failure, cancellation, timeout, overflow, shutdown,
-dispose, and late completion. It does not wire SQLite through async offload, run a
-blocking pool, or make benchmark claims.
+dispose, and late completion. ENGINE-23.D adds `BLOCKING_POOL` for provider instances that
+can safely parallelize blocking work: the pool starts a bounded number of long-lived
+workers, caps in-flight work at configured capacity no larger than worker count, keeps a
+bounded per-instance queue, and rejects overflow before ownership transfer. Neither mode
+wires SQLite through async offload or makes benchmark claims.
 
 ENGINE-23 is the provider execution runtime layer after ENGINE-12. It owns production
 provider operation descriptors, per-provider-instance executors, serialized SQLite-class
@@ -421,9 +424,10 @@ Provider execution modes are Slop-owned policy, not libuv policy:
   a time for one provider instance. This is the default policy for a single SQLite
   connection unless a later provider-specific issue chooses different read/write
   semantics.
-- `BLOCKING_POOL`: a bounded worker pool for one provider instance when the provider is
-  documented as safe to parallelize blocking calls. ENGINE-23 turns this from policy into
-  production provider-runtime behavior.
+- `BLOCKING_POOL`: implemented as a bounded worker pool for one provider instance when the
+  provider is documented as safe to parallelize blocking calls. It does not create one
+  thread per request; worker count, queue capacity, and in-flight count are fixed by the
+  provider instance configuration.
 - `NONBLOCKING_IO`: true async provider/client operation through event backend readiness or
   provider async APIs. No provider worker is occupied while waiting.
 - `EXTERNAL_MANAGED`: a future escape hatch for externally managed runtimes or pools. It
@@ -497,10 +501,12 @@ operation ownership. Recovery is normal: once a queued operation completes and i
 drains, the same provider instance can accept more work.
 
 Provider executor shutdown is immediate-cancel in the current native skeleton: shutdown
-stops new admission, posts cancellation completions for pending/active operations, and runs
-cleanup when those completions drain. Future graceful drain periods may layer on top, but
-they must keep the same cleanup-once and late-completion rules. Pending JS continuations
-resume only through the V8 owner-thread scheduler; provider threads never resume JS.
+stops new admission, posts cancellation completions for pending operations, and preserves
+cleanup-once behavior when those completions drain. Already-running blocking worker
+callbacks are not forcibly interrupted by ENGINE-23.D; they finish or report provider
+failure through the normal async completion path, and richer cancellation/late-completion
+semantics remain #395. Pending JS continuations resume only through the V8 owner-thread
+scheduler; provider threads never resume JS.
 
 ## Scaling to Many Requests
 

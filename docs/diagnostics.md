@@ -64,10 +64,14 @@ operation kind, invalid execution mode, or malformed owned-input views,
 deadline/timeout, `SLOPPY_E_ENGINE_BACKPRESSURE` plus `SL_STATUS_CAPACITY_EXCEEDED` for
 overflow/admission failure, `SLOPPY_E_APP_LIFECYCLE` for shutdown cancellation, and
 provider-specific diagnostic codes for provider failures when a real provider reports one.
-ENGINE-23.C also records deterministic serialized-worker counters for worker failures,
-completion-post failures, and late worker completion after the operation is already
-terminal. Unsupported worker execution mode/backend attempts return `SL_STATUS_UNSUPPORTED`
-before ownership transfer.
+ENGINE-23.C/D also record deterministic worker counters for serialized and blocking-pool
+provider-like execution: worker start/stop counts, worker failures, completion-post
+failures, and late worker completion after the operation is already terminal. Blocking pool
+invalid configuration fails with `SL_STATUS_INVALID_ARGUMENT`, queue overload fails with
+`SL_STATUS_CAPACITY_EXCEEDED` plus the backpressure diagnostic path, shutdown rejection
+fails with `SL_STATUS_CANCELLED`, provider worker failures preserve the provider-specific
+diagnostic code supplied by the worker callback, and unsupported worker execution
+mode/backend attempts return `SL_STATUS_UNSUPPORTED` before ownership transfer.
 Future provider work may add more specific data-provider async codes, but it must keep
 cancelled, timed out, overflowed, shutdown, and provider-failed outcomes distinguishable.
 Provider executor diagnostics must not include raw native pointers, V8/libuv implementation

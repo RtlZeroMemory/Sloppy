@@ -105,8 +105,12 @@ through the Slop async runtime, and cleanup-once behavior on success, failure, o
 shutdown, dispose, and late completion. This is the default runtime model for future
 SQLite-class single-connection provider execution, but the real SQLite JS bridge still
 uses its existing synchronous provider path until ENGINE-17 routes it through the executor.
-`BLOCKING_POOL` remains #394 and detailed provider cancellation/late-completion semantics
-remain #395.
+ENGINE-23.D implements `BLOCKING_POOL` execution for provider-like native operations:
+bounded long-lived workers per provider instance, bounded queue and in-flight counts,
+deterministic overflow before ownership transfer, cleanup-once success/failure/shutdown
+behavior, and libuv completion posting. SQLite remains `SERIALIZED_BLOCKING` by default
+unless ENGINE-17 later changes that provider policy. PostgreSQL/SQL Server JavaScript
+bridges and detailed provider cancellation/late-completion semantics remain deferred.
 
 ## Provider Support Classification
 
@@ -136,7 +140,7 @@ Execution modes:
 | --- | --- |
 | `INLINE_FAST` | Bounded metadata/config work only. It must not block on I/O, database calls, disk, network, or contended locks. |
 | `SERIALIZED_BLOCKING` | Implemented serialized offload: one long-lived worker and one active operation at a time for one provider instance. This is the default for a single SQLite connection unless a later SQLite task changes the policy. |
-| `BLOCKING_POOL` | Future bounded worker pool for one provider instance when the provider is safe to parallelize blocking calls. |
+| `BLOCKING_POOL` | Implemented bounded worker pool for one provider instance when the provider is safe to parallelize blocking calls. Worker count, queue capacity, and in-flight count are fixed by provider instance configuration, and the pool does not create one thread per request. |
 | `NONBLOCKING_IO` | True async provider/client path through socket readiness or provider async APIs. No worker is occupied while waiting. |
 | `EXTERNAL_MANAGED` | Future escape hatch for external runtimes/pools. It still must use Sloppy admission, completion, diagnostics, cancellation, and lifetime rules. |
 
@@ -148,9 +152,10 @@ provider-specific async model outside Slop's admission/completion contract.
 
 ENGINE-23.A/B turns these modes into implementation-grade descriptor and admission
 contracts. ENGINE-23.C implements the serialized blocking worker model for provider-like
-native operations. `BLOCKING_POOL` follows in #394, cancellation/timeout/late-completion
-detail follows in #395, capability-gated dispatch follows in #396, diagnostics/stress
-evidence follows in #397, and real SQLite bridge conversion remains ENGINE-17.
+native operations, and ENGINE-23.D implements the bounded blocking pool worker model for
+provider-like native operations. Cancellation/timeout/late-completion detail follows in
+#395, capability-gated dispatch follows in #396, diagnostics/stress evidence follows in
+#397, and real SQLite bridge conversion remains ENGINE-17.
 
 Provider operation descriptors must own or retain all memory needed after submission: SQL
 strings, parameter text/blob values, provider config references, capability token,
@@ -826,10 +831,13 @@ TASK 09.C provides only an inline/fake `SlWorkerPool` skeleton that proves the c
 contract. It is not a database execution backend and must not be used to run blocking
 SQLite, libpq, ODBC, or filesystem work.
 
-ENGINE-23.C is now the first real provider worker runtime: `SERIALIZED_BLOCKING` work runs
-on a Slop-owned per-provider-instance worker and posts completion through the thread-safe
-`SlAsyncLoop` backend. Provider workers must never enter V8. The SQLite bridge has not yet
-been converted to this executor, and PostgreSQL/SQL Server bridge work remains deferred.
+ENGINE-23.C/D are now the first real provider worker runtimes:
+`SERIALIZED_BLOCKING` work runs on a Slop-owned per-provider-instance worker, and
+`BLOCKING_POOL` work runs on a bounded set of Slop-owned per-provider-instance workers for
+providers that can safely parallelize blocking calls. Both modes post completion through
+the thread-safe `SlAsyncLoop` backend. Provider workers must never enter V8. The SQLite
+bridge has not yet been converted to this executor, SQLite remains serialized by default,
+and PostgreSQL/SQL Server bridge work remains deferred.
 
 Likely first strategies:
 
