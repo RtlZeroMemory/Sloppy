@@ -56,6 +56,11 @@ typedef enum SlProviderExecutorShutdownPolicy
 typedef void (*SlProviderOperationCleanupFn)(SlProviderOperation* operation, void* user);
 typedef SlStatus (*SlProviderOperationRunFn)(SlProviderOperation* operation, void* user,
                                              SlDiagCode* out_diag_code, SlStr* out_message);
+typedef SlStatus (*SlProviderCapabilityCheckFn)(const SlCapabilityRegistry* registry,
+                                                SlArena* diag_arena, SlStr token,
+                                                SlCapabilityOperation operation,
+                                                SlStr provider_token, SlStr provider_kind,
+                                                SlDiag* out_diag, void* user);
 
 typedef struct SlProviderCapabilityRequirement
 {
@@ -67,10 +72,14 @@ typedef struct SlProviderExecutorConfig
 {
     SlStr instance_id;
     SlStr provider_kind;
+    SlStr provider_token;
     SlProviderExecutionMode mode;
     size_t queue_capacity;
     size_t worker_count;
     size_t max_in_flight;
+    const SlCapabilityRegistry* capability_registry;
+    SlProviderCapabilityCheckFn capability_check;
+    void* capability_check_user;
     void* app_owner;
     void* config_binding;
 } SlProviderExecutorConfig;
@@ -99,6 +108,7 @@ typedef struct SlProviderOperationDescriptor
     void* run_user;
     SlProviderOperationCleanupFn cleanup;
     void* cleanup_user;
+    SlDiag* admission_diag;
     SlStr provider_instance_id;
     SlStr provider_kind;
     SlStr operation_name;
@@ -143,6 +153,7 @@ struct SlProviderOperation
     void* cleanup_user;
     bool cleanup_ran;
     bool worker_claimed;
+    bool terminal_completion_drained;
     bool counted_in_flight;
     size_t sequence;
 };
@@ -178,6 +189,10 @@ struct SlProviderInstanceExecutor
     SlPlatformThread* worker_thread;
     SlOwnedStr instance_id;
     SlOwnedStr provider_kind;
+    SlOwnedStr provider_token;
+    const SlCapabilityRegistry* capability_registry;
+    SlProviderCapabilityCheckFn capability_check;
+    void* capability_check_user;
     void* app_owner;
     void* config_binding;
 };
@@ -205,6 +220,9 @@ SlStatus sl_provider_operation_descriptor_attach_scope(SlProviderOperationDescri
 SlStatus sl_provider_operation_descriptor_attach_cleanup(SlProviderOperationDescriptor* descriptor,
                                                          SlProviderOperationCleanupFn cleanup,
                                                          void* user);
+SlStatus
+sl_provider_operation_descriptor_attach_admission_diag(SlProviderOperationDescriptor* descriptor,
+                                                       SlDiag* out_diag);
 SlStatus sl_provider_operation_descriptor_attach_run(SlProviderOperationDescriptor* descriptor,
                                                      SlProviderOperationRunFn run, void* user);
 SlStatus
@@ -213,6 +231,15 @@ sl_provider_operation_descriptor_set_diagnostic_context(SlProviderOperationDescr
 
 /*
  * Initializes a bounded per-provider-instance executor over caller-owned slot storage.
+ *
+ * `config->capability_check` is required. The executor owns admission timing, but the
+ * caller supplies provider-specific policy so database, filesystem, network, and future
+ * native-addon providers can share the worker model without SQL-specific coupling here.
+ * `config->capability_registry` is borrowed for the executor lifetime when the supplied
+ * policy hook needs registry-backed Plan metadata.
+ * `config->provider_token` names the provider capability/policy token checked against
+ * submitted operation capabilities; when empty, the provider instance id is used as the
+ * token.
  *
  * SERIALIZED_BLOCKING starts one long-lived worker on init. BLOCKING_POOL starts a bounded
  * number of long-lived workers on init and caps active work to configured max_in_flight,
@@ -235,8 +262,10 @@ void sl_provider_executor_dispose(SlProviderInstanceExecutor* executor);
 /*
  * Submits one provider operation if capacity and shutdown/cancellation state allow it.
  *
- * On success, `out_operation` receives an arena-owned operation handle. On overflow,
- * shutdown, pre-cancelled tokens, or copy failure, no operation ownership is transferred.
+ * Capability denial, overflow, shutdown, pre-cancelled tokens, expired-deadline tokens, or
+ * copy failure reject before ownership transfer. On success, `out_operation` receives an
+ * arena-owned operation handle. If the descriptor has an attached admission diagnostic,
+ * capability denials write redacted diagnostic context into that caller-owned storage.
  */
 SlStatus sl_provider_executor_submit(SlProviderInstanceExecutor* executor, SlArena* arena,
                                      const SlProviderOperationDescriptor* descriptor,

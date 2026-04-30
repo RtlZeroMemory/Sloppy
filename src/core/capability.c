@@ -168,6 +168,8 @@ static SlStr sl_capability_operation_name(SlCapabilityOperation operation)
         return sl_capability_literal("connect", sizeof("connect") - 1U);
     case SL_CAPABILITY_OPERATION_LISTEN:
         return sl_capability_literal("listen", sizeof("listen") - 1U);
+    case SL_CAPABILITY_OPERATION_READWRITE:
+        return sl_capability_literal("readwrite", sizeof("readwrite") - 1U);
     default:
         return sl_capability_literal("unsupported", sizeof("unsupported") - 1U);
     }
@@ -180,6 +182,9 @@ static bool sl_capability_access_allows(SlCapabilityAccess actual, SlCapabilityO
     }
     if (operation == SL_CAPABILITY_OPERATION_WRITE) {
         return actual == SL_CAPABILITY_ACCESS_WRITE || actual == SL_CAPABILITY_ACCESS_READWRITE;
+    }
+    if (operation == SL_CAPABILITY_OPERATION_READWRITE) {
+        return actual == SL_CAPABILITY_ACCESS_READWRITE;
     }
     if (operation == SL_CAPABILITY_OPERATION_CONNECT) {
         return actual == SL_CAPABILITY_ACCESS_CONNECT ||

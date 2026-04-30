@@ -9,6 +9,7 @@
 #include "sloppy/provider_executor.h"
 
 #include "sloppy/assert.h"
+#include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 
 static bool sl_provider_str_valid(SlStr value)
@@ -158,7 +159,7 @@ sl_provider_operation_descriptor_attach_capability(SlProviderOperationDescriptor
                                                    SlStr token, SlCapabilityOperation operation)
 {
     if (descriptor == NULL || !sl_provider_str_valid(token) ||
-        operation < SL_CAPABILITY_OPERATION_READ || operation > SL_CAPABILITY_OPERATION_LISTEN)
+        operation < SL_CAPABILITY_OPERATION_READ || operation > SL_CAPABILITY_OPERATION_READWRITE)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -205,6 +206,18 @@ SlStatus sl_provider_operation_descriptor_attach_cleanup(SlProviderOperationDesc
 
     descriptor->cleanup = cleanup;
     descriptor->cleanup_user = user;
+    return sl_status_ok();
+}
+
+SlStatus
+sl_provider_operation_descriptor_attach_admission_diag(SlProviderOperationDescriptor* descriptor,
+                                                       SlDiag* out_diag)
+{
+    if (descriptor == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    descriptor->admission_diag = out_diag;
     return sl_status_ok();
 }
 
@@ -382,6 +395,11 @@ static void sl_provider_executor_finish_terminal_locked(SlProviderInstanceExecut
         return;
     }
 
+    if (operation->worker_claimed) {
+        operation->terminal_completion_drained = true;
+        return;
+    }
+
     sl_provider_operation_run_cleanup_once(operation);
     slot = sl_provider_executor_find_operation_slot(executor, operation);
     if (slot != NULL) {
@@ -447,6 +465,12 @@ static bool sl_provider_executor_config_valid(const SlProviderExecutorConfig* co
     {
         return false;
     }
+    if (config->capability_check == NULL) {
+        return false;
+    }
+    if (!sl_provider_str_valid(config->provider_token)) {
+        return false;
+    }
 
     if (config->mode == SL_PROVIDER_EXECUTION_BLOCKING_POOL) {
         if (config->worker_count == 0U) {
@@ -510,6 +534,15 @@ static void sl_provider_worker_main(void* user)
         if (!sl_provider_str_valid(message)) {
             message = sl_str_from_cstr("provider worker failed");
         }
+
+        sl_provider_executor_lock(executor);
+        operation->worker_claimed = false;
+        if (operation->state == SL_PROVIDER_OPERATION_TERMINAL &&
+            operation->terminal_completion_drained)
+        {
+            sl_provider_executor_finish_terminal_locked(executor, operation);
+        }
+        sl_provider_executor_unlock(executor);
 
         complete_status = sl_provider_operation_complete(operation, run_status, diag_code, message);
         sl_provider_executor_lock(executor);
@@ -642,9 +675,17 @@ SlStatus sl_provider_executor_init(SlProviderInstanceExecutor* executor, SlArena
         config->mode, config->max_in_flight, config->worker_count);
     executor->app_owner = config->app_owner;
     executor->config_binding = config->config_binding;
+    executor->capability_registry = config->capability_registry;
+    executor->capability_check = config->capability_check;
+    executor->capability_check_user = config->capability_check_user;
     status = sl_provider_copy_str(arena, config->instance_id, &executor->instance_id);
     if (sl_status_is_ok(status)) {
         status = sl_provider_copy_str(arena, config->provider_kind, &executor->provider_kind);
+    }
+    if (sl_status_is_ok(status)) {
+        SlStr provider_token =
+            sl_str_is_empty(config->provider_token) ? config->instance_id : config->provider_token;
+        status = sl_provider_copy_str(arena, provider_token, &executor->provider_token);
     }
     if (!sl_status_is_ok(status)) {
         *executor = (SlProviderInstanceExecutor){0};
@@ -741,6 +782,122 @@ static SlDiag sl_provider_diag(SlDiagCode code, SlStr message)
     return diag;
 }
 
+static SlStatus sl_provider_add_hint_pair(SlDiagBuilder* builder, SlStr prefix, SlStr value)
+{
+    SlStringBuilder hint_builder = {0};
+    SlStr hint = {0};
+    size_t hint_length = 0U;
+    SlStatus status;
+
+    if (builder == NULL || builder->arena == NULL || prefix.ptr == NULL ||
+        (value.length > 0U && value.ptr == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_checked_add_size(prefix.length, value.length, &hint_length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_string_builder_init_arena(&hint_builder, builder->arena, hint_length, hint_length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(&hint_builder, prefix);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(&hint_builder, value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    hint = sl_string_builder_view(&hint_builder);
+    return sl_diag_builder_add_hint_owned(builder, hint);
+}
+
+static bool sl_provider_hint_value_safe(SlStr value)
+{
+    size_t index = 0U;
+
+    if (!sl_provider_str_valid(value) || value.length > 128U) {
+        return false;
+    }
+    for (index = 0U; index < value.length; index += 1U) {
+        char ch = value.ptr[index];
+        bool safe = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                    (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-' || ch == ':';
+        if (!safe) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static SlStr sl_provider_safe_hint_value(SlStr value)
+{
+    if (!sl_provider_hint_value_safe(value)) {
+        return sl_str_from_cstr("<redacted>");
+    }
+    return value;
+}
+
+static SlStatus sl_provider_build_denied_diag(SlArena* arena, SlDiag* out_diag,
+                                              const SlProviderOperationDescriptor* descriptor,
+                                              SlStr provider_token, SlStr reason)
+{
+    SlDiagBuilder builder;
+    SlStatus status;
+
+    if (out_diag == NULL) {
+        return sl_status_ok();
+    }
+    *out_diag = (SlDiag){0};
+    if (arena == NULL || descriptor == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_diag_builder_init(&builder, arena, SL_DIAG_SEVERITY_ERROR,
+                                  SL_DIAG_PERMISSION_DENIED, reason);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_is_empty(descriptor->capability.token)) {
+        status =
+            sl_provider_add_hint_pair(&builder, sl_str_from_cstr("token: "),
+                                      sl_provider_safe_hint_value(descriptor->capability.token));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    status = sl_provider_add_hint_pair(&builder, sl_str_from_cstr("operation: "),
+                                       sl_provider_safe_hint_value(descriptor->operation_name));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status =
+        sl_provider_add_hint_pair(&builder, sl_str_from_cstr("provider instance: "),
+                                  sl_provider_safe_hint_value(descriptor->provider_instance_id));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_provider_add_hint_pair(&builder, sl_str_from_cstr("provider kind: "),
+                                       sl_provider_safe_hint_value(descriptor->provider_kind));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_is_empty(provider_token)) {
+        status = sl_provider_add_hint_pair(&builder, sl_str_from_cstr("provider: "),
+                                           sl_provider_safe_hint_value(provider_token));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    return sl_diag_builder_finish(&builder, out_diag);
+}
+
 static bool sl_provider_descriptor_valid(const SlProviderOperationDescriptor* descriptor)
 {
     return descriptor != NULL && descriptor->completion_dispatch != NULL &&
@@ -820,9 +977,12 @@ static void sl_provider_executor_activate_submitted(SlProviderInstanceExecutor* 
 }
 
 static SlStatus
-sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor,
+sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor, SlArena* arena,
                                          const SlProviderOperationDescriptor* descriptor)
 {
+    SlStr provider_token;
+    SlStatus status;
+
     if (executor == NULL || !sl_provider_descriptor_valid(descriptor) ||
         descriptor->execution_mode != executor->mode)
     {
@@ -836,6 +996,7 @@ sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor,
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    provider_token = sl_owned_str_as_view(executor->provider_token);
     if (executor->shutting_down) {
         executor->shutdown_rejected_count += 1U;
         return sl_status_from_code(SL_STATUS_CANCELLED);
@@ -846,6 +1007,26 @@ sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor,
     {
         return sl_status_from_code(
             sl_cancellation_status_code(sl_cancellation_token_reason(descriptor->cancellation)));
+    }
+
+    if (executor->capability_check != NULL) {
+        if (sl_str_is_empty(descriptor->capability.token)) {
+            status = sl_provider_build_denied_diag(
+                arena, descriptor->admission_diag, descriptor, provider_token,
+                sl_str_from_cstr("capability access denied: missing capability"));
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+
+        status = executor->capability_check(
+            executor->capability_registry, arena, descriptor->capability.token,
+            descriptor->capability.operation, provider_token, descriptor->provider_kind,
+            descriptor->admission_diag, executor->capability_check_user);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
 
     if (descriptor->run != NULL &&
@@ -911,7 +1092,7 @@ SlStatus sl_provider_executor_submit(SlProviderInstanceExecutor* executor, SlAre
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_provider_executor_validate_submission(executor, descriptor);
+    status = sl_provider_executor_validate_submission(executor, arena, descriptor);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1028,7 +1209,12 @@ static SlStatus sl_provider_operation_post_terminal(SlProviderOperation* operati
         operation->diag =
             sl_provider_diag(post_diag_code, sl_str_from_cstr("provider completion post failed"));
         operation->state = SL_PROVIDER_OPERATION_TERMINAL;
-        sl_provider_executor_finish_terminal_locked(operation->executor, operation);
+        if (operation->worker_claimed) {
+            operation->terminal_completion_drained = true;
+        }
+        else {
+            sl_provider_executor_finish_terminal_locked(operation->executor, operation);
+        }
         operation->executor->completion_post_failure_count += 1U;
         sl_provider_executor_unlock(operation->executor);
         return post_status;
@@ -1125,9 +1311,7 @@ SlStatus sl_provider_executor_shutdown(SlProviderInstanceExecutor* executor,
 
         sl_provider_executor_lock(executor);
         operation = executor->slots[index].operation;
-        if (operation != NULL && operation->run != NULL &&
-            operation->state == SL_PROVIDER_OPERATION_ACTIVE)
-        {
+        if (operation != NULL && operation->state == SL_PROVIDER_OPERATION_ACTIVE) {
             if (operation->cancellation != NULL &&
                 !sl_cancellation_token_is_cancelled(operation->cancellation))
             {
@@ -1135,8 +1319,6 @@ SlStatus sl_provider_executor_shutdown(SlProviderInstanceExecutor* executor,
                                                    SL_CANCELLATION_REASON_SHUTDOWN,
                                                    sl_str_from_cstr("provider executor shutdown"));
             }
-            sl_provider_executor_unlock(executor);
-            continue;
         }
         sl_provider_executor_unlock(executor);
         if (operation != NULL) {

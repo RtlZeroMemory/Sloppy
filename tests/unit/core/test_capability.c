@@ -191,6 +191,21 @@ static int test_database_read_write_policy(void)
     {
         return 15;
     }
+    status = sl_capability_check_database(&registry, &arena, sl_str_from_cstr("data.read"),
+                                          SL_CAPABILITY_OPERATION_READWRITE,
+                                          sl_str_from_cstr("data.main"), &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED || !diag_has_hint(&diag, "operation: readwrite"))
+    {
+        return 16;
+    }
+    if (expect_status(sl_capability_check_database(&registry, &arena, sl_str_from_cstr("data.rw"),
+                                                   SL_CAPABILITY_OPERATION_READWRITE,
+                                                   sl_str_from_cstr("data.main"), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 17;
+    }
     return 0;
 }
 

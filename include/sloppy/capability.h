@@ -29,7 +29,9 @@ typedef enum SlCapabilityOperation
     SL_CAPABILITY_OPERATION_READ = 1,
     SL_CAPABILITY_OPERATION_WRITE = 2,
     SL_CAPABILITY_OPERATION_CONNECT = 3,
-    SL_CAPABILITY_OPERATION_LISTEN = 4
+    SL_CAPABILITY_OPERATION_LISTEN = 4,
+    /* Provider operations that require both read and write authority. */
+    SL_CAPABILITY_OPERATION_READWRITE = 5
 } SlCapabilityOperation;
 
 /*

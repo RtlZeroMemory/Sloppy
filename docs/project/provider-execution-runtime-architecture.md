@@ -1,8 +1,8 @@
 # Provider Execution Runtime Architecture
 
 Status: ENGINE-23 strategic architecture with ENGINE-23.A/B descriptor/admission,
-ENGINE-23.C serialized blocking execution, and ENGINE-23.D blocking pool execution
-implemented.
+ENGINE-23.C serialized blocking execution, ENGINE-23.D blocking pool execution, and
+ENGINE-23.E/F terminal-state plus capability-gated dispatch implemented.
 
 ENGINE-23 creates Slop's provider execution and blocking offload runtime. It sits after
 ENGINE-12's generic async backend and before deeper provider, SQLite, HTTP, and public
@@ -213,10 +213,34 @@ Implemented in ENGINE-23.C/D:
 - worker callbacks receive only `SlProviderOperation` and caller-owned provider payload
   context; they must not touch V8 or JS handles.
 
+Implemented in ENGINE-23.E/F:
+
+- provider executors require a provider-supplied capability check hook at initialization;
+- provider submissions check capability token, required access, provider token, and
+  provider kind before slot reservation or worker execution; current database providers
+  supply a database capability checker, while future native providers/addons supply their
+  own pre-admission policy hook without changing the worker executor;
+- denied admission leaves operation ownership with the caller and may write a redacted
+  admission diagnostic to caller-provided diagnostic storage;
+- read operations require `read` or `readwrite`, write operations require `write` or
+  `readwrite`, and readwrite operations require `readwrite`;
+- pre-cancelled and deadline-cancelled operations reject before enqueue;
+- queued cancellation prevents worker execution when the worker has not claimed the
+  operation;
+- active cancellation, timeout, and shutdown post terminal completion without claiming that
+  the blocking native call was interrupted;
+- active-operation cleanup is deferred until the worker callback returns, so late
+  completion is cleanup-only and cannot double-settle or free payload still in use.
+
 ## 5. Worker And Executor Model
 
 Provider executors own worker lifecycle, queue admission, dispatch, completion posting,
 failure handling, shutdown handling, backpressure, and deterministic overflow.
+They are generic native-provider/offload infrastructure, not a SQL-only execution path:
+database providers are the first users, but the worker model is meant for any Sloppy-owned
+native provider/addon that may need bounded blocking work away from the engine owner
+thread. Blocking work must use these Slop-owned provider workers rather than libuv's
+shared threadpool.
 
 Common executor lifecycle:
 
@@ -274,6 +298,22 @@ Implemented in ENGINE-23.D:
   cleanup-once success/failure/shutdown behavior, and libuv completion posting without
   requiring V8 or live databases.
 
+Implemented in ENGINE-23.E/F:
+
+- admission is fail-closed when the executor is not initialized with a capability check
+  hook;
+- capability denial happens before queue slot reservation, before ownership transfer, and
+  before provider workers can observe the operation;
+- pending cancellation, expired deadline state, shutdown, insufficient capability access,
+  wrong capability kind, missing capability, provider-token mismatch, and provider-kind
+  mismatch are covered by native tests;
+- immediate shutdown posts shutdown terminal completions for queued and active operations;
+  active blocking callbacks finish later and are counted as late completions if they try to
+  complete after the shutdown terminal state;
+- cleanup remains exactly once across success, provider failure, cancellation, timeout,
+  shutdown, overflow, denied admission, completion-post failure, dispose, and late worker
+  completion.
+
 `SERIALIZED_BLOCKING` behavior:
 
 - single long-lived worker per provider instance;
@@ -294,8 +334,8 @@ Implemented in ENGINE-23.D:
 - no thread-per-request behavior;
 - overflow is deterministic and diagnostic-backed;
 - shutdown rejects new work, cancels pending work through terminal completions, lets
-  already-running worker callbacks complete safely under the current immediate-cancel
-  policy, and preserves cleanup-once behavior;
+  already-running worker callbacks finish without native interruption, treats their later
+  worker result as late completion, and preserves cleanup-once behavior;
 - provider-like tests prove parallel active execution is capped by configured workers and
   queued work is promoted without creating one thread per operation.
 
@@ -332,10 +372,10 @@ Provider-specific examples:
   bridge is scoped.
 - SQL Server may use ODBC cancellation if driver behavior is documented and tested.
 
-ENGINE-23.C preserves generic terminal-state correctness for pre-cancelled admission,
+ENGINE-23.E preserves generic terminal-state correctness for pre-cancelled admission,
 queued/active cancellation, timeout marking, immediate shutdown, and late worker result
-handling. Provider-specific interruption paths and richer cancellation/late-completion
-diagnostics remain #395.
+handling. Provider-specific interruption paths remain deferred provider-specific work; no
+SQLite, PostgreSQL, or SQL Server interruption hook is implemented here.
 
 ## 7. Capability And Security Model
 
@@ -352,9 +392,13 @@ Rules:
 - denied diagnostics identify token, operation, provider context, and access mismatch
   without exposing secret config values.
 
-The current runtime capability registry is immutable and Plan-backed. ENGINE-23.F wires
-that hook into provider dispatch so future provider bridges cannot accidentally call native
-provider code directly after parsing JS arguments.
+The current database runtime capability registry is immutable and Plan-backed. ENGINE-23.F
+wires provider-supplied capability hooks into dispatch so future provider bridges cannot
+accidentally call native provider code directly after parsing JS arguments. Executor
+initialization requires a capability hook and provider token; descriptor admission then
+checks the requested capability before enqueue. Missing capability, insufficient access,
+wrong capability kind, provider-token mismatch, and provider-kind mismatch reject before
+ownership transfer.
 
 ## 8. Libuv Relationship
 
@@ -427,8 +471,13 @@ Recommended implementation order:
 4. `TASK ENGINE-23.D`: Blocking Pool Executor and Admission Policy. Done for the native
    provider-like executor: per-instance workers, bounded queue/in-flight counts,
    deterministic overflow, shutdown/dispose cleanup, and libuv completion posting.
-5. `TASK ENGINE-23.E`: Provider Cancellation, Timeout, and Late Completion Semantics.
-6. `TASK ENGINE-23.F`: Capability-Gated Provider Dispatch.
+5. `TASK ENGINE-23.E`: Provider Cancellation, Timeout, and Late Completion Semantics. Done
+   for the native provider executor: pre-admission cancellation/deadline rejection, queued
+   cancellation, active terminal posting, immediate shutdown terminal states, deferred
+   active cleanup until worker return, and late-completion cleanup-only handling.
+6. `TASK ENGINE-23.F`: Capability-Gated Provider Dispatch. Done for the native provider
+   executor: registry-backed fail-closed admission, read/write/readwrite access checks,
+   provider-token/provider-kind mismatch denial, and redacted admission diagnostics.
 7. `TASK ENGINE-23.G`: Provider Executor Diagnostics and Stress Evidence.
 8. `TASK ENGINE-23.H`: Provider Runtime Integration Guide for SQLite/PostgreSQL/SQL Server.
 

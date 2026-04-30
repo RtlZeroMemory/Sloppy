@@ -72,10 +72,18 @@ invalid configuration fails with `SL_STATUS_INVALID_ARGUMENT`, queue overload fa
 fails with `SL_STATUS_CANCELLED`, provider worker failures preserve the provider-specific
 diagnostic code supplied by the worker callback, and unsupported worker execution
 mode/backend attempts return `SL_STATUS_UNSUPPORTED` before ownership transfer.
-Future provider work may add more specific data-provider async codes, but it must keep
-cancelled, timed out, overflowed, shutdown, and provider-failed outcomes distinguishable.
-Provider executor diagnostics must not include raw native pointers, V8/libuv implementation
-details, SQL parameter values, connection strings, or other secret-bearing payloads.
+ENGINE-23.E/F adds provider-executor admission diagnostics for capability denial through
+provider-supplied policy hooks and `SLOPPY_E_PERMISSION_DENIED`; the executor is not
+coupled to database-specific policy and keeps terminal outcomes distinguishable:
+`SLOPPY_E_ENGINE_CANCELLED` for caller cancellation, `SLOPPY_E_ENGINE_PROMISE_PENDING` for
+deadline/timeout, `SLOPPY_E_ENGINE_BACKPRESSURE` for overflow or completion-post pressure,
+`SLOPPY_E_APP_LIFECYCLE` for shutdown, and provider-specific diagnostic codes for provider
+failures. Late worker completion after cancellation, timeout, or shutdown increments the
+late-completion counter and is cleanup-only. Future provider work may add more specific
+data-provider async codes, but it must keep cancelled, timed out, overflowed, shutdown,
+permission-denied, and provider-failed outcomes distinguishable. Provider executor
+diagnostics must not include raw native pointers, V8/libuv implementation details, SQL
+parameter values, connection strings, or other secret-bearing payloads.
 
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic
@@ -428,9 +436,10 @@ Permissions diagnostics:
 - denied database token;
 - stale resource ID.
 
-MAIN1-10 uses `SLOPPY_E_PERMISSION_DENIED` for deterministic capability denials. Hints may
-include token, kind, operation, required/actual access, and provider token when safe. They
-must not include connection strings, passwords, API keys, raw provider handles, or native
+MAIN1-10 and ENGINE-23.F use `SLOPPY_E_PERMISSION_DENIED` for deterministic capability
+denials. Hints may include token, kind, operation, required/actual access, provider token,
+provider instance id/name, and provider kind when safe. They must not include connection
+strings, passwords, API keys, raw provider handles, SQL parameter values, or native
 pointers.
 
 ## Examples
