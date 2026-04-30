@@ -249,12 +249,13 @@ SQLite explicit-open option validation, absent public prepared handles, and SQLi
 behavior against a mocked native bridge. This remains Node test infrastructure only, not a
 Node compatibility claim.
 
-`data.sqlite.provider` is a native CTest target that links SQLite and covers in-memory
-open/close, use after close, exec, parameterized insert, query row shape, queryOne found and
-missing behavior, primitive parameter types including copied blob parameters/results,
-unsupported parameter diagnostics, transaction commit/rollback, nested transaction rejection,
-transaction use after complete, invalid SQL, missing table diagnostics, text/blob helper
-failure behavior, and invalid open diagnostics.
+`data.sqlite.provider` and its conformance alias
+`conformance.sqlite.native_provider` link SQLite and cover in-memory open/close, use after
+close, exec, parameterized insert, query row shape, queryOne found and missing behavior,
+primitive parameter types including copied blob parameters/results, unsupported parameter
+diagnostics, transaction commit/rollback, nested transaction rejection, transaction use
+after complete, invalid SQL, missing table diagnostics, text/blob helper failure behavior,
+and invalid open diagnostics.
 
 `engine.v8.smoke` adds V8-gated SQLite bridge coverage when the SDK is enabled. Those tests
 prove that JavaScript can resolve Plan provider metadata, pass the native capability hook,
@@ -264,12 +265,16 @@ handle policy, and receive deterministic stale/closed/invalid argument/capabilit
 failures. They are reported separately from default provider tests because default gates do
 not enable V8.
 
-`conformance.users_api_sqlite.localhost_transport` is V8-gated and builds
+`conformance.sqlite.bridge`, `conformance.sqlite.denied_capability`, and
+`conformance.users_api_sqlite.localhost_transport` are V8-gated. The users API transport
+case builds
 `examples/users-api-sqlite/app.js` before starting `sloppy run --artifacts` on localhost.
 It verifies seeded reads, route lookup, 404, POST JSON insertion, follow-up read visibility,
 invalid JSON, denied capability behavior, and server cleanup over real TCP bytes.
 
-`core.provider_executor` is the default native ENGINE-23 provider/offload source. It covers
+`core.provider_executor` and its conformance alias
+`conformance.capability.provider_executor` are the default native ENGINE-23
+provider/offload source. They cover
 execution-mode parsing, operation-kind metadata, descriptor helper failure preservation,
 invalid descriptor rejection, serialized admission, per-instance capacity isolation,
 overflow and recovery, copied input ownership, pre-cancelled and expired-deadline
@@ -283,10 +288,11 @@ blocking-pool worker caps, cleanup once, shutdown safety, and redacted admission
 diagnostics. It is not a live database test, benchmark, or SQLite async/offload conversion
 claim.
 
-`core.capability.registry` covers the runtime capability registry, database read/write
-and readwrite policy, provider mismatch denial, missing/wrong-kind/insufficient capability
-diagnostics, filesystem/network skeleton checks, and the bridge-ready deny-before-provider
-work contract.
+`core.capability.registry` and its conformance alias
+`conformance.capability.native_registry` cover the runtime capability registry, database
+read/write and readwrite policy, provider mismatch denial,
+missing/wrong-kind/insufficient capability diagnostics, filesystem/network skeleton checks,
+and the bridge-ready deny-before-provider work contract.
 
 `data.postgres.provider` is a native CTest target that links libpq and covers redaction,
 option validation, use after close, doctor diagnostics, and non-live pool lifecycle

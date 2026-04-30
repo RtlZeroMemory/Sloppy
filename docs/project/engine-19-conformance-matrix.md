@@ -61,7 +61,9 @@ New ENGINE-19 conformance tests should prefer these names:
 
 Existing tests do not need churn-only renames. Existing CTest names such as
 `conformance.hello.compile_artifacts`, `conformance.request_context.run_once`,
-`conformance.sqlite.bridge`, `conformance.users_api_sqlite.localhost_transport`, and
+`conformance.sqlite.native_provider`, `conformance.sqlite.bridge`,
+`conformance.capability.native_registry`,
+`conformance.users_api_sqlite.localhost_transport`, and
 `benchmarks.sloppy_bench.smoke_json` remain acceptable while their labels and docs make the
 lane clear.
 

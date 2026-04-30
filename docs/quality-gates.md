@@ -60,6 +60,14 @@ evidence lanes: `conformance.http.default_dispatch`, `conformance.transport.loca
 validated executables under matrix-aligned names. Default gate success still does not prove
 V8 execution; V8-gated success still does not prove default, package, live-provider,
 benchmark, keep-alive, streaming, or production-edge HTTP behavior.
+ENGINE-19.D adds first-class CTest registrations for the implemented SQLite and capability
+evidence lanes: `conformance.sqlite.native_provider`,
+`conformance.capability.native_registry`, `conformance.capability.provider_executor`,
+V8-gated `conformance.sqlite.*`, and
+`conformance.users_api_sqlite.localhost_transport`. Default SQLite/capability evidence
+still does not prove V8 execution, PostgreSQL/SQL Server JavaScript bridges,
+live-provider behavior, package smoke, async SQLite offload, benchmark claims, public alpha
+readiness, or production-edge HTTP behavior.
 
 ## Future Phase
 

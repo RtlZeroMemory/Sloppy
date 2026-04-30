@@ -84,9 +84,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   `docs/project/engine-19-conformance-matrix.md` with a small static CMake check. The
   ENGINE-19.BC V8/HTTP/async slice registers existing executable coverage under
   matrix-aligned CTest names for default synthetic HTTP dispatch, localhost transport MVP,
-  native async/backend semantics, and V8-gated runtime/HTTP/async behavior. The remaining
-  ENGINE-19 debt is SQLite/capability expansion and package outside-checkout smoke, not
-  broader runtime behavior hidden inside conformance PRs.
+  native async/backend semantics, and V8-gated runtime/HTTP/async behavior. ENGINE-19.D
+  registers the existing SQLite provider, capability registry, provider-executor denial,
+  V8 SQLite bridge, denied-capability, and users API localhost transport proof under
+  matrix-aligned SQLite/capability labels. The remaining ENGINE-19 debt is package
+  outside-checkout smoke, not broader runtime behavior hidden inside conformance PRs.
 - Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
   artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
   optimization hooks, versioning, and internal tooling leverage.

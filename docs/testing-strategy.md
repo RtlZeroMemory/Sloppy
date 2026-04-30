@@ -161,6 +161,15 @@ Runtime execution:
   executables when the executable already covers the documented behavior. The CTest name
   and labels must identify the evidence lane so reports do not blur default non-V8,
   V8-gated, localhost transport, and native async evidence;
+- ENGINE-19.D conformance follows the same registration rule for SQLite and capability
+  behavior. `conformance.sqlite.native_provider` is default native provider evidence;
+  `conformance.capability.native_registry` and
+  `conformance.capability.provider_executor` are default capability-policy/provider
+  admission evidence; `conformance.sqlite.*` bridge tests and
+  `conformance.users_api_sqlite.localhost_transport` are V8-gated and, for the users API,
+  localhost transport evidence. Default SQLite/capability success must not be reported as
+  V8 bridge, PostgreSQL/SQL Server bridge, live-provider, async SQLite offload, package,
+  benchmark, public alpha, or production-edge HTTP evidence;
 - future keep-alive and streaming tests must be reported as a separate HTTP/1.1 upgrade
   evidence set. They must cover sequential requests per connection, read-loop resume only
   after response write completion, idle timeout, max requests per connection, shutdown

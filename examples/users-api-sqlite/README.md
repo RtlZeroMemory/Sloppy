@@ -1,6 +1,7 @@
 # SQLite Users API Example
 
-Status: V8-gated ENGINE-17.E runtime proof fixture.
+Status: V8-gated ENGINE-17.E runtime proof fixture registered as
+`conformance.users_api_sqlite.localhost_transport`.
 
 This example is a deliberately small users API backed by SQLite:
 
