@@ -100,9 +100,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   non-SQLite cleanup pass for capability denial hint construction, OpenAPI path skeleton
   normalization, and the low-capacity denial-hint regression guard. Backend ownership,
   remaining CLI output, and allocation-aware conformance/benchmark guards remain open.
-- SQLite end-to-end: public JS handler path through native provider, capability enforcement,
-  cancellation-aware operation boundaries, app/request ownership, transactions/prepared
-  statement decision, and executable users API conformance.
+- SQLite end-to-end: ENGINE-17.E now proves the public JS handler path through native
+  SQLite provider calls, capability enforcement, request body handling, response JSON, and
+  executable users API conformance over localhost TCP. Remaining debt is cancellation-aware
+  async/offload operation boundaries, request-scope automatic provider ownership/leak
+  reporting, and production hardening beyond the proof fixture.
 - Capability/security integration: bridge enforcement before provider work and no OS
   sandbox claims.
 - App-host lifecycle/resource completion beyond ENGINE-07: provider ownership policy,
@@ -123,10 +125,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   source input still needs a scoped compiler handoff, cache keys, stale-artifact checks,
   source diagnostics, cleanup policy, and rebuild policy.
 - HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F and
-  ENGINE-24.A/B/C/D/E/F/G: redirect helpers, streaming/files, cookies, content
-  negotiation, future ENGINE-25 keep-alive/streaming implementation, graceful drain
-  behavior beyond immediate-cancel/drain-lite transport shutdown, V8 transport conformance
-  proof, users API proof, and production error pages.
+  ENGINE-24.A/B/C/D/E/F/G plus the ENGINE-17.E users API proof: redirect helpers,
+  streaming/files, cookies, content negotiation, future ENGINE-25 keep-alive/streaming
+  implementation, graceful drain behavior beyond immediate-cancel/drain-lite transport
+  shutdown, broader V8 transport conformance, and production error pages.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
   services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source

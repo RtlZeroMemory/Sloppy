@@ -44,7 +44,7 @@
 #define SL_RUN_FILE_MAX_BYTES 65536U
 #define SL_RUN_ARENA_BYTES 65536U
 #define SL_RUN_MAX_ROUTES SL_CLI_MAX_ROUTES
-#define SL_RUN_MAX_CLIENTS 16U
+#define SL_RUN_MAX_CLIENTS 4U
 #define SL_RUN_APP_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_MAX_BYTES 8192U
@@ -1039,6 +1039,8 @@ struct SlRunServer
     SlRunApp* app;
     uv_loop_t loop;
     uv_tcp_t listener;
+    unsigned char request_arena_storage[SL_RUN_ARENA_BYTES];
+    unsigned char dispatch_storage[SL_RUN_ARENA_BYTES];
     SlRunClient clients[SL_RUN_MAX_CLIENTS];
 };
 
@@ -1873,19 +1875,19 @@ static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_sc
     return sl_status_ok();
 }
 
-static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request, char* response,
-                                size_t response_capacity)
+static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestHead* request,
+                                             char* response, size_t response_capacity,
+                                             unsigned char* dispatch_storage,
+                                             size_t dispatch_storage_size)
 {
-    unsigned char dispatch_storage[SL_RUN_ARENA_BYTES];
     SlArena dispatch_arena = {0};
     SlScopeCleanup request_cleanups[SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS];
     SlRunDispatchContext dispatch_context = {0};
     SlDiag diag = {0};
     SlStatus status;
 
-    if (app == NULL || request == NULL || response == NULL ||
-        !sl_status_is_ok(
-            sl_arena_init(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage))))
+    if (app == NULL || request == NULL || response == NULL || dispatch_storage == NULL ||
+        !sl_status_is_ok(sl_arena_init(&dispatch_arena, dispatch_storage, dispatch_storage_size)))
     {
         return -1;
     }
@@ -1948,6 +1950,15 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
     (void)diag;
     return sl_run_write_response(response, response_capacity, 500U, "text/plain; charset=utf-8",
                                  sl_str_from_cstr("Sloppy handler failed\n"));
+}
+
+static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request, char* response,
+                                size_t response_capacity)
+{
+    unsigned char dispatch_storage[SL_RUN_ARENA_BYTES];
+
+    return sl_run_dispatch_head_with_storage(app, request, response, response_capacity,
+                                             dispatch_storage, sizeof(dispatch_storage));
 }
 
 static int sl_run_once(SlRunApp* app, const char* method, const char* target)
@@ -2269,7 +2280,6 @@ static SlRunReadState sl_run_client_request_read_state(SlRunClient* client, uv_s
 
 static int sl_run_client_dispatch_complete_request(SlRunClient* client, size_t complete_length)
 {
-    unsigned char request_arena_storage[SL_RUN_ARENA_BYTES];
     SlArena request_arena = {0};
     SlHttpRequestHead request = {0};
     SlDiag diag = {0};
@@ -2279,8 +2289,8 @@ static int sl_run_client_dispatch_complete_request(SlRunClient* client, size_t c
         return -1;
     }
 
-    if (!sl_status_is_ok(
-            sl_arena_init(&request_arena, request_arena_storage, sizeof(request_arena_storage))))
+    if (!sl_status_is_ok(sl_arena_init(&request_arena, client->server->request_arena_storage,
+                                       sizeof(client->server->request_arena_storage))))
     {
         return -1;
     }
@@ -2289,8 +2299,9 @@ static int sl_run_client_dispatch_complete_request(SlRunClient* client, size_t c
         &request_arena, sl_bytes_from_parts((const unsigned char*)client->request, complete_length),
         NULL, &request, &diag);
     if (sl_status_is_ok(status)) {
-        return sl_run_dispatch_head(client->server->app, &request, client->response,
-                                    sizeof(client->response));
+        return sl_run_dispatch_head_with_storage(
+            client->server->app, &request, client->response, sizeof(client->response),
+            client->server->dispatch_storage, sizeof(client->server->dispatch_storage));
     }
 
     return sl_run_write_response(

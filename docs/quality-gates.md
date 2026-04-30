@@ -44,6 +44,11 @@ one-request-per-connection, close-after-response, Content-Length-only bodies, de
 failure responses, and cleanup coherence. It is still separate from V8 transport execution,
 benchmark/performance evidence, keep-alive/pipelining/streaming support, live-provider
 evidence, and production-edge HTTP readiness.
+ENGINE-17.E users API localhost proof is V8-gated evidence. It builds the source fixture
+with `sloppyc`, starts `sloppy run --artifacts`, sends real localhost TCP HTTP requests,
+and verifies SQLite/capability/result/body behavior. Passing it does not prove default
+non-V8 V8 execution, async/offload SQLite, PostgreSQL/SQL Server JS bridges, public alpha
+readiness, benchmark performance, or production-edge HTTP behavior.
 
 ## Future Phase
 

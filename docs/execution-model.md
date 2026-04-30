@@ -249,6 +249,13 @@ sloppyc build app.js --out .sloppy
 sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173
 ```
 
+ENGINE-17.E proves that workflow for a small SQLite users API when the V8 SDK lane is
+enabled: source app -> `sloppyc build` -> `app.plan.json`/`app.js` -> `sloppy run
+--artifacts` -> localhost TCP HTTP -> request parsing/body policy -> route dispatch -> V8
+handler -> capability-gated SQLite bridge -> JSON response -> TCP write. The current
+SQLite bridge in that path is synchronous and single-thread-owned; async/offload provider
+conversion remains deferred.
+
 `sloppy run app.js`, `app.run`, and `app.listen` are deferred until a real source-input
 handoff exists. The execution model should still support the app-host API without making
 users think about generated handler functions, bridge intrinsics, or plan files once that

@@ -37,6 +37,12 @@ conformance may execute `sloppy run --artifacts --once` and must be reported sep
 Unsupported or future behavior belongs in negative conformance or an explicit deferred
 marker, not a fake passing fixture.
 
+ENGINE-17.E adds a V8-gated users API conformance proof that compiles a source SQLite app,
+starts `sloppy run --artifacts` on localhost, sends raw TCP HTTP requests, and verifies
+SQLite-backed JSON responses plus denied-capability and invalid-JSON failures. This is
+workflow evidence, not benchmark, keep-alive, streaming, production-edge HTTP, public
+alpha, PostgreSQL, or SQL Server evidence.
+
 ## Test Categories
 
 - C unit tests;
@@ -134,6 +140,10 @@ Runtime execution:
   policy for the implemented one-request-per-connection MVP, and verify cleanup/counter
   coherence. They are correctness smoke, not benchmark, keep-alive, pipelining, streaming,
   V8, live-provider, or production-edge evidence;
+- V8-gated users API transport tests may combine compiler artifacts, `sloppy run`,
+  localhost TCP, request body handling, V8 handler execution, and SQLite bridge calls.
+  They must still report the V8 SDK prerequisite explicitly and must not describe the
+  current synchronous SQLite bridge as async/offloaded provider execution;
 - future keep-alive and streaming tests must be reported as a separate HTTP/1.1 upgrade
   evidence set. They must cover sequential requests per connection, read-loop resume only
   after response write completion, idle timeout, max requests per connection, shutdown
