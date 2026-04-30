@@ -36,7 +36,9 @@ shapes.
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the
 native SQLite bridge and passes Plan/capability metadata into the engine; in bootstrap-only
-or non-V8 contexts they report bridge-unavailable. `data.postgres.open(...)` and
+or non-V8 contexts they report bridge-unavailable. In V8 contexts with that bridge
+installed, denied SQLite operations fail with capability-access errors rather than
+bridge-unavailable errors. `data.postgres.open(...)` and
 `data.sqlserver.open(...)` are future stdlib entry points for native providers and still
 report bridge-unavailable until their own bridge modules exist.
 `Sloppy.createBuilder()` exposes minimal config, logging, capabilities, and services builders;

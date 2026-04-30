@@ -1809,7 +1809,8 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
                 engine, sl_str_from_cstr("sqlite-bridge.js"),
                 sl_str_from_cstr(
                     "globalThis.sqliteSmoke = function () {"
-                    "  const db = __sloppy.data.sqlite.open({ provider: 'data.main' });"
+                    "  const db = __sloppy.data.sqlite.open({ provider: 'sqlite', database: "
+                    "':memory:', capability: 'data.main' });"
                     "  __sloppy.data.sqlite.exec(db, 'create table users (id integer primary key, "
                     "name text not null)', []);"
                     "  __sloppy.data.sqlite.exec(db, 'insert into users (name) values (?)', "
@@ -2133,7 +2134,8 @@ static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
                 engine, sl_str_from_cstr("sqlite-denied.js"),
                 sl_str_from_cstr(
                     "globalThis.sqliteDenied = function () {"
-                    "  const db = __sloppy.data.sqlite.open({ provider: 'data.main' });"
+                    "  const db = __sloppy.data.sqlite.open({ provider: 'sqlite', database: "
+                    "':memory:', capability: 'data.main', access: 'write' });"
                     "  try {"
                     "    __sloppy.data.sqlite.exec(db, 'create table users (id integer)', []);"
                     "    __sloppy.data.sqlite.queryOne(db, 'select id from users', []);"

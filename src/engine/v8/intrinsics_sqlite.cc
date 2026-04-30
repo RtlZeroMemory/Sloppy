@@ -162,7 +162,7 @@ bool sqlite_v8_parse_access(v8::Isolate* isolate, v8::Local<v8::Context> context
         return false;
     }
 
-    if (!access_present || access_text == "readwrite") {
+    if (!access_present || access_text == "write" || access_text == "readwrite") {
         *out = SL_SQLITE_ACCESS_READWRITE;
         return true;
     }
@@ -201,16 +201,8 @@ bool sqlite_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> c
 
     v8::Local<v8::Object> object = value.As<v8::Object>();
     if (!sqlite_v8_get_optional_object_string(isolate, context, object, "provider",
-                                              &out->provider_token, &provider_present))
-    {
-        return false;
-    }
-    if (provider_present) {
-        out->from_provider = true;
-        return !out->provider_token.empty();
-    }
-
-    if (!sqlite_v8_get_optional_object_string(isolate, context, object, "database", &database,
+                                              &out->provider_token, &provider_present) ||
+        !sqlite_v8_get_optional_object_string(isolate, context, object, "database", &database,
                                               &database_present) ||
         !sqlite_v8_get_optional_object_string(isolate, context, object, "path", &path,
                                               &path_present) ||
@@ -219,6 +211,18 @@ bool sqlite_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> c
         !sqlite_v8_parse_access(isolate, context, object, &out->access))
     {
         return false;
+    }
+
+    if (!database_present && !path_present && !capability_present) {
+        out->from_provider = provider_present;
+        return provider_present && !out->provider_token.empty();
+    }
+
+    if (provider_present) {
+        if (out->provider_token != "sqlite") {
+            return false;
+        }
+        out->provider_token.clear();
     }
 
     if (database_present && path_present && database != path) {

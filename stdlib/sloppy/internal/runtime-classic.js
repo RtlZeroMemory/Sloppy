@@ -106,8 +106,8 @@ Reason:
         }
 
         const access = options.access ?? "readwrite";
-        if (access !== "read" && access !== "readwrite") {
-            throw new TypeError("Sloppy sqlite.open access must be read or readwrite.");
+        if (access !== "read" && access !== "write" && access !== "readwrite") {
+            throw new TypeError("Sloppy sqlite.open access must be read, write, or readwrite.");
         }
 
         return Object.freeze({

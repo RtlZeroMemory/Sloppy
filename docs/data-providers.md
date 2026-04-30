@@ -165,11 +165,11 @@ V8 artifact/runtime handler shape:
 app.mapGet("/users", async ctx => {
   const db = data.sqlite("main");
   try {
-    db.exec("create table users (id integer primary key, name text not null)");
-    db.exec("insert into users (name) values (?)", ["Ada"]);
+    await db.exec("create table users (id integer primary key, name text not null)");
+    await db.exec("insert into users (name) values (?)", ["Ada"]);
     return Results.json(await db.query("select id, name from users", []));
   } finally {
-    db.close();
+    await db.close();
   }
 });
 ```

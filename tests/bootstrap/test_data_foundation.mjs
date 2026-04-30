@@ -167,12 +167,16 @@ function createForgedLoweredQuery() {
         database: ":memory:",
         capability: "data.main",
         access: "admin",
-    }), /access must be read or readwrite/);
+    }), /access must be read, write, or readwrite/);
     assertThrowsMessage(() => data.sqlite.open({
         database: ":memory:",
     }), /capability must be a non-empty string/);
     assertThrowsMessage(() => data.sqlite.open({
         database: ":memory:",
+        capability: "data.main",
+    }), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
+    assertThrowsMessage(() => data.sqlite.open({
+        path: ":memory:",
         capability: "data.main",
     }), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
     assertThrowsMessage(() => data.sqlite("main"), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
@@ -220,6 +224,12 @@ function createForgedLoweredQuery() {
         });
         const byProvider = data.sqlite("main");
         byProvider.close();
+        const writeDb = data.sqlite.open({
+            database: ":memory:",
+            capability: "data.main",
+            access: "write",
+        });
+        writeDb.close();
         assert.equal(data.sqlite.supports.nativeStdlibBridge, true);
         assert.equal(data.sqlite.__debug().nativeStdlibBridge, true);
         assert.deepEqual(db.exec("insert into users (name) values (?)", ["Ada"]), {
@@ -234,6 +244,8 @@ function createForgedLoweredQuery() {
         assert.deepEqual(calls, [
             ["open", ":memory:", "data.main", "readwrite", "sqlite"],
             ["open", undefined, undefined, undefined, "data.main"],
+            ["close", 1],
+            ["open", ":memory:", "data.main", "write", "sqlite"],
             ["close", 1],
             ["exec", 1, "insert into users (name) values (?)", ["Ada"]],
             ["query", 1, "select name from users", []],
