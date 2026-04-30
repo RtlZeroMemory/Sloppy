@@ -10,10 +10,13 @@ ENGINE-23.A/B defines the native provider/offload descriptor and bounded
 per-provider-instance admission model that future SQLite, PostgreSQL, and SQL Server
 runtime bridge work must use. ENGINE-23.C implements the serialized SQLite-class blocking
 offload model with one worker and one active operation per provider instance, bounded
-admission, Slop async completion posting, and cleanup-once behavior. Current SQLite bridge
-calls are still synchronous until ENGINE-17 converts them to the executor. Remaining
-provider runtime work: bounded blocking pools in #394, cancellation/late-completion detail
-in #395, capability-gated dispatch in #396, and diagnostics/stress evidence in #397.
+admission, Slop async completion posting, and cleanup-once behavior. ENGINE-23.D adds the
+bounded blocking pool executor for providers that can safely parallelize blocking work.
+ENGINE-23.E/F adds cancellation/timeout/shutdown terminal-state handling, late-completion
+cleanup-only behavior, and capability-gated dispatch before enqueue/execution. Current
+SQLite bridge calls are still synchronous until ENGINE-17 converts them to the executor.
+Remaining provider runtime work: diagnostics/stress evidence in #397 and provider runtime
+integration guidance in #398.
 
 ## Purpose
 
@@ -126,12 +129,25 @@ Async/offload ownership:
 
 - provider work must be admitted through a per-provider-instance Slop executor such as
   `sqlite:main` or `sqlite:audit`;
+- executor admission requires a provider token and provider-supplied capability check
+  hook; database hooks use the Plan-backed capability registry, but the executor itself is
+  generic native-provider/offload infrastructure and must not hardcode SQL policy;
+- capability denial happens before queue slot reservation, before ownership transfer, and
+  before provider worker execution;
+- read operations require `read` or `readwrite`, write operations require `write` or
+  `readwrite`, and readwrite operations require `readwrite`;
 - operation descriptors must copy SQL text, parameter strings/blobs, config values needed
   after submission, capability tokens, operation names, and diagnostic context before they
   leave the caller stack;
 - failed admission does not transfer ownership and does not run the operation cleanup
   callback; accepted operations are cleaned exactly once by terminal dispatch, shutdown, or
   dispose;
+- active cancellation, timeout, and shutdown post terminal state but do not guarantee that
+  a blocking native provider call stops immediately;
+- provider-specific SQLite interruption, PostgreSQL cancellation, and SQL Server
+  cancellation remain provider-specific future work;
+- late worker completion after cancellation, timeout, or shutdown is cleanup-only and must
+  not double-settle;
 - provider completion posts through `SlAsyncLoop` and can resume JS only through the V8
   owner-thread scheduler;
 - SQLite's default async execution mode is implemented as `SERIALIZED_BLOCKING` for a
@@ -227,16 +243,18 @@ default provider tests because default gates do not enable V8.
 `core.provider_executor` is the default native ENGINE-23 provider/offload source. It covers
 execution-mode parsing, operation-kind metadata, descriptor helper failure preservation,
 invalid descriptor rejection, serialized admission, per-instance capacity isolation,
-overflow and recovery, copied input ownership, cancellation, timeout, immediate shutdown,
-late completion, cleanup exactly once, serialized worker FIFO execution, one-active
-operation behavior, worker failure diagnostics, completion posting through the libuv async
-backend, and no ownership transfer on rejected worker submissions. It is not a live
-database test and does not claim SQLite async/offload conversion.
+overflow and recovery, copied input ownership, pre-cancelled and expired-deadline
+rejection before enqueue, queued cancellation before execution, active cancellation,
+timeout, immediate shutdown, late completion, cleanup exactly once, capability denial
+before enqueue, serialized worker FIFO execution, one-active operation behavior, worker
+failure diagnostics, completion posting through the libuv async backend, and no ownership
+transfer on rejected worker submissions. It is not a live database test and does not claim
+SQLite async/offload conversion.
 
 `core.capability.registry` covers the runtime capability registry, database read/write
-policy, provider mismatch denial, missing/wrong-kind/insufficient capability diagnostics,
-filesystem/network skeleton checks, and the bridge-ready deny-before-provider-work
-contract.
+and readwrite policy, provider mismatch denial, missing/wrong-kind/insufficient capability
+diagnostics, filesystem/network skeleton checks, and the bridge-ready deny-before-provider
+work contract.
 
 `data.postgres.provider` is a native CTest target that links libpq and covers redaction,
 option validation, use after close, doctor diagnostics, and non-live pool lifecycle

@@ -421,6 +421,14 @@ modules remain future work.
 
 Database providers are modules.
 
+Hard constraint: provider capabilities must not become routine TypeScript paperwork. The
+runtime needs capability metadata for enforcement and diagnostics, but the framework and
+compiler must generate the common provider capability entries from provider declarations
+instead of requiring CRUD app authors to hand-write raw Plan `capabilities` blocks.
+Hand-authored capability declarations are reserved for advanced cases such as split
+read/write grants, multi-tenant/provider routing, plugin providers, or production
+least-privilege reviews.
+
 SQLite:
 
 ```ts
@@ -496,6 +504,20 @@ Current TASK 15 bootstrap behavior:
   contexts report that the native stdlib bridge is unavailable.
 - `data.sqlite.open({ access: "read" })` performs read-capability checks only; the default
   `readwrite` open path requires write capability.
+
+Future framework/compiler requirement:
+
+- provider modules such as `postgres.module({ token: "data.main", ... })` and
+  `sqlite.module({ token: "data.main", ... })` must emit the default provider and
+  capability Plan metadata automatically;
+- `sloppyc` must preserve enough source/module attribution for `sloppy audit` and startup
+  diagnostics to explain the generated capability;
+- the default CRUD path should infer `readwrite` unless the provider/module declaration
+  explicitly narrows it;
+- advanced app code may still override or split capabilities explicitly, but examples and
+  tutorials must prefer generated provider capabilities;
+- direct low-level provider APIs that require manual capability tokens are escape hatches,
+  not the blessed application authoring path.
 
 Still not implemented: JavaScript-to-native PostgreSQL/SQL Server calls, production
 pooling, migrations, native provider scheduling/async offload, filesystem/network

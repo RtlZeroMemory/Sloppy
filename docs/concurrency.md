@@ -85,8 +85,12 @@ and cleanup-once behavior for success, failure, cancellation, timeout, overflow,
 dispose, and late completion. ENGINE-23.D adds `BLOCKING_POOL` for provider instances that
 can safely parallelize blocking work: the pool starts a bounded number of long-lived
 workers, caps in-flight work at configured capacity no larger than worker count, keeps a
-bounded per-instance queue, and rejects overflow before ownership transfer. Neither mode
-wires SQLite through async offload or makes benchmark claims.
+bounded per-instance queue, and rejects overflow before ownership transfer. ENGINE-23.E/F
+adds capability-gated admission and terminal-state policy for both worker modes: capability
+denial, pre-cancellation, expired-deadline state, overflow, and shutdown all happen before
+provider work starts when possible; active cancellation/timeout/shutdown posts terminal
+state while the blocking native callback is allowed to return later. Neither mode wires
+SQLite through async offload or makes benchmark claims.
 
 ENGINE-23 is the provider execution runtime layer after ENGINE-12. It owns production
 provider operation descriptors, per-provider-instance executors, serialized SQLite-class
@@ -500,13 +504,13 @@ executor returns `SL_STATUS_CAPACITY_EXCEEDED`, records overflow, and does not t
 operation ownership. Recovery is normal: once a queued operation completes and its cleanup
 drains, the same provider instance can accept more work.
 
-Provider executor shutdown is immediate-cancel in the current native skeleton: shutdown
-stops new admission, posts cancellation completions for pending operations, and preserves
-cleanup-once behavior when those completions drain. Already-running blocking worker
-callbacks are not forcibly interrupted by ENGINE-23.D; they finish or report provider
-failure through the normal async completion path, and richer cancellation/late-completion
-semantics remain #395. Pending JS continuations resume only through the V8 owner-thread
-scheduler; provider threads never resume JS.
+Provider executor shutdown is immediate-cancel in the current native executor: shutdown
+stops new admission, posts shutdown terminal completions for pending and active operations,
+and preserves cleanup-once behavior when completions drain and any claimed worker callback
+returns. Already-running blocking worker callbacks are not forcibly interrupted by
+ENGINE-23.E/F; their later result is treated as late completion and cannot double-settle.
+Pending JS continuations resume only through the V8 owner-thread scheduler; provider
+threads never resume JS.
 
 ## Scaling to Many Requests
 

@@ -76,6 +76,20 @@ breadth, and memory/string hot-path adoption claims are deferred until the engin
 foundation is coherent. SQLite runtime completion depends on ENGINE-23 before scalable
 provider execution can be claimed.
 
+Hard developer-ergonomics constraint for the post-core framework/compiler phase:
+capabilities are runtime truth, not normal app-author paperwork. Future framework and
+compiler work must automate provider/capability metadata for the common path. A TypeScript
+developer building an ordinary CRUD app must not have to hand-write raw capability blocks
+just to use `data.postgres("main")`, `data.sqlite("main")`, or equivalent provider module
+helpers. Provider modules, framework declarations, and `sloppyc` plan emission must derive
+the default provider token, capability token, access mode, provider kind, and safe audit
+metadata wherever the app shape is unambiguous. Manual capability declarations remain an
+advanced escape hatch for split read/write grants, multi-provider routing, plugin/provider
+hardening, and production least-privilege review. Do not treat ENGINE-23's runtime
+capability-gated dispatch as a finished developer experience; once Core and Engine
+foundation work is complete, the roadmap must include framework/compiler tasks that make
+capabilities generated, inspectable, and auditable by default.
+
 ## Status Key
 
 - Done: the scoped foundation slice is implemented and covered by default checks.

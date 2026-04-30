@@ -55,6 +55,13 @@ exposing filesystem or database APIs to user handlers.
 
 ## Capability Model
 
+Capability metadata is a runtime contract, not intended ceremony for ordinary app authors.
+The engine must fail closed when capability metadata is missing or invalid, but future
+framework/compiler work must generate common provider capability entries from
+provider/module declarations. Handwritten capability blocks should be necessary only for
+advanced policy shaping, plugin/provider hardening, split grants, or explicit production
+least-privilege review.
+
 A capability is a named authority token. Code receives a capability through services or
 explicit context, not through global APIs.
 
@@ -144,10 +151,30 @@ database access by token, provider, and read/write mode before a caller invokes 
 work. The V8 SQLite bridge now calls those hooks for open, exec, query, and queryOne when
 the app host passes the parsed Plan and capability registry into the engine.
 
-Future async/offloaded provider work must perform the same capability check before executor
-admission. No provider may bypass capability checks, queue capacity, cancellation/deadline
-state, or provider-executor shutdown policy. A denied capability must fail before provider
-work starts; overflow and shutdown are separate runtime states, not permission failures.
+Async/offloaded provider work performs a capability check before executor admission.
+Provider executors require a capability-check hook and a configured provider token. The
+executor is generic native-provider/offload infrastructure: it enforces that policy runs
+before admission, but database/filesystem/network/native-addon policy stays outside the
+executor instead of being hardcoded into `provider_executor`. Database providers pass the
+immutable Plan-backed capability registry to their hook. No provider may bypass capability
+checks, queue capacity, cancellation/deadline state, or provider-executor shutdown policy.
+A denied capability fails before queue slot reservation, ownership transfer, or provider
+worker execution; overflow and shutdown remain separate runtime states, not permission
+failures.
+
+Database access policy is deliberately small:
+
+- read operations require `read` or `readwrite`;
+- write operations require `write` or `readwrite`;
+- readwrite operations require `readwrite`;
+- provider-token mismatch rejects even when the access mode matches;
+- provider-kind mismatch rejects before execution;
+- wrong capability kind and missing capability reject before execution.
+
+Provider executor denial diagnostics may include capability token, operation name,
+provider instance id/name, provider kind, required access, actual safe metadata, and denial
+reason. They must not include SQL parameter values, connection strings, passwords, access
+tokens, raw provider handles, or native pointers.
 
 The SQLite hook is intentionally narrow: provider-specific V8 bridge code lives in
 `src/engine/v8/intrinsics_<provider>.cc`, while `engine_v8.cc` stays provider-neutral.

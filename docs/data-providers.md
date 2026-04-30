@@ -108,9 +108,16 @@ uses its existing synchronous provider path until ENGINE-17 routes it through th
 ENGINE-23.D implements `BLOCKING_POOL` execution for provider-like native operations:
 bounded long-lived workers per provider instance, bounded queue and in-flight counts,
 deterministic overflow before ownership transfer, cleanup-once success/failure/shutdown
-behavior, and libuv completion posting. SQLite remains `SERIALIZED_BLOCKING` by default
-unless ENGINE-17 later changes that provider policy. PostgreSQL/SQL Server JavaScript
-bridges and detailed provider cancellation/late-completion semantics remain deferred.
+behavior, and libuv completion posting. ENGINE-23.E/F adds terminal-state and
+capability-gated dispatch semantics to those executor modes: capability checks happen
+before queue slot reservation through a provider-supplied policy hook, pre-cancelled and
+expired-deadline work rejects before enqueue, queued cancellation prevents execution when
+possible, active cancellation/timeout/shutdown posts terminal state without claiming
+native interruption, and late worker results are cleanup-only. The executor model is
+generic Slop-owned native-provider/offload infrastructure, not SQL-only plumbing; future
+native providers/addons with blocking calls should use it rather than libuv's shared
+threadpool. SQLite remains `SERIALIZED_BLOCKING` by default unless ENGINE-17 later changes
+that provider policy. PostgreSQL/SQL Server JavaScript bridges remain deferred.
 
 ## Provider Support Classification
 
@@ -152,10 +159,11 @@ provider-specific async model outside Slop's admission/completion contract.
 
 ENGINE-23.A/B turns these modes into implementation-grade descriptor and admission
 contracts. ENGINE-23.C implements the serialized blocking worker model for provider-like
-native operations, and ENGINE-23.D implements the bounded blocking pool worker model for
-provider-like native operations. Cancellation/timeout/late-completion detail follows in
-issue `#395`, capability-gated dispatch follows in issue `#396`, diagnostics/stress
-evidence follows in issue `#397`, and real SQLite bridge conversion remains ENGINE-17.
+native operations, ENGINE-23.D implements the bounded blocking pool worker model for
+provider-like native operations, and ENGINE-23.E/F implements generic cancellation,
+timeout, shutdown, late-completion, and capability-gated dispatch behavior. Diagnostics/
+stress evidence follows in issue `#397`, and real SQLite bridge conversion remains
+ENGINE-17.
 
 Provider operation descriptors must own or retain all memory needed after submission: SQL
 strings, parameter text/blob values, provider config references, capability token,
@@ -166,11 +174,26 @@ double-settle. Cancellation has two layers: Slop cancellation/deadline terminal 
 optional provider-specific interruption later. SQLite interruption, PostgreSQL
 cancellation, and SQL Server cancellation remain provider-specific follow-ups.
 
+Executor dispatch is capability-gated. Each provider executor is initialized with the
+provider token plus a required capability-check hook. The database hook uses the
+Plan-backed capability registry for configured instances such as `data.main`; future
+non-database providers supply their own hook while preserving the same denial-before-
+enqueue contract. Submitted operations must carry a required capability token and access
+operation. Read requires `read` or `readwrite`, write requires `write` or `readwrite`, and
+readwrite requires `readwrite`. Missing capability, wrong capability kind, insufficient
+access, provider-token mismatch, and provider-kind mismatch all reject before enqueue and
+before ownership transfer. Denial diagnostics use safe tokens, operation names, provider
+instance/kind context, and registry metadata; they do not print raw native pointers,
+connection strings, SQL parameters, or secret config values.
+
 Overflow is normal runtime backpressure. A full provider-instance queue rejects admission
 with `SL_STATUS_CAPACITY_EXCEEDED`; the executor does not take ownership and the caller can
 map that to an HTTP overload/error response. Shutdown stops new admission and the current
-native skeleton uses immediate cancellation for pending/active provider work. Future drain
-periods must preserve cleanup-once and safe late-completion behavior.
+native executor uses immediate terminal cancellation for pending and active provider work.
+Already-running blocking provider callbacks are not forcibly interrupted; they finish
+later and their completion is treated as late cleanup-only behavior. Future drain periods
+or provider-specific interruption hooks must preserve cleanup-once and safe late-completion
+behavior.
 
 ## Future Phase Order
 
@@ -716,6 +739,13 @@ rollback are diagnostics.
 
 ## App Plan Contribution
 
+Hard constraint for future framework/compiler work: normal app authors should not
+hand-write the provider capability metadata shown here. Provider module declarations and
+`sloppyc` plan emission must generate default provider/capability entries for ordinary
+CRUD apps. Raw Plan capability blocks remain useful as the runtime representation, audit
+output, fixture format, and advanced escape hatch, but they are not the target TypeScript
+developer experience.
+
 Providers contribute:
 
 ```json
@@ -835,9 +865,12 @@ ENGINE-23.C/D are now the first real provider worker runtimes:
 `SERIALIZED_BLOCKING` work runs on a Slop-owned per-provider-instance worker, and
 `BLOCKING_POOL` work runs on a bounded set of Slop-owned per-provider-instance workers for
 providers that can safely parallelize blocking calls. Both modes post completion through
-the thread-safe `SlAsyncLoop` backend. Provider workers must never enter V8. The SQLite
-bridge has not yet been converted to this executor, SQLite remains serialized by default,
-and PostgreSQL/SQL Server bridge work remains deferred.
+the thread-safe `SlAsyncLoop` backend. Provider workers must never enter V8. This is
+generic native-provider/offload infrastructure, not a SQL-only executor; future native
+providers/addons with blocking calls should use these Slop-owned workers instead of
+libuv's shared threadpool. The SQLite bridge has not yet been converted to this executor,
+SQLite remains serialized by default, and PostgreSQL/SQL Server bridge work remains
+deferred.
 
 Likely first strategies:
 
