@@ -236,7 +236,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Reconcile stale GitHub issue labels: many open parent EPICs still say `status:deferred`
   after their scoped child tasks closed.
-- Decide whether to close or retitle legacy open tasks that are now superseded by
+- Decide whether to close or retitle superseded open tasks that are now covered by
   EPIC-21 onward.
 - Review `docs/project/current-issue-state-audit.md` and
   `docs/project/main-main1-issue-cleanup-plan.md`, then apply approved GitHub issue cleanup

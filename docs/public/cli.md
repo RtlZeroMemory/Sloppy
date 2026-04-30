@@ -149,6 +149,9 @@ presence before including deterministic `doctorChecks` from the metadata file.
 Live provider checks are not run by default. Provider availability that requires external
 servers, credentials, or machine-local drivers must stay opt-in in later CLI work.
 Connection-string-like check messages are redacted before text or JSON output.
+Redaction is shared with the diagnostic helper: secret key names remain visible for
+actionability, while secret values are replaced with deterministic `<redacted>` tokens in
+both text and JSON output.
 
 ## audit
 

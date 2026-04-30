@@ -39,6 +39,7 @@
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
+#define SL_CLI_DIAG_ARENA_BYTES 4096U
 #define SL_RUN_FILE_MAX_BYTES 65536U
 #define SL_RUN_ARENA_BYTES 65536U
 #define SL_RUN_MAX_ROUTES SL_CLI_MAX_ROUTES
@@ -561,6 +562,11 @@ static bool sl_cli_write_span(FILE* file, SlCliSpan span)
     return span.length == 0U || fwrite(span.ptr, 1U, span.length, file) == span.length;
 }
 
+static bool sl_cli_write_str(FILE* file, SlStr str)
+{
+    return str.length == 0U || fwrite(str.ptr, 1U, str.length, file) == str.length;
+}
+
 static void sl_cli_json_escape(FILE* file, SlCliSpan span)
 {
     static const char hex[] = "0123456789abcdef";
@@ -600,116 +606,41 @@ static void sl_cli_json_escape(FILE* file, SlCliSpan span)
     (void)fputc('"', file);
 }
 
-static bool sl_cli_secret_key_at(SlCliSpan text, size_t index)
+static SlStr sl_cli_redacted_span(SlArena* arena, SlCliSpan text)
 {
-    static const char* keys[] = {"password=", "pwd=", "access token=", "token=", "secret="};
-    size_t key_index = 0U;
+    SlStr redacted = sl_diag_redacted();
+    SlStatus status;
 
-    for (key_index = 0U; key_index < sizeof(keys) / sizeof(keys[0]); key_index += 1U) {
-        const char* key = keys[key_index];
-        size_t length = strlen(key);
-        size_t offset = 0U;
-        bool equal = true;
-
-        if (index + length > text.length) {
-            continue;
-        }
-        for (offset = 0U; offset < length; offset += 1U) {
-            char actual = text.ptr[index + offset];
-            char expected = key[offset];
-            if (actual >= 'A' && actual <= 'Z') {
-                actual = (char)(actual - 'A' + 'a');
-            }
-            if (actual != expected) {
-                equal = false;
-                break;
-            }
-        }
-        if (equal) {
-            return true;
-        }
+    if (arena == NULL) {
+        return redacted;
     }
 
-    return false;
+    status = sl_diag_redact_secrets(arena, sl_cli_span_str(text), &redacted);
+    return sl_status_is_ok(status) ? redacted : sl_diag_redacted();
 }
 
 static void sl_cli_write_redacted(FILE* file, SlCliSpan text)
 {
-    size_t index = 0U;
+    unsigned char storage[SL_CLI_DIAG_ARENA_BYTES];
+    SlArena arena;
+    SlStr redacted = sl_diag_redacted();
 
-    while (index < text.length) {
-        if (sl_cli_secret_key_at(text, index)) {
-            while (index < text.length && text.ptr[index] != '=') {
-                (void)fputc(text.ptr[index], file);
-                index += 1U;
-            }
-            if (index < text.length) {
-                (void)fputc('=', file);
-                index += 1U;
-            }
-            (void)fputs("<redacted>", file);
-            while (index < text.length && text.ptr[index] != ';' && text.ptr[index] != ' ' &&
-                   text.ptr[index] != '&' && text.ptr[index] != '\n' && text.ptr[index] != '\r')
-            {
-                index += 1U;
-            }
-        }
-        else {
-            (void)fputc(text.ptr[index], file);
-            index += 1U;
-        }
+    if (sl_status_is_ok(sl_arena_init(&arena, storage, sizeof(storage)))) {
+        redacted = sl_cli_redacted_span(&arena, text);
     }
-}
-
-static SlCliSpan sl_cli_redact_to_buffer(char* buffer, size_t capacity, SlCliSpan text)
-{
-    size_t index = 0U;
-    size_t out = 0U;
-
-    while (index < text.length && out + 1U < capacity) {
-        if (sl_cli_secret_key_at(text, index)) {
-            while (index < text.length && text.ptr[index] != '=' && out + 1U < capacity) {
-                buffer[out] = text.ptr[index];
-                out += 1U;
-                index += 1U;
-            }
-            if (index < text.length && out + 1U < capacity) {
-                buffer[out] = '=';
-                out += 1U;
-                index += 1U;
-            }
-            if (out + sizeof("<redacted>") < capacity) {
-                size_t redacted_index = 0U;
-                for (redacted_index = 0U; redacted_index < sizeof("<redacted>") - 1U;
-                     redacted_index += 1U)
-                {
-                    buffer[out] = "<redacted>"[redacted_index];
-                    out += 1U;
-                }
-            }
-            while (index < text.length && text.ptr[index] != ';' && text.ptr[index] != ' ' &&
-                   text.ptr[index] != '&' && text.ptr[index] != '\n' && text.ptr[index] != '\r')
-            {
-                index += 1U;
-            }
-        }
-        else {
-            buffer[out] = text.ptr[index];
-            out += 1U;
-            index += 1U;
-        }
-    }
-
-    buffer[out] = '\0';
-    return (SlCliSpan){buffer, out};
+    (void)sl_cli_write_str(file, redacted);
 }
 
 static void sl_cli_json_redacted(FILE* file, SlCliSpan text)
 {
-    char buffer[4096];
-    SlCliSpan redacted = sl_cli_redact_to_buffer(buffer, sizeof(buffer), text);
+    unsigned char storage[SL_CLI_DIAG_ARENA_BYTES];
+    SlArena arena;
+    SlStr redacted = sl_diag_redacted();
 
-    sl_cli_json_escape(file, redacted);
+    if (sl_status_is_ok(sl_arena_init(&arena, storage, sizeof(storage)))) {
+        redacted = sl_cli_redacted_span(&arena, text);
+    }
+    sl_cli_json_escape(file, sl_cli_span_from_str(redacted));
 }
 
 static void sl_cli_json_escape_lower(FILE* file, SlCliSpan span)
@@ -1404,9 +1335,19 @@ static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
 
 static void sl_run_print_diag(const char* prefix, const SlDiag* diag)
 {
+    unsigned char storage[SL_CLI_DIAG_ARENA_BYTES];
+    SlArena arena;
+    SlStr rendered = {0};
+
     sl_cli_write_cstr(stderr, prefix);
+    if (diag != NULL && sl_status_is_ok(sl_arena_init(&arena, storage, sizeof(storage))) &&
+        sl_status_is_ok(sl_diag_render_text(&arena, diag, &rendered)))
+    {
+        (void)sl_cli_write_str(stderr, rendered);
+        return;
+    }
     if (diag != NULL && !sl_str_is_empty(diag->message)) {
-        sl_cli_write_span(stderr, (SlCliSpan){diag->message.ptr, diag->message.length});
+        (void)sl_cli_write_str(stderr, diag->message);
         sl_cli_write_cstr(stderr, "\n");
         return;
     }

@@ -701,8 +701,9 @@ static int test_redaction_helper(void)
         return 101;
     }
     if (expect_str_equal(redacted,
-                         sl_str_from_cstr("password=****** PWD = ************; token:*** "
-                                          "postgres://ada:******@localhost/db API_KEY=***")) != 0)
+                         sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
+                                          "token:<redacted> postgres://ada:<redacted>@localhost/db "
+                                          "API_KEY=<redacted>")) != 0)
     {
         return 102;
     }

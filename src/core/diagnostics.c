@@ -16,7 +16,10 @@
  */
 #include "sloppy/diagnostics.h"
 
+#include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
+
+#define SL_DIAG_RENDER_CAPACITY_SLACK 128U
 
 static SlStr sl_diag_literal(const char* ptr, size_t length)
 {
@@ -82,44 +85,47 @@ static size_t sl_diag_decimal_len(size_t value)
     return length;
 }
 
-static void sl_diag_write_str(char* buffer, size_t* offset, SlStr str)
+static SlStatus sl_diag_builder_init_for_render(SlArena* arena, size_t capacity,
+                                                SlStringBuilder* builder)
 {
-    size_t index = 0U;
+    size_t bounded_capacity = 0U;
+    SlStatus status;
 
-    for (index = 0U; index < str.length; index += 1U) {
-        buffer[*offset + index] = str.ptr[index];
+    if (arena == NULL || builder == NULL || capacity == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    *offset += str.length;
+    /*
+     * Builder adoption keeps deterministic bounded preflight, with a small cushion so a
+     * length-accounting bug returns capacity failure instead of writing past the target.
+     */
+    status = sl_checked_add_size(capacity, SL_DIAG_RENDER_CAPACITY_SLACK, &bounded_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_string_builder_init_arena(builder, arena, bounded_capacity, bounded_capacity);
 }
 
-static void sl_diag_write_size(char* buffer, size_t* offset, size_t value)
+static SlStatus sl_diag_builder_append_literal(SlStringBuilder* builder, const char* literal,
+                                               size_t length)
 {
-    char digits[32];
-    size_t count = 0U;
-    size_t index = 0U;
-
-    do {
-        digits[count] = (char)('0' + (value % 10U));
-        value /= 10U;
-        count += 1U;
-    } while (value != 0U);
-
-    for (index = 0U; index < count; index += 1U) {
-        buffer[*offset + index] = digits[count - index - 1U];
-    }
-
-    *offset += count;
+    return sl_string_builder_append_str(builder, sl_diag_literal(literal, length));
 }
 
-static void sl_diag_write_char_repeat(char* buffer, size_t* offset, char value, size_t count)
+static SlStatus sl_diag_builder_append_repeat(SlStringBuilder* builder, char value, size_t count)
 {
     size_t index = 0U;
+    SlStatus status;
 
     for (index = 0U; index < count; index += 1U) {
-        buffer[*offset + index] = value;
+        status = sl_string_builder_append_char(builder, value);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
-    *offset += count;
+
+    return sl_status_ok();
 }
 
 static SlStatus sl_diag_add_len(size_t* total, size_t addend)
@@ -170,25 +176,49 @@ static SlStatus sl_diag_span_render_len(size_t* total, SlSourceSpan span)
     return sl_diag_add_len(total, 7U + sl_diag_decimal_len(span.length));
 }
 
-static void sl_diag_write_span(char* buffer, size_t* offset, SlSourceSpan span)
+static SlStatus sl_diag_builder_append_span(SlStringBuilder* builder, SlSourceSpan span)
 {
-    sl_diag_write_str(buffer, offset, sl_diag_render_path(span));
+    SlStatus status = sl_string_builder_append_str(builder, sl_diag_render_path(span));
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
 
     if (span.has_location) {
-        buffer[*offset] = ':';
-        *offset += 1U;
-        sl_diag_write_size(buffer, offset, span.line);
-        buffer[*offset] = ':';
-        *offset += 1U;
-        sl_diag_write_size(buffer, offset, span.column);
+        status = sl_string_builder_append_char(builder, ':');
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_size(builder, span.line);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_char(builder, ':');
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_size(builder, span.column);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
 
         if (span.length != 0U) {
-            sl_diag_write_str(buffer, offset, sl_diag_literal(" (len ", 6U));
-            sl_diag_write_size(buffer, offset, span.length);
-            buffer[*offset] = ')';
-            *offset += 1U;
+            status = sl_diag_builder_append_literal(builder, " (len ", 6U);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_size(builder, span.length);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_char(builder, ')');
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
     }
+
+    return sl_status_ok();
 }
 
 static SlStr sl_diag_first_hint(const SlDiag* diag)
@@ -654,14 +684,125 @@ SlStatus sl_diag_builder_finish(SlDiagBuilder* builder, SlDiag* out)
     return sl_status_ok();
 }
 
-SlStatus sl_diag_render_text(SlArena* arena, const SlDiag* diag, SlStr* out)
+static SlStatus sl_diag_builder_append_header(SlStringBuilder* builder, const SlDiag* diag)
+{
+    SlStatus status = sl_string_builder_append_str(builder, sl_diag_severity_name(diag->severity));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_char(builder, ' ');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(builder, sl_diag_code_name(diag->code));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, ": ", 2U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(builder, diag->message);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_string_builder_append_char(builder, '\n');
+}
+
+static SlStatus sl_diag_builder_append_primary(SlStringBuilder* builder, const SlDiag* diag)
 {
     SlStatus status;
-    size_t length = 0U;
-    size_t offset = 0U;
+
+    if (diag->primary_span.has_location || diag->primary_span.path.length != 0U) {
+        status = sl_diag_builder_append_literal(builder, "\n  at ", 6U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_builder_append_span(builder, diag->primary_span);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        return sl_string_builder_append_char(builder, '\n');
+    }
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_diag_builder_append_related(SlStringBuilder* builder, const SlDiag* diag)
+{
     size_t index = 0U;
-    void* ptr = NULL;
-    char* buffer = NULL;
+    SlStatus status;
+
+    if (diag->related_count == 0U) {
+        return sl_status_ok();
+    }
+
+    status = sl_diag_builder_append_literal(builder, "\n  related:\n", 12U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (index = 0U; index < diag->related_count; index += 1U) {
+        status = sl_diag_builder_append_literal(builder, "    ", 4U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_builder_append_span(builder, diag->related[index].span);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_builder_append_literal(builder, ": ", 2U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_str(builder, diag->related[index].message);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_char(builder, '\n');
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_diag_builder_append_hints(SlStringBuilder* builder, const SlDiag* diag)
+{
+    size_t index = 0U;
+    SlStatus status;
+
+    if (diag->hint_count == 0U) {
+        return sl_status_ok();
+    }
+
+    status = sl_diag_builder_append_literal(builder, "\n  help:\n", 9U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (index = 0U; index < diag->hint_count; index += 1U) {
+        status = sl_diag_builder_append_literal(builder, "    ", 4U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_str(builder, diag->hints[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_char(builder, '\n');
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    return sl_status_ok();
+}
+
+SlStatus sl_diag_render_text(SlArena* arena, const SlDiag* diag, SlStr* out)
+{
+    SlStringBuilder builder;
+    SlStatus status;
+    size_t length = 0U;
 
     if (arena == NULL || diag == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -671,52 +812,27 @@ SlStatus sl_diag_render_text(SlArena* arena, const SlDiag* diag, SlStr* out)
     if (!sl_status_is_ok(status)) {
         return status;
     }
-
-    status = sl_arena_alloc(arena, length, 1U, &ptr);
+    status = sl_diag_builder_init_for_render(arena, length, &builder);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-
-    buffer = (char*)ptr;
-    sl_diag_write_str(buffer, &offset, sl_diag_severity_name(diag->severity));
-    buffer[offset] = ' ';
-    offset += 1U;
-    sl_diag_write_str(buffer, &offset, sl_diag_code_name(diag->code));
-    sl_diag_write_str(buffer, &offset, sl_diag_literal(": ", 2U));
-    sl_diag_write_str(buffer, &offset, diag->message);
-    buffer[offset] = '\n';
-    offset += 1U;
-
-    if (diag->primary_span.has_location || diag->primary_span.path.length != 0U) {
-        sl_diag_write_str(buffer, &offset, sl_diag_literal("\n  at ", 6U));
-        sl_diag_write_span(buffer, &offset, diag->primary_span);
-        buffer[offset] = '\n';
-        offset += 1U;
+    status = sl_diag_builder_append_header(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-
-    if (diag->related_count != 0U) {
-        sl_diag_write_str(buffer, &offset, sl_diag_literal("\n  related:\n", 12U));
-        for (index = 0U; index < diag->related_count; index += 1U) {
-            sl_diag_write_str(buffer, &offset, sl_diag_literal("    ", 4U));
-            sl_diag_write_span(buffer, &offset, diag->related[index].span);
-            sl_diag_write_str(buffer, &offset, sl_diag_literal(": ", 2U));
-            sl_diag_write_str(buffer, &offset, diag->related[index].message);
-            buffer[offset] = '\n';
-            offset += 1U;
-        }
+    status = sl_diag_builder_append_primary(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-
-    if (diag->hint_count != 0U) {
-        sl_diag_write_str(buffer, &offset, sl_diag_literal("\n  help:\n", 9U));
-        for (index = 0U; index < diag->hint_count; index += 1U) {
-            sl_diag_write_str(buffer, &offset, sl_diag_literal("    ", 4U));
-            sl_diag_write_str(buffer, &offset, diag->hints[index]);
-            buffer[offset] = '\n';
-            offset += 1U;
-        }
+    status = sl_diag_builder_append_related(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-
-    *out = sl_str_from_parts(buffer, offset);
+    status = sl_diag_builder_append_hints(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = sl_string_builder_view(&builder);
     return sl_status_ok();
 }
 
@@ -792,44 +908,73 @@ static SlStatus sl_diag_frame_render_len(size_t* total, const SlDiag* diag, SlSt
     return sl_diag_add_len(total, 1U);
 }
 
-static void sl_diag_write_frame(char* buffer, size_t* offset, const SlDiag* diag, SlStr line)
+static SlStatus sl_diag_builder_append_frame(SlStringBuilder* builder, const SlDiag* diag,
+                                             SlStr line)
 {
     const size_t underline = diag->primary_span.length == 0U ? 1U : diag->primary_span.length;
     SlStr hint = sl_diag_first_hint(diag);
+    SlStatus status;
 
-    sl_diag_write_str(buffer, offset, sl_diag_literal("  --> ", 6U));
-    sl_diag_write_span(buffer, offset, diag->primary_span);
-    buffer[*offset] = '\n';
-    *offset += 1U;
-    sl_diag_write_str(buffer, offset, sl_diag_literal("   |\n", 5U));
-    buffer[*offset] = ' ';
-    *offset += 1U;
-    sl_diag_write_size(buffer, offset, diag->primary_span.line);
-    sl_diag_write_str(buffer, offset, sl_diag_literal(" | ", 3U));
-    sl_diag_write_str(buffer, offset, line);
-    buffer[*offset] = '\n';
-    *offset += 1U;
-    sl_diag_write_str(buffer, offset, sl_diag_literal("   | ", 5U));
-    sl_diag_write_char_repeat(buffer, offset, ' ', diag->primary_span.column - 1U);
-    sl_diag_write_char_repeat(buffer, offset, '^', underline);
-    if (!sl_str_is_empty(hint)) {
-        buffer[*offset] = ' ';
-        *offset += 1U;
-        sl_diag_write_str(buffer, offset, hint);
+    status = sl_diag_builder_append_literal(builder, "  --> ", 6U);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    buffer[*offset] = '\n';
-    *offset += 1U;
+    status = sl_diag_builder_append_span(builder, diag->primary_span);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, "\n   |\n", 6U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_char(builder, ' ');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_size(builder, diag->primary_span.line);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, " | ", 3U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(builder, line);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, "\n   | ", 6U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_repeat(builder, ' ', diag->primary_span.column - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_repeat(builder, '^', underline);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_is_empty(hint)) {
+        status = sl_string_builder_append_char(builder, ' ');
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_str(builder, hint);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_string_builder_append_char(builder, '\n');
 }
 
 SlStatus sl_diag_render_text_with_source(SlArena* arena, const SlDiag* diag,
                                          const SlDiagSource* source, SlStr* out)
 {
+    SlStringBuilder builder;
     SlStatus status;
     SlStr line = sl_str_empty();
     size_t length = 0U;
-    size_t offset = 0U;
-    void* ptr = NULL;
-    char* buffer = NULL;
 
     if (!sl_diag_source_matches(diag, source) ||
         !sl_diag_source_line(source->text, diag->primary_span.line, &line))
@@ -849,22 +994,41 @@ SlStatus sl_diag_render_text_with_source(SlArena* arena, const SlDiag* diag,
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, length, 1U, &ptr);
+    status = sl_diag_builder_init_for_render(arena, length, &builder);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    buffer = (char*)ptr;
-    sl_diag_write_str(buffer, &offset, sl_diag_severity_name(diag->severity));
-    buffer[offset] = ' ';
-    offset += 1U;
-    sl_diag_write_str(buffer, &offset, sl_diag_code_name(diag->code));
-    sl_diag_write_str(buffer, &offset, sl_diag_literal(": ", 2U));
-    sl_diag_write_str(buffer, &offset, diag->message);
-    sl_diag_write_str(buffer, &offset, sl_diag_literal("\n\n", 2U));
-    sl_diag_write_frame(buffer, &offset, diag, line);
+    status = sl_string_builder_append_str(&builder, sl_diag_severity_name(diag->severity));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_char(&builder, ' ');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(&builder, sl_diag_code_name(diag->code));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(&builder, ": ", 2U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_str(&builder, diag->message);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(&builder, "\n\n", 2U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_frame(&builder, diag, line);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
 
-    *out = sl_str_from_parts(buffer, offset);
+    *out = sl_string_builder_view(&builder);
     return sl_status_ok();
 }
 
@@ -899,38 +1063,60 @@ static char sl_diag_json_escape_letter(unsigned char ch)
     return 't';
 }
 
-static void sl_diag_json_write_escaped(char* buffer, size_t* offset, SlStr value)
+static SlStatus sl_diag_builder_append_json_escaped(SlStringBuilder* builder, SlStr value)
 {
     static const char hex[] = "0123456789abcdef";
     size_t index = 0U;
+    SlStatus status;
 
-    buffer[*offset] = '"';
-    *offset += 1U;
+    status = sl_string_builder_append_char(builder, '"');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     for (index = 0U; index < value.length; index += 1U) {
         unsigned char ch = (unsigned char)value.ptr[index];
         if (ch == '"' || ch == '\\') {
-            buffer[*offset] = '\\';
-            buffer[*offset + 1U] = (char)ch;
-            *offset += 2U;
+            status = sl_string_builder_append_char(builder, '\\');
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_char(builder, (char)ch);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
         else if (ch == '\n' || ch == '\r' || ch == '\t') {
-            buffer[*offset] = '\\';
-            buffer[*offset + 1U] = sl_diag_json_escape_letter(ch);
-            *offset += 2U;
+            status = sl_string_builder_append_char(builder, '\\');
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_char(builder, sl_diag_json_escape_letter(ch));
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
         else if (ch < 0x20U) {
-            sl_diag_write_str(buffer, offset, sl_diag_literal("\\u00", 4U));
-            buffer[*offset] = hex[(ch >> 4U) & 0xFU];
-            buffer[*offset + 1U] = hex[ch & 0xFU];
-            *offset += 2U;
+            status = sl_diag_builder_append_literal(builder, "\\u00", 4U);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0xFU]);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_char(builder, hex[ch & 0xFU]);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
         else {
-            buffer[*offset] = (char)ch;
-            *offset += 1U;
+            status = sl_string_builder_append_char(builder, (char)ch);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
     }
-    buffer[*offset] = '"';
-    *offset += 1U;
+    return sl_string_builder_append_char(builder, '"');
 }
 
 static SlStatus sl_diag_json_span_len(size_t* total, SlSourceSpan span)
@@ -968,35 +1154,63 @@ static SlStatus sl_diag_json_span_len(size_t* total, SlSourceSpan span)
     return sl_diag_add_len(total, 1U);
 }
 
-static void sl_diag_json_write_span(char* buffer, size_t* offset, SlSourceSpan span)
+static SlStatus sl_diag_builder_append_json_span(SlStringBuilder* builder, SlSourceSpan span)
 {
     bool need_comma = false;
+    SlStatus status;
 
-    buffer[*offset] = '{';
-    *offset += 1U;
+    status = sl_string_builder_append_char(builder, '{');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     if (!sl_str_is_empty(span.path)) {
-        sl_diag_write_str(buffer, offset, sl_diag_literal("\"file\":", sizeof("\"file\":") - 1U));
-        sl_diag_json_write_escaped(buffer, offset, span.path);
+        status = sl_diag_builder_append_literal(builder, "\"file\":", sizeof("\"file\":") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_builder_append_json_escaped(builder, span.path);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         need_comma = true;
     }
     if (span.has_location) {
         if (need_comma) {
-            buffer[*offset] = ',';
-            *offset += 1U;
+            status = sl_string_builder_append_char(builder, ',');
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
-        sl_diag_write_str(buffer, offset, sl_diag_literal("\"line\":", sizeof("\"line\":") - 1U));
-        sl_diag_write_size(buffer, offset, span.line);
-        sl_diag_write_str(buffer, offset,
-                          sl_diag_literal(",\"column\":", sizeof(",\"column\":") - 1U));
-        sl_diag_write_size(buffer, offset, span.column);
+        status = sl_diag_builder_append_literal(builder, "\"line\":", sizeof("\"line\":") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_size(builder, span.line);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status =
+            sl_diag_builder_append_literal(builder, ",\"column\":", sizeof(",\"column\":") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_append_size(builder, span.column);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         if (span.length != 0U) {
-            sl_diag_write_str(buffer, offset,
-                              sl_diag_literal(",\"span\":", sizeof(",\"span\":") - 1U));
-            sl_diag_write_size(buffer, offset, span.length);
+            status =
+                sl_diag_builder_append_literal(builder, ",\"span\":", sizeof(",\"span\":") - 1U);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_size(builder, span.length);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
     }
-    buffer[*offset] = '}';
-    *offset += 1U;
+    return sl_string_builder_append_char(builder, '}');
 }
 
 static SlStatus sl_diag_json_base_len(size_t* total, const SlDiag* diag)
@@ -1116,79 +1330,125 @@ static SlStatus sl_diag_json_render_len(size_t* total, const SlDiag* diag)
     return sl_diag_add_len(total, 2U);
 }
 
-static void sl_diag_json_write_base(char* buffer, size_t* offset, const SlDiag* diag)
+static SlStatus sl_diag_builder_append_json_base(SlStringBuilder* builder, const SlDiag* diag)
 {
-    sl_diag_write_str(buffer, offset, sl_diag_literal("{\"code\":", sizeof("{\"code\":") - 1U));
-    sl_diag_json_write_escaped(buffer, offset, sl_diag_code_name(diag->code));
-    sl_diag_write_str(buffer, offset,
-                      sl_diag_literal(",\"severity\":", sizeof(",\"severity\":") - 1U));
-    sl_diag_json_write_escaped(buffer, offset, sl_diag_severity_name(diag->severity));
-    sl_diag_write_str(buffer, offset,
-                      sl_diag_literal(",\"message\":", sizeof(",\"message\":") - 1U));
-    sl_diag_json_write_escaped(buffer, offset, diag->message);
+    SlStatus status =
+        sl_diag_builder_append_literal(builder, "{\"code\":", sizeof("{\"code\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_escaped(builder, sl_diag_code_name(diag->code));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status =
+        sl_diag_builder_append_literal(builder, ",\"severity\":", sizeof(",\"severity\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_escaped(builder, sl_diag_severity_name(diag->severity));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, ",\"message\":", sizeof(",\"message\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_diag_builder_append_json_escaped(builder, diag->message);
 }
 
-static void sl_diag_json_write_primary(char* buffer, size_t* offset, const SlDiag* diag)
+static SlStatus sl_diag_builder_append_json_primary(SlStringBuilder* builder, const SlDiag* diag)
 {
     if (sl_diag_has_span(diag->primary_span)) {
-        sl_diag_write_str(buffer, offset,
-                          sl_diag_literal(",\"primary\":", sizeof(",\"primary\":") - 1U));
-        sl_diag_json_write_span(buffer, offset, diag->primary_span);
+        SlStatus status =
+            sl_diag_builder_append_literal(builder, ",\"primary\":", sizeof(",\"primary\":") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        return sl_diag_builder_append_json_span(builder, diag->primary_span);
     }
+    return sl_status_ok();
 }
 
-static void sl_diag_json_write_related(char* buffer, size_t* offset, const SlDiag* diag)
+static SlStatus sl_diag_builder_append_json_related(SlStringBuilder* builder, const SlDiag* diag)
 {
     size_t index = 0U;
+    SlStatus status;
 
     if (diag->related_count != 0U) {
-        sl_diag_write_str(buffer, offset,
-                          sl_diag_literal(",\"related\":[", sizeof(",\"related\":[") - 1U));
+        status = sl_diag_builder_append_literal(builder, ",\"related\":[",
+                                                sizeof(",\"related\":[") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         for (index = 0U; index < diag->related_count; index += 1U) {
             if (index != 0U) {
-                buffer[*offset] = ',';
-                *offset += 1U;
+                status = sl_string_builder_append_char(builder, ',');
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
             }
-            sl_diag_write_str(buffer, offset,
-                              sl_diag_literal("{\"message\":", sizeof("{\"message\":") - 1U));
-            sl_diag_json_write_escaped(buffer, offset, diag->related[index].message);
-            sl_diag_write_str(buffer, offset,
-                              sl_diag_literal(",\"span\":", sizeof(",\"span\":") - 1U));
-            sl_diag_json_write_span(buffer, offset, diag->related[index].span);
-            buffer[*offset] = '}';
-            *offset += 1U;
+            status = sl_diag_builder_append_literal(builder,
+                                                    "{\"message\":", sizeof("{\"message\":") - 1U);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_diag_builder_append_json_escaped(builder, diag->related[index].message);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status =
+                sl_diag_builder_append_literal(builder, ",\"span\":", sizeof(",\"span\":") - 1U);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_diag_builder_append_json_span(builder, diag->related[index].span);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_char(builder, '}');
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
-        buffer[*offset] = ']';
-        *offset += 1U;
+        return sl_string_builder_append_char(builder, ']');
     }
+    return sl_status_ok();
 }
 
-static void sl_diag_json_write_hints(char* buffer, size_t* offset, const SlDiag* diag)
+static SlStatus sl_diag_builder_append_json_hints(SlStringBuilder* builder, const SlDiag* diag)
 {
     size_t index = 0U;
+    SlStatus status;
 
     if (diag->hint_count != 0U) {
-        sl_diag_write_str(buffer, offset,
-                          sl_diag_literal(",\"hints\":[", sizeof(",\"hints\":[") - 1U));
+        status =
+            sl_diag_builder_append_literal(builder, ",\"hints\":[", sizeof(",\"hints\":[") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         for (index = 0U; index < diag->hint_count; index += 1U) {
             if (index != 0U) {
-                buffer[*offset] = ',';
-                *offset += 1U;
+                status = sl_string_builder_append_char(builder, ',');
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
             }
-            sl_diag_json_write_escaped(buffer, offset, diag->hints[index]);
+            status = sl_diag_builder_append_json_escaped(builder, diag->hints[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
-        buffer[*offset] = ']';
-        *offset += 1U;
+        return sl_string_builder_append_char(builder, ']');
     }
+    return sl_status_ok();
 }
 
 SlStatus sl_diag_render_json(SlArena* arena, const SlDiag* diag, SlStr* out)
 {
+    SlStringBuilder builder;
     SlStatus status;
     size_t length = 0U;
-    size_t offset = 0U;
-    void* ptr = NULL;
-    char* buffer = NULL;
 
     if (arena == NULL || diag == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1197,17 +1457,31 @@ SlStatus sl_diag_render_json(SlArena* arena, const SlDiag* diag, SlStr* out)
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, length, 1U, &ptr);
+    status = sl_diag_builder_init_for_render(arena, length, &builder);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    buffer = (char*)ptr;
-    sl_diag_json_write_base(buffer, &offset, diag);
-    sl_diag_json_write_primary(buffer, &offset, diag);
-    sl_diag_json_write_related(buffer, &offset, diag);
-    sl_diag_json_write_hints(buffer, &offset, diag);
-    sl_diag_write_str(buffer, &offset, sl_diag_literal("}\n", 2U));
-    *out = sl_str_from_parts(buffer, offset);
+    status = sl_diag_builder_append_json_base(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_primary(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_related(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_hints(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(&builder, "}\n", 2U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = sl_string_builder_view(&builder);
     return sl_status_ok();
 }
 
@@ -1266,78 +1540,143 @@ static bool sl_diag_secret_key_at(SlStr text, size_t index, size_t* out_separato
     return false;
 }
 
-static size_t sl_diag_redact_value(char* dst, size_t length, size_t index)
+static SlStatus sl_diag_builder_append_redacted_value(SlStringBuilder* builder, SlStr input,
+                                                      size_t* index)
 {
-    while (index < length &&
-           (dst[index] == ' ' || dst[index] == '\t' || dst[index] == '=' || dst[index] == ':'))
+    size_t cursor = *index;
+    SlStatus status;
+
+    while (cursor < input.length && (input.ptr[cursor] == ' ' || input.ptr[cursor] == '\t' ||
+                                     input.ptr[cursor] == '=' || input.ptr[cursor] == ':'))
     {
-        index += 1U;
+        status = sl_string_builder_append_char(builder, input.ptr[cursor]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        cursor += 1U;
     }
-    if (index < length && (dst[index] == '\'' || dst[index] == '"' || dst[index] == '{')) {
-        char quote = dst[index];
-        if (dst[index] == '{') {
+
+    status = sl_string_builder_append_str(builder, sl_diag_redacted());
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (cursor < input.length &&
+        (input.ptr[cursor] == '\'' || input.ptr[cursor] == '"' || input.ptr[cursor] == '{'))
+    {
+        char quote = input.ptr[cursor];
+        cursor += 1U;
+        if (quote == '{') {
             quote = '}';
         }
-        dst[index] = '*';
-        index += 1U;
-        while (index < length) {
-            if (dst[index] == quote) {
-                dst[index] = '*';
-                return index + 1U;
+        while (cursor < input.length) {
+            if (input.ptr[cursor] == quote) {
+                cursor += 1U;
+                break;
             }
-            dst[index] = '*';
-            index += 1U;
+            cursor += 1U;
         }
-        return index;
     }
-    while (index < length && dst[index] != ';' && dst[index] != '&' && dst[index] != ' ' &&
-           dst[index] != '\t' && dst[index] != '\n' && dst[index] != '\r')
-    {
-        dst[index] = '*';
-        index += 1U;
+    else {
+        while (cursor < input.length && input.ptr[cursor] != ';' && input.ptr[cursor] != '&' &&
+               input.ptr[cursor] != ' ' && input.ptr[cursor] != '\t' && input.ptr[cursor] != '\n' &&
+               input.ptr[cursor] != '\r')
+        {
+            cursor += 1U;
+        }
     }
-    return index;
+
+    *index = cursor;
+    return sl_status_ok();
 }
 
-static void sl_diag_redact_uri_userinfo(char* dst, SlStr input)
+static bool sl_diag_uri_userinfo_at(SlStr input, size_t index, size_t* password_start,
+                                    size_t* password_end)
+{
+    size_t cursor = index + 3U;
+    size_t colon = input.length;
+    size_t at = input.length;
+
+    if (password_start == NULL || password_end == NULL || index + 3U >= input.length ||
+        input.ptr[index] != ':' || input.ptr[index + 1U] != '/' || input.ptr[index + 2U] != '/')
+    {
+        return false;
+    }
+
+    while (cursor < input.length && input.ptr[cursor] != '/' && input.ptr[cursor] != ' ' &&
+           input.ptr[cursor] != '\t' && input.ptr[cursor] != '\n' && input.ptr[cursor] != '\r')
+    {
+        if (input.ptr[cursor] == ':' && colon == input.length) {
+            colon = cursor;
+        }
+        if (input.ptr[cursor] == '@') {
+            at = cursor;
+            break;
+        }
+        cursor += 1U;
+    }
+
+    if (colon < at && at < input.length) {
+        *password_start = colon + 1U;
+        *password_end = at;
+        return true;
+    }
+
+    return false;
+}
+
+static SlStatus sl_diag_builder_append_redacted_text(SlStringBuilder* builder, SlStr input)
 {
     size_t index = 0U;
+    SlStatus status;
 
-    while (index + 3U < input.length) {
-        if (input.ptr[index] == ':' && input.ptr[index + 1U] == '/' && input.ptr[index + 2U] == '/')
-        {
-            size_t cursor = index + 3U;
-            size_t colon = input.length;
-            size_t at = input.length;
+    while (index < input.length) {
+        size_t separator = 0U;
+        size_t uri_password_start = 0U;
+        size_t uri_password_end = 0U;
 
-            while (cursor < input.length && input.ptr[cursor] != '/' && input.ptr[cursor] != ' ' &&
-                   input.ptr[cursor] != '\t' && input.ptr[cursor] != '\n' &&
-                   input.ptr[cursor] != '\r')
-            {
-                if (input.ptr[cursor] == ':' && colon == input.length) {
-                    colon = cursor;
-                }
-                if (input.ptr[cursor] == '@') {
-                    at = cursor;
-                    break;
-                }
-                cursor += 1U;
+        if (sl_diag_secret_key_at(input, index, &separator)) {
+            status = sl_string_builder_append_str(
+                builder, sl_str_from_parts(input.ptr + index, separator - index));
+            if (!sl_status_is_ok(status)) {
+                return status;
             }
-            if (colon < at && at < input.length) {
-                for (cursor = colon + 1U; cursor < at; cursor += 1U) {
-                    dst[cursor] = '*';
-                }
+            index = separator;
+            status = sl_diag_builder_append_redacted_value(builder, input, &index);
+            if (!sl_status_is_ok(status)) {
+                return status;
             }
+            continue;
+        }
+
+        if (sl_diag_uri_userinfo_at(input, index, &uri_password_start, &uri_password_end)) {
+            status = sl_string_builder_append_str(
+                builder, sl_str_from_parts(input.ptr + index, uri_password_start - index));
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            status = sl_string_builder_append_str(builder, sl_diag_redacted());
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            index = uri_password_end;
+            continue;
+        }
+
+        status = sl_string_builder_append_char(builder, input.ptr[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
         }
         index += 1U;
     }
+
+    return sl_status_ok();
 }
 
 SlStatus sl_diag_redact_secrets(SlArena* arena, SlStr input, SlStr* out)
 {
-    void* ptr = NULL;
-    char* dst = NULL;
-    size_t index = 0U;
+    SlStringBuilder builder;
+    size_t max_capacity = 0U;
     SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_diag_str_is_valid(input)) {
@@ -1347,21 +1686,19 @@ SlStatus sl_diag_redact_secrets(SlArena* arena, SlStr input, SlStr* out)
         *out = sl_str_empty();
         return sl_status_ok();
     }
-    status = sl_arena_alloc(arena, input.length, 1U, &ptr);
+    status = sl_checked_mul_size(input.length, sizeof("<redacted>"), &max_capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    dst = (char*)ptr;
-    for (index = 0U; index < input.length; index += 1U) {
-        dst[index] = input.ptr[index];
+    status = sl_string_builder_init_arena(&builder, arena, input.length, max_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    for (index = 0U; index < input.length; index += 1U) {
-        size_t separator = 0U;
-        if (sl_diag_secret_key_at(input, index, &separator)) {
-            index = sl_diag_redact_value(dst, input.length, separator);
-        }
+
+    status = sl_diag_builder_append_redacted_text(&builder, input);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    sl_diag_redact_uri_userinfo(dst, input);
-    *out = sl_str_from_parts(dst, input.length);
+    *out = sl_string_builder_view(&builder);
     return sl_status_ok();
 }

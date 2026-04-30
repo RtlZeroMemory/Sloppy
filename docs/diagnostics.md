@@ -48,6 +48,11 @@ MAIN1-06 completes the bounded alpha diagnostic renderer surface:
 - minimal diagnostic redaction helper for common secret-bearing text;
 - golden/snapshot tests for plain text, JSON, source frames, and redaction.
 
+ENGINE-22.B adopts the shared bounded string builder for diagnostic text, JSON diagnostic,
+and source-frame rendering. The renderers still preflight output size deterministically and
+return `SL_STATUS_CAPACITY_EXCEEDED` on bounded builder exhaustion instead of allocating
+recursively through diagnostic paths.
+
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic
 `--diagnostic-format json` flag for every error path.
@@ -233,6 +238,10 @@ as `postgres://user:password@host/db`. Provider-specific redaction remains the f
 of defense for PostgreSQL and SQL Server connection strings because those providers know
 their connection-string grammar. The generic helper is a safety net for shared diagnostic
 paths, not a full data-loss-prevention engine.
+
+CLI doctor text and JSON output use this same helper for connection-string-like check
+messages. The helper preserves secret-key names and masks secret values with deterministic
+`<redacted>` tokens so text and JSON process goldens cover the same redaction behavior.
 
 ## Machine-Readable Output
 
