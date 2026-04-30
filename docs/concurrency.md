@@ -74,18 +74,16 @@ public timers/fetch/fs/process APIs, native provider completion queues, cross-th
 posting, HTTP disconnect/shutdown drain behavior, worker-thread scheduling, or scalability
 evidence. The full async-runtime target is tracked by #306 and tasks #307 through #310.
 ENGINE-12.AB owns the first native completion/backend integration and owner-thread
-continuation boundary. ENGINE-23.A/B adds the next provider runtime foundation without
-converting SQLite or adding public async APIs. `include/sloppy/async_backend.h` classifies
-native completions as internal,
-nonblocking I/O, blocking offload, timer, or provider operations.
-`include/sloppy/provider_executor.h` defines Slop-owned provider execution modes and a
-bounded per-provider-instance executor abstraction. The current implementation owns copied
-operation inputs and diagnostic context, carries operation-kind/capability/scope/deadline
-metadata, enforces per-instance queue capacity, activates serialized-blocking metadata one
-operation at a time, posts terminal completions through `SlAsyncLoop`, and proves
-cleanup-once behavior for success, cancellation, timeout, overflow, shutdown, and late
-completion. It does not start production provider workers, wire SQLite through async
-offload, run a blocking pool, or make benchmark claims.
+continuation boundary. ENGINE-23.A/B adds the provider descriptor/admission foundation
+without converting SQLite or adding public async APIs. `include/sloppy/async_backend.h`
+classifies native completions as internal, nonblocking I/O, blocking offload, timer, or
+provider operations. `include/sloppy/provider_executor.h` defines Slop-owned provider
+execution modes and a bounded per-provider-instance executor abstraction. ENGINE-23.C adds
+the `SERIALIZED_BLOCKING` worker lifecycle: one long-lived worker per provider instance,
+one active operation at a time, FIFO activation, completion posting through `SlAsyncLoop`,
+and cleanup-once behavior for success, failure, cancellation, timeout, overflow, shutdown,
+dispose, and late completion. It does not wire SQLite through async offload, run a
+blocking pool, or make benchmark claims.
 
 ENGINE-23 is the provider execution runtime layer after ENGINE-12. It owns production
 provider operation descriptors, per-provider-instance executors, serialized SQLite-class
@@ -419,9 +417,10 @@ Provider execution modes are Slop-owned policy, not libuv policy:
 
 - `INLINE_FAST`: bounded metadata/config work only. It must not perform disk, network, DB,
   lock, or other blocking waits.
-- `SERIALIZED_BLOCKING`: one operation at a time for one provider instance. This is the
-  default policy for a single SQLite connection unless a later provider-specific issue
-  chooses different read/write semantics.
+- `SERIALIZED_BLOCKING`: implemented as one long-lived worker and one active operation at
+  a time for one provider instance. This is the default policy for a single SQLite
+  connection unless a later provider-specific issue chooses different read/write
+  semantics.
 - `BLOCKING_POOL`: a bounded worker pool for one provider instance when the provider is
   documented as safe to parallelize blocking calls. ENGINE-23 turns this from policy into
   production provider-runtime behavior.
@@ -443,7 +442,9 @@ context, and completion targets must be copied, retained, or represented by a sa
 ID. Borrowed request-arena views may not be queued unless the request/app scope lifetime is
 explicitly retained. Operation cleanup runs exactly once; late completion after
 cancellation, timeout, or shutdown is cleanup-only and must not double-settle. Provider
-worker code must never enter V8.
+worker code must never enter V8. The current serialized worker posts through the libuv
+async backend; the deterministic test backend remains single-threaded and rejects attached
+worker callbacks.
 
 ```ts
 await db.transaction(async tx => {

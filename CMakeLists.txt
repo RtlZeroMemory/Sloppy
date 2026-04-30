@@ -312,7 +312,8 @@ set(
     src/data/sqlserver.c
     src/data/sqlite.c
     src/engine/engine.c
-    src/platform/libuv/async_backend_libuv.c)
+    src/platform/libuv/async_backend_libuv.c
+    src/platform/libuv/thread.c)
 
 if(WIN32)
     list(APPEND SLOPPY_CORE_SOURCES src/platform/win32/time.c)

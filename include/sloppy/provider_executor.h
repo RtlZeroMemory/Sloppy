@@ -6,6 +6,7 @@
 #include "sloppy/capability.h"
 #include "sloppy/cancellation.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/platform_thread.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -53,6 +54,8 @@ typedef enum SlProviderExecutorShutdownPolicy
 } SlProviderExecutorShutdownPolicy;
 
 typedef void (*SlProviderOperationCleanupFn)(SlProviderOperation* operation, void* user);
+typedef SlStatus (*SlProviderOperationRunFn)(SlProviderOperation* operation, void* user,
+                                             SlDiagCode* out_diag_code, SlStr* out_message);
 
 typedef struct SlProviderCapabilityRequirement
 {
@@ -101,6 +104,8 @@ typedef struct SlProviderOperationDescriptor
     SlAsyncCompletionDispatchFn completion_dispatch;
     void* completion_dispatch_user;
     SlStr diagnostic_context;
+    SlProviderOperationRunFn run;
+    void* run_user;
     SlProviderOperationCleanupFn cleanup;
     void* cleanup_user;
 } SlProviderOperationDescriptor;
@@ -130,11 +135,14 @@ struct SlProviderOperation
     SlStatus terminal_status;
     SlCancellationReason terminal_reason;
     SlDiag diag;
+    SlProviderOperationRunFn run;
+    void* run_user;
     SlAsyncCompletionDispatchFn completion_dispatch;
     void* completion_dispatch_user;
     SlProviderOperationCleanupFn cleanup;
     void* cleanup_user;
     bool cleanup_ran;
+    bool worker_claimed;
     size_t sequence;
 };
 
@@ -155,7 +163,17 @@ struct SlProviderInstanceExecutor
     size_t timed_out_count;
     size_t overflow_count;
     size_t shutdown_rejected_count;
+    size_t worker_started_count;
+    size_t worker_stopped_count;
+    size_t worker_failure_count;
+    size_t completion_post_failure_count;
+    size_t late_completion_count;
     bool shutting_down;
+    bool worker_stop_requested;
+    bool worker_running;
+    SlPlatformMutex* mutex;
+    SlPlatformCond* worker_cond;
+    SlPlatformThread* worker_thread;
     SlOwnedStr instance_id;
     SlOwnedStr provider_kind;
     void* app_owner;
@@ -185,6 +203,8 @@ SlStatus sl_provider_operation_descriptor_attach_scope(SlProviderOperationDescri
 SlStatus sl_provider_operation_descriptor_attach_cleanup(SlProviderOperationDescriptor* descriptor,
                                                          SlProviderOperationCleanupFn cleanup,
                                                          void* user);
+SlStatus sl_provider_operation_descriptor_attach_run(SlProviderOperationDescriptor* descriptor,
+                                                     SlProviderOperationRunFn run, void* user);
 SlStatus
 sl_provider_operation_descriptor_set_diagnostic_context(SlProviderOperationDescriptor* descriptor,
                                                         SlStr diagnostic_context);
@@ -192,11 +212,11 @@ sl_provider_operation_descriptor_set_diagnostic_context(SlProviderOperationDescr
 /*
  * Initializes a bounded per-provider-instance executor over caller-owned slot storage.
  *
- * The executor does not start worker threads. It models per-provider-instance admission,
- * mode metadata, pending/in-flight counts, terminal completion posting, and shutdown
- * policy. `arena`, `slots`, and `completion_loop` must outlive the executor. Provider
- * work admitted here must never block the V8 owner thread, and future workers must never
- * enter V8.
+ * SERIALIZED_BLOCKING starts one long-lived worker on init. Other modes currently model
+ * per-provider-instance admission, mode metadata, pending/in-flight counts, terminal
+ * completion posting, and shutdown policy without execution engines. `arena`, `slots`,
+ * and `completion_loop` must outlive the executor. Provider work admitted here must never
+ * block the V8 owner thread, and workers must never enter V8.
  *
  * Threading contract: this executor is caller-serialized. `init`, `dispose`, `submit`,
  * `complete`, `cancel`, `timeout`, `shutdown`, and query calls must not race with each

@@ -78,6 +78,15 @@ ownership intact and does not run the operation cleanup callback. Accepted opera
 cleanup is invoked exactly once from the terminal completion/discard path; late completion
 after cancellation, timeout, or shutdown must not free or settle twice.
 
+ENGINE-23.C adds the first provider worker lifecycle for `SERIALIZED_BLOCKING`. Accepted
+worker operations are arena-owned by the provider executor and may run on the
+per-provider-instance worker after submission returns. Queue overflow, shutdown rejection,
+unsupported backends, and invalid descriptors still do not transfer ownership. Dispose
+joins the serialized worker before discarding any remaining admitted operations, and every
+terminal path preserves cleanup-once behavior. Worker payloads must be owned by the
+operation, retained scope, or provider instance lifetime; they must not point at transient
+request/scratch storage or V8 handles.
+
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 
 - ENGINE-21 defines the app/request/temp/static/V8/SQLite/diagnostic lifetime model,

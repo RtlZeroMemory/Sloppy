@@ -1,7 +1,7 @@
 # Provider Execution Runtime Architecture
 
-Status: ENGINE-23 strategic architecture with ENGINE-23.A/B descriptor and admission
-foundation implemented.
+Status: ENGINE-23 strategic architecture with ENGINE-23.A/B descriptor/admission and
+ENGINE-23.C serialized blocking execution implemented.
 
 ENGINE-23 creates Slop's provider execution and blocking offload runtime. It sits after
 ENGINE-12's generic async backend and before deeper provider, SQLite, HTTP, and public
@@ -141,10 +141,10 @@ Instance rules:
 
 ## 4. Provider Operation Descriptor
 
-ENGINE-23.A/B introduces the implementation-grade `SlProviderOperation` concept for native
-tests and future provider bridges. The current implementation is still an admission and
-state model, not worker execution, but the descriptor now carries enough information for
-queued work, off-owner-thread execution, cancellation, diagnostics, and cleanup.
+ENGINE-23.A/B introduced the implementation-grade `SlProviderOperation` concept for native
+tests and future provider bridges. ENGINE-23.C adds the first execution callback path for
+`SERIALIZED_BLOCKING` provider-like operations so blocking provider work can run away from
+the V8 owner thread while still completing through `SlAsyncLoop`.
 
 Required descriptor fields:
 
@@ -201,6 +201,16 @@ Implemented in ENGINE-23.A/B:
   bridge, HTTP backend, green threads, Node/npm behavior, public alpha docs, or benchmark
   claims are introduced by this foundation.
 
+Implemented in ENGINE-23.C:
+
+- descriptors may attach a native provider run callback used only by the serialized
+  blocking executor path;
+- accepted serialized work transfers ownership to the executor before the worker can run;
+- rejected run callbacks on non-serialized modes or unsafe completion backends return a
+  deterministic unsupported status without ownership transfer;
+- worker callbacks receive only `SlProviderOperation` and caller-owned provider payload
+  context; they must not touch V8 or JS handles.
+
 ## 5. Worker And Executor Model
 
 Provider executors own worker lifecycle, queue admission, dispatch, completion posting,
@@ -209,7 +219,7 @@ failure handling, shutdown handling, backpressure, and deterministic overflow.
 Common executor lifecycle:
 
 1. initialize from provider instance configuration and app scope;
-2. start workers or async provider state needed by the selected mode in later tasks;
+2. start workers or async provider state needed by the selected mode;
 3. admit operations only after capability and cancellation checks;
 4. queue or dispatch within bounded capacity and in-flight limits;
 5. execute provider work without entering V8;
@@ -233,13 +243,32 @@ Implemented in ENGINE-23.A/B:
 - `SERIALIZED_BLOCKING` activates one operation at a time, while other modes only model
   in-flight metadata and do not run execution engines yet.
 
-`SERIALIZED_BLOCKING` requirements:
+Implemented in ENGINE-23.C:
 
-- single worker or equivalent serialized executor per provider instance;
+- `SERIALIZED_BLOCKING` starts one long-lived worker per provider instance during executor
+  initialization;
+- the worker waits on provider-instance state, claims at most one active operation at a
+  time, runs provider-like blocking work away from the owner thread, and posts terminal
+  completion through the libuv-backed `SlAsyncLoop`;
+- FIFO activation is preserved by sequence order and `max_in_flight = 1`;
+- queue capacity is enforced before ownership transfer, and overflow leaves the caller
+  owning any submission-side payload;
+- dispose requests worker stop, joins the worker, then discards any remaining admitted
+  pending/active operations exactly once;
+- the worker is per provider instance, not per operation, and `BLOCKING_POOL` remains
+  unimplemented until #394.
+
+`SERIALIZED_BLOCKING` behavior:
+
+- single long-lived worker per provider instance;
 - one active operation per provider instance;
 - bounded queue enforced before ownership transfer;
-- shutdown either drains bounded work or cancels pending work by explicit policy;
-- SQLite single-connection providers use this mode by default.
+- shutdown uses the current immediate-cancel policy for admitted work, and late worker
+  completion after cancellation/shutdown is cleanup-only;
+- completion posting requires a thread-safe async backend; current worker tests use the
+  libuv backend, while the deterministic test backend remains single-threaded;
+- SQLite single-connection providers use this mode by default, but real SQLite bridge
+  conversion remains ENGINE-17.
 
 `BLOCKING_POOL` requirements:
 
@@ -283,8 +312,10 @@ Provider-specific examples:
   bridge is scoped.
 - SQL Server may use ODBC cancellation if driver behavior is documented and tested.
 
-None of those provider-specific interruption paths are required for ENGINE-23.A/B/C/D to
-preserve generic terminal-state correctness.
+ENGINE-23.C preserves generic terminal-state correctness for pre-cancelled admission,
+queued/active cancellation, timeout marking, immediate shutdown, and late worker result
+handling. Provider-specific interruption paths and richer cancellation/late-completion
+diagnostics remain #395.
 
 ## 7. Capability And Security Model
 
