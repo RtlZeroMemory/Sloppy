@@ -87,6 +87,13 @@ for success, cancellation, timeout, overflow, shutdown, and late completion. It 
 start a production provider worker pool, wire SQLite through async offload, or make
 benchmark claims.
 
+ENGINE-23 is the provider execution runtime layer after ENGINE-12. It owns production
+provider operation descriptors, per-provider-instance executors, serialized SQLite-class
+blocking offload, bounded blocking pools, nonblocking provider mode, capability-gated
+admission, cancellation/deadline/shutdown/late-completion semantics, worker lifecycle,
+diagnostics, and stress evidence. Provider execution is separate from ENGINE-13 HTTP
+backend work and must not use libuv's global threadpool as the provider runtime.
+
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
 async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes
@@ -166,8 +173,8 @@ Native worker pool:
 - runs blocking or CPU-heavy native operations;
 - never enters V8 directly;
 - posts completion back to the JS event loop.
-- future work; TASK 09.C only proves this completion-posting contract through an inline
-  fake backend.
+- provider blocking work uses ENGINE-23 Slop-owned provider executors rather than the
+  inline TASK 09.C skeleton or libuv's global threadpool.
 
 Request scope:
 
@@ -416,8 +423,8 @@ Provider execution modes are Slop-owned policy, not libuv policy:
   default policy for a single SQLite connection unless a later provider-specific issue
   chooses different read/write semantics.
 - `BLOCKING_POOL`: a bounded worker pool for one provider instance when the provider is
-  documented as safe to parallelize blocking calls. The mode is defined now; production
-  workers remain future work.
+  documented as safe to parallelize blocking calls. ENGINE-23 turns this from policy into
+  production provider-runtime behavior.
 - `NONBLOCKING_IO`: true async provider/client operation through event backend readiness or
   provider async APIs. No provider worker is occupied while waiting.
 - `EXTERNAL_MANAGED`: a future escape hatch for externally managed runtimes or pools. It

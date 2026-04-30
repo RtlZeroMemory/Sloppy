@@ -88,6 +88,13 @@ backend uses libuv internally under `src/platform/libuv/` for cross-thread wakeu
 handles and loop types do not escape the backend implementation, and the public/runtime
 model is still Sloppy's model rather than Node or libuv compatibility.
 
+ENGINE-12.CD adds the deterministic provider/offload policy skeleton, and ENGINE-23 is the
+planned provider execution runtime that turns that policy into production provider
+operation descriptors, per-provider-instance executors, serialized SQLite-class blocking
+offload, bounded blocking pools, capability-gated admission, cancellation/late-completion
+semantics, diagnostics, and stress evidence. Provider execution is not part of ENGINE-13's
+HTTP backend implementation and must not block the V8 owner thread.
+
 TASK 10.A adds a pure-C route pattern parser and matcher foundation for later native route
 dispatch. It supports only a minimal path-pattern subset and one-pattern matching. It does
 not add HTTP parsing, request lifecycle, method matching, route table/trie dispatch,
@@ -230,6 +237,11 @@ expects bootstrap runtime state from `globalThis.__sloppy_runtime`, assigns lega
 `__sloppy_register_handler(N, handler)` for the registered-handler table. The runtime does
 not resolve Node packages, npm packages, arbitrary bare specifiers, dynamic imports, or user
 source module graphs.
+
+Provider execution in this pipeline must enter through ENGINE-23 provider executors once
+work can block or outlive the caller stack. Direct V8 bridge calls into synchronous native
+providers are acceptable only where docs identify the path as current limited behavior and
+do not claim scalable provider execution.
 
 ## Artifact Boundary
 
@@ -506,21 +518,23 @@ Current Promise lifecycle requirements:
 Native async completions now post through `SlAsyncLoop` and resume JavaScript only through
 the V8 owner-thread continuation scheduler under `src/engine/v8/`. Worker/provider/native
 threads may post completions, but only the owning V8 thread drains and settles the Promise.
-ENGINE-12.AB does not add public timers, fetch, fs, process, Node APIs, provider offload,
-or production scalability evidence. ENGINE-12.CD adds native cancellation/deadline,
-shutdown, backpressure, and provider-executor policy for a deterministic provider-like
-source. It defines operation kinds, provider execution modes, per-provider-instance
-bounded admission, copied operation inputs, cleanup-once terminal completions, and
-immediate-cancel shutdown. It does not convert SQLite to async offload and does not add
-production scalability evidence beyond unit-test proof of the shape.
+ENGINE-12.AB does not add public timers, fetch, fs, process, Node APIs, production provider
+offload, or production scalability evidence. ENGINE-12.CD adds native cancellation/
+deadline, shutdown, backpressure, and provider-executor policy for a deterministic
+provider-like source. It defines operation kinds, provider execution modes,
+per-provider-instance bounded admission, copied operation inputs, cleanup-once terminal
+completions, and immediate-cancel shutdown. It does not convert SQLite to async offload,
+start production provider workers, or add production scalability evidence beyond unit-test
+proof of the shape. ENGINE-23 owns the production provider execution runtime.
 
-ENGINE-12 (#306, tasks #307-#310) owns the full scalable async runtime target. That work
+ENGINE-12 (#306, tasks #307-#310) owns the full generic scalable async runtime target.
+ENGINE-23 owns provider execution/offload after that generic substrate. ENGINE-12 work
 should begin only when at least one real external async source needs to cross the native
 runtime boundary, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
-provider offload, or worker-pool work. It is also required before public docs, alpha
-readiness, benchmark methodology, or product language claim scalable async behavior,
-production-ready async HTTP lifecycle, async provider execution, or performance for many
-pending requests.
+provider offload policy, or worker-pool work. ENGINE-23 is required before public docs,
+alpha readiness, benchmark methodology, or product language claim scalable provider
+execution. ENGINE-12 remains required before claims about scalable async behavior,
+production-ready async HTTP lifecycle, or performance for many pending requests.
 
 ENGINE-01 makes that future lifecycle a foundation requirement rather than an optional
 enhancement. Async handlers returning Promises must be supported before Sloppy claims the

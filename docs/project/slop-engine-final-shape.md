@@ -47,12 +47,21 @@ validation, OpenAPI polish, package-manager behavior, and production hosting bre
 later layers.
 
 The async target is intentionally bigger than ENGINE-03. ENGINE-03 proves real returned
-Promise settlement for the bounded V8 owner-thread microtask boundary. The final engine
-shape still aims at a full scalable async runtime with native completion queues, an
-owner-thread V8 continuation scheduler, deadline and shutdown wakeups, cancellation tokens
-that cross JS/native work, bounded async admission, explicit backpressure, provider/offload
-integration, and stress evidence for many pending operations. That target is tracked by
+Promise settlement for the bounded V8 owner-thread microtask boundary. ENGINE-12 tracks
+the full generic async runtime with native completion queues, an owner-thread V8
+continuation scheduler, deadline and shutdown wakeups, cancellation tokens that cross
+JS/native work, bounded async admission, explicit backpressure, provider/offload policy
+hooks, and stress evidence for many pending operations. That target is tracked by
 ENGINE-12 (#306 through #310).
+
+Provider execution is intentionally split from generic async. ENGINE-23 turns the
+provider/offload policy from ENGINE-12 into a first-class provider runtime with owned
+operation descriptors, per-provider-instance executors, serialized SQLite-class blocking
+offload, bounded blocking pools, future nonblocking provider mode, capability-gated
+admission, deterministic cancellation/timeout/shutdown/late-completion behavior, worker
+lifecycle, diagnostics, and stress evidence. ENGINE-23 must land before Sloppy claims
+scalable provider execution or completes SQLite runtime work that depends on off-owner
+thread provider execution.
 
 ENGINE-12 should be implemented when Sloppy has a real external async source to wire end to
 end: HTTP disconnect/shutdown cancellation, timer/deadline wakeups, async SQLite/provider
@@ -60,9 +69,9 @@ work, or worker-pool offload. It is required before public alpha docs, benchmark
 methodology, or product language claim scalable async behavior, production-ready async HTTP
 lifecycle, async provider execution, or performance with many pending requests.
 
-ENGINE-13 through ENGINE-20 complete the rest of the engine foundation after that async
-backend layer: proper HTTP runtime backend, module/bootstrap completion, source maps and
-diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
+ENGINE-13 through ENGINE-20 complete the rest of the engine foundation after the async and
+provider runtime layers: proper HTTP runtime backend, module/bootstrap completion, source
+maps and diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
 conformance compatibility, and the strong Plan strategic layer. The source document is
 `docs/project/engine-13-plus-architecture.md`; the created issue map is
 `docs/project/engine-13-plus-issue-index.md`.
@@ -180,6 +189,8 @@ Initial native async and cancellation policy:
   docs and tests say so clearly.
 - Long-running or blocking provider work needs a worker-backed strategy before it is
   described as scalable.
+- The worker-backed strategy is ENGINE-23 provider execution, not ENGINE-13 HTTP backend
+  work and not libuv's global threadpool.
 - Cancellation-token infrastructure is required from the first real async foundation cut:
   request context, native operation submission, completion settlement, diagnostics, and
   shutdown paths must all carry the token/signal even if a given operation is not yet
@@ -357,6 +368,8 @@ Foundation decisions:
 - `:memory:` examples are core for conformance;
 - file DB policy requires capability/path rules before public docs;
 - PostgreSQL and SQL Server JS bridges are deferred until SQLite is excellent.
+- SQLite's scalable provider path depends on ENGINE-23 serialized blocking execution for
+  SQLite-class provider instances.
 
 ## 10. Security / Capabilities
 

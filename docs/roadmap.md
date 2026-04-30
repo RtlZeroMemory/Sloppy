@@ -32,22 +32,30 @@ ENGINE-03 now covers the bounded V8 owner-thread microtask async boundary. Slopp
 aims at a full scalable async runtime, but that is not implied by ENGINE-03. ENGINE-12
 (#306 through #310) tracks the future layer for native completion queues, owner-thread V8
 continuation scheduling, deadline/shutdown drain policy, bounded async backpressure,
-provider/offload integration, and stress evidence. Implement ENGINE-12 when a real
+provider/offload policy hooks, and stress evidence. Implement ENGINE-12 when a real
 external async source must cross the runtime boundary, and before any public alpha,
 benchmark, or product claim says Sloppy has scalable async performance or production-ready
 async lifecycle behavior.
 
+ENGINE-23 now splits provider execution out of ENGINE-12 and before ENGINE-13/17 work that
+would otherwise depend on provider/offload behavior. It owns provider operation
+descriptors, per-provider-instance executors, serialized blocking execution for
+SQLite-class providers, bounded blocking pools, nonblocking provider mode,
+capability-gated admission, cancellation/timeout/shutdown/late-completion semantics,
+worker lifecycle, diagnostics, and stress evidence without benchmark claims.
+
 ENGINE-13 through ENGINE-20 now track the remaining full engine foundation after
-ENGINE-12: proper HTTP runtime backend, module/bootstrap completion, source maps and
-diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
-conformance compatibility, and the strong Plan strategic layer. ENGINE-21 and ENGINE-22 add
-the cross-cutting memory/string foundation: primitive lifetime/allocation/string/builder
-contracts and bounded app/static string interning first, then adoption in HTTP, V8,
-SQLite, diagnostics, Plan/artifact loading, CLI, and hot-path conformance. Proper async and
-proper HTTP are intentionally separate:
-ENGINE-12 owns native async completion and owner-thread continuation mechanics, while
-ENGINE-13 owns HTTP listener, connection, parser, body, keep-alive, timeout, cancellation,
-backpressure, graceful shutdown, and server diagnostic policy.
+ENGINE-12 and ENGINE-23: proper HTTP runtime backend, module/bootstrap completion, source
+maps and diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
+conformance compatibility, and the strong Plan strategic layer. ENGINE-21 and ENGINE-22
+add the cross-cutting memory/string foundation: primitive lifetime/allocation/string/
+builder contracts and bounded app/static string interning first, then adoption in HTTP,
+V8, SQLite, diagnostics, Plan/artifact loading, CLI, and hot-path conformance. Proper
+async, provider execution, and proper HTTP are intentionally separate: ENGINE-12 owns
+native async completion and owner-thread continuation mechanics, ENGINE-23 owns
+provider/offload execution, and ENGINE-13 owns HTTP listener, connection, parser, body,
+keep-alive, timeout, cancellation, backpressure, graceful shutdown, and server diagnostic
+policy.
 
 Direct source-input `sloppy run app.js` remains unsupported today, but is now tracked by
 #302 as a compiler/CLI handoff task once the compiler can emit complete artifacts for
@@ -57,7 +65,8 @@ plus `sloppy run --artifacts`.
 Public alpha docs remain blocked. PostgreSQL and SQL Server JS bridges, benchmark claims,
 ORM/migrations, package-manager behavior, Node compatibility, production-grade HTTP server
 breadth, and memory/string hot-path adoption claims are deferred until the engine
-foundation is coherent.
+foundation is coherent. SQLite runtime completion depends on ENGINE-23 before scalable
+provider execution can be claimed.
 
 ## Status Key
 
