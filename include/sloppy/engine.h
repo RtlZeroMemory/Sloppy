@@ -13,6 +13,7 @@
 extern "C" {
 #endif
 
+typedef struct SlCapabilityRegistry SlCapabilityRegistry;
 typedef struct SlEngine SlEngine;
 
 typedef enum SlEngineKind
@@ -36,6 +37,10 @@ typedef enum SlEngineResultKind
  * strings and stores only the selected kind. Future V8 bridge creation must keep V8 and C++
  * types behind src/engine/v8/ and may copy only the fields it needs into bridge-owned
  * storage.
+ *
+ * `capability_registry` is optional and borrowed for the engine lifetime. Provider bridge
+ * modules use it to deny native provider work before execution. Callers that pass a
+ * registry must keep the parsed plan storage alive until the engine is destroyed.
  */
 typedef struct SlEngineOptions
 {
@@ -44,6 +49,7 @@ typedef struct SlEngineOptions
     SlStr runtime_version;
     SlStr target_platform;
     SlStr target_engine;
+    const SlCapabilityRegistry* capability_registry;
 } SlEngineOptions;
 
 /*

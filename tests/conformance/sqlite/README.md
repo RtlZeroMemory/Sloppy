@@ -12,16 +12,19 @@ sloppy run --artifacts tests/integration/execution/sqlite_bridge --once GET /sql
 
 Expected behavior:
 
-- open an in-memory SQLite database through the JavaScript wrapper;
+- open an in-memory SQLite database through the JavaScript wrapper with a declared
+  `data.main` capability;
 - create and populate a table;
 - select one row with a positional parameter;
 - return a JSON result containing `Ada`;
 - close the resource in a `finally` block.
+- deny missing/insufficient/mismatched capabilities before SQLite provider work in the
+  V8-gated smoke tests.
 
 Default evidence: native C SQLite provider tests cover `:memory:` open, exec, query,
 `queryOne`, primitive parameters, transactions, and diagnostics. The default suite does
 not prove the V8 JavaScript bridge executed.
 
 Gated/deferred requirements: PostgreSQL and SQL Server JavaScript bridges are not part of
-this conformance suite. SQLite capability-policy enforcement in the JavaScript bridge is
-deferred until the bridge calls the native capability hook.
+this conformance suite. Filesystem and network capability checks remain metadata-only
+skeletons.

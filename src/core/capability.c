@@ -83,6 +83,77 @@ static bool sl_capability_shape_valid(const SlPlanCapability* capability)
     return sl_str_is_empty(capability->provider);
 }
 
+static bool sl_capability_provider_shape_valid(const SlPlanDataProvider* provider)
+{
+    if (provider == NULL || !sl_capability_token_syntax_valid(provider->token) ||
+        sl_str_is_empty(provider->provider) || !sl_plan_provider_supported(provider->provider))
+    {
+        return false;
+    }
+    if (!sl_str_is_empty(provider->service) && !sl_capability_token_syntax_valid(provider->service))
+    {
+        return false;
+    }
+    if (!sl_str_is_empty(provider->capability) &&
+        !sl_capability_token_syntax_valid(provider->capability))
+    {
+        return false;
+    }
+    return true;
+}
+
+static const SlPlanDataProvider* sl_capability_find_provider(const SlCapabilityRegistry* registry,
+                                                             SlStr token)
+{
+    size_t index = 0U;
+
+    if (registry == NULL || sl_str_is_empty(token) ||
+        (registry->data_provider_count > 0U && registry->data_providers == NULL))
+    {
+        return NULL;
+    }
+    for (index = 0U; index < registry->data_provider_count; index += 1U) {
+        if (sl_str_equal(registry->data_providers[index].token, token)) {
+            return &registry->data_providers[index];
+        }
+    }
+    return NULL;
+}
+
+static bool sl_capability_plan_has_provider(const SlPlan* plan, SlStr token)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || sl_str_is_empty(token) ||
+        (plan->data_provider_count > 0U && plan->data_providers == NULL))
+    {
+        return false;
+    }
+    for (index = 0U; index < plan->data_provider_count; index += 1U) {
+        if (sl_str_equal(plan->data_providers[index].token, token)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_capability_plan_has_capability(const SlPlan* plan, SlStr token)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || sl_str_is_empty(token) ||
+        (plan->capability_count > 0U && plan->capabilities == NULL))
+    {
+        return false;
+    }
+    for (index = 0U; index < plan->capability_count; index += 1U) {
+        if (sl_str_equal(plan->capabilities[index].token, token)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static SlStr sl_capability_operation_name(SlCapabilityOperation operation)
 {
     switch (operation) {
@@ -272,17 +343,39 @@ SlStatus sl_capability_registry_init_from_plan(const SlPlan* plan, SlCapabilityR
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out = (SlCapabilityRegistry){0};
-    if (plan == NULL || (plan->capability_count > 0U && plan->capabilities == NULL)) {
+    if (plan == NULL || (plan->data_provider_count > 0U && plan->data_providers == NULL) ||
+        (plan->capability_count > 0U && plan->capabilities == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (sl_plan_has_duplicate_data_provider_tokens(plan)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     if (sl_plan_has_duplicate_capability_tokens(plan)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    for (index = 0U; index < plan->data_provider_count; index += 1U) {
+        if (!sl_capability_provider_shape_valid(&plan->data_providers[index])) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        if (!sl_str_is_empty(plan->data_providers[index].capability) &&
+            !sl_capability_plan_has_capability(plan, plan->data_providers[index].capability))
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+    }
     for (index = 0U; index < plan->capability_count; index += 1U) {
         if (!sl_capability_shape_valid(&plan->capabilities[index])) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
+        if (sl_capability_kind_is(&plan->capabilities[index], "database") &&
+            !sl_capability_plan_has_provider(plan, plan->capabilities[index].provider))
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
     }
+    out->data_providers = plan->data_providers;
+    out->data_provider_count = plan->data_provider_count;
     out->capabilities = plan->capabilities;
     out->capability_count = plan->capability_count;
     return sl_status_ok();
@@ -327,6 +420,33 @@ SlStatus sl_capability_check_database(const SlCapabilityRegistry* registry, SlAr
     if (!sl_str_is_empty(capability->provider) && !sl_str_equal(capability->provider, provider)) {
         return sl_capability_denied(
             diag_arena, out_diag, token, capability->kind, operation, capability->access, provider,
+            sl_capability_literal("capability access denied: provider mismatch",
+                                  sizeof("capability access denied: provider mismatch") - 1U));
+    }
+    return sl_status_ok();
+}
+
+SlStatus sl_capability_check_database_provider(const SlCapabilityRegistry* registry,
+                                               SlArena* diag_arena, SlStr token,
+                                               SlCapabilityOperation operation, SlStr provider_kind,
+                                               SlDiag* out_diag)
+{
+    const SlPlanCapability* capability = NULL;
+    const SlPlanDataProvider* provider = NULL;
+    SlStatus status = sl_capability_check_common(registry, diag_arena, token, "database", operation,
+                                                 &capability, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (capability == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+
+    provider = sl_capability_find_provider(registry, capability->provider);
+    if (provider == NULL || !sl_str_equal(provider->provider, provider_kind)) {
+        return sl_capability_denied(
+            diag_arena, out_diag, token, capability->kind, operation, capability->access,
+            provider_kind,
             sl_capability_literal("capability access denied: provider mismatch",
                                   sizeof("capability access denied: provider mismatch") - 1U));
     }

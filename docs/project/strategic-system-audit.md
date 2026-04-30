@@ -220,13 +220,14 @@ What works: native `:memory:` tests, primitive parameter binding, transactions a
 provider level, JS wrapper with bridge-unavailable behavior outside V8, V8-gated bridge
 fixture.
 
-Skeletal: JavaScript bridge does not yet call the native capability policy hook; public
-source example is not yet a full compiler/runtime SQLite app.
+Skeletal: JavaScript bridge capability checks now exist for SQLite; public source example
+is not yet a full compiler/runtime SQLite app.
 
 Deferred: prepared-statement decision, file DB capability policy, app/request-scope
 connection lifecycle, async offload, transaction callback semantics through JS bridge.
 
-Misleading risk: "SQLite bridge exists" is not "permission-enforced SQLite data story."
+Misleading risk: "SQLite bridge exists" is not a PostgreSQL/SQL Server bridge, a file DB
+policy, or an OS sandbox.
 
 Must complete for engine foundation: public JS API, native bridge, resource ownership,
 capability requirement, query/exec/queryOne, transaction/prepared-statement policy,
@@ -236,19 +237,19 @@ Can postpone: ORM, migrations, query builder, advanced type mapping.
 
 ### 9. Capability / Security System
 
-Current state: capability metadata, Plan/native registry, provider-policy check hooks, and
-metadata audit fixtures exist. This is not an OS sandbox.
+Current state: capability metadata, Plan/native registry, provider-policy check hooks,
+SQLite bridge enforcement, and metadata audit fixtures exist. This is not an OS sandbox.
 
-What works: capability/provider validation, denied/missing/insufficient policy checks where
-callers use the hook, redaction helpers.
+What works: capability/provider validation, denied/missing/insufficient policy checks,
+SQLite bridge open/read/write enforcement, and redaction helpers.
 
-Skeletal: SQLite JS bridge does not yet enforce the policy hook; filesystem/network
-capabilities are metadata/check skeletons.
+Skeletal: filesystem/network capabilities are metadata/check skeletons; PostgreSQL and SQL
+Server have no JavaScript provider bridge yet.
 
 Deferred: permission prompts, OS sandboxing, filesystem/network APIs, live audit.
 
-Misleading risk: documenting "security" without saying there is no OS sandbox and no JS
-bridge enforcement yet.
+Misleading risk: documenting "security" without saying there is no OS sandbox and provider
+bridge enforcement currently covers only SQLite.
 
 Must complete for engine foundation: capability registry, enforcement at SQLite bridge
 open/use, denied diagnostics, audit/doctor checks, redaction.

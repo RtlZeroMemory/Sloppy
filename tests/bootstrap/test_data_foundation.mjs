@@ -165,10 +165,15 @@ function createForgedLoweredQuery() {
     assertThrowsMessage(() => data.sqlite.open({}), /path must be a non-empty string/);
     assertThrowsMessage(() => data.sqlite.open({
         path: ":memory:",
+        capability: "data.main",
         access: "admin",
     }), /access must be read or readwrite/);
     assertThrowsMessage(() => data.sqlite.open({
         path: ":memory:",
+    }), /capability must be a non-empty string/);
+    assertThrowsMessage(() => data.sqlite.open({
+        path: ":memory:",
+        capability: "data.main",
     }), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
 }
 
@@ -179,8 +184,13 @@ function createForgedLoweredQuery() {
         data: {
             sqlite: {
                 open(options) {
-                    calls.push(["open", options.path, options.access]);
-                    return { slot: 1, generation: 1, kind: "sqlite.connection" };
+                    calls.push(["open", options.path, options.capability, options.access]);
+                    return {
+                        slot: 1,
+                        generation: 1,
+                        kind: "sqlite.connection",
+                        capability: options.capability,
+                    };
                 },
                 exec(handle, text, params) {
                     calls.push(["exec", handle.slot, text, params]);
@@ -202,7 +212,10 @@ function createForgedLoweredQuery() {
     };
 
     try {
-        const db = data.sqlite.open(":memory:");
+        const db = data.sqlite.open({
+            path: ":memory:",
+            capability: "data.main",
+        });
         assert.equal(data.sqlite.supports.nativeStdlibBridge, true);
         assert.equal(data.sqlite.__debug().nativeStdlibBridge, true);
         assert.deepEqual(db.exec("insert into users (name) values (?)", ["Ada"]), {
@@ -211,11 +224,12 @@ function createForgedLoweredQuery() {
         assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
         assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
         assert.equal(db.__debug().resource.kind, "sqlite.connection");
+        assert.equal(db.__debug().resource.capability, "data.main");
         db.close();
         db.close();
         assertThrowsMessage(() => db.query("select 1"), /sqlite connection is closed/);
         assert.deepEqual(calls, [
-            ["open", ":memory:", "readwrite"],
+            ["open", ":memory:", "data.main", "readwrite"],
             ["exec", 1, "insert into users (name) values (?)", ["Ada"]],
             ["query", 1, "select name from users", []],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
@@ -447,6 +461,7 @@ function createForgedLoweredQuery() {
         .services((services) => {
             services.addSingleton("data.main", () => data.sqlite.open({
                 path: ":memory:",
+                capability: "data.main",
             }));
         });
 

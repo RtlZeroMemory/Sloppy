@@ -33,11 +33,12 @@ objects. The implemented `Results.*` helpers return plain frozen descriptor obje
 `schema` exposes a small validation skeleton for string, number, boolean, and object
 shapes.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
-SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite.open(...)` returns a safe
-SQLite wrapper only when the V8 runtime installs the native SQLite bridge; in
-bootstrap-only or non-V8 contexts it reports bridge-unavailable. `data.postgres.open(...)`
-and `data.sqlserver.open(...)` are future stdlib entry points for native providers and
-still report bridge-unavailable until their own bridge modules exist.
+SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite.open(...)` requires a
+capability token and returns a safe SQLite wrapper only when the V8 runtime installs the
+native SQLite bridge and the plan-backed capability check allows access; in bootstrap-only
+or non-V8 contexts it reports bridge-unavailable. `data.postgres.open(...)` and
+`data.sqlserver.open(...)` are future stdlib entry points for native providers and still
+report bridge-unavailable until their own bridge modules exist.
 `Sloppy.createBuilder()` exposes minimal config, logging, capabilities, and services builders;
 `Sloppy.module(...)` creates bootstrap app module definitions; `builder.addModule(...)`
 registers them; `builder.build()` freezes builder mutation and returns an in-memory app

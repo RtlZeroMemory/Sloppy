@@ -634,8 +634,6 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     SlStatus status;
     SlArenaMark mark = {};
 
-    (void)options;
-
     if (arena == nullptr || out_engine == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -654,6 +652,9 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
     backend->owner_thread = std::this_thread::get_id();
+    if (options != nullptr && options->capability_registry != nullptr) {
+        backend->capabilities = *options->capability_registry;
+    }
 
     status = sl_resource_table_init(&backend->resources, backend->resource_entries.data(),
                                     backend->resource_entries.size());

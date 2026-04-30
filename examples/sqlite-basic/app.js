@@ -11,6 +11,7 @@ export const SqliteModule = Sloppy.module("data.sqlite")
     .services((services) => {
         services.addSingleton("data.main", () => data.sqlite.open({
             path: ":memory:",
+            capability: "data.main",
             access: "readwrite",
         }));
     });

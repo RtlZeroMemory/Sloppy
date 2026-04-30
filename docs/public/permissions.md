@@ -52,8 +52,9 @@ Implemented behavior:
   only. No filesystem API is implemented.
 - Network checks support `connect`, `listen`, and `connect-listen` as skeleton policy
   checks only. No network client/listener API is implemented.
-- SQLite examples may include `path: ":memory:"` in copied metadata. This is provider
-  metadata only today; runtime permission enforcement and file database policy are still
+- SQLite examples include `path: ":memory:"` provider metadata plus a capability token.
+  V8-enabled SQLite bridge calls check that token against the runtime registry before
+  opening or using SQLite. File database policy beyond that metadata check is still
   deferred.
 - PostgreSQL copied metadata must not normalize or store credential-bearing fields such
   as `connectionString`. Use a secret-store reference, config key, or already-redacted
@@ -69,12 +70,13 @@ Not implemented yet:
 - no filesystem or network APIs;
 - no OS sandboxing;
 - no user prompts or grant sources;
-- no JavaScript database provider access checks.
+- no JavaScript PostgreSQL or SQL Server provider access checks because those bridges do
+  not exist yet.
 - no Node/Deno permission compatibility.
 
 Provider enforcement note: native check hooks deny before provider work when a caller uses
-them. The JavaScript SQLite bridge remains the follow-up integration point if MAIN1-08 has
-not yet landed in the branch being reviewed.
+them. The JavaScript SQLite bridge uses those hooks on open/read/write operations in
+V8-enabled runtime contexts.
 
 CLI audit note: `sloppy audit` is metadata-only. It can flag missing or mismatched
 provider/capability metadata and filesystem/network skeleton capabilities, but it does not
