@@ -90,10 +90,13 @@ must match the provider boundary being called. These hooks deny before provider 
 called by a bridge or native host boundary. The existing direct native provider APIs remain
 low-level provider primitives and do not carry capability context in their signatures.
 
-ENGINE-12.CD adds a deterministic provider/offload executor policy skeleton. ENGINE-23 is
-the implementation roadmap for turning that policy into the real provider execution
-runtime before SQLite runtime completion or future PostgreSQL/SQL Server JavaScript
-bridges depend on scalable provider execution.
+ENGINE-23.A/B adds the first provider execution runtime foundation: operation descriptors
+own queued inputs, per-provider-instance executors enforce bounded admission, accepted
+operations transfer cleanup ownership to the executor, overflow leaves caller ownership
+intact, and shutdown rejects or cancels deterministically. It still does not run serialized
+blocking workers, blocking pools, SQLite async/offload conversion, PostgreSQL/SQL Server
+bridges, HTTP backend work, green threads, Node/npm behavior, public alpha docs, or
+benchmark claims.
 
 ## Provider Support Classification
 
@@ -133,9 +136,11 @@ capacity, in-flight count, shutdown state, optional worker count, and counters. 
 no unbounded global provider queue, no thread-per-request behavior, and no
 provider-specific async model outside Slop's admission/completion contract.
 
-ENGINE-23 turns these modes into implementation-grade executor contracts. Until then, the
-checked-in provider executor is deterministic native policy/test infrastructure and not a
-production worker runtime.
+ENGINE-23.A/B turns these modes into implementation-grade descriptor and admission
+contracts. The checked-in provider executor is still not a production worker runtime:
+`SERIALIZED_BLOCKING` worker execution follows in #393, `BLOCKING_POOL` follows in #394,
+cancellation/timeout/late-completion detail follows in #395, capability-gated dispatch
+follows in #396, and diagnostics/stress evidence follows in #397.
 
 Provider operation descriptors must own or retain all memory needed after submission: SQL
 strings, parameter text/blob values, provider config references, capability token,

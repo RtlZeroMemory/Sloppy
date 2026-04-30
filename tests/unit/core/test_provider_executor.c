@@ -55,23 +55,55 @@ static void cleanup_provider_operation(SlProviderOperation* operation, void* use
     }
 }
 
-static SlProviderOperationDescriptor descriptor(ProviderRecord* record, SlBytes input,
-                                                SlCancellationToken* token)
+static int make_descriptor_for(ProviderRecord* record, SlBytes input, SlCancellationToken* token,
+                               SlStr instance_id, SlStr provider_kind, SlProviderExecutionMode mode,
+                               SlProviderOperationDescriptor* out_descriptor)
 {
-    SlProviderOperationDescriptor desc = {0};
+    SlProviderOperationDescriptor desc = sl_provider_operation_descriptor_init(
+        instance_id, provider_kind, SL_PROVIDER_OPERATION_KIND_QUERY, sl_str_from_cstr("query"),
+        mode, record_provider_completion, record);
 
-    desc.provider_instance_id = sl_str_from_cstr("sqlite:main");
-    desc.provider_kind = sl_str_from_cstr("sqlite");
-    desc.operation_name = sl_str_from_cstr("query");
-    desc.capability_token = sl_str_from_cstr("data.main");
-    desc.execution_mode = SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING;
-    desc.cancellation = token;
-    desc.input = input;
-    desc.completion_dispatch = record_provider_completion;
-    desc.completion_dispatch_user = record;
-    desc.cleanup = cleanup_provider_operation;
-    desc.cleanup_user = record;
-    return desc;
+    if (out_descriptor == NULL) {
+        return 1;
+    }
+    if (expect_status(sl_provider_operation_descriptor_attach_capability(
+                          &desc, sl_str_from_cstr("data.main"), SL_CAPABILITY_OPERATION_READ),
+                      SL_STATUS_OK) != 0)
+    {
+        return 2;
+    }
+    if (expect_status(sl_provider_operation_descriptor_attach_cancellation(&desc, token, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 3;
+    }
+    if (expect_status(sl_provider_operation_descriptor_set_input(&desc, input), SL_STATUS_OK) != 0)
+    {
+        return 4;
+    }
+    if (expect_status(sl_provider_operation_descriptor_set_diagnostic_context(
+                          &desc, sl_str_from_cstr("route users#index")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 5;
+    }
+    if (expect_status(sl_provider_operation_descriptor_attach_cleanup(
+                          &desc, cleanup_provider_operation, record),
+                      SL_STATUS_OK) != 0)
+    {
+        return 6;
+    }
+
+    *out_descriptor = desc;
+    return 0;
+}
+
+static int make_descriptor(ProviderRecord* record, SlBytes input, SlCancellationToken* token,
+                           SlProviderOperationDescriptor* out_descriptor)
+{
+    return make_descriptor_for(record, input, token, sl_str_from_cstr("sqlite:main"),
+                               sl_str_from_cstr("sqlite"),
+                               SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING, out_descriptor);
 }
 
 static int init_executor(SlArena* arena, SlAsyncLoop** loop, SlProviderInstanceExecutor* executor,
@@ -81,9 +113,11 @@ static int init_executor(SlArena* arena, SlAsyncLoop** loop, SlProviderInstanceE
     SlProviderExecutorConfig config = {0};
 
     config.instance_id = sl_str_from_cstr("sqlite:main");
+    config.provider_kind = sl_str_from_cstr("sqlite");
     config.mode = SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING;
     config.queue_capacity = capacity;
     config.worker_count = 1U;
+    config.max_in_flight = 1U;
     if (expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, arena, completions, 16U, loop),
                       SL_STATUS_OK) != 0)
     {
@@ -109,6 +143,110 @@ static int test_execution_mode_parse_and_validation(void)
         return 1;
     }
 
+    if (!sl_provider_operation_kind_is_supported(SL_PROVIDER_OPERATION_KIND_QUERY) ||
+        sl_provider_operation_kind_is_supported(SL_PROVIDER_OPERATION_KIND_UNKNOWN) ||
+        !sl_str_equal(sl_provider_operation_kind_name(SL_PROVIDER_OPERATION_KIND_QUERY_ONE),
+                      sl_str_from_cstr("queryOne")))
+    {
+        return 2;
+    }
+
+    return 0;
+}
+
+static int test_descriptor_helpers_preserve_outputs_on_failure(void)
+{
+    ProviderRecord record = {0};
+    SlProviderOperationDescriptor desc = sl_provider_operation_descriptor_init(
+        sl_str_from_cstr("sqlite:main"), sl_str_from_cstr("sqlite"),
+        SL_PROVIDER_OPERATION_KIND_QUERY, sl_str_from_cstr("query"),
+        SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING, record_provider_completion, &record);
+    SlBytes good = sl_bytes_from_parts((const unsigned char*)"select", 6U);
+    SlBytes bad = {0};
+
+    if (expect_status(sl_provider_operation_descriptor_set_input(&desc, good), SL_STATUS_OK) != 0 ||
+        desc.input.ptr != good.ptr || desc.input.length != good.length)
+    {
+        return 60;
+    }
+
+    bad.ptr = NULL;
+    bad.length = 4U;
+    if (expect_status(sl_provider_operation_descriptor_set_input(&desc, bad),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        desc.input.ptr != good.ptr || desc.input.length != good.length ||
+        expect_status(sl_provider_operation_descriptor_attach_capability(
+                          &desc, sl_str_from_cstr("data.main"), SL_CAPABILITY_OPERATION_READ),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_operation_descriptor_set_diagnostic_context(
+                          &desc, sl_str_from_cstr("safe context")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_operation_descriptor_attach_cleanup(
+                          &desc, cleanup_provider_operation, &record),
+                      SL_STATUS_OK) != 0)
+    {
+        return 61;
+    }
+
+    return 0;
+}
+
+static int test_invalid_descriptor_fields_fail_without_cleanup(void)
+{
+    unsigned char arena_storage[8192];
+    SlArena arena;
+    SlAsyncCompletion completions[16];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor;
+    SlProviderExecutorSlot slots[1];
+    ProviderRecord record = {0};
+    SlProviderOperation* op = (SlProviderOperation*)1;
+    SlProviderOperationDescriptor desc;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        init_executor(&arena, &loop, &executor, slots, completions, 1U) != 0)
+    {
+        return 70;
+    }
+
+    if (make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0) {
+        return 71;
+    }
+    desc.provider_instance_id = sl_str_empty();
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        op != NULL || record.cleanup_count != 0U)
+    {
+        return 72;
+    }
+
+    if (make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0) {
+        return 73;
+    }
+    desc.execution_mode = SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED;
+    op = (SlProviderOperation*)1;
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        op != NULL || record.cleanup_count != 0U)
+    {
+        return 74;
+    }
+
+    if (make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0) {
+        return 75;
+    }
+    desc.provider_kind = sl_str_from_cstr("postgres");
+    op = (SlProviderOperation*)1;
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        op != NULL || record.cleanup_count != 0U)
+    {
+        return 76;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
     return 0;
 }
 
@@ -139,11 +277,13 @@ static int test_serialized_admission_overflow_and_recovery(void)
         return 10;
     }
 
-    first_desc = descriptor(&record, sl_bytes_from_parts(first_bytes, sizeof(first_bytes)), NULL);
-    second_desc =
-        descriptor(&record, sl_bytes_from_parts(second_bytes, sizeof(second_bytes)), NULL);
-    third_desc = descriptor(&record, sl_bytes_from_parts(third_bytes, sizeof(third_bytes)), NULL);
-    if (expect_status(sl_provider_executor_submit(&executor, &arena, &first_desc, &first),
+    if (make_descriptor(&record, sl_bytes_from_parts(first_bytes, sizeof(first_bytes)), NULL,
+                        &first_desc) != 0 ||
+        make_descriptor(&record, sl_bytes_from_parts(second_bytes, sizeof(second_bytes)), NULL,
+                        &second_desc) != 0 ||
+        make_descriptor(&record, sl_bytes_from_parts(third_bytes, sizeof(third_bytes)), NULL,
+                        &third_desc) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &first_desc, &first),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_provider_executor_submit(&executor, &arena, &second_desc, &second),
                       SL_STATUS_OK) != 0 ||
@@ -211,9 +351,9 @@ static int test_cancel_timeout_and_late_completion_cleanup_once(void)
         return 20;
     }
 
-    cancel_desc = descriptor(&record, sl_bytes_empty(), &token);
-    timeout_desc = descriptor(&record, sl_bytes_empty(), NULL);
-    if (expect_status(sl_provider_executor_submit(&executor, &arena, &cancel_desc, &cancelled),
+    if (make_descriptor(&record, sl_bytes_empty(), &token, &cancel_desc) != 0 ||
+        make_descriptor(&record, sl_bytes_empty(), NULL, &timeout_desc) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &cancel_desc, &cancelled),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_provider_executor_submit(&executor, &arena, &timeout_desc, &timed_out),
                       SL_STATUS_OK) != 0 ||
@@ -272,8 +412,8 @@ static int test_shutdown_rejects_new_work_and_cancels_pending(void)
         return 30;
     }
 
-    desc = descriptor(&record, sl_bytes_empty(), NULL);
-    if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &first),
+    if (make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &first),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &second),
                       SL_STATUS_OK) != 0 ||
@@ -297,6 +437,85 @@ static int test_shutdown_rejects_new_work_and_cancels_pending(void)
     sl_async_loop_dispose(loop);
     (void)first;
     (void)second;
+    return 0;
+}
+
+static int test_blocking_pool_promotes_queued_when_slot_frees(void)
+{
+    unsigned char arena_storage[8192];
+    SlArena arena;
+    SlAsyncCompletion completions[16];
+    SlAsyncLoop* loop = NULL;
+    SlProviderExecutorConfig config = {0};
+    SlProviderInstanceExecutor executor;
+    SlProviderExecutorSlot slots[2];
+    ProviderRecord record = {0};
+    SlProviderOperation* first = NULL;
+    SlProviderOperation* second = NULL;
+    SlProviderOperationDescriptor first_desc;
+    SlProviderOperationDescriptor second_desc;
+    size_t ran = 0U;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, completions, 16U, &loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 80;
+    }
+
+    config.instance_id = sl_str_from_cstr("postgres:main");
+    config.provider_kind = sl_str_from_cstr("postgres");
+    config.mode = SL_PROVIDER_EXECUTION_BLOCKING_POOL;
+    config.queue_capacity = 2U;
+    config.worker_count = 1U;
+    config.max_in_flight = 1U;
+    if (expect_status(sl_provider_executor_init(&executor, &arena, &config, slots, loop),
+                      SL_STATUS_OK) != 0 ||
+        make_descriptor_for(&record, sl_bytes_empty(), NULL, sl_str_from_cstr("postgres:main"),
+                            sl_str_from_cstr("postgres"), SL_PROVIDER_EXECUTION_BLOCKING_POOL,
+                            &first_desc) != 0 ||
+        make_descriptor_for(&record, sl_bytes_empty(), NULL, sl_str_from_cstr("postgres:main"),
+                            sl_str_from_cstr("postgres"), SL_PROVIDER_EXECUTION_BLOCKING_POOL,
+                            &second_desc) != 0)
+    {
+        return 81;
+    }
+
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &first_desc, &first),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &second_desc, &second),
+                      SL_STATUS_OK) != 0 ||
+        sl_provider_operation_state(first) != SL_PROVIDER_OPERATION_ACTIVE ||
+        sl_provider_operation_state(second) != SL_PROVIDER_OPERATION_QUEUED ||
+        sl_provider_executor_in_flight_count(&executor) != 1U)
+    {
+        return 82;
+    }
+
+    if (expect_status(sl_provider_operation_complete(first, sl_status_ok(), SL_DIAG_NONE,
+                                                     sl_str_from_cstr("first done")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+        sl_provider_operation_state(second) != SL_PROVIDER_OPERATION_ACTIVE ||
+        sl_provider_executor_in_flight_count(&executor) != 1U ||
+        sl_provider_executor_pending_count(&executor) != 1U || record.cleanup_count != 1U)
+    {
+        return 83;
+    }
+
+    if (expect_status(sl_provider_operation_complete(second, sl_status_ok(), SL_DIAG_NONE,
+                                                     sl_str_from_cstr("second done")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+        sl_provider_executor_in_flight_count(&executor) != 0U ||
+        sl_provider_executor_pending_count(&executor) != 0U || record.cleanup_count != 2U)
+    {
+        return 84;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
     return 0;
 }
 
@@ -328,9 +547,11 @@ static int test_per_instance_isolation(void)
     }
 
     config_a.instance_id = sl_str_from_cstr("sqlite:main");
+    config_a.provider_kind = sl_str_from_cstr("sqlite");
     config_a.mode = SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING;
     config_a.queue_capacity = 1U;
     config_a.worker_count = 1U;
+    config_a.max_in_flight = 1U;
     config_b = config_a;
     config_b.instance_id = sl_str_from_cstr("sqlite:audit");
     if (expect_status(sl_provider_executor_init(&a, &arena, &config_a, slot_a, loop),
@@ -341,7 +562,9 @@ static int test_per_instance_isolation(void)
         return 41;
     }
 
-    desc_a = descriptor(&record, sl_bytes_empty(), NULL);
+    if (make_descriptor(&record, sl_bytes_empty(), NULL, &desc_a) != 0) {
+        return 42;
+    }
     desc_b = desc_a;
     desc_b.provider_instance_id = sl_str_from_cstr("sqlite:audit");
     if (expect_status(sl_provider_executor_submit(&a, &arena, &desc_a, &op_a), SL_STATUS_OK) != 0 ||
@@ -352,7 +575,7 @@ static int test_per_instance_isolation(void)
         sl_provider_executor_pending_count(&a) != 1U ||
         sl_provider_executor_pending_count(&b) != 1U)
     {
-        return 42;
+        return 43;
     }
 
     sl_provider_executor_dispose(&a);
@@ -374,12 +597,27 @@ int main(void)
         return result;
     }
 
+    result = test_descriptor_helpers_preserve_outputs_on_failure();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_invalid_descriptor_fields_fail_without_cleanup();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_cancel_timeout_and_late_completion_cleanup_once();
     if (result != 0) {
         return result;
     }
 
     result = test_shutdown_rejects_new_work_and_cancels_pending();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_blocking_pool_promotes_queued_when_slot_frees();
     if (result != 0) {
         return result;
     }

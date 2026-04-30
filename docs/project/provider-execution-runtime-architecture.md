@@ -1,6 +1,7 @@
 # Provider Execution Runtime Architecture
 
-Status: ENGINE-23 strategic architecture.
+Status: ENGINE-23 strategic architecture with ENGINE-23.A/B descriptor and admission
+foundation implemented.
 
 ENGINE-23 creates Slop's provider execution and blocking offload runtime. It sits after
 ENGINE-12's generic async backend and before deeper provider, SQLite, HTTP, and public
@@ -140,9 +141,10 @@ Instance rules:
 
 ## 4. Provider Operation Descriptor
 
-ENGINE-23 introduces the implementation-grade `SlProviderOperation` concept. The current
-ENGINE-12 skeleton can evolve, but the production descriptor must carry enough information
-for queued work, off-owner-thread execution, cancellation, diagnostics, and cleanup.
+ENGINE-23.A/B introduces the implementation-grade `SlProviderOperation` concept for native
+tests and future provider bridges. The current implementation is still an admission and
+state model, not worker execution, but the descriptor now carries enough information for
+queued work, off-owner-thread execution, cancellation, diagnostics, and cleanup.
 
 Required descriptor fields:
 
@@ -175,11 +177,29 @@ Operation state rules:
 
 - admission can fail before ownership transfer;
 - after successful admission the executor owns cleanup until terminal dispatch or discard;
+- failed admission leaves caller ownership intact and does not run the operation cleanup
+  callback;
 - terminal states include success, provider failure, cancellation, timeout, overflow, and
   shutdown;
 - only one terminal result may be posted;
 - double completion returns deterministic invalid-state behavior or becomes cleanup-only
   when the operation is already terminal.
+
+Implemented in ENGINE-23.A/B:
+
+- `include/sloppy/provider_executor.h` defines execution modes, operation kinds,
+  capability requirement fields, request/app scope placeholders, cancellation/deadline
+  references, diagnostic context, owned input bytes, completion target, and cleanup
+  callback.
+- `src/core/provider_executor.c` copies provider instance id, provider kind, operation
+  name, capability token, diagnostic context, and input bytes into the operation arena
+  before successful admission.
+- Helpers initialize descriptors, attach owned-input views for later copying, attach
+  capability/cancellation/scope/completion cleanup metadata, and preserve existing fields
+  on invalid helper inputs.
+- No SQL-specific payload conversion, SQLite bridge conversion, PostgreSQL/SQL Server
+  bridge, HTTP backend, green threads, Node/npm behavior, public alpha docs, or benchmark
+  claims are introduced by this foundation.
 
 ## 5. Worker And Executor Model
 
@@ -189,7 +209,7 @@ failure handling, shutdown handling, backpressure, and deterministic overflow.
 Common executor lifecycle:
 
 1. initialize from provider instance configuration and app scope;
-2. start workers or async provider state needed by the selected mode;
+2. start workers or async provider state needed by the selected mode in later tasks;
 3. admit operations only after capability and cancellation checks;
 4. queue or dispatch within bounded capacity and in-flight limits;
 5. execute provider work without entering V8;
@@ -198,6 +218,20 @@ Common executor lifecycle:
 8. run cleanup exactly once;
 9. stop admission on shutdown;
 10. drain, cancel, or discard according to the configured shutdown policy.
+
+Implemented in ENGINE-23.A/B:
+
+- provider instance id, provider kind, execution mode, queue capacity, pending count,
+  in-flight count, max in-flight, future worker count, shutdown state, counters,
+  app-owner placeholder, and config-binding placeholder;
+- bounded in-memory pending slots with no global uncontrolled provider queue;
+- deterministic rejection for invalid descriptors, missing provider instance id,
+  provider-kind/instance mismatch, invalid execution mode, queue overflow, pre-cancelled
+  tokens, and shutdown;
+- explicit ownership transfer only on successful admission;
+- dispose and immediate shutdown clean admitted pending/active operations exactly once;
+- `SERIALIZED_BLOCKING` activates one operation at a time, while other modes only model
+  in-flight metadata and do not run execution engines yet.
 
 `SERIALIZED_BLOCKING` requirements:
 

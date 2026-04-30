@@ -6,14 +6,14 @@ Bootstrap data/capabilities foundation implemented. Native SQLite, PostgreSQL, a
 Server providers are implemented for C/runtime tests. SQLite has a V8-gated
 JavaScript-to-native bridge wired to Plan provider metadata, opaque resource IDs, and the
 native database capability hook.
-ENGINE-12.CD defines the native provider/offload executor policy that future SQLite,
-PostgreSQL, and SQL Server runtime bridge work must use; current provider calls remain
-synchronous unless their existing phase explicitly wired a JS bridge.
-ENGINE-23 is the implementation roadmap for the real provider execution runtime: owned
-operation descriptors, per-provider-instance executors, serialized SQLite-class blocking
-offload, bounded blocking pools, capability-gated admission, cancellation/late-completion
-semantics, and diagnostics/stress evidence. SQLite runtime completion depends on that
-runtime before Sloppy can claim scalable provider execution.
+ENGINE-23.A/B defines the native provider/offload descriptor and bounded
+per-provider-instance admission model that future SQLite, PostgreSQL, and SQL Server
+runtime bridge work must use; current provider calls remain synchronous unless their
+existing phase explicitly wired a JS bridge. The real worker execution roadmap remains:
+serialized SQLite-class blocking offload in #393, bounded blocking pools in #394,
+cancellation/late-completion detail in #395, capability-gated dispatch in #396, and
+diagnostics/stress evidence in #397. SQLite runtime completion depends on that runtime
+before Sloppy can claim scalable provider execution.
 
 ## Purpose
 
@@ -127,7 +127,11 @@ Async/offload ownership:
 - provider work must be admitted through a per-provider-instance Slop executor such as
   `sqlite:main` or `sqlite:audit`;
 - operation descriptors must copy SQL text, parameter strings/blobs, config values needed
-  after submission, and diagnostic context before they leave the caller stack;
+  after submission, capability tokens, operation names, and diagnostic context before they
+  leave the caller stack;
+- failed admission does not transfer ownership and does not run the operation cleanup
+  callback; accepted operations are cleaned exactly once by terminal dispatch, shutdown, or
+  dispose;
 - provider completion posts through `SlAsyncLoop` and can resume JS only through the V8
   owner-thread scheduler;
 - SQLite's default async execution mode is `SERIALIZED_BLOCKING` for a single connection
@@ -136,8 +140,8 @@ Async/offload ownership:
   `BLOCKING_POOL` when using blocking drivers;
 - no provider may use libuv's global threadpool as its runtime policy, create a
   thread-per-request model, bypass capability checks, or invent a separate lifetime model.
-- ENGINE-23 must implement the worker lifecycle and admission path before future provider
-  bridge work treats these rules as production runtime behavior.
+- ENGINE-23.C and later must implement worker lifecycle before future provider bridge work
+  treats these rules as production runtime behavior.
 
 SQLite text/blob ownership:
 
@@ -218,12 +222,12 @@ wrapper, fail closed when hook metadata is absent, and receive deterministic
 stale/closed/invalid argument/capability-denied failures. They are reported separately from
 default provider tests because default gates do not enable V8.
 
-`core.provider_executor` is the default native ENGINE-12.CD provider/offload source. It
-covers execution-mode parsing, serialized admission, per-instance capacity isolation,
-overflow and recovery, copied input ownership, cancellation, timeout, immediate shutdown,
-late completion, and cleanup exactly once. It is not a live database test and does not
-claim SQLite async/offload conversion. ENGINE-23 must add production executor tests before
-SQLite provider work can claim off-owner-thread execution.
+`core.provider_executor` is the default native ENGINE-23.A/B provider/offload source. It
+covers execution-mode parsing, operation-kind metadata, descriptor helper failure
+preservation, invalid descriptor rejection, serialized admission, per-instance capacity
+isolation, overflow and recovery, copied input ownership, cancellation, timeout, immediate
+shutdown, late completion, and cleanup exactly once. It is not a live database test and
+does not claim SQLite async/offload conversion or worker execution.
 
 `core.capability.registry` covers the runtime capability registry, database read/write
 policy, provider mismatch denial, missing/wrong-kind/insufficient capability diagnostics,
