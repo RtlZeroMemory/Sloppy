@@ -97,6 +97,28 @@ void sl_arena_reset(SlArena* arena)
     arena->offset = 0U;
 }
 
+void sl_arena_dispose(SlArena* arena)
+{
+    if (arena == NULL) {
+        return;
+    }
+
+#if SL_ENABLE_ASSERTS
+    if (arena->base != NULL && arena->offset != 0U) {
+        sl_arena_poison(arena->base, arena->offset, SL_ARENA_POISON_RESET);
+    }
+#endif
+
+    arena->base = NULL;
+    arena->capacity = 0U;
+    arena->offset = 0U;
+    arena->high_water = 0U;
+    arena->generation += 1U;
+    if (arena->generation == 0U) {
+        arena->generation = 1U;
+    }
+}
+
 SlArenaMark sl_arena_mark(const SlArena* arena)
 {
     SlArenaMark mark = {0U};

@@ -1,10 +1,12 @@
 # Memory/String Adoption Map
 
-Status: strategic design for ENGINE-22.
+Status: strategic design for ENGINE-22 after the ENGINE-21.A/B/C/E/F primitive slice.
 
-ENGINE-22 is the migration layer after ENGINE-21 primitives land. It should not be started
-by inventing helper code in individual subsystems. Start with the primitive contracts, then
-move hot paths in bounded PRs.
+ENGINE-22 is the migration layer after ENGINE-21 primitives land. ENGINE-21.A/B/C/E/F now
+provide view/copy/hash helpers, bounded builders, bounded interning, and focused safety
+tests. ENGINE-21.D V8/SQLite interop policy remains a follow-up. ENGINE-22 should not be
+started by inventing helper code in individual subsystems; start with the primitive
+contracts, then move hot paths in bounded PRs.
 
 Hot paths are marked with `hot`.
 
@@ -23,18 +25,15 @@ Hot paths are marked with `hot`.
 
 ## Recommended Implementation Order
 
-1. ENGINE-21.A, ENGINE-21.B, and ENGINE-21.C define the lifetime, view, owned
-   string/buffer, and builder primitives.
-2. ENGINE-21.F defines bounded app/static string interning and symbol-table semantics after
-   the basic view/hash/copy contracts are stable.
-3. ENGINE-21.D and ENGINE-21.E lock V8/SQLite conversion policy and safety/stress tests.
-4. ENGINE-22.A migrates HTTP parser/request/response paths.
-5. ENGINE-22.B migrates diagnostics and CLI output.
-6. ENGINE-22.C migrates Plan/artifact/source-map loader patterns and starts interned
+1. ENGINE-21.D locks V8/SQLite conversion policy on top of the implemented primitive
+   layer.
+2. ENGINE-22.A migrates HTTP parser/request/response paths.
+3. ENGINE-22.B migrates diagnostics and CLI output.
+4. ENGINE-22.C migrates Plan/artifact/source-map loader patterns and starts interned
    metadata adoption where byte-equality behavior stays unchanged.
-7. ENGINE-22.D migrates V8 bridge conversions.
-8. ENGINE-22.E migrates SQLite result/parameter conversion.
-9. ENGINE-22.F removes duplicate ad hoc buffers/builders, finishes safe symbol adoption,
+5. ENGINE-22.D migrates V8 bridge conversions after #367 policy is accepted.
+6. ENGINE-22.E migrates SQLite result/parameter conversion after #367 policy is accepted.
+7. ENGINE-22.F removes duplicate ad hoc buffers/builders, finishes safe symbol adoption,
    and adds regression guards.
 
 ## Parallelization Notes

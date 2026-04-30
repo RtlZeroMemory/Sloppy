@@ -54,6 +54,14 @@ SlStatus sl_arena_init(SlArena* arena, void* buffer, size_t capacity);
 void sl_arena_reset(SlArena* arena);
 
 /*
+ * Disposes the arena object without freeing caller-owned backing storage.
+ *
+ * Existing arena allocations become invalid by contract. The caller still owns `base` and
+ * may reuse or release it independently. Passing NULL is allowed.
+ */
+void sl_arena_dispose(SlArena* arena);
+
+/*
  * Captures the current arena offset for a later sl_arena_reset_to().
  *
  * Passing NULL returns a mark that reset_to will reject.

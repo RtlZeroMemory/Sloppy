@@ -1,10 +1,11 @@
 # ENGINE-21/22 Issue Index
 
-Status: GitHub issues created for the memory/string foundation roadmap.
+Status: GitHub issues created for the memory/string foundation roadmap; ENGINE-21.A/B/C/E/F
+are implemented by the primitive foundation slice.
 
 This index records the issue numbers for ENGINE-21 and ENGINE-22 and gives the intended
-implementation order. It is a planning artifact only; it does not mean the primitives or
-adoption work are implemented.
+implementation order. ENGINE-21.D remains the V8/SQLite interop-policy follow-up; ENGINE-22
+remains adoption work, not part of the primitive slice.
 
 ## EPICs And Tasks
 
@@ -36,16 +37,13 @@ Tasks:
 
 ## Recommended Implementation Order
 
-1. [#364](https://github.com/RtlZeroMemory/Slop/issues/364) ENGINE-21.A and [#365](https://github.com/RtlZeroMemory/Slop/issues/365) ENGINE-21.B define lifetimes, allocation rules, string/byte views, owned-copy rules, and hash/equality helpers.
-2. [#366](https://github.com/RtlZeroMemory/Slop/issues/366) ENGINE-21.C implements builders and formatter utilities.
-3. [#369](https://github.com/RtlZeroMemory/Slop/issues/369) ENGINE-21.F implements bounded app/static string interning and symbol-table semantics after lifetime and hash/equality contracts are stable.
-4. [#367](https://github.com/RtlZeroMemory/Slop/issues/367) ENGINE-21.D and [#368](https://github.com/RtlZeroMemory/Slop/issues/368) ENGINE-21.E lock V8/SQLite conversion policy and safety/stress evidence.
-5. [#370](https://github.com/RtlZeroMemory/Slop/issues/370) ENGINE-22.A migrates HTTP parser/request/response paths.
-6. [#371](https://github.com/RtlZeroMemory/Slop/issues/371) ENGINE-22.B migrates diagnostics and CLI output.
-7. [#372](https://github.com/RtlZeroMemory/Slop/issues/372) ENGINE-22.C migrates Plan/artifact/source-map loader patterns and starts safe interned metadata adoption.
-8. [#373](https://github.com/RtlZeroMemory/Slop/issues/373) ENGINE-22.D migrates V8 bridge conversions.
-9. [#374](https://github.com/RtlZeroMemory/Slop/issues/374) ENGINE-22.E migrates SQLite result/parameter conversion.
-10. [#375](https://github.com/RtlZeroMemory/Slop/issues/375) ENGINE-22.F removes remaining duplicate ad hoc buffers/builders, finishes justified symbol adoption, and adds regression guards.
+1. [#367](https://github.com/RtlZeroMemory/Slop/issues/367) ENGINE-21.D locks V8/SQLite conversion policy on top of the implemented primitive layer.
+2. [#370](https://github.com/RtlZeroMemory/Slop/issues/370) ENGINE-22.A migrates HTTP parser/request/response paths.
+3. [#371](https://github.com/RtlZeroMemory/Slop/issues/371) ENGINE-22.B migrates diagnostics and CLI output.
+4. [#372](https://github.com/RtlZeroMemory/Slop/issues/372) ENGINE-22.C migrates Plan/artifact/source-map loader patterns and starts safe interned metadata adoption.
+5. [#373](https://github.com/RtlZeroMemory/Slop/issues/373) ENGINE-22.D migrates V8 bridge conversions after #367.
+6. [#374](https://github.com/RtlZeroMemory/Slop/issues/374) ENGINE-22.E migrates SQLite result/parameter conversion after #367.
+7. [#375](https://github.com/RtlZeroMemory/Slop/issues/375) ENGINE-22.F removes remaining duplicate ad hoc buffers/builders, finishes justified symbol adoption, and adds regression guards.
 
 ## Dependency Graph
 
@@ -114,6 +112,5 @@ Should not run in parallel:
 ## Legacy Issue Relationship
 
 The older `TASK 03.B: String Builder / Buffer Foundation` issue is too narrow for the
-current engine foundation. ENGINE-21.C should explicitly absorb or supersede that builder
-work, while ENGINE-21.F covers the newly required bounded interning/symbol-table primitive
-and ENGINE-22 covers adoption across hot paths.
+current engine foundation. ENGINE-21.C absorbs that builder work, ENGINE-21.F covers the
+bounded interning/symbol-table primitive, and ENGINE-22 covers adoption across hot paths.

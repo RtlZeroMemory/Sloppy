@@ -1,10 +1,14 @@
 # Memory/String Foundation Architecture
 
-Status: strategic design for ENGINE-21.
+Status: strategic design for ENGINE-21, with ENGINE-21.A/B/C/E/F primitive foundations
+implemented.
 
 ENGINE-21 makes memory and string handling a first-class engine foundation layer. It is not
 a bag of helper utilities. It defines the ownership, lifetime, allocation, and conversion
 rules that HTTP, V8, SQLite, diagnostics, Plan, CLI, and conformance work can depend on.
+This implementation slice provides the core lifetime/allocation rules, view/copy/hash
+helpers, bounded builders, bounded interning, and safety tests. V8/SQLite interop policy
+remains tracked by ENGINE-21.D / #367, and subsystem adoption remains ENGINE-22.
 
 Core rule:
 
@@ -94,9 +98,11 @@ scanner enforcement, arena copy helpers, and carefully scoped owned string/buffe
 | String builder | Mutable growable text output target. | Builder-owned over arena/caller buffer/owned allocation depending on init. | Optional final NUL for boundary adapters. | Appends string views; byte appends require explicit API. | Not applicable. | Finalize to `SlStr`. |
 | Interned string | Deduplicated app/static-lifetime string returned as a stable symbol/view pair. | Intern table owns bytes and symbol metadata. | No public assumption; optional NUL is explicit. | Same byte-level default; validation is opt-in per table/API. | Hash/equality required; pointer identity is an optimization, not the only correctness rule. | Convert into V8/SQLite/diagnostic strings through the same explicit boundary adapters as ordinary views. |
 
-ENGINE-21 should keep `SlStr` and `SlBytes` small and borrowed. It may add explicit helpers
-such as arena copy, checked prefix/suffix/contains, ASCII case-insensitive comparison for
-HTTP where documented, and hash helpers only when a real table needs them.
+ENGINE-21 keeps `SlStr` and `SlBytes` small and borrowed. The implemented helper surface is
+intentionally narrow: arena copy helpers, suffix helpers, deterministic hash helpers used by
+the intern table, and explicit C-string boundary copies where a NUL terminator is required.
+ASCII case-insensitive comparison remains a subsystem-specific follow-up when HTTP adoption
+needs it.
 
 String interning is in scope for ENGINE-21 because Plan graphs, route graphs, module names,
 capability names, provider names, HTTP method tokens, and diagnostic code/name metadata can
@@ -135,13 +141,22 @@ Required builder concepts:
 JSON builder policy: include only the minimal escaping/emission target needed for
 diagnostics and CLI output. Do not build a JSON DOM library in ENGINE-21.
 
+Implemented builder surface:
+
+- `SlByteBuilder` over fixed caller storage or arena storage with explicit max capacity;
+- `SlStringBuilder` over the same storage model;
+- append/reserve helpers for bytes, chars, strings, and small decimal integer formatting;
+- `sl_string_builder_view_with_nul` for boundary adapters that require a terminator;
+- failed append/reserve calls preserve the already-written prefix and the builder remains
+  usable.
+
 Builder failure behavior:
 
 - all append/grow operations return `SlStatus`;
 - growth checks use checked arithmetic;
 - capacity exhaustion is deterministic;
-- the builder remains valid after a failed append, but finalization after failure should be
-  explicitly disallowed or documented;
+- the builder remains valid after a failed append; views after failure expose the
+  previously written prefix;
 - output parameters remain unchanged on failure where project style expects that.
 
 ## Safety Rules
@@ -239,6 +254,16 @@ avoidance of copies.
 - TASK ENGINE-21.D: V8 and SQLite String Interop Policies.
 - TASK ENGINE-21.E: Memory Safety and Stress Tests.
 - TASK ENGINE-21.F: String Interning and Symbol Table Foundation.
+
+Implementation status:
+
+- ENGINE-21.A/B/C/E/F primitive work is implemented in `include/sloppy/string.h`,
+  `include/sloppy/bytes.h`, `include/sloppy/builder.h`, `include/sloppy/intern.h`,
+  `src/core/string.c`, `src/core/bytes.c`, `src/core/builder.c`, `src/core/intern.c`, and
+  focused unit tests.
+- ENGINE-21.D remains a follow-up for V8/native and SQLite text/blob helper policy.
+- ENGINE-22 remains the adoption layer for HTTP, diagnostics/CLI, Plan/artifacts, V8,
+  SQLite, and cleanup/regression guards.
 
 ## Non-goals
 

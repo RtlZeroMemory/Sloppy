@@ -2,7 +2,7 @@
 
 ## Status
 
-Partially implemented for TASK 03.A.
+Partially implemented through ENGINE-21.A/B/C/E/F primitive foundations.
 
 ## Purpose
 
@@ -14,9 +14,14 @@ Implemented now:
 
 - `SlArena`: caller-backed scoped arena allocation;
 - `SlArenaMark`: offset marks for scoped reset.
+- `SlOwnedStr` and `SlOwnedBytes`: ownership markers for arena-copy helpers;
+- `SlByteBuilder`: bounded byte builder over caller-owned fixed storage or arena storage;
+- `SlStringBuilder`: bounded string builder and small decimal formatting helpers;
+- `SlInternTable`: bounded app/static-lifetime string interning for stable metadata;
 - optional `SlScope` cleanup registration storage allocated from `SlArena`.
 
-Future memory work still includes allocator interfaces, `SlBuf`, and `SlStringBuilder`.
+Future memory work still includes allocator interfaces, a standalone heap/operation-owned
+`SlBuf`, ENGINE-21.D V8/SQLite conversion policy, and ENGINE-22 subsystem adoption.
 
 ## Non-goals
 
@@ -26,9 +31,13 @@ scratch arena system, request lifecycle, resource table, or generic allocator fr
 
 ## Public/Internal API
 
-Implemented public header:
+Implemented public headers:
 
 - `include/sloppy/arena.h`
+- `include/sloppy/string.h`
+- `include/sloppy/bytes.h`
+- `include/sloppy/builder.h`
+- `include/sloppy/intern.h`
 
 Implemented API:
 
@@ -37,10 +46,25 @@ Implemented API:
 - `sl_arena_mark`;
 - `sl_arena_reset_to`;
 - `sl_arena_alloc`;
+- `sl_arena_dispose`;
 - `sl_arena_capacity`;
 - `sl_arena_used`;
 - `sl_arena_remaining`;
 - `sl_arena_high_water`.
+
+String/byte helpers add deterministic hash functions, arena-copy helpers, suffix helpers,
+and owned-view adapters. String/byte views remain borrowed pointer-plus-length values; the
+owned types describe the producer lifetime but do not free memory.
+
+Builders preserve their already-written prefix after failed append/reserve calls. Fixed
+builders report `SL_STATUS_CAPACITY_EXCEEDED` when caller storage is exhausted. Arena
+builders grow by allocating replacement buffers from a caller-supplied arena up to the
+explicit maximum capacity.
+
+Intern tables copy stable metadata strings into the caller-supplied app/static arena,
+store hash/length metadata, resolve bucket collisions with byte equality, and return
+generation-tagged `SlSymbol` values. Interning request bodies, secrets, connection strings,
+arbitrary user payloads, or transient diagnostics is forbidden by policy.
 
 `sl_arena_alloc` requires a nonzero size and a nonzero power-of-two alignment. Zero-size
 allocation is rejected as `SL_STATUS_INVALID_ARGUMENT` so callers do not depend on an
@@ -68,6 +92,10 @@ unless callers provide external synchronization.
 Arena-backed scope storage has the same lifetime as any other arena allocation. Resetting
 the arena invalidates that storage; callers must close or stop using the scope before that
 happens.
+
+Arena-owned copied strings, copied bytes, builder buffers, intern table entries, and
+interned string bytes follow the same invalidation rules. Request-owned memory must not
+escape request cleanup unless it is copied into an owner that outlives the async operation.
 
 ## Invariants
 
@@ -104,8 +132,15 @@ CTest registers `tests/unit/core/test_arena.c`, covering:
   in all builds;
 - capacity, used, remaining, and high-water stats;
 - debug poisoning when `SL_ENABLE_ASSERTS` is enabled.
+- dispose invalidation without freeing caller-owned backing storage.
 
 `tests/unit/core/test_scope.c` covers the arena-backed scope-storage helper.
+`tests/unit/core/test_string.c` and `tests/unit/core/test_bytes.c` cover view helpers,
+hashing, arena copies, embedded NUL/binary data, and unchanged outputs on failure.
+`tests/unit/core/test_builder.c` covers fixed and arena builders, growth, reserve,
+formatting, optional NUL views, capacity failure, and prefix preservation after failure.
+`tests/unit/core/test_intern.c` covers duplicate interning, bucket collisions, capacity
+failure, stale symbols, and unchanged outputs.
 
 ## Source Docs
 
@@ -118,3 +153,4 @@ CTest registers `tests/unit/core/test_arena.c`, covering:
 
 - Exact allocator vtable shape.
 - Exact OS page allocation API remains future platform-abstraction work.
+- Exact V8/native and SQLite text/blob helper surface remains ENGINE-21.D follow-up.
