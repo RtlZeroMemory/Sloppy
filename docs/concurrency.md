@@ -147,6 +147,14 @@ request lifecycles through the backend shutdown path when present, close idle/re
 dispatching/writing transport connections, and drain close callbacks. This is not
 production graceful drain, keep-alive idle management, or scalable async HTTP evidence.
 
+ENGINE-24.G makes the keep-alive decision explicit: the ENGINE-24 transport MVP is
+close-after-response, one request per connection, no sequential second request, no
+pipelining, and no streaming response body. Future HTTP/1.1 keep-alive must resume the read
+loop only after response write completion, own an idle timeout and max-requests cap, reset
+parser/body/request arena state between requests, keep per-request cancellation separate
+from the longer-lived TCP connection, and define shutdown drain behavior for idle and
+active keep-alive connections before Slop claims keep-alive support.
+
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
 async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes
@@ -551,6 +559,8 @@ Future model:
 - limit worker-pool queue depth;
 - limit DB pool checkout;
 - streaming responses respect socket backpressure;
+- future keep-alive connections have bounded idle time, bounded requests per connection,
+  and explicit shutdown drain/force-close behavior;
 - overload returns controlled errors instead of unbounded memory growth.
 
 The default behavior for overload is deterministic rejection with diagnostics, not hidden

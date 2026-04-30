@@ -12,6 +12,7 @@
 - #415 TASK ENGINE-24.D: Dispatch and Response Write Loop
 - #416 TASK ENGINE-24.E: Transport Cancellation, Timeout, and Shutdown
 - #417 TASK ENGINE-24.F: Localhost Transport Smoke and Conformance
+- #418 TASK ENGINE-24.G: Keep-Alive Decision and Deferred HTTP/1.1 Upgrade Plan
 
 This PR line now covers the transport foundation through localhost smoke/conformance:
 Slop-owned server/config/state, libuv isolation, bind/listen, accept, bounded connection
@@ -20,14 +21,18 @@ Content-Length body accumulation through existing ENGINE-13 semantics, request-r
 parking, request-ready to dispatch transition, response serialization, TCP write, close
 after response, client-disconnect cancellation, header/body/request/write timeout hooks,
 deterministic timeout response when safe, shutdown rejection, immediate-cancel/drain-lite
-active connection close, cleanup-once terminal callback behavior, and default non-V8 real
-localhost TCP smoke for the implemented MVP request/response and failure policy.
+active connection close, cleanup-once terminal callback behavior, default non-V8 real
+localhost TCP smoke for the implemented MVP request/response and failure policy, and the
+explicit ENGINE-24.G decision that the MVP remains close-after-response with keep-alive,
+pipelining, chunked bodies, and streaming deferred.
 
 ## Follow-Ups
 
-- #418 Keep-Alive Decision and Deferred HTTP/1.1 Upgrade Plan
+- #417 Localhost Transport Smoke and Conformance remains the users-API-adjacent proof input.
+- Future proposed `ENGINE-25: HTTP/1.1 Keep-Alive and Streaming` after the core proof. No
+  ENGINE-25 issues have been created.
 
-## Non-Goals For #412/#413/#414/#415/#416/#417
+## Non-Goals For #412/#413/#414/#415/#416/#417/#418
 
 - no V8 handler execution;
 - no users API proof;

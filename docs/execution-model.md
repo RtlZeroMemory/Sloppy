@@ -205,6 +205,12 @@ accepting, rejects newly accepted work, cancels active request lifecycles throug
 backend shutdown token path when present, closes active transport connections, and drains
 close callbacks. This is not production graceful drain, localhost conformance, V8 transport
 execution, keep-alive, streaming, or benchmark evidence.
+ENGINE-24.G keeps that state machine close-after-response for the MVP. The current path
+does not loop from write completion back to read, does not accept a second sequential
+request on the same TCP connection, and treats extra bytes after the first complete request
+as unsupported pipelining. A future HTTP/1.1 upgrade must add an explicit post-write
+read-resume transition, per-request state and arena reset, idle timeout, max requests per
+connection, shutdown drain behavior, and diagnostics before keep-alive is enabled.
 
 ## Current Handwritten Milestone
 
@@ -481,7 +487,10 @@ provider proof, keep-alive, streaming, and production graceful drain remain defe
 
 The current CLI socket loop still writes `Connection: close`; keep-alive policy remains
 honestly disabled/deferred even though the backend state model can return a completed
-connection to `OPEN`.
+connection to `OPEN`. ENGINE-24.G preserves that policy for the reusable transport MVP and
+recommends a future `ENGINE-25: HTTP/1.1 Keep-Alive and Streaming` epic for the connection
+loop, idle timeout, max-requests cap, sequential request reset, chunked decoding,
+streaming response writer, and keep-alive stress/conformance.
 
 The current shutdown policy is bounded and honest: shutdown stops acceptance and rejects
 new request work, then the backend reaches stopped when active connection/request counters
