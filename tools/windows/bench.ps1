@@ -23,8 +23,15 @@ function Invoke-Native {
     )
 
     if ($StdoutToStderr) {
-        & $File @Arguments 2>&1 | ForEach-Object {
-            [Console]::Error.WriteLine($_)
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $File @Arguments 2>&1 | ForEach-Object {
+                [Console]::Error.WriteLine($_)
+            }
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
         }
     }
     else {

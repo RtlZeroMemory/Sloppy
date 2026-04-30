@@ -4,6 +4,7 @@
 #include "sloppy/arena.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/http_backend.h"
+#include "sloppy/http_response.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -20,12 +21,17 @@ extern "C" {
 #define SL_HTTP_TRANSPORT_DEFAULT_MAX_REQUEST_HEAD_BYTES 32768U
 #define SL_HTTP_TRANSPORT_DEFAULT_REQUEST_ARENA_BYTES 131072U
 #define SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES 4096U
+#define SL_HTTP_TRANSPORT_DEFAULT_RESPONSE_BYTES 131072U
 
 typedef struct SlHttpPlatformConnection SlHttpPlatformConnection;
 typedef struct SlHttpTransportConnection SlHttpTransportConnection;
 
 typedef void (*SlHttpTransportRequestReadyFn)(SlHttpTransportConnection* connection,
                                               const SlHttpRequestLifecycle* request, void* user);
+typedef SlStatus (*SlHttpTransportDispatchFn)(SlHttpTransportConnection* connection, SlArena* arena,
+                                              const SlHttpRequestLifecycle* request,
+                                              SlHttpResponse* out_response, SlDiag* out_diag,
+                                              void* user);
 
 typedef enum SlHttpTransportServerState
 {
@@ -45,9 +51,11 @@ typedef enum SlHttpTransportConnectionState
     SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_HEAD = 2,
     SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY = 3,
     SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY = 4,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING = 5,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED = 6,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 7
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_DISPATCHING = 5,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE = 6,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING = 7,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED = 8,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 9
 } SlHttpTransportConnectionState;
 
 typedef struct SlHttpTransportConfig
@@ -65,11 +73,14 @@ typedef struct SlHttpTransportConfig
     size_t max_request_head_bytes;
     size_t request_arena_bytes;
     size_t read_chunk_bytes;
+    size_t max_response_bytes;
     /* Caller/arena-backed table size for accepted connection placeholders. */
     size_t connection_capacity;
     int backlog;
     SlHttpTransportRequestReadyFn on_request_ready;
     void* on_request_ready_user;
+    SlHttpTransportDispatchFn dispatch;
+    void* dispatch_user;
 } SlHttpTransportConfig;
 
 struct SlHttpTransportConnection
@@ -83,14 +94,19 @@ struct SlHttpTransportConnection
     unsigned char* request_storage;
     size_t request_storage_size;
     unsigned char* accumulation;
+    unsigned char* response_storage;
     SlByteBuilder accumulation_builder;
     size_t accumulation_length;
     size_t accumulation_capacity;
+    size_t response_storage_size;
+    size_t response_length;
     size_t head_length;
     size_t expected_body_length;
     bool request_started;
     bool body_reader_started;
     bool body_reader_finished;
+    bool write_started;
+    bool write_completed;
     SlDiag last_diag;
     bool slot_claimed;
 };

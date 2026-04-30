@@ -184,17 +184,18 @@ ENGINE-24.A/B adds the first HTTP transport listener foundation below the curren
 execution pipeline. A `SlHttpTransportServer` can initialize, bind/listen on localhost,
 accept TCP sockets into bounded placeholder connections, reject overflow by closing the
 accepted socket, stop, and dispose. Accepted connections stop at `ACCEPTED`; request byte
-reading and parser integration remain #414, transport dispatch/response writing remains
-#415, timeout/shutdown completion remains #416, localhost conformance remains #417, and
+timeout/shutdown completion remains #416, localhost conformance remains #417, and
 keep-alive policy remains #418.
-ENGINE-24.C advances that transport state only through the read/request-accumulation
-boundary. Accepted connections start reading, append TCP chunks into bounded
-per-connection storage, parse exactly one Content-Length request through existing
-ENGINE-13 parser/body rules, and then park the parsed request in a `REQUEST_READY` transport
-state. The parked request is visible to an internal hook for tests and for #415 handoff
-design. Without that hook, the parsed request is closed immediately to release admission. It
-is not dispatched, does not enter V8, and does not write a response in this slice. Extra
-bytes after the first complete request are unsupported pipelining.
+ENGINE-24.C advances that transport state through the read/request-accumulation boundary.
+Accepted connections start reading, append TCP chunks into bounded per-connection storage,
+parse exactly one Content-Length request through existing ENGINE-13 parser/body rules, and
+then park the parsed request in a `REQUEST_READY` transport state. ENGINE-24.D consumes
+that state when dispatch is configured: the backend request moves to dispatching, a narrow
+internal callback returns an `SlHttpResponse`, the existing response writer serializes
+bytes into connection-owned storage, libuv writes those bytes, the write callback
+completes the request lifecycle, and the connection closes. Without dispatch, the parsed
+request is closed immediately to release admission. Extra bytes after the first complete
+request are unsupported pipelining.
 
 ## Current Handwritten Milestone
 
@@ -464,8 +465,10 @@ Current ENGINE-13.A/B/C backend foundation makes the native prelude explicit:
 
 ENGINE-24.A/B wires only the first two platform-facing pieces of that prelude: listener
 bind/listen and accepted connection admission. ENGINE-24.C wires the read/accumulation
-piece and parks the request before dispatch. No handler, V8, provider, or response writer
-is entered from the transport read loop.
+piece and parks the request. ENGINE-24.D wires dispatch/write/close-after-response through
+a narrow internal dispatch callback and the existing response writer. V8 transport
+conformance, provider proof, timeout/shutdown hardening, keep-alive, and streaming remain
+deferred.
 
 The current CLI socket loop still writes `Connection: close`; keep-alive policy remains
 honestly disabled/deferred even though the backend state model can return a completed

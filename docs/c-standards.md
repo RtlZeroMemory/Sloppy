@@ -459,6 +459,45 @@ cleanup:
 byte-slice equivalent. Do not rely on internal `strlen`; use boundary adapters only for C,
 OS, and library APIs. Add explicit UTF-8 validation where needed later.
 
+## Memory, String, Buffer, And Builder Operations
+
+Use Sloppy's existing high-level primitives for all string, byte, buffer, arena, and
+builder operations.
+
+Required:
+
+- use `SlStr` and `SlBytes` views;
+- use `SlOwnedStr` and `SlOwnedBytes` where ownership markers exist;
+- use `SlArena` and arena copy helpers;
+- use `SlStringBuilder` and `SlByteBuilder` for bounded construction;
+- use existing checked size, capacity, and growth helpers;
+- use existing string/byte equality, hash, and copy helpers;
+- use existing diagnostics rendering and redaction helpers;
+- preserve explicit pointer-plus-length semantics;
+- preserve embedded-NUL and binary correctness.
+
+Forbidden:
+
+- do not hand-roll ad hoc string append loops;
+- do not manually track string offsets when `SlStringBuilder` or `SlByteBuilder` fits;
+- do not use `sprintf`, `snprintf`, `strcat`, `strcpy`, or `strlen`-based construction for
+  internal buffers unless the code is an approved boundary helper;
+- do not assume NUL termination for `SlStr` or `SlBytes`;
+- do not allocate hidden heap buffers for convenience;
+- do not create new local mini-builders;
+- do not duplicate existing memory/string helpers.
+
+If a required primitive is missing:
+
+- stop and document the missing primitive;
+- add the smallest reusable helper in the existing memory/string module only when clearly
+  necessary;
+- add tests for that helper;
+- do not solve it with one-off local buffer manipulation.
+
+Approved boundary helpers must be narrow, documented, and easy for the standards scanner to
+recognize. New exceptions should be rarer than new reusable primitives.
+
 ## Integer and Size Safety
 
 Use checked add/mul for allocation sizes. Avoid unchecked casts from signed to unsigned and

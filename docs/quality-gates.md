@@ -332,7 +332,10 @@ for early untracked worktrees.
 The scanner fails on:
 
 - forbidden OS headers outside `src/platform/*`;
-- unsafe C functions: `gets`, `strcpy`, `strcat`, `sprintf`, `vsprintf`;
+- unsafe or primitive-bypassing C functions such as `gets`, `strcpy`, `strcat`, `sprintf`,
+  `vsprintf`, `snprintf`, and internal `strlen` outside approved boundary helpers;
+- raw byte-copy helpers such as `memcpy`/`memmove` outside narrow approved boundary helpers,
+  where high-level Slop string/byte/builder helpers should be preferred;
 - V8 headers or `v8::` usage outside `src/engine/v8/*`.
 
 It warns on raw `malloc`, `free`, `realloc`, and `calloc` outside allocator paths. Passing

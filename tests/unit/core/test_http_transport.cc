@@ -50,13 +50,50 @@ static void ready_hook(SlHttpTransportConnection* connection, const SlHttpReques
     hook->body = request->head.body;
 }
 
+typedef struct DispatchHook
+{
+    size_t count;
+    SlStatusCode status_code;
+    SlDiagCode diag_code;
+    SlHttpResponse response;
+} DispatchHook;
+
+static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* arena,
+                              const SlHttpRequestLifecycle* request, SlHttpResponse* out_response,
+                              SlDiag* out_diag, void* user)
+{
+    DispatchHook* hook = static_cast<DispatchHook*>(user);
+
+    (void)arena;
+    if (hook == nullptr || connection == nullptr || request == nullptr || out_response == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    hook->count += 1U;
+    if (hook->status_code != SL_STATUS_OK) {
+        if (out_diag != nullptr) {
+            *out_diag = {};
+            out_diag->severity = SL_DIAG_SEVERITY_ERROR;
+            out_diag->code = hook->diag_code;
+            out_diag->message = sl_str_from_cstr("test dispatch failure");
+        }
+        return sl_status_from_code(hook->status_code);
+    }
+
+    *out_response = hook->response;
+    return sl_status_ok();
+}
+
 typedef struct ClientConnect
 {
     uv_loop_t loop;
     uv_tcp_t handle;
     uv_connect_t request;
+    unsigned char read_buffer[4096];
+    size_t read_length;
     int status;
     bool connected;
+    bool closed;
 } ClientConnect;
 
 static void client_connect_cb(uv_connect_t* request, int status)
@@ -74,6 +111,38 @@ static void client_close_cb(uv_handle_t* handle)
     (void)handle;
 }
 
+static void client_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* out_buffer)
+{
+    ClientConnect* client = static_cast<ClientConnect*>(handle->data);
+
+    (void)suggested_size;
+    if (client == nullptr || client->read_length >= sizeof(client->read_buffer)) {
+        *out_buffer = uv_buf_init(nullptr, 0U);
+        return;
+    }
+    *out_buffer =
+        uv_buf_init(reinterpret_cast<char*>(client->read_buffer + client->read_length),
+                    static_cast<unsigned int>(sizeof(client->read_buffer) - client->read_length));
+}
+
+static void client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buffer)
+{
+    ClientConnect* client = static_cast<ClientConnect*>(stream->data);
+
+    (void)buffer;
+    if (client == nullptr) {
+        return;
+    }
+    if (nread > 0) {
+        client->read_length += static_cast<size_t>(nread);
+        return;
+    }
+    if (nread < 0) {
+        client->closed = true;
+        (void)uv_read_stop(stream);
+    }
+}
+
 static int connect_client(uint32_t port, ClientConnect* client)
 {
     struct sockaddr_in address;
@@ -86,6 +155,7 @@ static int connect_client(uint32_t port, ClientConnect* client)
         (void)uv_loop_close(&client->loop);
         return 2;
     }
+    client->handle.data = client;
     if (uv_ip4_addr("127.0.0.1", static_cast<int>(port), &address) != 0) {
         (void)uv_loop_close(&client->loop);
         return 3;
@@ -100,6 +170,17 @@ static int connect_client(uint32_t port, ClientConnect* client)
     }
     (void)uv_run(&client->loop, UV_RUN_DEFAULT);
     return client->connected ? 0 : 5;
+}
+
+static int start_client_read(ClientConnect* client)
+{
+    if (client == nullptr || !client->connected) {
+        return 1;
+    }
+    return uv_read_start(reinterpret_cast<uv_stream_t*>(&client->handle), client_alloc_cb,
+                         client_read_cb) == 0
+               ? 0
+               : 2;
 }
 
 static void close_client(ClientConnect* client)
@@ -125,6 +206,7 @@ static SlHttpTransportConfig small_config(ReadyHook* hook)
     config.max_request_head_bytes = 256U;
     config.request_arena_bytes = 4096U;
     config.read_chunk_bytes = 64U;
+    config.max_response_bytes = 4096U;
     config.parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
     config.parse.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     config.parse.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
@@ -134,6 +216,37 @@ static SlHttpTransportConfig small_config(ReadyHook* hook)
     config.on_request_ready = hook == nullptr ? nullptr : ready_hook;
     config.on_request_ready_user = hook;
     return config;
+}
+
+static int poll_until_write_completed(SlHttpTransportServer* server)
+{
+    SlDiag diag = {};
+
+    for (size_t index = 0U; index < 64U; index += 1U) {
+        if (server->connections[0].write_completed) {
+            return 0;
+        }
+        if (expect_status(sl_http_transport_server_poll(server, &diag), SL_STATUS_OK) != 0) {
+            return 1;
+        }
+    }
+    return server->connections[0].write_completed ? 0 : 2;
+}
+
+static int poll_server_and_client_until_closed(SlHttpTransportServer* server, ClientConnect* client)
+{
+    SlDiag diag = {};
+
+    for (size_t index = 0U; index < 128U; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(server, &diag), SL_STATUS_OK) != 0) {
+            return 1;
+        }
+        (void)uv_run(&client->loop, UV_RUN_NOWAIT);
+        if (server->connections[0].write_completed && client->closed) {
+            return 0;
+        }
+    }
+    return 2;
 }
 
 static int start_one_connection(SlArena* arena, SlHttpTransportServer* server,
@@ -333,6 +446,7 @@ static int test_dispose_after_listen_closes_active_connection(void)
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
         connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
         expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
         sl_http_transport_server_active_connections(&server) != 1U)
     {
@@ -541,6 +655,7 @@ static int test_limits_and_malformed_requests_are_deterministic(void)
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
         connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
         expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
@@ -684,6 +799,161 @@ static int test_disconnect_cleanup_paths(void)
     return 0;
 }
 
+static int test_dispatch_success_writes_response_and_closes(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("hello\n"));
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /ok HTTP/1.1\r\nHost: local\r\n\r\n"), &diag),
+                      SL_STATUS_OK) != 0 ||
+        dispatch.count != 1U || server.connections[0].response_length == 0U ||
+        expect_bytes_equal(sl_bytes_from_parts(server.connections[0].response_storage,
+                                               server.connections[0].response_length),
+                           "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; "
+                           "charset=utf-8\r\nContent-Length: 6\r\n\r\nhello\n") != 0 ||
+        poll_server_and_client_until_closed(&server, &client) != 0 ||
+        expect_bytes_equal(sl_bytes_from_parts(client.read_buffer, client.read_length),
+                           "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; "
+                           "charset=utf-8\r\nContent-Length: 6\r\n\r\nhello\n") != 0 ||
+        sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U)
+    {
+        stop_one_connection(&server, &client);
+        return 80;
+    }
+
+    if (expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0], bytes_from_cstr("GET /again HTTP/1.1\r\n\r\n"), &diag),
+            SL_STATUS_INVALID_STATE) != 0 ||
+        dispatch.count != 1U)
+    {
+        stop_one_connection(&server, &client);
+        return 81;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_dispatch_failures_map_to_safe_responses(void)
+{
+    static const struct
+    {
+        SlStatusCode status_code;
+        SlDiagCode diag_code;
+        const char* expected;
+    } cases[] = {
+        {SL_STATUS_OUT_OF_RANGE, SL_DIAG_HTTP_ROUTE_NOT_FOUND,
+         "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Type: text/plain; "
+         "charset=utf-8\r\nContent-Length: 10\r\n\r\nNot Found\n"},
+        {SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_UNSUPPORTED_METHOD,
+         "HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\nContent-Type: text/plain; "
+         "charset=utf-8\r\nContent-Length: 19\r\n\r\nMethod Not Allowed\n"},
+        {SL_STATUS_INVALID_STATE, SL_DIAG_ENGINE_EXCEPTION,
+         "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\nContent-Type: text/plain; "
+         "charset=utf-8\r\nContent-Length: 22\r\n\r\nSloppy handler failed\n"},
+    };
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char storage[65536];
+        SlArena arena = {};
+        SlHttpTransportServer server = {};
+        SlHttpTransportConfig config = {};
+        ClientConnect client = {};
+        DispatchHook dispatch = {};
+        SlDiag diag = {};
+
+        dispatch.status_code = cases[index].status_code;
+        dispatch.diag_code = cases[index].diag_code;
+        config = small_config(nullptr);
+        config.dispatch = dispatch_hook;
+        config.dispatch_user = &dispatch;
+
+        if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+            connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+            expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+            expect_status(
+                sl_http_transport_connection_feed_test(
+                    &server.connections[0], bytes_from_cstr("GET /mapped HTTP/1.1\r\n\r\n"), &diag),
+                SL_STATUS_OK) != 0 ||
+            dispatch.count != 1U ||
+            expect_bytes_equal(sl_bytes_from_parts(server.connections[0].response_storage,
+                                                   server.connections[0].response_length),
+                               cases[index].expected) != 0 ||
+            poll_until_write_completed(&server) != 0 ||
+            sl_http_transport_server_active_connections(&server) != 0U ||
+            server.backend.active_requests != 0U)
+        {
+            stop_one_connection(&server, &client);
+            return 90 + (int)index;
+        }
+
+        stop_one_connection(&server, &client);
+    }
+
+    return 0;
+}
+
+static int test_response_buffer_capacity_failure_is_deterministic(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("this body cannot fit\n"));
+    config = small_config(nullptr);
+    config.max_response_bytes = 16U;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0], bytes_from_cstr("GET /big HTTP/1.1\r\n\r\n"), &diag),
+            SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        diag.code != SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED || dispatch.count != 1U ||
+        server.backend.active_requests != 0U)
+    {
+        stop_one_connection(&server, &client);
+        return 100;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
 int main(void)
 {
     int result = test_config_validation_and_lifecycle();
@@ -719,5 +989,17 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_disconnect_cleanup_paths();
+    result = test_disconnect_cleanup_paths();
+    if (result != 0) {
+        return result;
+    }
+    result = test_dispatch_success_writes_response_and_closes();
+    if (result != 0) {
+        return result;
+    }
+    result = test_dispatch_failures_map_to_safe_responses();
+    if (result != 0) {
+        return result;
+    }
+    return test_response_buffer_capacity_failure_is_deterministic();
 }

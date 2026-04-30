@@ -128,6 +128,14 @@ connection reaches request-ready. Client disconnect/read failure during head or 
 the transport connection through cleanup-once paths and releases backend request/connection
 admission without exposing libuv handles or native pointers.
 
+ENGINE-24.D consumes request-ready state on the same libuv owner loop when a dispatch
+callback is configured. Dispatch transitions backend request state to dispatching, response
+serialization uses the existing HTTP response writer, and libuv writes from
+connection-owned response storage that remains valid until the write callback. The write
+callback performs lifecycle completion and close cleanup only; it must not enter V8. The
+MVP policy remains one request per connection, close-after-response, no keep-alive, no
+pipelining, and no streaming response body.
+
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
 async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes

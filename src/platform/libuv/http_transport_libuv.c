@@ -7,18 +7,22 @@
 #include "sloppy/http_transport.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/http_response.h"
 
+#include <limits.h>
 #include <uv.h>
 
 struct SlHttpPlatformConnection
 {
     uv_tcp_t handle;
+    uv_write_t write;
     SlHttpTransportConnection* owner;
     unsigned char* read_buffer;
     size_t read_buffer_size;
     bool initialized;
     bool closing;
     bool reading;
+    bool writing;
 };
 
 struct SlHttpPlatformListener
@@ -128,6 +132,7 @@ static SlHttpTransportConfig sl_http_transport_config_defaults(void)
     config.max_request_head_bytes = SL_HTTP_TRANSPORT_DEFAULT_MAX_REQUEST_HEAD_BYTES;
     config.request_arena_bytes = SL_HTTP_TRANSPORT_DEFAULT_REQUEST_ARENA_BYTES;
     config.read_chunk_bytes = SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES;
+    config.max_response_bytes = SL_HTTP_TRANSPORT_DEFAULT_RESPONSE_BYTES;
     config.connection_capacity = SL_HTTP_BACKEND_DEFAULT_MAX_CONNECTIONS;
     config.backlog = SL_HTTP_TRANSPORT_DEFAULT_BACKLOG;
     return config;
@@ -172,10 +177,14 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
                                                                       : input->request_arena_bytes;
         config.read_chunk_bytes =
             input->read_chunk_bytes == 0U ? config.read_chunk_bytes : input->read_chunk_bytes;
+        config.max_response_bytes =
+            input->max_response_bytes == 0U ? config.max_response_bytes : input->max_response_bytes;
         config.connection_capacity = input->connection_capacity;
         config.backlog = input->backlog;
         config.on_request_ready = input->on_request_ready;
         config.on_request_ready_user = input->on_request_ready_user;
+        config.dispatch = input->dispatch;
+        config.dispatch_user = input->dispatch_user;
     }
 
     if (!sl_http_transport_str_valid(config.host) || sl_str_is_empty(config.host)) {
@@ -202,7 +211,7 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
                                                 sizeof("HTTP transport backlog is invalid") - 1U));
     }
     if (config.max_request_head_bytes == 0U || config.request_arena_bytes == 0U ||
-        config.read_chunk_bytes == 0U)
+        config.read_chunk_bytes == 0U || config.max_response_bytes == 0U)
     {
         return sl_http_transport_invalid_config(
             out_diag, sl_http_transport_literal(
@@ -233,6 +242,75 @@ static void sl_http_transport_connection_close_cb(uv_handle_t* handle)
     platform->initialized = false;
     if (platform->owner != NULL) {
         platform->owner->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED;
+    }
+}
+
+static uint16_t sl_http_transport_status_for_failure(SlStatus status, const SlDiag* diag)
+{
+    SlStatusCode code = sl_status_code(status);
+
+    if (diag != NULL) {
+        if (diag->code == SL_DIAG_HTTP_ROUTE_NOT_FOUND) {
+            return 404U;
+        }
+        if (diag->code == SL_DIAG_HTTP_UNSUPPORTED_METHOD) {
+            return 405U;
+        }
+        if (diag->code == SL_DIAG_HTTP_BODY_LIMIT || diag->code == SL_DIAG_HTTP_HEADER_LIMIT ||
+            diag->code == SL_DIAG_HTTP_HEADER_BYTES_LIMIT ||
+            diag->code == SL_DIAG_HTTP_TARGET_LIMIT ||
+            diag->code == SL_DIAG_HTTP_HEADER_NAME_LIMIT ||
+            diag->code == SL_DIAG_HTTP_HEADER_VALUE_LIMIT)
+        {
+            return 413U;
+        }
+        if (diag->code == SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE) {
+            return 415U;
+        }
+        if (diag->code == SL_DIAG_HTTP_UNSUPPORTED_BODY) {
+            return 501U;
+        }
+        if (diag->code == SL_DIAG_INVALID_HTTP_REQUEST || diag->code == SL_DIAG_MALFORMED_JSON ||
+            diag->code == SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED)
+        {
+            return 400U;
+        }
+    }
+
+    if (code == SL_STATUS_CAPACITY_EXCEEDED) {
+        return 413U;
+    }
+    if (code == SL_STATUS_UNSUPPORTED) {
+        return 501U;
+    }
+    if (code == SL_STATUS_INVALID_ARGUMENT) {
+        return 400U;
+    }
+    return 500U;
+}
+
+static SlStr sl_http_transport_body_for_status(uint16_t status)
+{
+    switch (status) {
+    case 400U:
+        return sl_http_transport_literal("Malformed HTTP request\n",
+                                         sizeof("Malformed HTTP request\n") - 1U);
+    case 404U:
+        return sl_http_transport_literal("Not Found\n", sizeof("Not Found\n") - 1U);
+    case 405U:
+        return sl_http_transport_literal("Method Not Allowed\n",
+                                         sizeof("Method Not Allowed\n") - 1U);
+    case 413U:
+        return sl_http_transport_literal("Payload Too Large\n", sizeof("Payload Too Large\n") - 1U);
+    case 415U:
+        return sl_http_transport_literal("Unsupported Media Type\n",
+                                         sizeof("Unsupported Media Type\n") - 1U);
+    case 501U:
+        return sl_http_transport_literal("Request body framing is not supported\n",
+                                         sizeof("Request body framing is not supported\n") - 1U);
+    default:
+        return sl_http_transport_literal("Sloppy handler failed\n",
+                                         sizeof("Sloppy handler failed\n") - 1U);
     }
 }
 
@@ -327,6 +405,180 @@ static bool sl_http_transport_has_header(const SlHttpRequestHead* head, SlStr na
 {
     SlStr value = {0};
     return sl_http_transport_header_value(head, name, &value);
+}
+
+static void sl_http_transport_write_cb(uv_write_t* request, int status)
+{
+    SlHttpPlatformConnection* platform =
+        request == NULL ? NULL : (SlHttpPlatformConnection*)request->data;
+    SlHttpTransportConnection* connection = platform == NULL ? NULL : platform->owner;
+    SlDiag diag = {0};
+
+    if (platform != NULL) {
+        platform->writing = false;
+    }
+    if (connection == NULL) {
+        return;
+    }
+
+    connection->write_completed = true;
+    if (status != 0) {
+        (void)sl_http_transport_connection_diag(
+            connection, &diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP transport response write failed",
+                                      sizeof("HTTP transport response write failed") - 1U),
+            sl_http_transport_literal("socket details stay inside the platform boundary",
+                                      sizeof("socket details stay inside the platform boundary") -
+                                          1U));
+        (void)sl_http_request_fail(&connection->request, NULL);
+    }
+    else if (connection->request_started) {
+        (void)sl_http_request_complete(&connection->request, NULL);
+    }
+
+    (void)sl_http_transport_connection_close(connection, NULL);
+}
+
+static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* connection,
+                                                 const SlHttpResponse* response, SlDiag* out_diag)
+{
+    SlStatus status;
+    SlBytes bytes = {0};
+    uv_buf_t buffer;
+    int rc = 0;
+
+    if (connection == NULL || response == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection->state != SL_HTTP_TRANSPORT_CONNECTION_STATE_DISPATCHING ||
+        connection->request.state != SL_HTTP_REQUEST_STATE_DISPATCHING)
+    {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_APP_LIFECYCLE, SL_STATUS_INVALID_STATE,
+            sl_http_transport_literal("HTTP transport dispatch state is invalid",
+                                      sizeof("HTTP transport dispatch state is invalid") - 1U),
+            sl_http_transport_literal("write responses only after one request dispatch",
+                                      sizeof("write responses only after one request dispatch") -
+                                          1U));
+    }
+
+    status = sl_http_request_begin_write(&connection->request, out_diag);
+    if (!sl_status_is_ok(status)) {
+        sl_http_transport_store_diag(connection, out_diag);
+        return status;
+    }
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
+
+    status = sl_http_response_write(response, connection->response_storage,
+                                    connection->response_storage_size, &bytes);
+    if (!sl_status_is_ok(status)) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            sl_status_code(status),
+            sl_http_transport_literal("HTTP response serialization failed",
+                                      sizeof("HTTP response serialization failed") - 1U),
+            sl_http_transport_literal("response bytes must fit the configured transport buffer",
+                                      sizeof("response bytes must fit the configured transport "
+                                             "buffer") -
+                                          1U));
+    }
+    if (bytes.length > UINT_MAX) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            SL_STATUS_CAPACITY_EXCEEDED,
+            sl_http_transport_literal("HTTP response serialization failed",
+                                      sizeof("HTTP response serialization failed") - 1U),
+            sl_http_transport_literal("response bytes exceed the platform write boundary",
+                                      sizeof("response bytes exceed the platform write boundary") -
+                                          1U));
+    }
+
+    connection->response_length = bytes.length;
+    if (connection->platform == NULL || !connection->platform->initialized ||
+        connection->platform->closing)
+    {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INVALID_STATE,
+            sl_http_transport_literal("HTTP transport response write cannot start",
+                                      sizeof("HTTP transport response write cannot start") - 1U),
+            sl_http_transport_literal("the connection is already closing",
+                                      sizeof("the connection is already closing") - 1U));
+    }
+
+    buffer = uv_buf_init((char*)connection->response_storage, (unsigned int)bytes.length);
+    connection->platform->write.data = connection->platform;
+    connection->platform->writing = true;
+    connection->write_started = true;
+    rc = uv_write(&connection->platform->write, (uv_stream_t*)&connection->platform->handle,
+                  &buffer, 1U, sl_http_transport_write_cb);
+    if (rc != 0) {
+        connection->platform->writing = false;
+        return sl_http_transport_uv_status(
+            rc, out_diag, SL_DIAG_HTTP_WRITE_FAILED,
+            sl_http_transport_literal("HTTP transport response write failed to start",
+                                      sizeof("HTTP transport response write failed to start") -
+                                          1U));
+    }
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection* connection,
+                                                       uint16_t status_code, SlDiag* out_diag)
+{
+    SlHttpResponse response =
+        sl_http_response_text(status_code, sl_http_transport_body_for_status(status_code));
+    SlBytes bytes = {0};
+    uv_buf_t buffer;
+
+    if (connection == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection->request_started &&
+        connection->request.state == SL_HTTP_REQUEST_STATE_DISPATCHING)
+    {
+        return sl_http_transport_write_response(connection, &response, out_diag);
+    }
+
+    if (connection->platform == NULL || !connection->platform->initialized ||
+        connection->platform->closing || connection->platform->writing)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    if (!sl_status_is_ok(sl_http_response_write(&response, connection->response_storage,
+                                                connection->response_storage_size, &bytes)) ||
+        bytes.length > UINT_MAX)
+    {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            SL_STATUS_CAPACITY_EXCEEDED,
+            sl_http_transport_literal("HTTP response serialization failed",
+                                      sizeof("HTTP response serialization failed") - 1U),
+            sl_http_transport_literal("response bytes must fit the configured transport buffer",
+                                      sizeof("response bytes must fit the configured transport "
+                                             "buffer") -
+                                          1U));
+    }
+
+    buffer = uv_buf_init((char*)connection->response_storage, (unsigned int)bytes.length);
+    connection->platform->write.data = connection->platform;
+    connection->platform->writing = true;
+    connection->write_started = true;
+    connection->response_length = bytes.length;
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
+    if (uv_write(&connection->platform->write, (uv_stream_t*)&connection->platform->handle, &buffer,
+                 1U, sl_http_transport_write_cb) != 0)
+    {
+        connection->platform->writing = false;
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP transport response write failed to start",
+                                      sizeof("HTTP transport response write failed to start") - 1U),
+            sl_http_transport_literal("socket details stay inside the platform boundary",
+                                      sizeof("socket details stay inside the platform boundary") -
+                                          1U));
+    }
+    return sl_status_ok();
 }
 
 static bool sl_http_transport_parse_size_decimal(SlStr value, size_t* out)
@@ -474,6 +726,64 @@ static SlStatus sl_http_transport_append_bytes(SlHttpTransportConnection* connec
     return sl_status_ok();
 }
 
+static SlStatus sl_http_transport_dispatch_ready(SlHttpTransportConnection* connection,
+                                                 SlHttpTransportServer* server, SlDiag* out_diag)
+{
+    SlStatus status;
+    SlHttpResponse response = {0};
+    SlDiag dispatch_diag = {0};
+    uint16_t safe_status = 500U;
+
+    if (connection == NULL || server == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection->state != SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY ||
+        connection->request.state != SL_HTTP_REQUEST_STATE_READING)
+    {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_APP_LIFECYCLE, SL_STATUS_INVALID_STATE,
+            sl_http_transport_literal("HTTP transport dispatch state is invalid",
+                                      sizeof("HTTP transport dispatch state is invalid") - 1U),
+            sl_http_transport_literal("dispatch only one parsed request-ready connection",
+                                      sizeof("dispatch only one parsed request-ready connection") -
+                                          1U));
+    }
+    if (server->config.dispatch == NULL) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_DISPATCH_FAILED, SL_STATUS_INVALID_STATE,
+            sl_http_transport_literal("HTTP transport dispatch callback is not configured",
+                                      sizeof("HTTP transport dispatch callback is not configured") -
+                                          1U),
+            sl_http_transport_literal("configure the runtime dispatch hook before listening",
+                                      sizeof("configure the runtime dispatch hook before "
+                                             "listening") -
+                                          1U));
+    }
+
+    status = sl_http_request_begin_dispatch(&connection->request, out_diag);
+    if (!sl_status_is_ok(status)) {
+        sl_http_transport_store_diag(connection, out_diag);
+        return status;
+    }
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_DISPATCHING;
+
+    status = server->config.dispatch(connection, &connection->request_arena, &connection->request,
+                                     &response, &dispatch_diag, server->config.dispatch_user);
+    if (!sl_status_is_ok(status)) {
+        safe_status = sl_http_transport_status_for_failure(status, &dispatch_diag);
+        sl_http_transport_store_diag(connection, &dispatch_diag);
+        response =
+            sl_http_response_text(safe_status, sl_http_transport_body_for_status(safe_status));
+    }
+
+    status = sl_http_transport_write_response(connection, &response, out_diag);
+    if (!sl_status_is_ok(status)) {
+        (void)sl_http_request_fail(&connection->request, NULL);
+        return status;
+    }
+    return sl_status_ok();
+}
+
 static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* connection,
                                                     SlDiag* out_diag)
 {
@@ -578,7 +888,10 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
                 server->config.on_request_ready(connection, &connection->request,
                                                 server->config.on_request_ready_user);
             }
-            else {
+            if (server->config.dispatch != NULL) {
+                return sl_http_transport_dispatch_ready(connection, server, out_diag);
+            }
+            if (server->config.on_request_ready == NULL) {
                 (void)sl_http_transport_connection_close(connection, NULL);
             }
         }
@@ -727,6 +1040,8 @@ static SlHttpTransportConnection* sl_http_transport_claim_connection(SlHttpTrans
             size_t request_storage_size = connection->request_storage_size;
             unsigned char* accumulation = connection->accumulation;
             size_t accumulation_capacity = connection->accumulation_capacity;
+            unsigned char* response_storage = connection->response_storage;
+            size_t response_storage_size = connection->response_storage_size;
             unsigned char* read_buffer = platform == NULL ? NULL : platform->read_buffer;
             size_t read_buffer_size = platform == NULL ? 0U : platform->read_buffer_size;
             *connection = (SlHttpTransportConnection){0};
@@ -735,6 +1050,8 @@ static SlHttpTransportConnection* sl_http_transport_claim_connection(SlHttpTrans
             connection->request_storage_size = request_storage_size;
             connection->accumulation = accumulation;
             connection->accumulation_capacity = accumulation_capacity;
+            connection->response_storage = response_storage;
+            connection->response_storage_size = response_storage_size;
             connection->platform->owner = connection;
             connection->platform->read_buffer = read_buffer;
             connection->platform->read_buffer_size = read_buffer_size;
@@ -788,6 +1105,9 @@ static void sl_http_transport_alloc_read(uv_handle_t* handle, size_t suggested_s
 
 static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connection, SlDiag* diag)
 {
+    uint16_t status_code = 500U;
+    SlDiag write_diag = {0};
+
     if (connection == NULL) {
         return;
     }
@@ -798,6 +1118,19 @@ static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connecti
         connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT)
     {
         (void)sl_http_request_fail(&connection->request, NULL);
+    }
+    if (connection->platform != NULL && connection->platform->initialized &&
+        !connection->platform->closing && !connection->platform->writing &&
+        connection->response_storage != NULL && connection->response_storage_size != 0U)
+    {
+        status_code = sl_http_transport_status_for_failure(
+            sl_status_from_code(diag == NULL ? SL_STATUS_INTERNAL : SL_STATUS_INVALID_ARGUMENT),
+            diag);
+        if (sl_status_is_ok(
+                sl_http_transport_write_error_response(connection, status_code, &write_diag)))
+        {
+            return;
+        }
     }
     (void)sl_http_transport_connection_close(connection, NULL);
 }
@@ -983,6 +1316,7 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     size_t accumulation_bytes = 0U;
     size_t request_storage_bytes = 0U;
     size_t read_buffer_bytes = 0U;
+    size_t response_storage_bytes = 0U;
 
     sl_http_transport_clear_diag(out_diag);
     if (server == NULL || arena == NULL) {
@@ -1063,9 +1397,15 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_checked_mul_size(server->config.max_response_bytes, server->connection_capacity,
+                                 &response_storage_bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     (void)accumulation_bytes;
     (void)request_storage_bytes;
     (void)read_buffer_bytes;
+    (void)response_storage_bytes;
 
     for (size_t index = 0U; index < server->connection_capacity; index += 1U) {
         server->connections[index] = (SlHttpTransportConnection){0};
@@ -1078,6 +1418,12 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
             server->connections[index].accumulation = (unsigned char*)memory;
             server->connections[index].accumulation_capacity = accumulation_capacity;
         }
+        status = sl_http_transport_alloc(arena, server->config.max_response_bytes, 1U, &memory);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        server->connections[index].response_storage = (unsigned char*)memory;
+        server->connections[index].response_storage_size = server->config.max_response_bytes;
         status = sl_http_transport_alloc(arena, server->config.request_arena_bytes, 1U, &memory);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -1242,6 +1588,10 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
     {
         (void)uv_read_stop((uv_stream_t*)&connection->platform->handle);
         connection->platform->reading = false;
+    }
+    if (connection->platform != NULL && connection->platform->writing) {
+        connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING;
+        return sl_status_ok();
     }
     if (connection->body_reader_started && !connection->body_reader_finished) {
         (void)sl_http_request_body_reader_close(&connection->body_reader, NULL);
