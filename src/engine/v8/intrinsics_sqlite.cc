@@ -451,6 +451,9 @@ bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
     uint32_t length = 0U;
 
     if (out == nullptr || arena == nullptr) {
+        sqlite_v8_throw_error(
+            isolate, out == nullptr ? "sqlite bridge internal error: missing parameter output"
+                                    : "sqlite bridge internal error: missing parameter arena");
         return false;
     }
 
