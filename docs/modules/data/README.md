@@ -15,8 +15,11 @@ bounded blocking pool executor for providers that can safely parallelize blockin
 ENGINE-23.E/F adds cancellation/timeout/shutdown terminal-state handling, late-completion
 cleanup-only behavior, and capability-gated dispatch before enqueue/execution. Current
 SQLite bridge calls are still synchronous until ENGINE-17 converts them to the executor.
-Remaining provider runtime work: diagnostics/stress evidence in #397 and provider runtime
-integration guidance in #398.
+ENGINE-23.G/H adds provider-executor diagnostics/counters, bounded stress smoke, and
+`docs/project/provider-runtime-integration-guide.md` for future SQLite/PostgreSQL/SQL
+Server bridge work. Current SQLite bridge calls are still synchronous until ENGINE-17
+converts them to the executor; PostgreSQL and SQL Server JavaScript bridges remain
+deferred.
 
 ## Purpose
 
@@ -248,8 +251,11 @@ rejection before enqueue, queued cancellation before execution, active cancellat
 timeout, immediate shutdown, late completion, cleanup exactly once, capability denial
 before enqueue, serialized worker FIFO execution, one-active operation behavior, worker
 failure diagnostics, completion posting through the libuv async backend, and no ownership
-transfer on rejected worker submissions. It is not a live database test and does not claim
-SQLite async/offload conversion.
+transfer on rejected worker submissions. It also includes bounded stress smoke for many
+admitted operations, deterministic overflow, serialized one-active behavior,
+blocking-pool worker caps, cleanup once, shutdown safety, and redacted admission
+diagnostics. It is not a live database test, benchmark, or SQLite async/offload conversion
+claim.
 
 `core.capability.registry` covers the runtime capability registry, database read/write
 and readwrite policy, provider mismatch denial, missing/wrong-kind/insufficient capability

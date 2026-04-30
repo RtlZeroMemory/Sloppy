@@ -4,13 +4,18 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+enum
+{
+    PROVIDER_RECORD_CAPACITY = 64
+};
+
 typedef struct ProviderRecord
 {
-    SlStatusCode statuses[16];
-    SlDiagCode diag_codes[16];
-    SlAsyncOperationKind operation_kinds[16];
-    SlStr messages[16];
-    int worker_values[16];
+    SlStatusCode statuses[PROVIDER_RECORD_CAPACITY];
+    SlDiagCode diag_codes[PROVIDER_RECORD_CAPACITY];
+    SlAsyncOperationKind operation_kinds[PROVIDER_RECORD_CAPACITY];
+    SlStr messages[PROVIDER_RECORD_CAPACITY];
+    int worker_values[PROVIDER_RECORD_CAPACITY];
     size_t worker_count;
     size_t dispatch_count;
     size_t cleanup_count;
@@ -124,6 +129,63 @@ static bool provider_diag_has_hint(const SlDiag* diag, const char* expected)
     return false;
 }
 
+static char provider_ascii_lower(char value)
+{
+    if (value >= 'A' && value <= 'Z') {
+        return (char)(value - 'A' + 'a');
+    }
+    return value;
+}
+
+static bool provider_str_contains_cstr_ignore_case(SlStr text, const char* expected)
+{
+    SlStr needle = sl_str_from_cstr(expected);
+    size_t index = 0U;
+    size_t offset = 0U;
+
+    if (text.ptr == NULL || expected == NULL || needle.length == 0U || needle.length > text.length)
+    {
+        return false;
+    }
+    for (index = 0U; index <= text.length - needle.length; index += 1U) {
+        bool matched = true;
+        for (offset = 0U; offset < needle.length; offset += 1U) {
+            if (provider_ascii_lower(text.ptr[index + offset]) !=
+                provider_ascii_lower(needle.ptr[offset]))
+            {
+                matched = false;
+                break;
+            }
+        }
+        if (matched) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool provider_diag_mentions_unsafe_text(const SlDiag* diag)
+{
+    size_t index = 0U;
+
+    if (diag == NULL) {
+        return false;
+    }
+    if (provider_str_contains_cstr_ignore_case(diag->message, "secret") ||
+        provider_str_contains_cstr_ignore_case(diag->message, "0x"))
+    {
+        return true;
+    }
+    for (index = 0U; index < diag->hint_count; index += 1U) {
+        if (provider_str_contains_cstr_ignore_case(diag->hints[index], "secret") ||
+            provider_str_contains_cstr_ignore_case(diag->hints[index], "0x"))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 static SlStatus provider_test_capability_check(const SlCapabilityRegistry* registry,
                                                SlArena* diag_arena, SlStr token,
                                                SlCapabilityOperation operation,
@@ -177,7 +239,7 @@ static SlStatus record_provider_completion(SlAsyncLoop* loop, const SlAsyncCompl
 
     (void)loop;
     if (record == NULL || completion == NULL || completion->operation == NULL ||
-        record->dispatch_count >= 16U)
+        record->dispatch_count >= PROVIDER_RECORD_CAPACITY)
     {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
@@ -217,12 +279,18 @@ static SlStatus run_provider_like_operation(SlProviderOperation* operation, void
     ProviderRecord* record = payload == NULL ? NULL : payload->record;
     size_t index = 0U;
 
-    if (operation == NULL || payload == NULL || record == NULL || record->worker_count >= 16U) {
+    if (operation == NULL || payload == NULL || record == NULL) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
 
     if (payload->record_mutex != NULL) {
         sl_platform_mutex_lock(payload->record_mutex);
+    }
+    if (record->worker_count >= PROVIDER_RECORD_CAPACITY) {
+        if (payload->record_mutex != NULL) {
+            sl_platform_mutex_unlock(payload->record_mutex);
+        }
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     index = record->worker_count;
     record->worker_values[index] = payload->value;
@@ -395,6 +463,82 @@ static int drain_until_dispatch_count(SlAsyncLoop* loop, ProviderRecord* record,
     }
 
     return 3;
+}
+
+static int prepare_pool_stress_descriptors(ProviderRecord* record, ProviderWorkPayload* payloads,
+                                           SlProviderOperationDescriptor* descriptors, size_t count,
+                                           atomic_int* active_count, atomic_int* max_active_count,
+                                           atomic_int* started_count, atomic_bool* release,
+                                           SlPlatformMutex* record_mutex)
+{
+    size_t index = 0U;
+
+    if (record == NULL || payloads == NULL || descriptors == NULL) {
+        return 1;
+    }
+
+    for (index = 0U; index < count; index += 1U) {
+        payloads[index] = provider_payload_basic(record, (int)index, SL_STATUS_OK, SL_DIAG_NONE,
+                                                 sl_str_from_cstr("pool stress ok"), false);
+        payloads[index].active_count = active_count;
+        payloads[index].max_active_count = max_active_count;
+        payloads[index].started_count = started_count;
+        payloads[index].release = release;
+        payloads[index].record_mutex = record_mutex;
+        if (make_worker_descriptor_for(record, &payloads[index], sl_str_from_cstr("postgres:main"),
+                                       sl_str_from_cstr("postgres"),
+                                       SL_PROVIDER_EXECUTION_BLOCKING_POOL,
+                                       &descriptors[index]) != 0)
+        {
+            return 2;
+        }
+    }
+
+    return 0;
+}
+
+static int submit_provider_stress_descriptors(SlProviderInstanceExecutor* executor, SlArena* arena,
+                                              SlProviderOperationDescriptor* descriptors,
+                                              SlProviderOperation** operations, size_t count)
+{
+    size_t index = 0U;
+
+    if (executor == NULL || arena == NULL || descriptors == NULL || operations == NULL) {
+        return 1;
+    }
+
+    for (index = 0U; index < count; index += 1U) {
+        if (expect_status(sl_provider_executor_submit(executor, arena, &descriptors[index],
+                                                      &operations[index]),
+                          SL_STATUS_OK) != 0 ||
+            operations[index] == NULL)
+        {
+            return 2;
+        }
+    }
+
+    return 0;
+}
+
+static int expect_pool_stress_drained(SlProviderInstanceExecutor* executor, SlAsyncLoop* loop,
+                                      ProviderRecord* record, size_t operation_count,
+                                      int worker_count, atomic_int* max_active_count)
+{
+    if (drain_until_dispatch_count(loop, record, operation_count) != 0) {
+        return 1;
+    }
+    if (record->dispatch_count != operation_count || record->cleanup_count != operation_count) {
+        return 2;
+    }
+    if (atomic_load(max_active_count) > worker_count) {
+        return 3;
+    }
+    if (sl_provider_executor_pending_count(executor) != 0U ||
+        sl_provider_executor_in_flight_count(executor) != 0U)
+    {
+        return 4;
+    }
+    return 0;
 }
 
 static SlProviderExecutorConfig provider_sqlite_serialized_config(size_t capacity)
@@ -1104,6 +1248,99 @@ static int test_serialized_admission_overflow_and_recovery(void)
     return 0;
 }
 
+static int test_provider_executor_admission_diagnostics_and_counters(void)
+{
+    unsigned char arena_storage[16384];
+    SlArena arena;
+    SlAsyncCompletion completions[16];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor = {0};
+    SlProviderExecutorSlot slots[1];
+    ProviderRecord record = {0};
+    SlProviderOperation* accepted = NULL;
+    SlProviderOperation* rejected = (SlProviderOperation*)1;
+    SlProviderOperationDescriptor desc;
+    SlDiag diag = {0};
+    unsigned char tiny_storage[1];
+    SlArena tiny_arena;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_arena_init(&tiny_arena, tiny_storage, sizeof(tiny_storage)),
+                      SL_STATUS_OK) != 0 ||
+        init_executor(&arena, &loop, &executor, slots, completions, 1U) != 0)
+    {
+        return 300;
+    }
+
+    if (make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0 ||
+        expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_operation_descriptor_set_diagnostic_context(
+                          &desc, sl_str_from_cstr("PASSWORD=SECRET 0X1234")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &accepted),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &rejected),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        rejected != NULL || executor.overflow_count != 1U ||
+        diag.code != SL_DIAG_ENGINE_BACKPRESSURE ||
+        !provider_diag_has_hint(&diag, "context: <redacted>") ||
+        provider_diag_mentions_unsafe_text(&diag))
+    {
+        return 301;
+    }
+
+    rejected = (SlProviderOperation*)1;
+    diag = (SlDiag){0};
+    if (expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &tiny_arena, &desc, &rejected),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        rejected != NULL)
+    {
+        return 304;
+    }
+
+    rejected = (SlProviderOperation*)1;
+    diag = (SlDiag){0};
+    if (expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_shutdown(&executor,
+                                                    SL_PROVIDER_EXECUTOR_SHUTDOWN_IMMEDIATE_CANCEL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &rejected),
+                      SL_STATUS_CANCELLED) != 0 ||
+        rejected != NULL || executor.shutdown_rejected_count != 1U ||
+        diag.code != SL_DIAG_APP_LIFECYCLE || provider_diag_mentions_unsafe_text(&diag))
+    {
+        return 302;
+    }
+
+    desc.execution_mode = SL_PROVIDER_EXECUTION_BLOCKING_POOL;
+    diag = (SlDiag){0};
+    if (expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &rejected),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        executor.invalid_operation_count != 1U || diag.code != SL_DIAG_INVALID_ARGUMENT ||
+        provider_diag_mentions_unsafe_text(&diag))
+    {
+        return 303;
+    }
+
+    diag = (SlDiag){0};
+    if (expect_status(sl_provider_executor_submit(&executor, &tiny_arena, &desc, &rejected),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 305;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
+    return 0;
+}
+
 static int test_cancel_timeout_and_late_completion_cleanup_once(void)
 {
     unsigned char arena_storage[8192];
@@ -1447,6 +1684,171 @@ static int test_blocking_pool_workers_cap_parallel_execution_and_fifo_queue(void
     sl_provider_executor_dispose(&executor);
     if (executor.worker_stopped_count != 2U) {
         return 164;
+    }
+    sl_async_loop_dispose(loop);
+    return 0;
+}
+
+static int test_serialized_executor_bounded_stress_smoke(void)
+{
+    enum
+    {
+        operation_count = 24
+    };
+    unsigned char arena_storage[65536];
+    SlArena arena;
+    SlAsyncCompletion completions[64];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor;
+    SlProviderExecutorSlot slots[operation_count];
+    ProviderRecord record = {0};
+    SlPlatformMutex* record_mutex = NULL;
+    atomic_int active_count;
+    atomic_int max_active_count;
+    atomic_int started_count;
+    atomic_bool release;
+    ProviderWorkPayload payloads[operation_count + 1];
+    SlProviderOperation* operations[operation_count + 1];
+    SlProviderOperationDescriptor descriptors[operation_count + 1];
+    size_t index = 0U;
+
+    atomic_init(&active_count, 0);
+    atomic_init(&max_active_count, 0);
+    atomic_init(&started_count, 0);
+    atomic_init(&release, false);
+    for (index = 0U; index < operation_count + 1U; index += 1U) {
+        operations[index] = NULL;
+    }
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_platform_mutex_create(&arena, &record_mutex), SL_STATUS_OK) != 0 ||
+        init_executor_with_backend(&arena, &loop, &executor, slots, completions, operation_count,
+                                   SL_ASYNC_BACKEND_LIBUV) != 0)
+    {
+        return 320;
+    }
+
+    for (index = 0U; index < operation_count + 1U; index += 1U) {
+        payloads[index] = provider_payload_basic(&record, (int)index, SL_STATUS_OK, SL_DIAG_NONE,
+                                                 sl_str_from_cstr("stress ok"), false);
+        payloads[index].active_count = &active_count;
+        payloads[index].max_active_count = &max_active_count;
+        payloads[index].started_count = &started_count;
+        payloads[index].release = &release;
+        payloads[index].record_mutex = record_mutex;
+        if (make_worker_descriptor(&record, &payloads[index], &descriptors[index]) != 0) {
+            return 321;
+        }
+    }
+
+    for (index = 0U; index < operation_count; index += 1U) {
+        if (expect_status(sl_provider_executor_submit(&executor, &arena, &descriptors[index],
+                                                      &operations[index]),
+                          SL_STATUS_OK) != 0 ||
+            operations[index] == NULL)
+        {
+            return 322;
+        }
+    }
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &descriptors[operation_count],
+                                                  &operations[operation_count]),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        operations[operation_count] != NULL || executor.overflow_count != 1U ||
+        sl_provider_executor_pending_count(&executor) != operation_count ||
+        wait_until_atomic_at_least(&started_count, 1) != 0 || atomic_load(&max_active_count) != 1)
+    {
+        return 323;
+    }
+
+    atomic_store(&release, true);
+    if (drain_until_dispatch_count(loop, &record, operation_count) != 0 ||
+        record.dispatch_count != operation_count || record.cleanup_count != operation_count ||
+        atomic_load(&max_active_count) != 1 ||
+        sl_provider_executor_pending_count(&executor) != 0U ||
+        sl_provider_executor_in_flight_count(&executor) != 0U)
+    {
+        return 324;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
+    return 0;
+}
+
+static int test_blocking_pool_bounded_stress_smoke(void)
+{
+    enum
+    {
+        operation_count = 32,
+        worker_count = 3
+    };
+    unsigned char arena_storage[65536];
+    SlArena arena;
+    SlAsyncCompletion completions[64];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor;
+    SlProviderExecutorSlot slots[operation_count];
+    ProviderRecord record = {0};
+    SlPlatformMutex* record_mutex = NULL;
+    atomic_int active_count;
+    atomic_int max_active_count;
+    atomic_int started_count;
+    atomic_bool release;
+    ProviderWorkPayload payloads[operation_count + 1];
+    SlProviderOperation* operations[operation_count + 1];
+    SlProviderOperationDescriptor descriptors[operation_count + 1];
+    size_t index = 0U;
+
+    atomic_init(&active_count, 0);
+    atomic_init(&max_active_count, 0);
+    atomic_init(&started_count, 0);
+    atomic_init(&release, false);
+    for (index = 0U; index < operation_count + 1U; index += 1U) {
+        operations[index] = NULL;
+    }
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_platform_mutex_create(&arena, &record_mutex), SL_STATUS_OK) != 0 ||
+        init_blocking_pool_executor(&arena, &loop, &executor, slots, completions, operation_count,
+                                    worker_count, worker_count) != 0)
+    {
+        return 330;
+    }
+
+    if (prepare_pool_stress_descriptors(&record, payloads, descriptors, operation_count + 1U,
+                                        &active_count, &max_active_count, &started_count, &release,
+                                        record_mutex) != 0)
+    {
+        return 331;
+    }
+
+    if (submit_provider_stress_descriptors(&executor, &arena, descriptors, operations,
+                                           operation_count) != 0)
+    {
+        return 332;
+    }
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &descriptors[operation_count],
+                                                  &operations[operation_count]),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        operations[operation_count] != NULL || executor.overflow_count != 1U ||
+        wait_until_atomic_at_least(&started_count, worker_count) != 0 ||
+        atomic_load(&max_active_count) != worker_count)
+    {
+        return 333;
+    }
+
+    atomic_store(&release, true);
+    if (expect_pool_stress_drained(&executor, loop, &record, operation_count, worker_count,
+                                   &max_active_count) != 0)
+    {
+        return 334;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    if (executor.worker_stopped_count != worker_count) {
+        return 335;
     }
     sl_async_loop_dispose(loop);
     return 0;
@@ -2112,6 +2514,7 @@ int main(void)
 {
     ProviderTestFn tests[] = {test_execution_mode_parse_and_validation,
                               test_serialized_admission_overflow_and_recovery,
+                              test_provider_executor_admission_diagnostics_and_counters,
                               test_descriptor_helpers_preserve_outputs_on_failure,
                               test_invalid_descriptor_fields_fail_without_cleanup,
                               test_pre_cancelled_and_expired_deadline_reject_before_enqueue,
@@ -2124,6 +2527,8 @@ int main(void)
                               test_shutdown_rejects_new_work_and_cancels_pending,
                               test_blocking_pool_promotes_queued_when_slot_frees,
                               test_blocking_pool_workers_cap_parallel_execution_and_fifo_queue,
+                              test_serialized_executor_bounded_stress_smoke,
+                              test_blocking_pool_bounded_stress_smoke,
                               test_blocking_pool_overflow_shutdown_and_cleanup_once,
                               test_serialized_worker_executes_one_at_a_time_fifo,
                               test_serialized_worker_capacity_and_reject_ownership,

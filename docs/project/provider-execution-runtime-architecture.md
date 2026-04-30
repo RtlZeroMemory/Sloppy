@@ -1,8 +1,9 @@
 # Provider Execution Runtime Architecture
 
 Status: ENGINE-23 strategic architecture with ENGINE-23.A/B descriptor/admission,
-ENGINE-23.C serialized blocking execution, ENGINE-23.D blocking pool execution, and
-ENGINE-23.E/F terminal-state plus capability-gated dispatch implemented.
+ENGINE-23.C serialized blocking execution, ENGINE-23.D blocking pool execution,
+ENGINE-23.E/F terminal-state plus capability-gated dispatch, and ENGINE-23.G/H
+diagnostics/stress evidence plus provider integration guidance implemented.
 
 ENGINE-23 creates Slop's provider execution and blocking offload runtime. It sits after
 ENGINE-12's generic async backend and before deeper provider, SQLite, HTTP, and public
@@ -452,6 +453,11 @@ Required test classes:
 - shutdown and late completion tests for pending and active operations;
 - stress smoke that exercises many bounded operations and reports it as local/manual
   stress evidence, not benchmark performance.
+- admission and terminal diagnostics/counters for overload, invalid operation, shutdown,
+  worker failure, operation failure, cancellation, timeout, late completion, capability
+  denial, and cleanup-once behavior. These diagnostics are redacted and must not expose
+  raw native pointers, V8/libuv internals, SQL parameters, connection strings, or secret
+  values.
 
 Evidence reporting:
 
@@ -478,8 +484,16 @@ Recommended implementation order:
 6. `TASK ENGINE-23.F`: Capability-Gated Provider Dispatch. Done for the native provider
    executor: registry-backed fail-closed admission, read/write/readwrite access checks,
    provider-token/provider-kind mismatch denial, and redacted admission diagnostics.
-7. `TASK ENGINE-23.G`: Provider Executor Diagnostics and Stress Evidence.
+7. `TASK ENGINE-23.G`: Provider Executor Diagnostics and Stress Evidence. Done for the
+   native provider executor: stable counters/diagnostics cover overload, invalid
+   operation, shutdown, worker/operation failure, cancellation, timeout, late completion,
+   and capability denial; bounded stress smoke covers many admitted operations,
+   deterministic overflow, serialized one-active behavior, blocking-pool worker caps,
+   cleanup once, and shutdown safety. This is correctness evidence, not a benchmark.
 8. `TASK ENGINE-23.H`: Provider Runtime Integration Guide for SQLite/PostgreSQL/SQL Server.
+   Done in `docs/project/provider-runtime-integration-guide.md`; it defines how future
+   SQLite, PostgreSQL, and SQL Server bridges must consume the provider executor without
+   adding those bridges here.
 
 Dependencies:
 

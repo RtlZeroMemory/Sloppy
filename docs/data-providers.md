@@ -116,8 +116,10 @@ possible, active cancellation/timeout/shutdown posts terminal state without clai
 native interruption, and late worker results are cleanup-only. The executor model is
 generic Slop-owned native-provider/offload infrastructure, not SQL-only plumbing; future
 native providers/addons with blocking calls should use it rather than libuv's shared
-threadpool. SQLite remains `SERIALIZED_BLOCKING` by default unless ENGINE-17 later changes
-that provider policy. PostgreSQL/SQL Server JavaScript bridges remain deferred.
+threadpool. ENGINE-23.G/H adds redacted diagnostics/counters, bounded stress smoke, and
+the integration guide in `docs/project/provider-runtime-integration-guide.md`. SQLite
+remains `SERIALIZED_BLOCKING` by default unless ENGINE-17 later changes that provider
+policy. PostgreSQL/SQL Server JavaScript bridges remain deferred.
 
 ## Provider Support Classification
 
@@ -160,10 +162,10 @@ provider-specific async model outside Slop's admission/completion contract.
 ENGINE-23.A/B turns these modes into implementation-grade descriptor and admission
 contracts. ENGINE-23.C implements the serialized blocking worker model for provider-like
 native operations, ENGINE-23.D implements the bounded blocking pool worker model for
-provider-like native operations, and ENGINE-23.E/F implements generic cancellation,
-timeout, shutdown, late-completion, and capability-gated dispatch behavior. Diagnostics/
-stress evidence follows in issue `#397`, and real SQLite bridge conversion remains
-ENGINE-17.
+provider-like native operations, ENGINE-23.E/F implements generic cancellation, timeout,
+shutdown, late-completion, and capability-gated dispatch behavior, and ENGINE-23.G/H adds
+redacted diagnostics/counters, bounded stress smoke, and SQLite/PostgreSQL/SQL Server
+integration guidance. Real SQLite bridge conversion remains ENGINE-17.
 
 Provider operation descriptors must own or retain all memory needed after submission: SQL
 strings, parameter text/blob values, provider config references, capability token,
@@ -870,7 +872,9 @@ generic native-provider/offload infrastructure, not a SQL-only executor; future 
 providers/addons with blocking calls should use these Slop-owned workers instead of
 libuv's shared threadpool. The SQLite bridge has not yet been converted to this executor,
 SQLite remains serialized by default, and PostgreSQL/SQL Server bridge work remains
-deferred.
+deferred. ENGINE-23.G/H evidence is bounded stress/smoke coverage only; it proves executor
+admission, worker caps, cleanup, and terminal-state behavior, not database throughput or
+public performance.
 
 Likely first strategies:
 

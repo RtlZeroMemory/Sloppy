@@ -169,12 +169,21 @@ struct SlProviderInstanceExecutor
     size_t max_in_flight;
     size_t worker_count;
     size_t next_sequence;
+    /*
+     * Diagnostic counters are best-effort executor evidence. Mutations from worker or
+     * completion paths must happen under `mutex`; caller-serialized admission paths may
+     * update them directly before worker visibility. Readers that need a coherent snapshot
+     * should use the same executor synchronization as pending/in-flight queries.
+     */
     size_t submitted_count;
     size_t completed_count;
+    size_t invalid_operation_count;
+    size_t operation_failure_count;
     size_t cancelled_count;
     size_t timed_out_count;
     size_t overflow_count;
     size_t shutdown_rejected_count;
+    size_t capability_denied_count;
     size_t worker_started_count;
     size_t worker_stopped_count;
     size_t worker_failure_count;
