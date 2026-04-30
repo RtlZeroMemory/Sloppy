@@ -89,18 +89,39 @@ static SlPlanCapability capability(const char* token, const char* kind, const ch
     return cap;
 }
 
+static SlPlanDataProvider provider(const char* token, const char* provider_kind,
+                                   const char* capability_token, const char* service)
+{
+    SlPlanDataProvider data_provider;
+
+    data_provider.token = sl_str_from_cstr(token);
+    data_provider.provider = sl_str_from_cstr(provider_kind);
+    data_provider.capability =
+        capability_token == NULL ? sl_str_empty() : sl_str_from_cstr(capability_token);
+    data_provider.service = service == NULL ? sl_str_empty() : sl_str_from_cstr(service);
+    return data_provider;
+}
+
 static int test_registry_lookup(void)
 {
+    SlPlanDataProvider providers[] = {
+        provider("data.main", "sqlite", NULL, "data.main"),
+    };
     SlPlanCapability caps[] = {
         capability("data.read", "database", "read", "data.main"),
         capability("files.assets", "filesystem", "readwrite", NULL),
     };
-    SlPlan plan = {.capabilities = caps, .capability_count = 2U};
+    SlPlan plan = {.data_providers = providers,
+                   .data_provider_count = 1U,
+                   .capabilities = caps,
+                   .capability_count = 2U};
     SlCapabilityRegistry registry = {0};
     const SlPlanCapability* found = NULL;
     SlStatus status = sl_capability_registry_init_from_plan(&plan, &registry);
 
-    if (expect_status(status, SL_STATUS_OK) != 0 || registry.capability_count != 2U) {
+    if (expect_status(status, SL_STATUS_OK) != 0 || registry.data_provider_count != 1U ||
+        registry.capability_count != 2U)
+    {
         return 1;
     }
     status = sl_capability_registry_find(&registry, sl_str_from_cstr("data.read"), &found);
@@ -118,12 +139,18 @@ static int test_database_read_write_policy(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
+    SlPlanDataProvider providers[] = {
+        provider("data.main", "sqlite", NULL, "data.main"),
+    };
     SlPlanCapability caps[] = {
         capability("data.read", "database", "read", "data.main"),
         capability("data.write", "database", "write", "data.main"),
         capability("data.rw", "database", "readwrite", "data.main"),
     };
-    SlPlan plan = {.capabilities = caps, .capability_count = 3U};
+    SlPlan plan = {.data_providers = providers,
+                   .data_provider_count = 1U,
+                   .capabilities = caps,
+                   .capability_count = 3U};
     SlCapabilityRegistry registry = {0};
     SlDiag diag = {0};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
@@ -171,8 +198,14 @@ static int test_database_provider_and_missing_denials(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
+    SlPlanDataProvider providers[] = {
+        provider("data.main", "sqlite", NULL, "data.main"),
+    };
     SlPlanCapability caps[] = {capability("data.main", "database", "readwrite", "data.main")};
-    SlPlan plan = {.capabilities = caps, .capability_count = 1U};
+    SlPlan plan = {.data_providers = providers,
+                   .data_provider_count = 1U,
+                   .capabilities = caps,
+                   .capability_count = 1U};
     SlCapabilityRegistry registry = {0};
     SlDiag diag = {0};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
@@ -183,6 +216,13 @@ static int test_database_provider_and_missing_denials(void)
     if (expect_status(sl_capability_registry_init_from_plan(&plan, &registry), SL_STATUS_OK) != 0) {
         return 21;
     }
+    if (expect_status(sl_capability_check_database_provider(
+                          &registry, &arena, sl_str_from_cstr("data.main"),
+                          SL_CAPABILITY_OPERATION_READ, sl_str_from_cstr("sqlite"), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 22;
+    }
     status = sl_capability_check_database(&registry, &arena, sl_str_from_cstr("data.main"),
                                           SL_CAPABILITY_OPERATION_READ,
                                           sl_str_from_cstr("data.audit"), &diag);
@@ -190,7 +230,16 @@ static int test_database_provider_and_missing_denials(void)
         diag.code != SL_DIAG_PERMISSION_DENIED || !diag_has_hint(&diag, "provider: data.audit") ||
         diag_mentions_secret(&diag))
     {
-        return 22;
+        return 23;
+    }
+    status = sl_capability_check_database_provider(&registry, &arena, sl_str_from_cstr("data.main"),
+                                                   SL_CAPABILITY_OPERATION_READ,
+                                                   sl_str_from_cstr("postgres"), &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED || !diag_has_hint(&diag, "provider: postgres") ||
+        diag_mentions_secret(&diag))
+    {
+        return 24;
     }
     status = sl_capability_check_database(&registry, &arena, sl_str_from_cstr("data.missing"),
                                           SL_CAPABILITY_OPERATION_READ,
@@ -199,7 +248,7 @@ static int test_database_provider_and_missing_denials(void)
         diag.code != SL_DIAG_PERMISSION_DENIED || !diag_has_hint(&diag, "token: data.missing") ||
         diag_mentions_secret(&diag))
     {
-        return 23;
+        return 25;
     }
     return 0;
 }
@@ -208,11 +257,17 @@ static int test_wrong_kind_and_skeleton_checks(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
+    SlPlanDataProvider providers[] = {
+        provider("data.main", "sqlite", NULL, "data.main"),
+    };
     SlPlanCapability caps[] = {
         capability("files.assets", "filesystem", "readwrite", NULL),
         capability("net.admin", "network", "connect-listen", NULL),
     };
-    SlPlan plan = {.capabilities = caps, .capability_count = 2U};
+    SlPlan plan = {.data_providers = providers,
+                   .data_provider_count = 1U,
+                   .capabilities = caps,
+                   .capability_count = 2U};
     SlCapabilityRegistry registry = {0};
     SlDiag diag = {0};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
@@ -263,8 +318,14 @@ static int test_denied_check_precedes_provider_work(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
+    SlPlanDataProvider providers[] = {
+        provider("data.main", "sqlite", NULL, "data.main"),
+    };
     SlPlanCapability caps[] = {capability("data.read", "database", "read", "data.main")};
-    SlPlan plan = {.capabilities = caps, .capability_count = 1U};
+    SlPlan plan = {.data_providers = providers,
+                   .data_provider_count = 1U,
+                   .capabilities = caps,
+                   .capability_count = 1U};
     SlCapabilityRegistry registry = {0};
     SlDiag diag = {0};
     int fake_provider_calls = 0;
@@ -293,6 +354,16 @@ static int test_denied_check_precedes_provider_work(void)
 static int test_registry_rejects_invalid_shapes(void)
 {
     SlCapabilityRegistry registry = {0};
+    SlPlanDataProvider providers[] = {
+        provider("data.main", "sqlite", NULL, "data.main"),
+    };
+    SlPlanDataProvider duplicate_providers[] = {
+        provider("data.main", "sqlite", NULL, "data.main"),
+        provider("data.main", "postgres", NULL, "data.audit"),
+    };
+    SlPlanDataProvider invalid_provider_kind[] = {
+        provider("data.main", "unknown", NULL, "data.main"),
+    };
     SlPlanCapability duplicate_caps[] = {
         capability("data.main", "database", "read", "data.main"),
         capability("data.main", "database", "write", "data.main"),
@@ -306,11 +377,30 @@ static int test_registry_rejects_invalid_shapes(void)
     SlPlanCapability forbidden_provider_caps[] = {
         capability("files.assets", "filesystem", "read", "data.main"),
     };
-    SlPlan duplicate_plan = {.capabilities = duplicate_caps, .capability_count = 2U};
-    SlPlan invalid_kind_plan = {.capabilities = invalid_kind_caps, .capability_count = 1U};
+    SlPlanCapability missing_provider_ref_caps[] = {
+        capability("data.main", "database", "read", "data.missing"),
+    };
+    SlPlan duplicate_plan = {.data_providers = providers,
+                             .data_provider_count = 1U,
+                             .capabilities = duplicate_caps,
+                             .capability_count = 2U};
+    SlPlan invalid_kind_plan = {.data_providers = providers,
+                                .data_provider_count = 1U,
+                                .capabilities = invalid_kind_caps,
+                                .capability_count = 1U};
     SlPlan missing_provider_plan = {.capabilities = missing_provider_caps, .capability_count = 1U};
-    SlPlan forbidden_provider_plan = {.capabilities = forbidden_provider_caps,
+    SlPlan forbidden_provider_plan = {.data_providers = providers,
+                                      .data_provider_count = 1U,
+                                      .capabilities = forbidden_provider_caps,
                                       .capability_count = 1U};
+    SlPlan missing_provider_ref_plan = {.data_providers = providers,
+                                        .data_provider_count = 1U,
+                                        .capabilities = missing_provider_ref_caps,
+                                        .capability_count = 1U};
+    SlPlan duplicate_provider_plan = {.data_providers = duplicate_providers,
+                                      .data_provider_count = 2U};
+    SlPlan invalid_provider_plan = {.data_providers = invalid_provider_kind,
+                                    .data_provider_count = 1U};
 
     if (expect_status(sl_capability_registry_init_from_plan(&duplicate_plan, &registry),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
@@ -331,6 +421,21 @@ static int test_registry_rejects_invalid_shapes(void)
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 53;
+    }
+    if (expect_status(sl_capability_registry_init_from_plan(&missing_provider_ref_plan, &registry),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 54;
+    }
+    if (expect_status(sl_capability_registry_init_from_plan(&duplicate_provider_plan, &registry),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 55;
+    }
+    if (expect_status(sl_capability_registry_init_from_plan(&invalid_provider_plan, &registry),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 56;
     }
     return 0;
 }

@@ -234,10 +234,6 @@ bool sqlite_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> c
         return false;
     }
 
-    if (out->provider_token.empty()) {
-        out->provider_token = out->capability;
-    }
-
     return true;
 }
 
@@ -345,17 +341,22 @@ bool sqlite_v8_check_capability(v8::Isolate* isolate, SlV8Engine* backend, SlAre
                               "enforced for this engine");
         return false;
     }
-    if (arena == nullptr || resource == nullptr || resource->capability.empty() ||
-        resource->provider_token.empty())
-    {
+    if (arena == nullptr || resource == nullptr || resource->capability.empty()) {
         sqlite_v8_throw_error(isolate, "sqlite resource is missing capability metadata");
         return false;
     }
 
     token = sl_str_from_parts(resource->capability.data(), resource->capability.size());
-    provider = sl_str_from_parts(resource->provider_token.data(), resource->provider_token.size());
-    status = sl_capability_check_database(backend->capabilities, arena, token, operation, provider,
-                                          &diag);
+    if (!resource->provider_token.empty()) {
+        provider =
+            sl_str_from_parts(resource->provider_token.data(), resource->provider_token.size());
+        status = sl_capability_check_database(backend->capabilities, arena, token, operation,
+                                              provider, &diag);
+    }
+    else {
+        status = sl_capability_check_database_provider(
+            backend->capabilities, arena, token, operation, sl_str_from_cstr("sqlite"), &diag);
+    }
     if (!sl_status_is_ok(status)) {
         sqlite_v8_throw_diag(isolate, "sqlite capability check failed", diag);
         return false;
@@ -668,7 +669,7 @@ void sqlite_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     if (!sqlite_v8_resolve_provider_request(isolate, backend, &request)) {
         return;
     }
-    if (request.capability.empty() || request.provider_token.empty()) {
+    if (request.capability.empty()) {
         sqlite_v8_throw_error(
             isolate, "sqlite open requires capability metadata before provider work can begin");
         return;

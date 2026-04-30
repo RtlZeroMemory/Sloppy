@@ -306,10 +306,11 @@ Active planning has moved to:
    [ROADMAP MAIN.1](project/roadmap-main-1-hardening.md): historical input from the narrow
    alpha-path planning and hardening pass.
 
-Capability enforcement is now an engine-foundation blocker specifically because the
-SQLite JS/native bridge still needs to call the native capability hook. EPIC-28-style public
-alpha docs/examples are deferred until the engine foundation layers pass or are explicitly
-scoped down with honest exclusions.
+Capability enforcement is now an engine-foundation blocker specifically because public
+alpha docs/examples need honest evidence for the capability-enforced SQLite JS/native
+bridge, and for the providers that remain deferred. EPIC-28-style public alpha
+docs/examples are deferred until the engine foundation layers pass or are explicitly scoped
+down with honest exclusions.
 
 See also `docs/project/current-issue-state-audit.md` and
 `docs/project/strategic-issue-cleanup-plan.md` for the stale issue cleanup plan.

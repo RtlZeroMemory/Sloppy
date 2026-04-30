@@ -7,6 +7,7 @@
  * package-manager, Node-compatibility, middleware, streaming, and hot reload.
  */
 #include "sloppy/arena.h"
+#include "sloppy/capability.h"
 #include "sloppy/compiler.h"
 #include "sloppy/data_postgres.h"
 #include "sloppy/data_sqlserver.h"
@@ -1503,6 +1504,12 @@ static int sl_run_validate_startup(SlRunApp* app)
     status = sl_app_host_validate_startup(&app->plan, &validation, &diag);
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: app graph startup validation failed: ", &diag);
+        return 1;
+    }
+
+    status = sl_capability_registry_init_from_plan(&app->plan, &app->capability_registry);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: capability registry initialization failed\n");
         return 1;
     }
 
