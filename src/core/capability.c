@@ -192,22 +192,17 @@ static bool sl_capability_access_allows(SlCapabilityAccess actual, SlCapabilityO
     return false;
 }
 
-static SlStatus sl_capability_add_hint_pair(SlDiagBuilder* builder, SlArena* arena, SlStr prefix,
-                                            SlStr value)
+static SlStatus sl_capability_add_hint_pair(SlDiagBuilder* builder, SlStr prefix, SlStr value)
 {
     SlStringBuilder hint_builder = {0};
     SlStr hint = {0};
     size_t hint_length = 0U;
     SlStatus status;
 
-    if (builder == NULL || builder->arena != arena || arena == NULL || prefix.ptr == NULL ||
+    if (builder == NULL || builder->arena == NULL || prefix.ptr == NULL ||
         (value.length > 0U && value.ptr == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    if (builder->diag.hint_count >= SL_DIAG_MAX_HINTS) {
-        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
     }
 
     status = sl_checked_add_size(prefix.length, value.length, &hint_length);
@@ -215,7 +210,7 @@ static SlStatus sl_capability_add_hint_pair(SlDiagBuilder* builder, SlArena* are
         return status;
     }
 
-    status = sl_string_builder_init_arena(&hint_builder, arena, hint_length, hint_length);
+    status = sl_string_builder_init_arena(&hint_builder, builder->arena, hint_length, hint_length);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -228,12 +223,8 @@ static SlStatus sl_capability_add_hint_pair(SlDiagBuilder* builder, SlArena* are
         return status;
     }
 
-    // The builder output is already arena-owned by the diagnostic arena, so storing the
-    // view avoids the older temporary hint allocation followed by a second hint copy.
     hint = sl_string_builder_view(&hint_builder);
-    builder->diag.hints[builder->diag.hint_count] = hint;
-    builder->diag.hint_count += 1U;
-    return sl_status_ok();
+    return sl_diag_builder_add_hint_owned(builder, hint);
 }
 
 static SlStatus sl_capability_denied(SlArena* arena, SlDiag* out_diag, SlStr token, SlStr kind,
@@ -254,28 +245,27 @@ static SlStatus sl_capability_denied(SlArena* arena, SlDiag* out_diag, SlStr tok
     }
     if (!sl_str_is_empty(token)) {
         status = sl_capability_add_hint_pair(
-            &builder, arena, sl_capability_literal("token: ", sizeof("token: ") - 1U), token);
+            &builder, sl_capability_literal("token: ", sizeof("token: ") - 1U), token);
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
     if (!sl_str_is_empty(kind) && (sl_str_is_empty(provider) || sl_str_is_empty(actual_access))) {
         status = sl_capability_add_hint_pair(
-            &builder, arena, sl_capability_literal("kind: ", sizeof("kind: ") - 1U), kind);
+            &builder, sl_capability_literal("kind: ", sizeof("kind: ") - 1U), kind);
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
     status = sl_capability_add_hint_pair(
-        &builder, arena, sl_capability_literal("operation: ", sizeof("operation: ") - 1U),
+        &builder, sl_capability_literal("operation: ", sizeof("operation: ") - 1U),
         sl_capability_operation_name(operation));
     if (!sl_status_is_ok(status)) {
         return status;
     }
     if (!sl_str_is_empty(actual_access)) {
         status = sl_capability_add_hint_pair(
-            &builder, arena,
-            sl_capability_literal("actual access: ", sizeof("actual access: ") - 1U),
+            &builder, sl_capability_literal("actual access: ", sizeof("actual access: ") - 1U),
             actual_access);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -283,8 +273,7 @@ static SlStatus sl_capability_denied(SlArena* arena, SlDiag* out_diag, SlStr tok
     }
     if (!sl_str_is_empty(provider)) {
         status = sl_capability_add_hint_pair(
-            &builder, arena, sl_capability_literal("provider: ", sizeof("provider: ") - 1U),
-            provider);
+            &builder, sl_capability_literal("provider: ", sizeof("provider: ") - 1U), provider);
         if (!sl_status_is_ok(status)) {
             return status;
         }
