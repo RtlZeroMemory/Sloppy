@@ -69,9 +69,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   statement decision, and executable users API conformance.
 - Capability/security integration: bridge enforcement before provider work and no OS
   sandbox claims.
-- App-host lifecycle/resource completion: app/request cleanup, cancellation lifecycle,
-  graceful drain/force-cancel shutdown behavior, lifecycle diagnostics, bounded resource
-  budgets, and leak checks where possible.
+- App-host lifecycle/resource completion beyond ENGINE-07: provider ownership policy,
+  graceful drain/force-cancel shutdown behavior for real native async work, bounded
+  resource budgets, leak checks where possible, and richer cleanup-failure diagnostics.
 - Conformance/examples/packaging evidence: realistic examples and packaged runtime smoke
   outside the checkout before public alpha docs.
 
@@ -123,9 +123,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   Sloppy toolchain. MAIN1-08 adds a real V8-gated SQLite JS-native bridge fixture, but the
   public source-stdlib SQLite tutorial remains deferred until the compiler/source example
   path can execute it honestly.
-- Request/app resource ownership: MAIN1-07 adds the fixed table and handle safety layer, and
-  MAIN1-03 adds a minimal native request cleanup boundary, but provider handle wiring,
-  leak reports, async request-scope retention, and debug lifecycle integration remain open.
+- Request/app resource ownership: MAIN1-07 adds the fixed table and handle safety layer,
+  MAIN1-03 adds a minimal native request cleanup boundary, and ENGINE-07 adds app
+  lifecycle shutdown plus resource-table-backed request/app cleanup helpers. Provider
+  handle ownership policy, leak reports, broader async request-scope retention, and debug
+  lifecycle integration remain open.
 - Memory/string foundation completion: #32 tracks the old narrow string builder/buffer
   task, but the strategic work is now ENGINE-21/22, including bounded string
   interning/symbol tables. Public alpha should not claim top-notch memory/string hot-path
@@ -155,7 +157,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   bridge-ready hook.
 - Source map consumption for TypeScript remapping from V8 exceptions. ENGINE-02 emits
   handler-line source maps, but MAIN1-05 still reports generated `app.js` line/column
-  because runtime diagnostics do not consume those maps yet.
+  because runtime diagnostics do not consume those maps yet. ENGINE-07 did not claim
+  source-map remapping; lifecycle/async diagnostics remain stable generated-location
+  diagnostics until ENGINE-08 consumes maps for real.
 - Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
   drain behavior beyond the current idempotent close, thread-safety contract, and richer
   diagnostics.

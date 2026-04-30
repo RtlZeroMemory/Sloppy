@@ -448,6 +448,8 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_ENGINE_BACKPRESSURE:
         return sl_diag_literal("SLOPPY_E_ENGINE_BACKPRESSURE",
                                sizeof("SLOPPY_E_ENGINE_BACKPRESSURE") - 1U);
+    case SL_DIAG_APP_LIFECYCLE:
+        return sl_diag_literal("SLOPPY_E_APP_LIFECYCLE", sizeof("SLOPPY_E_APP_LIFECYCLE") - 1U);
     case SL_DIAG_INVALID_ROUTE_PATTERN:
         return sl_diag_literal("SLOPPY_E_INVALID_ROUTE_PATTERN",
                                sizeof("SLOPPY_E_INVALID_ROUTE_PATTERN") - 1U);
