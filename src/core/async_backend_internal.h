@@ -20,9 +20,11 @@ struct SlAsyncLoop
 SlStatus sl_async_loop_common_init(SlAsyncLoop* loop, SlAsyncBackendKind kind, SlArena* arena,
                                    SlAsyncCompletion* storage, size_t capacity);
 SlStatus sl_async_loop_enqueue_owned(SlAsyncLoop* loop, const SlAsyncCompletion* completion);
+bool sl_async_loop_unenqueue_last_owned(SlAsyncLoop* loop, SlAsyncCompletion* out_completion);
 bool sl_async_loop_pop(SlAsyncLoop* loop, SlAsyncCompletion* out_completion);
 SlStatus sl_async_loop_dispatch_completion(SlAsyncLoop* loop, const SlAsyncCompletion* completion);
 void sl_async_loop_finish_completion(const SlAsyncCompletion* completion);
+void sl_async_loop_release_completion_scope(const SlAsyncCompletion* completion);
 void sl_async_loop_discard_pending_unlocked(SlAsyncLoop* loop);
 
 SlStatus sl_async_loop_libuv_init(SlAsyncLoop* loop, SlArena* arena);

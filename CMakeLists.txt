@@ -611,9 +611,11 @@ if(SLOPPY_ENABLE_TESTS)
         core_async_settlement core.async.settlement tests/unit/core/test_async.c)
     sloppy_add_c_unit_test(
         core_async_backend core.async.backend tests/unit/core/test_async_backend.c)
-    sloppy_add_cxx_unit_test(
-        core_async_backend_libuv core.async.backend_libuv
-        tests/unit/core/test_async_backend_libuv.cc)
+    if(CMAKE_CXX_COMPILER)
+        sloppy_add_cxx_unit_test(
+            core_async_backend_libuv core.async.backend_libuv
+            tests/unit/core/test_async_backend_libuv.cc)
+    endif()
     sloppy_add_c_unit_test(
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)

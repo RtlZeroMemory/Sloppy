@@ -2,6 +2,7 @@
 
 #include "sloppy/async_backend.h"
 #include "sloppy/engine.h"
+#include "sloppy/platform.h"
 
 #include <cstddef>
 #include <string>
@@ -63,7 +64,15 @@ static SlEngineOptions v8_options(void)
     options.kind = SL_ENGINE_KIND_V8;
     options.runtime_name = sl_str_from_cstr("sloppy-v8-async-scheduler-test");
     options.runtime_version = sl_str_from_cstr("0.12.0-test");
+#if SL_PLATFORM_WINDOWS
     options.target_platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+#elif SL_PLATFORM_LINUX
+    options.target_platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_LINUX_X64);
+#elif SL_PLATFORM_APPLE
+    options.target_platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_MACOS_X64);
+#else
+    options.target_platform = sl_str_from_cstr("");
+#endif
     options.target_engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
     return options;
 }
@@ -297,6 +306,112 @@ static int test_wrong_thread_drain_does_not_resume_promise(void)
     return result;
 }
 
+static int test_failed_post_does_not_mark_continuation_active(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char loop_arena_storage[4096];
+    SlArena engine_arena = {};
+    SlArena loop_arena = {};
+    SlAsyncCompletion completion_storage[1];
+    SlAsyncLoop* loop = nullptr;
+    SlEngine* engine = nullptr;
+    SlEngineOptions options = v8_options();
+    SlV8NativeContinuation first = {};
+    SlV8NativeContinuation second = {};
+    ScopeCounter first_scope = {0U, 0U};
+    ScopeCounter second_scope = {0U, 0U};
+    size_t ran = 0U;
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&loop_arena, loop_arena_storage, sizeof(loop_arena_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &loop_arena, completion_storage, 1U, &loop),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0)
+    {
+        return 30;
+    }
+
+    int result = [&]() {
+        SlV8Engine* backend = static_cast<SlV8Engine*>(engine->backend);
+        v8::Isolate* isolate = backend->isolate;
+        v8::Isolate::Scope isolate_scope(isolate);
+        v8::HandleScope handle_scope(isolate);
+        v8::Local<v8::Context> context = backend->context.Get(isolate);
+        v8::Context::Scope context_scope(context);
+        v8::Local<v8::Promise> first_promise;
+        v8::Local<v8::Promise> second_promise;
+
+        if (expect_status(sl_v8_native_continuation_prepare(engine, &first, &first_promise),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_v8_native_continuation_prepare(engine, &second, &second_promise),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_v8_native_continuation_post(loop, &first, sl_status_ok(), "first",
+                                                         false, scope_ref(&first_scope)),
+                          SL_STATUS_OK) != 0)
+        {
+            return 31;
+        }
+
+        if (expect_status(sl_v8_native_continuation_post(loop, &first, sl_status_ok(), "again",
+                                                         false, scope_ref(&first_scope)),
+                          SL_STATUS_INVALID_STATE) != 0 ||
+            first_scope.retain_count != 1U || first_scope.release_count != 0U)
+        {
+            return 32;
+        }
+
+        if (expect_status(sl_v8_native_continuation_post(loop, &second, sl_status_ok(), "second",
+                                                         false, scope_ref(&second_scope)),
+                          SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+            second.queued || second.settled || second.cleanup_ran || !second.text.empty() ||
+            second_scope.retain_count != 0U || second_scope.release_count != 0U)
+        {
+            return 33;
+        }
+
+        v8::Global<v8::Promise> first_ref(isolate, first_promise);
+        v8::Global<v8::Promise> second_ref(isolate, second_promise);
+        if (expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+            !first.settled || !first.cleanup_ran || first_scope.release_count != 1U)
+        {
+            first_ref.Reset();
+            second_ref.Reset();
+            return 34;
+        }
+
+        if (expect_status(sl_v8_native_continuation_post(loop, &second, sl_status_ok(), "second",
+                                                         false, scope_ref(&second_scope)),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+            !second.settled || !second.cleanup_ran || second_scope.retain_count != 1U ||
+            second_scope.release_count != 1U)
+        {
+            first_ref.Reset();
+            second_ref.Reset();
+            return 35;
+        }
+
+        if (first_ref.Get(isolate)->State() != v8::Promise::kFulfilled ||
+            second_ref.Get(isolate)->State() != v8::Promise::kFulfilled)
+        {
+            first_ref.Reset();
+            second_ref.Reset();
+            return 36;
+        }
+
+        first_ref.Reset();
+        second_ref.Reset();
+        return 0;
+    }();
+
+    sl_async_loop_dispose(loop);
+    sl_engine_destroy(engine);
+    return result;
+}
+
 int main(void)
 {
     int result = test_cross_thread_native_completion_fulfills_on_owner_thread();
@@ -310,5 +425,10 @@ int main(void)
         return result;
     }
 
-    return test_wrong_thread_drain_does_not_resume_promise();
+    result = test_wrong_thread_drain_does_not_resume_promise();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_failed_post_does_not_mark_continuation_active();
 }

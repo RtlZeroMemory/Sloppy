@@ -118,26 +118,40 @@ bool sl_async_loop_libuv_is_owner_thread(const SlAsyncLoop* loop)
 SlStatus sl_async_loop_libuv_post(SlAsyncLoop* loop, const SlAsyncCompletion* completion)
 {
     SlLibuvAsyncBackend* backend = sl_libuv_backend(loop);
+    SlAsyncCompletion rollback_completion;
     SlStatus status;
     int uv_status = 0;
+    bool rolled_back = false;
 
     if (loop == NULL || backend == NULL || completion == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (backend->closing) {
+    if (loop->disposed) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
     uv_mutex_lock(&backend->mutex);
-    status = sl_async_loop_enqueue_owned(loop, completion);
-    uv_mutex_unlock(&backend->mutex);
+    if (backend->closing) {
+        uv_mutex_unlock(&backend->mutex);
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
 
+    status = sl_async_loop_enqueue_owned(loop, completion);
     if (!sl_status_is_ok(status)) {
+        uv_mutex_unlock(&backend->mutex);
         return status;
     }
 
     uv_status = uv_async_send(&backend->async);
+    if (uv_status != 0) {
+        rolled_back = sl_async_loop_unenqueue_last_owned(loop, &rollback_completion);
+    }
+    uv_mutex_unlock(&backend->mutex);
+
+    if (rolled_back) {
+        sl_async_loop_release_completion_scope(&rollback_completion);
+    }
     return sl_libuv_status_from_error(uv_status);
 }
 
@@ -240,12 +254,14 @@ void sl_async_loop_libuv_dispose(SlAsyncLoop* loop)
         return;
     }
 
-    backend->closing = true;
-    loop->disposed = true;
-
     if (backend->mutex_initialized) {
         SlAsyncCompletion completion;
         bool popped = false;
+
+        uv_mutex_lock(&backend->mutex);
+        backend->closing = true;
+        loop->disposed = true;
+        uv_mutex_unlock(&backend->mutex);
 
         do {
             uv_mutex_lock(&backend->mutex);
@@ -256,6 +272,10 @@ void sl_async_loop_libuv_dispose(SlAsyncLoop* loop)
                 sl_async_loop_finish_completion(&completion);
             }
         } while (popped);
+    }
+    else {
+        backend->closing = true;
+        loop->disposed = true;
     }
 
     if (backend->async_initialized && !uv_is_closing((uv_handle_t*)&backend->async)) {
@@ -270,5 +290,6 @@ void sl_async_loop_libuv_dispose(SlAsyncLoop* loop)
 
     if (backend->mutex_initialized) {
         uv_mutex_destroy(&backend->mutex);
+        backend->mutex_initialized = false;
     }
 }

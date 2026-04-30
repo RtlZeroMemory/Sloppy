@@ -50,10 +50,12 @@ thread-safe posting, socket I/O, timers, owner-thread checks, or request lifecyc
 integration.
 
 ENGINE-12.AB adds the first real async backend foundation beside the older skeletons.
-`include/sloppy/async_backend.h` defines an opaque `SlAsyncLoop` with a bounded Slop-owned
-completion queue, deterministic overflow (`SL_STATUS_CAPACITY_EXCEEDED`), cleanup-once
-completion ownership, and optional scope retain/release hooks for request/app lifetime
-retention. The deterministic test backend is available for default unit tests. The primary
+`include/sloppy/async_backend.h` defines an opaque `SlAsyncLoop` over caller-provided
+completion storage. The loop takes ownership only of completions that are successfully
+queued; deterministic overflow reports `SL_STATUS_CAPACITY_EXCEEDED` without taking
+ownership. Queued completions have cleanup-once ownership and optional scope
+retain/release hooks for request/app lifetime retention. The deterministic test backend is
+available for default unit tests. The primary
 runtime backend is libuv, implemented under `src/platform/libuv/`; `uv_loop_t`,
 `uv_async_t`, `uv_handle_t`, and other libuv types do not appear in public Sloppy headers
 or JavaScript/framework contracts. Libuv is used for internal cross-thread wakeup/posting,

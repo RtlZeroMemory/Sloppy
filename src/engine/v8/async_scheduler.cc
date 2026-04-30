@@ -121,11 +121,16 @@ SlStatus sl_v8_native_continuation_post(SlAsyncLoop* loop, SlV8NativeContinuatio
                                         SlAsyncScopeRef scope)
 {
     SlAsyncCompletion completion;
+    SlStatus post_status;
 
     if (loop == nullptr || continuation == nullptr || text == nullptr ||
         continuation->resolver.IsEmpty())
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (continuation->queued || continuation->settled || continuation->cleanup_ran) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
     continuation->text = text;
@@ -143,5 +148,16 @@ SlStatus sl_v8_native_continuation_post(SlAsyncLoop* loop, SlV8NativeContinuatio
     completion.dispatch_user = continuation;
     completion.cleanup = sl_v8_native_continuation_cleanup;
     completion.cleanup_user = continuation;
-    return sl_async_loop_post(loop, &completion);
+
+    post_status = sl_async_loop_post(loop, &completion);
+    if (!sl_status_is_ok(post_status)) {
+        continuation->text.clear();
+        continuation->reject = false;
+        continuation->queued = false;
+        continuation->settled = false;
+        continuation->cleanup_ran = false;
+        return post_status;
+    }
+
+    return sl_status_ok();
 }

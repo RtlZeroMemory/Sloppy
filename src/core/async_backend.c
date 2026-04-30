@@ -89,6 +89,28 @@ SlStatus sl_async_loop_enqueue_owned(SlAsyncLoop* loop, const SlAsyncCompletion*
     return sl_status_ok();
 }
 
+bool sl_async_loop_unenqueue_last_owned(SlAsyncLoop* loop, SlAsyncCompletion* out_completion)
+{
+    size_t tail = 0U;
+
+    if (out_completion != NULL) {
+        sl_async_completion_clear(out_completion);
+    }
+
+    if (loop == NULL || out_completion == NULL || loop->count == 0U || loop->queue == NULL ||
+        loop->capacity == 0U)
+    {
+        return false;
+    }
+
+    tail = (loop->tail + loop->capacity - 1U) % loop->capacity;
+    *out_completion = loop->queue[tail];
+    sl_async_completion_clear(&loop->queue[tail]);
+    loop->tail = tail;
+    loop->count -= 1U;
+    return true;
+}
+
 bool sl_async_loop_pop(SlAsyncLoop* loop, SlAsyncCompletion* out_completion)
 {
     if (out_completion != NULL) {
@@ -108,6 +130,17 @@ bool sl_async_loop_pop(SlAsyncLoop* loop, SlAsyncCompletion* out_completion)
     return true;
 }
 
+void sl_async_loop_release_completion_scope(const SlAsyncCompletion* completion)
+{
+    if (completion == NULL) {
+        return;
+    }
+
+    if (completion->scope.scope != NULL && completion->scope.release != NULL) {
+        completion->scope.release(completion->scope.scope, completion->scope.user);
+    }
+}
+
 void sl_async_loop_finish_completion(const SlAsyncCompletion* completion)
 {
     if (completion == NULL) {
@@ -118,9 +151,7 @@ void sl_async_loop_finish_completion(const SlAsyncCompletion* completion)
         completion->cleanup(completion, completion->cleanup_user);
     }
 
-    if (completion->scope.scope != NULL && completion->scope.release != NULL) {
-        completion->scope.release(completion->scope.scope, completion->scope.user);
-    }
+    sl_async_loop_release_completion_scope(completion);
 }
 
 SlStatus sl_async_loop_dispatch_completion(SlAsyncLoop* loop, const SlAsyncCompletion* completion)
