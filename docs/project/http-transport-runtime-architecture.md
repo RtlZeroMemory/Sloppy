@@ -86,10 +86,13 @@ rejected before dispatch, keep-alive is not enabled, response bodies are seriali
 eagerly, and streaming/chunked response writing is not implemented.
 
 If no dispatch callback is configured, the parsed request is closed immediately so backend
-admission is released rather than parked forever. Full `sloppy run` localhost conformance
-through the reusable transport remains #417; this slice proves the transport dispatch/write
-lifecycle with native/fake dispatch callbacks and the existing response serializer without
-claiming V8 transport success.
+admission is released rather than parked forever. ENGINE-24.F/#417 adds real localhost TCP
+smoke over the reusable transport using raw client request bytes and native/fake dispatch
+callbacks. That evidence proves bounded MVP transport behavior for simple success, route
+miss, method mismatch, POST text body handling, malformed input, body limits, unsupported
+media, unsupported transfer encoding, one request per connection, close-after-response, and
+shutdown cleanup. It does not claim V8 transport execution, benchmark/performance
+evidence, production graceful-drain behavior, or production-edge HTTP readiness.
 
 ENGINE-24.E adds the transport terminal-state layer. Connections can be closed directly, by
 server stop, by client disconnect, by read/parse/body failure, dispatch failure, timeout,

@@ -56,6 +56,9 @@ typedef struct DispatchHook
     SlStatusCode status_code;
     SlDiagCode diag_code;
     SlHttpResponse response;
+    SlHttpMethod method;
+    SlStr path;
+    SlBytes body;
 } DispatchHook;
 
 static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* arena,
@@ -70,6 +73,9 @@ static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* ar
     }
 
     hook->count += 1U;
+    hook->method = request->head.method;
+    hook->path = request->head.path;
+    hook->body = request->head.body;
     if (hook->status_code != SL_STATUS_OK) {
         if (out_diag != nullptr) {
             *out_diag = {};
@@ -92,6 +98,8 @@ typedef struct ClientConnect
     unsigned char read_buffer[4096];
     size_t read_length;
     int status;
+    bool loop_initialized;
+    bool handle_initialized;
     bool connected;
     bool closed;
 } ClientConnect;
@@ -102,6 +110,8 @@ typedef struct ClientWrite
     bool done;
     int status;
 } ClientWrite;
+
+static void close_client(ClientConnect* client);
 
 static void client_connect_cb(uv_connect_t* request, int status)
 {
@@ -168,13 +178,16 @@ static int connect_client(uint32_t port, ClientConnect* client)
     if (uv_loop_init(&client->loop) != 0) {
         return 1;
     }
+    client->loop_initialized = true;
     if (uv_tcp_init(&client->loop, &client->handle) != 0) {
         (void)uv_loop_close(&client->loop);
+        client->loop_initialized = false;
         return 2;
     }
+    client->handle_initialized = true;
     client->handle.data = client;
     if (uv_ip4_addr("127.0.0.1", static_cast<int>(port), &address) != 0) {
-        (void)uv_loop_close(&client->loop);
+        close_client(client);
         return 3;
     }
 
@@ -182,11 +195,15 @@ static int connect_client(uint32_t port, ClientConnect* client)
     if (uv_tcp_connect(&client->request, &client->handle, (const struct sockaddr*)&address,
                        client_connect_cb) != 0)
     {
-        (void)uv_loop_close(&client->loop);
+        close_client(client);
         return 4;
     }
     (void)uv_run(&client->loop, UV_RUN_DEFAULT);
-    return client->connected ? 0 : 5;
+    if (!client->connected) {
+        close_client(client);
+        return 5;
+    }
+    return 0;
 }
 
 static int start_client_read(ClientConnect* client)
@@ -229,12 +246,17 @@ static int write_client_bytes(ClientConnect* client, const char* text)
 
 static void close_client(ClientConnect* client)
 {
-    if (client == nullptr) {
+    if (client == nullptr || !client->loop_initialized) {
         return;
     }
-    uv_close((uv_handle_t*)&client->handle, client_close_cb);
+
+    if (client->handle_initialized && !uv_is_closing((uv_handle_t*)&client->handle)) {
+        uv_close((uv_handle_t*)&client->handle, client_close_cb);
+    }
     (void)uv_run(&client->loop, UV_RUN_DEFAULT);
     (void)uv_loop_close(&client->loop);
+    client->handle_initialized = false;
+    client->loop_initialized = false;
 }
 
 static SlHttpTransportConfig small_config(ReadyHook* hook)
@@ -262,6 +284,10 @@ static SlHttpTransportConfig small_config(ReadyHook* hook)
     return config;
 }
 
+static void stop_one_connection(SlHttpTransportServer* server, ClientConnect* client);
+static int poll_server_and_client_until_closed(SlHttpTransportServer* server,
+                                               ClientConnect* client);
+
 static int poll_until_write_completed(SlHttpTransportServer* server)
 {
     SlDiag diag = {};
@@ -281,7 +307,7 @@ static int poll_server_and_client_until_closed(SlHttpTransportServer* server, Cl
 {
     SlDiag diag = {};
 
-    for (size_t index = 0U; index < 128U; index += 1U) {
+    for (size_t index = 0U; index < 512U; index += 1U) {
         if (expect_status(sl_http_transport_server_poll(server, &diag), SL_STATUS_OK) != 0) {
             return 1;
         }
@@ -289,6 +315,7 @@ static int poll_server_and_client_until_closed(SlHttpTransportServer* server, Cl
         if (server->connections[0].write_completed && client->closed) {
             return 0;
         }
+        uv_sleep(1U);
     }
     return 2;
 }
@@ -309,6 +336,77 @@ static int poll_server_and_client_until_response(SlHttpTransportServer* server,
         uv_sleep(1U);
     }
     return 2;
+}
+
+static int run_localhost_request(const SlHttpTransportConfig* config, const char* request,
+                                 SlBytes* out_response, SlHttpTransportServer* out_server,
+                                 DispatchHook* dispatch)
+{
+    static unsigned char storage[65536];
+    static unsigned char response_storage[4096];
+    static SlHttpTransportConnection connection_snapshot;
+    SlArena arena = {};
+    SlByteBuilder response_builder = {};
+    SlHttpTransportServer server = {};
+    ClientConnect client = {};
+    SlDiag diag = {};
+    int result = 0;
+
+    if (out_response != nullptr) {
+        *out_response = {};
+    }
+    if (out_server != nullptr) {
+        *out_server = {};
+    }
+    if (config == nullptr || request == nullptr) {
+        return 1;
+    }
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_bound_port(&server) == 0U ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        write_client_bytes(&client, request) != 0 ||
+        poll_server_and_client_until_closed(&server, &client) != 0)
+    {
+        result = 2;
+        goto cleanup;
+    }
+
+    if (out_response != nullptr) {
+        if (expect_status(sl_byte_builder_init_fixed(&response_builder, response_storage,
+                                                     sizeof(response_storage)),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(
+                sl_byte_builder_append_bytes(
+                    &response_builder, sl_bytes_from_parts(client.read_buffer, client.read_length)),
+                SL_STATUS_OK) != 0)
+        {
+            result = 3;
+            goto cleanup;
+        }
+        *out_response = sl_byte_builder_view(&response_builder);
+    }
+    if (sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U || !client.closed ||
+        (dispatch != nullptr && dispatch->status_code == SL_STATUS_OK && dispatch->count != 1U))
+    {
+        result = 4;
+        goto cleanup;
+    }
+    if (out_server != nullptr) {
+        connection_snapshot = server.connections[0];
+        *out_server = server;
+        out_server->connections = &connection_snapshot;
+    }
+
+cleanup:
+    stop_one_connection(&server, &client);
+    return result;
 }
 
 static int start_one_connection(SlArena* arena, SlHttpTransportServer* server,
@@ -334,9 +432,13 @@ static void stop_one_connection(SlHttpTransportServer* server, ClientConnect* cl
 {
     SlDiag diag = {};
 
-    if (server != nullptr) {
-        (void)sl_http_transport_connection_close(&server->connections[0], &diag);
-        (void)sl_http_transport_server_poll(server, &diag);
+    if (server != nullptr &&
+        sl_http_transport_server_state(server) != SL_HTTP_TRANSPORT_SERVER_STATE_NONE)
+    {
+        if (server->connections != nullptr && server->connection_capacity > 0U) {
+            (void)sl_http_transport_connection_close(&server->connections[0], &diag);
+            (void)sl_http_transport_server_poll(server, &diag);
+        }
         (void)sl_http_transport_server_stop(server, &diag);
         (void)sl_http_transport_server_dispose(server, &diag);
     }
@@ -979,6 +1081,170 @@ static int test_dispatch_failures_map_to_safe_responses(void)
     return 0;
 }
 
+static int test_localhost_transport_smoke_success_and_dispatch_statuses(void)
+{
+    static const char success[] =
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 6\r\n\r\nhello\n";
+    static const char created[] =
+        "HTTP/1.1 201 Created\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 8\r\n\r\ncreated\n";
+    static const char not_found[] =
+        "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 10\r\n\r\nNot Found\n";
+    static const char method_not_allowed[] =
+        "HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 19\r\n\r\nMethod Not Allowed\n";
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
+    SlBytes response = {};
+
+    config = small_config(nullptr);
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("hello\n"));
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    if (run_localhost_request(&config, "GET /ok HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_GET || expect_str_equal(dispatch.path, "/ok") != 0 ||
+        !server.connections[0].write_completed || expect_bytes_equal(response, success) != 0)
+    {
+        return 150;
+    }
+
+    config = small_config(nullptr);
+    dispatch = {};
+    dispatch.response = sl_http_response_text(201U, sl_str_from_cstr("created\n"));
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    if (run_localhost_request(&config,
+                              "POST /text HTTP/1.1\r\nHost: local\r\nContent-Type: text/plain\r\n"
+                              "Content-Length: 5\r\n\r\nhello",
+                              &response, &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_POST || expect_str_equal(dispatch.path, "/text") != 0 ||
+        expect_bytes_equal(dispatch.body, "hello") != 0 ||
+        expect_bytes_equal(response, created) != 0)
+    {
+        return 151;
+    }
+
+    config = small_config(nullptr);
+    dispatch = {};
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("hello\n"));
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    if (run_localhost_request(&config,
+                              "GET /keep HTTP/1.1\r\nHost: local\r\nConnection: "
+                              "keep-alive\r\n\r\n",
+                              &response, &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_GET || expect_str_equal(dispatch.path, "/keep") != 0 ||
+        expect_bytes_equal(response, success) != 0)
+    {
+        return 152;
+    }
+
+    config = small_config(nullptr);
+    dispatch = {};
+    dispatch.status_code = SL_STATUS_OUT_OF_RANGE;
+    dispatch.diag_code = SL_DIAG_HTTP_ROUTE_NOT_FOUND;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    if (run_localhost_request(&config, "GET /missing HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.count != 1U ||
+        server.connections[0].last_diag.code != SL_DIAG_HTTP_ROUTE_NOT_FOUND ||
+        expect_bytes_equal(response, not_found) != 0)
+    {
+        return 153;
+    }
+
+    config = small_config(nullptr);
+    dispatch = {};
+    dispatch.status_code = SL_STATUS_UNSUPPORTED;
+    dispatch.diag_code = SL_DIAG_HTTP_UNSUPPORTED_METHOD;
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    if (run_localhost_request(&config,
+                              "POST /ok HTTP/1.1\r\nHost: local\r\nContent-Length: "
+                              "0\r\n\r\n",
+                              &response, &server, &dispatch) != 0 ||
+        dispatch.count != 1U ||
+        server.connections[0].last_diag.code != SL_DIAG_HTTP_UNSUPPORTED_METHOD ||
+        expect_bytes_equal(response, method_not_allowed) != 0)
+    {
+        return 154;
+    }
+
+    return 0;
+}
+
+static int test_localhost_transport_smoke_body_success_and_rejections(void)
+{
+    static const char malformed[] =
+        "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 23\r\n\r\nMalformed HTTP request\n";
+    static const char too_large[] =
+        "HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 18\r\n\r\nPayload Too Large\n";
+    static const char unsupported_media[] =
+        "HTTP/1.1 415 Unsupported Media Type\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 23\r\n\r\nUnsupported Media Type\n";
+    static const char unsupported_body[] =
+        "HTTP/1.1 501 Not Implemented\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 38\r\n\r\nRequest body framing is not supported\n";
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    SlBytes response = {};
+
+    config = small_config(nullptr);
+    if (run_localhost_request(&config, "GET / HTTP/1.1\r\nBad\r\n\r\n", &response, &server,
+                              nullptr) != 0 ||
+        server.connections[0].last_diag.code != SL_DIAG_INVALID_HTTP_REQUEST ||
+        expect_bytes_equal(response, malformed) != 0)
+    {
+        return 160;
+    }
+
+    config = small_config(nullptr);
+    if (run_localhost_request(&config,
+                              "POST / HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: "
+                              "33\r\n\r\n",
+                              &response, &server, nullptr) != 0 ||
+        server.connections[0].last_diag.code != SL_DIAG_HTTP_BODY_LIMIT ||
+        expect_bytes_equal(response, too_large) != 0)
+    {
+        return 161;
+    }
+
+    config = small_config(nullptr);
+    if (run_localhost_request(&config,
+                              "POST / HTTP/1.1\r\nContent-Type: application/octet-stream\r\n"
+                              "Content-Length: 2\r\n\r\nhi",
+                              &response, &server, nullptr) != 0 ||
+        server.connections[0].last_diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE ||
+        expect_bytes_equal(response, unsupported_media) != 0)
+    {
+        return 162;
+    }
+
+    config = small_config(nullptr);
+    if (run_localhost_request(&config,
+                              "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n"
+                              "\r\n",
+                              &response, &server, nullptr) != 0)
+    {
+        return 163;
+    }
+    if (server.connections[0].last_diag.code != SL_DIAG_HTTP_UNSUPPORTED_BODY) {
+        return 164;
+    }
+    if (expect_bytes_equal(response, unsupported_body) != 0) {
+        return 165;
+    }
+
+    return 0;
+}
+
 static int test_response_buffer_capacity_failure_is_deterministic(void)
 {
     unsigned char storage[65536];
@@ -1241,6 +1507,14 @@ int main(void)
         return result;
     }
     result = test_dispatch_failures_map_to_safe_responses();
+    if (result != 0) {
+        return result;
+    }
+    result = test_localhost_transport_smoke_success_and_dispatch_statuses();
+    if (result != 0) {
+        return result;
+    }
+    result = test_localhost_transport_smoke_body_success_and_rejections();
     if (result != 0) {
         return result;
     }

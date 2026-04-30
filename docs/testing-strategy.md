@@ -128,6 +128,12 @@ Runtime execution:
   failures, unsupported media, overload rejection, shutdown/cancellation safety, cleanup
   once, and stable diagnostics. They must not use timing assertions, throughput/latency
   numbers, external-runtime comparisons, or production-edge HTTP claims;
+- HTTP transport localhost smoke/conformance tests may use loopback TCP only. They should
+  bind `127.0.0.1` with an ephemeral test port, send explicit HTTP/1.1 bytes through a raw
+  client helper, assert complete response bytes, assert `Connection: close`/`Content-Length`
+  policy for the implemented one-request-per-connection MVP, and verify cleanup/counter
+  coherence. They are correctness smoke, not benchmark, keep-alive, pipelining, streaming,
+  V8, live-provider, or production-edge evidence;
 - native async settlement skeleton before V8 Promise integration;
 - inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;
