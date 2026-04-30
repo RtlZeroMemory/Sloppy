@@ -173,9 +173,13 @@ ENGINE-13.A/B/C adds the first core HTTP backend state model under that dev path
 backend/listener init-start-stop-dispose state, accepted/open/reading/dispatching/writing/
 closing/closed/error connection states, created/reading/dispatching/writing/completed/
 cancelled/timed-out/failed/closed request states, parser limit policy, timeout hooks, and
-bounded admission. It does not change public handler semantics, does not make the dev
-server production-ready, and does not add TLS, HTTP/2/3, WebSockets, static files,
-compression, V8/provider/compiler work, or production benchmark evidence.
+bounded admission. ENGINE-13.D/E adds the bounded body-reader and shutdown terminal paths:
+body chunks are copied into request-arena storage only up to configured limits, supported
+body media remain explicit, cancellation/timeout/shutdown stop body reads before dispatch,
+new request work is rejected once shutdown begins, and active request work can drain or be
+cancelled with cleanup-once release. It does not change public handler semantics, does not
+make the dev server production-ready, and does not add TLS, HTTP/2/3, WebSockets, static
+files, compression, V8/provider/compiler work, or production benchmark evidence.
 
 ## Current Handwritten Milestone
 
@@ -434,14 +438,24 @@ Current ENGINE-13.A/B/C backend foundation makes the native prelude explicit:
 2. a connection is admitted or rejected by bounded connection capacity;
 3. a request lifecycle is admitted or rejected by bounded active-request capacity;
 4. request bytes are parsed with target/header/body limits into the request arena;
-5. timeout/deadline hooks can cancel the request token before or during dispatch;
-6. dispatch and response-writing states are recorded;
-7. complete/fail/timeout/close releases the request admission slot exactly once;
-8. connection close/fail releases the connection slot exactly once.
+5. optional backend body-reader work validates the supported media policy and copies body
+   chunks into request-owned arena storage only up to the configured body limit;
+6. timeout/deadline/cancellation/shutdown hooks can cancel the request token before body
+   read, during body read, before dispatch, during dispatch, or during response writing;
+7. dispatch and response-writing states are recorded;
+8. complete/fail/cancel/timeout/shutdown/close releases the request admission slot exactly
+   once;
+9. connection close/fail releases the connection slot exactly once.
 
 The current CLI socket loop still writes `Connection: close`; keep-alive policy remains
 honestly disabled/deferred even though the backend state model can return a completed
 connection to `OPEN`.
+
+The current shutdown policy is bounded and honest: shutdown stops acceptance and rejects
+new request work, then the backend reaches stopped when active connection/request counters
+are released. Active requests may finish normally, fail, time out, close, or be cancelled
+through the request shutdown hook. There is no real drain timeout or stress/conformance
+claim yet; #324 owns that evidence.
 
 ENGINE-01 target handler context contains `route`, `query`, `request`, `signal`,
 `deadline`, and future request-owned `resources`. The foundation request lifecycle must

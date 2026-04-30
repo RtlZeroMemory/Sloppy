@@ -40,11 +40,14 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Proper HTTP runtime backend beyond ENGINE-04: ENGINE-13.A/B/C now owns the first
   listener/backend architecture, connection and request lifecycle, parser limits,
   timeout/deadline hooks, bounded admission/backpressure, and deterministic lifecycle
-  diagnostics. Remaining ENGINE-13 debt is body reader and deeper cancellation integration,
-  real timer/disconnect/shutdown propagation, graceful shutdown/server diagnostics,
-  keep-alive production policy, production hardening, middleware policy if ever scoped, and
-  stress/conformance smoke. This is separate from ENGINE-12 because HTTP has parser,
-  connection, body, and shutdown policy that sits above generic async completions.
+  diagnostics. ENGINE-13.D/E adds a bounded backend body reader, supported JSON/text media
+  policy, body-read cancellation/timeout/shutdown cleanup paths, shutdown rejection for new
+  request work, active request shutdown cancellation hooks, and stable shutdown diagnostics.
+  Remaining ENGINE-13 debt is real timer/disconnect propagation, graceful drain timeout
+  evidence, keep-alive production policy, production hardening, middleware policy if ever
+  scoped, and stress/conformance smoke under #324. This is separate from ENGINE-12 because
+  HTTP has parser, connection, body, and shutdown policy that sits above generic async
+  completions.
 - Module/bootstrap completion: ENGINE-14 owns stdlib/bootstrap asset loading, app module
   loading, ESM/classic decision, module cache, import rewrite and intrinsic boundaries,
   source names, reload/dev-loop implications, and V8 startup diagnostics.
@@ -106,9 +109,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   handoff task after the compiler emits full supported-app artifacts. Implementing direct
   source input still needs a scoped compiler handoff, cache keys, stale-artifact checks,
   source diagnostics, cleanup policy, and rebuild policy.
-- HTTP production response pipeline beyond ENGINE-13.A/B/C: redirect helpers,
+- HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E: redirect helpers,
   streaming/files, cookies, content negotiation, keep-alive production policy, graceful
-  shutdown, body cancellation, stress/conformance, and production error pages.
+  drain timeout evidence, stress/conformance, and production error pages.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
   services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
@@ -165,8 +168,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Query parsing beyond EPIC-23 scalar last-wins values, including repeated-key arrays if
   the public API chooses them.
 - Request body conformance beyond unit/integration coverage: ENGINE-04 parses bounded
-  JSON/text bodies and exposes them to V8 when enabled, but socket-mode conformance still
-  needs a body-bearing fixture once that layer can drive local HTTP requests deterministically.
+  JSON/text bodies and exposes them to V8 when enabled, and ENGINE-13.D/E adds backend body
+  reader cancellation/shutdown unit coverage, but socket-mode conformance still needs a
+  body-bearing fixture once that layer can drive local HTTP requests deterministically.
 - JSON serialization strategy beyond the current V8 `JSON.stringify` bridge, including
   richer supported value errors, redaction, and benchmark plan.
 - Plan module/service sections beyond the MAIN1-03 startup checks. Native validation now

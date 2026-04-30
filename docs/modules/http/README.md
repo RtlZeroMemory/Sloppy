@@ -24,8 +24,11 @@ writing use byte builders, and request/route-owned strings use the core arena co
 ENGINE-13.A/B/C adds the first proper HTTP backend foundation underneath the dev path:
 backend/listener state, connection states, request lifecycle states, parser target/header
 limits, timeout/deadline hooks, bounded admission/backpressure counters, and deterministic
-HTTP lifecycle diagnostics. The backend model is core C state only; concrete listener and
-socket details remain behind the platform boundary. There is still no production HTTP
+HTTP lifecycle diagnostics. ENGINE-13.D/E adds a backend-owned bounded body reader,
+body-read cancellation/timeout/shutdown transitions, shutdown rejection for new request
+work, active-request shutdown cancellation hooks, and stable shutdown diagnostics. The
+backend model is core C state only; concrete listener and socket details remain behind the
+platform boundary. There is still no production HTTP
 server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser API, middleware,
 cookies/sessions, static file server, compression, multipart upload, streaming responses,
 public TypeScript `app.run`, or broad response framework.
@@ -73,12 +76,15 @@ Implemented now:
   connection states, request lifecycle states, bounded active connection/request admission,
   parser target/header/body limits, timeout hooks over `SlCancellationToken`, and stable
   lifecycle/backpressure diagnostics.
+- ENGINE-13.D/E body reader and shutdown model: platform/backend code can append bounded
+  body chunks into request-arena storage, reject over-limit bodies deterministically, reject
+  unsupported media before dispatch, observe cancellation/deadline/shutdown before and
+  during body reads, reject new request work after shutdown starts, and cancel active
+  request work through deterministic cleanup-once terminal paths.
 
 Future scope:
 
 - streaming HTTP parser state;
-- body reader and deeper cancellation integration in ENGINE-13.D;
-- graceful shutdown and server diagnostics in ENGINE-13.E;
 - stress/conformance smoke in ENGINE-13.F;
 - production server hardening if explicitly scoped later;
 - route table/trie or other optimized dispatch structure;
@@ -137,10 +143,14 @@ response writer.
 - `SlHttpListener`;
 - `SlHttpConnection`;
 - `SlHttpRequestLifecycle`;
+- `SlHttpBodyReader`;
 - backend, listener, connection, and request state enums;
+- body-reader state enum;
 - init/start/stop/dispose;
 - connection admission/close/fail;
 - request begin, parse, dispatch, write, complete, fail, timeout, and close hooks.
+- bounded body-reader begin/append/finish/close hooks;
+- request cancellation and shutdown hooks.
 
 Supported route pattern subset:
 
@@ -262,7 +272,26 @@ builder reset.
 memory escape the request lifecycle. Admission counters are released exactly once by
 complete/fail/timeout/close paths. Timeout hooks cancel the request token with
 `SL_CANCELLATION_REASON_DEADLINE_EXCEEDED`; real timer wakeups are not wired in
-ENGINE-13.A/B/C.
+ENGINE-13.D/E.
+
+`SlHttpBodyReader` is a backend/platform helper, not a JavaScript streaming body API. It
+copies body chunks into the request arena through a bounded byte builder with the backend's
+`max_body_length` policy. Non-empty bodies currently support `application/json`,
+`application/*+json`, and `text/plain`; empty bodies need no content type. Multipart,
+file uploads, compression, transfer-encoded streaming, and JS-visible streaming request
+bodies remain unsupported. Successful body bytes borrow request-arena storage and are
+cleared when the request closes or the arena resets. Cancellation, timeout, shutdown,
+unsupported media, over-limit, and content-length mismatch failures reset body-reader
+allocations, clear the request body view, transition the request to a terminal cleanup path,
+and release the active-request admission slot exactly once.
+
+Shutdown is currently a bounded drain/cancel policy, not a production graceful-drain
+implementation. `sl_http_backend_stop` stops accepting new connections and new request work
+on existing connections, moves the backend/listener to stopping, and reaches stopped only
+after active connection and request counters drop to zero. Active requests may complete
+normally, time out, fail, close, or be cancelled through the request shutdown hook. There is
+no real drain timer, signal handling, socket half-close policy, or stress evidence yet;
+ENGINE-13.F/#324 owns that follow-up.
 
 Native response writing uses `SlByteBuilder` over the caller-provided output buffer. The
 returned `SlBytes` view borrows that buffer, and failed writes reset the returned view to an
@@ -318,6 +347,16 @@ ENGINE-13.A/B/C adds backend diagnostics:
 - HTTP overload/backpressure;
 - unsupported keep-alive/body behavior where encountered.
 
+ENGINE-13.D/E adds backend body/shutdown diagnostics:
+
+- HTTP body limit;
+- unsupported request media type;
+- invalid body length;
+- cancellation during body read;
+- timeout during body read;
+- shutdown while reading, dispatching, or writing;
+- shutdown rejection for new request work.
+
 TASK 10.C, MAIN1-04, and ENGINE-04 add small synthetic/dev dispatch diagnostics:
 
 - unsupported or method-mismatched dispatch method;
@@ -364,6 +403,10 @@ Implemented CTest coverage:
 - backend init/start/stop/dispose;
 - connection lifecycle cleanup;
 - request lifecycle success and cleanup;
+- bounded body-reader success, empty body, arena-owned body bytes, body limits, unsupported
+  media, cancellation before body read, cancellation during body read, timeout during body
+  read, shutdown during body read, shutdown rejection, active request shutdown cancellation,
+  shutdown during response write, and stable shutdown diagnostic names;
 - malformed request cleanup after parser failure;
 - timeout hook cancellation and diagnostic behavior;
 - bounded admission/backpressure rejection;
