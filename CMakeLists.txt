@@ -297,6 +297,7 @@ set(
     src/core/loop.c
     src/core/async.c
     src/core/async_backend.c
+    src/core/provider_executor.c
     src/core/worker_pool.c
     src/core/http.c
     src/core/http_context.c
@@ -351,6 +352,7 @@ set(
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
     tests/unit/core/test_async_backend.c
+    tests/unit/core/test_provider_executor.c
     tests/unit/core/test_worker_pool.c
     tests/unit/core/test_http.c
     tests/unit/core/test_http_context.c
@@ -611,6 +613,8 @@ if(SLOPPY_ENABLE_TESTS)
         core_async_settlement core.async.settlement tests/unit/core/test_async.c)
     sloppy_add_c_unit_test(
         core_async_backend core.async.backend tests/unit/core/test_async_backend.c)
+    sloppy_add_c_unit_test(
+        core_provider_executor core.provider_executor tests/unit/core/test_provider_executor.c)
     if(CMAKE_CXX_COMPILER)
         sloppy_add_cxx_unit_test(
             core_async_backend_libuv core.async.backend_libuv

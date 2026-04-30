@@ -144,6 +144,11 @@ database access by token, provider, and read/write mode before a caller invokes 
 work. The V8 SQLite bridge now calls those hooks for open, exec, query, and queryOne when
 the app host passes the parsed Plan and capability registry into the engine.
 
+Future async/offloaded provider work must perform the same capability check before executor
+admission. No provider may bypass capability checks, queue capacity, cancellation/deadline
+state, or provider-executor shutdown policy. A denied capability must fail before provider
+work starts; overflow and shutdown are separate runtime states, not permission failures.
+
 The SQLite hook is intentionally narrow: provider-specific V8 bridge code lives in
 `src/engine/v8/intrinsics_<provider>.cc`, while `engine_v8.cc` stays provider-neutral.
 Future PostgreSQL and SQL Server bridge checks should follow the same pattern instead of

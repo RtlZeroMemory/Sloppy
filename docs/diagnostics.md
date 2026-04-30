@@ -56,9 +56,14 @@ recursively through diagnostic paths.
 ENGINE-12.AB does not add new public diagnostic codes. Async backend failures use existing
 machine-checkable statuses: `SL_STATUS_CAPACITY_EXCEEDED` for bounded queue overflow,
 `SL_STATUS_INVALID_STATE` for disposed loops or detectable wrong-thread dispatch, and
-`SL_STATUS_INTERNAL` for unexpected backend failures. Future #309 cancellation/deadline and
-shutdown policy may add richer diagnostics when those terminal paths become product
-behavior.
+`SL_STATUS_INTERNAL` for unexpected backend failures. ENGINE-12.CD maps provider-executor
+terminal states to existing stable codes for the deterministic native source:
+`SLOPPY_E_ENGINE_CANCELLED` for cancellation, `SLOPPY_E_ENGINE_PROMISE_PENDING` for
+deadline/timeout, `SLOPPY_E_ENGINE_BACKPRESSURE` plus `SL_STATUS_CAPACITY_EXCEEDED` for
+overflow/admission failure, `SLOPPY_E_APP_LIFECYCLE` for shutdown cancellation, and
+provider-specific diagnostic codes for provider failures when a real provider reports one.
+Future provider work may add more specific data-provider async codes, but it must keep
+cancelled, timed out, overflowed, shutdown, and provider-failed outcomes distinguishable.
 
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic

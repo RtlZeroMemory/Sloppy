@@ -69,6 +69,14 @@ the caller remains responsible for cleanup. Queued completions must own or retai
 memory needed after the caller returns; borrowed request-arena views must not be placed in
 queued work unless the owning request/app scope is explicitly retained.
 
+ENGINE-12.CD extends that rule to provider/offload operations. `SlProviderOperation`
+descriptors copy provider instance IDs, provider kind, operation name, capability token,
+and operation input bytes into caller-provided arena storage before submission succeeds.
+Queued provider work must not retain transient request or scratch views unless the
+operation also retains the owning scope. Operation cleanup is invoked exactly once from the
+terminal completion/discard path; late completion after cancellation, timeout, or shutdown
+must not free or settle twice.
+
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 
 - ENGINE-21 defines the app/request/temp/static/V8/SQLite/diagnostic lifetime model,

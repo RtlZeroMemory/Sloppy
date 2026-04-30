@@ -74,9 +74,18 @@ public timers/fetch/fs/process APIs, native provider completion queues, cross-th
 posting, HTTP disconnect/shutdown drain behavior, worker-thread scheduling, or scalability
 evidence. The full async-runtime target is tracked by #306 and tasks #307 through #310.
 ENGINE-12.AB owns the first native completion/backend integration and owner-thread
-continuation boundary. #309 still owns full cancellation, deadline, shutdown drain/cancel,
-and cleanup policy. #310 still owns async backpressure, provider/offload integration, and
-stress evidence.
+continuation boundary. ENGINE-12.CD adds the next native policy layer without converting
+SQLite or adding public
+async APIs. `include/sloppy/async_backend.h` classifies native completions as internal,
+nonblocking I/O, blocking offload, timer, or provider operations.
+`include/sloppy/provider_executor.h` defines Slop-owned provider execution modes and a
+bounded per-provider-instance executor abstraction. The current implementation is a
+deterministic native provider/offload test source: it owns copied operation inputs,
+enforces per-instance queue capacity, activates serialized blocking work one operation at a
+time, posts terminal completions through `SlAsyncLoop`, and proves cleanup-once behavior
+for success, cancellation, timeout, overflow, shutdown, and late completion. It does not
+start a production provider worker pool, wire SQLite through async offload, or make
+benchmark claims.
 
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
@@ -350,6 +359,20 @@ point into shorter-lived arenas. Debug builds should detect leaked request resou
 
 ## Native Async Operations
 
+Sloppy distinguishes native async operation kinds at the runtime boundary:
+
+- internal completions: runtime-owned bookkeeping and owner-thread continuations;
+- real nonblocking I/O: socket/readiness/provider APIs that do not occupy a worker while
+  waiting and are driven by the event backend;
+- blocking offload: blocking native work that must run away from the V8 owner thread;
+- timers/deadlines: backend timer wakeups that create deterministic timeout completions;
+- provider operations: database/provider work admitted through Slop provider executors.
+
+Real nonblocking I/O is driven by the event backend. Blocking provider/offload work is
+admitted through Slop-owned executors. Both complete through `SlAsyncCompletion`, and
+JavaScript sees only Promises, results, and errors. It never sees libuv handles, worker
+threads, queue slots, or native provider operation pointers.
+
 Class A: naturally async socket/event-loop operations:
 
 - network readiness;
@@ -385,6 +408,36 @@ Transactions pin their connection/resource until the async callback settles. Com
 post back to the JS event loop. Providers must support cancellation/deadline where possible,
 or document when they cannot.
 
+Provider execution modes are Slop-owned policy, not libuv policy:
+
+- `INLINE_FAST`: bounded metadata/config work only. It must not perform disk, network, DB,
+  lock, or other blocking waits.
+- `SERIALIZED_BLOCKING`: one operation at a time for one provider instance. This is the
+  default policy for a single SQLite connection unless a later provider-specific issue
+  chooses different read/write semantics.
+- `BLOCKING_POOL`: a bounded worker pool for one provider instance when the provider is
+  documented as safe to parallelize blocking calls. The mode is defined now; production
+  workers remain future work.
+- `NONBLOCKING_IO`: true async provider/client operation through event backend readiness or
+  provider async APIs. No provider worker is occupied while waiting.
+- `EXTERNAL_MANAGED`: a future escape hatch for externally managed runtimes or pools. It
+  still must use Slop admission, completion, diagnostics, and lifetime contracts.
+
+Provider instances are named runtime resources such as `sqlite:main`, `sqlite:audit`,
+future `postgres:main`, or future `sqlserver:reporting`. Each instance owns or references
+an executor policy: mode, queue capacity, in-flight count, optional worker count, shutdown
+state, and simple counters. There is no unbounded global provider queue, no
+thread-per-request behavior, and no hidden dependency on libuv's global threadpool as the
+provider runtime.
+
+Provider operation descriptors must own every byte needed after submission. SQL strings,
+parameter strings/blobs, provider config references needed by queued work, diagnostic
+context, and completion targets must be copied, retained, or represented by a safe resource
+ID. Borrowed request-arena views may not be queued unless the request/app scope lifetime is
+explicitly retained. Operation cleanup runs exactly once; late completion after
+cancellation, timeout, or shutdown is cleanup-only and must not double-settle. Provider
+worker code must never enter V8.
+
 ```ts
 await db.transaction(async tx => {
   await tx.exec`insert into users (name) values (${"Ada"})`;
@@ -406,6 +459,18 @@ Future model:
 - request cleanup still runs;
 - cancelled request should not resume the normal response path.
 
+Cancellation means Slop stops accepting or using the result for that request/operation, and
+cleanup still runs exactly once. It does not promise that an underlying blocking provider
+call stops immediately. SQLite interruption, PostgreSQL cancellation, and SQL Server
+cancellation are provider-specific future integrations. Late provider completion after
+cancellation is ignored for settlement and used only for safe cleanup.
+
+Timeout/deadline is distinct from caller cancellation. A timeout is a runtime deadline
+terminal state and uses a deterministic deadline/timeout status and diagnostic. Timers are
+owned by the backend layer when real timer wakeups are wired; the current ENGINE-12.CD
+provider source exposes deterministic native timeout completion without public timer APIs.
+Late completion after timeout is cleanup-only and must not double-settle.
+
 ## Backpressure
 
 Future model:
@@ -416,6 +481,18 @@ Future model:
 - limit DB pool checkout;
 - streaming responses respect socket backpressure;
 - overload returns controlled errors instead of unbounded memory growth.
+
+The default behavior for overload is deterministic rejection with diagnostics, not hidden
+unbounded allocation. Provider executors have explicit per-instance queue capacity. A full
+executor returns `SL_STATUS_CAPACITY_EXCEEDED`, records overflow, and does not take
+operation ownership. Recovery is normal: once a queued operation completes and its cleanup
+drains, the same provider instance can accept more work.
+
+Provider executor shutdown is immediate-cancel in the current native skeleton: shutdown
+stops new admission, posts cancellation completions for pending/active operations, and runs
+cleanup when those completions drain. Future graceful drain periods may layer on top, but
+they must keep the same cleanup-once and late-completion rules. Pending JS continuations
+resume only through the V8 owner-thread scheduler; provider threads never resume JS.
 
 ## Scaling to Many Requests
 

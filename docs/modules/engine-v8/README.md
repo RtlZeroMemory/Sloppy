@@ -27,9 +27,11 @@ ENGINE-12.AB adds the first native completion/backend and V8 owner-thread contin
 boundary. Native code can post a completion through `SlAsyncLoop`; V8 Promise
 fulfillment/rejection happens only in `src/engine/v8/async_scheduler.cc` when the owning
 engine thread drains that completion. The libuv backend is internal to
-`src/platform/libuv/` and does not create Node/libuv public compatibility. #309 still owns
-full cancellation/deadline/shutdown drain policy, and #310 still owns
-backpressure/provider-offload/scalability evidence.
+`src/platform/libuv/` and does not create Node/libuv public compatibility. ENGINE-12.CD
+defines cancellation/deadline/shutdown/backpressure policy for native provider/offload
+operations and proves it in default native tests. V8 remains the owner-thread settlement
+boundary: provider executors may post completions, but provider threads must never enter V8
+and no libuv/provider concept is exposed to JavaScript.
 
 ## Purpose
 
@@ -108,10 +110,10 @@ Later scope:
 - richer source-map remapping for generated app modules;
 - mapping real provider/HTTP/timer completions onto the new async backend. ENGINE-12.AB
   proves the transport/scheduler boundary with native test completions only; it does not
-  add timers, fetch, Node APIs, provider offload, or public async sources;
-- ENGINE-12 follow-up work: cancellation/deadline/shutdown drain policy in #309, then
-  backpressure, provider/offload integration, and stress evidence for many pending
-  operations in #310;
+  add timers, fetch, Node APIs, or public async sources;
+- ENGINE-12 follow-up work after ENGINE-12.CD: full SQLite runtime completion through the
+  provider-instance executor model, HTTP-specific disconnect/shutdown integration, and
+  stress evidence for many pending operations without benchmark claims;
 - runtime source-map remapping now that compiler source maps contain handler mappings.
 
 ## Non-goals
