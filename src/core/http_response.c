@@ -17,6 +17,8 @@
  */
 #include "sloppy/http_response.h"
 
+#include "sloppy/builder.h"
+
 #include <stdbool.h>
 
 static SlBytes sl_http_response_body_from_str(SlStr text)
@@ -213,42 +215,27 @@ static bool sl_http_response_headers_valid(const SlHttpResponse* response)
     return true;
 }
 
-static bool sl_http_response_append_byte(unsigned char* buffer, size_t capacity, size_t* length,
-                                         unsigned char byte)
+static SlStatus sl_http_response_append_cstr(SlByteBuilder* builder, const char* text)
 {
-    if (buffer == NULL || length == NULL || *length >= capacity) {
-        return false;
-    }
-
-    buffer[*length] = byte;
-    *length += 1U;
-    return true;
-}
-
-static bool sl_http_response_append_cstr(unsigned char* buffer, size_t capacity, size_t* length,
-                                         const char* text)
-{
-    size_t index = 0U;
-
     if (text == NULL) {
-        return false;
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    while (text[index] != '\0') {
-        if (!sl_http_response_append_byte(buffer, capacity, length, (unsigned char)text[index])) {
-            return false;
-        }
-        index += 1U;
-    }
-
-    return true;
+    return sl_byte_builder_append_bytes(
+        builder, sl_bytes_from_parts((const unsigned char*)text, sl_str_from_cstr(text).length));
 }
 
-static bool sl_http_response_append_uint(unsigned char* buffer, size_t capacity, size_t* length,
-                                         size_t value)
+static SlStatus sl_http_response_append_str(SlByteBuilder* builder, SlStr text)
+{
+    return sl_byte_builder_append_bytes(
+        builder, sl_bytes_from_parts((const unsigned char*)text.ptr, text.length));
+}
+
+static SlStatus sl_http_response_append_size(SlByteBuilder* builder, size_t value)
 {
     char digits[32];
     size_t count = 0U;
+    SlStatus status;
 
     do {
         digits[count] = (char)('0' + (value % 10U));
@@ -258,49 +245,91 @@ static bool sl_http_response_append_uint(unsigned char* buffer, size_t capacity,
 
     while (count > 0U) {
         count -= 1U;
-        if (!sl_http_response_append_byte(buffer, capacity, length, (unsigned char)digits[count])) {
-            return false;
+        status = sl_byte_builder_append_byte(builder, (unsigned char)digits[count]);
+        if (!sl_status_is_ok(status)) {
+            return status;
         }
     }
 
-    return true;
+    return sl_status_ok();
 }
 
-static bool sl_http_response_append_str(unsigned char* buffer, size_t capacity, size_t* length,
-                                        SlStr text)
+static SlStatus sl_http_response_append_status_line(SlByteBuilder* builder, uint16_t status_code,
+                                                    const char* reason)
+{
+    SlStatus status;
+
+    status = sl_http_response_append_cstr(builder, "HTTP/1.1 ");
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_response_append_size(builder, status_code);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_response_append_cstr(builder, " ");
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_response_append_cstr(builder, reason);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_http_response_append_cstr(builder, "\r\nConnection: close\r\n");
+}
+
+static SlStatus sl_http_response_append_content_type(SlByteBuilder* builder, SlStr content_type)
+{
+    SlStatus status = sl_http_response_append_cstr(builder, "Content-Type: ");
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_response_append_str(builder, content_type);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_http_response_append_cstr(builder, "\r\n");
+}
+
+static SlStatus sl_http_response_append_custom_headers(SlByteBuilder* builder,
+                                                       const SlHttpHeader* headers, size_t count)
 {
     size_t index = 0U;
 
-    if (text.ptr == NULL && text.length != 0U) {
-        return false;
-    }
-
-    for (index = 0U; index < text.length; index += 1U) {
-        if (!sl_http_response_append_byte(buffer, capacity, length, (unsigned char)text.ptr[index]))
-        {
-            return false;
+    for (index = 0U; index < count; index += 1U) {
+        SlStatus status = sl_http_response_append_str(builder, headers[index].name);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_response_append_cstr(builder, ": ");
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_response_append_str(builder, headers[index].value);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_response_append_cstr(builder, "\r\n");
+        if (!sl_status_is_ok(status)) {
+            return status;
         }
     }
 
-    return true;
+    return sl_status_ok();
 }
 
-static bool sl_http_response_append_bytes(unsigned char* buffer, size_t capacity, size_t* length,
-                                          SlBytes bytes)
+static SlStatus sl_http_response_append_content_length(SlByteBuilder* builder, size_t body_length)
 {
-    size_t index = 0U;
-
-    if (bytes.ptr == NULL && bytes.length != 0U) {
-        return false;
+    SlStatus status = sl_http_response_append_cstr(builder, "Content-Length: ");
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-
-    for (index = 0U; index < bytes.length; index += 1U) {
-        if (!sl_http_response_append_byte(buffer, capacity, length, bytes.ptr[index])) {
-            return false;
-        }
+    status = sl_http_response_append_size(builder, body_length);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-
-    return true;
+    return sl_http_response_append_cstr(builder, "\r\n");
 }
 
 SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
@@ -308,8 +337,9 @@ SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* b
 {
     const char* reason = NULL;
     SlBytes body = {0};
-    size_t length = 0U;
+    SlByteBuilder builder = {0};
     bool has_content_type = false;
+    SlStatus status;
 
     if (response == NULL || buffer == NULL || out_bytes == NULL || capacity == 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -331,51 +361,45 @@ SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* b
     body = response->status == 204U ? sl_bytes_empty() : response->body;
     has_content_type = response->content_type.length != 0U && response->status != 204U;
 
-    if (!sl_http_response_append_cstr(buffer, capacity, &length, "HTTP/1.1 ") ||
-        !sl_http_response_append_uint(buffer, capacity, &length, response->status) ||
-        !sl_http_response_append_cstr(buffer, capacity, &length, " ") ||
-        !sl_http_response_append_cstr(buffer, capacity, &length, reason) ||
-        !sl_http_response_append_cstr(buffer, capacity, &length, "\r\nConnection: close\r\n"))
-    {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    status = sl_byte_builder_init_fixed(&builder, buffer, capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_http_response_append_status_line(&builder, response->status, reason);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
     if (has_content_type) {
-        if (!sl_http_response_append_cstr(buffer, capacity, &length, "Content-Type: ") ||
-            !sl_http_response_append_str(buffer, capacity, &length, response->content_type) ||
-            !sl_http_response_append_cstr(buffer, capacity, &length, "\r\n"))
-        {
-            return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        status = sl_http_response_append_content_type(&builder, response->content_type);
+        if (!sl_status_is_ok(status)) {
+            return status;
         }
     }
 
-    for (size_t index = 0U; index < response->header_count; index += 1U) {
-        if (!sl_http_response_append_str(buffer, capacity, &length,
-                                         response->headers[index].name) ||
-            !sl_http_response_append_cstr(buffer, capacity, &length, ": ") ||
-            !sl_http_response_append_str(buffer, capacity, &length,
-                                         response->headers[index].value) ||
-            !sl_http_response_append_cstr(buffer, capacity, &length, "\r\n"))
-        {
-            return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
-        }
+    status =
+        sl_http_response_append_custom_headers(&builder, response->headers, response->header_count);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
     if (response->status != 204U) {
-        if (!sl_http_response_append_cstr(buffer, capacity, &length, "Content-Length: ") ||
-            !sl_http_response_append_uint(buffer, capacity, &length, body.length) ||
-            !sl_http_response_append_cstr(buffer, capacity, &length, "\r\n"))
-        {
-            return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        status = sl_http_response_append_content_length(&builder, body.length);
+        if (!sl_status_is_ok(status)) {
+            return status;
         }
     }
 
-    if (!sl_http_response_append_cstr(buffer, capacity, &length, "\r\n") ||
-        !sl_http_response_append_bytes(buffer, capacity, &length, body))
-    {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    status = sl_http_response_append_cstr(&builder, "\r\n");
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_byte_builder_append_bytes(&builder, body);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
-    *out_bytes = sl_bytes_from_parts(buffer, length);
+    *out_bytes = sl_byte_builder_view(&builder);
     return sl_status_ok();
 }

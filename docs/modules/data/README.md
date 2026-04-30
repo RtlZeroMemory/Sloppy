@@ -51,6 +51,8 @@ Implemented native SQLite API:
 - caller-owned `SlSqliteConnection` and `SlSqliteTransaction` wrappers;
 - `sl_sqlite_open_options_memory`, `sl_sqlite_open`, and `sl_sqlite_close`;
 - `sl_sqlite_exec`, `sl_sqlite_query`, and `sl_sqlite_query_one`;
+- text/blob interop helpers that copy SQLite transient result storage into caller arenas
+  and copy future async/offload parameters into operation-owned arena storage;
 - transaction begin/commit/rollback plus transaction-scoped exec/query/queryOne helpers.
 
 Implemented SQLite JS bridge API:
@@ -112,6 +114,16 @@ PostgreSQL and SQL Server JS bridges remain deferred. The V8 engine owns the res
 table; provider intrinsic modules may insert, look up, and close their own resource kinds
 through that table, but must not create separate handle registries.
 
+SQLite text/blob ownership:
+
+- SQLite result column names, text cells, and blob cells are copied into the caller arena
+  before statement finalization can invalidate SQLite-owned pointers;
+- `sl_sqlite_param_copy_text_to_arena` and `sl_sqlite_param_copy_blob_to_arena` are the
+  operation-owned parameter adapters for future async/offloaded provider work;
+- synchronous native SQLite calls still bind text/blob parameters with SQLite transient
+  ownership during the provider call;
+- no C row/result object and no V8 row object retains a native SQLite transient pointer.
+
 ## Invariants
 
 Template query APIs parameterize by default. Lowered query descriptors preserve text and
@@ -167,9 +179,10 @@ infrastructure only, not a Node compatibility claim.
 
 `data.sqlite.provider` is a native CTest target that links SQLite and covers in-memory
 open/close, use after close, exec, parameterized insert, query row shape, queryOne found and
-missing behavior, primitive parameter types, unsupported parameter diagnostics, transaction
-commit/rollback, nested transaction rejection, transaction use after complete, invalid SQL,
-missing table diagnostics, and invalid open diagnostics.
+missing behavior, primitive parameter types including copied blob parameters/results,
+unsupported parameter diagnostics, transaction commit/rollback, nested transaction rejection,
+transaction use after complete, invalid SQL, missing table diagnostics, text/blob helper
+failure behavior, and invalid open diagnostics.
 
 `engine.v8.smoke` adds V8-gated SQLite bridge coverage when the SDK is enabled. Those tests
 prove that JavaScript can resolve Plan provider metadata, pass the native capability hook,

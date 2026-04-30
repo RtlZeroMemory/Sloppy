@@ -584,6 +584,45 @@ static int test_match_values_are_borrowed_from_path(void)
     return 0;
 }
 
+static int test_match_non_nul_terminated_path_view(void)
+{
+    static const char path[] = {'/', 'u', 's', 'e', 'r', 's', '/', 'a', '\0', 'b', 'Z'};
+    unsigned char parse_storage[TEST_ARENA_SIZE];
+    unsigned char match_storage[TEST_ARENA_SIZE];
+    SlArena parse_arena = {0};
+    SlArena match_arena = {0};
+    SlRoutePattern pattern = {0};
+    SlRouteMatch match = {0};
+    SlStatus status;
+
+    status = init_arena(&parse_arena, parse_storage, sizeof(parse_storage));
+    if (!sl_status_is_ok(status)) {
+        return 182;
+    }
+
+    status = init_arena(&match_arena, match_storage, sizeof(match_storage));
+    if (!sl_status_is_ok(status)) {
+        return 183;
+    }
+
+    status = parse_pattern(&parse_arena, "/users/{id}", &pattern, NULL);
+    if (!sl_status_is_ok(status)) {
+        return 184;
+    }
+
+    status = sl_route_pattern_match(&match_arena, &pattern,
+                                    sl_str_from_parts(path, sizeof(path) - 1U), &match);
+    if (!sl_status_is_ok(status) || !match.matched || match.param_count != 1U ||
+        match.params[0].value.ptr != path + sizeof("/users/") - 1U ||
+        match.params[0].value.length != 3U ||
+        !sl_str_equal(match.params[0].value, sl_str_from_parts("a\0b", 3U)))
+    {
+        return 185;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -638,5 +677,10 @@ int main(void)
         return result;
     }
 
-    return test_match_values_are_borrowed_from_path();
+    result = test_match_values_are_borrowed_from_path();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_match_non_nul_terminated_path_view();
 }

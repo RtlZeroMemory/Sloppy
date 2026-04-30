@@ -7,13 +7,16 @@
  * context, and handler orchestration.
  */
 #include "engine_v8_internal.h"
+#include "string_interop.h"
 
 #include "sloppy/capability.h"
 #include "sloppy/data_sqlite.h"
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <limits>
+#include <memory>
 #include <new>
 #include <string>
 #include <vector>
@@ -38,21 +41,9 @@ struct SqliteV8ConnectionResource
 
 SlStatus sqlite_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
-    v8::MaybeLocal<v8::String> maybe;
-
-    if (isolate == nullptr || out == nullptr || (str.length != 0U && str.ptr == nullptr) ||
-        str.length > static_cast<size_t>(std::numeric_limits<int>::max()))
-    {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    maybe = v8::String::NewFromUtf8(isolate, str.ptr, v8::NewStringType::kNormal,
-                                    static_cast<int>(str.length));
-    if (!maybe.ToLocal(out)) {
-        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
-    }
-
-    return sl_status_ok();
+    SlV8Engine* backend =
+        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
+    return sl_v8_string_from_native_view(backend, str, out);
 }
 
 std::string sqlite_v8_diag_to_string(const char* fallback, const SlDiag& diag)
@@ -113,13 +104,7 @@ bool sqlite_v8_value_to_std_string(v8::Isolate* isolate, v8::Local<v8::Value> va
         return false;
     }
 
-    v8::String::Utf8Value utf8(isolate, value);
-    if (*utf8 == nullptr) {
-        return false;
-    }
-
-    *out = std::string(*utf8, static_cast<size_t>(utf8.length()));
-    return true;
+    return sl_v8_std_string_from_value(isolate, value, out);
 }
 
 bool sqlite_v8_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -572,6 +557,25 @@ bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
     case SL_SQLITE_VALUE_FLOAT:
         js_value = v8::Number::New(isolate, value->value.number);
         break;
+    case SL_SQLITE_VALUE_BLOB: {
+        if (value->value.blob.length > static_cast<size_t>(std::numeric_limits<int>::max())) {
+            return false;
+        }
+        std::unique_ptr<v8::BackingStore> backing =
+            v8::ArrayBuffer::NewBackingStore(isolate, value->value.blob.length);
+        if (!backing) {
+            return false;
+        }
+        if (value->value.blob.length != 0U) {
+            if (value->value.blob.ptr == nullptr) {
+                return false;
+            }
+            std::memcpy(backing->Data(), value->value.blob.ptr, value->value.blob.length);
+        }
+        v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
+        js_value = v8::Uint8Array::New(buffer, 0U, value->value.blob.length);
+        break;
+    }
     default:
         return false;
     }

@@ -17,9 +17,13 @@ route table built from Plan route metadata, deterministic literal-before-paramet
 precedence, request-target/query/body bounds, GET/POST/PUT/PATCH/DELETE dispatch, request
 headers and JSON/text bodies in the V8 request context, unsupported content-type and JSON
 diagnostics, and stricter result descriptor diagnostics. ENGINE-04 completes the bounded
-framework HTTP runtime slice for realistic local APIs. There is still no production HTTP
-server, TLS, streaming parser API, middleware, cookies/sessions, multipart upload,
-streaming responses, public TypeScript `app.run`, or broad response framework.
+framework HTTP runtime slice for realistic local APIs. ENGINE-22.A adopts the shared
+memory/string primitives in the current HTTP hot paths without changing public behavior:
+segmented request target/header accumulation uses builders, body accumulation and response
+writing use byte builders, and request/route-owned strings use the core arena copy helpers.
+There is still no production HTTP server, TLS, streaming parser API, middleware,
+cookies/sessions, multipart upload, streaming responses, public TypeScript `app.run`, or
+broad response framework.
 
 ## Purpose
 
@@ -57,6 +61,8 @@ Implemented now:
   handler execution;
 - request cancellation/backpressure checks before V8 handler entry when a cancellation token
   or in-flight request cap is present.
+- ENGINE-22.A memory/string adoption for the current complete-buffer parser, request-owned
+  body storage, native response writer, and route string copy/match edge coverage.
 
 Future scope:
 
@@ -195,7 +201,14 @@ HTTP request-head data returned by `sl_http_parse_request_head` is arena-owned, 
 copied header names, header values, request target/path, and bounded body bytes. The caller
 must keep the arena backing storage alive for the desired request-head lifetime. The parser
 does not return pointers into llhttp temporary state. It also does not retain pointers to
-the input buffer after success.
+the input buffer after success. Segmented llhttp callback data is accumulated in
+`SlStringBuilder`/`SlByteBuilder` state tied to the request arena; finished header
+name/value views are copied into stable request-owned arena storage before the next header
+builder reset.
+
+Native response writing uses `SlByteBuilder` over the caller-provided output buffer. The
+returned `SlBytes` view borrows that buffer, and failed writes reset the returned view to an
+empty span while preserving deterministic status behavior.
 
 HTTP dispatch tables borrow route bindings, parsed route patterns, plans, and engine
 handles for the duration of the call only. `sl_http_dispatch_request_head` does not retain
@@ -269,6 +282,7 @@ Implemented CTest coverage:
 - borrowed parameter value lifetime;
 - valid request targets including query stripping into `path`;
 - Host and multiple header capture;
+- non-NUL-terminated request input and binary body capture without C-string assumptions;
 - supported method mapping;
 - malformed request lines, missing versions, invalid methods/tokens, invalid headers,
   incomplete requests, and empty targets;
@@ -301,9 +315,10 @@ The request-head benchmark is a parser microbenchmark only. It is not an HTTP se
 throughput benchmark and does not involve sockets, response writing, middleware, or public
 TypeScript APIs.
 
-EPIC-23 tests add native response writer exact-byte coverage, query parser coverage for
-empty, repeated, decoded, and malformed query strings, and compiler/example coverage for
-request context shape.
+EPIC-23 and ENGINE-22.A tests add native response writer exact-byte coverage, binary body
+output coverage, capacity-failure output reset coverage, query parser coverage for empty,
+repeated, decoded, and malformed query strings, and compiler/example coverage for request
+context shape.
 
 Future tests:
 
