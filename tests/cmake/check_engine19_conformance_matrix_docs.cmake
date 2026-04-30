@@ -26,6 +26,7 @@ foreach(required IN ITEMS
         "stress/smoke"
         "benchmark harness"
         "Skipped optional gates are not pass claims"
+        "skipped/not configured"
         "conformance.foundation.*"
         "conformance.v8.*"
         "conformance.http.*"
