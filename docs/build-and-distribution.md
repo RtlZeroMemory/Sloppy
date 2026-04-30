@@ -537,10 +537,15 @@ Build/tooling tests currently include:
 Default package smoke unpacks the archive under the system temp directory, runs
 `sloppy --version`, `sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies
 stdlib assets and manifest fields, checks excluded directories are absent, verifies V8 SDK
-headers/import libraries are absent, and verifies `SHA256SUMS.txt` when it is present. It
-does not require V8, live databases, SQL Server ODBC drivers, provider credentials, a
-running server, admin privileges, or global PATH mutation. Passing package smoke must not
-be reported as V8 execution, live provider availability, or release readiness.
+headers/import libraries are absent, builds a tiny supported app with the packaged
+`sloppyc` from the extracted package layout, and verifies `SHA256SUMS.txt` when it is
+present. It may also attempt `sloppy run --artifacts --stdlib <extracted-stdlib> --once`
+from the extracted package layout. A non-V8 package must report that artifact execution is
+skipped/not configured because the packaged runtime is not V8-enabled, not as a failed
+package layout smoke. It does not require V8, live databases, SQL Server ODBC drivers,
+provider credentials, a running server, admin privileges, or global PATH mutation. Passing
+package smoke must not be reported as V8 execution, live provider availability, or release
+readiness unless the separate V8 package execution lane also ran and passed.
 
 V8 package smoke is a separate optional evidence category. It requires a V8-enabled build,
 an archive whose manifest records the V8 runtime status accurately, package-smoke runtime

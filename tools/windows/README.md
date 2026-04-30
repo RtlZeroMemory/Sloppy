@@ -51,6 +51,7 @@ Experimental local packaging lives here too:
 ```
 
 The package script stages a ZIP under ignored `artifacts/packages/`, writes
-`SHA256SUMS.txt`, and can smoke-test the extracted archive outside the checkout. It does
-not install anything, mutate PATH, fetch V8, include a V8 SDK, sign artifacts, or create a
-public release.
+`SHA256SUMS.txt`, and can smoke-test the extracted archive outside the checkout. The smoke
+checks packaged CLI startup, required files and stdlib assets, packaged `sloppyc build`,
+and honest non-V8 `sloppy run --artifacts` skip reporting. It does not install anything,
+mutate PATH, fetch V8, include a V8 SDK, sign artifacts, or create a public release.

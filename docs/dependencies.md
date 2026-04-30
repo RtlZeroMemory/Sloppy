@@ -146,10 +146,12 @@ rejected, or test failure without printing connection strings.
 
 EPIC-25 Windows local packages copy the runtime DLLs restored by vcpkg into `bin/` so the
 CLI tools can start after extraction outside the checkout. This is local package smoke
-plumbing, not a complete public release dependency policy. Database drivers, V8 SDK files,
-and package-manager prerequisites are not installed or bundled. Package smoke does not
-connect to PostgreSQL or SQL Server, does not prove SQL Server ODBC driver installation,
-does not prove V8 execution, and does not prove the deferred JS-to-native data bridge.
+plumbing, not a complete public release dependency policy. Package smoke also builds a
+tiny supported app with the packaged `sloppyc` so the compiler can run from the extracted
+layout. Database drivers, V8 SDK files, and package-manager prerequisites are not
+installed or bundled. Default non-V8 package smoke does not connect to PostgreSQL or SQL
+Server, does not prove SQL Server ODBC driver installation, does not prove V8 execution,
+and does not prove the deferred JS-to-native data bridge.
 
 The optional V8 CI job is manual and gated. It requires a runner-local preinstalled SDK
 path through the `v8_root` workflow input. If that path is not supplied or does not exist,

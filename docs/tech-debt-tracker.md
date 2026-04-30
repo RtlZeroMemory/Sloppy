@@ -87,8 +87,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   native async/backend semantics, and V8-gated runtime/HTTP/async behavior. ENGINE-19.D
   registers the existing SQLite provider, capability registry, provider-executor denial,
   V8 SQLite bridge, denied-capability, and users API localhost transport proof under
-  matrix-aligned SQLite/capability labels. The remaining ENGINE-19 debt is package
-  outside-checkout smoke, not broader runtime behavior hidden inside conformance PRs.
+  matrix-aligned SQLite/capability labels. ENGINE-19.E hardens the local package
+  outside-checkout smoke to validate extracted-package CLI startup, required files/stdlib
+  assets, packaged `sloppyc build`, and honest non-V8 artifact-execution skip reporting.
+  The remaining ENGINE-19 debt is consolidation/audit, not broader runtime behavior hidden
+  inside conformance PRs.
 - Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
   artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
   optimization hooks, versioning, and internal tooling leverage.
@@ -168,9 +171,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   the Windows resolver, but hosted prebuilt SDK/cache setup, optional live provider service
   jobs, sanitizer/fuzz jobs, and package smoke remain open.
 - Cross-platform release validation: local Windows ZIP tooling, Unix TAR tooling,
-  checksums, and outside-checkout package smoke exist, but hosted Linux/macOS package
-  execution, V8 package execution smoke, release hardening, and CI validation remain open
-  after MAIN1-12.
+  checksums, outside-checkout package smoke, and packaged compiler smoke exist, but hosted
+  Linux/macOS package execution, V8 package execution smoke, release hardening, and CI
+  validation remain open after MAIN1-12.
 - Public alpha docs/examples: at least one executable hello must run through the real
   Sloppy toolchain. MAIN1-08 adds a real V8-gated SQLite JS-native bridge fixture, but the
   public source-stdlib SQLite tutorial remains deferred until the compiler/source example
