@@ -56,7 +56,7 @@ recursively through diagnostic paths.
 ENGINE-12.AB does not add new public diagnostic codes. Async backend failures use existing
 machine-checkable statuses: `SL_STATUS_CAPACITY_EXCEEDED` for bounded queue overflow,
 `SL_STATUS_INVALID_STATE` for disposed loops or detectable wrong-thread dispatch, and
-`SL_STATUS_INTERNAL` for unexpected backend failures. ENGINE-23.A/B maps provider-executor
+`SL_STATUS_INTERNAL` for unexpected backend failures. ENGINE-23 maps provider-executor
 terminal and admission states to existing stable codes for the deterministic native source:
 `SL_STATUS_INVALID_ARGUMENT` for missing provider instance id, provider mismatch, invalid
 operation kind, invalid execution mode, or malformed owned-input views,
@@ -64,6 +64,10 @@ operation kind, invalid execution mode, or malformed owned-input views,
 deadline/timeout, `SLOPPY_E_ENGINE_BACKPRESSURE` plus `SL_STATUS_CAPACITY_EXCEEDED` for
 overflow/admission failure, `SLOPPY_E_APP_LIFECYCLE` for shutdown cancellation, and
 provider-specific diagnostic codes for provider failures when a real provider reports one.
+ENGINE-23.C also records deterministic serialized-worker counters for worker failures,
+completion-post failures, and late worker completion after the operation is already
+terminal. Unsupported worker execution mode/backend attempts return `SL_STATUS_UNSUPPORTED`
+before ownership transfer.
 Future provider work may add more specific data-provider async codes, but it must keep
 cancelled, timed out, overflowed, shutdown, and provider-failed outcomes distinguishable.
 Provider executor diagnostics must not include raw native pointers, V8/libuv implementation

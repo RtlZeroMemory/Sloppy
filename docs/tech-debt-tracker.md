@@ -27,12 +27,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   returned Promises that settle during the owner-thread microtask drain, rejection
   diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
   for the bounded call.
-- Provider execution runtime beyond ENGINE-23.A/B admission: provider operation
-  descriptors with owned inputs and per-provider-instance bounded admission now exist.
-  Remaining ENGINE-23 work owns serialized blocking execution for SQLite-class providers
-  (#393), bounded blocking pools (#394), cancellation/timeout/late-completion detail
-  (#395), capability-gated dispatch (#396), and diagnostics/stress evidence (#397). This
-  must land before ENGINE-17 claims scalable SQLite provider execution or future
+- Provider execution runtime beyond ENGINE-23.A/B/C serialized admission/execution:
+  provider operation descriptors with owned inputs, per-provider-instance bounded
+  admission, and serialized SQLite-class blocking execution now exist. Remaining
+  ENGINE-23 work owns bounded blocking pools (#394), cancellation/timeout/late-completion
+  detail (#395), capability-gated dispatch (#396), and diagnostics/stress evidence (#397).
+  This must land before ENGINE-17 claims scalable SQLite provider execution or future
   PostgreSQL/SQL Server bridges depend on provider runtime behavior.
 - Proper HTTP runtime backend beyond ENGINE-04: ENGINE-13 owns listener/backend
   architecture, connection and request lifecycle, parser limits, richer header/body
@@ -119,9 +119,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
 - SQLite remaining hardening after ENGINE-05: capability-wired open/use is implemented for
-  the V8 bridge, but public file database policy, request-scope automatic provider cleanup,
-  cancellation/deadline interruption, JS transactions, and prepared statement handles
-  remain deferred.
+  the V8 bridge and ENGINE-23.C provides the serialized blocking executor model, but the
+  bridge is not yet converted to that executor. Public file database policy, request-scope
+  automatic provider cleanup, cancellation/deadline interruption, JS transactions, and
+  prepared statement handles remain deferred.
 - Live DB service infrastructure for PostgreSQL and SQL Server: opt-in local env vars and
   separate skipped CTest gates make reporting honest, but hosted service jobs are still
   needed for release confidence.
@@ -221,8 +222,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   EPIC-24 classic bootstrap runtime handoff.
 - V8 process shutdown policy and whether process-wide platform teardown is ever attempted.
   Per-engine destroy is defined; global V8 platform teardown remains deliberately deferred.
-- Threading model evolution from inline skeletons to real worker threads/libuv posting,
-  including owner-thread identity checks and provider executor ownership.
+- Threading model evolution beyond the serialized provider worker: bounded blocking pools,
+  provider-specific cancellation, stress evidence, and owner-thread continuation evidence
+  for real provider bridges.
 - Async provider strategy under ENGINE-23: serialized SQLite-class blocking calls,
   bounded blocking pools, nonblocking libpq/socket integration, and
   cancellation/deadline semantics by provider.

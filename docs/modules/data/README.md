@@ -8,12 +8,12 @@ JavaScript-to-native bridge wired to Plan provider metadata, opaque resource IDs
 native database capability hook.
 ENGINE-23.A/B defines the native provider/offload descriptor and bounded
 per-provider-instance admission model that future SQLite, PostgreSQL, and SQL Server
-runtime bridge work must use; current provider calls remain synchronous unless their
-existing phase explicitly wired a JS bridge. The real worker execution roadmap remains:
-serialized SQLite-class blocking offload in #393, bounded blocking pools in #394,
-cancellation/late-completion detail in #395, capability-gated dispatch in #396, and
-diagnostics/stress evidence in #397. SQLite runtime completion depends on that runtime
-before Sloppy can claim scalable provider execution.
+runtime bridge work must use. ENGINE-23.C implements the serialized SQLite-class blocking
+offload model with one worker and one active operation per provider instance, bounded
+admission, Slop async completion posting, and cleanup-once behavior. Current SQLite bridge
+calls are still synchronous until ENGINE-17 converts them to the executor. Remaining
+provider runtime work: bounded blocking pools in #394, cancellation/late-completion detail
+in #395, capability-gated dispatch in #396, and diagnostics/stress evidence in #397.
 
 ## Purpose
 
@@ -134,14 +134,16 @@ Async/offload ownership:
   dispose;
 - provider completion posts through `SlAsyncLoop` and can resume JS only through the V8
   owner-thread scheduler;
-- SQLite's default async execution mode is `SERIALIZED_BLOCKING` for a single connection
-  unless a future SQLite issue chooses different read/write pool semantics;
+- SQLite's default async execution mode is implemented as `SERIALIZED_BLOCKING` for a
+  single connection unless a future SQLite issue chooses different read/write pool
+  semantics;
 - PostgreSQL and SQL Server may later use `NONBLOCKING_IO` with native async client APIs or
   `BLOCKING_POOL` when using blocking drivers;
 - no provider may use libuv's global threadpool as its runtime policy, create a
   thread-per-request model, bypass capability checks, or invent a separate lifetime model.
-- ENGINE-23.C and later must implement worker lifecycle before future provider bridge work
-  treats these rules as production runtime behavior.
+- ENGINE-23.C implements the serialized worker lifecycle; future provider bridge work must
+  still route through capability-gated dispatch and provider-specific ownership policy
+  before claiming scalable SQLite runtime completion.
 
 SQLite text/blob ownership:
 
@@ -222,12 +224,14 @@ wrapper, fail closed when hook metadata is absent, and receive deterministic
 stale/closed/invalid argument/capability-denied failures. They are reported separately from
 default provider tests because default gates do not enable V8.
 
-`core.provider_executor` is the default native ENGINE-23.A/B provider/offload source. It
-covers execution-mode parsing, operation-kind metadata, descriptor helper failure
-preservation, invalid descriptor rejection, serialized admission, per-instance capacity
-isolation, overflow and recovery, copied input ownership, cancellation, timeout, immediate
-shutdown, late completion, and cleanup exactly once. It is not a live database test and
-does not claim SQLite async/offload conversion or worker execution.
+`core.provider_executor` is the default native ENGINE-23 provider/offload source. It covers
+execution-mode parsing, operation-kind metadata, descriptor helper failure preservation,
+invalid descriptor rejection, serialized admission, per-instance capacity isolation,
+overflow and recovery, copied input ownership, cancellation, timeout, immediate shutdown,
+late completion, cleanup exactly once, serialized worker FIFO execution, one-active
+operation behavior, worker failure diagnostics, completion posting through the libuv async
+backend, and no ownership transfer on rejected worker submissions. It is not a live
+database test and does not claim SQLite async/offload conversion.
 
 `core.capability.registry` covers the runtime capability registry, database read/write
 policy, provider mismatch denial, missing/wrong-kind/insufficient capability diagnostics,
