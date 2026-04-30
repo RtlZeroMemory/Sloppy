@@ -134,6 +134,13 @@ Runtime execution:
   policy for the implemented one-request-per-connection MVP, and verify cleanup/counter
   coherence. They are correctness smoke, not benchmark, keep-alive, pipelining, streaming,
   V8, live-provider, or production-edge evidence;
+- future keep-alive and streaming tests must be reported as a separate HTTP/1.1 upgrade
+  evidence set. They must cover sequential requests per connection, read-loop resume only
+  after response write completion, idle timeout, max requests per connection, shutdown
+  drain/force-close behavior, request-arena and parser/body lifecycle reset between
+  requests, client close while idle or between requests, chunked request decoding,
+  chunked/streaming response writing, socket backpressure, and cancellation of partially
+  consumed body streams;
 - native async settlement skeleton before V8 Promise integration;
 - inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;

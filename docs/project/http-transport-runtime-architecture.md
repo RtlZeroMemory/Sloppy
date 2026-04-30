@@ -85,6 +85,67 @@ The MVP connection policy is still one request per connection. Extra/pipelined b
 rejected before dispatch, keep-alive is not enabled, response bodies are serialized
 eagerly, and streaming/chunked response writing is not implemented.
 
+## Keep-Alive Decision And HTTP/1.1 Upgrade Plan
+
+ENGINE-24.G keeps the ENGINE-24 MVP close-after-response by design:
+
+- one request is served per TCP connection;
+- the response writer emits `Connection: close`;
+- the transport closes the connection after write completion;
+- explicit `Connection: keep-alive` does not keep the connection open;
+- a sequential second request on the same connection is not accepted;
+- pipelined bytes after the first complete request are rejected as unsupported MVP
+  behavior.
+
+That decision is intentional rather than an unfinished hidden feature. Close-after-response
+keeps cleanup direct, avoids keeping request arenas and body-reader state alive for idle
+connections, reduces timeout and shutdown race surfaces, and is enough for the localhost
+transport proof and users API proof planned after the core transport MVP. It also keeps the
+current connection terminal path easy to audit: read one bounded request, dispatch once,
+write one bounded response, then close and release backend connection/request admission
+exactly once.
+
+Keep-alive is deferred until a later HTTP/1.1 upgrade slice can implement and test the full
+connection loop. That later work must define at least:
+
+- sequential requests per connection, with the read loop resuming only after response write
+  completion;
+- an idle timeout for connections that are open between requests;
+- a maximum requests-per-connection cap;
+- shutdown drain behavior for idle, reading, dispatching, and writing keep-alive
+  connections;
+- parser, accumulated-byte, body-reader, response, and request-lifecycle state reset for
+  each request;
+- request-arena reset or equivalent per-request storage rotation between requests;
+- per-request cancellation and timeout state that is independent from the longer-lived TCP
+  connection;
+- diagnostics for idle timeout, max-requests close, client close while idle or between
+  requests, and shutdown drain/force-close.
+
+HTTP/1.1 pipelining is not part of the MVP and is likely to remain unsupported or
+deprioritized. If Slop ever supports pipelining, response ordering, queued response
+ownership, cancellation behavior for queued requests, and bounded queue limits must be
+explicitly specified and tested before enabling it. HTTP/2 is the later multiplexing
+direction; pipelining must not become an accidental substitute for that design.
+
+Chunked request decoding, chunked response encoding, and streaming response bodies are also
+deferred. Future streaming work must define socket backpressure behavior, body-stream
+lifetime, cancellation and shutdown semantics for partially consumed streams, and memory
+ownership for data that outlives one parser callback. ENGINE-24.G does not implement any of
+that behavior.
+
+Future issue recommendation only: create a later `ENGINE-25: HTTP/1.1 Keep-Alive and
+Streaming` epic after the close-after-response core proof lands. Likely tasks are:
+
+- keep-alive connection loop;
+- idle timeout and max requests per connection;
+- sequential request lifecycle reset;
+- chunked request decoding;
+- chunked/streaming response writer;
+- keep-alive stress and conformance.
+
+No ENGINE-25 GitHub issues are created by ENGINE-24.G.
+
 If no dispatch callback is configured, the parsed request is closed immediately so backend
 admission is released rather than parked forever. ENGINE-24.F/#417 adds real localhost TCP
 smoke over the reusable transport using raw client request bytes and native/fake dispatch
