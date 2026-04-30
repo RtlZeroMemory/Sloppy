@@ -127,12 +127,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
-- SQLite remaining hardening after ENGINE-05: capability-wired open/use is implemented for
-  the V8 bridge, ENGINE-17.A/C finalizes the public JS open/close/exec/query/queryOne
-  shape and callback transaction policy, and ENGINE-23.C provides the serialized blocking
-  executor model, but the bridge is not yet converted to that executor. Public file database
-  policy, request-scope automatic provider cleanup, cancellation/deadline interruption, and
-  public prepared statement handles remain deferred.
+- SQLite remaining hardening after ENGINE-05: capability-wired open/use and stable result/
+  error mapping are implemented for the V8 bridge, ENGINE-17.A/C finalizes the public JS
+  open/close/exec/query/queryOne shape and callback transaction policy, and ENGINE-23.C
+  provides the serialized blocking executor model, but the bridge is not yet converted to
+  that executor. Public file database policy, request-scope automatic provider cleanup,
+  cancellation/deadline interruption, and public prepared statement handles remain
+  deferred.
 - Live DB service infrastructure for PostgreSQL and SQL Server: opt-in local env vars and
   separate skipped CTest gates make reporting honest, but hosted service jobs are still
   needed for release confidence.

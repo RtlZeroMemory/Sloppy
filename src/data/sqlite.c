@@ -518,6 +518,7 @@ SlStatus sl_sqlite_open(SlArena* diag_arena, const SlSqliteOpenOptions* options,
     case SL_SQLITE_ACCESS_READ:
         flags = SQLITE_OPEN_READONLY;
         break;
+    case SL_SQLITE_ACCESS_WRITE:
     case SL_SQLITE_ACCESS_READWRITE:
         flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
         break;

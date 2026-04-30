@@ -38,6 +38,7 @@ struct SqliteV8ConnectionResource
     SlSqliteTransaction transaction = {};
     std::string capability;
     std::string provider_token;
+    SlSqliteAccess access = SL_SQLITE_ACCESS_READWRITE;
 };
 
 SlStatus sqlite_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
@@ -148,13 +149,18 @@ bool sqlite_v8_parse_access(v8::Isolate* isolate, v8::Local<v8::Context> context
         return false;
     }
 
-    if (!access_present || access_text == "write" || access_text == "readwrite") {
+    if (!access_present || access_text == "readwrite") {
         *out = SL_SQLITE_ACCESS_READWRITE;
         return true;
     }
 
     if (access_text == "read") {
         *out = SL_SQLITE_ACCESS_READ;
+        return true;
+    }
+
+    if (access_text == "write") {
+        *out = SL_SQLITE_ACCESS_WRITE;
         return true;
     }
 
@@ -268,6 +274,88 @@ bool sqlite_v8_capability_is_read_only(const SlCapabilityRegistry* registry, SlS
     return sl_str_equal(capability->access, sl_str_from_cstr("read"));
 }
 
+SlCapabilityOperation sqlite_v8_open_capability_operation(SlSqliteAccess access)
+{
+    switch (access) {
+    case SL_SQLITE_ACCESS_READ:
+        return SL_CAPABILITY_OPERATION_READ;
+    case SL_SQLITE_ACCESS_WRITE:
+        return SL_CAPABILITY_OPERATION_WRITE;
+    case SL_SQLITE_ACCESS_READWRITE:
+    default:
+        return SL_CAPABILITY_OPERATION_READWRITE;
+    }
+}
+
+SlStr sqlite_v8_operation_name(SlCapabilityOperation operation)
+{
+    switch (operation) {
+    case SL_CAPABILITY_OPERATION_READ:
+        return sl_str_from_cstr("read");
+    case SL_CAPABILITY_OPERATION_WRITE:
+        return sl_str_from_cstr("write");
+    case SL_CAPABILITY_OPERATION_READWRITE:
+        return sl_str_from_cstr("readwrite");
+    default:
+        return sl_str_from_cstr("unsupported");
+    }
+}
+
+SlStr sqlite_v8_access_name(SlSqliteAccess access)
+{
+    switch (access) {
+    case SL_SQLITE_ACCESS_READ:
+        return sl_str_from_cstr("read");
+    case SL_SQLITE_ACCESS_WRITE:
+        return sl_str_from_cstr("write");
+    case SL_SQLITE_ACCESS_READWRITE:
+        return sl_str_from_cstr("readwrite");
+    default:
+        return sl_str_from_cstr("unknown");
+    }
+}
+
+bool sqlite_v8_access_allows(SlSqliteAccess access, SlCapabilityOperation operation)
+{
+    if (operation == SL_CAPABILITY_OPERATION_READ) {
+        return access == SL_SQLITE_ACCESS_READ || access == SL_SQLITE_ACCESS_READWRITE;
+    }
+    if (operation == SL_CAPABILITY_OPERATION_WRITE) {
+        return access == SL_SQLITE_ACCESS_WRITE || access == SL_SQLITE_ACCESS_READWRITE;
+    }
+    if (operation == SL_CAPABILITY_OPERATION_READWRITE) {
+        return access == SL_SQLITE_ACCESS_READWRITE;
+    }
+    return false;
+}
+
+bool sqlite_v8_check_handle_access(v8::Isolate* isolate, const SqliteV8ConnectionResource* resource,
+                                   SlCapabilityOperation operation)
+{
+    std::string message;
+    SlStr operation_name;
+    SlStr access_name;
+
+    if (resource == nullptr) {
+        sqlite_v8_throw_error(isolate, "sqlite resource is missing capability metadata");
+        return false;
+    }
+
+    if (sqlite_v8_access_allows(resource->access, operation)) {
+        return true;
+    }
+
+    operation_name = sqlite_v8_operation_name(operation);
+    access_name = sqlite_v8_access_name(resource->access);
+    message = "capability access denied: insufficient handle access\noperation: ";
+    message.append(operation_name.ptr, operation_name.length);
+    message += "\nactual access: ";
+    message.append(access_name.ptr, access_name.length);
+    message += "\nprovider: sqlite";
+    sqlite_v8_throw_error(isolate, message);
+    return false;
+}
+
 bool sqlite_v8_resolve_provider_request(v8::Isolate* isolate, const SlV8Engine* backend,
                                         SqliteV8OpenRequest* request)
 {
@@ -329,6 +417,9 @@ bool sqlite_v8_check_capability(v8::Isolate* isolate, SlV8Engine* backend, SlAre
     }
     if (arena == nullptr || resource == nullptr || resource->capability.empty()) {
         sqlite_v8_throw_error(isolate, "sqlite resource is missing capability metadata");
+        return false;
+    }
+    if (!sqlite_v8_check_handle_access(isolate, resource, operation)) {
         return false;
     }
 
@@ -718,11 +809,10 @@ void sqlite_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 
     resource->capability = request.capability;
     resource->provider_token = request.provider_token;
+    resource->access = request.access;
 
     if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
-                                    request.access == SL_SQLITE_ACCESS_READ
-                                        ? SL_CAPABILITY_OPERATION_READ
-                                        : SL_CAPABILITY_OPERATION_WRITE))
+                                    sqlite_v8_open_capability_operation(request.access)))
     {
         delete resource;
         return;

@@ -20,7 +20,12 @@ extern "C" {
 typedef enum SlSqliteAccess
 {
     SL_SQLITE_ACCESS_READ = 1,
-    SL_SQLITE_ACCESS_READWRITE = 2
+    /*
+     * SQLite does not expose a true write-only connection mode. The JS bridge still
+     * records write-only intent on the resource and denies reads before provider work.
+     */
+    SL_SQLITE_ACCESS_WRITE = 2,
+    SL_SQLITE_ACCESS_READWRITE = 3
 } SlSqliteAccess;
 
 typedef struct SlSqliteOpenOptions

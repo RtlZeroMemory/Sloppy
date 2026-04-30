@@ -253,9 +253,10 @@ failure behavior, and invalid open diagnostics.
 `engine.v8.smoke` adds V8-gated SQLite bridge coverage when the SDK is enabled. Those tests
 prove that JavaScript can resolve Plan provider metadata, pass the native capability hook,
 open `:memory:`, create a table, insert/query data through the stdlib bridge, close the
-wrapper, fail closed when hook metadata is absent, and receive deterministic
-stale/closed/invalid argument/capability-denied failures. They are reported separately from
-default provider tests because default gates do not enable V8.
+wrapper, fail closed when hook metadata is absent, preserve requested read/write/readwrite
+handle policy, and receive deterministic stale/closed/invalid argument/capability-denied
+failures. They are reported separately from default provider tests because default gates do
+not enable V8.
 
 `core.provider_executor` is the default native ENGINE-23 provider/offload source. It covers
 execution-mode parsing, operation-kind metadata, descriptor helper failure preservation,

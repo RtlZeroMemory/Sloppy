@@ -186,10 +186,14 @@ db.close();
 The bridge is intentionally small. It supports `open`, `close`, `exec`, `query`,
 `queryOne`, and callback transactions for SQLite only. It returns arrays/plain objects,
 maps SQLite `NULL` to JavaScript `null`, and supports primitive positional parameters:
-`null`, string, number, and boolean. The wrapper stores only an opaque resource ID object;
-stale, closed, invalid, wrong-kind, transaction use-after-close, missing-provider, and
-denied-capability handles fail before provider code runs. Double close is idempotent at
-the wrapper level. Public prepared statement handles are absent by design; internal
+`null`, string, number, and boolean. Boolean parameters bind as SQLite integers `0` or
+`1`; blob results map to `Uint8Array`; duplicate column names use normal object assignment,
+so the last duplicate column wins unless SQL aliases make names unique. The wrapper stores
+only an opaque resource ID object; stale, closed, invalid, wrong-kind, transaction
+use-after-close, missing-provider, and denied-capability handles fail before provider code
+runs. A `read` handle can query/queryOne only, a `write` handle can exec/write only, and
+`readwrite` permits both. Double close is idempotent at the wrapper level. Public prepared
+statement handles are absent by design; internal
 prepare/bind/step/finalize remains per operation until a later resource-lifetime task.
 
 Layering matters for future providers: the public stdlib wrapper is JavaScript, the native

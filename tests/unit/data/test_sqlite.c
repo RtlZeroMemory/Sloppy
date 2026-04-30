@@ -55,6 +55,28 @@ static bool diag_has_hint(const SlDiag* diag, const char* hint)
     return false;
 }
 
+static bool diag_contains_text(const SlDiag* diag, const char* text)
+{
+    size_t hint_index = 0U;
+    SlStr expected = sl_str_from_cstr(text);
+
+    if (diag == NULL || text == NULL) {
+        return false;
+    }
+
+    if (sl_str_equal(diag->message, expected)) {
+        return true;
+    }
+
+    for (hint_index = 0U; hint_index < diag->hint_count; hint_index += 1U) {
+        if (sl_str_equal(diag->hints[hint_index], expected)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static SlSqliteParam text_param(const char* value)
 {
     SlSqliteParam param = {0};
@@ -372,6 +394,44 @@ static int test_result_and_parameter_lifetimes(void)
     return 0;
 }
 
+static int test_empty_result_and_duplicate_column_names(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteResult rows = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 130;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 131;
+    }
+
+    status = sl_sqlite_query(&arena, &connection,
+                             sl_str_from_cstr("select 1 as value, 2 as value where 0"), NULL, 0U,
+                             NULL, &rows, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || rows.row_count != 0U ||
+        rows.column_count != 2U || expect_str_equal(rows.column_names[0], "value") != 0 ||
+        expect_str_equal(rows.column_names[1], "value") != 0)
+    {
+        return close_and_return(&connection, 132);
+    }
+
+    status = sl_sqlite_query(&arena, &connection, sl_str_from_cstr("select 1 as value, 2 as value"),
+                             NULL, 0U, NULL, &rows, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || rows.row_count != 1U ||
+        rows.column_count != 2U || expect_str_equal(rows.column_names[0], "value") != 0 ||
+        expect_str_equal(rows.column_names[1], "value") != 0 ||
+        rows.rows[0].values[0].value.integer != 1 || rows.rows[0].values[1].value.integer != 2)
+    {
+        return close_and_return(&connection, 133);
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 134;
+}
+
 static int test_sqlite_text_blob_interop_helpers(void)
 {
     unsigned char storage[128];
@@ -572,6 +632,47 @@ static int test_sql_diagnostics(void)
     }
 
     return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 64;
+}
+
+static int test_constraint_and_parameter_redaction_diagnostics(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteExecResult exec_result = {0};
+    SlDiag diag = {0};
+    SlSqliteParam secret_param = text_param("SECRET_SHOULD_NOT_APPEAR");
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 65;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 66;
+    }
+    if (exec_sql(&arena, &connection, "create table constraint_test (name text unique)") != 0) {
+        return close_and_return(&connection, 67);
+    }
+
+    status = sl_sqlite_exec(&arena, &connection,
+                            sl_str_from_cstr("insert into constraint_test (name) values (?)"),
+                            &secret_param, 1U, &exec_result, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return close_and_return(&connection, 68);
+    }
+
+    status = sl_sqlite_exec(&arena, &connection,
+                            sl_str_from_cstr("insert into constraint_test (name) values (?)"),
+                            &secret_param, 1U, &exec_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_SQLITE_PROVIDER_ERROR || !diag_has_hint(&diag, "provider: sqlite") ||
+        !diag_has_hint(&diag, "operation: exec") ||
+        diag_contains_text(&diag, "SECRET_SHOULD_NOT_APPEAR"))
+    {
+        return close_and_return(&connection, 69);
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 70;
 }
 
 static int test_trailing_sql_rejected(void)
@@ -790,6 +891,11 @@ int main(void)
         return result;
     }
 
+    result = test_empty_result_and_duplicate_column_names();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_unsupported_parameter_diagnostic();
     if (result != 0) {
         return result;
@@ -801,6 +907,11 @@ int main(void)
     }
 
     result = test_sql_diagnostics();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_constraint_and_parameter_redaction_diagnostics();
     if (result != 0) {
         return result;
     }
