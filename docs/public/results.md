@@ -6,7 +6,7 @@ Status: Bootstrap result helper set implemented; dev-only run consumes supported
 Bootstrap status: `stdlib/sloppy/results.js` exports a frozen `Results` object with
 `Results.ok(...)`, `Results.created(...)`, `Results.accepted(...)`,
 `Results.noContent(...)`, `Results.notFound(...)`, `Results.badRequest(...)`,
-`Results.problem(...)`, `Results.text(...)`, `Results.json(...)`, and
+`Results.status(...)`, `Results.problem(...)`, `Results.text(...)`, `Results.json(...)`, and
 `Results.html(...)`.
 
 Purpose: document current result descriptor helpers and the future path where handler
@@ -59,6 +59,8 @@ Implemented helpers:
   by default.
 - `Results.badRequest(valueOrProblem?, options?)` returns a JSON descriptor with status
   `400` by default.
+- `Results.status(statusCode, value?, options?)` returns an empty descriptor when `value` is
+  omitted and a JSON descriptor otherwise.
 - `Results.problem(problemOrMessage?, options?)` returns a problem descriptor with status
   `500` by default and `application/problem+json; charset=utf-8`.
 - `Results.text(body, options?)` returns a text descriptor.
@@ -101,13 +103,17 @@ There is no header normalization class.
 
 Implemented in the dev run path now:
 
-- `text`, `json`, `ok`, `noContent`, and `problem` descriptors;
-- `400`, `404`, `405`, `500`, `501`, `200`, `201`, `202`, and `204` response status
-  writing;
+- `text`, `html`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`,
+  `badRequest`, `status`, and `problem` descriptors;
+- `200`, `201`, `202`, `204`, `400`, `404`, `405`, `413`, `415`, `500`, and `501`
+  response status writing;
 - JSON body serialization through V8 `JSON.stringify` for JSON/problem descriptors;
 - omitted or `undefined` JSON/problem descriptor bodies serialized as `null`;
 - `204` responses with no body and no `Content-Length`;
-- Content-Type CR/LF rejection before bytes are written.
+- custom response headers through `options.headers`, with `Connection`, `Content-Type`, and
+  `Content-Length` reserved for the native writer;
+- `Location` header emission from `Results.created(...)`;
+- Content-Type and header CR/LF rejection before bytes are written;
 - invalid result descriptors fail safely with `SLOPPY_E_INVALID_HTTP_RESULT` and a safe dev
   `500` response.
 
@@ -115,8 +121,8 @@ MAIN1-13 conformance verifies `Results.text` through the executable hello exampl
 `Results.json` through the executable request-context example, and an invalid descriptor
 through a V8-gated checked-in artifact fixture that must return a safe dev `500`.
 
-Unsupported result descriptor kinds fail safely with a dev `500` response. `Results.html`,
-custom headers, streaming, files, redirects, cookies, content negotiation, and header
-normalization beyond Content-Type remain deferred.
+Unsupported result descriptor kinds fail safely with a dev `500` response. Streaming,
+files, redirects, cookies, content negotiation, and header normalization beyond
+case-insensitive request lookup and managed response-header rejection remain deferred.
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/execution-model.md`.

@@ -7,6 +7,7 @@
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -15,6 +16,7 @@ extern "C" {
 
 #define SL_HTTP_DEFAULT_MAX_HEADERS 32U
 #define SL_HTTP_DEFAULT_MAX_TARGET_LENGTH 2048U
+#define SL_HTTP_DEFAULT_MAX_BODY_LENGTH 65536U
 
 typedef enum SlHttpMethod
 {
@@ -28,6 +30,14 @@ typedef enum SlHttpMethod
     SL_HTTP_METHOD_HEAD = 7
 } SlHttpMethod;
 
+/*
+ * Shared ENGINE-04 framework method set. These helpers intentionally return false for
+ * HEAD/OPTIONS even though the parser recognizes those tokens: the current runtime only
+ * dispatches GET, POST, PUT, PATCH, and DELETE route metadata.
+ */
+bool sl_http_method_supported(SlHttpMethod method);
+SlStatus sl_http_method_from_str(SlStr method, SlHttpMethod* out_method);
+
 typedef struct SlHttpHeader
 {
     SlStr name;
@@ -39,8 +49,9 @@ typedef struct SlHttpHeader
  *
  * sl_http_parse_request_head copies `raw_target`, `path`, header names, and header values
  * into the supplied arena. Returned views remain valid until that arena is reset or its
- * caller-owned backing storage ends. No body bytes, socket state, route dispatch, or query
- * parsing is represented in this skeleton.
+ * caller-owned backing storage ends. Body bytes are complete-buffer, arena-owned request
+ * input; there is still no streaming parser state, socket state, route dispatch, or query
+ * parsing represented by this struct.
  */
 typedef struct SlHttpRequestHead
 {
@@ -49,24 +60,27 @@ typedef struct SlHttpRequestHead
     SlStr raw_target;
     SlHttpHeader* headers;
     size_t header_count;
+    SlBytes body;
 } SlHttpRequestHead;
 
 typedef struct SlHttpParseOptions
 {
     size_t max_headers;
     size_t max_target_length;
+    size_t max_body_length;
 } SlHttpParseOptions;
 
 /*
  * Parses one complete in-memory HTTP/1 request head with llhttp.
  *
- * `arena`, `bytes`, and `out_request` are required. `bytes` must contain a complete request
- * line and headers ending in CRLF CRLF. Parsed strings and the header array are arena-owned.
- * `options` may be NULL, in which case default limits are used. A zero max_headers value
- * permits no headers. A zero max_target_length value uses
- * SL_HTTP_DEFAULT_MAX_TARGET_LENGTH. Header overflow, target overflow, malformed input,
- * incomplete input, empty/non-path request targets, and unsupported methods fail with
- * SlStatus and, when supplied, an arena-owned diagnostic.
+ * `arena`, `bytes`, and `out_request` are required. `bytes` must contain a complete
+ * request message for the declared Content-Length. Parsed strings, the header array, and
+ * body bytes are arena-owned. `options` may be NULL, in which case default limits are used.
+ * A zero max_headers value permits no headers. Zero target/body limits use
+ * SL_HTTP_DEFAULT_MAX_TARGET_LENGTH and SL_HTTP_DEFAULT_MAX_BODY_LENGTH. Header overflow,
+ * target overflow, body overflow, malformed input, incomplete input, empty/non-path request
+ * targets, and unsupported methods fail with SlStatus and, when supplied, an arena-owned
+ * diagnostic.
  *
  * The parser stores `raw_target` exactly as llhttp reports it. `path` is the portion before
  * `?`; EPIC-23 query parsing and percent decoding live in `http_context.h` so the request

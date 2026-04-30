@@ -25,6 +25,7 @@ V8-gated unsupported cases:
 - invalid result descriptors return a safe `500 Internal Server Error`;
 - missing or duplicate handler registrations fail during startup validation.
 
-Unsupported request body behavior is covered by HTTP request-head and dispatch tests until
-the dev socket conformance layer grows a real body-bearing request fixture. Request body
-parsing remains unsupported.
+Unsupported request body behavior is covered by HTTP request parser and dispatch tests.
+Malformed JSON, oversized bodies, unsupported content types, and unsupported transfer
+framing fail before handler entry. Socket-mode conformance still needs a real body-bearing
+request fixture.

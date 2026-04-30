@@ -1,17 +1,18 @@
 # Routing
 
-Status: Bootstrap `mapGet`, route group shape, ENGINE-02 compiler route metadata,
-dev-only GET artifact routing, and minimal route/query request context implemented.
+Status: Bootstrap route declaration, route group shape, ENGINE-02 compiler route metadata,
+dev-only artifact routing, and minimal route/query/header/body request context implemented.
 
 Bootstrap status: `Sloppy.create()` and `Sloppy.createBuilder().build()` return an
-in-memory app facade with `app.mapGet(...)` and `app.mapGroup(...)`. Compiler-emitted
-GET/POST/PUT/PATCH/DELETE metadata can now be validated and inspected, while
-`sloppy run --artifacts` still serves GET-only dev dispatch. Matched route params and query
-params are passed to V8 handlers in a minimal request context. Bootstrap route snapshots and
+in-memory app facade with `app.mapGet(...)`, `app.mapPost(...)`, `app.mapPut(...)`,
+`app.mapPatch(...)`, `app.mapDelete(...)`, and `app.mapGroup(...)`. Compiler-emitted
+GET/POST/PUT/PATCH/DELETE metadata is validated, inspected, and consumed by the dev-only
+HTTP runtime. Matched route params, query params, request headers, and bounded JSON/text
+bodies are passed to V8 handlers in a minimal request context. Bootstrap route snapshots and
 module-contributed routes remain JavaScript-only until later compiler/runtime work.
 
-Purpose: document current `app.mapGet`, route snapshots, handler context, and future route
-features.
+Purpose: document current route declaration, route snapshots, handler context, and future
+route features.
 
 ENGINE-01 target contract:
 
@@ -23,7 +24,8 @@ ENGINE-01 target contract:
 - query params are decoded scalar strings with last-wins repeated-key behavior;
 - request headers are available through case-insensitive `ctx.request.headers.get(name)`
   and deterministic entries;
-- JSON and text bodies are core HTTP runtime work, with body-size and content-type policy;
+- JSON and text bodies are available in the dev runtime with body-size and content-type
+  policy;
 - multipart/file upload, streaming bodies, nested groups, middleware, filters, typed
   binding, and production route-table optimization remain deferred.
 
@@ -41,12 +43,11 @@ users.mapGet("{id:int}", ({ route }) => Results.ok({ id: route.id ?? "demo" }))
   .withName("Users.Get");
 ```
 
-`app.mapGet(pattern, handler)` and `app.mapGet(pattern, metadata, handler)` currently:
+`app.mapGet`, `app.mapPost`, `app.mapPut`, `app.mapPatch`, and `app.mapDelete` currently:
 
 - requires `pattern` to be a non-empty string starting with `/`;
 - requires `handler` to be a function;
-- store a `{ method: "GET", pattern, handler, name: null, metadata }` registration in
-  memory;
+- store a `{ method, pattern, handler, name: null, metadata }` registration in memory;
 - returns a frozen endpoint builder with `.withName(name)`;
 - fails after `app.freeze()`;
 - records `metadata.module` when the route was registered by a module routes phase;
@@ -67,16 +68,22 @@ without an explicit context:
 }
 ```
 
-Native dev dispatch passes this implemented EPIC-23 runtime context to compiled handlers:
+Native dev dispatch passes this implemented ENGINE-04 runtime context to compiled handlers:
 
 ```js
 {
   route: { id: "123" },
   query: { q: "abc" },
   request: {
-    method: "GET",
+    method: "POST",
     path: "/users/123",
-    rawTarget: "/users/123?q=abc"
+    rawTarget: "/users/123?q=abc",
+    headers: {
+      get(name) {},
+      entries() {}
+    },
+    text() {},
+    json() {}
   }
 }
 ```
@@ -86,8 +93,12 @@ not coerce `route.id` to a number. Query parsing splits on `&`, splits key/value
 first `=`, allows empty values, uses last-wins for repeated keys, decodes `%XX`, and treats
 `+` as a space. Invalid percent escapes fail safely. The dev runtime bounds request targets
 with `SL_HTTP_DEFAULT_MAX_TARGET_LENGTH` and query pairs with
-`SL_HTTP_DEFAULT_MAX_QUERY_PARAMS`. Request body parsing and headers in context are not
-implemented; requests that declare a body are rejected before handler execution.
+`SL_HTTP_DEFAULT_MAX_QUERY_PARAMS`. Request bodies are bounded by
+`SL_HTTP_DEFAULT_MAX_BODY_LENGTH`. Bodies without `Content-Type`, unsupported content
+types, malformed JSON, transfer-encoded bodies, and oversized bodies fail before handler
+execution. Supported body media types are `application/json`, `application/*+json`, and
+`text/plain`. `ctx.request.headers.get(name)` is case-insensitive and duplicate header
+values are comma-joined deterministically.
 
 MAIN1-13 conformance compiles `examples/request-context/app.js` and, when V8 is enabled,
 runs `GET /users/123?q=abc&q=last` through `sloppy run --artifacts --once` to verify
@@ -97,8 +108,8 @@ artifact boundary.
 Route groups:
 
 - `app.mapGroup(prefix)` requires a non-empty prefix starting with `/`.
-- The returned group exposes `.prefix`, `.withTags(...tags)`, `.withName(name)`, and
-  `.mapGet(pattern, handler)` / `.mapGet(pattern, metadata, handler)`.
+- The returned group exposes `.prefix`, `.withTags(...tags)`, `.withName(name)`, and the
+  same `mapGet`/`mapPost`/`mapPut`/`mapPatch`/`mapDelete` route methods.
 - Prefixes normalize trailing slashes except for root `/`.
 - Child patterns may start with `/` or be relative.
 - `"/users"` plus `"{id:int}"` and `"/users/"` plus `"/active"` normalize to
@@ -135,7 +146,7 @@ syntax matrix and fixture expectations.
 Dev-only run behavior:
 
 - reads the compiler-emitted `routes` metadata section from `app.plan.json`;
-- supports GET route bindings only;
+- supports GET/POST/PUT/PATCH/DELETE route bindings;
 - parses each route pattern with the existing native route parser;
 - rejects malformed route sections, duplicate method/pattern pairs, duplicate non-empty
   route names, and missing handler references during plan startup validation;
@@ -145,15 +156,15 @@ Dev-only run behavior:
 - matches incoming request paths with strict trailing-slash behavior;
 - resolves the matched route to a numeric handler ID and validates that ID against the
   parsed Plan handler table before entering V8;
-- returns `404` when no GET route matches, `405` for unsupported methods, and `501` for
-  unsupported request bodies;
+- returns `404` when no route matches, `405` for method mismatches, `400` for malformed
+  JSON bodies, `413` for oversized bodies, `415` for unsupported content types, and `501`
+  for unsupported transfer/body framing;
 - returns safe dev `500` responses for handler exceptions or malformed/unsupported result
   descriptors.
 
-Not implemented yet: non-GET runtime dispatch, nested groups, middleware, filters,
-automatic validation, production route table construction, route precedence optimization,
-request body parsing, headers in context, and route/module extraction beyond the compiler
-shape above.
+Not implemented yet: nested groups, middleware, filters, automatic validation, production
+route table construction, route precedence optimization, multipart/upload or streaming
+bodies, and route/module extraction beyond the compiler shape above.
 
 ## CLI Introspection
 
@@ -161,7 +172,7 @@ shape above.
 fixture or artifact, including the route metadata emitted by the compiler. This
 is inspection-only: it does not execute handlers, start HTTP, enter V8, or build a
 production native route table. `sloppy run --artifacts <dir>` also reads the documented
-Plan v1 alpha `routes` section for dev-only GET dispatch.
+Plan v1 alpha `routes` section for dev-only local dispatch.
 
 `sloppy openapi --plan <path>` uses the same route metadata to emit a minimal OpenAPI
 skeleton. It converts Sloppy route parameters such as `{id}` and `{id:int}` into OpenAPI

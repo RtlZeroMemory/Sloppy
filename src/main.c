@@ -4,7 +4,7 @@
  * EPIC-19 adds metadata-only introspection commands over plan-compatible JSON files.
  * EPIC-22 adds the dev-only `sloppy run` artifact path. EPIC-23 gives that path a small
  * native response writer and request context while it still avoids production HTTP,
- * package-manager, Node-compatibility, middleware, body parsing, streaming, and hot reload.
+ * package-manager, Node-compatibility, middleware, streaming, and hot reload.
  */
 #include "sloppy/arena.h"
 #include "sloppy/compiler.h"
@@ -1835,10 +1835,32 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
         diag.code == SL_DIAG_HTTP_UNSUPPORTED_BODY)
     {
         return sl_run_write_response(response, response_capacity, 501U, "text/plain; charset=utf-8",
-                                     sl_str_from_cstr("Request body is not supported\n"));
+                                     sl_str_from_cstr("Request body framing is not supported\n"));
     }
 
-    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED &&
+        diag.code == SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        return sl_run_write_response(response, response_capacity, 413U, "text/plain; charset=utf-8",
+                                     sl_str_from_cstr("Payload Too Large\n"));
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        diag.code == SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
+    {
+        return sl_run_write_response(response, response_capacity, 415U, "text/plain; charset=utf-8",
+                                     sl_str_from_cstr("Unsupported Media Type\n"));
+    }
+
+    if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT && diag.code == SL_DIAG_MALFORMED_JSON)
+    {
+        return sl_run_write_response(response, response_capacity, 400U, "text/plain; charset=utf-8",
+                                     sl_str_from_cstr("Malformed JSON\n"));
+    }
+
+    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
+        diag.code == SL_DIAG_HTTP_ROUTE_NOT_FOUND)
+    {
         return sl_run_write_response(response, response_capacity, 404U, "text/plain; charset=utf-8",
                                      sl_str_from_cstr("Not Found\n"));
     }
@@ -1883,18 +1905,22 @@ static int sl_run_once(SlRunApp* app, const char* method, const char* target)
     return 0;
 }
 
-static bool sl_run_request_complete(const SlRunClient* client)
+static bool sl_run_find_request_head_end(const char* request, size_t length, size_t* out_head_end)
 {
     size_t index = 0U;
 
-    if (client == NULL || client->request_length < 4U) {
+    if (out_head_end != NULL) {
+        *out_head_end = 0U;
+    }
+    if (request == NULL || out_head_end == NULL || length < 4U) {
         return false;
     }
 
-    for (index = 3U; index < client->request_length; index += 1U) {
-        if (client->request[index - 3U] == '\r' && client->request[index - 2U] == '\n' &&
-            client->request[index - 1U] == '\r' && client->request[index] == '\n')
+    for (index = 3U; index < length; index += 1U) {
+        if (request[index - 3U] == '\r' && request[index - 2U] == '\n' &&
+            request[index - 1U] == '\r' && request[index] == '\n')
         {
+            *out_head_end = index + 1U;
             return true;
         }
     }
@@ -1969,96 +1995,258 @@ static bool sl_run_header_name_equal(const char* ptr, size_t length, const char*
     return index == length && expected[index] == '\0';
 }
 
-static bool sl_run_content_length_declares_body(const char* ptr, size_t length)
+static bool sl_run_parse_content_length_value(const char* ptr, size_t length, size_t* out_value)
 {
     size_t index = 0U;
+    size_t value = 0U;
+    bool saw_digit = false;
 
-    if (ptr == NULL && length != 0U) {
-        return true;
+    if (out_value != NULL) {
+        *out_value = 0U;
+    }
+    if (ptr == NULL || out_value == NULL) {
+        return false;
     }
 
     while (index < length && (ptr[index] == ' ' || ptr[index] == '\t')) {
         index += 1U;
     }
 
-    while (index < length) {
-        if (ptr[index] >= '1' && ptr[index] <= '9') {
-            return true;
+    while (index < length && ptr[index] >= '0' && ptr[index] <= '9') {
+        size_t digit = (size_t)(ptr[index] - '0');
+        if (value > (SIZE_MAX - digit) / 10U) {
+            return false;
         }
-        if (ptr[index] != '0' && ptr[index] != ' ' && ptr[index] != '\t') {
-            return true;
-        }
+        value = (value * 10U) + digit;
+        saw_digit = true;
         index += 1U;
     }
 
-    return false;
+    while (index < length && (ptr[index] == ' ' || ptr[index] == '\t')) {
+        index += 1U;
+    }
+
+    *out_value = value;
+    return saw_digit && index == length;
 }
 
-static bool sl_run_header_line_declares_body(const char* line, size_t length)
-{
-    size_t colon = 0U;
-
-    while (colon < length && line[colon] != ':') {
-        colon += 1U;
-    }
-    if (colon == length) {
-        return false;
-    }
-
-    if (sl_run_header_name_equal(line, colon, "Content-Length")) {
-        return sl_run_content_length_declares_body(line + colon + 1U, length - colon - 1U);
-    }
-
-    return sl_run_header_name_equal(line, colon, "Transfer-Encoding");
-}
-
-static bool sl_run_request_declares_body(const char* request, size_t length)
+static bool sl_run_request_body_info(const char* request, size_t head_end,
+                                     size_t* out_content_length, bool* out_transfer_encoding,
+                                     bool* out_invalid)
 {
     size_t line_start = 0U;
     size_t line_end = 0U;
+    bool saw_content_length = false;
 
-    if (request == NULL) {
+    if (out_content_length != NULL) {
+        *out_content_length = 0U;
+    }
+    if (out_transfer_encoding != NULL) {
+        *out_transfer_encoding = false;
+    }
+    if (out_invalid != NULL) {
+        *out_invalid = false;
+    }
+
+    if (request == NULL || out_content_length == NULL || out_transfer_encoding == NULL ||
+        out_invalid == NULL)
+    {
         return false;
     }
 
-    while (line_end + 1U < length && !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
+    while (line_end + 1U < head_end &&
+           !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
     {
         line_end += 1U;
     }
-    if (line_end + 1U >= length) {
+    if (line_end + 1U >= head_end) {
+        *out_invalid = true;
         return false;
     }
 
     line_start = line_end + 2U;
-    while (line_start + 1U < length) {
+    while (line_start + 1U < head_end) {
+        size_t colon = 0U;
         line_end = line_start;
-        while (line_end + 1U < length &&
+        while (line_end + 1U < head_end &&
                !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
         {
             line_end += 1U;
         }
-        if (line_end + 1U >= length || line_end == line_start) {
+        if (line_end + 1U >= head_end) {
+            *out_invalid = true;
             return false;
         }
-        if (sl_run_header_line_declares_body(request + line_start, line_end - line_start)) {
+        if (line_end == line_start) {
             return true;
+        }
+
+        while (colon < line_end - line_start && request[line_start + colon] != ':') {
+            colon += 1U;
+        }
+        if (colon == line_end - line_start) {
+            *out_invalid = true;
+            return false;
+        }
+
+        if (sl_run_header_name_equal(request + line_start, colon, "Transfer-Encoding")) {
+            *out_transfer_encoding = true;
+        }
+        if (sl_run_header_name_equal(request + line_start, colon, "Content-Length")) {
+            size_t value = 0U;
+            if (saw_content_length ||
+                !sl_run_parse_content_length_value(request + line_start + colon + 1U,
+                                                   line_end - line_start - colon - 1U, &value))
+            {
+                *out_invalid = true;
+                return false;
+            }
+            saw_content_length = true;
+            *out_content_length = value;
         }
         line_start = line_end + 2U;
     }
 
+    *out_invalid = true;
     return false;
+}
+
+typedef enum SlRunReadState
+{
+    SL_RUN_READ_WAIT = 0,
+    SL_RUN_READ_RESPONDED = 1,
+    SL_RUN_READ_READY = 2
+} SlRunReadState;
+
+static bool sl_run_client_write_text_response(SlRunClient* client, uv_stream_t* stream,
+                                              unsigned status, SlStr body)
+{
+    int response_length;
+    uv_buf_t response_buf;
+
+    if (client == NULL || stream == NULL) {
+        return false;
+    }
+
+    response_length = sl_run_write_response(client->response, sizeof(client->response), status,
+                                            "text/plain; charset=utf-8", body);
+    if (response_length < 0) {
+        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
+        return false;
+    }
+
+    response_buf = uv_buf_init(client->response, (unsigned int)response_length);
+    client->write_request.data = client;
+    (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
+    return true;
+}
+
+static SlRunReadState sl_run_client_request_read_state(SlRunClient* client, uv_stream_t* stream,
+                                                       size_t head_end, size_t* out_complete_length)
+{
+    size_t content_length = 0U;
+    bool transfer_encoding = false;
+    bool invalid_body_headers = false;
+
+    if (out_complete_length != NULL) {
+        *out_complete_length = 0U;
+    }
+    if (client == NULL || stream == NULL || out_complete_length == NULL) {
+        return SL_RUN_READ_RESPONDED;
+    }
+
+    if (!sl_run_request_body_info(client->request, head_end, &content_length, &transfer_encoding,
+                                  &invalid_body_headers) ||
+        invalid_body_headers)
+    {
+        (void)sl_run_client_write_text_response(client, stream, 400U,
+                                                sl_str_from_cstr("Malformed HTTP request\n"));
+        return SL_RUN_READ_RESPONDED;
+    }
+
+    if (transfer_encoding) {
+        (void)sl_run_client_write_text_response(
+            client, stream, 501U, sl_str_from_cstr("Request body framing is not supported\n"));
+        return SL_RUN_READ_RESPONDED;
+    }
+
+    if (content_length > SL_HTTP_DEFAULT_MAX_BODY_LENGTH ||
+        content_length > sizeof(client->request) - head_end)
+    {
+        (void)sl_run_client_write_text_response(client, stream, 413U,
+                                                sl_str_from_cstr("Payload Too Large\n"));
+        return SL_RUN_READ_RESPONDED;
+    }
+
+    *out_complete_length = head_end + content_length;
+    if (client->request_length > *out_complete_length) {
+        (void)sl_run_client_write_text_response(client, stream, 400U,
+                                                sl_str_from_cstr("Malformed HTTP request\n"));
+        return SL_RUN_READ_RESPONDED;
+    }
+    return client->request_length < *out_complete_length ? SL_RUN_READ_WAIT : SL_RUN_READ_READY;
+}
+
+static int sl_run_client_dispatch_complete_request(SlRunClient* client, size_t complete_length)
+{
+    unsigned char request_arena_storage[SL_RUN_ARENA_BYTES];
+    SlArena request_arena = {0};
+    SlHttpRequestHead request = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (client == NULL || client->server == NULL) {
+        return -1;
+    }
+
+    if (!sl_status_is_ok(
+            sl_arena_init(&request_arena, request_arena_storage, sizeof(request_arena_storage))))
+    {
+        return -1;
+    }
+
+    status = sl_http_parse_request_head(
+        &request_arena, sl_bytes_from_parts((const unsigned char*)client->request, complete_length),
+        NULL, &request, &diag);
+    if (sl_status_is_ok(status)) {
+        return sl_run_dispatch_head(client->server->app, &request, client->response,
+                                    sizeof(client->response));
+    }
+
+    return sl_run_write_response(
+        client->response, sizeof(client->response),
+        (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED ||
+         diag.code == SL_DIAG_HTTP_BODY_LIMIT || diag.code == SL_DIAG_HTTP_HEADER_LIMIT)
+            ? 413U
+            : 400U,
+        "text/plain; charset=utf-8", sl_str_from_cstr("Malformed HTTP request\n"));
+}
+
+static void sl_run_client_write_buffer_or_close(SlRunClient* client, uv_stream_t* stream,
+                                                int response_length)
+{
+    uv_buf_t response_buf;
+
+    if (client == NULL || stream == NULL) {
+        return;
+    }
+    if (response_length < 0) {
+        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
+        return;
+    }
+
+    response_buf = uv_buf_init(client->response, (unsigned int)response_length);
+    client->write_request.data = client;
+    (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
 }
 
 static void sl_run_client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
 {
     SlRunClient* client = (SlRunClient*)stream->data;
-    unsigned char request_arena_storage[SL_RUN_ARENA_BYTES];
-    SlArena request_arena = {0};
-    SlHttpRequestHead request = {0};
-    SlDiag diag = {0};
     int response_length = 0;
-    SlStatus status;
-    uv_buf_t response_buf;
+    size_t head_end = 0U;
+    size_t complete_length = 0U;
+    SlRunReadState read_state = SL_RUN_READ_WAIT;
 
     (void)buf;
     if (client == NULL) {
@@ -2071,61 +2259,21 @@ static void sl_run_client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_b
     }
 
     client->request_length += (size_t)nread;
-    if (!sl_run_request_complete(client)) {
+    if (!sl_run_find_request_head_end(client->request, client->request_length, &head_end)) {
         if (client->request_length >= sizeof(client->request)) {
-            response_length = sl_run_write_response(client->response, sizeof(client->response),
-                                                    500U, "text/plain; charset=utf-8",
+            (void)sl_run_client_write_text_response(client, stream, 413U,
                                                     sl_str_from_cstr("Request head too large\n"));
-            response_buf = uv_buf_init(client->response, (unsigned int)response_length);
-            client->write_request.data = client;
-            (void)uv_write(&client->write_request, stream, &response_buf, 1U,
-                           sl_run_client_write_cb);
         }
         return;
     }
 
-    if (sl_run_request_declares_body(client->request, client->request_length)) {
-        response_length = sl_run_write_response(
-            client->response, sizeof(client->response), 501U, "text/plain; charset=utf-8",
-            sl_str_from_cstr("Request body is not supported\n"));
-        if (response_length < 0) {
-            uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
-            return;
-        }
-        response_buf = uv_buf_init(client->response, (unsigned int)response_length);
-        client->write_request.data = client;
-        (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
+    read_state = sl_run_client_request_read_state(client, stream, head_end, &complete_length);
+    if (read_state != SL_RUN_READ_READY) {
         return;
     }
 
-    if (!sl_status_is_ok(
-            sl_arena_init(&request_arena, request_arena_storage, sizeof(request_arena_storage))))
-    {
-        return;
-    }
-
-    status = sl_http_parse_request_head(
-        &request_arena,
-        sl_bytes_from_parts((const unsigned char*)client->request, client->request_length), NULL,
-        &request, &diag);
-    if (sl_status_is_ok(status)) {
-        response_length = sl_run_dispatch_head(client->server->app, &request, client->response,
-                                               sizeof(client->response));
-    }
-    else {
-        response_length = sl_run_write_response(client->response, sizeof(client->response), 500U,
-                                                "text/plain; charset=utf-8",
-                                                sl_str_from_cstr("Malformed HTTP request\n"));
-    }
-
-    if (response_length < 0) {
-        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
-        return;
-    }
-
-    response_buf = uv_buf_init(client->response, (unsigned int)response_length);
-    client->write_request.data = client;
-    (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
+    response_length = sl_run_client_dispatch_complete_request(client, complete_length);
+    sl_run_client_write_buffer_or_close(client, stream, response_length);
 }
 
 static SlRunClient* sl_run_server_acquire_client(SlRunServer* server)
@@ -2215,7 +2363,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
     }
 
     (void)printf("Sloppy dev server listening on http://%s:%u\n", host, (unsigned)port);
-    (void)printf("Dev-only MVP: no TLS, no body parsing, no streaming, no middleware.\n");
+    (void)printf("Dev-only MVP: no TLS, no streaming, no middleware.\n");
     rc = uv_run(&server.loop, UV_RUN_DEFAULT);
     (void)uv_loop_close(&server.loop);
     return rc == 0 ? 0 : 1;

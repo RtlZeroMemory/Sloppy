@@ -27,6 +27,13 @@ static SlBytes bytes_from_cstr(const char* text)
     return sl_bytes_from_parts((const unsigned char*)str.ptr, str.length);
 }
 
+static int expect_bytes_equal(SlBytes actual, const char* expected)
+{
+    SlBytes expected_bytes = bytes_from_cstr(expected);
+
+    return expect_true(sl_bytes_equal(actual, expected_bytes));
+}
+
 static SlStatus parse_request(SlArena* arena, const char* text, const SlHttpParseOptions* options,
                               SlHttpRequestHead* out, SlDiag* out_diag)
 {
@@ -98,6 +105,31 @@ static int test_parse_headers(void)
         expect_str_equal(request.headers[1].value, "text/plain") != 0)
     {
         return 12;
+    }
+
+    return 0;
+}
+
+static int test_parse_body_bytes(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 13;
+    }
+
+    status = parse_request(&arena,
+                           "POST /items HTTP/1.1\r\nContent-Type: application/json\r\n"
+                           "Content-Length: 11\r\n\r\n{\"ok\":true}",
+                           NULL, &request, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || request.method != SL_HTTP_METHOD_POST ||
+        expect_str_equal(request.path, "/items") != 0 ||
+        expect_bytes_equal(request.body, "{\"ok\":true}") != 0)
+    {
+        return 14;
     }
 
     return 0;
@@ -291,6 +323,44 @@ static int test_max_headers_enforced(void)
     return 0;
 }
 
+static int test_max_body_length_enforced(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlDiag diag = {0};
+    SlHttpParseOptions options = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 54;
+    }
+
+    options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    options.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
+    options.max_body_length = 4U;
+    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\n12345", &options,
+                           &request, &diag);
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        diag.code != SL_DIAG_HTTP_BODY_LIMIT || request.body.length != 0U)
+    {
+        return 55;
+    }
+
+    sl_arena_reset(&arena);
+    request = (SlHttpRequestHead){0};
+    diag = (SlDiag){0};
+    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 4\r\n\r\n1234", &options,
+                           &request, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code == SL_DIAG_HTTP_BODY_LIMIT ||
+        request.body.length != 4U)
+    {
+        return 56;
+    }
+
+    return 0;
+}
+
 static int test_zero_header_limit_allows_no_headers(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -423,6 +493,11 @@ int main(void)
         return result;
     }
 
+    result = test_parse_body_bytes();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_supported_method_mapping();
     if (result != 0) {
         return result;
@@ -454,6 +529,11 @@ int main(void)
     }
 
     result = test_max_headers_enforced();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_max_body_length_enforced();
     if (result != 0) {
         return result;
     }

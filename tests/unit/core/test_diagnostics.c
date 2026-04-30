@@ -386,6 +386,18 @@ static int test_provider_code_names(void)
         return 61;
     }
 
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_BODY_LIMIT),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_BODY_LIMIT")) != 0)
+    {
+        return 62;
+    }
+
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE")) != 0)
+    {
+        return 63;
+    }
+
     return 0;
 }
 

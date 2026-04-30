@@ -14,6 +14,8 @@
  */
 #include "sloppy/plan.h"
 
+#include "sloppy/http.h"
+
 static bool sl_plan_token_equal(SlStr left, SlStr right)
 {
     return !sl_str_is_empty(left) && sl_str_equal(left, right);
@@ -31,16 +33,14 @@ bool sl_handler_id_valid(SlHandlerId id)
 
 bool sl_plan_route_method_supported(SlStr method)
 {
-    return sl_str_equal(method, sl_str_from_cstr("GET")) ||
-           sl_str_equal(method, sl_str_from_cstr("POST")) ||
-           sl_str_equal(method, sl_str_from_cstr("PUT")) ||
-           sl_str_equal(method, sl_str_from_cstr("PATCH")) ||
-           sl_str_equal(method, sl_str_from_cstr("DELETE"));
+    SlHttpMethod http_method = SL_HTTP_METHOD_UNKNOWN;
+    return sl_status_is_ok(sl_http_method_from_str(method, &http_method)) &&
+           sl_http_method_supported(http_method);
 }
 
 bool sl_plan_route_method_runnable(SlStr method)
 {
-    return sl_str_equal(method, sl_str_from_cstr("GET"));
+    return sl_plan_route_method_supported(method);
 }
 
 bool sl_plan_provider_supported(SlStr provider)

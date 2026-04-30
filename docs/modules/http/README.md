@@ -14,9 +14,12 @@ descriptor/writer and minimal request context for that path: route params, query
 and method/path/rawTarget are passed to V8 handlers, supported descriptors become HTTP/1.1
 bytes, and the connection is closed. MAIN1-04 hardens that dev-only path with a native
 route table built from Plan route metadata, deterministic literal-before-parameter
-precedence, request-target and query bounds, unsupported-body diagnostics, and stricter
-result descriptor diagnostics. There is still no production HTTP server, body parsing,
-streaming parser API, middleware, public TypeScript `app.run`, or broad response framework.
+precedence, request-target/query/body bounds, GET/POST/PUT/PATCH/DELETE dispatch, request
+headers and JSON/text bodies in the V8 request context, unsupported content-type and JSON
+diagnostics, and stricter result descriptor diagnostics. ENGINE-04 completes the bounded
+framework HTTP runtime slice for realistic local APIs. There is still no production HTTP
+server, TLS, streaming parser API, middleware, cookies/sessions, multipart upload,
+streaming responses, public TypeScript `app.run`, or broad response framework.
 
 ## Purpose
 
@@ -34,7 +37,7 @@ Implemented now:
 - map supported request methods into `SlHttpMethod`;
 - copy request target, path, header names, and header values into a caller-provided arena;
 - run a minimal libuv loop init/close smoke to prove dependency linkage;
-- dispatch one parsed in-memory GET request head through a manual route binding table to a
+- dispatch parsed in-memory GET/POST/PUT/PATCH/DELETE requests through route metadata to a
   Sloppy Plan handler ID;
 - invoke the matched handler through the context-aware runtime-contract helper when an
   engine is available;
@@ -49,15 +52,17 @@ Implemented now:
   `Content-Type`, `Content-Length`, CRLF formatting, body bytes, and 204 no-body behavior;
 - minimal query parsing with `%XX`/`+` decoding, last-wins repeated keys, and
   `SL_HTTP_DEFAULT_MAX_QUERY_PARAMS` pair bounds;
-- route/query/request context materialization for V8 handler calls.
-- unsupported request bodies rejected before handler execution.
+- route/query/request/header/body context materialization for V8 handler calls;
+- bounded JSON/text request body policy with deterministic 400/413/415/501 failures before
+  handler execution;
+- request cancellation/backpressure checks before V8 handler entry when a cancellation token
+  or in-flight request cap is present.
 
 Future scope:
 
 - streaming HTTP parser state;
-- HTTP body parsing;
 - request lifecycle;
-- production method dispatch and server hardening;
+- production server hardening;
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
 
@@ -67,7 +72,7 @@ response writer.
 
 ## Non-goals
 
-- No production HTTP server, body parsing, streaming parser, middleware, broad public
+- No production HTTP server, streaming parser, middleware, broad public
   TypeScript API, or app host behavior in TASK 10.B, TASK 10.C, EPIC-22, or EPIC-23.
 - No sockets, request/response objects, middleware, route groups, route table, trie,
   precedence engine, public TypeScript API, `app.mapGet`, validation, OpenAPI, V8, or
@@ -134,36 +139,46 @@ do not match.
 
 Paths passed to the matcher must start with `/` and must not include a query string.
 
-The HTTP parser accepts a complete HTTP/1.x request head in one `SlBytes` buffer. It does
-not expose streaming state. It rejects malformed input, incomplete input, missing HTTP
-versions, unsupported methods, empty/non-path request targets, and header counts above
-`max_headers`. When parse options are omitted, `SL_HTTP_DEFAULT_MAX_HEADERS` is used. A
-zero header limit allows requests with no headers and rejects the first parsed header.
+The HTTP parser accepts a complete HTTP/1.x request message in one `SlBytes` buffer. It
+does not expose streaming state. It rejects malformed input, incomplete input, missing HTTP
+versions, unsupported methods, empty/non-path request targets, header counts above
+`max_headers`, and bodies above `max_body_length`. When parse options are omitted,
+`SL_HTTP_DEFAULT_MAX_HEADERS` and `SL_HTTP_DEFAULT_MAX_BODY_LENGTH` are used. A zero header
+limit allows requests with no headers and rejects the first parsed header.
 
 Supported method mapping is intentionally small: GET, POST, PUT, DELETE, PATCH, OPTIONS,
 and HEAD. Other llhttp methods fail as unsupported for this skeleton.
 
 `raw_target` stores the request target exactly as reported by llhttp. `path` stores the
-portion before `?`. TASK 10.B only accepts origin-form path targets that start with `/`;
+portion before `?`. The parser accepts origin-form path targets that start with `/`;
 asterisk-form and absolute-form targets are rejected before returning success. Query
-parsing, percent decoding, URL normalization, and host validation are deferred.
+parsing is performed by dispatch with `%XX` and `+` decoding. URL normalization and host
+validation are deferred.
 
 The dispatch helper accepts an already parsed `SlHttpRequestHead`, a route table, a parsed
-`SlPlan`, and an `SlEngine`. The route table is built from Plan v1 alpha route metadata
-before serving and parses each route pattern up front. MAIN1-04 supports only GET route
-entries. Duplicate method+pattern pairs are rejected as startup route-table failures.
-Literal routes sort before parameter routes, and equal-precedence routes keep source order.
-The helper rejects non-GET requests as `405`, rejects requests that declare a body as
-`501`, matches `request.path`, validates the handler ID exists in the plan before entering
-the engine, parses the query string, and then calls
-`sl_runtime_contract_call_handler_with_context`. Route parameters are passed to JavaScript
-as strings in `ctx.route`.
+`SlPlan`, and an `SlEngine`. The route table is built from Plan v1 route metadata before
+serving and parses each route pattern up front. GET, POST, PUT, PATCH, and DELETE entries
+are runnable when compiler/plan metadata marks them supported. Duplicate method+pattern
+pairs are rejected as startup route-table failures. Literal routes sort before parameter
+routes, and equal-precedence routes keep source order. The helper returns `404` for a route
+miss, `405` when the path matches but the method does not, validates the handler ID exists
+in the plan before entering the engine, parses the query string, applies the body policy,
+and then calls `sl_runtime_contract_call_handler_with_context`.
+
+V8 request context materialization exposes route parameters as strings in `ctx.route`,
+last-wins query parameters in `ctx.query`, `ctx.request.method`, `ctx.request.path`,
+`ctx.request.rawTarget`, case-insensitive request headers through
+`ctx.request.headers.get(name)`, deterministic header entries through
+`ctx.request.headers.entries()`, `ctx.request.text()`, and `ctx.request.json()` for JSON
+bodies. Duplicate request headers with the same case-insensitive name are comma-joined in
+insertion order.
 
 `sloppy run` builds that route table from the Plan `routes` section. It uses the native
 response writer: supported handler results use their descriptor status, route misses return
-`404`, unsupported methods return `405`, unsupported request bodies return `501`, and safe
-dev `500` text is used for malformed requests, malformed result descriptors, or
-handler/runtime failures.
+`404`, method mismatches return `405`, malformed JSON returns `400`, oversized bodies return
+`413`, unsupported content types return `415`, unsupported transfer/body framing returns
+`501`, and safe dev `500` text is used for malformed requests, malformed result
+descriptors, or handler/runtime failures.
 
 ## Ownership/Lifetime Rules
 
@@ -176,18 +191,17 @@ matches return no parameter array. Captured parameter names point into the parse
 arena. Captured parameter values are borrowed slices of the matched path input and are valid
 only while that path storage remains valid.
 
-HTTP request-head data returned by `sl_http_parse_request_head` is arena-owned. The caller
+HTTP request-head data returned by `sl_http_parse_request_head` is arena-owned, including
+copied header names, header values, request target/path, and bounded body bytes. The caller
 must keep the arena backing storage alive for the desired request-head lifetime. The parser
 does not return pointers into llhttp temporary state. It also does not retain pointers to
 the input buffer after success.
 
 HTTP dispatch tables borrow route bindings, parsed route patterns, plans, and engine
 handles for the duration of the call only. `sl_http_dispatch_request_head` does not retain
-request, route, plan, engine, route-parameter, or query-parameter storage. Successful V8
-text/JSON/problem response bodies are copied into the caller-provided arena.
-
-Request data must have documented ownership and may not outlive its scope unsafely once HTTP
-request handling grows beyond this skeleton.
+request, route, plan, engine, route-parameter, query-parameter, header, or body storage.
+Successful V8 text/JSON/problem response bodies and custom response headers are copied into
+the caller-provided arena.
 
 ## Invariants
 
@@ -217,13 +231,16 @@ Implemented parser diagnostics are intentionally small:
 TASK 10.B adds small HTTP parser diagnostics:
 
 - invalid/malformed/incomplete HTTP request;
-- HTTP header count limit exceeded.
-- request target length exceeded.
+- HTTP header count limit exceeded;
+- request target length exceeded;
+- request body length exceeded.
 
-TASK 10.C and MAIN1-04 add small synthetic/dev dispatch diagnostics:
+TASK 10.C, MAIN1-04, and ENGINE-04 add small synthetic/dev dispatch diagnostics:
 
-- unsupported non-GET dispatch method;
+- unsupported or method-mismatched dispatch method;
 - unsupported request body;
+- unsupported request content type;
+- malformed JSON request body;
 - no matching route;
 - matched route references a missing plan handler;
 - duplicate route table entries during startup;
@@ -256,6 +273,7 @@ Implemented CTest coverage:
 - malformed request lines, missing versions, invalid methods/tokens, invalid headers,
   incomplete requests, and empty targets;
 - max-header enforcement;
+- body byte capture and max-body enforcement;
 - request target length enforcement;
 - parser diagnostics for malformed requests and header limits;
 - route matcher reuse with a parsed request path;
@@ -264,12 +282,15 @@ Implemented CTest coverage:
 - query parameter limit enforcement;
 - libuv init/close smoke without network I/O;
 - synthetic dispatch no-route failure;
-- synthetic dispatch non-GET failure;
+- synthetic dispatch method mismatch failure;
+- synthetic dispatch GET/POST/PUT/PATCH/DELETE method routing;
 - unsupported request body dispatch failure;
+- unsupported content-type, invalid JSON, and body-too-large dispatch failures;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;
-- V8-gated missing JavaScript function and throwing handler failures.
+- V8-gated non-GET dispatch, request headers, and JSON body context;
+- V8-gated missing JavaScript function and throwing handler failures;
 - default CLI tests for `sloppy run` help text, missing artifacts, malformed artifacts,
   source-input deferral, and clear V8-disabled failure;
 - V8-gated `sloppy run --once` tests for hello, route miss, unsupported method,
@@ -277,8 +298,8 @@ Implemented CTest coverage:
 
 EPIC-20 adds manual benchmarks for route matching and complete-buffer request-head parsing.
 The request-head benchmark is a parser microbenchmark only. It is not an HTTP server
-throughput benchmark and does not involve sockets, response writing, request bodies,
-middleware, or public TypeScript APIs.
+throughput benchmark and does not involve sockets, response writing, middleware, or public
+TypeScript APIs.
 
 EPIC-23 tests add native response writer exact-byte coverage, query parser coverage for
 empty, repeated, decoded, and malformed query strings, and compiler/example coverage for
@@ -286,11 +307,10 @@ request context shape.
 
 Future tests:
 
-- route table and ambiguity tests;
+- route table ambiguity tests;
 - broader HTTP server/socket integration tests;
 - fuzz target for route patterns;
-- broader result descriptor conversion edge cases;
-- response writer behavior beyond the current dev-only MVP.
+- broader response writer behavior beyond the current dev-only MVP.
 
 ## Source Docs
 

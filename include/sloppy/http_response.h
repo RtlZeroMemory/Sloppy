@@ -2,6 +2,7 @@
 #define SLOPPY_HTTP_RESPONSE_H
 
 #include "sloppy/bytes.h"
+#include "sloppy/http.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -23,16 +24,18 @@ typedef enum SlHttpResponseKind
 /*
  * Native HTTP response descriptor for the EPIC-23 dev response writer.
  *
- * The descriptor borrows `content_type` and `body` bytes from caller-owned or arena-owned
- * storage. The writer copies those bytes into the caller-provided output buffer and never
- * retains the descriptor. Headers beyond Content-Type and Content-Length are intentionally
- * out of scope for this slice.
+ * The descriptor borrows `content_type`, `headers`, and `body` bytes from caller-owned or
+ * arena-owned storage. The writer copies those bytes into the caller-provided output buffer
+ * and never retains the descriptor. Content-Type and Content-Length remain runtime-managed;
+ * custom headers must not try to override them.
  */
 typedef struct SlHttpResponse
 {
     uint16_t status;
     SlHttpResponseKind kind;
     SlStr content_type;
+    const SlHttpHeader* headers;
+    size_t header_count;
     SlBytes body;
 } SlHttpResponse;
 
@@ -46,7 +49,8 @@ SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body);
  *
  * `response`, `buffer`, and `out_bytes` are required. Returned bytes borrow `buffer` and
  * remain valid until the caller mutates that storage. Supported statuses are 200, 201, 202,
- * 204, 400, 404, 405, 500, and 501. Unknown statuses and CR/LF in Content-Type are rejected.
+ * 204, 400, 404, 405, 413, 415, 500, and 501. Unknown statuses, invalid custom header
+ * names, managed custom headers, and CR/LF in Content-Type or header values are rejected.
  * Status 204 always writes no Content-Type, no Content-Length, and no body.
  */
 SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,

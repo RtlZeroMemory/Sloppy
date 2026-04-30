@@ -124,6 +124,14 @@ function badRequest(valueOrProblem, options) {
     return createResult("json", valueOrProblem, JSON_CONTENT_TYPE, { status: 400, ...options });
 }
 
+function status(statusCode, value, options) {
+    if (value === undefined) {
+        return createResult("empty", undefined, undefined, { ...options, status: statusCode });
+    }
+
+    return createResult("json", value, JSON_CONTENT_TYPE, { ...options, status: statusCode });
+}
+
 function problem(problemOrMessage, options) {
     const status = resolveStatus({ status: 500, ...options });
     return createResult(
@@ -141,6 +149,7 @@ export const Results = Object.freeze({
     noContent,
     notFound,
     badRequest,
+    status,
     problem,
     text,
     json,

@@ -308,6 +308,9 @@ Runtime diagnostics:
 - duplicate route parameter names.
 - duplicate route method+pattern pairs during route table construction;
 - unsupported request bodies;
+- unsupported request content types;
+- request body size limit failures;
+- malformed JSON request bodies;
 - invalid HTTP result descriptors.
 
 V8 diagnostics:

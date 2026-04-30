@@ -320,6 +320,7 @@ if(SLOPPY_ENABLE_V8)
         APPEND
         SLOPPY_CORE_SOURCES
         src/engine/v8/engine_v8.cc
+        src/engine/v8/http_bridge.cc
         src/engine/v8/intrinsics.cc
         src/engine/v8/intrinsics_sqlite.cc)
 endif()

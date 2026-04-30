@@ -20,7 +20,10 @@ Rules:
 - Native handles exposed to JS must flow through `SlResourceId` values with generation,
   liveness, and kind checks in `SlResourceTable`.
 - `engine_v8.cc` owns isolate/context lifecycle, handler registration, source evaluation,
-  and result/request conversion only.
+  owner-thread checks, and Promise orchestration only.
+- Framework-specific V8 bridge code such as HTTP request context materialization and
+  `Results.*` conversion lives in dedicated sibling modules such as `http_bridge.cc`; do
+  not add it directly to `engine_v8.cc`.
 - Provider-specific JS-to-native bridges live in `intrinsics_<provider>.cc` files and are
   reached through `intrinsics.cc`; do not add SQLite/PostgreSQL/SQL Server bridge logic
   directly to `engine_v8.cc`.

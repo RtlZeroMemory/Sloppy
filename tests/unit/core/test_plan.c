@@ -72,13 +72,13 @@ static int test_route_method_helpers(void)
     if (expect_true(sl_plan_route_method_supported(sl_str_from_cstr("GET"))) != 0 ||
         expect_true(sl_plan_route_method_runnable(sl_str_from_cstr("GET"))) != 0 ||
         expect_true(sl_plan_route_method_supported(sl_str_from_cstr("POST"))) != 0 ||
-        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("POST"))) != 0 ||
+        expect_true(sl_plan_route_method_runnable(sl_str_from_cstr("POST"))) != 0 ||
         expect_true(sl_plan_route_method_supported(sl_str_from_cstr("PUT"))) != 0 ||
-        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("PUT"))) != 0 ||
+        expect_true(sl_plan_route_method_runnable(sl_str_from_cstr("PUT"))) != 0 ||
         expect_true(sl_plan_route_method_supported(sl_str_from_cstr("PATCH"))) != 0 ||
-        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("PATCH"))) != 0 ||
+        expect_true(sl_plan_route_method_runnable(sl_str_from_cstr("PATCH"))) != 0 ||
         expect_true(sl_plan_route_method_supported(sl_str_from_cstr("DELETE"))) != 0 ||
-        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("DELETE"))) != 0)
+        expect_true(sl_plan_route_method_runnable(sl_str_from_cstr("DELETE"))) != 0)
     {
         return 15;
     }

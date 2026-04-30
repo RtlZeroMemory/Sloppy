@@ -73,6 +73,39 @@ static int test_statuses_and_content_length(void)
                            "text/plain; charset=utf-8\r\nContent-Length: 8\r\n\r\nNo body\n");
 }
 
+static int test_error_statuses_for_http_policy(void)
+{
+    if (expect_response(sl_http_response_text(413U, sl_str_from_cstr("Too large\n")),
+                        "HTTP/1.1 413 Payload Too Large\r\nConnection: close\r\nContent-Type: "
+                        "text/plain; charset=utf-8\r\nContent-Length: 10\r\n\r\nToo large\n") != 0)
+    {
+        return 1;
+    }
+
+    return expect_response(
+        sl_http_response_text(415U, sl_str_from_cstr("Unsupported\n")),
+        "HTTP/1.1 415 Unsupported Media Type\r\nConnection: close\r\nContent-Type: "
+        "text/plain; charset=utf-8\r\nContent-Length: 12\r\n\r\nUnsupported\n");
+}
+
+static int test_custom_headers_are_written_after_content_type(void)
+{
+    SlHttpHeader headers[2];
+    SlHttpResponse response = sl_http_response_text(200U, sl_str_from_cstr("hello"));
+
+    headers[0].name = sl_str_from_cstr("X-Test");
+    headers[0].value = sl_str_from_cstr("one");
+    headers[1].name = sl_str_from_cstr("Cache-Control");
+    headers[1].value = sl_str_from_cstr("no-store");
+    response.headers = headers;
+    response.header_count = 2U;
+
+    return expect_response(response,
+                           "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; "
+                           "charset=utf-8\r\nX-Test: one\r\nCache-Control: "
+                           "no-store\r\nContent-Length: 5\r\n\r\nhello");
+}
+
 static int test_invalid_status_and_content_type_are_rejected(void)
 {
     unsigned char buffer[256];
@@ -87,6 +120,45 @@ static int test_invalid_status_and_content_type_are_rejected(void)
 
     response = sl_http_response_text(200U, sl_str_from_cstr("bad"));
     response.content_type = sl_str_from_cstr("text/plain\r\nx-bad: yes");
+    return expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                         SL_STATUS_INVALID_ARGUMENT);
+}
+
+static int test_invalid_custom_headers_are_rejected(void)
+{
+    unsigned char buffer[256];
+    SlBytes bytes = {0};
+    SlHttpHeader header = {0};
+    SlHttpResponse response = sl_http_response_text(200U, sl_str_from_cstr("bad"));
+
+    header.name = sl_str_from_cstr("Content-Length");
+    header.value = sl_str_from_cstr("3");
+    response.headers = &header;
+    response.header_count = 1U;
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 1;
+    }
+
+    header.name = sl_str_from_cstr("X-Test");
+    header.value = sl_str_from_cstr("bad\r\nX-Injected: yes");
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 2;
+    }
+
+    header.name = sl_str_from_cstr("Connection");
+    header.value = sl_str_from_cstr("keep-alive");
+    if (expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 3;
+    }
+
+    header.name = sl_str_from_cstr("Content-Type");
+    header.value = sl_str_from_cstr("text/html");
     return expect_status(sl_http_response_write(&response, buffer, sizeof(buffer), &bytes),
                          SL_STATUS_INVALID_ARGUMENT);
 }
@@ -129,6 +201,23 @@ int main(void)
         return result;
     }
 
-    return run_test("test_invalid_status_and_content_type_are_rejected",
-                    test_invalid_status_and_content_type_are_rejected);
+    result = run_test("test_error_statuses_for_http_policy", test_error_statuses_for_http_policy);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_custom_headers_are_written_after_content_type",
+                      test_custom_headers_are_written_after_content_type);
+    if (result != 0) {
+        return result;
+    }
+
+    result = run_test("test_invalid_status_and_content_type_are_rejected",
+                      test_invalid_status_and_content_type_are_rejected);
+    if (result != 0) {
+        return result;
+    }
+
+    return run_test("test_invalid_custom_headers_are_rejected",
+                    test_invalid_custom_headers_are_rejected);
 }

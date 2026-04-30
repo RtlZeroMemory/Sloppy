@@ -133,9 +133,20 @@ function assertThrowsMessage(fn, expected) {
     assert.equal(typeof app.services.createScope, "function");
 
     app.mapGet("/tiny", () => Results.text("tiny"));
+    app.mapPost("/tiny", () => Results.json({ method: "POST" }));
+    app.mapPut("/tiny", () => Results.json({ method: "PUT" }));
+    app.mapPatch("/tiny", () => Results.json({ method: "PATCH" }));
+    app.mapDelete("/tiny", () => Results.noContent());
     app.mapGroup("/health").withTags("Health").mapGet("/", () => Results.noContent());
+    app.mapGroup("/jobs").withTags("Jobs").mapPost("/", () => Results.accepted());
     assert.equal(app.__getRoutes()[0].handler().body, "tiny");
-    assert.equal(app.__getRoutes()[1].pattern, "/health");
+    assert.equal(app.__getRoutes()[1].method, "POST");
+    assert.equal(app.__getRoutes()[2].method, "PUT");
+    assert.equal(app.__getRoutes()[3].method, "PATCH");
+    assert.equal(app.__getRoutes()[4].method, "DELETE");
+    assert.equal(app.__getRoutes()[5].pattern, "/health");
+    assert.equal(app.__getRoutes()[6].method, "POST");
+    assert.equal(app.__getRoutes()[6].pattern, "/jobs");
 }
 
 {
@@ -154,6 +165,8 @@ function assertThrowsMessage(fn, expected) {
     assert.equal(Object.prototype.hasOwnProperty.call(Results.noContent(), "body"), false);
     assert.equal(Results.notFound().status, 404);
     assert.equal(Results.badRequest({ error: "bad" }).status, 400);
+    assert.deepEqual(Results.status(202, { accepted: true }).body, { accepted: true });
+    assert.equal(Results.status(204).kind, "empty");
     assert.equal(Results.problem("broken").kind, "problem");
     assert.equal(Results.problem("broken").body.status, 500);
     assert.equal(Results.html("<p>ok</p>").contentType, "text/html; charset=utf-8");
