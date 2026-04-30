@@ -1553,12 +1553,6 @@ static int sl_run_validate_startup(SlRunApp* app)
         return 1;
     }
 
-    status = sl_capability_registry_init_from_plan(&app->plan, &app->capability_registry);
-    if (!sl_status_is_ok(status)) {
-        sl_cli_write_cstr(stderr, "sloppy run: capability registry initialization failed\n");
-        return 1;
-    }
-
     return 0;
 }
 

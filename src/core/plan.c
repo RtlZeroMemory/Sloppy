@@ -1,13 +1,14 @@
 /*
  * src/core/plan.c
  *
- * Implements small helpers for Sloppy Plan v1's borrowed native schema. This module defines
- * shape-level behavior only: supported version checks, handler ID rules, handler lookup,
- * and duplicate handler ID detection.
+ * Implements helpers for Sloppy Plan v1's borrowed native schema. This module defines
+ * shape-level behavior and arena-based metadata interning for stable Plan pointers.
  *
  * Safety invariants:
- * - no allocation, parser, file I/O, platform API, or engine dependency;
- * - all strings and handler arrays are borrowed from the caller;
+ * - arena-only allocation; no heap malloc/free, parser, file I/O, platform API, or engine
+ *   dependency;
+ * - parsed Plan strings and arrays remain caller-owned until sl_plan_intern_metadata copies
+ *   selected stable metadata into the caller-provided arena;
  * - handler lookup returns a borrowed pointer into the caller-owned handler table.
  *
  * Tests: tests/unit/core/test_plan.c.
