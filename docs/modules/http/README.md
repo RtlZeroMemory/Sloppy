@@ -31,12 +31,14 @@ ENGINE-13.F adds bounded default non-V8 stress and conformance smoke over the im
 parser, lifecycle, body-policy, overload, shutdown, dispatch, and diagnostic behavior.
 ENGINE-24.A/B adds the first reusable transport listener foundation: Slop-owned server
 config/state, libuv-isolated TCP bind/listen/accept, bounded accepted-connection
-placeholders, overflow close behavior, and cleanup-once stop/dispose. Request reading,
-parser-from-socket integration, dispatch, and response writing remain deferred. This is not
-benchmark evidence and not production-edge HTTP evidence. There is still no production HTTP
-server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser API, middleware,
-cookies/sessions, static file server, compression, multipart upload, streaming responses,
-public TypeScript `app.run`, or broad response framework.
+placeholders, overflow close behavior, and cleanup-once stop/dispose. ENGINE-24.C starts
+the accepted-connection read loop and accumulates real TCP chunks into one bounded parsed
+request-ready state using the existing ENGINE-13 parser and body policy. Dispatch and
+response writing remain #415; timeout/shutdown completion remains #416; localhost full
+smoke remains #417. This is not benchmark evidence and not production-edge HTTP evidence.
+There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser
+API, middleware, cookies/sessions, static file server, compression, multipart upload,
+streaming responses, public TypeScript `app.run`, or broad response framework.
 
 ## Purpose
 
@@ -94,13 +96,19 @@ Implemented now:
   state, internal libuv TCP listener ownership, localhost bind/listen, accept callback,
   accepted connection placeholders in a bounded table, capacity overflow close, and
   stop/dispose cleanup.
+- ENGINE-24.C transport read/request accumulation: accepted connections start a libuv read
+  loop, TCP chunks append into bounded per-connection byte-builder storage, request heads
+  are detected at `CRLFCRLF`, Content-Length bodies are accumulated through existing
+  ENGINE-13 body-reader semantics, parsed requests transition to an internal
+  request-ready state, and an internal ready hook can observe the parsed request for tests.
+  If no hook is configured in this slice, the parsed request is closed immediately so
+  connection/request admission does not remain parked.
 
 Future scope:
 
 - streaming HTTP parser state;
 - production-edge HTTP proof beyond ENGINE-13.F's bounded smoke;
 - production server hardening if explicitly scoped later;
-- transport request read loop and request accumulation (#414);
 - transport dispatch and response write loop (#415);
 - timeout/shutdown completion beyond listener cleanup (#416);
 - localhost conformance beyond the bounded unit smoke (#417);
@@ -134,6 +142,10 @@ response writer.
   chunks, response writing, route dispatch, V8 handler execution, provider work, TLS,
   HTTP/2/3, WebSockets, keep-alive, pipelining, streaming, static files, compression,
   reverse proxy behavior, benchmark claims, or public alpha docs.
+- ENGINE-24.C does not add response writing, route dispatch, V8 handler execution,
+  SQLite/provider work, keep-alive, HTTP pipelining, chunked/streaming bodies, TLS,
+  HTTP/2/3, WebSockets, static files, compression, reverse proxy behavior, benchmark
+  claims, or public alpha docs.
 
 ## Public/Internal API
 
@@ -183,8 +195,11 @@ response writer.
 - `SlHttpTransportServer`;
 - `SlHttpTransportConnection`;
 - server and connection state enums;
+- bounded read/request accumulation caps;
+- internal request-ready callback for #414/#415 handoff tests;
 - init/listen/poll/stop/dispose;
 - accepted connection close;
+- internal/test request-byte feed helper;
 - bounded active-connection and bound-port query helpers.
 
 Libuv types and handles are not exposed by this header; they remain in
@@ -343,6 +358,13 @@ backend admission slot until explicitly closed or until server stop/dispose clos
 The platform TCP handles are independently closed by the transport layer; JavaScript never
 receives raw pointers or native handles.
 
+Each transport connection owns fixed server-arena storage for read chunks, request-byte
+accumulation, and a request arena. The accumulation buffer is driven through
+`SlByteBuilder`, not raw unbounded allocation. The parsed request head and accumulated body
+borrow the connection request arena until the parked request is consumed by a later dispatch
+slice or the connection is closed. ENGINE-24.C parks one request only; extra bytes after the
+first complete request are treated as unsupported pipelining.
+
 HTTP dispatch tables borrow route bindings, parsed route patterns, plans, and engine
 handles for the duration of the call only. `sl_http_dispatch_request_head` does not retain
 request, route, plan, engine, route-parameter, query-parameter, header, or body storage.
@@ -480,6 +502,13 @@ Implemented CTest coverage:
 - transport config validation, init/stop/dispose, localhost ephemeral bind/listen, double
   listen rejection, one accepted TCP connection, bounded max-connection overflow close,
   accepted connection cleanup, and dispose-after-listen cleanup;
+- transport read-loop start on accepted connection, complete GET in one chunk, split
+  request head, body in the same chunk as the head, body split across chunks, empty body,
+  head-too-large rejection, malformed-head rejection, parser header-limit flow-through,
+  body-too-large rejection, Transfer-Encoding/chunked rejection, unsupported media
+  rejection, pipelined request-byte rejection, request-ready internal hook observation,
+  no-hook ready-request cleanup, cleanup after read/partial-body failure, and cleanup after
+  ready request;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;
