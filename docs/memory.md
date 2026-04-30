@@ -49,9 +49,11 @@ primitives in the HTTP parser, request body accumulation, route-pattern copies, 
 matching edge tests, and dev response writer while preserving the current complete-buffer
 HTTP behavior.
 
-Allocator modules, a standalone heap-owned `SlBuf`, and non-HTTP hot-path adoption remain
-deferred. ENGINE-21.D now defines the narrow V8/native and SQLite/native string/blob
-interop helper policy used by later ENGINE-22 adoption.
+Allocator modules, a standalone heap-owned `SlBuf`, and remaining hot-path adoption remain
+deferred. ENGINE-21.D defines the narrow V8/native and SQLite/native string/blob interop
+helper policy. ENGINE-22.D adopts those helpers in provider-neutral V8 bridge internals,
+HTTP request context materialization, `Results.*` descriptor conversion, and exception
+strings. SQLite result/parameter bridge adoption remains a separate ENGINE-22.E task.
 
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 
@@ -60,7 +62,8 @@ ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
   builders, formatting utilities, bounded app/static string interning and symbol tables,
   V8/native conversion policy, SQLite text/blob ownership, and memory safety/stress tests.
 - ENGINE-22 adopts those primitives in hot paths after they exist: HTTP parse/write/body
-  adoption is implemented through ENGINE-22.A for current HTTP hot paths; V8 string conversions, SQLite
+  adoption is implemented through ENGINE-22.A for current HTTP hot paths; provider-neutral
+  V8 bridge string conversion adoption is implemented through ENGINE-22.D; SQLite
   row/result/parameter conversion, diagnostics/source
   frames/JSON, Plan and artifact loading, stable metadata lookup, CLI output, and
   conformance/benchmark guards.

@@ -25,8 +25,15 @@ bool sl_v8_std_string_from_value(v8::Isolate* isolate, v8::Local<v8::Value> valu
 SlStatus sl_v8_string_from_value_copy_to_arena(v8::Isolate* isolate, SlArena* arena,
                                                v8::Local<v8::Value> value, SlStr* out);
 
+SlStatus sl_v8_string_value_copy_bytes_to_arena(v8::Isolate* isolate, SlArena* arena,
+                                                v8::Local<v8::Value> value, SlBytes* out);
+
 SlStatus sl_v8_std_string_copy_to_arena(SlArena* arena, const std::string& src, SlStr* out);
 
 SlStatus sl_v8_std_string_copy_bytes_to_arena(SlArena* arena, const std::string& src, SlBytes* out);
+
+bool sl_v8_throw_type_error_from_native_view(SlV8Engine* backend, SlStr message);
+
+bool sl_v8_throw_error_from_native_view(SlV8Engine* backend, SlStr message);
 
 #endif
