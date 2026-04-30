@@ -27,6 +27,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   returned Promises that settle during the owner-thread microtask drain, rejection
   diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
   for the bounded call.
+- Provider execution runtime beyond ENGINE-12 policy: ENGINE-23 owns provider operation
+  descriptors with owned inputs, per-provider-instance executors, serialized blocking
+  execution for SQLite-class providers, bounded blocking pools, nonblocking-provider mode,
+  capability-gated admission, deterministic cancellation/timeout/shutdown/late-completion
+  cleanup, worker lifecycle, diagnostics, and stress evidence. This must land before
+  ENGINE-17 claims scalable SQLite provider execution or future PostgreSQL/SQL Server
+  bridges depend on provider runtime behavior.
 - Proper HTTP runtime backend beyond ENGINE-04: ENGINE-13 owns listener/backend
   architecture, connection and request lifecycle, parser limits, richer header/body
   buffering policy, keep-alive, deadlines, disconnect/shutdown propagation, backpressure,
@@ -43,8 +50,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   resource cleanup, cancellation propagation, leak-oriented hooks, and lifecycle
   diagnostics.
 - SQLite runtime hardening beyond ENGINE-05: JS transactions/prepared-statement decision,
-  file database policy, cancellation/deadline interruption beyond pre-call checks,
-  request-scope automatic cleanup/leak reporting, and richer production conformance.
+  file database policy, ENGINE-23 serialized blocking offload, cancellation/deadline
+  interruption beyond pre-call checks, request-scope automatic cleanup/leak reporting, and
+  richer production conformance.
 - CLI/dev loop runtime: ENGINE-18 owns `sloppyc`/`sloppy run` UX, source-input run
   decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, watch/dev
   decision, and command diagnostics.
@@ -220,9 +228,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - V8 process shutdown policy and whether process-wide platform teardown is ever attempted.
   Per-engine destroy is defined; global V8 platform teardown remains deliberately deferred.
 - Threading model evolution from inline skeletons to real worker threads/libuv posting,
-  including owner-thread identity checks.
-- Async provider strategy: worker-pool blocking calls versus nonblocking libpq/socket
-  integration; cancellation/deadline semantics by provider.
+  including owner-thread identity checks and provider executor ownership.
+- Async provider strategy under ENGINE-23: serialized SQLite-class blocking calls,
+  bounded blocking pools, nonblocking libpq/socket integration, and
+  cancellation/deadline semantics by provider.
 - Cross-platform SQL Server support versus Windows-first ODBC-only policy.
 - Filesystem/network capability semantics: path normalization, symlinks, config/env
   access, and honest non-sandboxing language.

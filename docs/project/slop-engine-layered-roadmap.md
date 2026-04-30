@@ -20,6 +20,7 @@ Recommended implementation chunks:
 | Compiler/Plan pipeline | ENGINE-02.A through ENGINE-02.D | One large-coherent compiler+Plan PR, or split source maps only if diagnostics risk dominates. |
 | V8 bounded Promise runtime | ENGINE-03.A through ENGINE-03.D plus ENGINE-08.B | One large-coherent V8 async PR covering returned-Promise settlement, owner-thread microtasks, cancellation snapshots, bounded pending-Promise failure, cleanup, and async diagnostics. |
 | Scalable async runtime | ENGINE-12.A through ENGINE-12.D | One large-coherent async-runtime PR only when native completions/provider offload/deadline/shutdown work is ready to cross the runtime boundary. |
+| Provider execution runtime | ENGINE-23.A through ENGINE-23.H | One provider-runtime PR sequence after ENGINE-12 that turns provider/offload policy into operation descriptors, per-provider-instance executors, serialized SQLite-class blocking offload, bounded blocking pools, capability-gated admission, cancellation/late-completion semantics, and diagnostics/stress evidence. |
 | Proper HTTP backend | ENGINE-13.A through ENGINE-13.F | One or more backend PRs for listener ownership, connection/request lifecycle, parser/body limits, cancellation, backpressure, graceful shutdown, diagnostics, and stress/conformance smoke. |
 | Module/bootstrap completion | ENGINE-14.A through ENGINE-14.E | One coherent V8/bootstrap PR sequence for stdlib asset loading, app module loading, ESM/classic decision, cache policy, intrinsic boundaries, source names, and diagnostics. |
 | Diagnostics/source maps | ENGINE-15.A through ENGINE-15.E | One or two PRs for source-map completion, V8 remapping, async diagnostic JSON/source frames, redaction, stable codes, and diagnostic goldens. |
@@ -216,8 +217,9 @@ EPICs: ENGINE-12 (#306).
 This layer is the explicit target for "full async runtime with all shenanigans": native
 completion queues/backends, owner-thread V8 continuation scheduling for native
 completions, cancellation/deadline/shutdown drain behavior, bounded queues and
-backpressure, provider/offload integration, cleanup-once behavior across queued work, and
-stress evidence. It is required before Sloppy claims scalable async performance,
+backpressure, provider/offload policy hooks, cleanup-once behavior across queued work, and
+stress evidence. ENGINE-23 turns those provider/offload hooks into the production provider
+execution runtime. ENGINE-12 is required before Sloppy claims scalable async performance,
 production-ready async HTTP lifecycle, async provider execution, or benchmark results for
 many pending requests.
 
@@ -238,13 +240,15 @@ Tasks:
 - #307 / TASK ENGINE-12.A: native event loop and completion queue backend;
 - #308 / TASK ENGINE-12.B: owner-thread V8 continuation scheduler;
 - #309 / TASK ENGINE-12.C: cancellation, deadline, and shutdown drain policy;
-- #310 / TASK ENGINE-12.D: async backpressure, provider offload, and scalability evidence.
+- #310 / TASK ENGINE-12.D: async backpressure, provider offload, and scalability evidence
+  policy foundation.
 
 Prerequisites: ENGINE-03 accepted; native loop/worker/provider boundaries ready for a real
 async source; request-scope cleanup contract clear enough to survive pending work.
 
 Dependencies: `SlLoop`/`SlAsync`, V8 bridge, app/request lifecycle, diagnostics, HTTP
-shutdown/disconnect policy, provider/offload strategy, testing/evidence harness.
+shutdown/disconnect policy, provider/offload strategy, testing/evidence harness. The
+provider runtime itself is ENGINE-23.
 
 Non-goals: Node compatibility, npm/package-manager behavior, public timers/fetch/fs/process
 APIs unless explicitly scoped, broad multi-isolate scaling, PostgreSQL/SQL Server JS bridge
@@ -259,8 +263,8 @@ stress, and benchmark evidence are reported separately.
 
 Likely PR grouping: one large-coherent async runtime PR if the completion backend,
 owner-thread scheduler, cancellation/deadline policy, and first realistic async source can
-be reviewed together. Split only if backend ownership or provider/offload evidence becomes
-too large to validate in one pass.
+be reviewed together. Split provider execution into ENGINE-23 when provider/offload
+evidence becomes its own runtime subsystem.
 
 Parallelization: diagnostics and stress/evidence fixtures can be prepared while the
 backend/scheduler API is implemented, but V8 continuation tests must wait for a real
@@ -270,7 +274,67 @@ Risks: unbounded queues hidden behind async APIs, worker/provider threads enteri
 request-scope leaks across pending work, shutdown hangs, and benchmark-looking smoke tests
 being mistaken for scalability proof.
 
-## Layer 3C - Remaining Engine Foundation Completion
+## Layer 3C - Provider Execution And Blocking Offload Runtime
+
+Purpose: make provider execution a first-class runtime subsystem before deeper HTTP,
+SQLite, or provider bridge work depends on provider/offload semantics.
+
+Strategic sources:
+
+- `docs/project/provider-execution-current-state-audit.md`;
+- `docs/project/provider-execution-runtime-architecture.md`;
+- `docs/project/engine-23-provider-execution-issue-index.md`.
+
+EPICs: ENGINE-23.
+
+ENGINE-12 owns generic async completion, libuv-backed posting, owner-thread V8
+continuations, cancellation/deadline/shutdown policy, and provider/offload policy
+direction. ENGINE-23 owns the provider execution runtime itself: provider operation
+descriptors with owned inputs, per-provider-instance executors, serialized blocking
+execution for SQLite-class providers, bounded blocking pools, future nonblocking-provider
+mode, capability-gated admission, deterministic overload, worker lifecycle, cleanup, and
+provider diagnostics.
+
+Prerequisites: ENGINE-12.A/B/C/D accepted, capability registry hooks, resource IDs,
+request/app scope ownership primitives, and V8 owner-thread continuation scheduler.
+
+Dependencies: `SlAsyncLoop`, cancellation tokens, diagnostics, resource/app lifecycle,
+SQLite native provider ownership helpers, V8 scheduler, data provider docs, and quality
+gates.
+
+Non-goals: Node compatibility, npm/package-manager behavior, green threads/fibers/virtual
+threads, PostgreSQL/SQL Server JavaScript bridge implementation, ORM, migrations, public
+alpha docs, HTTP backend implementation, and benchmark claims.
+
+Acceptance criteria: provider operations own queued inputs; providers are admitted through
+bounded per-instance executors; SQLite-class blocking work runs off the V8 owner thread in
+serialized order; providers that support parallel blocking work use bounded pools; true
+async providers can use `NONBLOCKING_IO` without occupying blocking workers; capability
+denial happens before enqueue; cancellation, timeout, shutdown, overflow, provider
+failure, and late completion are deterministic and cleanup-safe; diagnostics and stress
+smoke are present without performance claims.
+
+Likely PR grouping:
+
+- ENGINE-23.A plus ENGINE-23.B for descriptors and executor state;
+- ENGINE-23.C for serialized blocking;
+- ENGINE-23.D for blocking pool;
+- ENGINE-23.E plus ENGINE-23.F for cancellation/deadline/late completion and
+  capability-gated admission;
+- ENGINE-23.G for diagnostics and stress evidence;
+- ENGINE-23.H as a docs-only integration guide.
+
+Parallelization: descriptor/executor docs and tests can be prepared together. Serialized
+blocking and blocking pool implementations should not edit the same worker lifecycle code
+in parallel without an agreed owner. Capability-gated dispatch should wait for the
+descriptor/admission API. Stress evidence should wait until real executor paths exist.
+
+Risks: hiding blocking work on the V8 owner thread, unbounded provider queues, treating
+libuv's global threadpool as the provider runtime, allowing capability checks to remain
+advisory, double cleanup on late completion, and benchmark-looking stress output being
+misread as performance evidence.
+
+## Layer 3D - Remaining Engine Foundation Completion
 
 Purpose: finish the rest of Sloppy's engine foundation after ENGINE-12 without turning the
 project into Node/npm compatibility, a production internet-edge server, ORM/migration
@@ -278,20 +342,24 @@ stack, public alpha launch, or benchmark marketing project.
 
 Strategic source: `docs/project/engine-13-plus-architecture.md`.
 
-EPICs: ENGINE-13 through ENGINE-20, plus the cross-cutting memory/string foundation in
-ENGINE-21 and ENGINE-22.
+EPICs: ENGINE-13 through ENGINE-20, plus ENGINE-21 and ENGINE-22 for memory/string
+foundation and adoption. ENGINE-23 is the provider-runtime prerequisite that sits between
+ENGINE-12 and provider-heavy ENGINE-17 work.
 
 Proper async and proper HTTP remain separate layers. ENGINE-12 owns the generic native
-completion, owner-thread continuation, cancellation/deadline/shutdown, queue, provider
-offload, and stress-evidence backend. ENGINE-13 owns HTTP-specific listener, connection,
-request, parser, body, keep-alive, timeout, backpressure, graceful shutdown, and server
-diagnostic policy on top of those primitives.
+completion, owner-thread continuation, cancellation/deadline/shutdown, queue, and
+backpressure primitives. ENGINE-23 owns provider/offload execution. ENGINE-13 owns
+HTTP-specific listener, connection, request, parser, body, keep-alive, timeout,
+backpressure, graceful shutdown, and server diagnostic policy on top of the shared
+runtime primitives.
 
 Tasks by EPIC:
 
 - ENGINE-13: proper HTTP runtime backend for listener/backend architecture,
   connection/request lifecycle, parser/body limits, cancellation, backpressure, graceful
-  shutdown, diagnostics, and stress/conformance smoke.
+  shutdown, diagnostics, and stress/conformance smoke. ENGINE-13 consumes ENGINE-12 and
+  may later use provider pressure/cancellation semantics, but it does not implement the
+  provider runtime.
 - ENGINE-14: module loading and runtime bootstrap completion for stdlib/bootstrap asset
   loading, app module loading, ESM/classic decision, module cache, import rewrite and
   intrinsic boundaries, source names, and startup diagnostics.
@@ -304,7 +372,7 @@ Tasks by EPIC:
 - ENGINE-17: SQLite runtime and data access completion for public JS API, native bridge,
   capability-wired open/use, query/exec/queryOne, transactions, prepared statement
   decision, result mapping, file and memory policy, cleanup, cancellation, and users API
-  proof.
+  proof. ENGINE-17 depends on ENGINE-23 for scalable SQLite-class provider execution.
 - ENGINE-18: CLI and dev loop runtime for `sloppyc`/`sloppy run` UX, source-input run
   decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, optional
   watch/rebuild, and command diagnostics.
@@ -324,7 +392,8 @@ Tasks by EPIC:
   artifact loading, CLI output, and conformance/benchmark guards.
 
 Prerequisites: ENGINE-01 contract, ENGINE-02/03 implementation evidence, ENGINE-12 when
-native async completion behavior is required, and the current issue index in
+native async completion behavior is required, ENGINE-23 when provider/offload execution is
+required, and the current issue index in
 `docs/project/engine-13-plus-issue-index.md`.
 
 Dependencies: HTTP, V8, core lifecycle/resource, data/SQLite, compiler, Plan, diagnostics,
@@ -348,7 +417,7 @@ Parallelization: docs, diagnostics goldens, issue metadata, and conformance fixt
 planning can proceed while runtime owners work. Runtime behavior that crosses lifecycle,
 async, V8, or provider boundaries should wait for the dependent contracts to be stable.
 
-## Layer 3D - Memory/String Foundation And Adoption
+## Layer 3E - Memory/String Foundation And Adoption
 
 Purpose: make memory and string handling a deliberate engine foundation rather than a set
 of local helpers.
@@ -377,7 +446,8 @@ Prerequisites: existing `SlStr`, `SlBytes`, `SlArena`, checked math, diagnostics
 resource-table, HTTP, V8, SQLite, Plan, and CLI foundations.
 
 Dependencies: ENGINE-13 HTTP backend, ENGINE-14 module/bootstrap, ENGINE-15 diagnostics,
-ENGINE-16 lifecycle, ENGINE-17 SQLite, ENGINE-19 conformance, and ENGINE-20 Plan.
+ENGINE-16 lifecycle, ENGINE-17 SQLite, ENGINE-19 conformance, ENGINE-20 Plan, and
+ENGINE-23 provider execution where provider-owned queued payloads cross async boundaries.
 
 Non-goals: general-purpose STL clone, complex allocator framework, lock-free allocator,
 full Unicode library, JSON DOM library, ORM/migrations, Node Buffer compatibility,

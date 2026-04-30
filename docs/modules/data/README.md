@@ -9,6 +9,11 @@ native database capability hook.
 ENGINE-12.CD defines the native provider/offload executor policy that future SQLite,
 PostgreSQL, and SQL Server runtime bridge work must use; current provider calls remain
 synchronous unless their existing phase explicitly wired a JS bridge.
+ENGINE-23 is the implementation roadmap for the real provider execution runtime: owned
+operation descriptors, per-provider-instance executors, serialized SQLite-class blocking
+offload, bounded blocking pools, capability-gated admission, cancellation/late-completion
+semantics, and diagnostics/stress evidence. SQLite runtime completion depends on that
+runtime before Sloppy can claim scalable provider execution.
 
 ## Purpose
 
@@ -131,6 +136,8 @@ Async/offload ownership:
   `BLOCKING_POOL` when using blocking drivers;
 - no provider may use libuv's global threadpool as its runtime policy, create a
   thread-per-request model, bypass capability checks, or invent a separate lifetime model.
+- ENGINE-23 must implement the worker lifecycle and admission path before future provider
+  bridge work treats these rules as production runtime behavior.
 
 SQLite text/blob ownership:
 
@@ -215,7 +222,8 @@ default provider tests because default gates do not enable V8.
 covers execution-mode parsing, serialized admission, per-instance capacity isolation,
 overflow and recovery, copied input ownership, cancellation, timeout, immediate shutdown,
 late completion, and cleanup exactly once. It is not a live database test and does not
-claim SQLite async/offload conversion.
+claim SQLite async/offload conversion. ENGINE-23 must add production executor tests before
+SQLite provider work can claim off-owner-thread execution.
 
 `core.capability.registry` covers the runtime capability registry, database read/write
 policy, provider mismatch denial, missing/wrong-kind/insufficient capability diagnostics,

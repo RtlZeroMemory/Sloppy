@@ -2,17 +2,23 @@
 
 Status: strategic architecture and issue planning source.
 
-This document defines the remaining Slop Engine foundation EPICs after ENGINE-12. It is a
-planning document only: it does not implement runtime, compiler, provider, HTTP, or CLI
-behavior, and it does not create public alpha claims.
+This document defines the remaining Slop Engine foundation EPICs after ENGINE-12, with
+ENGINE-23 inserted as the provider execution/offload runtime that must land before deeper
+SQLite/provider work depends on scalable provider behavior. It is a planning document
+only: it does not implement runtime, compiler, provider, HTTP, or CLI behavior, and it
+does not create public alpha claims.
 
 ENGINE-12 owns the scalable async backend: native completion queues, owner-thread V8
 continuation scheduling, cancellation/deadline/shutdown drain behavior, bounded async
-backpressure, provider/offload integration, and stress evidence. ENGINE-13 through
-ENGINE-20 cover the first remaining foundation batch. ENGINE-21 and ENGINE-22 add the
-cross-cutting memory/string foundation and adoption layer that those HTTP, V8, SQLite,
-diagnostics, Plan, lifecycle, CLI, and conformance EPICs need before public alpha claims,
-including bounded app/static string interning for stable metadata symbols.
+backpressure, provider/offload policy hooks, and stress evidence. ENGINE-23 owns the
+provider execution runtime: operation descriptors, per-provider-instance executors,
+blocking offload, serialized SQLite-class execution, bounded blocking pools,
+capability-gated admission, cancellation/late-completion semantics, diagnostics, and
+stress evidence. ENGINE-13 through ENGINE-20 cover the first remaining foundation batch.
+ENGINE-21 and ENGINE-22 add the cross-cutting memory/string foundation and adoption layer
+that those HTTP, V8, SQLite, diagnostics, Plan, lifecycle, CLI, provider, and conformance
+EPICs need before public alpha claims, including bounded app/static string interning for
+stable metadata symbols.
 
 The target is Sloppy's own engine foundation, not Node compatibility, npm/package-manager
 behavior, production internet-edge server claims, ORM/migrations, PostgreSQL/SQL Server JS
@@ -25,12 +31,15 @@ bridge expansion, benchmark marketing, or public alpha documentation.
   requests, bodies, deadlines, backpressure, shutdown, and diagnostics are represented by
   the server backend. HTTP uses async primitives, but it must also make parser, lifecycle,
   body, and connection policy decisions that are not part of a generic async runtime.
+- Provider execution is a separate layer from both generic async and HTTP. ENGINE-23
+  consumes ENGINE-12 and makes provider work a first-class runtime subsystem before
+  ENGINE-17 completes SQLite or future providers add JavaScript bridges.
 - The new EPICs intentionally overlap older closed EPIC numbers from the pre-ENGINE
   roadmap. The canonical issue titles use `ENGINE-13` through `ENGINE-20` to distinguish
   this foundation-completion batch from the old `EPIC-13` style tracker.
 - PostgreSQL and SQL Server remain deferred from this foundation batch. Native provider
-  boundaries can remain, but public JS bridge expansion waits until SQLite is complete and
-  capability-wired.
+  boundaries can remain, but public JS bridge expansion waits until the provider executor
+  runtime is solid and SQLite is complete and capability-wired.
 - Benchmarks remain local/manual evidence until the actual engine paths, methodology,
   build configuration, hardware context, and trend policy are stable. No benchmark claim
   is introduced by these EPICs.
@@ -49,6 +58,8 @@ bridge expansion, benchmark marketing, or public alpha documentation.
 Every implementation PR under ENGINE-13+ should:
 
 - cite the relevant section of this document and the current framework contract;
+- cite `docs/project/provider-execution-runtime-architecture.md` when provider/offload
+  execution behavior is involved;
 - keep V8 types inside `src/engine/v8/*`;
 - keep OS APIs behind platform modules;
 - keep JS free of raw native pointers;
@@ -71,6 +82,8 @@ Dependencies:
 
 - ENGINE-12 for scalable async completion and shutdown/cancellation primitives when native
   HTTP work crosses async boundaries;
+- ENGINE-23 only where HTTP work must coordinate with provider pressure, cancellation, or
+  shutdown semantics; ENGINE-13 does not implement provider execution;
 - ENGINE-16 for app/request scope ownership and cleanup hooks;
 - ENGINE-15 for stable diagnostics and source-aware error reporting;
 - Plan route metadata from ENGINE-20 where startup validation needs typed graphs.
@@ -317,9 +330,11 @@ Dependencies:
 
 - ENGINE-16 for resource lifetime ownership;
 - ENGINE-15 for data diagnostics and redaction;
+- ENGINE-23 for provider operation descriptors, serialized SQLite-class blocking offload,
+  cancellation/late-completion semantics, and capability-gated provider dispatch;
 - ENGINE-19 for conformance examples;
 - ENGINE-20 for provider/capability graph metadata;
-- ENGINE-12 only if SQLite work moves beyond sync-backed owner-thread operations.
+- ENGINE-12 for async completion and owner-thread settlement.
 
 Task breakdown:
 
@@ -334,6 +349,8 @@ Implementation risks:
 - exposing native provider details or raw pointers to JavaScript;
 - blessing file database access before path/capability policy is enforceable;
 - describing sync-backed operations as scalable async;
+- continuing to block the V8 owner thread for SQLite operations that are presented as
+  scalable or async provider work;
 - letting capability metadata remain advisory rather than enforced;
 - leaking connections/statements across request/app scopes.
 
@@ -342,6 +359,8 @@ Acceptance criteria:
 - public JS API covers `open`, `exec`, `query`, `queryOne`, `transaction`, and `close`
   according to the final contract;
 - SQLite open/use checks capabilities before provider work;
+- SQLite-class provider work uses the ENGINE-23 serialized executor when it can block or
+  outlive the caller stack;
 - `:memory:` policy is executable and file database policy is explicit;
 - result rows and errors map deterministically;
 - transaction and prepared-statement policy is documented and tested;
@@ -354,7 +373,8 @@ Non-goals:
 - migrations;
 - PostgreSQL;
 - SQL Server;
-- connection pool framework beyond SQLite need.
+- connection pool framework beyond SQLite need;
+- PostgreSQL or SQL Server JavaScript bridge implementation.
 
 Suggested PR grouping:
 
@@ -552,14 +572,15 @@ consume.
 3. ENGINE-14 and ENGINE-15 can proceed in parallel where source names, bootstrap loading,
    and diagnostics intersect.
 4. ENGINE-16 should land before broad resource-owning SQLite and shutdown-heavy HTTP work.
-5. ENGINE-13 uses ENGINE-12/16/21 primitives to turn HTTP into a proper backend.
-6. ENGINE-17 completes SQLite once resource ownership, capability policy, and
-   memory/string conversion policy are wired.
-7. ENGINE-18 tightens the command loop after the runtime, Plan, diagnostics, and builder
+5. ENGINE-23 turns provider/offload policy into the real provider execution runtime.
+6. ENGINE-13 uses ENGINE-12/16/21 primitives to turn HTTP into a proper backend.
+7. ENGINE-17 completes SQLite once resource ownership, capability policy,
+   memory/string conversion policy, and ENGINE-23 provider execution are wired.
+8. ENGINE-18 tightens the command loop after the runtime, Plan, diagnostics, and builder
    evidence surfaces exist.
-8. ENGINE-22 migrates hot paths after ENGINE-21 primitives exist, coordinated with
+9. ENGINE-22 migrates hot paths after ENGINE-21 primitives exist, coordinated with
    subsystem EPICs rather than as a single codebase-wide rewrite.
-9. ENGINE-19 wraps the implemented behavior in executable compatibility evidence.
+10. ENGINE-19 wraps the implemented behavior in executable compatibility evidence.
 
 This order is strategic, not a ban on parallel docs, fixtures, or narrow preparatory work.
 Any PR that crosses runtime behavior must still stay bounded to one coherent ownership

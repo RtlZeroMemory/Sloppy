@@ -34,6 +34,7 @@ The foundation phase does not implement:
 - SQL parsing;
 - provider plugin ABI;
 - ORM, migration, or query-builder behavior.
+- provider execution runtime implementation outside scoped ENGINE-23 work.
 
 ## Current Phase
 
@@ -89,6 +90,11 @@ must match the provider boundary being called. These hooks deny before provider 
 called by a bridge or native host boundary. The existing direct native provider APIs remain
 low-level provider primitives and do not carry capability context in their signatures.
 
+ENGINE-12.CD adds a deterministic provider/offload executor policy skeleton. ENGINE-23 is
+the implementation roadmap for turning that policy into the real provider execution
+runtime before SQLite runtime completion or future PostgreSQL/SQL Server JavaScript
+bridges depend on scalable provider execution.
+
 ## Provider Support Classification
 
 | Provider | Native status | Default validation | Live validation | JS bridge status |
@@ -102,6 +108,9 @@ PostgreSQL, live SQL Server, SQL Server driver installation, package-smoke provi
 availability, or JavaScript-to-native provider execution.
 
 ## Provider Execution Policy
+
+Canonical ENGINE-23 architecture:
+`docs/project/provider-execution-runtime-architecture.md`.
 
 Sloppy uses libuv internally for eventing, timers, wakeups, and async completion plumbing.
 libuv's global threadpool is not Sloppy's provider runtime. Provider work must be admitted
@@ -123,6 +132,10 @@ future `postgres:main`, or future `sqlserver:reporting`. Each instance has its o
 capacity, in-flight count, shutdown state, optional worker count, and counters. There is
 no unbounded global provider queue, no thread-per-request behavior, and no
 provider-specific async model outside Slop's admission/completion contract.
+
+ENGINE-23 turns these modes into implementation-grade executor contracts. Until then, the
+checked-in provider executor is deterministic native policy/test infrastructure and not a
+production worker runtime.
 
 Provider operation descriptors must own or retain all memory needed after submission: SQL
 strings, parameter text/blob values, provider config references, capability token,
