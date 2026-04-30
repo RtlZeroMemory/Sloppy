@@ -296,12 +296,10 @@ Operation:
         }));
     }
 
-    sqlite.open = function open(pathOrOptions) {
+    sqlite.open = function open(options) {
         const bridge = requireSqliteBridge();
-        const options = normalizeSqliteOpenOptions(
-            typeof pathOrOptions === "string" ? { database: pathOrOptions } : pathOrOptions,
-        );
-        return createSqliteConnection(bridge, bridge.open(options));
+        const safeOptions = normalizeSqliteOpenOptions(options);
+        return createSqliteConnection(bridge, bridge.open(safeOptions));
     };
 
     Object.freeze(sqlite);

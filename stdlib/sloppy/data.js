@@ -459,9 +459,7 @@ Fix:
 }
 
 function openSqlite(options) {
-    const safeOptions = validateSqliteOpenOptions(
-        typeof options === "string" ? { database: options } : options,
-    );
+    const safeOptions = validateSqliteOpenOptions(options);
     const nativeBridge = sqliteNativeBridge();
 
     if (nativeBridge === null) {
@@ -520,7 +518,8 @@ const sqliteSupports = {
     file: true,
     queryTemplates: true,
     parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
-    transactions: "native-provider-only",
+    transactions: true,
+    transactionsMode: "native-provider-only",
     pooling: false,
     migrations: false,
     orm: false,

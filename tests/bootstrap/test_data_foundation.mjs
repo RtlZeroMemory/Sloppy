@@ -158,10 +158,12 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlite.provider, "sqlite");
     assert.equal(data.sqlite.placeholderStyle, "question");
     assert.equal(data.sqlite.supports.memory, true);
-    assert.equal(data.sqlite.supports.transactions, "native-provider-only");
+    assert.equal(data.sqlite.supports.transactions, true);
+    assert.equal(data.sqlite.supports.transactionsMode, "native-provider-only");
     assert.equal(data.sqlite.supports.pooling, false);
     assert.equal(data.sqlite.supports.nativeStdlibBridge, false);
     assert.equal(data.sqlite.__debug().nativeStdlibBridge, false);
+    assertThrowsMessage(() => data.sqlite.open(":memory:"), /options must be a plain object/);
     assertThrowsMessage(() => data.sqlite.open({}), /database must be a non-empty string/);
     assertThrowsMessage(() => data.sqlite.open({
         database: ":memory:",
