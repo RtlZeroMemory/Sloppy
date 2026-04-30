@@ -561,6 +561,11 @@ static bool sl_cli_write_span(FILE* file, SlCliSpan span)
     return span.length == 0U || fwrite(span.ptr, 1U, span.length, file) == span.length;
 }
 
+static bool sl_cli_write_str(FILE* file, SlStr str)
+{
+    return str.length == 0U || fwrite(str.ptr, 1U, str.length, file) == str.length;
+}
+
 static void sl_cli_json_escape(FILE* file, SlCliSpan span)
 {
     static const char hex[] = "0123456789abcdef";
@@ -600,116 +605,51 @@ static void sl_cli_json_escape(FILE* file, SlCliSpan span)
     (void)fputc('"', file);
 }
 
-static bool sl_cli_secret_key_at(SlCliSpan text, size_t index)
+static SlStr sl_cli_redacted_span(SlArena* arena, SlCliSpan text)
 {
-    static const char* keys[] = {"password=", "pwd=", "access token=", "token=", "secret="};
-    size_t key_index = 0U;
+    SlStr redacted = sl_diag_redacted();
+    SlStatus status;
 
-    for (key_index = 0U; key_index < sizeof(keys) / sizeof(keys[0]); key_index += 1U) {
-        const char* key = keys[key_index];
-        size_t length = strlen(key);
-        size_t offset = 0U;
-        bool equal = true;
-
-        if (index + length > text.length) {
-            continue;
-        }
-        for (offset = 0U; offset < length; offset += 1U) {
-            char actual = text.ptr[index + offset];
-            char expected = key[offset];
-            if (actual >= 'A' && actual <= 'Z') {
-                actual = (char)(actual - 'A' + 'a');
-            }
-            if (actual != expected) {
-                equal = false;
-                break;
-            }
-        }
-        if (equal) {
-            return true;
-        }
+    if (arena == NULL) {
+        return redacted;
     }
 
-    return false;
+    status = sl_diag_redact_secrets(arena, sl_cli_span_str(text), &redacted);
+    return sl_status_is_ok(status) ? redacted : sl_diag_redacted();
 }
 
-static void sl_cli_write_redacted(FILE* file, SlCliSpan text)
+static void sl_cli_write_redacted(FILE* file, SlArena* arena, SlCliSpan text)
 {
-    size_t index = 0U;
+    SlArenaMark mark = {0U};
+    SlStr redacted = sl_diag_redacted();
+    bool should_reset = false;
 
-    while (index < text.length) {
-        if (sl_cli_secret_key_at(text, index)) {
-            while (index < text.length && text.ptr[index] != '=') {
-                (void)fputc(text.ptr[index], file);
-                index += 1U;
-            }
-            if (index < text.length) {
-                (void)fputc('=', file);
-                index += 1U;
-            }
-            (void)fputs("<redacted>", file);
-            while (index < text.length && text.ptr[index] != ';' && text.ptr[index] != ' ' &&
-                   text.ptr[index] != '&' && text.ptr[index] != '\n' && text.ptr[index] != '\r')
-            {
-                index += 1U;
-            }
-        }
-        else {
-            (void)fputc(text.ptr[index], file);
-            index += 1U;
-        }
+    if (arena != NULL) {
+        mark = sl_arena_mark(arena);
+        should_reset = true;
+        redacted = sl_cli_redacted_span(arena, text);
+    }
+    (void)sl_cli_write_str(file, redacted);
+    if (should_reset) {
+        (void)sl_arena_reset_to(arena, mark);
     }
 }
 
-static SlCliSpan sl_cli_redact_to_buffer(char* buffer, size_t capacity, SlCliSpan text)
+static void sl_cli_json_redacted(FILE* file, SlArena* arena, SlCliSpan text)
 {
-    size_t index = 0U;
-    size_t out = 0U;
+    SlArenaMark mark = {0U};
+    SlStr redacted = sl_diag_redacted();
+    bool should_reset = false;
 
-    while (index < text.length && out + 1U < capacity) {
-        if (sl_cli_secret_key_at(text, index)) {
-            while (index < text.length && text.ptr[index] != '=' && out + 1U < capacity) {
-                buffer[out] = text.ptr[index];
-                out += 1U;
-                index += 1U;
-            }
-            if (index < text.length && out + 1U < capacity) {
-                buffer[out] = '=';
-                out += 1U;
-                index += 1U;
-            }
-            if (out + sizeof("<redacted>") < capacity) {
-                size_t redacted_index = 0U;
-                for (redacted_index = 0U; redacted_index < sizeof("<redacted>") - 1U;
-                     redacted_index += 1U)
-                {
-                    buffer[out] = "<redacted>"[redacted_index];
-                    out += 1U;
-                }
-            }
-            while (index < text.length && text.ptr[index] != ';' && text.ptr[index] != ' ' &&
-                   text.ptr[index] != '&' && text.ptr[index] != '\n' && text.ptr[index] != '\r')
-            {
-                index += 1U;
-            }
-        }
-        else {
-            buffer[out] = text.ptr[index];
-            out += 1U;
-            index += 1U;
-        }
+    if (arena != NULL) {
+        mark = sl_arena_mark(arena);
+        should_reset = true;
+        redacted = sl_cli_redacted_span(arena, text);
     }
-
-    buffer[out] = '\0';
-    return (SlCliSpan){buffer, out};
-}
-
-static void sl_cli_json_redacted(FILE* file, SlCliSpan text)
-{
-    char buffer[4096];
-    SlCliSpan redacted = sl_cli_redact_to_buffer(buffer, sizeof(buffer), text);
-
-    sl_cli_json_escape(file, redacted);
+    sl_cli_json_escape(file, sl_cli_span_from_str(redacted));
+    if (should_reset) {
+        (void)sl_arena_reset_to(arena, mark);
+    }
 }
 
 static void sl_cli_json_escape_lower(FILE* file, SlCliSpan span)
@@ -1402,11 +1342,31 @@ static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
     return memcmp(expected.ptr, actual, sizeof(actual)) == 0;
 }
 
-static void sl_run_print_diag(const char* prefix, const SlDiag* diag)
+static void sl_run_print_diag(const char* prefix, SlArena* arena, const SlDiag* diag)
 {
+    SlArenaMark mark = {0U};
+    SlStr rendered = {0};
+    bool should_reset = false;
+
     sl_cli_write_cstr(stderr, prefix);
+    if (arena != NULL) {
+        mark = sl_arena_mark(arena);
+        should_reset = true;
+    }
+    if (diag != NULL && arena != NULL &&
+        sl_status_is_ok(sl_diag_render_text(arena, diag, &rendered)))
+    {
+        (void)sl_cli_write_str(stderr, rendered);
+        if (should_reset) {
+            (void)sl_arena_reset_to(arena, mark);
+        }
+        return;
+    }
+    if (should_reset) {
+        (void)sl_arena_reset_to(arena, mark);
+    }
     if (diag != NULL && !sl_str_is_empty(diag->message)) {
-        sl_cli_write_span(stderr, (SlCliSpan){diag->message.ptr, diag->message.length});
+        (void)sl_cli_write_str(stderr, diag->message);
         sl_cli_write_cstr(stderr, "\n");
         return;
     }
@@ -1457,7 +1417,7 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
     parse_options.source_name = sl_str_from_cstr(plan_path);
     status = sl_plan_parse_json(&app->plan_arena, json, &parse_options, &app->plan, &diag);
     if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: malformed app.plan.json: ", &diag);
+        sl_run_print_diag("sloppy run: malformed app.plan.json: ", &app->engine_arena, &diag);
         return 1;
     }
 
@@ -1503,7 +1463,8 @@ static int sl_run_validate_startup(SlRunApp* app)
 
     status = sl_app_host_validate_startup(&app->plan, &validation, &diag);
     if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: app graph startup validation failed: ", &diag);
+        sl_run_print_diag("sloppy run: app graph startup validation failed: ", &app->engine_arena,
+                          &diag);
         return 1;
     }
 
@@ -1572,7 +1533,8 @@ static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
     source = sl_str_from_parts((const char*)js.ptr, js.length);
     status = sl_engine_eval_source(app->engine, sl_str_from_cstr(bootstrap_path), source, &diag);
     if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: failed to evaluate bootstrap stdlib: ", &diag);
+        sl_run_print_diag("sloppy run: failed to evaluate bootstrap stdlib: ", &app->engine_arena,
+                          &diag);
         return 1;
     }
 
@@ -1601,7 +1563,8 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
     status = sl_app_lifecycle_add_cleanup(&app->lifecycle, sl_run_engine_cleanup,
                                           (void*)&app->engine, NULL, &diag);
     if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: failed to register engine shutdown cleanup: ", &diag);
+        sl_run_print_diag(
+            "sloppy run: failed to register engine shutdown cleanup: ", &app->engine_arena, &diag);
         sl_engine_destroy(app->engine);
         app->engine = NULL;
         return 1;
@@ -1614,13 +1577,14 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
     source = sl_str_from_parts((const char*)app->app_js_bytes.ptr, app->app_js_bytes.length);
     status = sl_engine_eval_source(app->engine, sl_str_from_cstr(app_js_path), source, &diag);
     if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: failed to evaluate app.js: ", &diag);
+        sl_run_print_diag("sloppy run: failed to evaluate app.js: ", &app->engine_arena, &diag);
         return 1;
     }
 
     status = sl_engine_validate_registered_handlers(app->engine, &app->plan, &diag);
     if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: registered handler validation failed: ", &diag);
+        sl_run_print_diag("sloppy run: registered handler validation failed: ", &app->engine_arena,
+                          &diag);
         return 1;
     }
 
@@ -1655,7 +1619,7 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
             &app->lifecycle, app->app_cleanups,
             sizeof(app->app_cleanups) / sizeof(app->app_cleanups[0]), &diag)))
     {
-        sl_run_print_diag("sloppy run: failed to start app lifecycle: ", &diag);
+        sl_run_print_diag("sloppy run: failed to start app lifecycle: ", &app->engine_arena, &diag);
         return 1;
     }
 
@@ -2399,7 +2363,7 @@ static int sl_run_shutdown_app(SlRunApp* app)
 
     status = sl_app_lifecycle_shutdown(&app->lifecycle, &diag);
     if (!sl_status_is_ok(status)) {
-        sl_run_print_diag("sloppy run: app shutdown failed: ", &diag);
+        sl_run_print_diag("sloppy run: app shutdown failed: ", &app->engine_arena, &diag);
         return 1;
     }
 
@@ -2614,7 +2578,8 @@ static int sl_cli_command_routes(const SlCliOptions* options)
     return 0;
 }
 
-static void sl_cli_doctor_emit_text(SlCliSpan id, SlCliSpan status, SlCliSpan message)
+static void sl_cli_doctor_emit_text(SlArena* arena, SlCliSpan id, SlCliSpan status,
+                                    SlCliSpan message)
 {
     (void)printf("[");
     sl_cli_write_span(stdout, status);
@@ -2622,19 +2587,20 @@ static void sl_cli_doctor_emit_text(SlCliSpan id, SlCliSpan status, SlCliSpan me
     sl_cli_write_span(stdout, id);
     if (!sl_cli_span_empty(message)) {
         (void)printf(": ");
-        sl_cli_write_redacted(stdout, message);
+        sl_cli_write_redacted(stdout, arena, message);
     }
     (void)printf("\n");
 }
 
-static void sl_cli_doctor_emit_json(SlCliSpan id, SlCliSpan status, SlCliSpan message, bool comma)
+static void sl_cli_doctor_emit_json(SlArena* arena, SlCliSpan id, SlCliSpan status,
+                                    SlCliSpan message, bool comma)
 {
     (void)printf("%s\n    { \"id\": ", comma ? "," : "");
     sl_cli_json_escape(stdout, id);
     (void)printf(", \"status\": ");
     sl_cli_json_escape(stdout, status);
     (void)printf(", \"message\": ");
-    sl_cli_json_redacted(stdout, message);
+    sl_cli_json_redacted(stdout, arena, message);
     (void)printf(" }");
 }
 
@@ -2659,46 +2625,47 @@ static bool sl_cli_path_exists(const char* path)
     return true;
 }
 
-static void sl_cli_doctor_emit(const SlCliOptions* options, SlCliSpan id, SlCliSpan status,
-                               SlCliSpan message, bool* emitted)
+static void sl_cli_doctor_emit(const SlCliOptions* options, SlArena* arena, SlCliSpan id,
+                               SlCliSpan status, SlCliSpan message, bool* emitted)
 {
     if (options->format == SL_CLI_FORMAT_JSON) {
-        sl_cli_doctor_emit_json(id, status, message, *emitted);
+        sl_cli_doctor_emit_json(arena, id, status, message, *emitted);
         *emitted = true;
         return;
     }
 
-    sl_cli_doctor_emit_text(id, status, message);
+    sl_cli_doctor_emit_text(arena, id, status, message);
 }
 
-static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options,
+static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
-    sl_cli_doctor_emit(options, sl_cli_span_cstr("app.plan.routes"),
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.plan.routes"),
                        metadata->route_count > 0U ? sl_cli_span_cstr("ok")
                                                   : sl_cli_span_cstr("warn"),
                        metadata->route_count > 0U ? sl_cli_span_cstr("route metadata present")
                                                   : sl_cli_span_cstr("no route metadata present"),
                        emitted);
     sl_cli_doctor_emit(
-        options, sl_cli_span_cstr("app.plan.providers"),
+        options, arena, sl_cli_span_cstr("app.plan.providers"),
         metadata->provider_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
         metadata->provider_count > 0U ? sl_cli_span_cstr("provider metadata present")
                                       : sl_cli_span_cstr("provider metadata not present"),
         emitted);
     sl_cli_doctor_emit(
-        options, sl_cli_span_cstr("app.plan.capabilities"),
+        options, arena, sl_cli_span_cstr("app.plan.capabilities"),
         metadata->capability_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
         metadata->capability_count > 0U ? sl_cli_span_cstr("capability metadata present")
                                         : sl_cli_span_cstr("capability metadata not present"),
         emitted);
 }
 
-static void sl_cli_doctor_emit_environment(const SlCliOptions* options, bool* emitted)
+static void sl_cli_doctor_emit_environment(const SlCliOptions* options, SlArena* arena,
+                                           bool* emitted)
 {
     const char* bootstrap_asset = SLOPPY_BOOTSTRAP_BUILD_DIR "/internal/runtime-classic.js";
 
-    sl_cli_doctor_emit(options, sl_cli_span_cstr("bootstrap.assets"),
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("bootstrap.assets"),
                        sl_cli_path_exists(bootstrap_asset) ? sl_cli_span_cstr("ok")
                                                            : sl_cli_span_cstr("warn"),
                        sl_cli_path_exists(bootstrap_asset)
@@ -2707,37 +2674,41 @@ static void sl_cli_doctor_emit_environment(const SlCliOptions* options, bool* em
                        emitted);
 #ifdef SLOPPY_ENABLE_V8_BRIDGE
     sl_cli_doctor_emit(
-        options, sl_cli_span_cstr("engine.v8"), sl_cli_span_cstr("ok"),
+        options, arena, sl_cli_span_cstr("engine.v8"), sl_cli_span_cstr("ok"),
         sl_cli_span_cstr("V8 bridge compiled; runtime success still requires V8 tests"), emitted);
 #else
     sl_cli_doctor_emit(
-        options, sl_cli_span_cstr("engine.v8"), sl_cli_span_cstr("warn"),
+        options, arena, sl_cli_span_cstr("engine.v8"), sl_cli_span_cstr("warn"),
         sl_cli_span_cstr("V8 bridge disabled in this build; V8 runtime tests not run"), emitted);
 #endif
     sl_cli_doctor_emit(
-        options, sl_cli_span_cstr("providers.live"), sl_cli_span_cstr("warn"),
+        options, arena, sl_cli_span_cstr("providers.live"), sl_cli_span_cstr("warn"),
         sl_cli_span_cstr(
             "live provider checks are not configured by default and no live DB was contacted"),
         emitted);
-    sl_cli_doctor_emit(options, sl_cli_span_cstr("package.runtime"), sl_cli_span_cstr("warn"),
-                       sl_cli_span_cstr("local CLI checks do not prove package release readiness"),
-                       emitted);
+    sl_cli_doctor_emit(
+        options, arena, sl_cli_span_cstr("package.runtime"), sl_cli_span_cstr("warn"),
+        sl_cli_span_cstr("local CLI checks do not prove package release readiness"), emitted);
 }
 
 static int sl_cli_command_doctor(const SlCliOptions* options)
 {
     unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
     unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
+    unsigned char diag_arena_storage[SL_CLI_ARENA_BYTES];
     SlArena plan_arena;
+    SlArena diag_arena;
     yyjson_doc* doc = NULL;
     SlCliMetadata metadata = {0};
     size_t index = 0U;
     bool emitted = false;
 
     if (!sl_status_is_ok(
-            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))))
+            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))) ||
+        !sl_status_is_ok(
+            sl_arena_init(&diag_arena, diag_arena_storage, sizeof(diag_arena_storage))))
     {
-        sl_cli_write_cstr(stderr, "sloppy doctor: failed to initialize plan validation arena\n");
+        sl_cli_write_cstr(stderr, "sloppy doctor: failed to initialize validation arena\n");
         return 1;
     }
 
@@ -2752,15 +2723,15 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
 
     if (options->format == SL_CLI_FORMAT_JSON) {
         (void)printf("{\n  \"checks\": [");
-        sl_cli_doctor_emit_environment(options, &emitted);
+        sl_cli_doctor_emit_environment(options, &diag_arena, &emitted);
         if (options->plan_path != NULL) {
-            sl_cli_doctor_emit(options, sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
-                               sl_cli_span_cstr("app plan parsed by native Plan v1 parser"),
-                               &emitted);
-            sl_cli_doctor_emit_plan_metadata(options, &metadata, &emitted);
+            sl_cli_doctor_emit(
+                options, &diag_arena, sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
+                sl_cli_span_cstr("app plan parsed by native Plan v1 parser"), &emitted);
+            sl_cli_doctor_emit_plan_metadata(options, &diag_arena, &metadata, &emitted);
         }
         for (index = 0U; index < metadata.doctor_check_count; index += 1U) {
-            sl_cli_doctor_emit(options, metadata.doctor_checks[index].id,
+            sl_cli_doctor_emit(options, &diag_arena, metadata.doctor_checks[index].id,
                                metadata.doctor_checks[index].status,
                                metadata.doctor_checks[index].message, &emitted);
         }
@@ -2768,15 +2739,15 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
     }
     else {
         (void)printf("Sloppy Doctor\n\n");
-        sl_cli_doctor_emit_environment(options, &emitted);
+        sl_cli_doctor_emit_environment(options, &diag_arena, &emitted);
         if (options->plan_path != NULL) {
-            sl_cli_doctor_emit(options, sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
-                               sl_cli_span_cstr("app plan parsed by native Plan v1 parser"),
-                               &emitted);
-            sl_cli_doctor_emit_plan_metadata(options, &metadata, &emitted);
+            sl_cli_doctor_emit(
+                options, &diag_arena, sl_cli_span_cstr("app.plan.parse"), sl_cli_span_cstr("ok"),
+                sl_cli_span_cstr("app plan parsed by native Plan v1 parser"), &emitted);
+            sl_cli_doctor_emit_plan_metadata(options, &diag_arena, &metadata, &emitted);
         }
         for (index = 0U; index < metadata.doctor_check_count; index += 1U) {
-            sl_cli_doctor_emit(options, metadata.doctor_checks[index].id,
+            sl_cli_doctor_emit(options, &diag_arena, metadata.doctor_checks[index].id,
                                metadata.doctor_checks[index].status,
                                metadata.doctor_checks[index].message, &emitted);
         }
