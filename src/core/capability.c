@@ -16,6 +16,9 @@
  */
 #include "sloppy/capability.h"
 
+#include "sloppy/builder.h"
+#include "sloppy/checked_math.h"
+
 static SlStr sl_capability_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -192,31 +195,45 @@ static bool sl_capability_access_allows(SlCapabilityAccess actual, SlCapabilityO
 static SlStatus sl_capability_add_hint_pair(SlDiagBuilder* builder, SlArena* arena, SlStr prefix,
                                             SlStr value)
 {
-    void* ptr = NULL;
-    char* buffer = NULL;
-    size_t index = 0U;
+    SlStringBuilder hint_builder = {0};
     SlStr hint = {0};
+    size_t hint_length = 0U;
     SlStatus status;
 
-    if (builder == NULL || arena == NULL || prefix.ptr == NULL ||
+    if (builder == NULL || builder->arena != arena || arena == NULL || prefix.ptr == NULL ||
         (value.length > 0U && value.ptr == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_arena_alloc(arena, prefix.length + value.length, 1U, &ptr);
+    if (builder->diag.hint_count >= SL_DIAG_MAX_HINTS) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+
+    status = sl_checked_add_size(prefix.length, value.length, &hint_length);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    buffer = (char*)ptr;
-    for (index = 0U; index < prefix.length; index += 1U) {
-        buffer[index] = prefix.ptr[index];
+
+    status = sl_string_builder_init_arena(&hint_builder, arena, hint_length, hint_length);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    for (index = 0U; index < value.length; index += 1U) {
-        buffer[prefix.length + index] = value.ptr[index];
+    status = sl_string_builder_append_str(&hint_builder, prefix);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    hint = sl_str_from_parts(buffer, prefix.length + value.length);
-    return sl_diag_builder_add_hint(builder, hint);
+    status = sl_string_builder_append_str(&hint_builder, value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    // The builder output is already arena-owned by the diagnostic arena, so storing the
+    // view avoids the older temporary hint allocation followed by a second hint copy.
+    hint = sl_string_builder_view(&hint_builder);
+    builder->diag.hints[builder->diag.hint_count] = hint;
+    builder->diag.hint_count += 1U;
+    return sl_status_ok();
 }
 
 static SlStatus sl_capability_denied(SlArena* arena, SlDiag* out_diag, SlStr token, SlStr kind,

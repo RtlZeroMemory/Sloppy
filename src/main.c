@@ -3107,27 +3107,39 @@ static int sl_cli_command_audit(const SlCliOptions* options)
 static bool sl_cli_openapi_path(char* buffer, size_t capacity, SlCliSpan pattern,
                                 SlCliSpan* openapi_path)
 {
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
     size_t index = 0U;
-    size_t out = 0U;
+    SlStatus status;
+
+    if (buffer == NULL || capacity == 0U || openapi_path == NULL ||
+        (pattern.ptr == NULL && pattern.length != 0U))
+    {
+        return false;
+    }
+
+    status = sl_string_builder_init_fixed(&builder, buffer, capacity);
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
 
     while (index < pattern.length) {
-        if (out + 1U >= capacity) {
-            return false;
-        }
         if (pattern.ptr[index] == '{') {
-            buffer[out] = pattern.ptr[index];
-            out += 1U;
-            index += 1U;
-            while (index < pattern.length && pattern.ptr[index] != '}' &&
-                   pattern.ptr[index] != ':' && out + 1U < capacity)
-            {
-                buffer[out] = pattern.ptr[index];
-                out += 1U;
-                index += 1U;
-            }
-            if (out + 1U >= capacity) {
+            status = sl_string_builder_append_char(&builder, pattern.ptr[index]);
+            if (!sl_status_is_ok(status)) {
                 return false;
             }
+            index += 1U;
+
+            while (index < pattern.length && pattern.ptr[index] != '}' && pattern.ptr[index] != ':')
+            {
+                status = sl_string_builder_append_char(&builder, pattern.ptr[index]);
+                if (!sl_status_is_ok(status)) {
+                    return false;
+                }
+                index += 1U;
+            }
+
             while (index < pattern.length && pattern.ptr[index] != '}') {
                 index += 1U;
             }
@@ -3135,13 +3147,19 @@ static bool sl_cli_openapi_path(char* buffer, size_t capacity, SlCliSpan pattern
                 return false;
             }
         }
-        buffer[out] = pattern.ptr[index];
-        out += 1U;
+        status = sl_string_builder_append_char(&builder, pattern.ptr[index]);
+        if (!sl_status_is_ok(status)) {
+            return false;
+        }
         index += 1U;
     }
 
-    buffer[out] = '\0';
-    *openapi_path = (SlCliSpan){buffer, out};
+    status = sl_string_builder_view_with_nul(&builder, &view);
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
+
+    *openapi_path = sl_cli_span_from_str(view);
     return true;
 }
 

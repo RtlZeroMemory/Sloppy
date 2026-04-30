@@ -55,7 +55,10 @@ Allocator modules, a standalone heap-owned `SlBuf`, and remaining hot-path adopt
 deferred. ENGINE-21.D defines the narrow V8/native and SQLite/native string/blob interop
 helper policy. ENGINE-22.D adopts those helpers in provider-neutral V8 bridge internals,
 HTTP request context materialization, `Results.*` descriptor conversion, and exception
-strings. SQLite result/parameter bridge adoption remains a separate ENGINE-22.E task.
+strings. ENGINE-22.F removes a remaining non-SQLite capability diagnostic hint buffer,
+keeps OpenAPI path skeleton normalization on the bounded string builder, and adds a
+low-capacity denial-hint regression guard. SQLite result/parameter bridge adoption remains
+a separate ENGINE-22.E task.
 
 ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 

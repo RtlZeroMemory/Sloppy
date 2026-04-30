@@ -351,6 +351,36 @@ static int test_denied_check_precedes_provider_work(void)
     return 0;
 }
 
+static int test_denied_hints_use_single_arena_owned_builder_output(void)
+{
+    unsigned char storage[128];
+    SlArena arena = {0};
+    SlPlan plan = {0};
+    SlCapabilityRegistry registry = {0};
+    SlDiag diag = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 45;
+    }
+    if (expect_status(sl_capability_registry_init_from_plan(&plan, &registry), SL_STATUS_OK) != 0) {
+        return 46;
+    }
+
+    status = sl_capability_check_database(
+        &registry, &arena, sl_str_from_cstr("data.missing-metadata-token"),
+        SL_CAPABILITY_OPERATION_READ, sl_str_from_cstr("data.main"), &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED ||
+        !diag_has_hint(&diag, "token: data.missing-metadata-token") ||
+        !diag_has_hint(&diag, "kind: database") || !diag_has_hint(&diag, "operation: read"))
+    {
+        return 47;
+    }
+
+    return 0;
+}
+
 static int test_registry_rejects_invalid_shapes(void)
 {
     SlCapabilityRegistry registry = {0};
@@ -459,6 +489,10 @@ int main(void)
         return result;
     }
     result = test_denied_check_precedes_provider_work();
+    if (result != 0) {
+        return result;
+    }
+    result = test_denied_hints_use_single_arena_owned_builder_output();
     if (result != 0) {
         return result;
     }
