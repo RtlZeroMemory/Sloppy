@@ -2,9 +2,11 @@
 #define SLOPPY_HTTP_BACKEND_H
 
 #include "sloppy/arena.h"
+#include "sloppy/builder.h"
 #include "sloppy/cancellation.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/http.h"
+#include "sloppy/http_context.h"
 #include "sloppy/status.h"
 
 #include <stdbool.h>
@@ -133,6 +135,31 @@ typedef struct SlHttpRequestLifecycle
     bool admitted;
 } SlHttpRequestLifecycle;
 
+typedef enum SlHttpBodyReaderState
+{
+    SL_HTTP_BODY_READER_STATE_NONE = 0,
+    SL_HTTP_BODY_READER_STATE_READY = 1,
+    SL_HTTP_BODY_READER_STATE_READING = 2,
+    SL_HTTP_BODY_READER_STATE_COMPLETED = 3,
+    SL_HTTP_BODY_READER_STATE_CANCELLED = 4,
+    SL_HTTP_BODY_READER_STATE_TIMED_OUT = 5,
+    SL_HTTP_BODY_READER_STATE_FAILED = 6,
+    SL_HTTP_BODY_READER_STATE_CLOSED = 7
+} SlHttpBodyReaderState;
+
+typedef struct SlHttpBodyReader
+{
+    /* Borrowed request and arena; the reader never outlives the request lifecycle. */
+    SlHttpRequestLifecycle* request;
+    SlArena* arena;
+    SlArenaMark mark;
+    SlByteBuilder builder;
+    SlHttpBodyReaderState state;
+    SlHttpRequestBodyKind body_kind;
+    size_t max_body_bytes;
+    size_t expected_body_bytes;
+} SlHttpBodyReader;
+
 /*
  * Initializes caller-owned backend state. The backend owns no platform resources itself and
  * may be started after successful initialization.
@@ -161,11 +188,32 @@ SlStatus sl_http_request_begin(SlHttpConnection* connection, SlArena* arena,
 /* Parses bytes into the request arena using backend-owned parser limits. */
 SlStatus sl_http_request_parse_head(SlHttpRequestLifecycle* request, SlBytes bytes,
                                     SlDiag* out_diag);
+/*
+ * Reads a bounded request body into request-arena storage.
+ *
+ * This is backend/platform plumbing, not a JavaScript streaming body API. The caller supplies
+ * the declared content type and content length before appending chunks. Empty bodies require no
+ * content type. Non-empty bodies currently support application/json, application subtypes ending
+ * in +json, and text/plain only. On success, `request->head.body` borrows arena storage owned by
+ * the request lifecycle until `sl_http_request_close` or arena reset. Cancellation, timeout,
+ * shutdown, body limit, content-length mismatch, and unsupported media failures reset body
+ * allocations and transition the request to a terminal cleanup path exactly once.
+ */
+SlStatus sl_http_request_body_reader_begin(SlHttpRequestLifecycle* request, SlStr content_type,
+                                           size_t content_length, SlHttpBodyReader* out_reader,
+                                           SlDiag* out_diag);
+SlStatus sl_http_request_body_reader_append(SlHttpBodyReader* reader, SlBytes chunk,
+                                            SlDiag* out_diag);
+SlStatus sl_http_request_body_reader_finish(SlHttpBodyReader* reader, SlDiag* out_diag);
+SlStatus sl_http_request_body_reader_close(SlHttpBodyReader* reader, SlDiag* out_diag);
 SlStatus sl_http_request_begin_dispatch(SlHttpRequestLifecycle* request, SlDiag* out_diag);
 SlStatus sl_http_request_begin_write(SlHttpRequestLifecycle* request, SlDiag* out_diag);
 /* Completes/fails/times out/closes the lifecycle and releases admission exactly once. */
 SlStatus sl_http_request_complete(SlHttpRequestLifecycle* request, SlDiag* out_diag);
 SlStatus sl_http_request_fail(SlHttpRequestLifecycle* request, SlDiag* out_diag);
+SlStatus sl_http_request_cancel(SlHttpRequestLifecycle* request, SlCancellationReason reason,
+                                SlStr detail, SlDiag* out_diag);
+SlStatus sl_http_request_shutdown(SlHttpRequestLifecycle* request, SlDiag* out_diag);
 SlStatus sl_http_request_timeout(SlHttpRequestLifecycle* request, SlStr detail, SlDiag* out_diag);
 SlStatus sl_http_request_close(SlHttpRequestLifecycle* request, SlDiag* out_diag);
 

@@ -103,9 +103,13 @@ ENGINE-13.A/B/C adds the first HTTP-specific lifecycle/admission layer above the
 async primitives. `SlHttpBackend` tracks bounded active connection and active request
 counts, `SlHttpRequestLifecycle` owns one request admission slot and a borrowed request
 arena, and timeout hooks cancel through `SlCancellationToken` with
-`SL_CANCELLATION_REASON_DEADLINE_EXCEEDED`. This is not yet a timer integration, client
-disconnect signal, graceful shutdown drain, body-reader cancellation path, or stress
-evidence; those remain ENGINE-13.D/E/F follow-ups.
+`SL_CANCELLATION_REASON_DEADLINE_EXCEEDED`. ENGINE-13.D/E adds the HTTP-specific bounded
+body reader and shutdown/cancel policy on top of that state: body chunks are copied only up
+to the configured request limit, cancellation/deadline/shutdown are checked before and
+during body reads, new request work is rejected once backend shutdown begins, and active
+requests can be cancelled through the shutdown hook with cleanup-once admission release.
+This is still not a real timer integration, client-disconnect signal, socket drain timer,
+or stress evidence; those remain ENGINE-13.F/#324 and later platform/backend follow-ups.
 
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
@@ -496,9 +500,11 @@ provider source exposes deterministic native timeout completion without public t
 Late completion after timeout is cleanup-only and must not double-settle.
 
 The HTTP backend foundation has read/header/request timeout configuration fields and an
-explicit request timeout hook. Until ENGINE-13.D/E wires actual timer/read/disconnect
-sources, these fields document where the backend attaches deadlines and tests drive the
-terminal timeout path directly.
+explicit request timeout hook. ENGINE-13.D/E makes body reads observe that request token:
+pre-cancelled, cancelled-during-read, timed-out-during-read, and shutdown-during-read
+requests stop body accumulation, discard late body bytes, release request admission exactly
+once, and return deterministic cancellation/timeout/shutdown diagnostics. Real timer and
+client-disconnect wakeups are still not wired; tests drive the terminal paths directly.
 
 ## Backpressure
 
@@ -528,8 +534,12 @@ threads never resume JS.
 HTTP backend admission follows the same bounded model: a full active connection or active
 request budget returns `SL_STATUS_CAPACITY_EXCEEDED` with
 `SLOPPY_E_HTTP_OVERLOAD`, and the backend does not create an unbounded request queue.
-Streaming body and socket write backpressure are still future ENGINE-13 work, so current
-claims are limited to admission counters and deterministic rejection.
+Body accumulation follows the same bounded model through `SlHttpBodyReader`: a body over
+the configured byte limit fails before unbounded allocation, unsupported media fails before
+handler dispatch, and body-reader failure discards partial request-body storage. Streaming
+body APIs and socket write backpressure are still future ENGINE-13 work, so current claims
+are limited to bounded body storage, admission counters, cancellation/shutdown terminal
+paths, and deterministic rejection.
 
 ## Scaling to Many Requests
 

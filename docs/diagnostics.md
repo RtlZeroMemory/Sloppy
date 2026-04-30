@@ -179,6 +179,7 @@ Implemented foundation codes:
 - `SLOPPY_E_HTTP_REQUEST_TIMEOUT`;
 - `SLOPPY_E_HTTP_OVERLOAD`;
 - `SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED`;
+- `SLOPPY_E_HTTP_SHUTDOWN`;
 - `SLOPPY_E_DUPLICATE_ROUTE`;
 - `SLOPPY_E_HTTP_UNSUPPORTED_BODY`;
 - `SLOPPY_E_INVALID_HTTP_RESULT`;
@@ -367,6 +368,9 @@ Runtime diagnostics:
   parser limit failures;
 - HTTP backend connection closed/error, request timeout/deadline, overload/backpressure,
   and unsupported keep-alive/body behavior diagnostics;
+- HTTP backend shutdown rejection/cancellation diagnostics;
+- HTTP backend body-read cancellation, timeout, shutdown, body-limit, unsupported-media,
+  and invalid body-length diagnostics;
 - unsupported request bodies;
 - unsupported request content types;
 - request body size limit failures;
