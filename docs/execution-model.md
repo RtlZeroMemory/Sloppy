@@ -169,6 +169,14 @@ deterministic HTTP/1.1 response, and closes the connection. The deterministic
 `--once METHOD TARGET` mode
 performs the same dispatch without opening a socket.
 
+ENGINE-13.A/B/C adds the first core HTTP backend state model under that dev path:
+backend/listener init-start-stop-dispose state, accepted/open/reading/dispatching/writing/
+closing/closed/error connection states, created/reading/dispatching/writing/completed/
+cancelled/timed-out/failed/closed request states, parser limit policy, timeout hooks, and
+bounded admission. It does not change public handler semantics, does not make the dev
+server production-ready, and does not add TLS, HTTP/2/3, WebSockets, static files,
+compression, V8/provider/compiler work, or production benchmark evidence.
+
 ## Current Handwritten Milestone
 
 The first real milestone is not full TypeScript compilation. It is now covered by a
@@ -419,6 +427,21 @@ Target request flow:
 9. close request resources;
 10. release request arena;
 11. report debug leaks.
+
+Current ENGINE-13.A/B/C backend foundation makes the native prelude explicit:
+
+1. backend starts over a platform listener boundary;
+2. a connection is admitted or rejected by bounded connection capacity;
+3. a request lifecycle is admitted or rejected by bounded active-request capacity;
+4. request bytes are parsed with target/header/body limits into the request arena;
+5. timeout/deadline hooks can cancel the request token before or during dispatch;
+6. dispatch and response-writing states are recorded;
+7. complete/fail/timeout/close releases the request admission slot exactly once;
+8. connection close/fail releases the connection slot exactly once.
+
+The current CLI socket loop still writes `Connection: close`; keep-alive policy remains
+honestly disabled/deferred even though the backend state model can return a completed
+connection to `OPEN`.
 
 ENGINE-01 target handler context contains `route`, `query`, `request`, `signal`,
 `deadline`, and future request-owned `resources`. The foundation request lifecycle must

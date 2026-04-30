@@ -30,8 +30,12 @@ typedef struct SlHttpParseContext
     SlHttpHeader* headers;
     size_t max_headers;
     size_t max_target_length;
+    size_t max_header_name_length;
+    size_t max_header_value_length;
+    size_t max_total_header_bytes;
     size_t max_body_length;
     size_t header_count;
+    size_t total_header_bytes;
     SlStringBuilder raw_target_builder;
     SlStringBuilder current_header_name_builder;
     SlStringBuilder current_header_value_builder;
@@ -58,6 +62,10 @@ static SlStatusCode sl_http_status_code_for_diag(SlDiagCode code)
 {
     switch (code) {
     case SL_DIAG_HTTP_HEADER_LIMIT:
+    case SL_DIAG_HTTP_TARGET_LIMIT:
+    case SL_DIAG_HTTP_HEADER_NAME_LIMIT:
+    case SL_DIAG_HTTP_HEADER_VALUE_LIMIT:
+    case SL_DIAG_HTTP_HEADER_BYTES_LIMIT:
     case SL_DIAG_HTTP_BODY_LIMIT:
         return SL_STATUS_CAPACITY_EXCEEDED;
     default:
@@ -171,12 +179,12 @@ static SlStatus sl_http_init_parse_builders(SlHttpParseContext* ctx)
         return status;
     }
     status = sl_string_builder_init_arena(&ctx->current_header_name_builder, ctx->arena, 0U,
-                                          sl_arena_remaining(ctx->arena));
+                                          ctx->max_header_name_length);
     if (!sl_status_is_ok(status)) {
         return status;
     }
     status = sl_string_builder_init_arena(&ctx->current_header_value_builder, ctx->arena, 0U,
-                                          sl_arena_remaining(ctx->arena));
+                                          ctx->max_header_value_length);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -219,6 +227,77 @@ static SlStatus sl_http_append_body(SlHttpParseContext* ctx, SlBytes chunk)
 
     ctx->body = sl_byte_builder_view(&ctx->body_builder);
     return sl_status_ok();
+}
+
+static SlStatus sl_http_count_header_bytes(SlHttpParseContext* ctx, size_t length)
+{
+    size_t next_length = 0U;
+    SlStatus status;
+
+    if (ctx == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_checked_add_size(ctx->total_header_bytes, length, &next_length);
+    if (sl_status_is_ok(status) && next_length > ctx->max_total_header_bytes) {
+        return sl_http_set_error(
+            ctx, SL_DIAG_HTTP_HEADER_BYTES_LIMIT,
+            sl_http_literal("HTTP request headers are too large",
+                            sizeof("HTTP request headers are too large") - 1U),
+            sl_http_literal("the HTTP backend bounds total header bytes before dispatch",
+                            sizeof("the HTTP backend bounds total header bytes before dispatch") -
+                                1U));
+    }
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    ctx->total_header_bytes = next_length;
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_check_header_name_length(SlHttpParseContext* ctx, size_t length)
+{
+    size_t next_length = 0U;
+    SlStatus status;
+
+    if (ctx == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_checked_add_size(ctx->current_header_name.length, length, &next_length);
+    if (sl_status_is_ok(status) && next_length > ctx->max_header_name_length) {
+        return sl_http_set_error(
+            ctx, SL_DIAG_HTTP_HEADER_NAME_LIMIT,
+            sl_http_literal("HTTP header name is too long",
+                            sizeof("HTTP header name is too long") - 1U),
+            sl_http_literal("the HTTP backend bounds header names before dispatch",
+                            sizeof("the HTTP backend bounds header names before dispatch") - 1U));
+    }
+
+    return status;
+}
+
+static SlStatus sl_http_check_header_value_length(SlHttpParseContext* ctx, size_t length)
+{
+    size_t next_length = 0U;
+    SlStatus status;
+
+    if (ctx == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_checked_add_size(ctx->current_header_value.length, length, &next_length);
+    if (sl_status_is_ok(status) && next_length > ctx->max_header_value_length) {
+        return sl_http_set_error(
+            ctx, SL_DIAG_HTTP_HEADER_VALUE_LIMIT,
+            sl_http_literal("HTTP header value is too long",
+                            sizeof("HTTP header value is too long") - 1U),
+            sl_http_literal("the HTTP backend bounds header values before dispatch",
+                            sizeof("the HTTP backend bounds header values before dispatch") - 1U));
+    }
+
+    return status;
 }
 
 static SlStatus sl_http_finish_current_header(SlHttpParseContext* ctx)
@@ -293,11 +372,11 @@ static int sl_http_on_url(llhttp_t* parser, const char* at, size_t length)
 
     if (sl_status_is_ok(status) && next_length > ctx->max_target_length) {
         status = sl_http_set_error(
-            ctx, SL_DIAG_INVALID_HTTP_REQUEST,
+            ctx, SL_DIAG_HTTP_TARGET_LIMIT,
             sl_http_literal("HTTP request target is too long",
                             sizeof("HTTP request target is too long") - 1U),
-            sl_http_literal("the dev HTTP runtime bounds request targets before dispatch",
-                            sizeof("the dev HTTP runtime bounds request targets before dispatch") -
+            sl_http_literal("the HTTP backend bounds request targets before dispatch",
+                            sizeof("the HTTP backend bounds request targets before dispatch") -
                                 1U));
     }
     if (sl_status_is_ok(status)) {
@@ -327,8 +406,14 @@ static int sl_http_on_header_field(llhttp_t* parser, const char* at, size_t leng
         }
     }
 
-    status = sl_string_builder_append_str(&ctx->current_header_name_builder,
-                                          sl_str_from_parts(at, length));
+    status = sl_http_count_header_bytes(ctx, length);
+    if (sl_status_is_ok(status)) {
+        status = sl_http_check_header_name_length(ctx, length);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_str(&ctx->current_header_name_builder,
+                                              sl_str_from_parts(at, length));
+    }
     if (sl_status_is_ok(status)) {
         ctx->current_header_name = sl_string_builder_view(&ctx->current_header_name_builder);
     }
@@ -345,8 +430,14 @@ static int sl_http_on_header_value(llhttp_t* parser, const char* at, size_t leng
     SlStatus status;
 
     ctx->saw_header_value = true;
-    status = sl_string_builder_append_str(&ctx->current_header_value_builder,
-                                          sl_str_from_parts(at, length));
+    status = sl_http_count_header_bytes(ctx, length);
+    if (sl_status_is_ok(status)) {
+        status = sl_http_check_header_value_length(ctx, length);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_str(&ctx->current_header_value_builder,
+                                              sl_str_from_parts(at, length));
+    }
     if (sl_status_is_ok(status)) {
         ctx->current_header_value = sl_string_builder_view(&ctx->current_header_value_builder);
     }
@@ -498,13 +589,28 @@ static void sl_http_parse_context_init(SlHttpParseContext* ctx, SlArena* arena,
 {
     size_t max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
     size_t max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
+    size_t max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
+    size_t max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
+    size_t max_total_header_bytes = SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES;
     size_t max_body_length = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
 
     if (options != NULL) {
-        /* Zero max_headers is an explicit no-headers limit; target/body zero use defaults. */
+        /*
+         * Zero max_headers is an explicit no-headers limit; the other zero limits use
+         * documented defaults so old callers keep the bounded alpha behavior.
+         */
         max_headers = options->max_headers;
         max_target_length = options->max_target_length == 0U ? SL_HTTP_DEFAULT_MAX_TARGET_LENGTH
                                                              : options->max_target_length;
+        max_header_name_length = options->max_header_name_length == 0U
+                                     ? SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH
+                                     : options->max_header_name_length;
+        max_header_value_length = options->max_header_value_length == 0U
+                                      ? SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH
+                                      : options->max_header_value_length;
+        max_total_header_bytes = options->max_total_header_bytes == 0U
+                                     ? SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES
+                                     : options->max_total_header_bytes;
         max_body_length = options->max_body_length == 0U ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
                                                          : options->max_body_length;
     }
@@ -513,6 +619,9 @@ static void sl_http_parse_context_init(SlHttpParseContext* ctx, SlArena* arena,
     ctx->arena = arena;
     ctx->max_headers = max_headers;
     ctx->max_target_length = max_target_length;
+    ctx->max_header_name_length = max_header_name_length;
+    ctx->max_header_value_length = max_header_value_length;
+    ctx->max_total_header_bytes = max_total_header_bytes;
     ctx->max_body_length = max_body_length;
     ctx->callback_status = sl_status_ok();
     ctx->diag_code = SL_DIAG_NONE;

@@ -374,6 +374,11 @@ static int test_provider_code_names(void)
         return 59;
     }
 
+    return 0;
+}
+
+static int test_http_code_names(void)
+{
     if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_UNSUPPORTED_BODY),
                          sl_str_from_cstr("SLOPPY_E_HTTP_UNSUPPORTED_BODY")) != 0)
     {
@@ -396,6 +401,46 @@ static int test_provider_code_names(void)
                          sl_str_from_cstr("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE")) != 0)
     {
         return 63;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_TARGET_LIMIT),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_TARGET_LIMIT")) != 0)
+    {
+        return 64;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_HEADER_NAME_LIMIT),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_HEADER_NAME_LIMIT")) != 0)
+    {
+        return 65;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_HEADER_VALUE_LIMIT),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_HEADER_VALUE_LIMIT")) != 0)
+    {
+        return 66;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_HEADER_BYTES_LIMIT),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_HEADER_BYTES_LIMIT")) != 0)
+    {
+        return 67;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_CONNECTION_CLOSED),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_CONNECTION_CLOSED")) != 0)
+    {
+        return 68;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_REQUEST_TIMEOUT),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_REQUEST_TIMEOUT")) != 0)
+    {
+        return 69;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_OVERLOAD),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_OVERLOAD")) != 0)
+    {
+        return 70;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED")) != 0)
+    {
+        return 71;
     }
 
     return 0;
@@ -834,6 +879,10 @@ int main(void)
     }
 
     result = test_provider_code_names();
+    if (result != 0) {
+        return result;
+    }
+    result = test_http_code_names();
     if (result != 0) {
         return result;
     }

@@ -21,9 +21,14 @@ framework HTTP runtime slice for realistic local APIs. ENGINE-22.A adopts the sh
 memory/string primitives in the current HTTP hot paths without changing public behavior:
 segmented request target/header accumulation uses builders, body accumulation and response
 writing use byte builders, and request/route-owned strings use the core arena copy helpers.
-There is still no production HTTP server, TLS, streaming parser API, middleware,
-cookies/sessions, multipart upload, streaming responses, public TypeScript `app.run`, or
-broad response framework.
+ENGINE-13.A/B/C adds the first proper HTTP backend foundation underneath the dev path:
+backend/listener state, connection states, request lifecycle states, parser target/header
+limits, timeout/deadline hooks, bounded admission/backpressure counters, and deterministic
+HTTP lifecycle diagnostics. The backend model is core C state only; concrete listener and
+socket details remain behind the platform boundary. There is still no production HTTP
+server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser API, middleware,
+cookies/sessions, static file server, compression, multipart upload, streaming responses,
+public TypeScript `app.run`, or broad response framework.
 
 ## Purpose
 
@@ -60,15 +65,22 @@ Implemented now:
 - bounded JSON/text request body policy with deterministic 400/413/415/501 failures before
   handler execution;
 - request cancellation/backpressure checks before V8 handler entry when a cancellation token
-  or in-flight request cap is present.
+  or in-flight request cap is present;
 - ENGINE-22.A memory/string adoption for the current complete-buffer parser, request-owned
   body storage, native response writer, and route string copy/match edge coverage.
+- ENGINE-13.A/B/C backend state model with explicit init/start/stop/dispose, listener
+  platform boundary, accepted/open/reading/dispatching/writing/closing/closed/error
+  connection states, request lifecycle states, bounded active connection/request admission,
+  parser target/header/body limits, timeout hooks over `SlCancellationToken`, and stable
+  lifecycle/backpressure diagnostics.
 
 Future scope:
 
 - streaming HTTP parser state;
-- request lifecycle;
-- production server hardening;
+- body reader and deeper cancellation integration in ENGINE-13.D;
+- graceful shutdown and server diagnostics in ENGINE-13.E;
+- stress/conformance smoke in ENGINE-13.F;
+- production server hardening if explicitly scoped later;
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
 
@@ -88,6 +100,9 @@ response writer.
 - EPIC-13 route groups exist only in `stdlib/sloppy/app.js` as in-memory bootstrap
   metadata. They do not alter the native route parser, matcher, synthetic dispatch helper,
   HTTP route table, or request context.
+- ENGINE-13.A/B/C does not add TLS, HTTP/2, HTTP/3, WebSockets, static files, compression,
+  reverse proxy behavior, production benchmark claims, V8/provider/compiler changes, or
+  Node/npm compatibility.
 
 ## Public/Internal API
 
@@ -114,6 +129,18 @@ response writer.
 - `SlHttpRouteBinding`;
 - `SlHttpDispatchTable`;
 - `sl_http_dispatch_request_head`.
+
+`include/sloppy/http_backend.h` exposes the ENGINE-13.A/B/C backend foundation:
+
+- `SlHttpBackend`;
+- `SlHttpBackendOptions`;
+- `SlHttpListener`;
+- `SlHttpConnection`;
+- `SlHttpRequestLifecycle`;
+- backend, listener, connection, and request state enums;
+- init/start/stop/dispose;
+- connection admission/close/fail;
+- request begin, parse, dispatch, write, complete, fail, timeout, and close hooks.
 
 Supported route pattern subset:
 
@@ -147,10 +174,16 @@ Paths passed to the matcher must start with `/` and must not include a query str
 
 The HTTP parser accepts a complete HTTP/1.x request message in one `SlBytes` buffer. It
 does not expose streaming state. It rejects malformed input, incomplete input, missing HTTP
-versions, unsupported methods, empty/non-path request targets, header counts above
-`max_headers`, and bodies above `max_body_length`. When parse options are omitted,
-`SL_HTTP_DEFAULT_MAX_HEADERS` and `SL_HTTP_DEFAULT_MAX_BODY_LENGTH` are used. A zero header
-limit allows requests with no headers and rejects the first parsed header.
+versions, unsupported methods, empty/non-path request targets, request targets above
+`max_target_length`, header counts above `max_headers`, header names above
+`max_header_name_length`, header values above `max_header_value_length`, total header
+callback bytes above `max_total_header_bytes`, and bodies above `max_body_length`. When
+parse options are omitted, `SL_HTTP_DEFAULT_MAX_HEADERS`,
+`SL_HTTP_DEFAULT_MAX_TARGET_LENGTH`, `SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH`,
+`SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH`, `SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES`, and
+`SL_HTTP_DEFAULT_MAX_BODY_LENGTH` are used. A zero header count limit allows requests with
+no headers and rejects the first parsed header. Zero values for the other limit fields use
+the defaults.
 
 Supported method mapping is intentionally small: GET, POST, PUT, DELETE, PATCH, OPTIONS,
 and HEAD. Other llhttp methods fail as unsupported for this skeleton.
@@ -186,6 +219,25 @@ response writer: supported handler results use their descriptor status, route mi
 `501`, and safe dev `500` text is used for malformed requests, malformed result
 descriptors, or handler/runtime failures.
 
+The backend foundation has an explicit lifecycle:
+
+```text
+backend: uninitialized -> initialized -> started -> stopping/stopped -> disposed
+connection: accepted/open -> reading request -> dispatching -> writing response -> closing
+            -> closed or error
+request: created -> reading -> dispatching -> writing response -> completed/cancelled/
+         timed out/failed -> closed
+```
+
+`SlHttpBackend` owns only counters, limits, and state. `SlHttpListener` carries an opaque
+platform listener pointer but no socket or OS handle type. `SlHttpConnection` owns one
+admitted connection slot until close/fail. `SlHttpRequestLifecycle` owns one active request
+admission slot and a cancellation token; parsed request-head memory remains in the caller's
+request arena and is cleared on request close. Keep-alive is disabled for the dev runtime
+today; the backend can return a connection to `OPEN` after a request completes, but the
+current CLI response writer still sends `Connection: close` and closes the socket.
+Production keep-alive policy is deferred.
+
 ## Ownership/Lifetime Rules
 
 Parsed route patterns copy source text, static segment text, and parameter names into the
@@ -205,6 +257,12 @@ the input buffer after success. Segmented llhttp callback data is accumulated in
 `SlStringBuilder`/`SlByteBuilder` state tied to the request arena; finished header
 name/value views are copied into stable request-owned arena storage before the next header
 builder reset.
+
+`SlHttpRequestLifecycle` borrows the request arena and never lets request-scope parsed
+memory escape the request lifecycle. Admission counters are released exactly once by
+complete/fail/timeout/close paths. Timeout hooks cancel the request token with
+`SL_CANCELLATION_REASON_DEADLINE_EXCEEDED`; real timer wakeups are not wired in
+ENGINE-13.A/B/C.
 
 Native response writing uses `SlByteBuilder` over the caller-provided output buffer. The
 returned `SlBytes` view borrows that buffer, and failed writes reset the returned view to an
@@ -234,6 +292,10 @@ sockets, drive libuv, allocate outside the caller arena, or build a production r
 object. The dev-only socket loop lives in the CLI executable and uses libuv without OS
 headers or platform-specific calls.
 
+The backend foundation is also pure core C. It does not include OS headers, libuv types,
+V8 types, provider handles, or direct socket APIs. Concrete accept/read/write/timer work
+must enter through platform/runtime layers in later ENGINE-13 slices.
+
 ## Diagnostics
 
 Implemented parser diagnostics are intentionally small:
@@ -245,8 +307,16 @@ TASK 10.B adds small HTTP parser diagnostics:
 
 - invalid/malformed/incomplete HTTP request;
 - HTTP header count limit exceeded;
+- HTTP header name/value/total-byte limit exceeded;
 - request target length exceeded;
 - request body length exceeded.
+
+ENGINE-13.A/B/C adds backend diagnostics:
+
+- HTTP connection closed/error;
+- HTTP request timeout/deadline;
+- HTTP overload/backpressure;
+- unsupported keep-alive/body behavior where encountered.
 
 TASK 10.C, MAIN1-04, and ENGINE-04 add small synthetic/dev dispatch diagnostics:
 
@@ -287,9 +357,16 @@ Implemented CTest coverage:
 - malformed request lines, missing versions, invalid methods/tokens, invalid headers,
   incomplete requests, and empty targets;
 - max-header enforcement;
+- header name, header value, and total header byte limit enforcement;
 - body byte capture and max-body enforcement;
 - request target length enforcement;
 - parser diagnostics for malformed requests and header limits;
+- backend init/start/stop/dispose;
+- connection lifecycle cleanup;
+- request lifecycle success and cleanup;
+- malformed request cleanup after parser failure;
+- timeout hook cancellation and diagnostic behavior;
+- bounded admission/backpressure rejection;
 - route matcher reuse with a parsed request path;
 - route table construction, duplicate route rejection, and literal-before-parameter
   precedence;

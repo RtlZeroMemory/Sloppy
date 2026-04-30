@@ -393,8 +393,8 @@ static int test_max_target_length_enforced(void)
     options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
     options.max_target_length = 4U;
     status = parse_request(&arena, "GET /toolong HTTP/1.1\r\n\r\n", &options, &request, &diag);
-    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
-        diag.code != SL_DIAG_INVALID_HTTP_REQUEST || request.raw_target.ptr != NULL)
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        diag.code != SL_DIAG_HTTP_TARGET_LIMIT || request.raw_target.ptr != NULL)
     {
         return 53;
     }
@@ -421,6 +421,57 @@ static int test_max_headers_enforced(void)
         diag.code != SL_DIAG_HTTP_HEADER_LIMIT || request.header_count != 0U)
     {
         return 51;
+    }
+
+    return 0;
+}
+
+static int test_header_name_value_and_total_limits_enforced(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpRequestHead request = {0};
+    SlDiag diag = {0};
+    SlHttpParseOptions options = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 57;
+    }
+
+    options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    options.max_header_name_length = 3U;
+    status =
+        parse_request(&arena, "GET / HTTP/1.1\r\nLong: value\r\n\r\n", &options, &request, &diag);
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        diag.code != SL_DIAG_HTTP_HEADER_NAME_LIMIT || request.header_count != 0U)
+    {
+        return 58;
+    }
+
+    sl_arena_reset(&arena);
+    request = (SlHttpRequestHead){0};
+    diag = (SlDiag){0};
+    options.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
+    options.max_header_value_length = 3U;
+    status = parse_request(&arena, "GET / HTTP/1.1\r\nX: value\r\n\r\n", &options, &request, &diag);
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        diag.code != SL_DIAG_HTTP_HEADER_VALUE_LIMIT || request.header_count != 0U)
+    {
+        return 59;
+    }
+
+    sl_arena_reset(&arena);
+    request = (SlHttpRequestHead){0};
+    diag = (SlDiag){0};
+    options.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
+    options.max_total_header_bytes = 6U;
+    status = parse_request(&arena, "GET / HTTP/1.1\r\nA: 1234\r\nB: 5\r\n\r\n", &options, &request,
+                           &diag);
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        diag.code != SL_DIAG_HTTP_HEADER_BYTES_LIMIT || request.header_count != 0U)
+    {
+        return 60;
     }
 
     return 0;
@@ -606,6 +657,7 @@ int main(void)
                                          {test_callback_allocation_failure_preserved},
                                          {test_max_target_length_enforced},
                                          {test_max_headers_enforced},
+                                         {test_header_name_value_and_total_limits_enforced},
                                          {test_max_body_length_enforced},
                                          {test_zero_header_limit_allows_no_headers},
                                          {test_invalid_arguments},
