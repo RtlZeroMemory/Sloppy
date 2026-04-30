@@ -323,6 +323,7 @@ if(SLOPPY_ENABLE_V8)
         SLOPPY_CORE_SOURCES
         src/engine/v8/engine_v8.cc
         src/engine/v8/http_bridge.cc
+        src/engine/v8/string_interop.cc
         src/engine/v8/intrinsics.cc
         src/engine/v8/intrinsics_sqlite.cc)
 endif()
