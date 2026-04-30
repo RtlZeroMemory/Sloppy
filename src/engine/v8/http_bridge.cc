@@ -357,9 +357,13 @@ void http_v8_request_json_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
         !body->IsString())
     {
         SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
-        (void)sl_v8_throw_type_error_from_native_view(
-            backend, http_v8_literal("Request body is not available as JSON.",
-                                     sizeof("Request body is not available as JSON.") - 1U));
+        if (!sl_v8_throw_type_error_from_native_view(
+                backend, http_v8_literal("Request body is not available as JSON.",
+                                         sizeof("Request body is not available as JSON.") - 1U)))
+        {
+            isolate->ThrowException(v8::Exception::TypeError(
+                v8::String::NewFromUtf8Literal(isolate, "Request body is not available as JSON.")));
+        }
         return;
     }
 
