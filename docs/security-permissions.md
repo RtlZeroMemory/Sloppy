@@ -169,6 +169,9 @@ Database access policy is deliberately small:
 - read operations require `read` or `readwrite`;
 - write operations require `write` or `readwrite`;
 - readwrite operations require `readwrite`;
+- SQLite stores the requested resource access mode after open; `read` resources deny write
+  operations and `write` resources deny read operations before provider work even when the
+  underlying SQLite native handle has broader technical capability;
 - provider-token mismatch rejects even when the access mode matches;
 - provider-kind mismatch rejects before execution;
 - wrong capability kind and missing capability reject before execution.

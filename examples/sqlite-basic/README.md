@@ -21,6 +21,12 @@ What works today:
 - `data.sqlite.open({ database: ":memory:", capability: "data.main", access: "readwrite" })`
   is the canonical explicit shape. `path` remains only a transitional alias for
   `database`, and unsupported option fields fail before provider work;
+- access is enforced twice: against Plan capability metadata before open/use, and against
+  the opened resource mode before every operation. `read` permits `query`/`queryOne`,
+  `write` permits `exec`/transaction writes, and `readwrite` permits both;
+- result mapping is small and stable: `NULL` becomes `null`, integers/floats become
+  JavaScript numbers, text becomes strings, blobs become `Uint8Array`, `queryOne` returns a
+  row or `null`, and duplicate column names should be avoided with SQL aliases;
 - `db.transaction(callback)` commits when the callback succeeds, rolls back when it throws
   or rejects, rejects nested transactions, and rejects transaction-object use after
   commit/rollback on the current synchronous SQLite bridge;

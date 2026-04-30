@@ -90,6 +90,14 @@ completion, and capability-denial paths have deterministic counters or terminal
 diagnostics, and bounded stress smoke verifies redacted diagnostics without treating the
 result as performance proof.
 
+ENGINE-17.B/D keeps SQLite diagnostic categories distinct on the current synchronous V8
+bridge path. Capability denial remains a permission diagnostic before native work; invalid,
+stale, closed, and wrong-kind handles remain resource diagnostics without native pointer
+values; unsupported parameter values use `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`; and native
+SQLite prepare/step/finalize/constraint failures use `SLOPPY_E_SQLITE_PROVIDER`. SQLite
+provider diagnostics may include SQL text and SQLite error text, but never positional
+parameter values. Secret values must be passed as parameters, not embedded in SQL text.
+
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic
 `--diagnostic-format json` flag for every error path.

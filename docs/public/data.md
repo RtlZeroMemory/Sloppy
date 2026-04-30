@@ -122,11 +122,13 @@ Implemented behavior:
 - `data.sqlite` exposes SQLite provider metadata, callable provider shorthand, and
   `open(options)`. In a V8-enabled Sloppy runtime that installs SQLite intrinsics and has
   Plan/capability metadata, `data.sqlite("main")` resolves provider token `data.main` and
-  returns a safe SQLite connection wrapper. Explicit open uses
+  returns a safe SQLite connection wrapper with the normal `readwrite` default. Explicit
+  open uses
   `data.sqlite.open({ database, capability, access })`; `database` is canonical, `path` is
   a transitional alias, `capability` is required, `access` defaults to `readwrite`, and
-  unsupported option fields fail clearly. In bootstrap-only or non-V8 contexts, it fails
-  with a bridge-unavailable error.
+  unsupported option fields fail clearly. Use explicit `access: "read"` for read-only
+  capabilities. In bootstrap-only or non-V8 contexts, it fails with a bridge-unavailable
+  error.
 - `data.postgres` exposes PostgreSQL provider metadata, `$1` placeholder style, connection
   string redaction, and `open(options)` as the future stdlib entry point.
 - `data.sqlserver` exposes SQL Server provider metadata, ODBC `?` placeholder style,
@@ -186,10 +188,14 @@ db.close();
 The bridge is intentionally small. It supports `open`, `close`, `exec`, `query`,
 `queryOne`, and callback transactions for SQLite only. It returns arrays/plain objects,
 maps SQLite `NULL` to JavaScript `null`, and supports primitive positional parameters:
-`null`, string, number, and boolean. The wrapper stores only an opaque resource ID object;
-stale, closed, invalid, wrong-kind, transaction use-after-close, missing-provider, and
-denied-capability handles fail before provider code runs. Double close is idempotent at
-the wrapper level. Public prepared statement handles are absent by design; internal
+`null`, string, number, and boolean. Boolean parameters bind as SQLite integers `0` or
+`1`; blob results map to `Uint8Array`; duplicate column names use normal object assignment,
+so the last duplicate column wins unless SQL aliases make names unique. The wrapper stores
+only an opaque resource ID object; stale, closed, invalid, wrong-kind, transaction
+use-after-close, missing-provider, and denied-capability handles fail before provider code
+runs. A `read` handle can query/queryOne only, a `write` handle can exec/write only, and
+`readwrite` permits both. Double close is idempotent at the wrapper level. Public prepared
+statement handles are absent by design; internal
 prepare/bind/step/finalize remains per operation until a later resource-lifetime task.
 
 Layering matters for future providers: the public stdlib wrapper is JavaScript, the native
