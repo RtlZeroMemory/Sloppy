@@ -8,9 +8,11 @@ behavior, and it does not create public alpha claims.
 
 ENGINE-12 owns the scalable async backend: native completion queues, owner-thread V8
 continuation scheduling, cancellation/deadline/shutdown drain behavior, bounded async
-backpressure, provider/offload integration, and stress evidence. ENGINE-13 and later cover
-the rest of the foundation needed before Sloppy can honestly expand into public alpha
-docs or higher-level userland framework work.
+backpressure, provider/offload integration, and stress evidence. ENGINE-13 through
+ENGINE-20 cover the first remaining foundation batch. ENGINE-21 and ENGINE-22 add the
+cross-cutting memory/string foundation and adoption layer that those HTTP, V8, SQLite,
+diagnostics, Plan, lifecycle, CLI, and conformance EPICs need before public alpha claims,
+including bounded app/static string interning for stable metadata symbols.
 
 The target is Sloppy's own engine foundation, not Node compatibility, npm/package-manager
 behavior, production internet-edge server claims, ORM/migrations, PostgreSQL/SQL Server JS
@@ -34,6 +36,13 @@ bridge expansion, benchmark marketing, or public alpha documentation.
   is introduced by these EPICs.
 - Public alpha docs stay blocked until the foundation evidence gates prove the supported
   compiler, Plan, V8, HTTP, SQLite, lifecycle, CLI, and conformance paths.
+- Memory and string handling is a core engine foundation concern. ENGINE-21 defines the
+  lifetime/allocation/string/builder/interoperability primitives, including bounded
+  string interning/symbol-table policy for stable route, Plan, module, capability, and
+  provider metadata. ENGINE-22 adopts them in hot paths. The audit and strategy docs are
+  `docs/project/memory-string-current-state-audit.md`,
+  `docs/project/memory-string-foundation-architecture.md`, and
+  `docs/project/memory-string-adoption-map.md`.
 
 ## Shared Acceptance Gates
 
@@ -536,15 +545,21 @@ consume.
 
 ## Recommended Order
 
-1. ENGINE-20 frames the stronger Plan graph enough for HTTP, modules, SQLite, CLI, and
+1. ENGINE-21 frames the memory/string primitive layer enough for HTTP, diagnostics, V8,
+   SQLite, Plan, CLI, and conformance work to share ownership and builder vocabulary.
+2. ENGINE-20 frames the stronger Plan graph enough for HTTP, modules, SQLite, CLI, and
    conformance to share vocabulary.
-2. ENGINE-14 and ENGINE-15 can proceed in parallel where source names, bootstrap loading,
+3. ENGINE-14 and ENGINE-15 can proceed in parallel where source names, bootstrap loading,
    and diagnostics intersect.
-3. ENGINE-16 should land before broad resource-owning SQLite and shutdown-heavy HTTP work.
-4. ENGINE-13 uses ENGINE-12/16 primitives to turn HTTP into a proper backend.
-5. ENGINE-17 completes SQLite once resource ownership and capability policy are wired.
-6. ENGINE-18 tightens the command loop after the runtime and Plan evidence surfaces exist.
-7. ENGINE-19 wraps the implemented behavior in executable compatibility evidence.
+4. ENGINE-16 should land before broad resource-owning SQLite and shutdown-heavy HTTP work.
+5. ENGINE-13 uses ENGINE-12/16/21 primitives to turn HTTP into a proper backend.
+6. ENGINE-17 completes SQLite once resource ownership, capability policy, and
+   memory/string conversion policy are wired.
+7. ENGINE-18 tightens the command loop after the runtime, Plan, diagnostics, and builder
+   evidence surfaces exist.
+8. ENGINE-22 migrates hot paths after ENGINE-21 primitives exist, coordinated with
+   subsystem EPICs rather than as a single codebase-wide rewrite.
+9. ENGINE-19 wraps the implemented behavior in executable compatibility evidence.
 
 This order is strategic, not a ban on parallel docs, fixtures, or narrow preparatory work.
 Any PR that crosses runtime behavior must still stay bounded to one coherent ownership

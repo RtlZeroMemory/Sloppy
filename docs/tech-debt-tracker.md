@@ -52,6 +52,15 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
   artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
   optimization hooks, versioning, and internal tooling leverage.
+- Memory and string runtime foundations: ENGINE-21 owns app/request/temp/static/V8/SQLite/
+  diagnostic lifetime rules, allocation policy, string/byte views, owned strings/buffers,
+  byte and string builders, formatting utilities, bounded app/static string
+  interning/symbol tables, V8/native conversion policy, SQLite text/blob ownership policy,
+  and memory safety/stress tests.
+- Memory/string adoption and hot-path refactor: ENGINE-22 owns adoption across HTTP
+  request parse/response write/body buffering, V8 conversions, SQLite row/result/parameter
+  conversion, diagnostics/source frames/JSON, Plan/artifact loading, stable metadata
+  lookup, CLI output, and allocation-aware conformance/benchmark guards.
 - Framework HTTP API runtime: method dispatch, headers in context, JSON/text body policy,
   header/body limits, request cancellation signal, timeout hooks, backpressure behavior,
   result serialization, and error response contract.
@@ -119,6 +128,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   lifecycle shutdown plus resource-table-backed request/app cleanup helpers. Provider
   handle ownership policy, leak reports, broader async request-scope retention, and debug
   lifecycle integration remain open.
+- Memory/string foundation completion: #32 tracks the old narrow string builder/buffer
+  task, but the strategic work is now ENGINE-21/22, including bounded string
+  interning/symbol tables. Public alpha should not claim top-notch memory/string hot-path
+  behavior until those primitive and adoption layers pass conformance or are explicitly
+  scoped down.
 
 ## Should Fix Soon
 

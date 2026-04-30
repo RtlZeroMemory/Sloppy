@@ -37,7 +37,24 @@ generation-counted `SlResourceId` handles, and a minimal `SlAppRequestScope` wra
 closes request cleanups on handler success, failure, cancellation/deadline-style statuses,
 and unsupported pre-handler outcomes. `SlAppLifecycle` now gives the app host an explicit
 startup/shutdown cleanup scope for app-lifetime resources.
-`SlBuf`, string builders, and allocator modules are not implemented yet.
+`SlBuf`, string builders, bounded string interning, and allocator modules are not
+implemented yet.
+
+ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
+
+- ENGINE-21 defines the app/request/temp/static/V8/SQLite/diagnostic lifetime model,
+  allocation and failure policy, string/byte/owned-buffer primitives, byte and string
+  builders, formatting utilities, bounded app/static string interning and symbol tables,
+  V8/native conversion policy, SQLite text/blob ownership, and memory safety/stress tests.
+- ENGINE-22 adopts those primitives in hot paths after they exist: HTTP parse/write/body,
+  V8 string conversions, SQLite row/result/parameter conversion, diagnostics/source
+  frames/JSON, Plan and artifact loading, stable metadata lookup, CLI output, and
+  conformance/benchmark guards.
+
+The current source audit is `docs/project/memory-string-current-state-audit.md`. The
+intended primitive architecture is
+`docs/project/memory-string-foundation-architecture.md`. The adoption map is
+`docs/project/memory-string-adoption-map.md`.
 
 ## Future Phase
 
@@ -338,6 +355,10 @@ Each primitive needs tests:
 - Add `SlBuf` and tests.
 - Add allocator interface with a default bootstrap allocator.
 - Add debug allocation tags.
+- Complete ENGINE-21 memory/string primitive contracts and tests.
+- Add bounded app/static string interning and symbol-table tests for route, Plan, module,
+  capability, provider, and diagnostic metadata names.
+- Complete ENGINE-22 adoption/refactor work for hot paths after ENGINE-21 lands.
 - Add resource ID layout and fixed-capacity resource table. Done in MAIN1-07 with
   slot/generation IDs, kind validation, cleanup callbacks, and bridge policy docs.
 - Add app/request-scope resource ownership and leak reporting. Follow-up app-host
