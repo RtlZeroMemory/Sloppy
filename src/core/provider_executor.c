@@ -2,7 +2,7 @@
  * src/core/provider_executor.c
  *
  * Implements Sloppy's bounded provider/offload executor model. This is the deterministic
- * ENGINE-12.CD foundation: it owns queued operation inputs and posts terminal completions
+ * ENGINE-23.AB foundation: it owns queued operation inputs and posts terminal completions
  * through SlAsyncLoop, but it does not start production provider worker threads.
  */
 #include "sloppy/provider_executor.h"
@@ -95,6 +95,129 @@ bool sl_provider_execution_mode_is_supported(SlProviderExecutionMode mode)
            mode == SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED;
 }
 
+SlStr sl_provider_operation_kind_name(SlProviderOperationKind kind)
+{
+    switch (kind) {
+    case SL_PROVIDER_OPERATION_KIND_OPEN:
+        return sl_str_from_cstr("open");
+    case SL_PROVIDER_OPERATION_KIND_EXEC:
+        return sl_str_from_cstr("exec");
+    case SL_PROVIDER_OPERATION_KIND_QUERY:
+        return sl_str_from_cstr("query");
+    case SL_PROVIDER_OPERATION_KIND_QUERY_ONE:
+        return sl_str_from_cstr("queryOne");
+    case SL_PROVIDER_OPERATION_KIND_CLOSE:
+        return sl_str_from_cstr("close");
+    case SL_PROVIDER_OPERATION_KIND_INTERNAL:
+        return sl_str_from_cstr("internal");
+    default:
+        return sl_str_from_cstr("unknown");
+    }
+}
+
+bool sl_provider_operation_kind_is_supported(SlProviderOperationKind kind)
+{
+    return kind == SL_PROVIDER_OPERATION_KIND_OPEN || kind == SL_PROVIDER_OPERATION_KIND_EXEC ||
+           kind == SL_PROVIDER_OPERATION_KIND_QUERY ||
+           kind == SL_PROVIDER_OPERATION_KIND_QUERY_ONE ||
+           kind == SL_PROVIDER_OPERATION_KIND_CLOSE || kind == SL_PROVIDER_OPERATION_KIND_INTERNAL;
+}
+
+SlProviderOperationDescriptor sl_provider_operation_descriptor_init(
+    SlStr provider_instance_id, SlStr provider_kind, SlProviderOperationKind operation_kind,
+    SlStr operation_name, SlProviderExecutionMode execution_mode,
+    SlAsyncCompletionDispatchFn completion_dispatch, void* completion_dispatch_user)
+{
+    SlProviderOperationDescriptor descriptor = {0};
+
+    descriptor.provider_instance_id = provider_instance_id;
+    descriptor.provider_kind = provider_kind;
+    descriptor.operation_kind = operation_kind;
+    descriptor.operation_name = operation_name;
+    descriptor.execution_mode = execution_mode;
+    descriptor.completion_dispatch = completion_dispatch;
+    descriptor.completion_dispatch_user = completion_dispatch_user;
+    return descriptor;
+}
+
+SlStatus sl_provider_operation_descriptor_set_input(SlProviderOperationDescriptor* descriptor,
+                                                    SlBytes input)
+{
+    if (descriptor == NULL || (input.length != 0U && input.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    descriptor->input = input;
+    return sl_status_ok();
+}
+
+SlStatus
+sl_provider_operation_descriptor_attach_capability(SlProviderOperationDescriptor* descriptor,
+                                                   SlStr token, SlCapabilityOperation operation)
+{
+    if (descriptor == NULL || !sl_provider_str_valid(token) ||
+        operation < SL_CAPABILITY_OPERATION_READ || operation > SL_CAPABILITY_OPERATION_LISTEN)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    descriptor->capability.token = token;
+    descriptor->capability.operation = operation;
+    return sl_status_ok();
+}
+
+SlStatus sl_provider_operation_descriptor_attach_cancellation(
+    SlProviderOperationDescriptor* descriptor, SlCancellationToken* cancellation, void* deadline)
+{
+    if (descriptor == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    descriptor->cancellation = cancellation;
+    descriptor->deadline = deadline;
+    return sl_status_ok();
+}
+
+SlStatus sl_provider_operation_descriptor_attach_scope(SlProviderOperationDescriptor* descriptor,
+                                                       void* request_or_app_scope,
+                                                       SlAsyncScopeRef scope)
+{
+    if (descriptor == NULL ||
+        (scope.scope == NULL && (scope.retain != NULL || scope.release != NULL)))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    descriptor->request_or_app_scope = request_or_app_scope;
+    descriptor->scope = scope;
+    return sl_status_ok();
+}
+
+SlStatus sl_provider_operation_descriptor_attach_cleanup(SlProviderOperationDescriptor* descriptor,
+                                                         SlProviderOperationCleanupFn cleanup,
+                                                         void* user)
+{
+    if (descriptor == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    descriptor->cleanup = cleanup;
+    descriptor->cleanup_user = user;
+    return sl_status_ok();
+}
+
+SlStatus
+sl_provider_operation_descriptor_set_diagnostic_context(SlProviderOperationDescriptor* descriptor,
+                                                        SlStr diagnostic_context)
+{
+    if (descriptor == NULL || !sl_provider_str_valid(diagnostic_context)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    descriptor->diagnostic_context = diagnostic_context;
+    return sl_status_ok();
+}
+
 static SlProviderExecutorSlot*
 sl_provider_executor_find_free_slot(SlProviderInstanceExecutor* executor)
 {
@@ -180,6 +303,24 @@ static void sl_provider_executor_activate_next(SlProviderInstanceExecutor* execu
     }
 }
 
+static size_t sl_provider_executor_default_max_in_flight(SlProviderExecutionMode mode,
+                                                         size_t configured_max, size_t worker_count)
+{
+    if (configured_max != 0U) {
+        return configured_max;
+    }
+
+    if (mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) {
+        return 1U;
+    }
+
+    if (mode == SL_PROVIDER_EXECUTION_BLOCKING_POOL && worker_count != 0U) {
+        return worker_count;
+    }
+
+    return 1U;
+}
+
 SlStatus sl_provider_executor_init(SlProviderInstanceExecutor* executor, SlArena* arena,
                                    const SlProviderExecutorConfig* config,
                                    SlProviderExecutorSlot* slots, SlAsyncLoop* completion_loop)
@@ -189,8 +330,10 @@ SlStatus sl_provider_executor_init(SlProviderInstanceExecutor* executor, SlArena
 
     if (executor == NULL || arena == NULL || config == NULL || completion_loop == NULL ||
         !sl_provider_execution_mode_is_supported(config->mode) ||
+        config->instance_id.length == 0U || config->provider_kind.length == 0U ||
         (slots == NULL && config->queue_capacity != 0U) ||
-        !sl_provider_str_valid(config->instance_id))
+        !sl_provider_str_valid(config->instance_id) ||
+        !sl_provider_str_valid(config->provider_kind))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -201,7 +344,14 @@ SlStatus sl_provider_executor_init(SlProviderInstanceExecutor* executor, SlArena
     executor->slots = slots;
     executor->capacity = config->queue_capacity;
     executor->worker_count = config->worker_count;
+    executor->max_in_flight = sl_provider_executor_default_max_in_flight(
+        config->mode, config->max_in_flight, config->worker_count);
+    executor->app_owner = config->app_owner;
+    executor->config_binding = config->config_binding;
     status = sl_provider_copy_str(arena, config->instance_id, &executor->instance_id);
+    if (sl_status_is_ok(status)) {
+        status = sl_provider_copy_str(arena, config->provider_kind, &executor->provider_kind);
+    }
     if (!sl_status_is_ok(status)) {
         *executor = (SlProviderInstanceExecutor){0};
         return status;
@@ -274,10 +424,14 @@ static bool sl_provider_descriptor_valid(const SlProviderOperationDescriptor* de
 {
     return descriptor != NULL && descriptor->completion_dispatch != NULL &&
            sl_provider_execution_mode_is_supported(descriptor->execution_mode) &&
+           sl_provider_operation_kind_is_supported(descriptor->operation_kind) &&
+           descriptor->provider_instance_id.length != 0U &&
+           descriptor->provider_kind.length != 0U && descriptor->operation_name.length != 0U &&
            sl_provider_str_valid(descriptor->provider_instance_id) &&
            sl_provider_str_valid(descriptor->provider_kind) &&
            sl_provider_str_valid(descriptor->operation_name) &&
-           sl_provider_str_valid(descriptor->capability_token) &&
+           sl_provider_str_valid(descriptor->capability.token) &&
+           sl_provider_str_valid(descriptor->diagnostic_context) &&
            (descriptor->input.length == 0U || descriptor->input.ptr != NULL);
 }
 
@@ -289,8 +443,12 @@ sl_provider_operation_init_from_descriptor(SlProviderOperation* operation,
     *operation = (SlProviderOperation){0};
     operation->executor = executor;
     operation->state = SL_PROVIDER_OPERATION_QUEUED;
+    operation->operation_kind = descriptor->operation_kind;
     operation->execution_mode = descriptor->execution_mode;
+    operation->request_or_app_scope = descriptor->request_or_app_scope;
+    operation->scope = descriptor->scope;
     operation->cancellation = descriptor->cancellation;
+    operation->deadline = descriptor->deadline;
     operation->terminal_status = sl_status_ok();
     operation->completion_dispatch = descriptor->completion_dispatch;
     operation->completion_dispatch_user = descriptor->completion_dispatch_user;
@@ -316,7 +474,13 @@ sl_provider_operation_copy_descriptor(SlArena* arena, SlProviderOperation* opera
     }
     if (sl_status_is_ok(status)) {
         status =
-            sl_provider_copy_str(arena, descriptor->capability_token, &operation->capability_token);
+            sl_provider_copy_str(arena, descriptor->capability.token, &operation->capability_token);
+    }
+    if (sl_status_is_ok(status)) {
+        operation->capability.token = sl_owned_str_as_view(operation->capability_token);
+        operation->capability.operation = descriptor->capability.operation;
+        status = sl_provider_copy_str(arena, descriptor->diagnostic_context,
+                                      &operation->diagnostic_context);
     }
     if (sl_status_is_ok(status)) {
         status = sl_bytes_copy_to_arena(arena, descriptor->input, &operation->input);
@@ -331,7 +495,7 @@ static void sl_provider_executor_activate_submitted(SlProviderInstanceExecutor* 
     if (executor->mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) {
         sl_provider_executor_activate_next(executor);
     }
-    else {
+    else if (executor->in_flight < executor->max_in_flight) {
         operation->state = SL_PROVIDER_OPERATION_ACTIVE;
         executor->in_flight += 1U;
     }
@@ -353,6 +517,13 @@ SlStatus sl_provider_executor_submit(SlProviderInstanceExecutor* executor, SlAre
 
     if (executor == NULL || arena == NULL || out_operation == NULL ||
         !sl_provider_descriptor_valid(descriptor) || descriptor->execution_mode != executor->mode)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!sl_str_equal(descriptor->provider_instance_id,
+                      sl_owned_str_as_view(executor->instance_id)) ||
+        !sl_str_equal(descriptor->provider_kind, sl_owned_str_as_view(executor->provider_kind)))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -471,6 +642,7 @@ static SlStatus sl_provider_operation_post_terminal(SlProviderOperation* operati
     completion.diag = &operation->diag;
     completion.payload = operation;
     completion.operation = operation;
+    completion.scope = operation->scope;
     completion.dispatch = operation->completion_dispatch;
     completion.dispatch_user = operation->completion_dispatch_user;
     completion.cleanup = sl_provider_completion_cleanup;

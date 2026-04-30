@@ -74,18 +74,18 @@ public timers/fetch/fs/process APIs, native provider completion queues, cross-th
 posting, HTTP disconnect/shutdown drain behavior, worker-thread scheduling, or scalability
 evidence. The full async-runtime target is tracked by #306 and tasks #307 through #310.
 ENGINE-12.AB owns the first native completion/backend integration and owner-thread
-continuation boundary. ENGINE-12.CD adds the next native policy layer without converting
-SQLite or adding public
-async APIs. `include/sloppy/async_backend.h` classifies native completions as internal,
+continuation boundary. ENGINE-23.A/B adds the next provider runtime foundation without
+converting SQLite or adding public async APIs. `include/sloppy/async_backend.h` classifies
+native completions as internal,
 nonblocking I/O, blocking offload, timer, or provider operations.
 `include/sloppy/provider_executor.h` defines Slop-owned provider execution modes and a
-bounded per-provider-instance executor abstraction. The current implementation is a
-deterministic native provider/offload test source: it owns copied operation inputs,
-enforces per-instance queue capacity, activates serialized blocking work one operation at a
-time, posts terminal completions through `SlAsyncLoop`, and proves cleanup-once behavior
-for success, cancellation, timeout, overflow, shutdown, and late completion. It does not
-start a production provider worker pool, wire SQLite through async offload, or make
-benchmark claims.
+bounded per-provider-instance executor abstraction. The current implementation owns copied
+operation inputs and diagnostic context, carries operation-kind/capability/scope/deadline
+metadata, enforces per-instance queue capacity, activates serialized-blocking metadata one
+operation at a time, posts terminal completions through `SlAsyncLoop`, and proves
+cleanup-once behavior for success, cancellation, timeout, overflow, shutdown, and late
+completion. It does not start production provider workers, wire SQLite through async
+offload, run a blocking pool, or make benchmark claims.
 
 ENGINE-23 is the provider execution runtime layer after ENGINE-12. It owns production
 provider operation descriptors, per-provider-instance executors, serialized SQLite-class

@@ -27,13 +27,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   returned Promises that settle during the owner-thread microtask drain, rejection
   diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
   for the bounded call.
-- Provider execution runtime beyond ENGINE-12 policy: ENGINE-23 owns provider operation
-  descriptors with owned inputs, per-provider-instance executors, serialized blocking
-  execution for SQLite-class providers, bounded blocking pools, nonblocking-provider mode,
-  capability-gated admission, deterministic cancellation/timeout/shutdown/late-completion
-  cleanup, worker lifecycle, diagnostics, and stress evidence. This must land before
-  ENGINE-17 claims scalable SQLite provider execution or future PostgreSQL/SQL Server
-  bridges depend on provider runtime behavior.
+- Provider execution runtime beyond ENGINE-23.A/B admission: provider operation
+  descriptors with owned inputs and per-provider-instance bounded admission now exist.
+  Remaining ENGINE-23 work owns serialized blocking execution for SQLite-class providers
+  (#393), bounded blocking pools (#394), cancellation/timeout/late-completion detail
+  (#395), capability-gated dispatch (#396), and diagnostics/stress evidence (#397). This
+  must land before ENGINE-17 claims scalable SQLite provider execution or future
+  PostgreSQL/SQL Server bridges depend on provider runtime behavior.
 - Proper HTTP runtime backend beyond ENGINE-04: ENGINE-13 owns listener/backend
   architecture, connection and request lifecycle, parser limits, richer header/body
   buffering policy, keep-alive, deadlines, disconnect/shutdown propagation, backpressure,

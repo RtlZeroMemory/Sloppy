@@ -3,6 +3,7 @@
 
 #include "sloppy/async_backend.h"
 #include "sloppy/bytes.h"
+#include "sloppy/capability.h"
 #include "sloppy/cancellation.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/status.h"
@@ -35,6 +36,17 @@ typedef enum SlProviderOperationState
     SL_PROVIDER_OPERATION_TERMINAL = 3
 } SlProviderOperationState;
 
+typedef enum SlProviderOperationKind
+{
+    SL_PROVIDER_OPERATION_KIND_UNKNOWN = 0,
+    SL_PROVIDER_OPERATION_KIND_OPEN = 1,
+    SL_PROVIDER_OPERATION_KIND_EXEC = 2,
+    SL_PROVIDER_OPERATION_KIND_QUERY = 3,
+    SL_PROVIDER_OPERATION_KIND_QUERY_ONE = 4,
+    SL_PROVIDER_OPERATION_KIND_CLOSE = 5,
+    SL_PROVIDER_OPERATION_KIND_INTERNAL = 6
+} SlProviderOperationKind;
+
 typedef enum SlProviderExecutorShutdownPolicy
 {
     SL_PROVIDER_EXECUTOR_SHUTDOWN_IMMEDIATE_CANCEL = 0
@@ -42,34 +54,53 @@ typedef enum SlProviderExecutorShutdownPolicy
 
 typedef void (*SlProviderOperationCleanupFn)(SlProviderOperation* operation, void* user);
 
+typedef struct SlProviderCapabilityRequirement
+{
+    SlStr token;
+    SlCapabilityOperation operation;
+} SlProviderCapabilityRequirement;
+
 typedef struct SlProviderExecutorConfig
 {
     SlStr instance_id;
+    SlStr provider_kind;
     SlProviderExecutionMode mode;
     size_t queue_capacity;
     size_t worker_count;
+    size_t max_in_flight;
+    void* app_owner;
+    void* config_binding;
 } SlProviderExecutorConfig;
 
 /*
  * Borrowed submission inputs for one provider/offload operation.
  *
  * sl_provider_executor_submit() copies the textual metadata and input bytes into the
- * caller-provided arena before the operation can outlive the caller stack. `cancellation`
- * is borrowed and must outlive the operation when supplied. Completion dispatch runs only
- * when the owning SlAsyncLoop drains the terminal completion. Cleanup runs exactly once
- * after terminal dispatch or explicit discard.
+ * caller-provided arena before the operation can outlive the caller stack. `cancellation`,
+ * `deadline`, and pointer metadata are borrowed placeholders and must outlive the
+ * operation unless their owning scope is retained through `scope`. Completion dispatch
+ * runs only when the owning SlAsyncLoop drains the terminal completion. Cleanup runs
+ * exactly once after terminal dispatch or explicit discard.
+ *
+ * Failed admission does not transfer ownership and does not call `cleanup`; callers retain
+ * responsibility for any submission-side storage they own.
  */
 typedef struct SlProviderOperationDescriptor
 {
     SlStr provider_instance_id;
     SlStr provider_kind;
     SlStr operation_name;
-    SlStr capability_token;
+    SlProviderOperationKind operation_kind;
+    SlProviderCapabilityRequirement capability;
     SlProviderExecutionMode execution_mode;
+    void* request_or_app_scope;
+    SlAsyncScopeRef scope;
     SlCancellationToken* cancellation;
+    void* deadline;
     SlBytes input;
     SlAsyncCompletionDispatchFn completion_dispatch;
     void* completion_dispatch_user;
+    SlStr diagnostic_context;
     SlProviderOperationCleanupFn cleanup;
     void* cleanup_user;
 } SlProviderOperationDescriptor;
@@ -83,12 +114,18 @@ struct SlProviderOperation
 {
     SlProviderInstanceExecutor* executor;
     SlProviderOperationState state;
+    SlProviderOperationKind operation_kind;
     SlProviderExecutionMode execution_mode;
+    void* request_or_app_scope;
+    SlAsyncScopeRef scope;
     SlCancellationToken* cancellation;
+    void* deadline;
     SlOwnedStr provider_instance_id;
     SlOwnedStr provider_kind;
     SlOwnedStr operation_name;
+    SlProviderCapabilityRequirement capability;
     SlOwnedStr capability_token;
+    SlOwnedStr diagnostic_context;
     SlOwnedBytes input;
     SlStatus terminal_status;
     SlCancellationReason terminal_reason;
@@ -109,6 +146,7 @@ struct SlProviderInstanceExecutor
     size_t capacity;
     size_t count;
     size_t in_flight;
+    size_t max_in_flight;
     size_t worker_count;
     size_t next_sequence;
     size_t submitted_count;
@@ -119,18 +157,46 @@ struct SlProviderInstanceExecutor
     size_t shutdown_rejected_count;
     bool shutting_down;
     SlOwnedStr instance_id;
+    SlOwnedStr provider_kind;
+    void* app_owner;
+    void* config_binding;
 };
 
 SlStr sl_provider_execution_mode_name(SlProviderExecutionMode mode);
 SlStatus sl_provider_execution_mode_parse(SlStr text, SlProviderExecutionMode* out);
 bool sl_provider_execution_mode_is_supported(SlProviderExecutionMode mode);
+SlStr sl_provider_operation_kind_name(SlProviderOperationKind kind);
+bool sl_provider_operation_kind_is_supported(SlProviderOperationKind kind);
+
+SlProviderOperationDescriptor sl_provider_operation_descriptor_init(
+    SlStr provider_instance_id, SlStr provider_kind, SlProviderOperationKind operation_kind,
+    SlStr operation_name, SlProviderExecutionMode execution_mode,
+    SlAsyncCompletionDispatchFn completion_dispatch, void* completion_dispatch_user);
+SlStatus sl_provider_operation_descriptor_set_input(SlProviderOperationDescriptor* descriptor,
+                                                    SlBytes input);
+SlStatus
+sl_provider_operation_descriptor_attach_capability(SlProviderOperationDescriptor* descriptor,
+                                                   SlStr token, SlCapabilityOperation operation);
+SlStatus sl_provider_operation_descriptor_attach_cancellation(
+    SlProviderOperationDescriptor* descriptor, SlCancellationToken* cancellation, void* deadline);
+SlStatus sl_provider_operation_descriptor_attach_scope(SlProviderOperationDescriptor* descriptor,
+                                                       void* request_or_app_scope,
+                                                       SlAsyncScopeRef scope);
+SlStatus sl_provider_operation_descriptor_attach_cleanup(SlProviderOperationDescriptor* descriptor,
+                                                         SlProviderOperationCleanupFn cleanup,
+                                                         void* user);
+SlStatus
+sl_provider_operation_descriptor_set_diagnostic_context(SlProviderOperationDescriptor* descriptor,
+                                                        SlStr diagnostic_context);
 
 /*
  * Initializes a bounded per-provider-instance executor over caller-owned slot storage.
  *
- * The executor does not start worker threads. It models admission, serialized activation,
- * terminal completion posting, and shutdown policy. `arena`, `slots`, and
- * `completion_loop` must outlive the executor.
+ * The executor does not start worker threads. It models per-provider-instance admission,
+ * mode metadata, pending/in-flight counts, terminal completion posting, and shutdown
+ * policy. `arena`, `slots`, and `completion_loop` must outlive the executor. Provider
+ * work admitted here must never block the V8 owner thread, and future workers must never
+ * enter V8.
  *
  * Threading contract: this executor is caller-serialized. `init`, `dispose`, `submit`,
  * `complete`, `cancel`, `timeout`, `shutdown`, and query calls must not race with each

@@ -56,14 +56,18 @@ recursively through diagnostic paths.
 ENGINE-12.AB does not add new public diagnostic codes. Async backend failures use existing
 machine-checkable statuses: `SL_STATUS_CAPACITY_EXCEEDED` for bounded queue overflow,
 `SL_STATUS_INVALID_STATE` for disposed loops or detectable wrong-thread dispatch, and
-`SL_STATUS_INTERNAL` for unexpected backend failures. ENGINE-12.CD maps provider-executor
-terminal states to existing stable codes for the deterministic native source:
+`SL_STATUS_INTERNAL` for unexpected backend failures. ENGINE-23.A/B maps provider-executor
+terminal and admission states to existing stable codes for the deterministic native source:
+`SL_STATUS_INVALID_ARGUMENT` for missing provider instance id, provider mismatch, invalid
+operation kind, invalid execution mode, or malformed owned-input views,
 `SLOPPY_E_ENGINE_CANCELLED` for cancellation, `SLOPPY_E_ENGINE_PROMISE_PENDING` for
 deadline/timeout, `SLOPPY_E_ENGINE_BACKPRESSURE` plus `SL_STATUS_CAPACITY_EXCEEDED` for
 overflow/admission failure, `SLOPPY_E_APP_LIFECYCLE` for shutdown cancellation, and
 provider-specific diagnostic codes for provider failures when a real provider reports one.
 Future provider work may add more specific data-provider async codes, but it must keep
 cancelled, timed out, overflowed, shutdown, and provider-failed outcomes distinguishable.
+Provider executor diagnostics must not include raw native pointers, V8/libuv implementation
+details, SQL parameter values, connection strings, or other secret-bearing payloads.
 
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic
