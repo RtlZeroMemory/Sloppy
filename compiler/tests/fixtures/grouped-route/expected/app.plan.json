@@ -33,7 +33,7 @@
       "name": "Users.Get",
       "pattern": "/users/{id:int}",
       "source": {
-        "column": 27,
+        "column": 1,
         "line": 6,
         "path": "input.js"
       }

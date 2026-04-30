@@ -33,7 +33,7 @@
       "name": null,
       "pattern": "/",
       "source": {
-        "column": 17,
+        "column": 1,
         "line": 6,
         "path": "input.js"
       }

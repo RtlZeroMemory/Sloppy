@@ -82,6 +82,12 @@ the runtime.
 | Decorators | Not supported by the current compiler subset | Not accepted as compiler-extractable API shape. | Parse or unsupported syntax diagnostic. | Matrix-documented. | No alpha target. |
 | TypeScript input or TS-only handler syntax | Rejected with diagnostic | `.ts/.tsx/.mts/.cts` inputs are rejected; handler type annotations are rejected. | `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT` or `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER`. | `unsupported-typescript-handler` diagnostic fixture. | Official TypeScript checking/lowering later. |
 
+ENGINE-03 must revisit `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` after V8 Promise
+settlement, microtask draining, request-scope retention, cancellation, and rejected-Promise
+diagnostics are implemented. That work should graduate the currently rejected `await`,
+multi-statement, and non-direct-return fixtures into supported compiler/runtime conformance
+where the runtime can execute them honestly.
+
 ## Artifact and Diagnostic Policy
 
 Supported builds must emit byte-stable `app.plan.json`, `app.js`, and `app.js.map` without

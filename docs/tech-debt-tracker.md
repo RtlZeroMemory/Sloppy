@@ -57,7 +57,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   does not add full async JavaScript. Promise support is deferred, not optional: before
   Sloppy claims async handlers, V8 Promise settlement, microtask policy, request-scope
   lifetime, cancellation propagation, bounded queues, and rejected-promise diagnostics must
-  be implemented and tested.
+  be implemented and tested. ENGINE-03 must also revisit the ENGINE-02 compiler rejection
+  `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` and update the compiler syntax matrix,
+  diagnostics fixtures, and conformance fixtures when `await`, multi-statement async
+  bodies, and non-direct async returns become executable.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.

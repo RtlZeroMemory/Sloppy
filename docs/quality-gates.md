@@ -36,7 +36,7 @@ and selected bridge/result fixtures through `sloppy run --artifacts --once`.
 
 ## Future Phase
 
-Future gates add sanitizers, fuzzing, diagnostics snapshots, compiler goldens, benchmarks,
+Future gates add sanitizers, fuzzing, richer diagnostics snapshots, benchmarks,
 docs link checking, public example tests, broader package verification, and optional live
 provider service jobs.
 

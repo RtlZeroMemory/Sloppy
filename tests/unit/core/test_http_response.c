@@ -96,7 +96,11 @@ static int run_test(const char* name, int (*test)(void))
     int result = test();
 
     if (result != 0) {
+#ifdef _MSC_VER
         fprintf_s(stderr, "FAIL: %s returned %d\n", name, result);
+#else
+        (void)fprintf(stderr, "FAIL: %s returned %d\n", name, result);
+#endif
     }
 
     return result;

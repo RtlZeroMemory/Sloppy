@@ -38,6 +38,11 @@ bool sl_plan_route_method_supported(SlStr method)
            sl_str_equal(method, sl_str_from_cstr("DELETE"));
 }
 
+bool sl_plan_route_method_runnable(SlStr method)
+{
+    return sl_str_equal(method, sl_str_from_cstr("GET"));
+}
+
 bool sl_plan_provider_supported(SlStr provider)
 {
     return sl_str_equal(provider, sl_str_from_cstr("sqlite")) ||

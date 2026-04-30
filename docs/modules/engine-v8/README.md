@@ -394,10 +394,11 @@ The mapping is intentionally basic. It captures V8 exception message text, gener
 source/resource name when available, 1-based line and column when V8 reports them, and a
 bounded stack string as a related note when practical. V8 reports start columns as
 zero-based; the bridge converts them to Sloppy's 1-based diagnostic column convention. No
-source maps, TypeScript remapping, rich code frames, async stack policy, route/handler
-context, Node compatibility, or package-manager behavior is implemented here. Compiler
-`app.js.map` files are currently deterministic placeholders with empty mappings, so V8
-runtime diagnostics report generated `app.js` labels and locations only.
+runtime source-map consumption, TypeScript remapping, rich code frames, async stack policy,
+route/handler context, Node compatibility, or package-manager behavior is implemented here.
+Compiler `app.js.map` files now include deterministic handler mappings, but V8 runtime
+diagnostics still report generated `app.js` labels and locations until runtime remapping
+consumes those maps.
 
 ## Tests
 

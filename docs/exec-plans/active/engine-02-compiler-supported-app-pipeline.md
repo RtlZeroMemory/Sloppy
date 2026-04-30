@@ -22,11 +22,11 @@ runtime layers already exist.
 
 ## Non-Goals
 
-- No runtime Promise settlement implementation.
-- No non-GET HTTP server/runtime implementation.
-- No SQLite native bridge implementation from compiled handlers.
-- No package-manager or Node/npm compatibility.
-- No public alpha docs or benchmark claims.
+- Runtime Promise settlement implementation is out of scope.
+- Non-GET HTTP server/runtime implementation is out of scope.
+- SQLite native bridge execution from compiled handlers is out of scope.
+- Package-manager and Node/npm compatibility are out of scope.
+- Public alpha docs and benchmark claims are out of scope.
 
 ## Evidence
 

@@ -108,7 +108,7 @@ static SlStatus sl_http_dispatch_unsupported_method(SlArena* arena, SlDiag* out_
 
 static bool sl_http_plan_route_is_get(const SlPlanRoute* route)
 {
-    return route != NULL && sl_str_equal(route->method, sl_str_from_cstr("GET"));
+    return route != NULL && sl_plan_route_method_runnable(route->method);
 }
 
 static SlStatus sl_http_dispatch_missing_handler(SlArena* arena, SlDiag* out_diag)

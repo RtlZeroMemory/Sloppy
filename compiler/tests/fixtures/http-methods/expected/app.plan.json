@@ -77,7 +77,7 @@
       "name": "Users.List",
       "pattern": "/users",
       "source": {
-        "column": 22,
+        "column": 1,
         "line": 5,
         "path": "input.js"
       }
@@ -88,7 +88,7 @@
       "name": "Users.Create",
       "pattern": "/users",
       "source": {
-        "column": 23,
+        "column": 1,
         "line": 6,
         "path": "input.js"
       }
@@ -99,7 +99,7 @@
       "name": "Users.Update",
       "pattern": "/users/{id:int}",
       "source": {
-        "column": 31,
+        "column": 1,
         "line": 7,
         "path": "input.js"
       }
@@ -110,7 +110,7 @@
       "name": "Users.Patch",
       "pattern": "/users/{id:int}",
       "source": {
-        "column": 33,
+        "column": 1,
         "line": 8,
         "path": "input.js"
       }
@@ -121,7 +121,7 @@
       "name": "Users.Delete",
       "pattern": "/users/{id:int}",
       "source": {
-        "column": 34,
+        "column": 1,
         "line": 9,
         "path": "input.js"
       }

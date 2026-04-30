@@ -33,7 +33,7 @@
       "name": null,
       "pattern": "/async",
       "source": {
-        "column": 22,
+        "column": 1,
         "line": 5,
         "path": "input.js"
       }

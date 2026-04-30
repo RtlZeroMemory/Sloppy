@@ -161,6 +161,9 @@ Tasks:
 - deadline/timeout hooks built on the cancellation path;
 - bounded completion queues and explicit overflow diagnostics;
 - app shutdown with pending async policy;
+- compiler follow-through that reopens `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` and
+  graduates `await`, multi-statement async bodies, and non-direct async returns only after
+  the runtime Promise policy is executable;
 - V8-gated tests.
 
 Prerequisites: Layer 1 async contract; enough Layer 2 compiler support for async fixtures.
@@ -171,7 +174,8 @@ Non-goals: broad public timers API, multi-worker scaling, production async DB of
 beyond the initial policy.
 
 Acceptance criteria: async handler conformance covers fulfillment, rejection,
-cancellation, cleanup, bounded queue overflow, and no `[object Promise]` fake success.
+cancellation, cleanup, bounded queue overflow, compiler acceptance of the newly executable
+async source shapes, and no `[object Promise]` fake success.
 
 Likely PR grouping: bridge Promise detection/settlement; microtask policy; cancellation
 token propagation; bounded queue/overflow diagnostics; request-scope retention;

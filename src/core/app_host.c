@@ -16,7 +16,7 @@ static SlStr sl_app_host_literal(const char* ptr, size_t length)
 
 static bool sl_app_host_route_method_runnable(SlStr method)
 {
-    return sl_str_equal(method, sl_str_from_cstr("GET"));
+    return sl_plan_route_method_runnable(method);
 }
 
 static bool sl_app_host_token_syntax_valid(SlStr token)

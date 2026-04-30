@@ -106,6 +106,7 @@ struct Route {
     method: &'static str,
     pattern: String,
     name: Option<String>,
+    span: Span,
     handler: Handler,
 }
 
@@ -258,7 +259,7 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
 }
 
 fn version_text() -> String {
-    "sloppyc 0.8.0-compiler-extraction-mvp\n".to_string()
+    format!("{}\n", COMPILER_VERSION.replace("sloppyc-", "sloppyc "))
 }
 
 fn help_text() -> String {
@@ -478,21 +479,25 @@ fn extract_import(state: &mut AppState, import: &oxc_ast::ast::ImportDeclaration
 
     if let Some(specifiers) = &import.specifiers {
         for specifier in specifiers {
-            if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
-                let imported = specifier.imported.name().as_str();
-                let local = specifier.local.name.as_str();
-                if matches!(imported, "Sloppy" | "Results" | "data") && imported != local {
-                    state.unsupported_import_alias = true;
-                }
-                match (imported, local) {
-                    ("Sloppy", "Sloppy") => state.sloppy_imported = true,
-                    ("Results", "Results") => state.results_imported = true,
-                    ("data", "data") => state.data_imported = true,
-                    ("Sloppy" | "Results" | "data", _) => {}
-                    _ => {
-                        state.unsupported_import_name =
-                            Some((imported.to_string(), specifier.span));
-                    }
+            let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                state.unsupported_import_specifier =
+                    Some((import.source.value.as_str().to_string(), import.source.span));
+                return;
+            };
+
+            let imported = specifier.imported.name().as_str();
+            let local = specifier.local.name.as_str();
+            if matches!(imported, "Sloppy" | "Results" | "data") && imported != local {
+                state.unsupported_import_alias = true;
+                state.unsupported_import_name = Some((imported.to_string(), specifier.span));
+            }
+            match (imported, local) {
+                ("Sloppy", "Sloppy") => state.sloppy_imported = true,
+                ("Results", "Results") => state.results_imported = true,
+                ("data", "data") => state.data_imported = true,
+                ("Sloppy" | "Results" | "data", _) => {}
+                _ => {
+                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
             }
         }
@@ -616,6 +621,7 @@ fn extract_expression_statement(
         method,
         pattern: full_pattern,
         name,
+        span: statement.span,
         handler,
     });
     Ok(())
@@ -682,7 +688,7 @@ fn unsupported_route_call_diagnostic(
             )
             .with_path(path)
             .with_span(call.span)
-            .with_hint("Dynamic route strings are not part of compiler extraction."),
+            .with_hint("Dynamic route strings are not part of the supported app compiler."),
         );
     }
 
@@ -1831,7 +1837,7 @@ fn emit_plan(
         .enumerate()
         .map(|(index, route)| {
             let id = index + 1;
-            let (line, column) = line_column(&app.source, route.handler.span.start);
+            let (line, column) = line_column(&app.source, route.span.start);
             json!({
                 "method": route.method,
                 "pattern": route.pattern,
@@ -2512,6 +2518,8 @@ export default app;
             ("unsupported-handler-shape", "input.js"),
             ("unsupported-typescript-handler", "input.ts"),
             ("unsupported-import-alias", "input.js"),
+            ("unsupported-data-import-alias", "input.js"),
+            ("unsupported-sloppy-default-import", "input.js"),
             ("unsupported-import-specifier", "input.js"),
             ("node-fs-import", "input.js"),
             ("missing-app", "input.js"),

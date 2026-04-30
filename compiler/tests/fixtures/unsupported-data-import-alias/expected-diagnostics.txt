@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/unsupported-data-import-alias/input.js:1:27: SLOPPYC_E_UNSUPPORTED_IMPORT: unsupported sloppy import "data"
+  --> <compiler>/tests/fixtures/unsupported-data-import-alias/input.js:1:27
+   |
+1 | import { Sloppy, Results, data as db } from "sloppy";
+   |                           ^^^^^^^^^^
+hint: Use import { Sloppy, Results } from "sloppy"; or add data only when provider metadata is needed.

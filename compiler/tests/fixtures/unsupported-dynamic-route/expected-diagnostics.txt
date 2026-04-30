@@ -3,4 +3,4 @@
    |
 6 | app.mapGet(route, () => Results.text("Hello from Sloppy"));
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-hint: Dynamic route strings are not part of compiler extraction.
+hint: Dynamic route strings are not part of the supported app compiler.
