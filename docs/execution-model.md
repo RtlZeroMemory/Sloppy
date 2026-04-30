@@ -180,6 +180,13 @@ new request work is rejected once shutdown begins, and active request work can d
 cancelled with cleanup-once release. It does not change public handler semantics, does not
 make the dev server production-ready, and does not add TLS, HTTP/2/3, WebSockets, static
 files, compression, V8/provider/compiler work, or production benchmark evidence.
+ENGINE-24.A/B adds the first HTTP transport listener foundation below the current request
+execution pipeline. A `SlHttpTransportServer` can initialize, bind/listen on localhost,
+accept TCP sockets into bounded placeholder connections, reject overflow by closing the
+accepted socket, stop, and dispose. Accepted connections stop at `ACCEPTED`; request byte
+reading and parser integration remain #414, transport dispatch/response writing remains
+#415, timeout/shutdown completion remains #416, localhost conformance remains #417, and
+keep-alive policy remains #418.
 
 ## Current Handwritten Milestone
 
@@ -446,6 +453,11 @@ Current ENGINE-13.A/B/C backend foundation makes the native prelude explicit:
 8. complete/fail/cancel/timeout/shutdown/close releases the request admission slot exactly
    once;
 9. connection close/fail releases the connection slot exactly once.
+
+ENGINE-24.A/B wires only the first two platform-facing pieces of that prelude: listener
+bind/listen and accepted connection admission. The accepted connection is parked until the
+future read loop owns request accumulation; no handler, V8, provider, or response writer is
+entered from the transport listener foundation.
 
 The current CLI socket loop still writes `Connection: close`; keep-alive policy remains
 honestly disabled/deferred even though the backend state model can return a completed

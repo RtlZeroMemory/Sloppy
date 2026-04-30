@@ -188,6 +188,10 @@ Implemented foundation codes:
 - `SLOPPY_E_HTTP_OVERLOAD`;
 - `SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED`;
 - `SLOPPY_E_HTTP_SHUTDOWN`;
+- `SLOPPY_E_HTTP_TRANSPORT_CONFIG`;
+- `SLOPPY_E_HTTP_BIND_FAILED`;
+- `SLOPPY_E_HTTP_LISTEN_FAILED`;
+- `SLOPPY_E_HTTP_ACCEPT_FAILED`;
 - `SLOPPY_E_DUPLICATE_ROUTE`;
 - `SLOPPY_E_HTTP_UNSUPPORTED_BODY`;
 - `SLOPPY_E_INVALID_HTTP_RESULT`;
@@ -382,6 +386,8 @@ Runtime diagnostics:
 - HTTP stress/conformance smoke keeps parser-limit, body-limit, unsupported-media,
   overload/backpressure, shutdown, malformed-query, and route/method diagnostics
   deterministic under repeated default non-V8 execution;
+- HTTP transport listener config, bind, listen, accept, capacity, and lifecycle diagnostics
+  stay deterministic and do not include libuv handles or raw pointer values;
 - unsupported request bodies;
 - unsupported request content types;
 - request body size limit failures;

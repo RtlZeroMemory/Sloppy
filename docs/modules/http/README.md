@@ -28,10 +28,12 @@ HTTP lifecycle diagnostics. ENGINE-13.D/E adds a backend-owned bounded body read
 body-read cancellation/timeout/shutdown transitions, shutdown rejection for new request
 work, active-request shutdown cancellation hooks, and stable shutdown diagnostics.
 ENGINE-13.F adds bounded default non-V8 stress and conformance smoke over the implemented
-parser, lifecycle, body-policy, overload, shutdown, dispatch, and diagnostic behavior. The
-backend model is core C state only; concrete listener and socket details remain behind the
-platform boundary. This is not benchmark evidence and not production-edge HTTP evidence.
-There is still no production HTTP
+parser, lifecycle, body-policy, overload, shutdown, dispatch, and diagnostic behavior.
+ENGINE-24.A/B adds the first reusable transport listener foundation: Slop-owned server
+config/state, libuv-isolated TCP bind/listen/accept, bounded accepted-connection
+placeholders, overflow close behavior, and cleanup-once stop/dispose. Request reading,
+parser-from-socket integration, dispatch, and response writing remain deferred. This is not
+benchmark evidence and not production-edge HTTP evidence. There is still no production HTTP
 server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser API, middleware,
 cookies/sessions, static file server, compression, multipart upload, streaming responses,
 public TypeScript `app.run`, or broad response framework.
@@ -88,12 +90,20 @@ Implemented now:
   malformed requests, repeated parser-limit failures, repeated body/media policy failures,
   overload rejection without queue growth, shutdown rejection/cancellation cleanup, and
   default non-V8 conformance-style dispatch diagnostics.
+- ENGINE-24.A/B transport listener foundation: Slop-owned HTTP transport server config and
+  state, internal libuv TCP listener ownership, localhost bind/listen, accept callback,
+  accepted connection placeholders in a bounded table, capacity overflow close, and
+  stop/dispose cleanup.
 
 Future scope:
 
 - streaming HTTP parser state;
 - production-edge HTTP proof beyond ENGINE-13.F's bounded smoke;
 - production server hardening if explicitly scoped later;
+- transport request read loop and request accumulation (#414);
+- transport dispatch and response write loop (#415);
+- timeout/shutdown completion beyond listener cleanup (#416);
+- localhost conformance beyond the bounded unit smoke (#417);
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
 
@@ -120,6 +130,10 @@ response writer.
 - ENGINE-13.A/B/C does not add TLS, HTTP/2, HTTP/3, WebSockets, static files, compression,
   reverse proxy behavior, production benchmark claims, V8/provider/compiler changes, or
   Node/npm compatibility.
+- ENGINE-24.A/B does not add request reading, request accumulation, HTTP parsing from TCP
+  chunks, response writing, route dispatch, V8 handler execution, provider work, TLS,
+  HTTP/2/3, WebSockets, keep-alive, pipelining, streaming, static files, compression,
+  reverse proxy behavior, benchmark claims, or public alpha docs.
 
 ## Public/Internal API
 
@@ -162,6 +176,19 @@ response writer.
 - request begin, parse, dispatch, write, complete, fail, timeout, and close hooks.
 - bounded body-reader begin/append/finish/close hooks;
 - request cancellation and shutdown hooks.
+
+`include/sloppy/http_transport.h` exposes the ENGINE-24.A/B transport listener foundation:
+
+- `SlHttpTransportConfig`;
+- `SlHttpTransportServer`;
+- `SlHttpTransportConnection`;
+- server and connection state enums;
+- init/listen/poll/stop/dispose;
+- accepted connection close;
+- bounded active-connection and bound-port query helpers.
+
+Libuv types and handles are not exposed by this header; they remain in
+`src/platform/libuv/http_transport_libuv.c`.
 
 Supported route pattern subset:
 
@@ -309,6 +336,13 @@ Native response writing uses `SlByteBuilder` over the caller-provided output buf
 returned `SlBytes` view borrows that buffer, and failed writes reset the returned view to an
 empty span while preserving deterministic status behavior.
 
+Transport listener storage is arena-owned for the server lifetime. `sl_http_transport_server_init`
+copies the bind host as a NUL-terminated boundary adapter for libuv and allocates fixed
+listener/connection storage from the caller arena. Accepted connection placeholders own one
+backend admission slot until explicitly closed or until server stop/dispose closes them.
+The platform TCP handles are independently closed by the transport layer; JavaScript never
+receives raw pointers or native handles.
+
 HTTP dispatch tables borrow route bindings, parsed route patterns, plans, and engine
 handles for the duration of the call only. `sl_http_dispatch_request_head` does not retain
 request, route, plan, engine, route-parameter, query-parameter, header, or body storage.
@@ -389,6 +423,8 @@ Future diagnostics:
 - route conflict/source-span diagnostics.
 - route group/source metadata diagnostics once compiler extraction and plan route sections
   exist.
+- richer transport shutdown/read/write diagnostics when #414 through #416 wire the read and
+  write loops.
 
 ## Tests
 
@@ -441,6 +477,9 @@ Implemented CTest coverage:
 - unsupported content-type, invalid JSON, and body-too-large dispatch failures;
 - default non-V8 conformance-style smoke for GET/POST/PUT/PATCH/DELETE, route miss, method
   mismatch, malformed query, malformed JSON, and unsupported media diagnostics;
+- transport config validation, init/stop/dispose, localhost ephemeral bind/listen, double
+  listen rejection, one accepted TCP connection, bounded max-connection overflow close,
+  accepted connection cleanup, and dispose-after-listen cleanup;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;
