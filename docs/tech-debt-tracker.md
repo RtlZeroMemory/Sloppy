@@ -19,9 +19,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   source shapes, non-GET dispatch, and provider/capability enforcement.
 - Full scalable async runtime beyond ENGINE-03: ENGINE-12.AB adds the first bounded
   `SlAsyncLoop` backend abstraction, libuv backend, and owner-thread V8 continuation
-  scheduler. Remaining ENGINE-12 work is #309 cancellation/deadline/shutdown drain policy
-  and #310 queue/backpressure diagnostics, provider/offload integration, stress evidence,
-  source-remapped async diagnostics, and provider-backed cancellation. ENGINE-03 covers
+  scheduler. ENGINE-12.CD adds the deterministic provider-executor/cancellation/
+  deadline/shutdown/backpressure policy layer and native tests, but full SQLite async
+  runtime conversion, HTTP-specific disconnect/shutdown integration, stress evidence,
+  source-remapped async diagnostics, and provider-backed interruption remain follow-ups.
+  ENGINE-03 covers
   returned Promises that settle during the owner-thread microtask drain, rejection
   diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
   for the bounded call.

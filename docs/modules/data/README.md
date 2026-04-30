@@ -6,6 +6,9 @@ Bootstrap data/capabilities foundation implemented. Native SQLite, PostgreSQL, a
 Server providers are implemented for C/runtime tests. SQLite has a V8-gated
 JavaScript-to-native bridge wired to Plan provider metadata, opaque resource IDs, and the
 native database capability hook.
+ENGINE-12.CD defines the native provider/offload executor policy that future SQLite,
+PostgreSQL, and SQL Server runtime bridge work must use; current provider calls remain
+synchronous unless their existing phase explicitly wired a JS bridge.
 
 ## Purpose
 
@@ -114,6 +117,21 @@ PostgreSQL and SQL Server JS bridges remain deferred. The V8 engine owns the res
 table; provider intrinsic modules may insert, look up, and close their own resource kinds
 through that table, but must not create separate handle registries.
 
+Async/offload ownership:
+
+- provider work must be admitted through a per-provider-instance Slop executor such as
+  `sqlite:main` or `sqlite:audit`;
+- operation descriptors must copy SQL text, parameter strings/blobs, config values needed
+  after submission, and diagnostic context before they leave the caller stack;
+- provider completion posts through `SlAsyncLoop` and can resume JS only through the V8
+  owner-thread scheduler;
+- SQLite's default async execution mode is `SERIALIZED_BLOCKING` for a single connection
+  unless a future SQLite issue chooses different read/write pool semantics;
+- PostgreSQL and SQL Server may later use `NONBLOCKING_IO` with native async client APIs or
+  `BLOCKING_POOL` when using blocking drivers;
+- no provider may use libuv's global threadpool as its runtime policy, create a
+  thread-per-request model, bypass capability checks, or invent a separate lifetime model.
+
 SQLite text/blob ownership:
 
 - SQLite result column names, text cells, and blob cells are copied into the caller arena
@@ -192,6 +210,12 @@ open `:memory:`, create a table, insert/query data through the stdlib bridge, cl
 wrapper, fail closed when hook metadata is absent, and receive deterministic
 stale/closed/invalid argument/capability-denied failures. They are reported separately from
 default provider tests because default gates do not enable V8.
+
+`core.provider_executor` is the default native ENGINE-12.CD provider/offload source. It
+covers execution-mode parsing, serialized admission, per-instance capacity isolation,
+overflow and recovery, copied input ownership, cancellation, timeout, immediate shutdown,
+late completion, and cleanup exactly once. It is not a live database test and does not
+claim SQLite async/offload conversion.
 
 `core.capability.registry` covers the runtime capability registry, database read/write
 policy, provider mismatch denial, missing/wrong-kind/insufficient capability diagnostics,

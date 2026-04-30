@@ -113,6 +113,11 @@ Runtime execution:
   coverage. Default native tests cover bounded capacity, overflow, cleanup-once behavior,
   scope retain/release, and libuv cross-thread post/owner-thread dispatch without
   requiring V8;
+- provider/offload executor tests must run without V8 where possible and cover
+  execution-mode validation, per-provider-instance bounded admission, serialized
+  activation, copied input ownership, overflow/recovery, cancellation, timeout, shutdown,
+  late completion, and cleanup exactly once. These tests prove the model shape, not live
+  database throughput or SQLite async conversion;
 - native async settlement skeleton before V8 Promise integration;
 - inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;

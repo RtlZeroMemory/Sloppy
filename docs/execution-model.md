@@ -507,8 +507,12 @@ Native async completions now post through `SlAsyncLoop` and resume JavaScript on
 the V8 owner-thread continuation scheduler under `src/engine/v8/`. Worker/provider/native
 threads may post completions, but only the owning V8 thread drains and settles the Promise.
 ENGINE-12.AB does not add public timers, fetch, fs, process, Node APIs, provider offload,
-or production scalability evidence. #309 owns cancellation/deadline/shutdown drain policy,
-and #310 owns backpressure/provider-offload/scalability evidence.
+or production scalability evidence. ENGINE-12.CD adds native cancellation/deadline,
+shutdown, backpressure, and provider-executor policy for a deterministic provider-like
+source. It defines operation kinds, provider execution modes, per-provider-instance
+bounded admission, copied operation inputs, cleanup-once terminal completions, and
+immediate-cancel shutdown. It does not convert SQLite to async offload and does not add
+production scalability evidence beyond unit-test proof of the shape.
 
 ENGINE-12 (#306, tasks #307-#310) owns the full scalable async runtime target. That work
 should begin only when at least one real external async source needs to cross the native
@@ -546,9 +550,11 @@ Current native skeleton:
 Current V8 Promise handling resolves or rejects at documented owner-thread boundaries:
 ENGINE-03 covers bounded microtask checkpoints, and ENGINE-12.AB covers native completion
 continuations posted through `SlAsyncLoop`. Request/app scope retention across queued work
-uses explicit native retain/release hooks until #309 defines the full terminal drain and
-cancel policy; tests must continue to reject fake success, unresolved Promise success, and
-wrong-thread V8 entry.
+uses explicit native retain/release hooks. ENGINE-12.CD provider operations must copy or
+own queued inputs and complete through `SlAsyncCompletion`; cancellation, timeout,
+overflow, shutdown, and provider failure are distinct terminal outcomes. Tests must
+continue to reject fake success, unresolved Promise success, wrong-thread V8 entry,
+unbounded queues, and provider work that bypasses admission.
 
 ## Source Map Diagnostic Flow
 

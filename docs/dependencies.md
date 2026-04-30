@@ -207,6 +207,11 @@ libuv hides backend wakeup details internally, but Sloppy owns `SlAsyncLoop`,
 Core runtime modules should depend on Sloppy abstractions rather than direct OS APIs or
 dependency-specific platform behavior.
 
+Provider/offload policy is also Sloppy-owned. libuv may provide eventing, timers, wakeups,
+and completion plumbing, but libuv's global threadpool is not the provider runtime.
+Blocking provider work must go through Sloppy provider executors with explicit capacity,
+operation ownership, cancellation/deadline, shutdown, and diagnostics semantics.
+
 ### llhttp
 
 `llhttp` is added in TASK 10.B through vcpkg manifest mode as the HTTP/1 request-head

@@ -30,6 +30,15 @@ typedef enum SlAsyncCompletionKind
     SL_ASYNC_COMPLETION_V8_CONTINUATION = 3
 } SlAsyncCompletionKind;
 
+typedef enum SlAsyncOperationKind
+{
+    SL_ASYNC_OPERATION_INTERNAL_COMPLETION = 0,
+    SL_ASYNC_OPERATION_NONBLOCKING_IO = 1,
+    SL_ASYNC_OPERATION_BLOCKING_OFFLOAD = 2,
+    SL_ASYNC_OPERATION_TIMER = 3,
+    SL_ASYNC_OPERATION_PROVIDER = 4
+} SlAsyncOperationKind;
+
 typedef SlStatus (*SlAsyncCompletionDispatchFn)(SlAsyncLoop* loop,
                                                 const SlAsyncCompletion* completion, void* user);
 typedef void (*SlAsyncCompletionCleanupFn)(const SlAsyncCompletion* completion, void* user);
@@ -47,6 +56,7 @@ typedef struct SlAsyncScopeRef
 struct SlAsyncCompletion
 {
     SlAsyncCompletionKind kind;
+    SlAsyncOperationKind operation_kind;
     SlStatus status;
     const SlDiag* diag;
     void* payload;

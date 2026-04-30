@@ -101,6 +101,44 @@ Default CI proves only default/non-live provider behavior. It does not prove liv
 PostgreSQL, live SQL Server, SQL Server driver installation, package-smoke provider
 availability, or JavaScript-to-native provider execution.
 
+## Provider Execution Policy
+
+Sloppy uses libuv internally for eventing, timers, wakeups, and async completion plumbing.
+libuv's global threadpool is not Sloppy's provider runtime. Provider work must be admitted
+through Sloppy-owned provider executors, complete through `SlAsyncCompletion`, and resume
+JavaScript only on the V8 owner thread.
+
+Execution modes:
+
+| Mode | Semantics |
+| --- | --- |
+| `INLINE_FAST` | Bounded metadata/config work only. It must not block on I/O, database calls, disk, network, or contended locks. |
+| `SERIALIZED_BLOCKING` | One operation at a time for one provider instance. This is the default for a single SQLite connection unless a later SQLite task changes the policy. |
+| `BLOCKING_POOL` | Future bounded worker pool for one provider instance when the provider is safe to parallelize blocking calls. |
+| `NONBLOCKING_IO` | True async provider/client path through socket readiness or provider async APIs. No worker is occupied while waiting. |
+| `EXTERNAL_MANAGED` | Future escape hatch for external runtimes/pools. It still must use Sloppy admission, completion, diagnostics, cancellation, and lifetime rules. |
+
+Provider instances are per logical configured resource: `sqlite:main`, `sqlite:audit`,
+future `postgres:main`, or future `sqlserver:reporting`. Each instance has its own queue
+capacity, in-flight count, shutdown state, optional worker count, and counters. There is
+no unbounded global provider queue, no thread-per-request behavior, and no
+provider-specific async model outside Slop's admission/completion contract.
+
+Provider operation descriptors must own or retain all memory needed after submission: SQL
+strings, parameter text/blob values, provider config references, capability token,
+diagnostic context, and cleanup payloads. Borrowed request-arena views cannot be queued
+unless the owning request/app scope is retained safely. Cleanup runs exactly once. Late
+provider completion after cancellation, timeout, or shutdown is cleanup-only and must not
+double-settle. Cancellation has two layers: Slop cancellation/deadline terminal state, and
+optional provider-specific interruption later. SQLite interruption, PostgreSQL
+cancellation, and SQL Server cancellation remain provider-specific follow-ups.
+
+Overflow is normal runtime backpressure. A full provider-instance queue rejects admission
+with `SL_STATUS_CAPACITY_EXCEEDED`; the executor does not take ownership and the caller can
+map that to an HTTP overload/error response. Shutdown stops new admission and the current
+native skeleton uses immediate cancellation for pending/active provider work. Future drain
+periods must preserve cleanup-once and safe late-completion behavior.
+
 ## Future Phase Order
 
 1. SQLite first, built-in/static provider. Native C provider implemented; JavaScript bridge
