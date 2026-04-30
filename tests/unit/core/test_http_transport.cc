@@ -195,6 +195,26 @@ static int test_config_validation_and_lifecycle(void)
     }
 
     sl_arena_reset(&arena);
+    server = {};
+    config = small_config(nullptr);
+    config.parse.max_headers = 0U;
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 3;
+    }
+    if (server.config.parse.max_headers != SL_HTTP_DEFAULT_MAX_HEADERS) {
+        return 4;
+    }
+    if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0) {
+        return 5;
+    }
+    if (expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK) != 0) {
+        return 6;
+    }
+
+    sl_arena_reset(&arena);
+    config = small_config(nullptr);
     config.host = sl_str_from_cstr("not an address");
     server = {};
     if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
@@ -203,7 +223,7 @@ static int test_config_validation_and_lifecycle(void)
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
         diag.code != SL_DIAG_HTTP_TRANSPORT_CONFIG)
     {
-        return 3;
+        return 7;
     }
 
     sl_arena_reset(&arena);
@@ -214,7 +234,7 @@ static int test_config_validation_and_lifecycle(void)
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
         diag.code != SL_DIAG_HTTP_TRANSPORT_CONFIG)
     {
-        return 4;
+        return 8;
     }
 
     return 0;
@@ -363,6 +383,34 @@ static int test_ready_get_and_split_head(void)
     {
         stop_one_connection(&server, &client);
         return 32;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_ready_request_without_hook_closes_and_releases(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    ClientConnect client = {};
+    SlDiag diag = {};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        start_one_connection(&arena, &server, &client, nullptr) != 0)
+    {
+        return 40;
+    }
+    if (expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0], bytes_from_cstr("GET /done HTTP/1.1\r\n\r\n"), &diag),
+            SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U)
+    {
+        stop_one_connection(&server, &client);
+        return 41;
     }
 
     stop_one_connection(&server, &client);
@@ -603,7 +651,7 @@ static int test_disconnect_cleanup_paths(void)
     close_client(&client);
     if (expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
         expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
-        sl_http_transport_server_active_connections(&server) > 1U)
+        sl_http_transport_server_active_connections(&server) != 0U)
     {
         stop_one_connection(&server, &client);
         return 71;
@@ -652,6 +700,10 @@ int main(void)
         return result;
     }
     result = test_ready_get_and_split_head();
+    if (result != 0) {
+        return result;
+    }
+    result = test_ready_request_without_hook_closes_and_releases();
     if (result != 0) {
         return result;
     }

@@ -148,7 +148,8 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.port = input->port;
         config.max_connections = input->max_connections;
         config.max_active_requests = input->max_active_requests;
-        config.parse.max_headers = input->parse.max_headers;
+        config.parse.max_headers =
+            input->parse.max_headers == 0U ? config.parse.max_headers : input->parse.max_headers;
         config.parse.max_target_length = input->parse.max_target_length == 0U
                                              ? config.parse.max_target_length
                                              : input->parse.max_target_length;
@@ -572,9 +573,14 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
     if (connection->core.backend != NULL && connection->core.backend->listener.platform != NULL) {
         SlHttpTransportServer* server =
             ((SlHttpPlatformListener*)connection->core.backend->listener.platform)->server;
-        if (server != NULL && server->config.on_request_ready != NULL) {
-            server->config.on_request_ready(connection, &connection->request,
-                                            server->config.on_request_ready_user);
+        if (server != NULL) {
+            if (server->config.on_request_ready != NULL) {
+                server->config.on_request_ready(connection, &connection->request,
+                                                server->config.on_request_ready_user);
+            }
+            else {
+                (void)sl_http_transport_connection_close(connection, NULL);
+            }
         }
     }
     return sl_status_ok();

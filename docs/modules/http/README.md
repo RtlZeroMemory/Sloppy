@@ -101,6 +101,8 @@ Implemented now:
   are detected at `CRLFCRLF`, Content-Length bodies are accumulated through existing
   ENGINE-13 body-reader semantics, parsed requests transition to an internal
   request-ready state, and an internal ready hook can observe the parsed request for tests.
+  If no hook is configured in this slice, the parsed request is closed immediately so
+  connection/request admission does not remain parked.
 
 Future scope:
 
@@ -505,7 +507,8 @@ Implemented CTest coverage:
   head-too-large rejection, malformed-head rejection, parser header-limit flow-through,
   body-too-large rejection, Transfer-Encoding/chunked rejection, unsupported media
   rejection, pipelined request-byte rejection, request-ready internal hook observation,
-  cleanup after read/partial-body failure, and cleanup after ready request;
+  no-hook ready-request cleanup, cleanup after read/partial-body failure, and cleanup after
+  ready request;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;

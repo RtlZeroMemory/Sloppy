@@ -72,9 +72,11 @@ Supported request framing is intentionally small:
 
 When a full request is parsed and the body reader finishes, the connection transitions to
 `REQUEST_READY`. The request is parked on the transport connection and exposed only through
-an internal request-ready callback/test hook. ENGINE-24.C does not call route dispatch,
-does not enter V8, and does not write a response. #415 owns consuming the parked request,
-dispatching it, and writing/closing the response.
+an internal request-ready callback/test hook when that hook is configured. If no hook is
+configured, the parsed request is closed immediately so backend admission is released rather
+than parked forever. ENGINE-24.C does not call route dispatch, does not enter V8, and does
+not write a response. #415 owns consuming the parked request, dispatching it, and
+writing/closing the response.
 
 Connections can be closed directly, by server stop, by client disconnect, by read/parse/body
 failure, or by dispose. Cleanup stops reads before closing the handle, closes any unfinished

@@ -192,8 +192,9 @@ boundary. Accepted connections start reading, append TCP chunks into bounded
 per-connection storage, parse exactly one Content-Length request through existing
 ENGINE-13 parser/body rules, and then park the parsed request in a `REQUEST_READY` transport
 state. The parked request is visible to an internal hook for tests and for #415 handoff
-design, but it is not dispatched, does not enter V8, and does not write a response in this
-slice. Extra bytes after the first complete request are unsupported pipelining.
+design. Without that hook, the parsed request is closed immediately to release admission. It
+is not dispatched, does not enter V8, and does not write a response in this slice. Extra
+bytes after the first complete request are unsupported pipelining.
 
 ## Current Handwritten Milestone
 
