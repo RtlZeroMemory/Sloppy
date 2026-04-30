@@ -536,6 +536,8 @@ static int test_body_reader_success_owns_bounded_json_body(void)
     SlHttpConnection connection = {0};
     SlHttpRequestLifecycle request = {0};
     SlHttpBodyReader reader = {0};
+    void* scratch = NULL;
+    size_t used_after_scratch = 0U;
 
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
         init_started_backend(&backend, NULL) != 0 ||
@@ -563,6 +565,18 @@ static int test_body_reader_success_owns_bounded_json_body(void)
         expect_bytes_equal(request.head.body, "{\"ok\":true}") != 0)
     {
         return 72;
+    }
+    if (expect_status(sl_http_request_body_reader_close(&reader, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_alloc(&arena, 8U, 1U, &scratch), SL_STATUS_OK) != 0)
+    {
+        return 86;
+    }
+    used_after_scratch = sl_arena_used(&arena);
+    if (expect_status(sl_http_request_body_reader_close(&reader, NULL), SL_STATUS_OK) != 0 ||
+        sl_arena_used(&arena) != used_after_scratch || scratch == NULL ||
+        expect_bytes_equal(request.head.body, "{\"ok\":true}") != 0)
+    {
+        return 87;
     }
 
     return 0;
@@ -640,6 +654,25 @@ static int test_body_reader_rejects_limits_and_unsupported_media(void)
         diag.code != SL_DIAG_INVALID_HTTP_REQUEST || backend.active_requests != 0U)
     {
         return 85;
+    }
+
+    connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
+    sl_arena_reset(&arena);
+    request = (SlHttpRequestLifecycle){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        expect_status(
+            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_body_reader_begin(&request, sl_str_from_cstr("text/plain"),
+                                                        3U, &reader, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_body_reader_append(&reader, bytes_from_cstr("abcd"), &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_INVALID_HTTP_REQUEST || backend.active_requests != 0U)
+    {
+        return 88;
     }
 
     return 0;
@@ -727,6 +760,39 @@ static int test_body_reader_cancellation_timeout_and_shutdown(void)
     return 0;
 }
 
+static int test_dispatch_rejects_backend_shutdown_after_body_read(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, NULL) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        expect_status(
+            sl_http_request_parse_head(&request, bytes_from_cstr("GET / HTTP/1.1\r\n\r\n"), NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_stop(&backend, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin_dispatch(&request, &diag), SL_STATUS_CANCELLED) != 0)
+    {
+        return 89;
+    }
+    if (diag.code != SL_DIAG_HTTP_SHUTDOWN || backend.active_requests != 0U ||
+        sl_http_request_state(&request) != SL_HTTP_REQUEST_STATE_CANCELLED ||
+        sl_http_connection_state(&connection) != SL_HTTP_CONNECTION_STATE_CLOSING)
+    {
+        return 90;
+    }
+
+    return 0;
+}
+
 static int test_shutdown_rejects_new_and_cancels_active_work(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -805,6 +871,21 @@ static int test_shutdown_during_response_write_and_diagnostic_name(void)
     return 0;
 }
 
+static int test_request_cancel_clears_stale_diagnostic(void)
+{
+    SlDiag diag = {.code = SL_DIAG_HTTP_SHUTDOWN};
+
+    if (expect_status(sl_http_request_cancel(NULL, SL_CANCELLATION_REASON_CANCELLED,
+                                             sl_str_from_cstr("client closed"), &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_NONE)
+    {
+        return 91;
+    }
+
+    return 0;
+}
+
 typedef int (*HttpBackendTestFn)(void);
 
 typedef struct HttpBackendTestCase
@@ -830,8 +911,10 @@ int main(void)
         {test_body_reader_success_owns_bounded_json_body},
         {test_body_reader_rejects_limits_and_unsupported_media},
         {test_body_reader_cancellation_timeout_and_shutdown},
+        {test_dispatch_rejects_backend_shutdown_after_body_read},
         {test_shutdown_rejects_new_and_cancels_active_work},
         {test_shutdown_during_response_write_and_diagnostic_name},
+        {test_request_cancel_clears_stale_diagnostic},
     };
     size_t index = 0U;
 

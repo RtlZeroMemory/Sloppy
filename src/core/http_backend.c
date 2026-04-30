@@ -795,9 +795,13 @@ SlStatus sl_http_request_body_reader_append(SlHttpBodyReader* reader, SlBytes ch
     if (!sl_status_is_ok(status)) {
         return sl_http_body_reader_fail(reader, SL_HTTP_BODY_READER_STATE_FAILED, status);
     }
-    if (next_length > reader->max_body_bytes || next_length > reader->expected_body_bytes) {
+    if (next_length > reader->max_body_bytes) {
         return sl_http_body_reader_fail(reader, SL_HTTP_BODY_READER_STATE_FAILED,
                                         sl_http_backend_body_limit_diag(out_diag));
+    }
+    if (next_length > reader->expected_body_bytes) {
+        return sl_http_body_reader_fail(reader, SL_HTTP_BODY_READER_STATE_FAILED,
+                                        sl_http_backend_invalid_body_diag(out_diag));
     }
 
     status = sl_byte_builder_append_bytes(&reader->builder, chunk);
@@ -845,6 +849,10 @@ SlStatus sl_http_request_body_reader_close(SlHttpBodyReader* reader, SlDiag* out
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    if (reader->state == SL_HTTP_BODY_READER_STATE_CLOSED) {
+        return sl_status_ok();
+    }
+
     if (reader->state != SL_HTTP_BODY_READER_STATE_COMPLETED &&
         reader->state != SL_HTTP_BODY_READER_STATE_CANCELLED &&
         reader->state != SL_HTTP_BODY_READER_STATE_TIMED_OUT &&
@@ -883,6 +891,12 @@ SlStatus sl_http_request_begin_dispatch(SlHttpRequestLifecycle* request, SlDiag*
         }
         sl_http_request_terminal_cancel(request, SL_HTTP_REQUEST_STATE_CANCELLED);
         return sl_http_backend_cancelled_diag(out_diag);
+    }
+    if (request->connection->backend != NULL &&
+        request->connection->backend->state == SL_HTTP_BACKEND_STATE_STOPPING)
+    {
+        sl_http_request_terminal_cancel(request, SL_HTTP_REQUEST_STATE_CANCELLED);
+        return sl_http_backend_shutdown_diag(out_diag, SL_STATUS_CANCELLED);
     }
 
     request->state = SL_HTTP_REQUEST_STATE_DISPATCHING;
@@ -949,6 +963,9 @@ SlStatus sl_http_request_cancel(SlHttpRequestLifecycle* request, SlCancellationR
 {
     SlStatus status;
 
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
     if (request == NULL || reason == SL_CANCELLATION_REASON_NONE ||
         !sl_http_backend_str_valid(detail))
     {
