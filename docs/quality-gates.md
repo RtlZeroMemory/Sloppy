@@ -171,8 +171,11 @@ The package command may also run smoke directly:
 ```
 
 That smoke proves the local Windows archive layout starts basic packaged CLI commands
-outside the checkout. It does not prove V8 runtime packaging, live providers, installers,
-signing/notarization, package-manager distribution, or public alpha release readiness.
+outside the checkout, verifies required package files/stdlib assets, and builds a tiny
+supported app with the packaged `sloppyc`. For non-V8 packages, `sloppy run --artifacts`
+is expected to report V8 skipped/not configured rather than execute the handler. It does
+not prove V8 runtime packaging, live providers, installers, signing/notarization,
+package-manager distribution, or public alpha release readiness.
 
 V8 runtime package validation is optional and separate:
 

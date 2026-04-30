@@ -31,5 +31,8 @@ tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-li
 
 It extracts the archive under the system temp directory, runs `sloppy --version`,
 `sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies stdlib assets,
-manifest fields, excluded build/dependency directories, and `SHA256SUMS.txt` when present.
-It is not part of the required CI gate until a scoped package-smoke job is added.
+manifest fields, required package files, excluded build/dependency directories, packaged
+`sloppyc build` from the extracted layout, and `SHA256SUMS.txt` when present. Default
+non-V8 packages report packaged `sloppy run --artifacts` as skipped/not configured because
+V8 is unavailable. It is not part of the required CI gate until a scoped package-smoke job
+is added.

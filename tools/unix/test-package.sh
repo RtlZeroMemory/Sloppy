@@ -58,6 +58,57 @@ invoke_cli_smoke() {
   "$executable" --help
 }
 
+invoke_outside_checkout_compiler_smoke() {
+  local sloppyc_executable="$1"
+  local sloppy_executable="$2"
+  local stdlib_root="$3"
+  local working_root="$4"
+  local source_dir="$working_root/source"
+  local artifact_dir="$working_root/artifacts"
+  local run_output=""
+  local run_status=0
+
+  mkdir -p "$source_dir" "$artifact_dir"
+  cat > "$source_dir/app.js" <<'APP'
+import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+
+app.mapGet("/", () => Results.text("Hello from packaged Sloppy"));
+
+export default app;
+APP
+
+  (cd "$source_dir" && "$sloppyc_executable" build "$source_dir/app.js" --out "$artifact_dir")
+
+  for artifact in app.plan.json app.js app.js.map; do
+    [[ -f "$artifact_dir/$artifact" ]] || {
+      echo "Package smoke missing compiled artifact: $artifact" >&2
+      exit 1
+    }
+  done
+
+  set +e
+  run_output="$("$sloppy_executable" run --artifacts "$artifact_dir" --stdlib "$stdlib_root" --once GET / 2>&1)"
+  run_status=$?
+  set -e
+  printf '%s\n' "$run_output"
+  if [[ "$run_status" -eq 0 ]]; then
+    grep -q "Hello from packaged Sloppy" <<<"$run_output" || {
+      echo "packaged sloppy run succeeded but did not return the expected response." >&2
+      exit 1
+    }
+    echo "Package smoke V8 artifact execution passed from extracted package layout."
+    return
+  fi
+
+  grep -q "requires V8-enabled build" <<<"$run_output" || {
+    echo "packaged sloppy run failed for an unexpected reason: $run_output" >&2
+    exit 1
+  }
+  echo "Package smoke artifact execution skipped/not configured: packaged sloppy is not V8-enabled."
+}
+
 assert_missing() {
   local root="$1"
   local relative="$2"
@@ -121,10 +172,29 @@ fi
 invoke_cli_smoke "$package_root/bin/sloppy" "sloppy"
 invoke_cli_smoke "$package_root/bin/sloppyc" "sloppyc"
 
+for required_file in README.md LICENSE THIRD_PARTY_NOTICES.md manifest.json; do
+  [[ -f "$package_root/$required_file" ]] || {
+    echo "Package smoke missing required package file: $required_file" >&2
+    exit 1
+  }
+done
+for required_directory in share/sloppy/licenses share/sloppy/schemas; do
+  [[ -d "$package_root/$required_directory" ]] || {
+    echo "Package smoke missing required package directory: $required_directory" >&2
+    exit 1
+  }
+done
+
 stdlib_root="$package_root/lib/sloppy/stdlib/sloppy"
 for asset in index.js app.js results.js schema.js data.js bootstrap.manifest.json internal/intrinsics.js; do
   [[ -f "$stdlib_root/$asset" ]] || { echo "Package smoke missing stdlib asset: $asset" >&2; exit 1; }
 done
+
+invoke_outside_checkout_compiler_smoke \
+  "$package_root/bin/sloppyc" \
+  "$package_root/bin/sloppy" \
+  "$stdlib_root" \
+  "$temp_root/outside-checkout-work"
 
 for excluded in .git .sdeps build compiler/target target vcpkg_installed; do
   assert_missing "$package_root" "$excluded"

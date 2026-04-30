@@ -208,6 +208,13 @@ Public API:
 - JS/TS public API behavior must be tested through the V8 harness where possible.
 - Static JS/TS fixture checks are acceptable only with a documented reason and are not a
   replacement for behavior tests.
+- ENGINE-19.E package outside-checkout smoke must extract the archive outside the checkout,
+  run packaged `sloppy`/`sloppyc` CLI startup checks, verify required package files and
+  stdlib assets, build a tiny supported app with the packaged `sloppyc`, and report
+  packaged `sloppy run --artifacts` separately. A default non-V8 package may prove compile
+  and layout behavior while reporting artifact execution as skipped/not configured because
+  V8 is unavailable; that is not V8 execution, release readiness, package-manager
+  compatibility, live-provider evidence, or public alpha readiness;
 
 ## Test Naming / Layout
 

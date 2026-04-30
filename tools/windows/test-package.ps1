@@ -30,6 +30,126 @@ function Invoke-CliSmoke {
     }
 }
 
+function ConvertTo-ProcessArgumentString {
+    param(
+        [string[]]$Arguments
+    )
+
+    $quoted = foreach ($argument in $Arguments) {
+        '"' + ($argument -replace '"', '\"') + '"'
+    }
+    return ($quoted -join " ")
+}
+
+function Invoke-OutsideCheckoutCompilerSmoke {
+    param(
+        [string]$SloppycExecutable,
+        [string]$SloppyExecutable,
+        [string]$StdlibRoot,
+        [string]$WorkingRoot,
+        [switch]$RequireV8Runtime
+    )
+
+    $sourceDir = Join-Path $WorkingRoot "source"
+    $artifactDir = Join-Path $WorkingRoot "artifacts"
+    New-Item -ItemType Directory -Force -Path $sourceDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+
+    $sourcePath = Join-Path $sourceDir "app.js"
+    @'
+import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+
+app.mapGet("/", () => Results.text("Hello from packaged Sloppy"));
+
+export default app;
+'@ | Set-Content -LiteralPath $sourcePath -Encoding ASCII
+
+    Push-Location $sourceDir
+    try {
+        & $SloppycExecutable build $sourcePath --out $artifactDir | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "packaged sloppyc build failed with exit code $LASTEXITCODE"
+        }
+    } finally {
+        Pop-Location
+    }
+
+    foreach ($artifact in @("app.plan.json", "app.js", "app.js.map")) {
+        $artifactPath = Join-Path $artifactDir $artifact
+        if (-not (Test-Path -LiteralPath $artifactPath -PathType Leaf)) {
+            throw "Package smoke missing compiled artifact: $artifact"
+        }
+    }
+
+    $runStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $runStartInfo.FileName = $SloppyExecutable
+    $runStartInfo.WorkingDirectory = $WorkingRoot
+    $runStartInfo.RedirectStandardOutput = $true
+    $runStartInfo.RedirectStandardError = $true
+    $runStartInfo.UseShellExecute = $false
+    $runStartInfo.Arguments = ConvertTo-ProcessArgumentString @(
+        "run",
+        "--artifacts",
+        $artifactDir,
+        "--stdlib",
+        $StdlibRoot,
+        "--once",
+        "GET",
+        "/"
+    )
+
+    $runProcess = [System.Diagnostics.Process]::new()
+    $runProcess.StartInfo = $runStartInfo
+    try {
+        if (-not $runProcess.Start()) {
+            throw "packaged sloppy run failed to start."
+        }
+        $stdoutTask = $runProcess.StandardOutput.ReadToEndAsync()
+        $stderrTask = $runProcess.StandardError.ReadToEndAsync()
+        if (-not $runProcess.WaitForExit(60000)) {
+            try {
+                $null = $runProcess.CloseMainWindow()
+            } catch {
+                # Best-effort cleanup before forcing termination below.
+            }
+            if (-not $runProcess.WaitForExit(5000)) {
+                try {
+                    $runProcess.Kill()
+                } catch {
+                    # The timeout failure is reported below even if kill races with exit.
+                }
+            }
+            throw "packaged sloppy run timed out after 60s."
+        }
+        $runOutput = @(
+            $stdoutTask.GetAwaiter().GetResult(),
+            $stderrTask.GetAwaiter().GetResult()
+        )
+        $runExit = $runProcess.ExitCode
+    } finally {
+        $runProcess.Dispose()
+    }
+    $runText = ($runOutput | Out-String)
+    $runText | Write-Host
+    if ($runExit -eq 0) {
+        if ($runText -notmatch "Hello from packaged Sloppy") {
+            throw "packaged sloppy run succeeded but did not return the expected response."
+        }
+        Write-Host "Package smoke V8 artifact execution passed from extracted package layout."
+        return
+    }
+
+    if ($runText -notmatch "requires V8-enabled build") {
+        throw "packaged sloppy run failed for an unexpected reason: $runText"
+    }
+    if ($RequireV8Runtime) {
+        throw "Package smoke required V8 runtime execution, but packaged sloppy reported non-V8 build."
+    }
+    Write-Host "Package smoke artifact execution skipped/not configured: packaged sloppy is not V8-enabled."
+}
+
 function Assert-PackagePathMissing {
     param(
         [string]$Root,
@@ -96,6 +216,19 @@ try {
     Invoke-CliSmoke -Executable (Join-Path $packageRoot "bin/sloppy.exe") -Name "sloppy"
     Invoke-CliSmoke -Executable (Join-Path $packageRoot "bin/sloppyc.exe") -Name "sloppyc"
 
+    foreach ($requiredFile in @("README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "manifest.json")) {
+        $requiredPath = Join-Path $packageRoot $requiredFile
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            throw "Package smoke missing required package file: $requiredFile"
+        }
+    }
+    foreach ($requiredDirectory in @("share/sloppy/licenses", "share/sloppy/schemas")) {
+        $requiredPath = Join-Path $packageRoot $requiredDirectory
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Container)) {
+            throw "Package smoke missing required package directory: $requiredDirectory"
+        }
+    }
+
     $stdlibRoot = Join-Path $packageRoot "lib/sloppy/stdlib/sloppy"
     $stdlibAssets = @(
         "index.js",
@@ -112,6 +245,13 @@ try {
             throw "Package smoke missing stdlib asset: $asset"
         }
     }
+
+    Invoke-OutsideCheckoutCompilerSmoke `
+        -SloppycExecutable (Join-Path $packageRoot "bin/sloppyc.exe") `
+        -SloppyExecutable (Join-Path $packageRoot "bin/sloppy.exe") `
+        -StdlibRoot $stdlibRoot `
+        -WorkingRoot (Join-Path $tempRoot "outside-checkout-work") `
+        -RequireV8Runtime:$RequireV8Runtime
 
     foreach ($excluded in @(".git", ".sdeps", "build", "compiler/target", "target", "vcpkg_installed")) {
         Assert-PackagePathMissing -Root $packageRoot -RelativePath $excluded
