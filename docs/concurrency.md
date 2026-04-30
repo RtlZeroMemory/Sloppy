@@ -99,6 +99,14 @@ admission, cancellation/deadline/shutdown/late-completion semantics, worker life
 diagnostics, and stress evidence. Provider execution is separate from ENGINE-13 HTTP
 backend work and must not use libuv's global threadpool as the provider runtime.
 
+ENGINE-13.A/B/C adds the first HTTP-specific lifecycle/admission layer above the generic
+async primitives. `SlHttpBackend` tracks bounded active connection and active request
+counts, `SlHttpRequestLifecycle` owns one request admission slot and a borrowed request
+arena, and timeout hooks cancel through `SlCancellationToken` with
+`SL_CANCELLATION_REASON_DEADLINE_EXCEEDED`. This is not yet a timer integration, client
+disconnect signal, graceful shutdown drain, body-reader cancellation path, or stress
+evidence; those remain ENGINE-13.D/E/F follow-ups.
+
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
 async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes
@@ -487,6 +495,11 @@ owned by the backend layer when real timer wakeups are wired; the current ENGINE
 provider source exposes deterministic native timeout completion without public timer APIs.
 Late completion after timeout is cleanup-only and must not double-settle.
 
+The HTTP backend foundation has read/header/request timeout configuration fields and an
+explicit request timeout hook. Until ENGINE-13.D/E wires actual timer/read/disconnect
+sources, these fields document where the backend attaches deadlines and tests drive the
+terminal timeout path directly.
+
 ## Backpressure
 
 Future model:
@@ -511,6 +524,12 @@ returns. Already-running blocking worker callbacks are not forcibly interrupted 
 ENGINE-23.E/F; their later result is treated as late completion and cannot double-settle.
 Pending JS continuations resume only through the V8 owner-thread scheduler; provider
 threads never resume JS.
+
+HTTP backend admission follows the same bounded model: a full active connection or active
+request budget returns `SL_STATUS_CAPACITY_EXCEEDED` with
+`SLOPPY_E_HTTP_OVERLOAD`, and the backend does not create an unbounded request queue.
+Streaming body and socket write backpressure are still future ENGINE-13 work, so current
+claims are limited to admission counters and deterministic rejection.
 
 ## Scaling to Many Requests
 

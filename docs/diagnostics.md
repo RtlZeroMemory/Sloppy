@@ -169,11 +169,21 @@ Implemented foundation codes:
 - `SLOPPY_E_DUPLICATE_ROUTE_PARAM`;
 - `SLOPPY_E_INVALID_HTTP_REQUEST`;
 - `SLOPPY_E_HTTP_HEADER_LIMIT`;
+- `SLOPPY_E_HTTP_TARGET_LIMIT`;
+- `SLOPPY_E_HTTP_HEADER_NAME_LIMIT`;
+- `SLOPPY_E_HTTP_HEADER_VALUE_LIMIT`;
+- `SLOPPY_E_HTTP_HEADER_BYTES_LIMIT`;
 - `SLOPPY_E_HTTP_UNSUPPORTED_METHOD`;
 - `SLOPPY_E_HTTP_ROUTE_NOT_FOUND`;
+- `SLOPPY_E_HTTP_CONNECTION_CLOSED`;
+- `SLOPPY_E_HTTP_REQUEST_TIMEOUT`;
+- `SLOPPY_E_HTTP_OVERLOAD`;
+- `SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED`;
 - `SLOPPY_E_DUPLICATE_ROUTE`;
 - `SLOPPY_E_HTTP_UNSUPPORTED_BODY`;
 - `SLOPPY_E_INVALID_HTTP_RESULT`;
+- `SLOPPY_E_HTTP_BODY_LIMIT`;
+- `SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE`;
 - `SLOPPY_E_SQLITE_PROVIDER`;
 - `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`;
 - `SLOPPY_E_POSTGRES_PROVIDER`;
@@ -353,6 +363,10 @@ Runtime diagnostics:
 - invalid route pattern in the native route parser;
 - duplicate route parameter names.
 - duplicate route method+pattern pairs during route table construction;
+- request target, header count, header name, header value, total header byte, and body
+  parser limit failures;
+- HTTP backend connection closed/error, request timeout/deadline, overload/backpressure,
+  and unsupported keep-alive/body behavior diagnostics;
 - unsupported request bodies;
 - unsupported request content types;
 - request body size limit failures;

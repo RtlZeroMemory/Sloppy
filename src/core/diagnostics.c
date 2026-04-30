@@ -24,6 +24,60 @@ static SlStr sl_diag_literal(const char* ptr, size_t length)
     return sl_str_from_parts(ptr, length);
 }
 
+static SlStr sl_diag_http_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_INVALID_HTTP_REQUEST:
+        return sl_diag_literal("SLOPPY_E_INVALID_HTTP_REQUEST",
+                               sizeof("SLOPPY_E_INVALID_HTTP_REQUEST") - 1U);
+    case SL_DIAG_HTTP_HEADER_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_HEADER_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_HEADER_LIMIT") - 1U);
+    case SL_DIAG_HTTP_TARGET_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_TARGET_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_TARGET_LIMIT") - 1U);
+    case SL_DIAG_HTTP_HEADER_NAME_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_HEADER_NAME_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_HEADER_NAME_LIMIT") - 1U);
+    case SL_DIAG_HTTP_HEADER_VALUE_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_HEADER_VALUE_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_HEADER_VALUE_LIMIT") - 1U);
+    case SL_DIAG_HTTP_HEADER_BYTES_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_HEADER_BYTES_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_HEADER_BYTES_LIMIT") - 1U);
+    case SL_DIAG_HTTP_UNSUPPORTED_METHOD:
+        return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_METHOD",
+                               sizeof("SLOPPY_E_HTTP_UNSUPPORTED_METHOD") - 1U);
+    case SL_DIAG_HTTP_ROUTE_NOT_FOUND:
+        return sl_diag_literal("SLOPPY_E_HTTP_ROUTE_NOT_FOUND",
+                               sizeof("SLOPPY_E_HTTP_ROUTE_NOT_FOUND") - 1U);
+    case SL_DIAG_HTTP_CONNECTION_CLOSED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CONNECTION_CLOSED",
+                               sizeof("SLOPPY_E_HTTP_CONNECTION_CLOSED") - 1U);
+    case SL_DIAG_HTTP_REQUEST_TIMEOUT:
+        return sl_diag_literal("SLOPPY_E_HTTP_REQUEST_TIMEOUT",
+                               sizeof("SLOPPY_E_HTTP_REQUEST_TIMEOUT") - 1U);
+    case SL_DIAG_HTTP_OVERLOAD:
+        return sl_diag_literal("SLOPPY_E_HTTP_OVERLOAD", sizeof("SLOPPY_E_HTTP_OVERLOAD") - 1U);
+    case SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED:
+        return sl_diag_literal("SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED",
+                               sizeof("SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED") - 1U);
+    case SL_DIAG_HTTP_BODY_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_BODY_LIMIT", sizeof("SLOPPY_E_HTTP_BODY_LIMIT") - 1U);
+    case SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE:
+        return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE",
+                               sizeof("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE") - 1U);
+    case SL_DIAG_HTTP_UNSUPPORTED_BODY:
+        return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_BODY",
+                               sizeof("SLOPPY_E_HTTP_UNSUPPORTED_BODY") - 1U);
+    case SL_DIAG_INVALID_HTTP_RESULT:
+        return sl_diag_literal("SLOPPY_E_INVALID_HTTP_RESULT",
+                               sizeof("SLOPPY_E_INVALID_HTTP_RESULT") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
 static bool sl_diag_str_is_valid(SlStr str)
 {
     return str.length == 0U || str.ptr != NULL;
@@ -467,28 +521,28 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_APP_LIFECYCLE:
         return sl_diag_literal("SLOPPY_E_APP_LIFECYCLE", sizeof("SLOPPY_E_APP_LIFECYCLE") - 1U);
     case SL_DIAG_HTTP_BODY_LIMIT:
-        return sl_diag_literal("SLOPPY_E_HTTP_BODY_LIMIT", sizeof("SLOPPY_E_HTTP_BODY_LIMIT") - 1U);
     case SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE:
-        return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE",
-                               sizeof("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE") - 1U);
+    case SL_DIAG_HTTP_TARGET_LIMIT:
+    case SL_DIAG_HTTP_HEADER_NAME_LIMIT:
+    case SL_DIAG_HTTP_HEADER_VALUE_LIMIT:
+    case SL_DIAG_HTTP_HEADER_BYTES_LIMIT:
+    case SL_DIAG_HTTP_CONNECTION_CLOSED:
+    case SL_DIAG_HTTP_REQUEST_TIMEOUT:
+    case SL_DIAG_HTTP_OVERLOAD:
+    case SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED:
+    case SL_DIAG_INVALID_HTTP_REQUEST:
+    case SL_DIAG_HTTP_HEADER_LIMIT:
+    case SL_DIAG_HTTP_UNSUPPORTED_METHOD:
+    case SL_DIAG_HTTP_ROUTE_NOT_FOUND:
+    case SL_DIAG_HTTP_UNSUPPORTED_BODY:
+    case SL_DIAG_INVALID_HTTP_RESULT:
+        return sl_diag_http_code_name(code);
     case SL_DIAG_INVALID_ROUTE_PATTERN:
         return sl_diag_literal("SLOPPY_E_INVALID_ROUTE_PATTERN",
                                sizeof("SLOPPY_E_INVALID_ROUTE_PATTERN") - 1U);
     case SL_DIAG_DUPLICATE_ROUTE_PARAM:
         return sl_diag_literal("SLOPPY_E_DUPLICATE_ROUTE_PARAM",
                                sizeof("SLOPPY_E_DUPLICATE_ROUTE_PARAM") - 1U);
-    case SL_DIAG_INVALID_HTTP_REQUEST:
-        return sl_diag_literal("SLOPPY_E_INVALID_HTTP_REQUEST",
-                               sizeof("SLOPPY_E_INVALID_HTTP_REQUEST") - 1U);
-    case SL_DIAG_HTTP_HEADER_LIMIT:
-        return sl_diag_literal("SLOPPY_E_HTTP_HEADER_LIMIT",
-                               sizeof("SLOPPY_E_HTTP_HEADER_LIMIT") - 1U);
-    case SL_DIAG_HTTP_UNSUPPORTED_METHOD:
-        return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_METHOD",
-                               sizeof("SLOPPY_E_HTTP_UNSUPPORTED_METHOD") - 1U);
-    case SL_DIAG_HTTP_ROUTE_NOT_FOUND:
-        return sl_diag_literal("SLOPPY_E_HTTP_ROUTE_NOT_FOUND",
-                               sizeof("SLOPPY_E_HTTP_ROUTE_NOT_FOUND") - 1U);
     case SL_DIAG_SQLITE_PROVIDER_ERROR:
         return sl_diag_literal("SLOPPY_E_SQLITE_PROVIDER", sizeof("SLOPPY_E_SQLITE_PROVIDER") - 1U);
     case SL_DIAG_DATABASE_UNSUPPORTED_VALUE:
@@ -522,12 +576,6 @@ SlStr sl_diag_code_name(SlDiagCode code)
                                sizeof("SLOPPY_E_RESOURCE_TABLE_EXHAUSTED") - 1U);
     case SL_DIAG_DUPLICATE_ROUTE:
         return sl_diag_literal("SLOPPY_E_DUPLICATE_ROUTE", sizeof("SLOPPY_E_DUPLICATE_ROUTE") - 1U);
-    case SL_DIAG_HTTP_UNSUPPORTED_BODY:
-        return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_BODY",
-                               sizeof("SLOPPY_E_HTTP_UNSUPPORTED_BODY") - 1U);
-    case SL_DIAG_INVALID_HTTP_RESULT:
-        return sl_diag_literal("SLOPPY_E_INVALID_HTTP_RESULT",
-                               sizeof("SLOPPY_E_INVALID_HTTP_RESULT") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

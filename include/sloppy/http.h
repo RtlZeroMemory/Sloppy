@@ -16,6 +16,9 @@ extern "C" {
 
 #define SL_HTTP_DEFAULT_MAX_HEADERS 32U
 #define SL_HTTP_DEFAULT_MAX_TARGET_LENGTH 2048U
+#define SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH 256U
+#define SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH 8192U
+#define SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES 16384U
 #define SL_HTTP_DEFAULT_MAX_BODY_LENGTH 65536U
 
 typedef enum SlHttpMethod
@@ -67,6 +70,9 @@ typedef struct SlHttpParseOptions
 {
     size_t max_headers;
     size_t max_target_length;
+    size_t max_header_name_length;
+    size_t max_header_value_length;
+    size_t max_total_header_bytes;
     size_t max_body_length;
 } SlHttpParseOptions;
 
@@ -76,11 +82,11 @@ typedef struct SlHttpParseOptions
  * `arena`, `bytes`, and `out_request` are required. `bytes` must contain a complete
  * request message for the declared Content-Length. Parsed strings, the header array, and
  * body bytes are arena-owned. `options` may be NULL, in which case default limits are used.
- * A zero max_headers value permits no headers. Zero target/body limits use
- * SL_HTTP_DEFAULT_MAX_TARGET_LENGTH and SL_HTTP_DEFAULT_MAX_BODY_LENGTH. Header overflow,
- * target overflow, body overflow, malformed input, incomplete input, empty/non-path request
- * targets, and unsupported methods fail with SlStatus and, when supplied, an arena-owned
- * diagnostic.
+ * A zero max_headers value permits no headers. Zero target, header-name, header-value,
+ * total-header-byte, and body limits use the documented defaults. Header count/name/value/
+ * total-byte overflow, target overflow, body overflow, malformed input, incomplete input,
+ * empty/non-path request targets, and unsupported methods fail with SlStatus and, when
+ * supplied, an arena-owned diagnostic.
  *
  * The parser stores `raw_target` exactly as llhttp reports it. `path` is the portion before
  * `?`; EPIC-23 query parsing and percent decoding live in `http_context.h` so the request

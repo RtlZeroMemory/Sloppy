@@ -300,6 +300,7 @@ set(
     src/core/provider_executor.c
     src/core/worker_pool.c
     src/core/http.c
+    src/core/http_backend.c
     src/core/http_context.c
     src/core/http_dispatch.c
     src/core/http_response.c
@@ -356,6 +357,7 @@ set(
     tests/unit/core/test_provider_executor.c
     tests/unit/core/test_worker_pool.c
     tests/unit/core/test_http.c
+    tests/unit/core/test_http_backend.c
     tests/unit/core/test_http_context.c
     tests/unit/core/test_http_dispatch.c
     tests/unit/core/test_http_response.c
@@ -624,6 +626,8 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
+    sloppy_add_c_unit_test(
+        core_http_backend core.http.backend tests/unit/core/test_http_backend.c)
     sloppy_add_c_unit_test(
         core_http_context core.http.context tests/unit/core/test_http_context.c)
     sloppy_add_c_unit_test(
