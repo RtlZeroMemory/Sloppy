@@ -595,7 +595,7 @@ void sl_provider_executor_dispose(SlProviderInstanceExecutor* executor)
 {
     size_t index = 0U;
 
-    if (executor == NULL || executor->slots == NULL) {
+    if (executor == NULL) {
         return;
     }
 
@@ -608,7 +608,7 @@ void sl_provider_executor_dispose(SlProviderInstanceExecutor* executor)
     sl_platform_thread_join(executor->worker_thread);
 
     sl_provider_executor_lock(executor);
-    for (index = 0U; index < executor->capacity; index += 1U) {
+    for (index = 0U; executor->slots != NULL && index < executor->capacity; index += 1U) {
         SlProviderOperation* operation = executor->slots[index].operation;
         if (operation != NULL) {
             sl_provider_operation_discard(operation, SL_CANCELLATION_REASON_SHUTDOWN);
@@ -1017,6 +1017,19 @@ SlStatus sl_provider_executor_shutdown(SlProviderInstanceExecutor* executor,
 
         sl_provider_executor_lock(executor);
         operation = executor->slots[index].operation;
+        if (operation != NULL && operation->run != NULL &&
+            operation->state == SL_PROVIDER_OPERATION_ACTIVE)
+        {
+            if (operation->cancellation != NULL &&
+                !sl_cancellation_token_is_cancelled(operation->cancellation))
+            {
+                (void)sl_cancellation_token_cancel(operation->cancellation,
+                                                   SL_CANCELLATION_REASON_SHUTDOWN,
+                                                   sl_str_from_cstr("provider executor shutdown"));
+            }
+            sl_provider_executor_unlock(executor);
+            continue;
+        }
         sl_provider_executor_unlock(executor);
         if (operation != NULL) {
             SlStatus status = sl_provider_operation_post_terminal(
@@ -1049,15 +1062,42 @@ SlBytes sl_provider_operation_input(const SlProviderOperation* operation)
 
 size_t sl_provider_executor_pending_count(const SlProviderInstanceExecutor* executor)
 {
-    return executor == NULL ? 0U : executor->count;
+    size_t count = 0U;
+
+    if (executor == NULL) {
+        return 0U;
+    }
+
+    sl_provider_executor_lock((SlProviderInstanceExecutor*)executor);
+    count = executor->count;
+    sl_provider_executor_unlock((SlProviderInstanceExecutor*)executor);
+    return count;
 }
 
 size_t sl_provider_executor_in_flight_count(const SlProviderInstanceExecutor* executor)
 {
-    return executor == NULL ? 0U : executor->in_flight;
+    size_t in_flight = 0U;
+
+    if (executor == NULL) {
+        return 0U;
+    }
+
+    sl_provider_executor_lock((SlProviderInstanceExecutor*)executor);
+    in_flight = executor->in_flight;
+    sl_provider_executor_unlock((SlProviderInstanceExecutor*)executor);
+    return in_flight;
 }
 
 bool sl_provider_executor_is_shutting_down(const SlProviderInstanceExecutor* executor)
 {
-    return executor != NULL && executor->shutting_down;
+    bool shutting_down = false;
+
+    if (executor == NULL) {
+        return false;
+    }
+
+    sl_provider_executor_lock((SlProviderInstanceExecutor*)executor);
+    shutting_down = executor->shutting_down;
+    sl_provider_executor_unlock((SlProviderInstanceExecutor*)executor);
+    return shutting_down;
 }

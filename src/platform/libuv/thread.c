@@ -214,6 +214,11 @@ SlStatus sl_platform_thread_start(SlArena* arena, SlPlatformThreadMainFn main_fn
     start = (SlPlatformThreadStart*)start_memory;
     *thread = (SlPlatformThread){0};
     *start = (SlPlatformThreadStart){main_fn, user};
+    /*
+     * SlPlatformThreadStart is arena-backed and read by sl_platform_thread_trampoline
+     * on the spawned thread. The arena passed to sl_platform_thread_start must remain
+     * live until the thread is joined.
+     */
     uv_status = uv_thread_create(&thread->thread, sl_platform_thread_trampoline, start);
     if (uv_status != 0) {
         return sl_platform_thread_status_from_uv(uv_status);
