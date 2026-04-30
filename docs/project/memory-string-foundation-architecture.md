@@ -202,7 +202,7 @@ Encoding:
 
 - V8 conversions are UTF-8 by construction where V8 APIs produce UTF-8 bytes.
 - Slop core string views remain byte-length views unless a specific API validates UTF-8.
-- No Sloppy helper currently performs Unicode normalization, validation, or collation.
+- No Slop helper currently performs Unicode normalization, validation, or collation.
 
 ## SQLite Interop Strategy
 

@@ -26,6 +26,8 @@
 #include <limits.h>
 #include <sqlite3.h>
 
+static const unsigned char sl_sqlite_empty_blob_sentinel = 0U;
+
 static SlStr sl_sqlite_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -188,7 +190,9 @@ static SlStatus sl_sqlite_bind_params(sqlite3_stmt* stmt, const SlSqliteParam* p
                                       sizeof("unsupported sqlite parameter value") - 1U),
                     operation, NULL, sql, sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
             }
-            rc = sqlite3_bind_blob(stmt, sqlite_index, param->value.blob.ptr,
+            rc = sqlite3_bind_blob(stmt, sqlite_index,
+                                   param->value.blob.length == 0U ? &sl_sqlite_empty_blob_sentinel
+                                                                  : param->value.blob.ptr,
                                    (int)param->value.blob.length, SQLITE_TRANSIENT);
             break;
         default:

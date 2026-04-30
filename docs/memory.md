@@ -29,8 +29,9 @@ This document covers:
 
 ## Non-Goals
 
-This document does not implement a heap allocator framework, JS bindings, broad subsystem
-adoption, or V8/SQLite bridge conversion helpers.
+This document does not implement a heap allocator framework, JS bindings, or broad subsystem
+adoption. V8/SQLite bridge conversion helpers exist through ENGINE-21.D; broad call-site
+adoption and refactoring remain deferred to ENGINE-22.
 
 ## Current Phase
 

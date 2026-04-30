@@ -146,6 +146,9 @@ SlSqliteOpenOptions sl_sqlite_open_options_memory(void);
  * statement-owned result storage. They use explicit lengths, make no NUL-termination
  * assumption, and leave `out` unchanged on failure. Returned views are arena-owned and
  * invalid when that arena is reset or its backing storage ends.
+ * Zero-length inputs may use NULL storage and are treated as empty views. Zero-length
+ * outputs have length zero and may return NULL storage; callers must not assume
+ * NUL-termination.
  */
 SlStatus sl_sqlite_copy_result_text_to_arena(SlArena* arena, SlStr text, SlStr* out);
 SlStatus sl_sqlite_copy_result_blob_to_arena(SlArena* arena, SlBytes blob, SlBytes* out);
@@ -156,6 +159,8 @@ SlStatus sl_sqlite_copy_result_blob_to_arena(SlArena* arena, SlBytes blob, SlByt
  * Synchronous SQLite calls may bind borrowed text/blob with SQLITE_TRANSIENT, but future
  * async/offloaded provider work must copy parameters before submission. These helpers
  * encode that rule for ENGINE-22 adoption. On failure, `out_param` is left unchanged.
+ * Zero-length text/blob inputs may use NULL storage; nonzero length requires non-NULL
+ * storage.
  */
 SlStatus sl_sqlite_param_copy_text_to_arena(SlArena* arena, SlStr text, SlSqliteParam* out_param);
 SlStatus sl_sqlite_param_copy_blob_to_arena(SlArena* arena, SlBytes blob, SlSqliteParam* out_param);
