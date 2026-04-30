@@ -205,7 +205,7 @@ static int test_route_table_rejects_duplicate_method_pattern(void)
     return expect_true(table.route_count == 0U && diag.code == SL_DIAG_DUPLICATE_ROUTE);
 }
 
-static int test_route_table_build_skips_non_get_metadata(void)
+static int test_route_table_build_keeps_method_metadata(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
@@ -226,9 +226,11 @@ static int test_route_table_build_skips_non_get_metadata(void)
     if (expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0) {
         return 71;
     }
-    if (table.route_count != 1U || table.dispatch.route_count != 1U ||
+    if (table.route_count != 2U || table.dispatch.route_count != 2U ||
         table.dispatch.routes == NULL || table.dispatch.routes[0].handler_id != 1U ||
-        diag.code != SL_DIAG_NONE)
+        table.dispatch.routes[0].method != SL_HTTP_METHOD_GET ||
+        table.dispatch.routes[1].handler_id != 2U ||
+        table.dispatch.routes[1].method != SL_HTTP_METHOD_POST || diag.code != SL_DIAG_NONE)
     {
         return 72;
     }
@@ -260,8 +262,9 @@ static int test_route_table_build_accepts_non_get_only_metadata(void)
     if (expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0) {
         return 74;
     }
-    if (table.route_count != 0U || table.dispatch.route_count != 0U ||
-        table.dispatch.routes != NULL || diag.code != SL_DIAG_NONE)
+    if (table.route_count != 1U || table.dispatch.route_count != 1U ||
+        table.dispatch.routes == NULL || table.dispatch.routes[0].method != SL_HTTP_METHOD_POST ||
+        table.dispatch.routes[0].handler_id != 1U || diag.code != SL_DIAG_NONE)
     {
         return 75;
     }
@@ -269,7 +272,7 @@ static int test_route_table_build_accepts_non_get_only_metadata(void)
     return 0;
 }
 
-static int test_non_get_fails_before_route_match(void)
+static int test_method_mismatch_returns_method_not_allowed(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     unsigned char engine_storage[1024];
@@ -309,7 +312,9 @@ static int test_non_get_fails_before_route_match(void)
         return 11;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_UNSUPPORTED_METHOD) {
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_UNSUPPORTED_METHOD ||
+        expect_str_equal(diag.message, "HTTP method is not allowed for this route") != 0)
+    {
         sl_engine_destroy(engine);
         return 12;
     }
@@ -318,7 +323,68 @@ static int test_non_get_fails_before_route_match(void)
     return 0;
 }
 
-static int test_request_body_is_rejected_before_handler_call(void)
+static int test_supported_non_get_methods_reach_engine(void)
+{
+    typedef struct MethodCase
+    {
+        SlHttpMethod method;
+        const char* request;
+    } MethodCase;
+
+    static const MethodCase cases[] = {
+        {SL_HTTP_METHOD_POST, "POST /hello HTTP/1.1\r\nHost: example\r\n\r\n"},
+        {SL_HTTP_METHOD_PUT, "PUT /hello HTTP/1.1\r\nHost: example\r\n\r\n"},
+        {SL_HTTP_METHOD_PATCH, "PATCH /hello HTTP/1.1\r\nHost: example\r\n\r\n"},
+        {SL_HTTP_METHOD_DELETE, "DELETE /hello HTTP/1.1\r\nHost: example\r\n\r\n"}};
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char storage[TEST_ARENA_SIZE];
+        unsigned char engine_storage[1024];
+        SlArena arena = {0};
+        SlArena engine_arena = {0};
+        SlEngine* engine = NULL;
+        SlHttpRequestHead request = {0};
+        SlRoutePattern pattern = {0};
+        SlHttpRouteBinding route = {0};
+        SlHttpDispatchTable table = {0};
+        SlPlanHandler handler = {0};
+        SlPlan plan = one_handler_plan(&handler);
+        SlEngineResult result = {0};
+        SlDiag diag = {0};
+
+        if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+            init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+            create_noop_engine(&engine_arena, &engine) != 0 ||
+            parse_request(&arena, cases[index].request, &request) != 0 ||
+            parse_pattern(&arena, "/hello", &pattern) != 0)
+        {
+            sl_engine_destroy(engine);
+            return 80 + (int)index;
+        }
+
+        route.method = cases[index].method;
+        route.pattern = &pattern;
+        route.handler_id = 1U;
+        table.routes = &route;
+        table.route_count = 1U;
+
+        if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request,
+                                                        &result, &diag),
+                          SL_STATUS_UNSUPPORTED) != 0 ||
+            diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+        {
+            sl_engine_destroy(engine);
+            return 84 + (int)index;
+        }
+
+        sl_engine_destroy(engine);
+    }
+
+    return 0;
+}
+
+static int test_transfer_encoding_body_is_rejected_before_handler_call(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
     unsigned char engine_storage[1024];
@@ -344,8 +410,8 @@ static int test_request_body_is_rejected_before_handler_call(void)
         return 13;
     }
 
-    headers[0].name = sl_str_from_cstr("Content-Length");
-    headers[0].value = sl_str_from_cstr("1");
+    headers[0].name = sl_str_from_cstr("Transfer-Encoding");
+    headers[0].value = sl_str_from_cstr("chunked");
     request.method = SL_HTTP_METHOD_GET;
     request.path = sl_str_from_cstr("/hello");
     request.headers = headers;
@@ -368,6 +434,212 @@ static int test_request_body_is_rejected_before_handler_call(void)
     if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_UNSUPPORTED_BODY) {
         sl_engine_destroy(engine);
         return 15;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_json_body_reaches_engine_when_valid(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /hello HTTP/1.1\r\nHost: example\r\nContent-Type: "
+                      "application/json; charset=utf-8\r\nContent-Length: 11\r\n\r\n"
+                      "{\"ok\":true}",
+                      &request) != 0 ||
+        parse_pattern(&arena, "/hello", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 90;
+    }
+
+    route.method = SL_HTTP_METHOD_POST;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    if (expect_status(
+            sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request, &result, &diag),
+            SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 91;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_invalid_json_body_fails_before_handler_call(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /hello HTTP/1.1\r\nContent-Type: application/json\r\n"
+                      "Content-Length: 6\r\n\r\n{\"ok\":",
+                      &request) != 0 ||
+        parse_pattern(&arena, "/hello", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 92;
+    }
+
+    route.method = SL_HTTP_METHOD_POST;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    if (expect_status(
+            sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request, &result, &diag),
+            SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_MALFORMED_JSON)
+    {
+        sl_engine_destroy(engine);
+        return 93;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_unsupported_body_content_type_fails_before_handler_call(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpHeader headers[1];
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_pattern(&arena, "/hello", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 94;
+    }
+
+    headers[0].name = sl_str_from_cstr("Content-Type");
+    headers[0].value = sl_str_from_cstr("application/octet-stream");
+    request.method = SL_HTTP_METHOD_POST;
+    request.path = sl_str_from_cstr("/hello");
+    request.raw_target = sl_str_from_cstr("/hello");
+    request.headers = headers;
+    request.header_count = 1U;
+    request.body = bytes_from_cstr("abc");
+
+    route.method = SL_HTTP_METHOD_POST;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    if (expect_status(
+            sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request, &result, &diag),
+            SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
+    {
+        sl_engine_destroy(engine);
+        return 95;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_body_too_large_fails_before_handler_call(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    static const unsigned char body_byte = 'x';
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpHeader headers[1];
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_pattern(&arena, "/hello", &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 96;
+    }
+
+    headers[0].name = sl_str_from_cstr("Content-Type");
+    headers[0].value = sl_str_from_cstr("text/plain");
+    request.method = SL_HTTP_METHOD_POST;
+    request.path = sl_str_from_cstr("/hello");
+    request.raw_target = sl_str_from_cstr("/hello");
+    request.headers = headers;
+    request.header_count = 1U;
+    request.body = sl_bytes_from_parts(&body_byte, SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U);
+
+    route.method = SL_HTTP_METHOD_POST;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    if (expect_status(
+            sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request, &result, &diag),
+            SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        sl_engine_destroy(engine);
+        return 97;
     }
 
     sl_engine_destroy(engine);
@@ -491,7 +763,7 @@ int main(void)
         return result;
     }
 
-    result = test_route_table_build_skips_non_get_metadata();
+    result = test_route_table_build_keeps_method_metadata();
     if (result != 0) {
         return result;
     }
@@ -501,12 +773,37 @@ int main(void)
         return result;
     }
 
-    result = test_non_get_fails_before_route_match();
+    result = test_method_mismatch_returns_method_not_allowed();
     if (result != 0) {
         return result;
     }
 
-    result = test_request_body_is_rejected_before_handler_call();
+    result = test_supported_non_get_methods_reach_engine();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_transfer_encoding_body_is_rejected_before_handler_call();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_json_body_reaches_engine_when_valid();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_invalid_json_body_fails_before_handler_call();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_unsupported_body_content_type_fails_before_handler_call();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_body_too_large_fails_before_handler_call();
     if (result != 0) {
         return result;
     }

@@ -1258,7 +1258,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             } else {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER",
-                    "route handler must be a simple function returning Results.text(...), Results.json(...), Results.ok(...), or Results.noContent()",
+                    "route handler must be a simple function returning a supported Results.* descriptor",
                     None,
                 )
             }
@@ -1291,7 +1291,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             } else {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER",
-                    "route handler must be a simple function returning Results.text(...), Results.json(...), Results.ok(...), or Results.noContent()",
+                    "route handler must be a simple function returning a supported Results.* descriptor",
                     None,
                 )
             }
@@ -1515,12 +1515,29 @@ fn result_call<'a>(expression: &'a Expression<'a>) -> Option<&'a CallExpression<
         return None;
     };
     if static_member_name(&call.callee).is_some_and(|(object, property)| {
-        object == "Results" && matches!(property, "text" | "json" | "ok" | "noContent")
+        object == "Results" && results_helper_is_supported(property)
     }) {
         Some(call)
     } else {
         None
     }
+}
+
+fn results_helper_is_supported(property: &str) -> bool {
+    matches!(
+        property,
+        "text"
+            | "html"
+            | "json"
+            | "ok"
+            | "created"
+            | "accepted"
+            | "noContent"
+            | "notFound"
+            | "badRequest"
+            | "status"
+            | "problem"
+    )
 }
 
 fn results_call_arguments_are_supported(
@@ -1534,12 +1551,16 @@ fn results_call_arguments_are_supported(
         return false;
     }
 
-    if property == "noContent" {
-        return call.arguments.is_empty();
-    }
+    let argument_count_supported = match property {
+        "text" | "html" => matches!(call.arguments.len(), 1 | 2),
+        "json" | "ok" | "accepted" | "notFound" | "badRequest" => call.arguments.len() <= 2,
+        "created" | "status" => (1..=3).contains(&call.arguments.len()),
+        "noContent" => call.arguments.is_empty(),
+        "problem" => call.arguments.len() <= 2,
+        _ => false,
+    };
 
-    matches!(property, "text" | "json" | "ok")
-        && matches!(call.arguments.len(), 1 | 2)
+    argument_count_supported
         && call
             .arguments
             .iter()
@@ -2353,17 +2374,27 @@ export default app;
     }
 
     #[test]
-    fn accepts_ok_and_no_content_result_helpers() {
+    fn accepts_supported_http_result_helpers() {
         let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
 app.mapGet("/ok", () => Results.ok({ ok: true }));
 app.mapGet("/empty", () => Results.noContent());
+app.mapGet("/created", () => Results.created("/users/1", { id: 1 }));
+app.mapGet("/accepted", () => Results.accepted({ queued: true }));
+app.mapGet("/not-found", () => Results.notFound({ error: "missing" }));
+app.mapGet("/bad", () => Results.badRequest({ error: "bad" }));
+app.mapGet("/status", () => Results.status(202, { accepted: true }));
+app.mapGet("/problem", () => Results.problem("broken"));
+app.mapGet("/html", () => Results.html("<p>ok</p>"));
 export default app;
 "#;
         let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
-        assert_eq!(app.routes.len(), 2);
+        assert_eq!(app.routes.len(), 9);
         assert_eq!(app.routes[0].pattern, "/ok");
         assert_eq!(app.routes[1].pattern, "/empty");
+        assert_eq!(app.routes[2].pattern, "/created");
+        assert_eq!(app.routes[7].pattern, "/problem");
+        assert_eq!(app.routes[8].pattern, "/html");
     }
 
     #[test]

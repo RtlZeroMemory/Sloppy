@@ -198,12 +198,12 @@ validates the SDK from `-V8Root`, `SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, this 
 the resolved SDK root into CMake as `SLOPPY_V8_ROOT`. Direct CMake users must pass
 `-DSLOPPY_V8_ROOT=<sdk-root>` themselves. When the SDK root is empty or invalid, CMake
 configure fails before any bridge code is compiled. When the SDK is valid, CMake compiles
-the V8 engine core plus
-provider intrinsic modules under `src/engine/v8/`, links them only to the V8-enabled core
+the V8 engine core plus framework bridge and provider intrinsic modules under
+`src/engine/v8/`, links them only to the V8-enabled core
 target, and registers the `engine.v8.smoke`, `engine.v8.owner_thread`, and
-`execution.handwritten_artifact` tests. Provider bridges must be added as
-`intrinsics_<provider>.cc` files registered through `intrinsics.cc`, not by expanding
-`engine_v8.cc`.
+`execution.handwritten_artifact` tests. Framework-specific bridge code must be added as
+dedicated sibling modules. Provider bridges must be added as `intrinsics_<provider>.cc`
+files registered through `intrinsics.cc`, not by expanding `engine_v8.cc`.
 
 Contributor path:
 

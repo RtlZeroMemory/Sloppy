@@ -16,6 +16,13 @@ extern "C" {
 
 #define SL_HTTP_DEFAULT_MAX_QUERY_PARAMS 64U
 
+typedef enum SlHttpRequestBodyKind
+{
+    SL_HTTP_REQUEST_BODY_NONE = 0,
+    SL_HTTP_REQUEST_BODY_JSON = 1,
+    SL_HTTP_REQUEST_BODY_TEXT = 2
+} SlHttpRequestBodyKind;
+
 typedef struct SlHttpQueryParam
 {
     SlStr name;
@@ -35,6 +42,7 @@ typedef struct SlHttpRequestContext
     size_t route_param_count;
     const SlHttpQueryParam* query_params;
     size_t query_param_count;
+    SlHttpRequestBodyKind body_kind;
     /*
      * Optional borrowed request cancellation token. A cancelled token means the handler
      * boundary must reject before entering JavaScript or before converting an async result.

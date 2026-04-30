@@ -185,7 +185,8 @@ Task breakdown:
 
 Non-goals: multiple engine backends, Node APIs, package resolution.
 
-Files likely touched: `include/sloppy/engine.h`, `src/engine/v8/engine_v8.cc`,
+Files likely touched: `include/sloppy/engine.h`, V8 sibling bridge modules such as
+`src/engine/v8/http_bridge.cc` or `src/engine/v8/intrinsics_<provider>.cc`,
 `stdlib/sloppy/internal/runtime-classic.js`, `docs/modules/engine-v8/README.md`.
 
 Tests required: V8-gated integration tests and default skip/failure diagnostics.
@@ -305,9 +306,10 @@ Task breakdown:
 - MAIN1-08.B: JS resource wrapper with safe IDs.
 - MAIN1-08.C: resource lifecycle and cleanup tests.
 - MAIN1-08.D: executable SQLite example or explicit deferral if blocked.
-- MAIN1-08.E: V8 bridge layering. Provider-specific intrinsic code must live in
+- MAIN1-08.E: V8 bridge layering. Framework-specific bridge code must live in dedicated
+  sibling files such as `http_bridge.cc`. Provider-specific intrinsic code must live in
   `src/engine/v8/intrinsics_<provider>.cc` and register through `intrinsics.cc`; do not
-  grow `engine_v8.cc` with SQLite/PostgreSQL/SQL Server conversion logic.
+  grow `engine_v8.cc` with HTTP, SQLite, PostgreSQL, or SQL Server conversion logic.
 
 Non-goals: ORM, migrations, PostgreSQL/SQL Server JS bridge in this EPIC.
 

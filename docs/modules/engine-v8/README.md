@@ -106,19 +106,23 @@ this bridge a production server boundary.
 
 `src/engine/v8/engine_v8.cc` is the V8 engine core. It owns process/platform acquire,
 isolate/context lifetime, engine-neutral handler registration, source evaluation,
-owner-thread checks, and conversion between V8 handler return values and `SlEngineResult`.
-It must not grow provider-specific bridge implementations.
+owner-thread checks, and bounded Promise orchestration. It must not grow
+framework-specific or provider-specific bridge implementations.
 
-Provider bridge code belongs in sibling V8 modules:
+Framework and provider bridge code belongs in sibling V8 modules:
 
 - `engine_v8_internal.h` is a private header for files under `src/engine/v8/` only. It
   defines the backend shape and exposes the engine-owned `SlResourceTable` to bridge
   modules without leaking V8 or resource internals outside the directory.
+- `http_bridge.cc` owns HTTP request context materialization and `Results.*` descriptor
+  conversion into `SlEngineResult`.
 - `intrinsics.cc` is the aggregator that registers provider bridges into the private
   `__sloppy.data` namespace.
 - `intrinsics_sqlite.cc` owns SQLite-specific argument validation, parameter conversion,
   row materialization, resource-table lookup, cleanup callback, and native provider calls.
 
+Future framework-specific V8 bridge code must add a dedicated sibling module, not expand
+`engine_v8.cc`.
 Future PostgreSQL, SQL Server, and other native bridges should follow the same pattern:
 add an `intrinsics_<provider>.cc` file, register it from `intrinsics.cc`, keep public JS in
 the stdlib wrapper, and keep all V8/provider conversion code out of `engine_v8.cc`.

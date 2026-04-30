@@ -25,11 +25,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   cancellation. ENGINE-03 covers returned Promises that settle during the owner-thread
   microtask drain, rejection diagnostics, pending-Promise failure, cancellation snapshots,
   and request-scope cleanup for the bounded call.
-- Proper HTTP runtime backend: ENGINE-13 owns listener/backend architecture, connection and
-  request lifecycle, parser limits, header/body buffering policy, keep-alive, deadlines,
-  cancellation, backpressure, graceful shutdown, server diagnostics, and stress/conformance
-  smoke. This is separate from ENGINE-12 because HTTP has parser, connection, body, and
-  shutdown policy that sits above generic async completions.
+- Proper HTTP runtime backend beyond ENGINE-04: ENGINE-13 owns listener/backend
+  architecture, connection and request lifecycle, parser limits, richer header/body
+  buffering policy, keep-alive, deadlines, disconnect/shutdown propagation, backpressure,
+  graceful shutdown, server diagnostics, production hardening, middleware policy if ever
+  scoped, and stress/conformance smoke. This is separate from ENGINE-12 because HTTP has
+  parser, connection, body, and shutdown policy that sits above generic async completions.
 - Module/bootstrap completion: ENGINE-14 owns stdlib/bootstrap asset loading, app module
   loading, ESM/classic decision, module cache, import rewrite and intrinsic boundaries,
   source names, reload/dev-loop implications, and V8 startup diagnostics.
@@ -61,9 +62,6 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   request parse/response write/body buffering, V8 conversions, SQLite row/result/parameter
   conversion, diagnostics/source frames/JSON, Plan/artifact loading, stable metadata
   lookup, CLI output, and allocation-aware conformance/benchmark guards.
-- Framework HTTP API runtime: method dispatch, headers in context, JSON/text body policy,
-  header/body limits, request cancellation signal, timeout hooks, backpressure behavior,
-  result serialization, and error response contract.
 - SQLite end-to-end: public JS handler path through native provider, capability enforcement,
   cancellation-aware operation boundaries, app/request ownership, transactions/prepared
   statement decision, and executable users API conformance.
@@ -86,11 +84,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   handoff task after the compiler emits full supported-app artifacts. Implementing direct
   source input still needs a scoped compiler handoff, cache keys, stale-artifact checks,
   source diagnostics, cleanup policy, and rebuild policy.
-- HTTP production response pipeline beyond EPIC-23: custom headers, redirect helpers,
-  streaming/files, cookies, content negotiation, keep-alive policy, and production error
-  pages.
-- Request context model beyond EPIC-23: body/header access, typed/coerced route/query
-  binding, services/config/log injection, and real request-scoped lifetime boundaries.
+- HTTP production response pipeline beyond ENGINE-04: redirect helpers, streaming/files,
+  cookies, content negotiation, keep-alive policy, and production error pages.
+- Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
+  services/config/log injection, and real request-scoped lifetime boundaries.
 - V8 module loading beyond EPIC-24: true ESM loading, production module cache, richer source
   maps, native async completion queues, HTTP disconnect/shutdown cancellation, and
   executable public examples through the final bootstrap module shape remain open.
@@ -143,10 +140,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   policy and failure diagnostics.
 - Query parsing beyond EPIC-23 scalar last-wins values, including repeated-key arrays if
   the public API chooses them.
-- Request body parsing skeleton with content-type/body-size policy. MAIN1-04 rejects
-  body-bearing requests clearly but does not parse bodies. MAIN1-13 keeps body behavior as
-  negative HTTP parser/dispatch coverage until socket-mode conformance has a real
-  body-bearing request fixture.
+- Request body conformance beyond unit/integration coverage: ENGINE-04 parses bounded
+  JSON/text bodies and exposes them to V8 when enabled, but socket-mode conformance still
+  needs a body-bearing fixture once that layer can drive local HTTP requests deterministically.
 - JSON serialization strategy beyond the current V8 `JSON.stringify` bridge, including
   richer supported value errors, redaction, and benchmark plan.
 - Plan module/service sections beyond the MAIN1-03 startup checks. Native validation now
@@ -166,9 +162,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - SQLite file database capability policy.
 - Docs examples executable path: replace static checks with Sloppy-run examples as soon as
   the runtime path exists.
-- Provider bridge layering watchlist: future PostgreSQL, SQL Server, or other native
-  bridges must add `src/engine/v8/intrinsics_<provider>.cc` modules and register through
-  `intrinsics.cc`; do not let `engine_v8.cc` become a provider-specific bridge file.
+- V8 bridge layering watchlist: HTTP/framework-specific bridge code belongs in dedicated
+  sibling modules such as `src/engine/v8/http_bridge.cc`; provider bridges must add
+  `src/engine/v8/intrinsics_<provider>.cc` modules and register through `intrinsics.cc`.
+  Do not let `engine_v8.cc` become a feature-specific bridge file.
 - MAIN1-14 benchmark methodology hardening: release-only measured runs, local artifact
   policy, hardware/build metadata, trend policy, and no external comparisons until
   comparable paths exist. This is deferred behind Slop Engine foundation completion.

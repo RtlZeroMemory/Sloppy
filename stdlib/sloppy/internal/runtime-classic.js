@@ -1,6 +1,7 @@
 (() => {
     const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
     const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
+    const HTML_CONTENT_TYPE = "text/html; charset=utf-8";
     const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 
     function resolveStatus(options, defaultStatus) {
@@ -13,12 +14,37 @@
         return status;
     }
 
-    function createResult(kind, body, contentType, options, defaultStatus) {
+    function isPlainObject(value) {
+        if (value === null || typeof value !== "object" || Array.isArray(value)) {
+            return false;
+        }
+
+        const prototype = Object.getPrototypeOf(value);
+        return prototype === Object.prototype || prototype === null;
+    }
+
+    function copyHeaders(options) {
+        const headers = options?.headers;
+
+        if (headers === undefined) {
+            return undefined;
+        }
+
+        if (!isPlainObject(headers)) {
+            throw new TypeError("Sloppy Results headers must be a plain object when provided.");
+        }
+
+        return Object.freeze({ ...headers });
+    }
+
+    function createResult(kind, body, contentType, options, defaultStatus, extra) {
         const descriptor = {
             __sloppyResult: true,
             kind,
             status: resolveStatus(options, defaultStatus),
             contentType,
+            headers: copyHeaders(options),
+            ...extra,
         };
 
         if (body !== undefined) {
@@ -142,11 +168,68 @@ Operation:
         json(value, options) {
             return createResult("json", value, JSON_CONTENT_TYPE, options, 200);
         },
+        html(body, options) {
+            return createResult("html", String(body), HTML_CONTENT_TYPE, options, 200);
+        },
         ok(value, options) {
             return createResult("json", value, JSON_CONTENT_TYPE, options, 200);
         },
+        created(location, value, options) {
+            if (typeof location !== "string" || location.length === 0) {
+                throw new TypeError("Sloppy Results.created location must be a non-empty string.");
+            }
+
+            return createResult(
+                "json",
+                value,
+                JSON_CONTENT_TYPE,
+                { status: 201, ...options },
+                201,
+                { location },
+            );
+        },
+        accepted(value, options) {
+            return createResult("json", value, JSON_CONTENT_TYPE, { status: 202, ...options }, 202);
+        },
         noContent() {
             return createResult("empty", undefined, undefined, undefined, 204);
+        },
+        notFound(valueOrProblem, options) {
+            return createResult(
+                "json",
+                valueOrProblem,
+                JSON_CONTENT_TYPE,
+                { status: 404, ...options },
+                404,
+            );
+        },
+        badRequest(valueOrProblem, options) {
+            return createResult(
+                "json",
+                valueOrProblem,
+                JSON_CONTENT_TYPE,
+                { status: 400, ...options },
+                400,
+            );
+        },
+        status(statusCode, value, options) {
+            if (value === undefined) {
+                return createResult(
+                    "empty",
+                    undefined,
+                    undefined,
+                    { ...options, status: statusCode },
+                    statusCode,
+                );
+            }
+
+            return createResult(
+                "json",
+                value,
+                JSON_CONTENT_TYPE,
+                { ...options, status: statusCode },
+                statusCode,
+            );
         },
         problem(problemOrMessage, options) {
             const status = resolveStatus(options, 500);

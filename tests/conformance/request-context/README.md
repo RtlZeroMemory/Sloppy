@@ -24,6 +24,7 @@ Expected output: a JSON response containing route ID `123`, query value `last`,
 `request.method` as `GET`, `request.path` as `/users/123`, and
 `request.rawTarget` as `/users/123?q=abc&q=last`.
 
-Gated requirements: execution requires V8. Request bodies and request headers remain
-unsupported and are covered by negative HTTP parser/dispatch tests rather than positive
-handler context conformance.
+Gated requirements: execution requires V8. Header and body context is implemented in the
+HTTP runtime and covered by HTTP parser/dispatch tests plus V8-gated HTTP integration.
+This conformance fixture remains focused on route/query/request-target behavior until the
+socket-mode conformance layer can send deterministic body-bearing requests.

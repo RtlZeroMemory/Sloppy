@@ -32,6 +32,16 @@
       "id": 3,
       "exportName": "__sloppy_handler_3",
       "displayName": "Http.Throw"
+    },
+    {
+      "id": 4,
+      "exportName": "__sloppy_handler_4",
+      "displayName": "Http.Method"
+    },
+    {
+      "id": 5,
+      "exportName": "__sloppy_handler_5",
+      "displayName": "Http.Body"
     }
   ]
 }

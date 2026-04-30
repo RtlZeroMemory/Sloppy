@@ -40,7 +40,7 @@ bool sl_plan_route_method_supported(SlStr method)
 
 bool sl_plan_route_method_runnable(SlStr method)
 {
-    return sl_str_equal(method, sl_str_from_cstr("GET"));
+    return sl_plan_route_method_supported(method);
 }
 
 bool sl_plan_provider_supported(SlStr provider)

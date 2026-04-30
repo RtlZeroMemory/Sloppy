@@ -130,8 +130,10 @@ They cover native open/close, parameterized exec/query/queryOne, transactions, r
 diagnostics, tiny bounded pool skeletons, and env-gated live tests. The JavaScript stdlib
 exposes `data.postgres` and `data.sqlserver` metadata/open shapes, but JavaScript-to-native
 provider calls still fail honestly until their own V8 intrinsic modules and resource-kind
-integration exist. Provider bridge code belongs under `src/engine/v8/intrinsics_<provider>.cc`,
-registered through `intrinsics.cc`, not in `engine_v8.cc`.
+integration exist. Framework-specific bridge code belongs in dedicated sibling files such as
+`src/engine/v8/http_bridge.cc`. Provider bridge code belongs under
+`src/engine/v8/intrinsics_<provider>.cc`, registered through `intrinsics.cc`, not in
+`engine_v8.cc`.
 EPIC-19 adds metadata-only CLI introspection commands: `sloppy routes`, `sloppy doctor`,
 `sloppy audit`, and `sloppy openapi`. They read plan-compatible metadata fixtures/artifacts
 and do not compile apps, execute handlers, start HTTP, enter V8, or run live database
@@ -144,15 +146,18 @@ EPIC-21 adds the first compiler extraction path for one tiny source file. ENGINE
 that path to supported route-method metadata, direct async-handler metadata, minimal SQLite
 provider/capability metadata, deterministic `app.plan.json`/`app.js`, and handler-line
 source-map artifacts. EPIC-22 adds the first dev-only `sloppy run --artifacts` path.
-EPIC-23 extends that path so V8-enabled builds can load those artifacts, parse GET route
+EPIC-23 extends that path so V8-enabled builds can load those artifacts, parse route
 metadata, materialize route/query/request context, start a tiny local libuv HTTP server or
-`--once` synthetic dispatch, and serialize supported text/JSON/empty/problem result
-descriptors through the native response writer. EPIC-24
-adds the classic bootstrap runtime asset load, the compiler rewrite for the public
-`"sloppy"` import, the internal `__sloppy_register_handler(id, handler)` intrinsic, and
-registered-handler validation before dispatch. Source input handoff, true ESM module
-loading, production server hardening, request bodies, middleware, hot reload,
-package-manager behavior, npm resolution, and Node compatibility remain out of scope.
+`--once` synthetic dispatch, and serialize supported result descriptors through the native
+response writer. EPIC-24 adds the classic bootstrap runtime asset load, the compiler
+rewrite for the public `"sloppy"` import, the internal
+`__sloppy_register_handler(id, handler)` intrinsic, and registered-handler validation
+before dispatch. ENGINE-04 broadens the dev HTTP runtime to
+GET/POST/PUT/PATCH/DELETE route metadata, request headers, bounded JSON/text bodies,
+deterministic body/content-type failures, custom response headers, and safe error
+responses. Source input handoff, true ESM module loading, production server hardening,
+streaming bodies/responses, middleware, hot reload, package-manager behavior, npm
+resolution, and Node compatibility remain out of scope.
 
 EPIC-26 adds default non-V8 CI gates for Windows clang-cl, Linux clang/gcc, and macOS
 clang, plus optional/manual V8 validation and explicit provider gate reporting. These jobs

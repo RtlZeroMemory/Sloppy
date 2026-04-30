@@ -3,9 +3,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #define TEST_ARENA_SIZE 32768U
-#define TEST_FILE_SIZE 8192U
+#define TEST_FILE_SIZE 16384U
 
 static int expect_true(bool condition)
 {
@@ -21,6 +22,14 @@ static SlBytes bytes_from_cstr(const char* text)
 {
     SlStr str = sl_str_from_cstr(text);
     return sl_bytes_from_parts((const unsigned char*)str.ptr, str.length);
+}
+
+static int expect_bytes_equal(SlBytes actual, const char* expected)
+{
+    size_t expected_length = strlen(expected);
+
+    return expect_true(actual.length == expected_length && actual.ptr != NULL &&
+                       memcmp(actual.ptr, expected, expected_length) == 0);
 }
 
 static int read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)
@@ -161,10 +170,10 @@ static int create_v8_engine(SlArena* engine_arena, SlEngine** out_engine)
     return expect_status(sl_engine_create(&options, engine_arena, out_engine), SL_STATUS_OK);
 }
 
-static int dispatch_single_route_expect(const char* request_text, const char* pattern_text,
-                                        SlHandlerId handler_id, SlStatusCode expected_status,
-                                        SlEngineResultKind expected_result_kind,
-                                        const char* expected_text, SlDiagCode expected_diag_code)
+static int dispatch_single_route_expect(
+    const char* request_text, SlHttpMethod route_method, const char* pattern_text,
+    SlHandlerId handler_id, SlStatusCode expected_status, SlEngineResultKind expected_result_kind,
+    const char* expected_text, const char* expected_response_body, SlDiagCode expected_diag_code)
 {
     unsigned char engine_storage[TEST_ARENA_SIZE];
     unsigned char plan_storage[TEST_ARENA_SIZE];
@@ -197,7 +206,7 @@ static int dispatch_single_route_expect(const char* request_text, const char* pa
         return 1;
     }
 
-    route.method = SL_HTTP_METHOD_GET;
+    route.method = route_method;
     route.pattern = &pattern;
     route.handler_id = handler_id;
     table.routes = &route;
@@ -220,9 +229,16 @@ static int dispatch_single_route_expect(const char* request_text, const char* pa
         return 4;
     }
 
-    if (expected_diag_code != SL_DIAG_NONE && diag.code != expected_diag_code) {
+    if (expected_response_body != NULL &&
+        expect_bytes_equal(result.response.body, expected_response_body) != 0)
+    {
         sl_engine_destroy(engine);
         return 5;
+    }
+
+    if (expected_diag_code != SL_DIAG_NONE && diag.code != expected_diag_code) {
+        sl_engine_destroy(engine);
+        return 6;
     }
 
     sl_engine_destroy(engine);
@@ -231,9 +247,9 @@ static int dispatch_single_route_expect(const char* request_text, const char* pa
 
 static int test_get_hello_dispatches_to_handler_id(void)
 {
-    if (dispatch_single_route_expect("GET /hello HTTP/1.1\r\nHost: example\r\n\r\n", "/hello", 1U,
-                                     SL_STATUS_OK, SL_ENGINE_RESULT_TEXT, "sloppy-ok",
-                                     SL_DIAG_NONE) != 0)
+    if (dispatch_single_route_expect("GET /hello HTTP/1.1\r\nHost: example\r\n\r\n",
+                                     SL_HTTP_METHOD_GET, "/hello", 1U, SL_STATUS_OK,
+                                     SL_ENGINE_RESULT_TEXT, "sloppy-ok", NULL, SL_DIAG_NONE) != 0)
     {
         return 1;
     }
@@ -244,8 +260,9 @@ static int test_get_hello_dispatches_to_handler_id(void)
 static int test_missing_js_function_fails_through_engine_path(void)
 {
     if (dispatch_single_route_expect("GET /missing-js HTTP/1.1\r\nHost: example\r\n\r\n",
-                                     "/missing-js", 2U, SL_STATUS_INVALID_STATE,
-                                     SL_ENGINE_RESULT_NONE, NULL, SL_DIAG_ENGINE_CALL_ERROR) != 0)
+                                     SL_HTTP_METHOD_GET, "/missing-js", 2U, SL_STATUS_INVALID_STATE,
+                                     SL_ENGINE_RESULT_NONE, NULL, NULL,
+                                     SL_DIAG_ENGINE_CALL_ERROR) != 0)
     {
         return 10;
     }
@@ -255,11 +272,59 @@ static int test_missing_js_function_fails_through_engine_path(void)
 
 static int test_throwing_js_handler_fails_through_engine_path(void)
 {
-    if (dispatch_single_route_expect("GET /throw HTTP/1.1\r\nHost: example\r\n\r\n", "/throw", 3U,
-                                     SL_STATUS_INVALID_STATE, SL_ENGINE_RESULT_NONE, NULL,
+    if (dispatch_single_route_expect("GET /throw HTTP/1.1\r\nHost: example\r\n\r\n",
+                                     SL_HTTP_METHOD_GET, "/throw", 3U, SL_STATUS_INVALID_STATE,
+                                     SL_ENGINE_RESULT_NONE, NULL, NULL,
                                      SL_DIAG_ENGINE_EXCEPTION) != 0)
     {
         return 20;
+    }
+
+    return 0;
+}
+
+static int test_non_get_methods_dispatch_to_handler_id(void)
+{
+    static const struct
+    {
+        SlHttpMethod method;
+        const char* request;
+        const char* response_body;
+    } cases[] = {
+        {SL_HTTP_METHOD_POST, "POST /method HTTP/1.1\r\nHost: example\r\n\r\n",
+         "{\"method\":\"POST\"}"},
+        {SL_HTTP_METHOD_PUT, "PUT /method HTTP/1.1\r\nHost: example\r\n\r\n",
+         "{\"method\":\"PUT\"}"},
+        {SL_HTTP_METHOD_PATCH, "PATCH /method HTTP/1.1\r\nHost: example\r\n\r\n",
+         "{\"method\":\"PATCH\"}"},
+        {SL_HTTP_METHOD_DELETE, "DELETE /method HTTP/1.1\r\nHost: example\r\n\r\n",
+         "{\"method\":\"DELETE\"}"},
+    };
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        if (dispatch_single_route_expect(cases[index].request, cases[index].method, "/method", 4U,
+                                         SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
+                                         cases[index].response_body, SL_DIAG_NONE) != 0)
+        {
+            return 30 + (int)index;
+        }
+    }
+
+    return 0;
+}
+
+static int test_headers_and_json_body_reach_v8_handler(void)
+{
+    if (dispatch_single_route_expect(
+            "POST /body HTTP/1.1\r\nHost: example\r\nContent-Type: application/json; "
+            "charset=utf-8\r\nX-Trace: one\r\nx-trace: two\r\nContent-Length: 8\r\n\r\n{\"id\":7}",
+            SL_HTTP_METHOD_POST, "/body", 5U, SL_STATUS_OK, SL_ENGINE_RESULT_JSON, NULL,
+            "{\"contentType\":\"application/json; charset=utf-8\",\"trace\":\"one, "
+            "two\",\"text\":\"{\\\"id\\\":7}\",\"body\":{\"id\":7}}",
+            SL_DIAG_NONE) != 0)
+    {
+        return 40;
     }
 
     return 0;
@@ -277,5 +342,15 @@ int main(void)
         return result;
     }
 
-    return test_throwing_js_handler_fails_through_engine_path();
+    result = test_throwing_js_handler_fails_through_engine_path();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_non_get_methods_dispatch_to_handler_id();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_headers_and_json_body_reach_v8_handler();
 }

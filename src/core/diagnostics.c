@@ -450,6 +450,11 @@ SlStr sl_diag_code_name(SlDiagCode code)
                                sizeof("SLOPPY_E_ENGINE_BACKPRESSURE") - 1U);
     case SL_DIAG_APP_LIFECYCLE:
         return sl_diag_literal("SLOPPY_E_APP_LIFECYCLE", sizeof("SLOPPY_E_APP_LIFECYCLE") - 1U);
+    case SL_DIAG_HTTP_BODY_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_BODY_LIMIT", sizeof("SLOPPY_E_HTTP_BODY_LIMIT") - 1U);
+    case SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE:
+        return sl_diag_literal("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE",
+                               sizeof("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE") - 1U);
     case SL_DIAG_INVALID_ROUTE_PATTERN:
         return sl_diag_literal("SLOPPY_E_INVALID_ROUTE_PATTERN",
                                sizeof("SLOPPY_E_INVALID_ROUTE_PATTERN") - 1U);

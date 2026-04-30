@@ -176,7 +176,7 @@ static int test_non_get_metadata_is_valid_when_get_route_exists(void)
     return 0;
 }
 
-static int test_non_get_only_metadata_is_not_runnable_yet(void)
+static int test_non_get_only_metadata_is_runnable(void)
 {
     unsigned char diag_storage[1024];
     SlArena diag_arena = {0};
@@ -190,15 +190,10 @@ static int test_non_get_only_metadata_is_not_runnable_yet(void)
     options = validation_options(&diag_arena);
     routes[0].method = sl_str_from_cstr("POST");
 
-    if (expect_status(sl_app_host_validate_startup(&plan, &options, &diag),
-                      SL_STATUS_INVALID_ARGUMENT) != 0)
-    {
+    if (expect_status(sl_app_host_validate_startup(&plan, &options, &diag), SL_STATUS_OK) != 0) {
         return 6;
     }
-    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
-        !sl_str_equal(diag.message,
-                      sl_str_from_cstr("app plan does not contain runnable route metadata")))
-    {
+    if (diag.code != SL_DIAG_NONE) {
         return 7;
     }
 
@@ -626,7 +621,7 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    result = test_non_get_only_metadata_is_not_runnable_yet();
+    result = test_non_get_only_metadata_is_runnable();
     if (result != 0) {
         return result;
     }

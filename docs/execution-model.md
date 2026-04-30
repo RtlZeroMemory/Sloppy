@@ -138,8 +138,8 @@ ENGINE-02 supports `Sloppy.createBuilder()` plus `builder.build()`, simple
 GET/POST/PUT/PATCH/DELETE, `.withName(...)`, direct async handler metadata, supported
 `Results.*` descriptors, and minimal SQLite provider/capability Plan metadata. It does not
 implement full TypeScript checking, Node/npm package resolution, bundling, module
-extraction, source-input `sloppy run`, `app.run`, non-GET
-request dispatch, or native SQLite bridge execution from compiled handlers.
+extraction, source-input `sloppy run`, `app.run`, or native SQLite bridge execution from
+compiled handlers.
 
 EPIC-22 adds the first dev-only run path for those artifacts. EPIC-23 extends it with the
 first real response/request boundary. EPIC-24 loads the classic bootstrap runtime asset
@@ -147,10 +147,12 @@ before the generated app artifact and validates runtime-owned handler registrati
 `sloppy run --artifacts <dir>` loads `app.plan.json`, reads the compiler-emitted `routes`
 metadata through the native Plan parser, verifies referenced artifact hashes before V8 is
 created, runs native app-host startup validation over the parsed app graph, evaluates
-bootstrap runtime plus `app.js` in a V8-enabled build, dispatches GET request paths through
-the native route matcher, passes a minimal `{ route, query, request }` context to the
-handler, converts supported `Results.*` descriptors, writes a deterministic HTTP/1.1
-response, and closes the connection. The deterministic `--once METHOD TARGET` mode
+bootstrap runtime plus `app.js` in a V8-enabled build, dispatches
+GET/POST/PUT/PATCH/DELETE request paths through the native route matcher, passes a minimal
+`{ route, query, request, signal, deadline }` context with request headers and bounded
+JSON/text body access to the handler, converts supported `Results.*` descriptors, writes a
+deterministic HTTP/1.1 response, and closes the connection. The deterministic
+`--once METHOD TARGET` mode
 performs the same dispatch without opening a socket.
 
 ## Current Handwritten Milestone
@@ -162,8 +164,9 @@ V8-gated integration test:
 handwritten app.js + handwritten app.plan.json -> runtime calls handler by numeric ID
 ```
 
-That milestone uses a synthetic execution path before HTTP exists. CTest asks the runtime
-contract helper to invoke handler ID `1` directly and asserts the returned string result.
+That older milestone used a synthetic execution path before HTTP dispatch existed. Current
+V8-gated HTTP integration tests exercise handler ID dispatch through the native route table
+and request context when the SDK is available.
 
 ## Public API Shape
 
@@ -303,7 +306,7 @@ Current EPIC-22/23/24 `sloppy run` flow:
 1. accept an artifact directory through `--artifacts <dir>` or positional `<artifact-dir>`;
 2. load `<dir>/app.plan.json` through the native Plan parser;
 3. validate parsed Plan route/provider/capability metadata where those sections are present;
-4. build a native dev route table from Plan GET route patterns, ordered by
+4. build a native dev route table from Plan GET/POST/PUT/PATCH/DELETE route patterns, ordered by
    literal-before-parameter precedence and stable source order when equal;
 5. read `bundle.path` and `sourceMap.path` and verify their `sha256:` hashes;
 6. create a V8 engine, load the configured bootstrap stdlib root, and evaluate
@@ -311,9 +314,10 @@ Current EPIC-22/23/24 `sloppy run` flow:
 7. evaluate the artifact `app.js` and validate all plan handler IDs were registered;
 8. either dispatch one synthetic `--once METHOD TARGET` request or start a local
    `127.0.0.1:5173` dev server by default;
-9. parse request heads, reject unsupported request bodies, route GET paths, call handlers by
-   numeric ID with route/query context, convert supported descriptors, write a native HTTP
-   response, and close the connection.
+9. parse bounded request messages, reject unsupported body framing/content types and
+   malformed JSON before handler entry, route GET/POST/PUT/PATCH/DELETE paths, call handlers
+   by numeric ID with route/query/header/body context, convert supported descriptors, write a
+   native HTTP response, and close the connection.
 
 Deferred dev-mode work:
 
@@ -432,7 +436,7 @@ output loading.
 TASK 10.C adds only the native HTTP prelude before the first runtime-contract call:
 
 1. parse an in-memory HTTP request head;
-2. reject non-GET methods;
+2. reject methods outside the later runtime-supported set;
 3. match the parsed path against manual route bindings;
 4. resolve the matched binding to a numeric handler ID;
 5. verify that handler ID exists in the parsed plan;
@@ -446,12 +450,15 @@ EPIC-22 and EPIC-23 wrap that foundation in the dev-only CLI path:
 
 1. parse artifact route metadata into route bindings;
 2. parse an HTTP/1 request head from `--once` or a libuv connection;
-3. reject non-GET dispatch as `405`;
-4. return `404` when no GET route matches;
-5. materialize route params, query params, and request method/path/rawTarget;
-6. call the matched handler through the context-aware runtime-contract helper;
-7. convert plain string fallback or supported result descriptors;
-8. write a minimal native HTTP response with status line, `Connection: close`,
+3. apply GET/POST/PUT/PATCH/DELETE method dispatch from Plan route metadata;
+4. return `404` when no route matches and `405` when a path matches with another method;
+5. reject unsupported body framing, unsupported content types, oversized bodies, and
+   malformed JSON before handler entry;
+6. materialize route params, query params, request method/path/rawTarget, request headers,
+   text body access, JSON body access, cancellation signal, and deadline marker;
+7. call the matched handler through the context-aware runtime-contract helper;
+8. convert plain string fallback or supported result descriptors;
+9. write a minimal native HTTP response with status line, `Connection: close`,
    `Content-Type`, `Content-Length`, CRLF formatting, and body bytes.
 
 ENGINE-07 adds an explicit native app lifecycle boundary around this dev-only run path.
@@ -461,9 +468,9 @@ startup aborts after engine creation, and dev-server loop exit all run app shutd
 that lifecycle. Shutdown is idempotent; app-scoped cleanup callbacks use the same
 `SlScope` LIFO contract as request scopes.
 
-The response writer remains deliberately small and dev-only. Body parsing, streaming,
-headers in context, middleware, production hardening, and content negotiation remain
-future work.
+The response writer remains deliberately small and dev-only. Streaming request/response
+bodies, middleware, production hardening, multipart upload, cookies/sessions, and content
+negotiation remain future work.
 
 ## Async And Promise Lifecycle
 
@@ -594,11 +601,13 @@ call native `exec`, `query`, and `queryOne` when the V8 runtime installs
 `__sloppy.data.sqlite`. Bootstrap-only and non-V8 contexts still report the bridge gap
 instead of pretending to open a database.
 
-The V8 engine layering is provider-neutral. `engine_v8.cc` creates the private
-`__sloppy.data` namespace and owns engine lifecycle; `src/engine/v8/intrinsics.cc`
-aggregates provider registration; `src/engine/v8/intrinsics_sqlite.cc` owns SQLite
-argument/result conversion and native provider calls. Future PostgreSQL/SQL Server bridges
-must follow that module split.
+The V8 engine layering is provider-neutral and framework-bridge code is split by feature.
+`engine_v8.cc` owns engine lifecycle, context setup, handler registration, and Promise
+orchestration. HTTP request-context and `Results.*` conversion live in
+`src/engine/v8/http_bridge.cc`. `src/engine/v8/intrinsics.cc` aggregates provider
+registration, and `src/engine/v8/intrinsics_sqlite.cc` owns SQLite argument/result
+conversion and native provider calls. Future framework/provider bridges must follow that
+module split and must not expand `engine_v8.cc` with feature-specific conversion logic.
 
 EPIC-17 and EPIC-18 add the same native-provider boundary shape for PostgreSQL and SQL
 Server. Native tests pass `$1` PostgreSQL SQL or `?` ODBC SQL plus parameters directly to

@@ -1,16 +1,16 @@
 /*
  * src/core/http_dispatch.c
  *
- * Implements TASK 10.C's synthetic in-memory GET dispatch path: parsed HTTP request head,
- * manual route binding, numeric Sloppy Plan handler ID, and existing runtime-contract
- * engine call. It deliberately stops before real server concerns.
+ * Implements the bounded Plan-backed HTTP dispatch path: parsed HTTP request, route binding
+ * method/path match, JSON/text body policy, numeric Sloppy Plan handler ID, and existing
+ * runtime-contract engine call. It deliberately stops before production server concerns.
  *
  * Safety invariants:
  * - route bindings and parsed patterns are borrowed for the call only;
- * - route params and query params are materialized into the dispatch arena for one call;
+ * - route params, query params, and body policy are materialized for one call;
  * - missing plan handlers fail before entering the engine boundary;
- * - no socket, libuv loop, response writer, request context, middleware, OS API, V8 type,
- *   or public TypeScript API is introduced here.
+ * - no socket, libuv loop, middleware, OS API, V8 type, or public TypeScript API is
+ *   introduced here.
  *
  * Tests: tests/unit/core/test_http_dispatch.c and the V8-gated HTTP dispatch integration.
  */
@@ -20,6 +20,8 @@
 #include "sloppy/runtime_contract.h"
 
 #include "sloppy/checked_math.h"
+
+#include <yyjson.h>
 
 typedef struct SlHttpRouteTableEntry
 {
@@ -86,29 +88,90 @@ static SlStatus sl_http_dispatch_missing_route(SlArena* arena, SlDiag* out_diag)
         arena, out_diag, SL_DIAG_HTTP_ROUTE_NOT_FOUND,
         sl_http_dispatch_literal("no matching HTTP route was found",
                                  sizeof("no matching HTTP route was found") - 1U),
-        sl_http_dispatch_literal("register a GET route binding for the parsed request path",
-                                 sizeof("register a GET route binding for the parsed request "
-                                        "path") -
+        sl_http_dispatch_literal("register a route binding for the parsed request path",
+                                 sizeof("register a route binding for the parsed request path") -
                                      1U),
         SL_STATUS_OUT_OF_RANGE);
+}
+
+static SlStatus sl_http_dispatch_method_not_allowed(SlArena* arena, SlDiag* out_diag)
+{
+    return sl_http_dispatch_write_diag(
+        arena, out_diag, SL_DIAG_HTTP_UNSUPPORTED_METHOD,
+        sl_http_dispatch_literal("HTTP method is not allowed for this route",
+                                 sizeof("HTTP method is not allowed for this route") - 1U),
+        sl_http_dispatch_literal("register a route with matching method metadata before serving",
+                                 sizeof("register a route with matching method metadata before "
+                                        "serving") -
+                                     1U),
+        SL_STATUS_UNSUPPORTED);
 }
 
 static SlStatus sl_http_dispatch_unsupported_method(SlArena* arena, SlDiag* out_diag)
 {
     return sl_http_dispatch_write_diag(
         arena, out_diag, SL_DIAG_HTTP_UNSUPPORTED_METHOD,
-        sl_http_dispatch_literal("HTTP dispatch supports GET only",
-                                 sizeof("HTTP dispatch supports GET only") - 1U),
-        sl_http_dispatch_literal("TASK 10.C rejects non-GET methods before route matching",
-                                 sizeof("TASK 10.C rejects non-GET methods before route "
-                                        "matching") -
+        sl_http_dispatch_literal("HTTP method is not supported by the framework runtime",
+                                 sizeof("HTTP method is not supported by the framework runtime") -
+                                     1U),
+        sl_http_dispatch_literal("supported route methods are GET, POST, PUT, PATCH, and DELETE",
+                                 sizeof("supported route methods are GET, POST, PUT, PATCH, and "
+                                        "DELETE") -
                                      1U),
         SL_STATUS_UNSUPPORTED);
 }
 
-static bool sl_http_plan_route_is_get(const SlPlanRoute* route)
+static bool sl_http_plan_route_is_runnable(const SlPlanRoute* route)
 {
     return route != NULL && sl_plan_route_method_runnable(route->method);
+}
+
+static bool sl_http_dispatch_method_runnable(SlHttpMethod method)
+{
+    switch (method) {
+    case SL_HTTP_METHOD_GET:
+    case SL_HTTP_METHOD_POST:
+    case SL_HTTP_METHOD_PUT:
+    case SL_HTTP_METHOD_DELETE:
+    case SL_HTTP_METHOD_PATCH:
+        return true;
+    case SL_HTTP_METHOD_UNKNOWN:
+    case SL_HTTP_METHOD_OPTIONS:
+    case SL_HTTP_METHOD_HEAD:
+    default:
+        return false;
+    }
+}
+
+static SlStatus sl_http_dispatch_method_from_plan(SlStr method, SlHttpMethod* out_method)
+{
+    if (out_method == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_method = SL_HTTP_METHOD_UNKNOWN;
+    if (sl_str_equal(method, sl_str_from_cstr("GET"))) {
+        *out_method = SL_HTTP_METHOD_GET;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("POST"))) {
+        *out_method = SL_HTTP_METHOD_POST;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("PUT"))) {
+        *out_method = SL_HTTP_METHOD_PUT;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("PATCH"))) {
+        *out_method = SL_HTTP_METHOD_PATCH;
+        return sl_status_ok();
+    }
+    if (sl_str_equal(method, sl_str_from_cstr("DELETE"))) {
+        *out_method = SL_HTTP_METHOD_DELETE;
+        return sl_status_ok();
+    }
+
+    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
 }
 
 static SlStatus sl_http_dispatch_missing_handler(SlArena* arena, SlDiag* out_diag)
@@ -163,12 +226,50 @@ static SlStatus sl_http_dispatch_unsupported_body(SlArena* arena, SlDiag* out_di
 {
     return sl_http_dispatch_write_diag(
         arena, out_diag, SL_DIAG_HTTP_UNSUPPORTED_BODY,
-        sl_http_dispatch_literal("HTTP request bodies are not supported",
-                                 sizeof("HTTP request bodies are not supported") - 1U),
-        sl_http_dispatch_literal("omit request bodies until body parsing is implemented",
-                                 sizeof("omit request bodies until body parsing is implemented") -
+        sl_http_dispatch_literal("HTTP request body framing is not supported",
+                                 sizeof("HTTP request body framing is not supported") - 1U),
+        sl_http_dispatch_literal("send a bounded Content-Length body instead of transfer encoding",
+                                 sizeof("send a bounded Content-Length body instead of transfer "
+                                        "encoding") -
                                      1U),
         SL_STATUS_UNSUPPORTED);
+}
+
+static SlStatus sl_http_dispatch_body_too_large(SlArena* arena, SlDiag* out_diag)
+{
+    return sl_http_dispatch_write_diag(
+        arena, out_diag, SL_DIAG_HTTP_BODY_LIMIT,
+        sl_http_dispatch_literal("HTTP request body is too large",
+                                 sizeof("HTTP request body is too large") - 1U),
+        sl_http_dispatch_literal("keep request bodies within the documented alpha limit",
+                                 sizeof("keep request bodies within the documented alpha limit") -
+                                     1U),
+        SL_STATUS_CAPACITY_EXCEEDED);
+}
+
+static SlStatus sl_http_dispatch_unsupported_media_type(SlArena* arena, SlDiag* out_diag)
+{
+    return sl_http_dispatch_write_diag(
+        arena, out_diag, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE,
+        sl_http_dispatch_literal("HTTP request body content type is not supported",
+                                 sizeof("HTTP request body content type is not supported") - 1U),
+        sl_http_dispatch_literal("use application/json or text/plain for bounded request bodies",
+                                 sizeof("use application/json or text/plain for bounded request "
+                                        "bodies") -
+                                     1U),
+        SL_STATUS_UNSUPPORTED);
+}
+
+static SlStatus sl_http_dispatch_malformed_json(SlArena* arena, SlDiag* out_diag)
+{
+    return sl_http_dispatch_write_diag(
+        arena, out_diag, SL_DIAG_MALFORMED_JSON,
+        sl_http_dispatch_literal("HTTP request JSON body is malformed",
+                                 sizeof("HTTP request JSON body is malformed") - 1U),
+        sl_http_dispatch_literal("send valid JSON or use text/plain for raw text bodies",
+                                 sizeof("send valid JSON or use text/plain for raw text bodies") -
+                                     1U),
+        SL_STATUS_INVALID_ARGUMENT);
 }
 
 static int sl_http_dispatch_ascii_lower(int ch)
@@ -200,32 +301,85 @@ static bool sl_http_dispatch_str_iequal(SlStr left, SlStr right)
     return true;
 }
 
-static bool sl_http_dispatch_content_length_has_body(SlStr value)
+static bool sl_http_dispatch_str_istarts_with(SlStr str, SlStr prefix)
 {
     size_t index = 0U;
 
-    if (value.ptr == NULL && value.length != 0U) {
-        return true;
+    if ((str.ptr == NULL && str.length != 0U) || (prefix.ptr == NULL && prefix.length != 0U) ||
+        prefix.length > str.length)
+    {
+        return false;
     }
 
-    while (index < value.length && (value.ptr[index] == ' ' || value.ptr[index] == '\t')) {
-        index += 1U;
-    }
-
-    while (index < value.length) {
-        if (value.ptr[index] >= '1' && value.ptr[index] <= '9') {
-            return true;
+    for (index = 0U; index < prefix.length; index += 1U) {
+        if (sl_http_dispatch_ascii_lower((unsigned char)str.ptr[index]) !=
+            sl_http_dispatch_ascii_lower((unsigned char)prefix.ptr[index]))
+        {
+            return false;
         }
-        if (value.ptr[index] != '0' && value.ptr[index] != ' ' && value.ptr[index] != '\t') {
-            return true;
-        }
-        index += 1U;
     }
 
-    return false;
+    return true;
 }
 
-static bool sl_http_dispatch_request_declares_body(const SlHttpRequestHead* request)
+static bool sl_http_dispatch_str_iends_with(SlStr str, SlStr suffix)
+{
+    size_t offset = 0U;
+    size_t index = 0U;
+
+    if ((str.ptr == NULL && str.length != 0U) || (suffix.ptr == NULL && suffix.length != 0U) ||
+        suffix.length > str.length)
+    {
+        return false;
+    }
+
+    offset = str.length - suffix.length;
+    for (index = 0U; index < suffix.length; index += 1U) {
+        if (sl_http_dispatch_ascii_lower((unsigned char)str.ptr[offset + index]) !=
+            sl_http_dispatch_ascii_lower((unsigned char)suffix.ptr[index]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static SlStr sl_http_dispatch_trim_ascii_space(SlStr value)
+{
+    size_t begin = 0U;
+    size_t end = value.length;
+
+    if (value.ptr == NULL) {
+        return sl_str_empty();
+    }
+
+    while (begin < end && (value.ptr[begin] == ' ' || value.ptr[begin] == '\t')) {
+        begin += 1U;
+    }
+    while (end > begin && (value.ptr[end - 1U] == ' ' || value.ptr[end - 1U] == '\t')) {
+        end -= 1U;
+    }
+
+    return sl_str_from_parts(value.ptr + begin, end - begin);
+}
+
+static SlStr sl_http_dispatch_media_type(SlStr content_type)
+{
+    size_t index = 0U;
+
+    if (content_type.ptr == NULL) {
+        return sl_str_empty();
+    }
+
+    while (index < content_type.length && content_type.ptr[index] != ';') {
+        index += 1U;
+    }
+
+    return sl_http_dispatch_trim_ascii_space(sl_str_from_parts(content_type.ptr, index));
+}
+
+static bool sl_http_dispatch_request_declares_transfer_encoding(const SlHttpRequestHead* request)
 {
     size_t index = 0U;
 
@@ -235,17 +389,113 @@ static bool sl_http_dispatch_request_declares_body(const SlHttpRequestHead* requ
 
     for (index = 0U; index < request->header_count; index += 1U) {
         const SlHttpHeader* header = &request->headers[index];
-        if (sl_http_dispatch_str_iequal(header->name, sl_str_from_cstr("Content-Length")) &&
-            sl_http_dispatch_content_length_has_body(header->value))
-        {
-            return true;
-        }
         if (sl_http_dispatch_str_iequal(header->name, sl_str_from_cstr("Transfer-Encoding"))) {
             return true;
         }
     }
 
     return false;
+}
+
+static bool sl_http_dispatch_find_header(const SlHttpRequestHead* request, SlStr name,
+                                         SlStr* out_value)
+{
+    size_t index = 0U;
+
+    if (out_value != NULL) {
+        *out_value = sl_str_empty();
+    }
+    if (request == NULL || out_value == NULL ||
+        (request->header_count != 0U && request->headers == NULL))
+    {
+        return false;
+    }
+
+    for (index = 0U; index < request->header_count; index += 1U) {
+        const SlHttpHeader* header = &request->headers[index];
+        if (sl_http_dispatch_str_iequal(header->name, name)) {
+            *out_value = header->value;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool sl_http_dispatch_media_type_json(SlStr media_type)
+{
+    return sl_http_dispatch_str_iequal(media_type, sl_str_from_cstr("application/json")) ||
+           (sl_http_dispatch_str_istarts_with(media_type, sl_str_from_cstr("application/")) &&
+            sl_http_dispatch_str_iends_with(media_type, sl_str_from_cstr("+json")));
+}
+
+static SlStatus sl_http_dispatch_validate_json_body(SlArena* arena, SlBytes body, SlDiag* out_diag)
+{
+    yyjson_read_err error = {0};
+    yyjson_doc* doc = NULL;
+
+    if (body.length != 0U && body.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    doc = yyjson_read_opts((char*)body.ptr, body.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        return sl_http_dispatch_malformed_json(arena, out_diag);
+    }
+
+    yyjson_doc_free(doc);
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpRequestHead* request,
+                                                   SlHttpRequestBodyKind* out_body_kind,
+                                                   SlDiag* out_diag)
+{
+    SlStr content_type = {0};
+    SlStr media_type = {0};
+
+    if (out_body_kind == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_body_kind = SL_HTTP_REQUEST_BODY_NONE;
+    if (request == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (sl_http_dispatch_request_declares_transfer_encoding(request)) {
+        return sl_http_dispatch_unsupported_body(arena, out_diag);
+    }
+
+    if (request->body.length == 0U) {
+        return sl_status_ok();
+    }
+    if (request->body.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (request->body.length > SL_HTTP_DEFAULT_MAX_BODY_LENGTH) {
+        return sl_http_dispatch_body_too_large(arena, out_diag);
+    }
+
+    if (!sl_http_dispatch_find_header(request, sl_str_from_cstr("Content-Type"), &content_type)) {
+        return sl_http_dispatch_unsupported_media_type(arena, out_diag);
+    }
+
+    media_type = sl_http_dispatch_media_type(content_type);
+    if (sl_http_dispatch_media_type_json(media_type)) {
+        SlStatus status = sl_http_dispatch_validate_json_body(arena, request->body, out_diag);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_body_kind = SL_HTTP_REQUEST_BODY_JSON;
+        return sl_status_ok();
+    }
+    if (sl_http_dispatch_str_iequal(media_type, sl_str_from_cstr("text/plain"))) {
+        *out_body_kind = SL_HTTP_REQUEST_BODY_TEXT;
+        return sl_status_ok();
+    }
+
+    return sl_http_dispatch_unsupported_media_type(arena, out_diag);
 }
 
 static bool sl_http_route_entry_less(const SlHttpRouteTableEntry* left,
@@ -332,7 +582,7 @@ static SlStatus sl_http_route_table_fill_entries(SlArena* arena, const SlPlan* p
         if (!sl_plan_route_method_supported(route->method)) {
             return sl_http_dispatch_unsupported_method(arena, out_diag);
         }
-        if (!sl_http_plan_route_is_get(route)) {
+        if (!sl_http_plan_route_is_runnable(route)) {
             continue;
         }
 
@@ -347,7 +597,11 @@ static SlStatus sl_http_route_table_fill_entries(SlArena* arena, const SlPlan* p
             return sl_http_route_table_invalid_route(arena, out_diag);
         }
 
-        entries[entry_count].binding.method = SL_HTTP_METHOD_GET;
+        status =
+            sl_http_dispatch_method_from_plan(route->method, &entries[entry_count].binding.method);
+        if (!sl_status_is_ok(status)) {
+            return sl_http_dispatch_unsupported_method(arena, out_diag);
+        }
         entries[entry_count].binding.pattern = &entries[entry_count].pattern;
         entries[entry_count].binding.handler_id = route->handler_id;
         entries[entry_count].source_order = index;
@@ -371,7 +625,7 @@ static SlStatus sl_http_route_table_count_runnable_routes(SlArena* arena, const 
         if (!sl_plan_route_method_supported(plan->routes[index].method)) {
             return sl_http_dispatch_unsupported_method(arena, out_diag);
         }
-        if (sl_http_plan_route_is_get(&plan->routes[index])) {
+        if (sl_http_plan_route_is_runnable(&plan->routes[index])) {
             route_count += 1U;
         }
     }
@@ -455,28 +709,27 @@ static SlStatus sl_http_dispatch_find_route(SlArena* arena,
                                             const SlHttpDispatchTable* dispatch_table,
                                             const SlHttpRequestHead* request,
                                             const SlHttpRouteBinding** out_binding,
-                                            SlRouteMatch* out_match)
+                                            SlRouteMatch* out_match, bool* out_method_mismatch)
 {
     size_t index = 0U;
 
     if (arena == NULL || dispatch_table == NULL || request == NULL || out_binding == NULL ||
-        out_match == NULL)
+        out_match == NULL || out_method_mismatch == NULL)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     *out_binding = NULL;
     *out_match = (SlRouteMatch){0};
+    *out_method_mismatch = false;
     for (index = 0U; index < dispatch_table->route_count; index += 1U) {
         const SlHttpRouteBinding* binding = &dispatch_table->routes[index];
         SlRouteMatch match = {0};
         SlStatus status;
 
-        if (binding->method != SL_HTTP_METHOD_GET) {
-            continue;
-        }
-
-        if (binding->pattern == NULL || !sl_handler_id_valid(binding->handler_id)) {
+        if (!sl_http_dispatch_method_runnable(binding->method) || binding->pattern == NULL ||
+            !sl_handler_id_valid(binding->handler_id))
+        {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
 
@@ -486,6 +739,10 @@ static SlStatus sl_http_dispatch_find_route(SlArena* arena,
         }
 
         if (match.matched) {
+            if (binding->method != request->method) {
+                *out_method_mismatch = true;
+                continue;
+            }
             *out_binding = binding;
             *out_match = match;
             return sl_status_ok();
@@ -505,6 +762,7 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
     SlRouteMatch route_match = {0};
     SlHttpQuery query = {0};
     SlHttpRequestContext request_context = {0};
+    bool method_mismatch = false;
     SlStatus status;
 
     if (out_diag != NULL) {
@@ -525,24 +783,24 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
         return status;
     }
 
-    if (request->method != SL_HTTP_METHOD_GET) {
+    if (!sl_http_dispatch_method_runnable(request->method)) {
         return sl_http_dispatch_unsupported_method(arena, out_diag);
-    }
-
-    if (sl_http_dispatch_request_declares_body(request)) {
-        return sl_http_dispatch_unsupported_body(arena, out_diag);
     }
 
     if (request->path.length == 0U || request->path.ptr == NULL || request->path.ptr[0] != '/') {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding, &route_match);
+    status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding, &route_match,
+                                         &method_mismatch);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
     if (binding == NULL) {
+        if (method_mismatch) {
+            return sl_http_dispatch_method_not_allowed(arena, out_diag);
+        }
         return sl_http_dispatch_missing_route(arena, out_diag);
     }
 
@@ -551,6 +809,12 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
         return sl_http_dispatch_missing_handler(arena, out_diag);
     }
 
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status =
+        sl_http_dispatch_apply_body_policy(arena, request, &request_context.body_kind, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }

@@ -16,11 +16,11 @@ extern "C" {
 #endif
 
 /*
- * Manual route binding for the first synthetic HTTP dispatch slice.
+ * Manual route binding for the bounded Plan-backed HTTP dispatch slice.
  *
  * The binding borrows a parsed route pattern. The caller must keep the pattern arena alive
- * for the duration of dispatch. Only GET bindings are executed in TASK 10.C; other methods
- * are ignored so this remains a tiny table, not a method router.
+ * for the duration of dispatch. GET, POST, PUT, PATCH, and DELETE bindings are runnable
+ * when they are present in Sloppy Plan metadata.
  */
 typedef struct SlHttpRouteBinding
 {
@@ -63,23 +63,27 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
 /*
  * Dispatches one parsed in-memory HTTP request head to a Sloppy Plan handler ID.
  *
- * This is synthetic dispatch only: no sockets, no response writer, no body parsing, no
- * request context, no middleware, and no public TypeScript API. `arena`, `engine`, `plan`,
- * `dispatch_table`, `request`, and `out_result` are required. On success, result ownership
- * follows the engine/runtime-contract result rules; for the current V8 path, text is copied
- * into `arena`.
+ * This is synthetic dispatch only: no sockets, no middleware, no streaming body state, and
+ * no production hardening. `arena`, `engine`, `plan`, `dispatch_table`, `request`, and
+ * `out_result` are required. On success, result ownership follows the engine/runtime-contract
+ * result rules; for the current V8 path, response bodies and copied header strings are
+ * stored in `arena`.
  *
  * Failure behavior:
- * - non-GET requests fail with SL_STATUS_UNSUPPORTED;
- * - requests that declare a body fail with SL_STATUS_UNSUPPORTED;
- * - no matching GET route fails with SL_STATUS_OUT_OF_RANGE;
+ * - methods outside GET/POST/PUT/PATCH/DELETE fail with SL_STATUS_UNSUPPORTED;
+ * - matching path with the wrong method fails with SL_STATUS_UNSUPPORTED;
+ * - transfer-encoded bodies fail with SL_STATUS_UNSUPPORTED;
+ * - unsupported body content types fail with SL_STATUS_UNSUPPORTED;
+ * - bodies over SL_HTTP_DEFAULT_MAX_BODY_LENGTH fail with SL_STATUS_CAPACITY_EXCEEDED;
+ * - malformed JSON bodies fail with SL_STATUS_INVALID_ARGUMENT;
+ * - no matching route path fails with SL_STATUS_OUT_OF_RANGE;
  * - a matched route with a missing plan handler fails before entering the engine;
  * - missing/non-callable/throwing JavaScript handlers fail through the existing engine
  *   diagnostic path.
  *
- * Route parameters and query parameters are materialized into the EPIC-23 request context
- * passed to JavaScript. Route parameter values are strings; `{id:int}` validates matching
- * but does not coerce the JS value to a number.
+ * Route parameters, query parameters, headers, and JSON/text body policy are materialized
+ * into the request context passed to JavaScript. Route parameter values are strings;
+ * `{id:int}` validates matching but does not coerce the JS value to a number.
  */
 SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const SlPlan* plan,
                                        const SlHttpDispatchTable* dispatch_table,

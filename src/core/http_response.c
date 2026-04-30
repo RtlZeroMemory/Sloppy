@@ -2,15 +2,16 @@
  * src/core/http_response.c
  *
  * Implements EPIC-23's small native response descriptor writer for dev HTTP responses.
- * It writes only deterministic HTTP/1.1 status, Connection: close, Content-Type when
- * present, Content-Length, and body bytes. It is not a streaming writer, header collection,
+ * It writes deterministic HTTP/1.1 status, Connection: close, Content-Type when present,
+ * bounded custom headers, Content-Length, and body bytes. It is not a streaming writer,
  * cookie layer, compression layer, or production response pipeline.
  *
  * Safety invariants:
  * - output is bounded by the caller-provided buffer;
  * - Content-Length is derived from the exact body byte count;
  * - 204 responses never write body bytes;
- * - user-controlled Content-Type values containing CR/LF are rejected.
+ * - runtime-managed response headers cannot be overridden by custom headers;
+ * - user-controlled Content-Type or custom header values containing CR/LF are rejected.
  *
  * Tests: tests/unit/core/test_http_response.c.
  */
@@ -83,6 +84,10 @@ static const char* sl_http_response_reason(uint16_t status)
         return "Not Found";
     case 405U:
         return "Method Not Allowed";
+    case 413U:
+        return "Payload Too Large";
+    case 415U:
+        return "Unsupported Media Type";
     case 500U:
         return "Internal Server Error";
     case 501U:
@@ -102,6 +107,105 @@ static bool sl_http_response_content_type_valid(SlStr content_type)
 
     for (index = 0U; index < content_type.length; index += 1U) {
         if (content_type.ptr[index] == '\r' || content_type.ptr[index] == '\n') {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static int sl_http_response_ascii_lower(int ch)
+{
+    if (ch >= 'A' && ch <= 'Z') {
+        return ch - 'A' + 'a';
+    }
+    return ch;
+}
+
+static bool sl_http_response_str_iequal(SlStr left, SlStr right)
+{
+    size_t index = 0U;
+
+    if ((left.ptr == NULL && left.length != 0U) || (right.ptr == NULL && right.length != 0U) ||
+        left.length != right.length)
+    {
+        return false;
+    }
+
+    for (index = 0U; index < left.length; index += 1U) {
+        if (sl_http_response_ascii_lower((unsigned char)left.ptr[index]) !=
+            sl_http_response_ascii_lower((unsigned char)right.ptr[index]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool sl_http_response_header_name_char_valid(char ch)
+{
+    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+           ch == '!' || ch == '#' || ch == '$' || ch == '%' || ch == '&' || ch == '\'' ||
+           ch == '*' || ch == '+' || ch == '-' || ch == '.' || ch == '^' || ch == '_' ||
+           ch == '`' || ch == '|' || ch == '~';
+}
+
+static bool sl_http_response_header_name_valid(SlStr name)
+{
+    size_t index = 0U;
+
+    if (name.ptr == NULL || name.length == 0U) {
+        return false;
+    }
+
+    for (index = 0U; index < name.length; index += 1U) {
+        if (!sl_http_response_header_name_char_valid(name.ptr[index])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool sl_http_response_header_value_valid(SlStr value)
+{
+    size_t index = 0U;
+
+    if (value.ptr == NULL && value.length != 0U) {
+        return false;
+    }
+
+    for (index = 0U; index < value.length; index += 1U) {
+        if (value.ptr[index] == '\r' || value.ptr[index] == '\n') {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool sl_http_response_header_managed(SlStr name)
+{
+    return sl_http_response_str_iequal(name, sl_str_from_cstr("Connection")) ||
+           sl_http_response_str_iequal(name, sl_str_from_cstr("Content-Type")) ||
+           sl_http_response_str_iequal(name, sl_str_from_cstr("Content-Length"));
+}
+
+static bool sl_http_response_headers_valid(const SlHttpResponse* response)
+{
+    size_t index = 0U;
+
+    if (response == NULL || (response->header_count != 0U && response->headers == NULL)) {
+        return false;
+    }
+
+    for (index = 0U; index < response->header_count; index += 1U) {
+        const SlHttpHeader* header = &response->headers[index];
+        if (!sl_http_response_header_name_valid(header->name) ||
+            sl_http_response_header_managed(header->name) ||
+            !sl_http_response_header_value_valid(header->value))
+        {
             return false;
         }
     }
@@ -220,6 +324,9 @@ SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* b
     if (!sl_http_response_content_type_valid(response->content_type)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    if (!sl_http_response_headers_valid(response)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
 
     body = response->status == 204U ? sl_bytes_empty() : response->body;
     has_content_type = response->content_type.length != 0U && response->status != 204U;
@@ -236,6 +343,18 @@ SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* b
     if (has_content_type) {
         if (!sl_http_response_append_cstr(buffer, capacity, &length, "Content-Type: ") ||
             !sl_http_response_append_str(buffer, capacity, &length, response->content_type) ||
+            !sl_http_response_append_cstr(buffer, capacity, &length, "\r\n"))
+        {
+            return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        }
+    }
+
+    for (size_t index = 0U; index < response->header_count; index += 1U) {
+        if (!sl_http_response_append_str(buffer, capacity, &length,
+                                         response->headers[index].name) ||
+            !sl_http_response_append_cstr(buffer, capacity, &length, ": ") ||
+            !sl_http_response_append_str(buffer, capacity, &length,
+                                         response->headers[index].value) ||
             !sl_http_response_append_cstr(buffer, capacity, &length, "\r\n"))
         {
             return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);

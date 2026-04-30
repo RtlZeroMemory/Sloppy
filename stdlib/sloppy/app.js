@@ -727,7 +727,7 @@ function composeRoutePattern(prefix, childPattern) {
     return childPattern.startsWith("/") ? `${prefix}${childPattern}` : `${prefix}/${childPattern}`;
 }
 
-function normalizeMapGetArguments(pattern, optionsOrHandler, maybeHandler) {
+function normalizeMapArguments(pattern, optionsOrHandler, maybeHandler) {
     if (typeof optionsOrHandler === "function" && maybeHandler === undefined) {
         return {
             pattern,
@@ -789,19 +789,20 @@ function registerRoute(
     host,
     assertAppMutable,
     currentModule,
+    method,
     pattern,
     optionsOrHandler,
     maybeHandler,
     metadataBase,
 ) {
-    const args = normalizeMapGetArguments(pattern, optionsOrHandler, maybeHandler);
+    const args = normalizeMapArguments(pattern, optionsOrHandler, maybeHandler);
 
     assertAppMutable();
     validatePattern(args.pattern);
     validateHandler(args.handler);
 
     const route = {
-        method: "GET",
+        method,
         pattern: args.pattern,
         handler: createRouteHandler(host, args.handler),
         name: null,
@@ -853,6 +854,83 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
                 host,
                 assertAppMutable,
                 getCurrentModule(),
+                "GET",
+                fullPattern,
+                optionsOrHandler,
+                maybeHandler,
+                {
+                    prefix: groupMetadata.prefix,
+                    tags: groupMetadata.tags,
+                    name: groupMetadata.name,
+                },
+            );
+        },
+
+        mapPost(pattern, optionsOrHandler, maybeHandler) {
+            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule(),
+                "POST",
+                fullPattern,
+                optionsOrHandler,
+                maybeHandler,
+                {
+                    prefix: groupMetadata.prefix,
+                    tags: groupMetadata.tags,
+                    name: groupMetadata.name,
+                },
+            );
+        },
+
+        mapPut(pattern, optionsOrHandler, maybeHandler) {
+            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule(),
+                "PUT",
+                fullPattern,
+                optionsOrHandler,
+                maybeHandler,
+                {
+                    prefix: groupMetadata.prefix,
+                    tags: groupMetadata.tags,
+                    name: groupMetadata.name,
+                },
+            );
+        },
+
+        mapPatch(pattern, optionsOrHandler, maybeHandler) {
+            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule(),
+                "PATCH",
+                fullPattern,
+                optionsOrHandler,
+                maybeHandler,
+                {
+                    prefix: groupMetadata.prefix,
+                    tags: groupMetadata.tags,
+                    name: groupMetadata.name,
+                },
+            );
+        },
+
+        mapDelete(pattern, optionsOrHandler, maybeHandler) {
+            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule(),
+                "DELETE",
                 fullPattern,
                 optionsOrHandler,
                 maybeHandler,
@@ -894,6 +972,59 @@ function createApp(host) {
                 host,
                 assertAppMutable,
                 currentModule,
+                "GET",
+                pattern,
+                optionsOrHandler,
+                maybeHandler,
+            );
+        },
+
+        mapPost(pattern, optionsOrHandler, maybeHandler) {
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                "POST",
+                pattern,
+                optionsOrHandler,
+                maybeHandler,
+            );
+        },
+
+        mapPut(pattern, optionsOrHandler, maybeHandler) {
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                "PUT",
+                pattern,
+                optionsOrHandler,
+                maybeHandler,
+            );
+        },
+
+        mapPatch(pattern, optionsOrHandler, maybeHandler) {
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                "PATCH",
+                pattern,
+                optionsOrHandler,
+                maybeHandler,
+            );
+        },
+
+        mapDelete(pattern, optionsOrHandler, maybeHandler) {
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                currentModule,
+                "DELETE",
                 pattern,
                 optionsOrHandler,
                 maybeHandler,
