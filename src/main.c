@@ -1421,6 +1421,9 @@ static SlEngineOptions sl_run_v8_options(const SlRunApp* app)
     options.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
     options.target_platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
     options.target_engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    /*
+     * These are borrowed from SlRunApp; the app must stay alive for the engine lifetime.
+     */
     options.plan = app == NULL ? NULL : &app->plan;
     options.capabilities = app == NULL ? NULL : &app->capability_registry;
     return options;
