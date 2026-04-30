@@ -388,6 +388,12 @@ Runtime diagnostics:
   deterministic under repeated default non-V8 execution;
 - HTTP transport listener config, bind, listen, accept, capacity, and lifecycle diagnostics
   stay deterministic and do not include libuv handles or raw pointer values;
+- HTTP transport read/request accumulation diagnostics cover read errors, client
+  disconnect during head/body, head too large, malformed request head, unsupported transfer
+  encoding, body too large, invalid/incomplete body, unsupported media, unsupported
+  pipelined bytes, and invalid connection state. These diagnostics stay redacted and do not
+  include libuv handles, socket internals, native pointers, request bodies, or secret
+  values;
 - unsupported request bodies;
 - unsupported request content types;
 - request body size limit failures;

@@ -17,8 +17,15 @@ extern "C" {
 
 #define SL_HTTP_TRANSPORT_DEFAULT_PORT 5173U
 #define SL_HTTP_TRANSPORT_DEFAULT_BACKLOG 128
+#define SL_HTTP_TRANSPORT_DEFAULT_MAX_REQUEST_HEAD_BYTES 32768U
+#define SL_HTTP_TRANSPORT_DEFAULT_REQUEST_ARENA_BYTES 131072U
+#define SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES 4096U
 
 typedef struct SlHttpPlatformConnection SlHttpPlatformConnection;
+typedef struct SlHttpTransportConnection SlHttpTransportConnection;
+
+typedef void (*SlHttpTransportRequestReadyFn)(SlHttpTransportConnection* connection,
+                                              const SlHttpRequestLifecycle* request, void* user);
 
 typedef enum SlHttpTransportServerState
 {
@@ -35,9 +42,12 @@ typedef enum SlHttpTransportConnectionState
 {
     SL_HTTP_TRANSPORT_CONNECTION_STATE_EMPTY = 0,
     SL_HTTP_TRANSPORT_CONNECTION_STATE_ACCEPTED = 1,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING = 2,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED = 3,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 4
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_HEAD = 2,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY = 3,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY = 4,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING = 5,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED = 6,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 7
 } SlHttpTransportConnectionState;
 
 typedef struct SlHttpTransportConfig
@@ -51,18 +61,39 @@ typedef struct SlHttpTransportConfig
     uint32_t port;
     size_t max_connections;
     size_t max_active_requests;
+    SlHttpParseOptions parse;
+    size_t max_request_head_bytes;
+    size_t request_arena_bytes;
+    size_t read_chunk_bytes;
     /* Caller/arena-backed table size for accepted connection placeholders. */
     size_t connection_capacity;
     int backlog;
+    SlHttpTransportRequestReadyFn on_request_ready;
+    void* on_request_ready_user;
 } SlHttpTransportConfig;
 
-typedef struct SlHttpTransportConnection
+struct SlHttpTransportConnection
 {
     SlHttpConnection core;
     SlHttpPlatformConnection* platform;
     SlHttpTransportConnectionState state;
+    SlArena request_arena;
+    SlHttpRequestLifecycle request;
+    SlHttpBodyReader body_reader;
+    unsigned char* request_storage;
+    size_t request_storage_size;
+    unsigned char* accumulation;
+    SlByteBuilder accumulation_builder;
+    size_t accumulation_length;
+    size_t accumulation_capacity;
+    size_t head_length;
+    size_t expected_body_length;
+    bool request_started;
+    bool body_reader_started;
+    bool body_reader_finished;
+    SlDiag last_diag;
     bool slot_claimed;
-} SlHttpTransportConnection;
+};
 
 typedef struct SlHttpTransportServer
 {
@@ -98,6 +129,12 @@ SlStatus sl_http_transport_server_dispose(SlHttpTransportServer* server, SlDiag*
 /* Closes an accepted placeholder connection exactly once. */
 SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connection,
                                             SlDiag* out_diag);
+/*
+ * Internal/test helper that feeds bytes through the same bounded accumulation path used by
+ * the libuv read callback. This does not dispatch or write a response.
+ */
+SlStatus sl_http_transport_connection_feed_test(SlHttpTransportConnection* connection,
+                                                SlBytes bytes, SlDiag* out_diag);
 
 SlHttpTransportServerState sl_http_transport_server_state(const SlHttpTransportServer* server);
 uint32_t sl_http_transport_server_bound_port(const SlHttpTransportServer* server);

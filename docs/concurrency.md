@@ -119,6 +119,15 @@ libuv's global threadpool, enter V8, or claim keep-alive/graceful-drain behavior
 ENGINE-24 slices must post/read/write/cancel through the documented owner-loop and request
 lifetime rules before claiming scalable async HTTP behavior.
 
+ENGINE-24.C starts the accepted-connection libuv read loop inside the same platform
+boundary. Read callbacks append TCP chunks into fixed per-connection storage through
+Slop's bounded byte-builder primitive, detect a complete head/body for one request, and
+then call the existing ENGINE-13 parser/body-reader semantics. The read callback never
+enters V8, never dispatches routes, never writes a response, and stops reading once the
+connection reaches request-ready. Client disconnect/read failure during head or body closes
+the transport connection through cleanup-once paths and releases backend request/connection
+admission without exposing libuv handles or native pointers.
+
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
 async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes

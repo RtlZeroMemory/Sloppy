@@ -46,8 +46,41 @@ When capacity is full, the transport accepts the pending socket into an internal
 handle and closes it immediately. This prevents unbounded queue growth without pretending to
 write a `503` response before the response write loop exists.
 
-Connections can be closed directly, by server stop, or by dispose. Cleanup is idempotent at
-the Slop lifecycle level and does not expose native handles or pointer values.
+## Read Loop And Request Accumulation
+
+ENGINE-24.C starts the libuv read loop as soon as an accepted connection is admitted into
+the bounded connection table. Each connection owns fixed transport storage for read chunks,
+request-byte accumulation, and a request arena. Incoming TCP chunks append through the core
+bounded byte-builder primitive; the transport never grows an unbounded socket buffer and
+never exposes libuv handles or native pointers to user-facing diagnostics.
+
+The transport scans accumulated bytes only far enough to find `CRLFCRLF` and to read the
+`Content-Length`/`Transfer-Encoding` header policy needed before the complete-buffer parser
+can run. Once the required bytes are present, the existing ENGINE-13 parser/body-reader path
+owns semantic validation: parser target/header limits, malformed-head diagnostics,
+Content-Length body length, body-size limit, and JSON/text media policy. Parsed target,
+path, headers, and body bytes remain request-arena owned.
+
+Supported request framing is intentionally small:
+
+- one request per connection;
+- `Content-Length` bodies only;
+- empty bodies are supported;
+- body bytes may arrive in the same TCP chunk as the head or across later chunks;
+- `Transfer-Encoding`/chunked, streaming bodies, keep-alive, and pipelining are rejected
+  or closed as unsupported MVP behavior.
+
+When a full request is parsed and the body reader finishes, the connection transitions to
+`REQUEST_READY`. The request is parked on the transport connection and exposed only through
+an internal request-ready callback/test hook. ENGINE-24.C does not call route dispatch,
+does not enter V8, and does not write a response. #415 owns consuming the parked request,
+dispatching it, and writing/closing the response.
+
+Connections can be closed directly, by server stop, by client disconnect, by read/parse/body
+failure, or by dispose. Cleanup stops reads before closing the handle, closes any unfinished
+body reader, closes the request lifecycle, and releases backend connection/request
+admission exactly once. A disconnect while reading the head or body produces a deterministic
+connection-closed diagnostic and does not enter V8.
 
 ## Diagnostics
 
@@ -57,6 +90,13 @@ Transport diagnostics use stable Sloppy diagnostic codes:
 - `SLOPPY_E_HTTP_BIND_FAILED`;
 - `SLOPPY_E_HTTP_LISTEN_FAILED`;
 - `SLOPPY_E_HTTP_ACCEPT_FAILED`;
+- `SLOPPY_E_HTTP_CONNECTION_CLOSED` for read errors or client disconnect;
+- `SLOPPY_E_HTTP_HEADER_BYTES_LIMIT` for oversized accumulated request heads;
+- `SLOPPY_E_INVALID_HTTP_REQUEST` for malformed heads or invalid Content-Length;
+- `SLOPPY_E_HTTP_UNSUPPORTED_BODY` for Transfer-Encoding/chunked;
+- `SLOPPY_E_HTTP_BODY_LIMIT` for oversized bodies;
+- `SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE` for unsupported body media;
+- `SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED` for detected pipelined request bytes;
 - existing `SLOPPY_E_HTTP_OVERLOAD` for backend admission pressure;
 - existing `SLOPPY_E_APP_LIFECYCLE` for lifecycle misuse.
 
