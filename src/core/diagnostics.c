@@ -436,6 +436,18 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_ENGINE_CALL_ERROR:
         return sl_diag_literal("SLOPPY_E_ENGINE_CALL_ERROR",
                                sizeof("SLOPPY_E_ENGINE_CALL_ERROR") - 1U);
+    case SL_DIAG_ENGINE_PROMISE_REJECTION:
+        return sl_diag_literal("SLOPPY_E_ENGINE_PROMISE_REJECTION",
+                               sizeof("SLOPPY_E_ENGINE_PROMISE_REJECTION") - 1U);
+    case SL_DIAG_ENGINE_PROMISE_PENDING:
+        return sl_diag_literal("SLOPPY_E_ENGINE_PROMISE_PENDING",
+                               sizeof("SLOPPY_E_ENGINE_PROMISE_PENDING") - 1U);
+    case SL_DIAG_ENGINE_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_ENGINE_CANCELLED",
+                               sizeof("SLOPPY_E_ENGINE_CANCELLED") - 1U);
+    case SL_DIAG_ENGINE_BACKPRESSURE:
+        return sl_diag_literal("SLOPPY_E_ENGINE_BACKPRESSURE",
+                               sizeof("SLOPPY_E_ENGINE_BACKPRESSURE") - 1U);
     case SL_DIAG_INVALID_ROUTE_PATTERN:
         return sl_diag_literal("SLOPPY_E_INVALID_ROUTE_PATTERN",
                                sizeof("SLOPPY_E_INVALID_ROUTE_PATTERN") - 1U);

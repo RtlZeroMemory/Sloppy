@@ -66,8 +66,8 @@ the runtime.
 | Handler with zero parameters or one identifier context parameter | Supported | Handler may read simple context roots such as `ctx.route.id`. | Unsupported parameter shapes produce `SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS`. | Supported fixtures plus `unsupported-handler-parameter`. | Alpha compiler. |
 | Destructured/default/rest or multiple handler parameters | Rejected with diagnostic | Rejected before artifact emission. | `SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS`. | `unsupported-handler-parameter` diagnostic fixture. | Deferred until typed binding policy exists. |
 | Closed-over handler values | Rejected with diagnostic | Rejected to prevent generated handlers from losing dependencies. | `SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE`. | `unsupported-handler-capture` diagnostic fixture. | Deferred until module/source-copy policy exists. |
-| Async handlers with one direct `Results.*` return | Supported metadata/emission only | Copied into generated `app.js` as `async`; plan records `handlers[].async` and `features.asyncHandlers`. Runtime Promise settlement remains unsupported until ENGINE-03. | None for direct return shape. | `async-handler` golden fixture. | ENGINE-02 metadata, ENGINE-03 execution. |
-| Async handlers with `await`, multiple statements, or non-direct returns | Rejected with diagnostic | Rejected so the compiler does not imply Promise execution support. | `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY`. | `unsupported-async-handler-body` diagnostic fixture. | ENGINE-03 Promise settlement. |
+| Async handlers with one direct `Results.*` return | Supported metadata/emission and V8-gated execution | Copied into generated `app.js` as `async`; plan records `handlers[].async` and `features.asyncHandlers`. ENGINE-03 V8 runtime settles the returned Promise when it completes during the owner-thread microtask drain. | None for direct return shape. | `async-handler` golden fixture and V8-gated `conformance.async_handler.run_once`. | ENGINE-02 metadata, ENGINE-03 microtask-only execution. |
+| Async handlers with `await`, multiple statements, or non-direct returns | Rejected with diagnostic | Rejected so the compiler does not imply broader Promise/event-loop execution support. | `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY`. | `unsupported-async-handler-body` diagnostic fixture. | Future compiler/runtime async expansion. |
 | Top-level await | Deferred / rejected | Rejected as unsupported top-level syntax. | `SLOPPYC_E_UNSUPPORTED_TOP_LEVEL`. | Matrix-documented; add a fixture when diagnostics expand. | Future compiler/runtime async policy. |
 | Dynamic route strings | Rejected with diagnostic | Rejected; no partial route extraction. | `SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN`. | `unsupported-dynamic-route` diagnostic fixture. | Dynamic mode is future explicit work. |
 | Computed route methods or `app[method](...)` | Rejected with diagnostic | Rejected; extractor requires explicit API calls. | `SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD`. | `computed-method` diagnostic fixture. | Never for compiler-extractable examples; dynamic mode may revisit separately. |
@@ -82,11 +82,10 @@ the runtime.
 | Decorators | Not supported by the current compiler subset | Not accepted as compiler-extractable API shape. | Parse or unsupported syntax diagnostic. | Matrix-documented. | No alpha target. |
 | TypeScript input or TS-only handler syntax | Rejected with diagnostic | `.ts/.tsx/.mts/.cts` inputs are rejected; handler type annotations are rejected. | `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT` or `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER`. | `unsupported-typescript-handler` diagnostic fixture. | Official TypeScript checking/lowering later. |
 
-ENGINE-03 must revisit `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` after V8 Promise
-settlement, microtask draining, request-scope retention, cancellation, and rejected-Promise
-diagnostics are implemented. That work should graduate the currently rejected `await`,
-multi-statement, and non-direct-return fixtures into supported compiler/runtime conformance
-where the runtime can execute them honestly.
+ENGINE-03 only graduates the direct async handler shape whose Promise settles during the V8
+owner-thread microtask drain. `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` remains the
+correct compiler response for `await`, multi-statement async bodies, and non-direct returns
+until the compiler and runtime can execute those broader shapes honestly.
 
 ## Artifact and Diagnostic Policy
 

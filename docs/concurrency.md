@@ -301,9 +301,14 @@ rejections should include route and handler context when possible.
 
 TASK 09.B does not implement this V8 behavior. It only defines the native settlement record
 and loop-continuation shape that future V8 Promise resolution can map onto or evolve.
-Implementing that bridge is required future runtime work, not optional polish. Until it
-lands, Promise-returning handlers must continue to fail clearly instead of completing as
-`[object Promise]` or silently dropping asynchronous failures.
+ENGINE-03 implements the first V8 bridge cut for microtask-only Promise settlement:
+handlers are invoked only on the isolate owner thread, V8 microtasks drain explicitly after
+app evaluation and handler calls, fulfilled Promises convert through the normal result
+path, rejected Promises become deterministic diagnostics, and Promises that remain pending
+after the bounded microtask drain fail as a deadline-style handler failure. This prevents
+`[object Promise]` success and silently dropped asynchronous failures without claiming a
+Node event loop, timers, fetch, filesystem APIs, or native async provider completion
+queues.
 
 ## Request Scope Lifetime
 
@@ -435,11 +440,11 @@ app-host level:
 ## Testing Requirements
 
 - Unit tests for request scope lifetime later.
-- Native SlAsync settlement tests now; V8 Promise, microtask, and request-scope settlement
-  tests later. Those tests are required when async handler support is implemented, including
-  fulfilled Promise responses, rejected Promise diagnostics, owner-thread continuation, and
-  request-scope cleanup after settlement.
-- Cancellation cleanup tests are required with the first real async/HTTP implementation.
+- Native SlAsync settlement tests now; ENGINE-03 adds V8-gated Promise, microtask,
+  owner-thread, cancellation snapshot, and request-scope cleanup tests for the current
+  microtask-only async handler boundary.
+- Broader cancellation cleanup tests remain required with native async provider queues,
+  HTTP disconnect handling, and shutdown drain/cancel behavior.
 - Worker pool no-V8-entry tests later.
 - Resource leak tests.
 - Async DB transaction rollback tests.
@@ -461,7 +466,11 @@ For future implementation:
 
 - One isolate has one owner thread.
 - Worker threads cannot call into V8.
-- Promise-returning handler keeps request scope alive.
-- Rejected promise produces route-aware diagnostic.
-- Request cancellation disposes scoped resources.
+- Promise-returning handler keeps request scope alive for the bounded V8 microtask drain;
+  future native completion queues must extend the same ownership rule across queued work.
+- Rejected promise produces deterministic diagnostics; route/source remapping remains a
+  later diagnostics quality layer where not already available.
+- Request cancellation disposes scoped resources in the current request-scope execution
+  path; future HTTP disconnect and shutdown cancellation paths must use the same token
+  model.
 - Stress tests show many pending async operations do not create thread-per-request behavior.

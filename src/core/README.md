@@ -14,6 +14,8 @@ Implemented TASK 02.A primitives:
   stale-handle diagnostics, deterministic close/reuse, and cleanup callbacks.
 - caller-backed `SlLoop` native completion queue skeleton.
 - caller-owned `SlAsync` native promise settlement skeleton over `SlLoop`.
+- small `SlCancellationToken` snapshot primitive for cancelled/deadline/shutdown/
+  backpressure request and native operation boundaries.
 - inline/fake `SlWorkerPool` native worker completion skeleton over `SlLoop`.
 - complete-buffer HTTP/1 request-head parser over llhttp plus a libuv dependency smoke.
 - native route pattern parser and one-pattern matcher for static segments, string params,

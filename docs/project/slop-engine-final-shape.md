@@ -135,8 +135,12 @@ Final policy:
   runtime rejects work with diagnostics instead of growing without bound;
 - native worker threads must never enter a V8 isolate directly.
 
-Current reality: Promise-returning handlers are explicitly rejected. That is correct until
-real settlement, microtask, request-scope, and diagnostic behavior exists.
+Current reality after ENGINE-03: returned handler Promises that settle during the explicit
+V8 owner-thread microtask drain are real in V8-enabled builds. Fulfilled Promises serialize
+like sync returns, rejected Promises become deterministic diagnostics, request-scope
+cleanup runs for the bounded call, and still-pending Promises fail as deadline-style
+handler failures. Native async completion queues, timers, fetch, worker-thread scheduling,
+and HTTP disconnect/shutdown drain behavior remain future work.
 
 Initial native async and cancellation policy:
 

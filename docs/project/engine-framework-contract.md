@@ -16,7 +16,9 @@ Current implementation evidence remains in the current-state docs and public sta
   source-map artifact emission for a supported one-file compiler subset.
 - `sloppy run --artifacts` has a dev-only V8-required artifact run path for GET routes.
 - the current request context has route/query/request basics only.
-- returned Promises are still unsupported in the runtime today.
+- ENGINE-03 adds V8-gated microtask-only Promise settlement for returned handler Promises;
+  timers, fetch, native async provider queues, and broader JS event-loop behavior remain
+  future work.
 - SQLite has native provider coverage and a small V8-gated bridge, but capability-wired
   public API completion is still future work.
 

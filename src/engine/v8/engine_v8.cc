@@ -11,7 +11,7 @@
  * - no V8 handle, value, or type escapes this file;
  * - JS never receives raw native pointers;
  * - result strings are copied out of V8 before returning to C;
- * - the bridge is single-threaded by contract and does not implement workers or owner
+ * - Promise settlement and microtask drains happen only on the isolate owner thread;
  * - one owner thread creates and enters each isolate/context; wrong-thread entry fails
  *   before touching V8 state;
  * - V8's required process-wide platform state is initialized once, kept for process
@@ -395,6 +395,126 @@ bool sl_v8_set_object_property(v8::Isolate* isolate, v8::Local<v8::Context> cont
     return object->Set(context, key, value).FromMaybe(false);
 }
 
+bool sl_v8_set_value_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                              v8::Local<v8::Object> object, const char* name,
+                              v8::Local<v8::Value> value)
+{
+    v8::Local<v8::String> key;
+
+    if (!sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr(name), &key))) {
+        return false;
+    }
+
+    return object->Set(context, key, value).FromMaybe(false);
+}
+
+bool sl_v8_set_bool_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             v8::Local<v8::Object> object, const char* name, bool value)
+{
+    return sl_v8_set_value_property(isolate, context, object, name,
+                                    v8::Boolean::New(isolate, value));
+}
+
+bool sl_v8_set_null_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             v8::Local<v8::Object> object, const char* name)
+{
+    return sl_v8_set_value_property(isolate, context, object, name, v8::Null(isolate));
+}
+
+void sl_v8_signal_throw_if_aborted_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Object> self = args.This();
+    v8::Local<v8::String> aborted_key;
+    v8::Local<v8::String> reason_key;
+    v8::Local<v8::Value> aborted_value;
+    v8::Local<v8::Value> reason_value;
+    std::string message = "Sloppy request was cancelled";
+
+    if (!sl_status_is_ok(
+            sl_v8_to_local_string(isolate, sl_str_from_cstr("aborted"), &aborted_key)) ||
+        !self->Get(context, aborted_key).ToLocal(&aborted_value) ||
+        !aborted_value->BooleanValue(isolate))
+    {
+        args.GetReturnValue().Set(v8::Undefined(isolate));
+        return;
+    }
+
+    if (sl_status_is_ok(sl_v8_to_local_string(isolate, sl_str_from_cstr("reason"), &reason_key)) &&
+        self->Get(context, reason_key).ToLocal(&reason_value) && reason_value->IsString())
+    {
+        std::string reason = sl_v8_value_to_string(isolate, reason_value);
+        if (!reason.empty()) {
+            message += ": ";
+            message += reason;
+        }
+    }
+
+    v8::Local<v8::String> error_message;
+    if (!v8::String::NewFromUtf8(isolate, message.c_str(), v8::NewStringType::kNormal,
+                                 static_cast<int>(message.size()))
+             .ToLocal(&error_message))
+    {
+        error_message = v8::String::NewFromUtf8Literal(isolate, "Sloppy request was cancelled");
+    }
+    isolate->ThrowException(v8::Exception::Error(error_message));
+}
+
+bool sl_v8_set_function_property(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                 v8::Local<v8::Object> object, const char* name,
+                                 v8::FunctionCallback callback)
+{
+    v8::Local<v8::FunctionTemplate> function_template =
+        v8::FunctionTemplate::New(isolate, callback);
+    v8::Local<v8::Function> function;
+
+    if (!function_template->GetFunction(context).ToLocal(&function)) {
+        return false;
+    }
+
+    return sl_v8_set_value_property(isolate, context, object, name, function);
+}
+
+bool sl_v8_make_signal_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                              const SlCancellationToken* cancellation, v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Object> signal = v8::Object::New(isolate);
+    bool aborted = sl_cancellation_token_is_cancelled(cancellation);
+    SlStr reason = sl_str_empty();
+
+    if (out == nullptr) {
+        return false;
+    }
+
+    if (aborted) {
+        reason = !sl_str_is_empty(cancellation->detail)
+                     ? cancellation->detail
+                     : sl_cancellation_reason_name(cancellation->reason);
+    }
+
+    if (!sl_v8_set_bool_property(isolate, context, signal, "aborted", aborted)) {
+        return false;
+    }
+    if (aborted) {
+        if (!sl_v8_set_string_property(isolate, context, signal, "reason", reason)) {
+            return false;
+        }
+    }
+    else if (!sl_v8_set_null_property(isolate, context, signal, "reason")) {
+        return false;
+    }
+    if (!sl_v8_set_function_property(isolate, context, signal, "throwIfAborted",
+                                     sl_v8_signal_throw_if_aborted_callback))
+    {
+        return false;
+    }
+
+    *out = signal;
+    return true;
+}
+
 SlStr sl_v8_request_method_name(SlHttpMethod method)
 {
     switch (method) {
@@ -425,6 +545,7 @@ bool sl_v8_make_context_object(v8::Isolate* isolate, v8::Local<v8::Context> cont
     v8::Local<v8::Object> route = v8::Object::New(isolate);
     v8::Local<v8::Object> query = v8::Object::New(isolate);
     v8::Local<v8::Object> request = v8::Object::New(isolate);
+    v8::Local<v8::Object> signal;
     size_t index = 0U;
     SlStr method = sl_str_empty();
 
@@ -460,6 +581,10 @@ bool sl_v8_make_context_object(v8::Isolate* isolate, v8::Local<v8::Context> cont
         }
     }
 
+    if (!sl_v8_make_signal_object(isolate, context, request_context->cancellation, &signal)) {
+        return false;
+    }
+
     if (!sl_v8_set_string_property(isolate, context, request, "method", method) ||
         !sl_v8_set_string_property(isolate, context, request, "path",
                                    request_context->request->path) ||
@@ -467,8 +592,22 @@ bool sl_v8_make_context_object(v8::Isolate* isolate, v8::Local<v8::Context> cont
                                    request_context->request->raw_target) ||
         !sl_v8_set_object_property(isolate, context, ctx, "route", route) ||
         !sl_v8_set_object_property(isolate, context, ctx, "query", query) ||
-        !sl_v8_set_object_property(isolate, context, ctx, "request", request))
+        !sl_v8_set_object_property(isolate, context, ctx, "request", request) ||
+        !sl_v8_set_object_property(isolate, context, ctx, "signal", signal))
     {
+        return false;
+    }
+    if (sl_cancellation_token_reason(request_context->cancellation) ==
+        SL_CANCELLATION_REASON_DEADLINE_EXCEEDED)
+    {
+        v8::Local<v8::Object> deadline = v8::Object::New(isolate);
+        if (!sl_v8_set_bool_property(isolate, context, deadline, "expired", true) ||
+            !sl_v8_set_object_property(isolate, context, ctx, "deadline", deadline))
+        {
+            return false;
+        }
+    }
+    else if (!sl_v8_set_null_property(isolate, context, ctx, "deadline")) {
         return false;
     }
 
@@ -615,6 +754,65 @@ SlStatus sl_v8_check_owner_thread(SlEngine* engine, const SlV8Engine* backend, S
 {
     if (!sl_v8_on_owner_thread(backend)) {
         return sl_v8_write_wrong_thread_diag(engine, out_diag);
+    }
+
+    return sl_status_ok();
+}
+
+SlStatus sl_v8_write_cancelled_diag(SlEngine* engine, const SlCancellationToken* cancellation,
+                                    SlDiag* out_diag)
+{
+    SlCancellationReason reason = sl_cancellation_token_reason(cancellation);
+    SlStatusCode status_code = sl_cancellation_status_code(reason);
+    SlDiagCode diag_code = reason == SL_CANCELLATION_REASON_BACKPRESSURE
+                               ? SL_DIAG_ENGINE_BACKPRESSURE
+                               : SL_DIAG_ENGINE_CANCELLED;
+    SlStr reason_name = sl_cancellation_reason_name(reason);
+    std::string message = "JavaScript handler request was cancelled";
+
+    if (reason == SL_CANCELLATION_REASON_DEADLINE_EXCEEDED) {
+        message = "JavaScript handler request deadline was exceeded";
+    }
+    else if (reason == SL_CANCELLATION_REASON_BACKPRESSURE) {
+        message = "JavaScript handler request was rejected by backpressure";
+    }
+    else if (reason == SL_CANCELLATION_REASON_SHUTDOWN) {
+        message = "JavaScript handler request was cancelled during shutdown";
+    }
+
+    if (cancellation != nullptr && !sl_str_is_empty(cancellation->detail)) {
+        message += ": ";
+        message.append(cancellation->detail.ptr, cancellation->detail.length);
+    }
+
+    return sl_v8_write_diag_string(
+        engine->arena, out_diag, diag_code, status_code, message, sl_str_empty(),
+        reason == SL_CANCELLATION_REASON_NONE ? sl_str_empty() : reason_name);
+}
+
+SlStatus sl_v8_check_cancelled(SlEngine* engine, const SlCancellationToken* cancellation,
+                               SlDiag* out_diag)
+{
+    if (!sl_cancellation_token_is_cancelled(cancellation)) {
+        return sl_status_ok();
+    }
+
+    return sl_v8_write_cancelled_diag(engine, cancellation, out_diag);
+}
+
+SlStatus sl_v8_drain_microtasks(SlEngine* engine, v8::Isolate* isolate,
+                                v8::Local<v8::Context> context, SlDiag* out_diag)
+{
+    v8::TryCatch try_catch(isolate);
+
+    isolate->PerformMicrotaskCheckpoint();
+    if (try_catch.HasCaught()) {
+        return sl_v8_write_exception_diag(
+            engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,
+            try_catch, sl_str_empty(), "JavaScript microtask failed",
+            sl_v8_literal("V8 microtasks are drained only on the owning engine thread.",
+                          sizeof("V8 microtasks are drained only on the owning engine thread.") -
+                              1U));
     }
 
     return sl_status_ok();
@@ -801,6 +999,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         v8::Isolate::Scope isolate_scope(backend->isolate);
         v8::HandleScope handle_scope(backend->isolate);
         backend->isolate->SetData(0, backend);
+        backend->isolate->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
         v8::Local<v8::Context> context = v8::Context::New(backend->isolate);
         v8::Context::Scope context_scope(context);
         if (!sl_v8_install_intrinsics(backend->isolate, context)) {
@@ -951,7 +1150,12 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
                        "remapping.") -
                     1U));
     }
+
+    status = sl_v8_drain_microtasks(engine, isolate, context, out_diag);
     backend->pending_handlers = nullptr;
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
 
     for (auto& entry : pending_handlers) {
         backend->handlers.emplace(entry.first, std::move(entry.second));
@@ -963,7 +1167,78 @@ extern "C" SlStatus sl_engine_v8_eval_source(SlEngine* engine, SlStr source_name
 static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                              SlEngine* engine, SlArena* arena,
                                              v8::Local<v8::Value> js_result,
+                                             const SlCancellationToken* cancellation,
                                              SlEngineResult* out_result, SlDiag* out_diag);
+
+static SlStatus sl_v8_write_promise_rejection_diag(SlEngine* engine, v8::Isolate* isolate,
+                                                   v8::Local<v8::Value> reason, SlDiag* out_diag)
+{
+    std::string message = "JavaScript handler Promise rejected";
+    std::string reason_text = sl_v8_maybe_value_to_string(isolate, reason);
+
+    if (!reason_text.empty()) {
+        message += ": ";
+        message += reason_text;
+    }
+
+    return sl_v8_write_diag_string(
+        engine->arena, out_diag, SL_DIAG_ENGINE_PROMISE_REJECTION, SL_STATUS_INVALID_STATE, message,
+        sl_str_empty(),
+        sl_v8_literal("Rejected async handlers produce a safe error response.",
+                      sizeof("Rejected async handlers produce a safe error response.") - 1U));
+}
+
+static SlStatus sl_v8_write_pending_promise_diag(SlEngine* engine, SlDiag* out_diag)
+{
+    return sl_v8_write_diag(
+        engine->arena, out_diag, SL_DIAG_ENGINE_PROMISE_PENDING, SL_STATUS_DEADLINE_EXCEEDED,
+        sl_v8_literal("JavaScript handler Promise did not settle during bounded microtask drain",
+                      sizeof("JavaScript handler Promise did not settle during bounded microtask "
+                             "drain") -
+                          1U),
+        sl_str_empty(),
+        sl_v8_literal("This V8 runtime drains Promise microtasks but does not implement timers, "
+                      "fetch, Node APIs, or native async completion queues for handlers.",
+                      sizeof("This V8 runtime drains Promise microtasks but does not implement "
+                             "timers, fetch, Node APIs, or native async completion queues for "
+                             "handlers.") -
+                          1U));
+}
+
+static SlStatus sl_v8_convert_promise_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                             SlEngine* engine, SlArena* arena,
+                                             v8::Local<v8::Promise> promise,
+                                             const SlCancellationToken* cancellation,
+                                             SlEngineResult* out_result, SlDiag* out_diag)
+{
+    SlStatus status = sl_v8_check_cancelled(engine, cancellation, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (promise->State() == v8::Promise::kPending) {
+        status = sl_v8_drain_microtasks(engine, isolate, context, out_diag);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    status = sl_v8_check_cancelled(engine, cancellation, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (promise->State() == v8::Promise::kPending) {
+        return sl_v8_write_pending_promise_diag(engine, out_diag);
+    }
+
+    if (promise->State() == v8::Promise::kRejected) {
+        return sl_v8_write_promise_rejection_diag(engine, isolate, promise->Result(), out_diag);
+    }
+
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, promise->Result(),
+                                        cancellation, out_result, out_diag);
+}
 
 extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena,
                                                 SlStr function_name, SlEngineResult* out_result,
@@ -1052,15 +1327,32 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
                     1U));
     }
 
-    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, out_result,
-                                        out_diag);
+    status = sl_v8_drain_microtasks(engine, isolate, context, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, nullptr,
+                                        out_result, out_diag);
 }
 
 static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                              SlEngine* engine, SlArena* arena,
                                              v8::Local<v8::Value> js_result,
+                                             const SlCancellationToken* cancellation,
                                              SlEngineResult* out_result, SlDiag* out_diag)
 {
+    SlStatus cancel_status = sl_v8_check_cancelled(engine, cancellation, out_diag);
+    if (!sl_status_is_ok(cancel_status)) {
+        return cancel_status;
+    }
+
+    if (js_result->IsPromise()) {
+        return sl_v8_convert_promise_result(isolate, context, engine, arena,
+                                            js_result.As<v8::Promise>(), cancellation, out_result,
+                                            out_diag);
+    }
+
     if (js_result->IsString()) {
         v8::String::Utf8Value utf8(isolate, js_result);
         SlStatus status;
@@ -1088,20 +1380,6 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
             sl_str_empty(),
             sl_v8_literal("Return a string or a supported Results.* descriptor.",
                           sizeof("Return a string or a supported Results.* descriptor.") - 1U));
-    }
-
-    if (js_result->IsPromise()) {
-        return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_UNSUPPORTED,
-            sl_v8_literal("JavaScript handler returned a Promise",
-                          sizeof("JavaScript handler returned a Promise") - 1U),
-            sl_str_empty(),
-            sl_v8_literal("Async handlers and Promise results are not supported in the alpha V8 "
-                          "bridge; return a concrete string or Results.* descriptor.",
-                          sizeof("Async handlers and Promise results are not supported in the "
-                                 "alpha V8 bridge; return a concrete string or Results.* "
-                                 "descriptor.") -
-                              1U));
     }
 
     v8::Local<v8::Object> object = js_result.As<v8::Object>();
@@ -1266,6 +1544,10 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_v8_check_cancelled(engine, request_context->cancellation, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
 
     v8::Isolate* isolate = backend->isolate;
     v8::Isolate::Scope isolate_scope(isolate);
@@ -1333,8 +1615,13 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
                     1U));
     }
 
-    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, out_result,
-                                        out_diag);
+    status = sl_v8_drain_microtasks(engine, isolate, context, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
+                                        request_context->cancellation, out_result, out_diag);
 }
 
 extern "C" SlStatus sl_engine_v8_validate_registered_handlers(SlEngine* engine, const SlPlan* plan,
@@ -1400,6 +1687,10 @@ extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_v8_check_cancelled(engine, request_context->cancellation, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
 
     auto handler = backend->handlers.find(handler_id);
     if (handler == backend->handlers.end()) {
@@ -1436,6 +1727,11 @@ extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
                     1U));
     }
 
-    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, out_result,
-                                        out_diag);
+    status = sl_v8_drain_microtasks(engine, isolate, context, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
+                                        request_context->cancellation, out_result, out_diag);
 }

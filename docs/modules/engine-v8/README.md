@@ -15,6 +15,11 @@ EPIC-24 adds the first bootstrap runtime handoff: `sloppy run` loads a source-co
 classic bootstrap asset, evaluates generated `app.js`, lets generated code register
 numeric handlers through a narrow intrinsic, validates the plan against that runtime-owned
 handler table, and dispatches by handler ID.
+ENGINE-03 adds the first real async handler runtime: returned Promises are settled through
+an explicit owner-thread V8 microtask checkpoint, fulfilled values flow through the normal
+result conversion path, rejected Promises produce deterministic async diagnostics, and
+Promises still pending after the bounded microtask drain fail as a deadline-style handler
+failure rather than `[object Promise]` success.
 
 ## Purpose
 
@@ -58,8 +63,15 @@ Implemented now:
 - supported handler return values are plain strings or `Results.text/json/ok/noContent`
   and `problem` descriptors. Unsupported descriptor kinds and malformed descriptors fail
   safely with diagnostics.
-- Promise-returning and `async` handlers fail explicitly as unsupported instead of being
-  treated as `[object Promise]` success.
+- Promise-returning and `async` handlers settle when their returned Promise completes during
+  the explicit V8 microtask drain. Fulfilled Promises convert the resolved string or
+  supported `Results.*` descriptor, rejected Promises use
+  `SLOPPY_E_ENGINE_PROMISE_REJECTION`, and still-pending Promises use
+  `SLOPPY_E_ENGINE_PROMISE_PENDING` plus `SL_STATUS_DEADLINE_EXCEEDED`.
+- request contexts now expose a plain `ctx.signal` object with `aborted`, `reason`, and
+  `throwIfAborted()` plus `ctx.deadline` as `null` or an expired deadline marker. The
+  bridge checks a native cancellation token before entering JavaScript and again before
+  async result conversion. There is still no public timer API or client-disconnect source.
 - the engine-owned resource table is available to V8-internal provider bridges;
 - provider-specific intrinsic modules are split out of `engine_v8.cc`. `intrinsics.cc`
   aggregates bridge registration and `intrinsics_sqlite.cc` installs the SQLite bridge
@@ -69,15 +81,14 @@ Later scope:
 
 - true V8 ESM module loading and a production module cache;
 - richer source-map remapping for generated app modules;
-- required V8 Promise integration that maps resolved/rejected JS promises onto the native
-  `SlAsync` settlement model or a documented evolution of it before Sloppy claims async
-  handler support;
+- mapping future native async provider completions onto `SlAsync` or a documented evolution
+  of it. ENGINE-03 settles microtask-only handler Promises but does not add timers, fetch,
+  Node APIs, cross-thread posting, or provider completion queues;
 - runtime source-map remapping now that compiler source maps contain handler mappings.
 
 ## Non-goals
 
-No ESM resolver, full app host, arbitrary import graph, V8 Promise integration, microtask
-draining policy beyond clear rejection, workers, inspector, snapshots, hot reload, Node
+No ESM resolver, full app host, arbitrary import graph, workers, inspector, snapshots, hot reload, Node
 compatibility, timers, fetch, fs, process/Buffer APIs, npm resolution, or package-manager
 behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and does not make
 this bridge a production server boundary.
@@ -142,11 +153,18 @@ Current behavior:
   by generated app code before `sloppy run` starts serving or dispatching `--once`;
 - `sl_engine_call_registered_handler_with_context` dispatches by registered handler ID and
   does not expose raw native pointers to JavaScript;
-- V8 handler calls that return a JavaScript Promise fail with `SL_STATUS_UNSUPPORTED` and a
-  `SLOPPY_E_ENGINE_CALL_ERROR` diagnostic. The alpha bridge does not run microtasks to
-  settle Promise values and does not pretend async handlers completed. This is a temporary
-  hardening policy, not the final runtime shape: real Promise/microtask support is required
-  before async handlers become supported;
+- V8 handler calls drain microtasks after app evaluation and after each handler call on the
+  owner thread. A returned Promise that fulfills during that drain is converted exactly like
+  a synchronous handler return. A rejected Promise fails with
+  `SLOPPY_E_ENGINE_PROMISE_REJECTION`. A Promise that remains pending after the bounded
+  microtask drain fails with `SLOPPY_E_ENGINE_PROMISE_PENDING` and
+  `SL_STATUS_DEADLINE_EXCEEDED`; no timer/fetch/native async queue is invented to keep it
+  alive.
+- context-aware calls reject pre-cancelled request contexts before user code with
+  `SLOPPY_E_ENGINE_CANCELLED` or `SLOPPY_E_ENGINE_BACKPRESSURE` depending on the native
+  token reason. Deadlines cancel through the same token path. Request cleanup remains owned
+  by the caller's request scope and is exercised for resolve, reject, cancellation, and
+  pending-promise timeout paths.
 - `sl_runtime_contract_call_handler` looks up a handler ID in `SlPlan`, validates the
   export name, and calls the named global with no arguments;
 - `sl_runtime_contract_call_handler_with_context` performs the same plan lookup and calls
@@ -386,16 +404,21 @@ operations, `SLOPPY_E_ENGINE_COMPILE_ERROR` for V8 syntax/compile failures,
 `SLOPPY_E_ENGINE_EXCEPTION` for thrown eval/function exceptions, and
 `SLOPPY_E_ENGINE_CALL_ERROR` for missing/non-callable smoke globals, missing registered
 handlers, and unsupported smoke result types. HTTP handler result descriptor conversion
-failures use `SLOPPY_E_INVALID_HTTP_RESULT`. Eval-time intrinsic failures such as invalid
-`__sloppy_register_handler(...)` arguments or duplicate handler registration are reported as
-`SL_DIAG_ENGINE_EXCEPTION` because they are raised while evaluating the app module.
+failures use `SLOPPY_E_INVALID_HTTP_RESULT`. Promise rejections use
+`SLOPPY_E_ENGINE_PROMISE_REJECTION`; Promises that remain pending after the bounded
+microtask drain use `SLOPPY_E_ENGINE_PROMISE_PENDING`; pre-cancelled request contexts use
+`SLOPPY_E_ENGINE_CANCELLED` or `SLOPPY_E_ENGINE_BACKPRESSURE` depending on the cancellation
+reason. Eval-time intrinsic failures such as invalid `__sloppy_register_handler(...)`
+arguments or duplicate handler registration are reported as `SL_DIAG_ENGINE_EXCEPTION`
+because they are raised while evaluating the app module.
 
 The mapping is intentionally basic. It captures V8 exception message text, generated
 source/resource name when available, 1-based line and column when V8 reports them, and a
 bounded stack string as a related note when practical. V8 reports start columns as
 zero-based; the bridge converts them to Sloppy's 1-based diagnostic column convention. No
 runtime source-map consumption, TypeScript remapping, rich code frames, async stack policy,
-route/handler context, Node compatibility, or package-manager behavior is implemented here.
+route/handler context beyond the current generated-source labels, Node compatibility, or
+package-manager behavior is implemented here.
 Compiler `app.js.map` files now include deterministic handler mappings, but V8 runtime
 diagnostics still report generated `app.js` labels and locations until runtime remapping
 consumes those maps.
@@ -420,10 +443,13 @@ Current checks:
   missing function diagnostics, non-callable global diagnostics, thrown function
   diagnostics, unsupported result diagnostics, handler intrinsic misuse, duplicate handler
   registration, missing registered handler diagnostics, registered handler context
-  dispatch, and create/destroy/create lifecycle behavior.
+  dispatch, Promise fulfillment/rejection/pending behavior, cancellation/deadline context
+  snapshots, request-scope cleanup across async success and failure paths, and
+  create/destroy/create lifecycle behavior.
 - `engine.v8.owner_thread` is registered only when V8 is enabled and covers owner-thread
-  lifecycle checks, wrong-thread eval rejection before entering V8, and wrong-thread
-  destroy deferral to the owner thread.
+  lifecycle checks, wrong-thread eval rejection before entering V8, wrong-thread async
+  handler call rejection before V8 microtasks run, and wrong-thread destroy deferral to the
+  owner thread.
 - `execution.handwritten_artifact` is registered only when V8 is enabled and covers parsing
   the handwritten plan fixture, evaluating bootstrap runtime and handwritten/compiler
   `app.js`, validating registered handlers, invoking handler ID `1`, missing plan handler
@@ -431,6 +457,9 @@ Current checks:
 - `http.dispatch.execution` is registered only when V8 is enabled and covers synthetic
   in-memory GET dispatch from parsed HTTP request head through a manual route binding to a
   numeric handler ID, plus missing JavaScript function and throwing handler diagnostics.
+- `conformance.async_handler.run_once` is registered only when V8 is enabled and proves the
+  compiler-emitted direct async handler artifact settles through `sloppy run --artifacts
+  --once`.
 - `bootstrap.stdlib.assets` runs in the default CTest suite and verifies the bootstrap
   stdlib source files and copied build-tree assets exist. `bootstrap.stdlib.api_shape`
   statically checks the bootstrap JavaScript API shape. When `node` is available,

@@ -140,9 +140,11 @@ Closed superseded after reviewer approval:
 These are current product blockers before public alpha docs:
 
 - Compiler/runtime: source-input handoff, named/hoisted handlers, module/service/schema
-  extraction, runtime Promise settlement, non-GET dispatch, and provider/capability
-  enforcement beyond ENGINE-02 metadata.
-- V8/runtime: returned Promise support, microtask policy, cancellation-token propagation, bounded completion queues, async error diagnostics, lifecycle cleanup across pending async work.
+  extraction, broader async source shapes beyond the direct ENGINE-03 handler case,
+  non-GET dispatch, and provider/capability enforcement beyond ENGINE-02 metadata.
+- V8/runtime: native async completion queues, richer deadline/shutdown/disconnect policy,
+  source-remapped async diagnostics, provider-backed cancellation, and stress evidence
+  beyond ENGINE-03's bounded owner-thread microtask settlement.
 - HTTP: framework-level API runtime for methods beyond GET, headers/body policy, JSON body parsing, body/header limits, cancellation signal, timeout hooks, backpressure policy, response serialization, error contract.
 - SQLite: capability enforcement through the JS/native bridge, cancellation-aware operation boundaries, request/app-scope ownership, transaction/prepared-statement policy, executable source example.
 - Security: no OS sandbox claim; enforce capabilities at real bridge points before documenting permissioned data access.

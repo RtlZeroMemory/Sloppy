@@ -67,6 +67,14 @@ continuation through the loop. It is not JS Promise integration, V8 microtask dr
 async handler execution, HTTP request lifecycle, request-scope retention, worker-pool
 completion, or cancellation/deadline/backpressure behavior.
 
+ENGINE-03 adds the first V8 async handler runtime cut. V8-enabled handler calls now drain
+V8 microtasks explicitly on the isolate owner thread, settle returned Promises that
+complete during that drain, map rejected Promises to engine diagnostics, fail still-pending
+Promises as deadline-style handler failures, and expose a native cancellation snapshot to
+handler context as `ctx.signal` plus a minimal `ctx.deadline` marker. It does not add a
+Node event loop, timers, fetch, filesystem/process APIs, native async provider queues, or
+worker-thread scheduling.
+
 TASK 09.C adds an inline/fake `SlWorkerPool` skeleton. It proves the native worker
 completion contract by running a work callback immediately on the caller thread and posting
 the completion to `SlLoop`; the completion callback runs only when the loop drains. It does
@@ -130,7 +138,7 @@ ENGINE-02 supports `Sloppy.createBuilder()` plus `builder.build()`, simple
 GET/POST/PUT/PATCH/DELETE, `.withName(...)`, direct async handler metadata, supported
 `Results.*` descriptors, and minimal SQLite provider/capability Plan metadata. It does not
 implement full TypeScript checking, Node/npm package resolution, bundling, module
-extraction, source-input `sloppy run`, `app.run`, runtime Promise settlement, non-GET
+extraction, source-input `sloppy run`, `app.run`, non-GET
 request dispatch, or native SQLite bridge execution from compiled handlers.
 
 EPIC-22 adds the first dev-only run path for those artifacts. EPIC-23 extends it with the
@@ -452,25 +460,28 @@ future work.
 
 ## Async And Promise Lifecycle
 
-Alpha V8 handlers must return a concrete supported value during the native call: a string
-or supported `Results.*` descriptor. ENGINE-02 can emit async handler metadata and copy a
-direct async handler into `app.js`, but the runtime still rejects Promise results with an
-explicit unsupported diagnostic. Sloppy does not yet keep request scope alive across
-JavaScript async work and does not run a JS event loop or timer/microtask integration path.
+V8 handlers may return a concrete supported value during the native call, or a Promise for
+a supported value that settles during the explicit owner-thread microtask drain. Fulfilled
+Promises are converted exactly like synchronous values. Rejected Promises produce
+deterministic engine diagnostics. Promises still pending after the bounded drain fail as a
+deadline-style handler failure rather than being serialized or reported as success.
 
 Async work must not retain request-arena memory beyond request scope. Long-lived work must
 own data explicitly or use resource table entries.
 
-Future Promise lifecycle requirements:
+Current Promise lifecycle requirements:
 
 - request scope stays alive until the returned promise settles;
 - continuations run on the owning JS event-loop thread;
-- native async completions post back to that JS owner before JS resumes;
 - cleanup runs exactly once;
 - rejected promises become diagnostics;
 - microtask draining is controlled by the V8 bridge;
 - cancellation semantics are specified in `docs/concurrency.md` and required with the first
   real async/HTTP implementation.
+
+Future native async completion queues must post back to the JS owner before JS resumes.
+ENGINE-03 intentionally does not add timers, fetch, native provider completion queues,
+worker-thread scheduling, or Node compatibility.
 
 ENGINE-01 makes that future lifecycle a foundation requirement rather than an optional
 enhancement. Async handlers returning Promises must be supported before Sloppy claims the

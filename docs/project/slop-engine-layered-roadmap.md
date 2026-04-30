@@ -149,6 +149,14 @@ Purpose: async handlers and V8 execution become real.
 
 EPICs: ENGINE-03.
 
+Current implementation note: ENGINE-03 now has a V8-gated microtask-only async handler
+slice. Returned handler Promises that settle during the explicit owner-thread microtask
+drain fulfill/reject deterministically, pending Promises fail as deadline-style handler
+failures, cancellation/deadline/backpressure have a native token snapshot, and cleanup is
+covered for the bounded call path. Native async provider queues, public timer/fetch APIs,
+HTTP disconnect/shutdown drain behavior, and broader compiler async source shapes remain
+future Layer 3 work.
+
 Tasks:
 
 - Promise return support;

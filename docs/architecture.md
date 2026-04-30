@@ -53,6 +53,14 @@ TASK 09.B adds the first native `SlAsync` promise settlement model skeleton over
 It is caller-owned, manual/fake native settlement only, with no V8 Promise integration,
 microtask handling, request-scope retention, HTTP lifecycle, worker pool, cross-thread
 posting, cancellation/deadline/backpressure, or libuv integration.
+ENGINE-03 adds the first V8 async handler runtime cut. In V8-enabled builds, handler calls
+drain V8 microtasks explicitly on the owning engine thread, fulfilled Promises are
+converted through the existing result conversion path, rejected Promises produce
+deterministic diagnostics, and Promises that remain pending after the bounded microtask
+drain fail instead of being serialized or reported as success. It also adds a small native
+cancellation token shape that can represent cancellation, deadlines, shutdown, and
+backpressure snapshots. This is not a Node event loop, timer/fetch/fs/process layer,
+worker-thread scheduler, or native async provider completion queue.
 TASK 09.C adds the first `SlWorkerPool` design skeleton. It is inline/fake only: work runs
 on the caller thread and posts completion back to `SlLoop` for deterministic tests. It has
 no real worker threads, cross-thread posting, libuv, OS event-loop integration, blocking
