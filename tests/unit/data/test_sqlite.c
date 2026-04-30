@@ -55,6 +55,32 @@ static bool diag_has_hint(const SlDiag* diag, const char* hint)
     return false;
 }
 
+static bool str_contains_text(SlStr haystack, SlStr needle)
+{
+    size_t index = 0U;
+    size_t inner = 0U;
+
+    if (needle.length == 0U) {
+        return true;
+    }
+    if (haystack.length < needle.length || haystack.ptr == NULL || needle.ptr == NULL) {
+        return false;
+    }
+
+    for (index = 0U; index <= haystack.length - needle.length; index += 1U) {
+        for (inner = 0U; inner < needle.length; inner += 1U) {
+            if (haystack.ptr[index + inner] != needle.ptr[inner]) {
+                break;
+            }
+        }
+        if (inner == needle.length) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static bool diag_contains_text(const SlDiag* diag, const char* text)
 {
     size_t hint_index = 0U;
@@ -64,12 +90,12 @@ static bool diag_contains_text(const SlDiag* diag, const char* text)
         return false;
     }
 
-    if (sl_str_equal(diag->message, expected)) {
+    if (str_contains_text(diag->message, expected)) {
         return true;
     }
 
     for (hint_index = 0U; hint_index < diag->hint_count; hint_index += 1U) {
-        if (sl_str_equal(diag->hints[hint_index], expected)) {
+        if (str_contains_text(diag->hints[hint_index], expected)) {
             return true;
         }
     }

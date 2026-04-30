@@ -122,11 +122,13 @@ Implemented behavior:
 - `data.sqlite` exposes SQLite provider metadata, callable provider shorthand, and
   `open(options)`. In a V8-enabled Sloppy runtime that installs SQLite intrinsics and has
   Plan/capability metadata, `data.sqlite("main")` resolves provider token `data.main` and
-  returns a safe SQLite connection wrapper. Explicit open uses
+  returns a safe SQLite connection wrapper with the normal `readwrite` default. Explicit
+  open uses
   `data.sqlite.open({ database, capability, access })`; `database` is canonical, `path` is
   a transitional alias, `capability` is required, `access` defaults to `readwrite`, and
-  unsupported option fields fail clearly. In bootstrap-only or non-V8 contexts, it fails
-  with a bridge-unavailable error.
+  unsupported option fields fail clearly. Use explicit `access: "read"` for read-only
+  capabilities. In bootstrap-only or non-V8 contexts, it fails with a bridge-unavailable
+  error.
 - `data.postgres` exposes PostgreSQL provider metadata, `$1` placeholder style, connection
   string redaction, and `open(options)` as the future stdlib entry point.
 - `data.sqlserver` exposes SQL Server provider metadata, ODBC `?` placeholder style,

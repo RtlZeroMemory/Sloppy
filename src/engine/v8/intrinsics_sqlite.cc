@@ -260,20 +260,6 @@ const SlPlanDataProvider* sqlite_v8_find_provider(const SlV8Engine* backend, SlS
     return nullptr;
 }
 
-bool sqlite_v8_capability_is_read_only(const SlCapabilityRegistry* registry, SlStr token)
-{
-    const SlPlanCapability* capability = nullptr;
-
-    if (registry == nullptr || sl_str_is_empty(token) ||
-        !sl_status_is_ok(sl_capability_registry_find(registry, token, &capability)) ||
-        capability == nullptr)
-    {
-        return false;
-    }
-
-    return sl_str_equal(capability->access, sl_str_from_cstr("read"));
-}
-
 SlCapabilityOperation sqlite_v8_open_capability_operation(SlSqliteAccess access)
 {
     switch (access) {
@@ -388,13 +374,6 @@ bool sqlite_v8_resolve_provider_request(v8::Isolate* isolate, const SlV8Engine* 
     }
     else {
         request->capability.assign(provider->token.ptr, provider->token.length);
-    }
-
-    if (sqlite_v8_capability_is_read_only(
-            backend == nullptr ? nullptr : backend->capabilities,
-            sl_str_from_parts(request->capability.data(), request->capability.size())))
-    {
-        request->access = SL_SQLITE_ACCESS_READ;
     }
 
     return true;

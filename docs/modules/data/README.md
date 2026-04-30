@@ -50,7 +50,8 @@ Implemented bootstrap API:
   `database` is canonical for explicit open, `path` is only a transitional alias, and
   `path` is accepted only when it is identical to `database`. `capability` is required,
   `access` defaults to `readwrite`, and unsupported fields or mismatched aliases fail
-  before bridge work.
+  before bridge work. Provider shorthand keeps that default; read-only capabilities need
+  explicit `access: "read"`.
 - `data.postgres` provider metadata, `$1` placeholder style, redaction helper, and
   `data.postgres.open(options)` as the future stdlib entry point. It validates options and
   fails honestly until the native bridge exists.

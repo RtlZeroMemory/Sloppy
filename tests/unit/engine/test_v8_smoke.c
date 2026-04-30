@@ -2382,6 +2382,90 @@ static int test_sqlite_intrinsic_read_capability_cannot_open_for_write(void)
     return 0;
 }
 
+static int test_sqlite_intrinsic_provider_shorthand_read_capability_keeps_readwrite_default(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 1960;
+    }
+
+    providers[0] = (SlPlanDataProvider){
+        .token = sl_str_from_cstr("data.main"),
+        .provider = sl_str_from_cstr("sqlite"),
+        .capability = sl_str_from_cstr("data.read"),
+        .service = sl_str_empty(),
+        .database = sl_str_from_cstr(":memory:"),
+    };
+    capabilities[0] = (SlPlanCapability){
+        .token = sl_str_from_cstr("data.read"),
+        .kind = sl_str_from_cstr("database"),
+        .access = sl_str_from_cstr("read"),
+        .provider = sl_str_from_cstr("data.main"),
+    };
+    plan = (SlPlan){
+        .data_providers = providers,
+        .data_provider_count = 1U,
+        .capabilities = capabilities,
+        .capability_count = 1U,
+    };
+    if (expect_status(sl_capability_registry_init_from_plan(&plan, &registry), SL_STATUS_OK) != 0) {
+        return 1961;
+    }
+    options.plan = &plan;
+    options.capabilities = &registry;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 1962;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("sqlite-shorthand-denied-open.js"),
+                          sl_str_from_cstr("globalThis.sqliteShorthandDeniedOpen = function () {"
+                                           "  __sloppy.data.sqlite.open({ provider: 'data.main' });"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1963;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteShorthandDeniedOpen"),
+                                               &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1964;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(
+            diag.message, sl_str_from_cstr("capability access denied: insufficient access")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("operation: readwrite")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1965;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_sqlite_intrinsic_explicit_write_capability_opens_write_only_handle(void)
 {
     unsigned char engine_storage[16384];
@@ -2716,6 +2800,11 @@ int main(void)
     }
 
     result = test_sqlite_intrinsic_read_capability_cannot_open_for_write();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_provider_shorthand_read_capability_keeps_readwrite_default();
     if (result != 0) {
         return result;
     }

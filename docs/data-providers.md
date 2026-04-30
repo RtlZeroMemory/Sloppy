@@ -401,7 +401,9 @@ Current bootstrap behavior:
   reject nested transactions, and reject use after close.
 - the fake provider never opens a database and never executes SQL.
 - `data.sqlite("main")` resolves the Plan provider token `data.main` and opens a native
-  SQLite connection through the resource-table bridge in V8-enabled runtime contexts.
+  SQLite connection through the resource-table bridge in V8-enabled runtime contexts. The
+  shorthand keeps the normal `readwrite` default; a read-only capability must use explicit
+  `data.sqlite.open({ database, capability, access: "read" })`.
 - `data.sqlite.open({ database, capability, access })` is the explicit low-level SQLite
   open shape. The older `path` key is accepted as a transitional alias for `database`; new
   docs and fixtures should use `database`. If both `database` and `path` are supplied,
@@ -487,7 +489,8 @@ SQLite JS bridge behavior:
 - stale, closed, invalid, and wrong-kind resource IDs fail through the core resource-table
   diagnostics before provider code runs;
 - Plan provider lookup resolves `data.sqlite("main")` to `data.main`, verifies provider
-  kind `sqlite`, and requires database metadata;
+  kind `sqlite`, and requires database metadata. Provider-token shorthand keeps the
+  requested/default access and does not silently downgrade readwrite opens to read;
 - open, exec, query, queryOne, and transaction operations call the native database
   capability hook before provider work. Read operations require `read` or `readwrite`,
   write operations require `write` or `readwrite`, and readwrite opens require
