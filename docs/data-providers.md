@@ -154,8 +154,8 @@ ENGINE-23.A/B turns these modes into implementation-grade descriptor and admissi
 contracts. ENGINE-23.C implements the serialized blocking worker model for provider-like
 native operations, and ENGINE-23.D implements the bounded blocking pool worker model for
 provider-like native operations. Cancellation/timeout/late-completion detail follows in
-#395, capability-gated dispatch follows in #396, diagnostics/stress evidence follows in
-#397, and real SQLite bridge conversion remains ENGINE-17.
+issue `#395`, capability-gated dispatch follows in issue `#396`, diagnostics/stress
+evidence follows in issue `#397`, and real SQLite bridge conversion remains ENGINE-17.
 
 Provider operation descriptors must own or retain all memory needed after submission: SQL
 strings, parameter text/blob values, provider config references, capability token,

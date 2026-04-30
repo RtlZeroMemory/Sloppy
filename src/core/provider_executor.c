@@ -367,6 +367,7 @@ static void sl_provider_executor_activate_next(SlProviderInstanceExecutor* execu
             return;
         }
         next->state = SL_PROVIDER_OPERATION_ACTIVE;
+        next->counted_in_flight = true;
         executor->in_flight += 1U;
         sl_provider_executor_signal_worker(executor);
     }
@@ -394,8 +395,9 @@ static void sl_provider_executor_finish_terminal_locked(SlProviderInstanceExecut
     if (executor->count != 0U) {
         executor->count -= 1U;
     }
-    if (operation->state == SL_PROVIDER_OPERATION_TERMINAL && executor->in_flight != 0U) {
+    if (operation->counted_in_flight && executor->in_flight != 0U) {
         executor->in_flight -= 1U;
+        operation->counted_in_flight = false;
     }
     executor->completed_count += 1U;
     sl_provider_executor_activate_next(executor);
@@ -453,6 +455,10 @@ static bool sl_provider_executor_config_valid(const SlProviderExecutorConfig* co
         if (config->max_in_flight != 0U && config->max_in_flight > config->worker_count) {
             return false;
         }
+    }
+
+    if (config->mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING && config->max_in_flight > 1U) {
+        return false;
     }
 
     return true;
@@ -542,8 +548,10 @@ static void sl_provider_executor_stop_started_workers(SlProviderInstanceExecutor
         return;
     }
 
+    sl_provider_executor_lock(executor);
     executor->worker_stop_requested = true;
     sl_provider_executor_broadcast_worker(executor);
+    sl_provider_executor_unlock(executor);
     while (started_count > 0U) {
         started_count -= 1U;
         sl_platform_thread_join(executor->worker_threads[started_count]);

@@ -208,8 +208,8 @@ Implemented in ENGINE-23.C/D:
   blocking and blocking pool executor paths;
 - accepted serialized or pool work transfers ownership to the executor before a worker can
   run;
-- rejected run callbacks on non-worker modes or unsafe completion backends return a
-  deterministic unsupported status without ownership transfer;
+- rejected run callbacks on non-worker modes or unsafe (non-thread-safe) completion
+  backends return a deterministic unsupported status without ownership transfer;
 - worker callbacks receive only `SlProviderOperation` and caller-owned provider payload
   context; they must not touch V8 or JS handles.
 

@@ -143,6 +143,7 @@ struct SlProviderOperation
     void* cleanup_user;
     bool cleanup_ran;
     bool worker_claimed;
+    bool counted_in_flight;
     size_t sequence;
 };
 
