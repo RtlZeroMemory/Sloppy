@@ -572,13 +572,83 @@ static int test_renderer_outputs(void)
     return 0;
 }
 
-static int test_json_renderer_snapshot(void)
+static int test_renderer_exact_preflight_capacity(void)
 {
-    unsigned char buffer[4096];
-    SlArena arena;
+    unsigned char build_buffer[1024];
+    unsigned char render_buffer[1024];
+    unsigned char exact_buffer[1024];
+    unsigned char short_buffer[1024];
+    SlArena build_arena;
+    SlArena render_arena;
+    SlArena exact_arena;
+    SlArena short_arena;
     SlDiagBuilder builder;
     SlDiag diag;
     SlStr rendered;
+    SlStr exact;
+
+    if (expect_status(make_arena(&build_arena, build_buffer, sizeof(build_buffer)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(make_arena(&render_arena, render_buffer, sizeof(render_buffer)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 74;
+    }
+
+    if (expect_status(sl_diag_builder_init(&builder, &build_arena, SL_DIAG_SEVERITY_ERROR,
+                                           SL_DIAG_INVALID_ROUTE_PATTERN,
+                                           sl_str_from_cstr("unsupported dynamic route pattern")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_set_primary_span(
+                          &builder, sl_source_span_make(sl_str_from_cstr("app.js"), 5U, 12U, 9U)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_add_hint(
+                          &builder, sl_str_from_cstr("expected a string literal route pattern")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_render_text(&render_arena, &diag, &rendered), SL_STATUS_OK) != 0)
+    {
+        return 75;
+    }
+
+    if (rendered.length == 0U || rendered.length > sizeof(exact_buffer)) {
+        return 76;
+    }
+
+    if (expect_status(sl_arena_init(&exact_arena, exact_buffer, rendered.length), SL_STATUS_OK) !=
+        0)
+    {
+        return 77;
+    }
+
+    if (expect_status(sl_diag_render_text(&exact_arena, &diag, &exact), SL_STATUS_OK) != 0 ||
+        exact.length != rendered.length || sl_arena_used(&exact_arena) != rendered.length ||
+        expect_str_equal(exact, rendered) != 0)
+    {
+        return 77;
+    }
+
+    if (expect_status(sl_arena_init(&short_arena, short_buffer, rendered.length - 1U),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_render_text(&short_arena, &diag, &exact), SL_STATUS_OUT_OF_MEMORY) !=
+            0)
+    {
+        return 78;
+    }
+
+    return 0;
+}
+
+static int test_json_renderer_snapshot(void)
+{
+    unsigned char buffer[4096];
+    unsigned char exact_buffer[512];
+    SlArena arena;
+    SlArena exact_arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlStr rendered;
+    SlStr exact;
 
     if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
         return 80;
@@ -617,6 +687,17 @@ static int test_json_renderer_snapshot(void)
     }
     if (expect_snapshot(rendered, "tests/golden/diagnostics/json_single.json") != 0) {
         return 86;
+    }
+    if (rendered.length == 0U || rendered.length > sizeof(exact_buffer)) {
+        return 87;
+    }
+    if (expect_status(sl_arena_init(&exact_arena, exact_buffer, rendered.length), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_diag_render_json(&exact_arena, &diag, &exact), SL_STATUS_OK) != 0 ||
+        exact.length != rendered.length || sl_arena_used(&exact_arena) != rendered.length ||
+        expect_str_equal(exact, rendered) != 0)
+    {
+        return 87;
     }
     return 0;
 }
@@ -763,6 +844,11 @@ int main(void)
     }
 
     result = test_renderer_outputs();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_renderer_exact_preflight_capacity();
     if (result != 0) {
         return result;
     }

@@ -19,8 +19,6 @@
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 
-#define SL_DIAG_RENDER_CAPACITY_SLACK 128U
-
 static SlStr sl_diag_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -88,23 +86,11 @@ static size_t sl_diag_decimal_len(size_t value)
 static SlStatus sl_diag_builder_init_for_render(SlArena* arena, size_t capacity,
                                                 SlStringBuilder* builder)
 {
-    size_t bounded_capacity = 0U;
-    SlStatus status;
-
     if (arena == NULL || builder == NULL || capacity == 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    /*
-     * Builder adoption keeps deterministic bounded preflight, with a small cushion so a
-     * length-accounting bug returns capacity failure instead of writing past the target.
-     */
-    status = sl_checked_add_size(capacity, SL_DIAG_RENDER_CAPACITY_SLACK, &bounded_capacity);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    return sl_string_builder_init_arena(builder, arena, bounded_capacity, bounded_capacity);
+    return sl_string_builder_init_arena(builder, arena, capacity, capacity);
 }
 
 static SlStatus sl_diag_builder_append_literal(SlStringBuilder* builder, const char* literal,
@@ -274,7 +260,7 @@ static SlStatus sl_diag_primary_render_len(size_t* total, SlSourceSpan span)
         return sl_status_ok();
     }
 
-    status = sl_diag_add_len(total, 7U);
+    status = sl_diag_add_len(total, 6U);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1142,13 +1128,15 @@ static SlStatus sl_diag_json_span_len(size_t* total, SlSourceSpan span)
         status = sl_diag_add_len(total, sizeof("\"line\":") - 1U + sl_diag_decimal_len(span.line) +
                                             1U + sizeof("\"column\":") - 1U +
                                             sl_diag_decimal_len(span.column));
-        if (!sl_status_is_ok(status) || span.length == 0U) {
-            return status;
-        }
-        status = sl_diag_add_len(total,
-                                 1U + sizeof("\"span\":") - 1U + sl_diag_decimal_len(span.length));
         if (!sl_status_is_ok(status)) {
             return status;
+        }
+        if (span.length != 0U) {
+            status = sl_diag_add_len(total, 1U + sizeof("\"span\":") - 1U +
+                                                sl_diag_decimal_len(span.length));
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
     }
     return sl_diag_add_len(total, 1U);
