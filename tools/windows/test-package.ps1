@@ -46,7 +46,8 @@ function Invoke-OutsideCheckoutCompilerSmoke {
         [string]$SloppycExecutable,
         [string]$SloppyExecutable,
         [string]$StdlibRoot,
-        [string]$WorkingRoot
+        [string]$WorkingRoot,
+        [switch]$RequireV8Runtime
     )
 
     $sourceDir = Join-Path $WorkingRoot "source"
@@ -84,6 +85,7 @@ export default app;
 
     $runStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $runStartInfo.FileName = $SloppyExecutable
+    $runStartInfo.WorkingDirectory = $WorkingRoot
     $runStartInfo.RedirectStandardOutput = $true
     $runStartInfo.RedirectStandardError = $true
     $runStartInfo.UseShellExecute = $false
@@ -106,7 +108,21 @@ export default app;
         }
         $stdoutTask = $runProcess.StandardOutput.ReadToEndAsync()
         $stderrTask = $runProcess.StandardError.ReadToEndAsync()
-        $runProcess.WaitForExit()
+        if (-not $runProcess.WaitForExit(60000)) {
+            try {
+                $null = $runProcess.CloseMainWindow()
+            } catch {
+                # Best-effort cleanup before forcing termination below.
+            }
+            if (-not $runProcess.WaitForExit(5000)) {
+                try {
+                    $runProcess.Kill()
+                } catch {
+                    # The timeout failure is reported below even if kill races with exit.
+                }
+            }
+            throw "packaged sloppy run timed out after 60s."
+        }
         $runOutput = @(
             $stdoutTask.GetAwaiter().GetResult(),
             $stderrTask.GetAwaiter().GetResult()
@@ -127,6 +143,9 @@ export default app;
 
     if ($runText -notmatch "requires V8-enabled build") {
         throw "packaged sloppy run failed for an unexpected reason: $runText"
+    }
+    if ($RequireV8Runtime) {
+        throw "Package smoke required V8 runtime execution, but packaged sloppy reported non-V8 build."
     }
     Write-Host "Package smoke artifact execution skipped/not configured: packaged sloppy is not V8-enabled."
 }
@@ -231,7 +250,8 @@ try {
         -SloppycExecutable (Join-Path $packageRoot "bin/sloppyc.exe") `
         -SloppyExecutable (Join-Path $packageRoot "bin/sloppy.exe") `
         -StdlibRoot $stdlibRoot `
-        -WorkingRoot (Join-Path $tempRoot "outside-checkout-work")
+        -WorkingRoot (Join-Path $tempRoot "outside-checkout-work") `
+        -RequireV8Runtime:$RequireV8Runtime
 
     foreach ($excluded in @(".git", ".sdeps", "build", "compiler/target", "target", "vcpkg_installed")) {
         Assert-PackagePathMissing -Root $packageRoot -RelativePath $excluded
