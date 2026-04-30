@@ -809,77 +809,137 @@ static int test_route_params_may_match_but_are_not_required_by_dispatch(void)
     return 0;
 }
 
+static int dispatch_noop_case(const char* request_text, SlHttpMethod route_method,
+                              const char* pattern_text, SlStatusCode expected_status,
+                              SlDiagCode expected_diag_code)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlRoutePattern pattern = {0};
+    SlHttpRouteBinding route = {0};
+    SlHttpDispatchTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, request_text, &request) != 0 ||
+        parse_pattern(&arena, pattern_text, &pattern) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1;
+    }
+
+    route.method = route_method;
+    route.pattern = &pattern;
+    route.handler_id = 1U;
+    table.routes = &route;
+    table.route_count = 1U;
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table, &request, &result, &diag);
+    if (sl_status_code(status) != expected_status || result.kind != SL_ENGINE_RESULT_NONE ||
+        diag.code != expected_diag_code)
+    {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_conformance_smoke_default_http_cases(void)
+{
+    typedef struct DispatchCase
+    {
+        const char* request;
+        SlHttpMethod route_method;
+        const char* pattern;
+        SlStatusCode status;
+        SlDiagCode diag;
+    } DispatchCase;
+
+    static const DispatchCase cases[] = {
+        {"GET /ok HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
+         SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
+        {"POST /ok HTTP/1.1\r\nContent-Length: 0\r\n\r\n", SL_HTTP_METHOD_POST, "/ok",
+         SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
+        {"PUT /ok HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello",
+         SL_HTTP_METHOD_PUT, "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
+        {"PATCH /ok HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n"
+         "{\"ok\":true}",
+         SL_HTTP_METHOD_PATCH, "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
+        {"DELETE /ok HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_DELETE, "/ok",
+         SL_STATUS_UNSUPPORTED, SL_DIAG_UNSUPPORTED_ENGINE},
+        {"GET /missing HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
+         SL_STATUS_OUT_OF_RANGE, SL_DIAG_HTTP_ROUTE_NOT_FOUND},
+        {"POST /ok HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
+         SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_UNSUPPORTED_METHOD},
+        {"POST /ok HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 6\r\n\r\n"
+         "{\"ok\":",
+         SL_HTTP_METHOD_POST, "/ok", SL_STATUS_INVALID_ARGUMENT, SL_DIAG_MALFORMED_JSON},
+        {"POST /ok HTTP/1.1\r\nContent-Type: application/octet-stream\r\nContent-Length: "
+         "3\r\n\r\nabc",
+         SL_HTTP_METHOD_POST, "/ok", SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE},
+        {"GET /ok?q=%zz HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
+         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_HTTP_REQUEST},
+    };
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        if (dispatch_noop_case(cases[index].request, cases[index].route_method,
+                               cases[index].pattern, cases[index].status, cases[index].diag) != 0)
+        {
+            return 110 + (int)index;
+        }
+    }
+
+    return 0;
+}
+
+typedef int (*HttpDispatchTestFn)(void);
+
+typedef struct HttpDispatchTestCase
+{
+    HttpDispatchTestFn fn;
+} HttpDispatchTestCase;
+
 int main(void)
 {
-    int result = test_get_missing_route_fails_cleanly();
-    if (result != 0) {
-        return result;
+    static const HttpDispatchTestCase tests[] = {
+        {test_get_missing_route_fails_cleanly},
+        {test_route_table_build_orders_literal_before_params},
+        {test_route_table_rejects_duplicate_method_pattern},
+        {test_route_table_build_keeps_method_metadata},
+        {test_route_table_build_accepts_non_get_only_metadata},
+        {test_method_mismatch_returns_method_not_allowed},
+        {test_supported_non_get_methods_reach_engine},
+        {test_transfer_encoding_body_is_rejected_before_handler_call},
+        {test_json_body_reaches_engine_when_valid},
+        {test_invalid_json_body_fails_before_handler_call},
+        {test_unsupported_body_content_type_fails_before_handler_call},
+        {test_non_empty_body_without_content_length_fails_before_handler_call},
+        {test_body_too_large_fails_before_handler_call},
+        {test_missing_plan_handler_fails_before_engine_call},
+        {test_route_params_may_match_but_are_not_required_by_dispatch},
+        {test_conformance_smoke_default_http_cases},
+    };
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {
+        int result = tests[index].fn();
+        if (result != 0) {
+            return result;
+        }
     }
 
-    result = test_route_table_build_orders_literal_before_params();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_route_table_rejects_duplicate_method_pattern();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_route_table_build_keeps_method_metadata();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_route_table_build_accepts_non_get_only_metadata();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_method_mismatch_returns_method_not_allowed();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_supported_non_get_methods_reach_engine();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_transfer_encoding_body_is_rejected_before_handler_call();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_json_body_reaches_engine_when_valid();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_invalid_json_body_fails_before_handler_call();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_unsupported_body_content_type_fails_before_handler_call();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_non_empty_body_without_content_length_fails_before_handler_call();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_body_too_large_fails_before_handler_call();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_missing_plan_handler_fails_before_engine_call();
-    if (result != 0) {
-        return result;
-    }
-
-    return test_route_params_may_match_but_are_not_required_by_dispatch();
+    return 0;
 }

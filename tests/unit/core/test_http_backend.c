@@ -886,6 +886,275 @@ static int test_request_cancel_clears_stale_diagnostic(void)
     return 0;
 }
 
+static int test_stress_repeated_valid_lifecycle_releases_counters(void)
+{
+    enum
+    {
+        ITERATIONS = 64
+    };
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    size_t index = 0U;
+
+    options.keep_alive_enabled = true;
+    options.parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, &options) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 100;
+    }
+
+    for (index = 0U; index < ITERATIONS; index += 1U) {
+        SlHttpRequestLifecycle request = {0};
+
+        sl_arena_reset(&arena);
+        if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL),
+                          SL_STATUS_OK) != 0 ||
+            backend.active_requests != 1U ||
+            expect_status(
+                sl_http_request_parse_head(
+                    &request, bytes_from_cstr("GET /ok HTTP/1.1\r\nHost: ex\r\n\r\n"), NULL),
+                SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_begin_dispatch(&request, NULL), SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_begin_write(&request, NULL), SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_complete(&request, NULL), SL_STATUS_OK) != 0 ||
+            backend.active_requests != 0U ||
+            sl_http_connection_state(&connection) != SL_HTTP_CONNECTION_STATE_OPEN ||
+            expect_status(sl_http_request_close(&request, NULL), SL_STATUS_OK) != 0 ||
+            request.head.raw_target.ptr != NULL)
+        {
+            return 101;
+        }
+    }
+
+    if (expect_status(sl_http_connection_close(&connection, NULL), SL_STATUS_OK) != 0 ||
+        backend.active_connections != 0U)
+    {
+        return 102;
+    }
+
+    return 0;
+}
+
+static int test_stress_repeated_malformed_lifecycle_releases_counters(void)
+{
+    enum
+    {
+        ITERATIONS = 64
+    };
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    size_t index = 0U;
+
+    options.max_connections = ITERATIONS;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, &options) != 0)
+    {
+        return 110;
+    }
+
+    for (index = 0U; index < ITERATIONS; index += 1U) {
+        SlHttpConnection connection = {0};
+        SlHttpRequestLifecycle request = {0};
+        SlDiag diag = {0};
+
+        sl_arena_reset(&arena);
+        if (expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_begin(&connection, &arena, &request, NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(
+                sl_http_request_parse_head(&request, bytes_from_cstr("GET / HTTP/1.1"), &diag),
+                SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_INVALID_HTTP_REQUEST ||
+            expect_status(sl_http_request_fail(&request, NULL), SL_STATUS_OK) != 0 ||
+            backend.active_requests != 0U ||
+            expect_status(sl_http_connection_fail(&connection, NULL), SL_STATUS_OK) != 0 ||
+            backend.active_connections != 0U)
+        {
+            return 111;
+        }
+    }
+
+    return 0;
+}
+
+static int test_stress_repeated_body_policy_failures_are_deterministic(void)
+{
+    enum
+    {
+        ITERATIONS = 32
+    };
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    size_t index = 0U;
+
+    options.keep_alive_enabled = true;
+    options.parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    options.parse.max_body_length = 4U;
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, &options) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 120;
+    }
+
+    for (index = 0U; index < ITERATIONS; index += 1U) {
+        SlHttpRequestLifecycle request = {0};
+        SlHttpBodyReader reader = {0};
+        SlDiag diag = {0};
+
+        sl_arena_reset(&arena);
+        if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_parse_head(
+                              &request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(
+                sl_http_request_body_reader_begin(
+                    &request, sl_str_from_cstr("application/octet-stream"), 3U, &reader, &diag),
+                SL_STATUS_UNSUPPORTED) != 0 ||
+            diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE || backend.active_requests != 0U)
+        {
+            return 121;
+        }
+
+        connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
+        request = (SlHttpRequestLifecycle){0};
+        reader = (SlHttpBodyReader){0};
+        diag = (SlDiag){0};
+        sl_arena_reset(&arena);
+        if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_parse_head(
+                              &request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_body_reader_begin(
+                              &request, sl_str_from_cstr("text/plain"), 5U, &reader, &diag),
+                          SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+            diag.code != SL_DIAG_HTTP_BODY_LIMIT || backend.active_requests != 0U)
+        {
+            return 122;
+        }
+        connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
+    }
+
+    return 0;
+}
+
+static int test_stress_repeated_overload_rejects_without_queue_growth(void)
+{
+    enum
+    {
+        ITERATIONS = 32
+    };
+    unsigned char first_storage[TEST_ARENA_SIZE];
+    unsigned char second_storage[TEST_ARENA_SIZE];
+    SlArena first_arena = {0};
+    SlArena second_arena = {0};
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection first_connection = {0};
+    SlHttpConnection second_connection = {0};
+    SlHttpRequestLifecycle first_request = {0};
+    size_t index = 0U;
+
+    options.max_connections = 2U;
+    options.max_active_requests = 1U;
+    if (expect_status(sl_arena_init(&first_arena, first_storage, sizeof(first_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&second_arena, second_storage, sizeof(second_storage)),
+                      SL_STATUS_OK) != 0 ||
+        init_started_backend(&backend, &options) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &first_connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &second_connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&first_connection, &first_arena, &first_request, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 130;
+    }
+
+    for (index = 0U; index < ITERATIONS; index += 1U) {
+        SlHttpRequestLifecycle rejected_request = {0};
+        SlDiag diag = {0};
+
+        if (expect_status(
+                sl_http_request_begin(&second_connection, &second_arena, &rejected_request, &diag),
+                SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+            diag.code != SL_DIAG_HTTP_OVERLOAD || rejected_request.admitted ||
+            backend.active_requests != 1U || backend.active_connections != 2U)
+        {
+            return 131;
+        }
+    }
+
+    if (expect_status(sl_http_request_close(&first_request, NULL), SL_STATUS_OK) != 0 ||
+        backend.active_requests != 0U)
+    {
+        return 132;
+    }
+
+    return 0;
+}
+
+static int test_stress_repeated_shutdown_rejection_and_cleanup(void)
+{
+    enum
+    {
+        ITERATIONS = 32
+    };
+    size_t index = 0U;
+
+    for (index = 0U; index < ITERATIONS; index += 1U) {
+        unsigned char storage[TEST_ARENA_SIZE];
+        SlArena arena = {0};
+        SlHttpBackend backend = {0};
+        SlHttpConnection connection = {0};
+        SlHttpRequestLifecycle request = {0};
+        SlHttpRequestLifecycle rejected_request = {0};
+        SlDiag diag = {0};
+
+        if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+            init_started_backend(&backend, NULL) != 0 ||
+            expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_request_begin(&connection, &arena, &request, NULL),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_backend_stop(&backend, NULL), SL_STATUS_OK) != 0)
+        {
+            return 140;
+        }
+
+        connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
+        if (expect_status(sl_http_request_begin(&connection, &arena, &rejected_request, &diag),
+                          SL_STATUS_CANCELLED) != 0 ||
+            diag.code != SL_DIAG_HTTP_SHUTDOWN || rejected_request.admitted ||
+            backend.active_requests != 1U ||
+            expect_status(sl_http_request_shutdown(&request, &diag), SL_STATUS_CANCELLED) != 0 ||
+            diag.code != SL_DIAG_HTTP_SHUTDOWN || backend.active_requests != 0U ||
+            expect_status(sl_http_connection_close(&connection, NULL), SL_STATUS_OK) != 0 ||
+            sl_http_backend_state(&backend) != SL_HTTP_BACKEND_STATE_STOPPED)
+        {
+            return 141;
+        }
+    }
+
+    return 0;
+}
+
 typedef int (*HttpBackendTestFn)(void);
 
 typedef struct HttpBackendTestCase
@@ -915,6 +1184,11 @@ int main(void)
         {test_shutdown_rejects_new_and_cancels_active_work},
         {test_shutdown_during_response_write_and_diagnostic_name},
         {test_request_cancel_clears_stale_diagnostic},
+        {test_stress_repeated_valid_lifecycle_releases_counters},
+        {test_stress_repeated_malformed_lifecycle_releases_counters},
+        {test_stress_repeated_body_policy_failures_are_deterministic},
+        {test_stress_repeated_overload_rejects_without_queue_growth},
+        {test_stress_repeated_shutdown_rejection_and_cleanup},
     };
     size_t index = 0U;
 

@@ -371,6 +371,9 @@ Runtime diagnostics:
 - HTTP backend shutdown rejection/cancellation diagnostics;
 - HTTP backend body-read cancellation, timeout, shutdown, body-limit, unsupported-media,
   and invalid body-length diagnostics;
+- HTTP stress/conformance smoke keeps parser-limit, body-limit, unsupported-media,
+  overload/backpressure, shutdown, malformed-query, and route/method diagnostics
+  deterministic under repeated default non-V8 execution;
 - unsupported request bodies;
 - unsupported request content types;
 - request body size limit failures;

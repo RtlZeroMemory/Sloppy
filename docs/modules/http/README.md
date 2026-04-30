@@ -26,9 +26,12 @@ backend/listener state, connection states, request lifecycle states, parser targ
 limits, timeout/deadline hooks, bounded admission/backpressure counters, and deterministic
 HTTP lifecycle diagnostics. ENGINE-13.D/E adds a backend-owned bounded body reader,
 body-read cancellation/timeout/shutdown transitions, shutdown rejection for new request
-work, active-request shutdown cancellation hooks, and stable shutdown diagnostics. The
+work, active-request shutdown cancellation hooks, and stable shutdown diagnostics.
+ENGINE-13.F adds bounded default non-V8 stress and conformance smoke over the implemented
+parser, lifecycle, body-policy, overload, shutdown, dispatch, and diagnostic behavior. The
 backend model is core C state only; concrete listener and socket details remain behind the
-platform boundary. There is still no production HTTP
+platform boundary. This is not benchmark evidence and not production-edge HTTP evidence.
+There is still no production HTTP
 server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser API, middleware,
 cookies/sessions, static file server, compression, multipart upload, streaming responses,
 public TypeScript `app.run`, or broad response framework.
@@ -81,14 +84,22 @@ Implemented now:
   unsupported media before dispatch, observe cancellation/deadline/shutdown before and
   during body reads, reject new request work after shutdown starts, and cancel active
   request work through deterministic cleanup-once terminal paths.
+- ENGINE-13.F stress/conformance smoke evidence: bounded repeated valid requests, repeated
+  malformed requests, repeated parser-limit failures, repeated body/media policy failures,
+  overload rejection without queue growth, shutdown rejection/cancellation cleanup, and
+  default non-V8 conformance-style dispatch diagnostics.
 
 Future scope:
 
 - streaming HTTP parser state;
-- stress/conformance smoke in ENGINE-13.F;
+- production-edge HTTP proof beyond ENGINE-13.F's bounded smoke;
 - production server hardening if explicitly scoped later;
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
+
+The next real application proof is not a benchmark. It is an HTTP + SQLite users API path
+through ENGINE-17.E and the broader ENGINE-19 conformance matrix after SQLite runtime
+completion lands.
 
 EPIC-14 module routes are bootstrap `app.mapGet` registrations only. They do not connect
 module routes to the native HTTP parser, synthetic dispatch helper, route params, or
@@ -290,8 +301,9 @@ implementation. `sl_http_backend_stop` stops accepting new connections and new r
 on existing connections, moves the backend/listener to stopping, and reaches stopped only
 after active connection and request counters drop to zero. Active requests may complete
 normally, time out, fail, close, or be cancelled through the request shutdown hook. There is
-no real drain timer, signal handling, socket half-close policy, or stress evidence yet;
-ENGINE-13.F/#324 owns that follow-up.
+no real drain timer, signal handling, socket half-close policy, or production graceful-drain
+claim. ENGINE-13.F/#324 covers only bounded deterministic shutdown smoke for the implemented
+core state model.
 
 Native response writing uses `SlByteBuilder` over the caller-provided output buffer. The
 returned `SlBytes` view borrows that buffer, and failed writes reset the returned view to an
@@ -403,13 +415,20 @@ Implemented CTest coverage:
 - backend init/start/stop/dispose;
 - connection lifecycle cleanup;
 - request lifecycle success and cleanup;
+- bounded repeated valid request lifecycle smoke with counter release;
+- bounded repeated malformed request lifecycle smoke with deterministic diagnostics and
+  release;
+- repeated parser target/header/body limit failures under backend parser options;
 - bounded body-reader success, empty body, arena-owned body bytes, body limits, unsupported
   media, cancellation before body read, cancellation during body read, timeout during body
   read, shutdown during body read, shutdown rejection, active request shutdown cancellation,
   shutdown during response write, and stable shutdown diagnostic names;
+- repeated body-limit and unsupported-media body-reader failures;
 - malformed request cleanup after parser failure;
 - timeout hook cancellation and diagnostic behavior;
 - bounded admission/backpressure rejection;
+- repeated overload rejection without unbounded request queue growth;
+- repeated shutdown rejection/cancellation cleanup smoke;
 - route matcher reuse with a parsed request path;
 - route table construction, duplicate route rejection, and literal-before-parameter
   precedence;
@@ -420,6 +439,8 @@ Implemented CTest coverage:
 - synthetic dispatch GET/POST/PUT/PATCH/DELETE method routing;
 - unsupported request body dispatch failure;
 - unsupported content-type, invalid JSON, and body-too-large dispatch failures;
+- default non-V8 conformance-style smoke for GET/POST/PUT/PATCH/DELETE, route miss, method
+  mismatch, malformed query, malformed JSON, and unsupported media diagnostics;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;
