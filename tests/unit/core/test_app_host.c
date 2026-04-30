@@ -535,6 +535,37 @@ static int test_app_lifecycle_shutdown_closes_resources_once(void)
     return 0;
 }
 
+static int test_app_lifecycle_preserves_resource_id_on_close_failure(void)
+{
+    SlScopeCleanup storage[1];
+    SlAppLifecycle lifecycle = {0};
+    SlResourceTable table = {0};
+    SlAppResourceCleanup cleanup = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_app_lifecycle_start(&lifecycle, storage, 1U, &diag), SL_STATUS_OK) != 0) {
+        return 76;
+    }
+
+    cleanup.table = &table;
+    cleanup.id.slot = 1U;
+    cleanup.id.generation = 1U;
+    if (expect_status(sl_app_lifecycle_add_resource_cleanup(&lifecycle, &cleanup, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 77;
+    }
+
+    if (expect_status(sl_app_lifecycle_shutdown(&lifecycle, &diag), SL_STATUS_OK) != 0) {
+        return 78;
+    }
+    if (!sl_resource_id_is_valid(cleanup.id)) {
+        return 79;
+    }
+
+    return 0;
+}
+
 static int test_app_lifecycle_diagnostic_json_is_stable(void)
 {
     unsigned char json_storage[1024];
@@ -624,6 +655,10 @@ int main(void)
         return result;
     }
     result = test_app_lifecycle_shutdown_closes_resources_once();
+    if (result != 0) {
+        return result;
+    }
+    result = test_app_lifecycle_preserves_resource_id_on_close_failure();
     if (result != 0) {
         return result;
     }

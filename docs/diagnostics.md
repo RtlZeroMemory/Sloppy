@@ -266,11 +266,9 @@ Runtime exception flow:
 
 1. V8 reports generated JavaScript location;
 2. V8 bridge captures exception and stack;
-3. runtime maps generated location through `app.js.map`;
-4. diagnostic reports original TypeScript file/span;
-5. generated JS location appears as related detail;
-6. missing source map produces a separate diagnostic quality warning/error depending on
-   mode.
+3. diagnostic reports the generated JavaScript file/span when V8 provides one;
+4. bounded stack text may appear as related detail when available;
+5. runtime source-map consumption and original TypeScript spans remain deferred.
 
 V8 exception source-map remapping remains deferred to ENGINE-08. MAIN1-06 source frames do
 not parse source maps, and ENGINE-07 lifecycle/async diagnostics do not rewrite generated

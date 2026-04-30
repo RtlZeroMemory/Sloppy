@@ -1577,6 +1577,8 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
         return 1;
     }
 
+    /* app->lifecycle runs LIFO; register sl_run_engine_cleanup first so engine teardown runs last.
+     */
     status = sl_app_lifecycle_add_cleanup(&app->lifecycle, sl_run_engine_cleanup,
                                           (void*)&app->engine, NULL, &diag);
     if (!sl_status_is_ok(status)) {
@@ -1613,6 +1615,7 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
     char source_map_path[1024];
     SlBytes app_js = {0};
     SlBytes source_map = {0};
+    SlDiag diag = {0};
 
     if (artifacts_path == NULL || app == NULL) {
         return 1;
@@ -1629,11 +1632,11 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
         return 1;
     }
 
-    if (!sl_status_is_ok(
-            sl_app_lifecycle_start(&app->lifecycle, app->app_cleanups,
-                                   sizeof(app->app_cleanups) / sizeof(app->app_cleanups[0]), NULL)))
+    if (!sl_status_is_ok(sl_app_lifecycle_start(
+            &app->lifecycle, app->app_cleanups,
+            sizeof(app->app_cleanups) / sizeof(app->app_cleanups[0]), &diag)))
     {
-        sl_cli_write_cstr(stderr, "sloppy run: failed to start app lifecycle\n");
+        sl_run_print_diag("sloppy run: failed to start app lifecycle: ", &diag);
         return 1;
     }
 

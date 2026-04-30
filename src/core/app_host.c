@@ -518,14 +518,17 @@ static bool sl_app_resource_cleanup_valid(const SlAppResourceCleanup* resource)
 static void sl_app_resource_cleanup_close(void* payload, void* user)
 {
     SlAppResourceCleanup* resource = (SlAppResourceCleanup*)payload;
+    SlStatus status;
 
     (void)user;
     if (!sl_app_resource_cleanup_valid(resource)) {
         return;
     }
 
-    (void)sl_resource_table_close(resource->table, resource->id, NULL);
-    resource->id = sl_resource_id_invalid();
+    status = sl_resource_table_close(resource->table, resource->id, NULL);
+    if (sl_status_is_ok(status)) {
+        resource->id = sl_resource_id_invalid();
+    }
 }
 
 SlStatus sl_app_lifecycle_start(SlAppLifecycle* lifecycle, SlScopeCleanup* storage,
