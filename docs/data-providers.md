@@ -403,9 +403,10 @@ Current bootstrap behavior:
   SQLite connection through the resource-table bridge in V8-enabled runtime contexts.
 - `data.sqlite.open({ database, capability, access })` is the explicit low-level SQLite
   open shape. The older `path` key is accepted as a transitional alias for `database`; new
-  docs and fixtures should use `database`. `database` is canonical, `capability` is
-  required for explicit opens, `access` defaults to `readwrite`, and unsupported option
-  fields fail before bridge work begins.
+  docs and fixtures should use `database`. If both `database` and `path` are supplied,
+  they must match exactly or validation fails before bridge work begins. `database` is
+  canonical, `capability` is required for explicit opens, `access` defaults to
+  `readwrite`, and unsupported option fields fail before bridge work begins.
 - In bootstrap-only or non-V8 contexts, SQLite open reports that the bridge is
   unavailable.
 - `data.postgres.open(options)` validates PostgreSQL connection string options, redacts

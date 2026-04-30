@@ -232,6 +232,19 @@ Fix:
   Use the transaction object passed to the current callback, or start a new transaction after it settles.`);
 }
 
+function createSqliteTransactionActiveError(operation) {
+    return new Error(`sloppy: sqlite transaction is active
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}
+
+Fix:
+  Let the active transaction settle before closing this SQLite connection.`);
+}
+
 function validateSqliteParams(params, operation) {
     if (params === undefined) {
         return [];
@@ -341,13 +354,68 @@ function createSqliteConnection(nativeBridge, handle) {
         };
     }
 
-    function rollbackAfterCallbackError(error) {
+    function rollbackAfterCallbackError(error, transaction) {
         try {
             nativeBridge.transactionRollback(state.handle);
-        } finally {
-            state.transactionActive = false;
+        } catch {
+            if (transaction !== undefined) {
+                transaction.close();
+            }
+            state.closed = true;
+            try {
+                nativeBridge.close(state.handle);
+            } catch {
+                // Preserve the original callback or thenable error while preventing reuse.
+            }
+            throw error;
         }
+        if (transaction !== undefined) {
+            transaction.close();
+        }
+        state.transactionActive = false;
         throw error;
+    }
+
+    function commitTransaction(transaction) {
+        try {
+            nativeBridge.transactionCommit(state.handle);
+        } catch (error) {
+            transaction.close();
+            state.closed = true;
+            try {
+                nativeBridge.close(state.handle);
+            } catch {
+                // Keep the commit failure as the observable error.
+            }
+            throw error;
+        }
+        transaction.close();
+        state.transactionActive = false;
+    }
+
+    function callbackResultThen(callbackResult, transaction) {
+        if (
+            callbackResult === null
+            || typeof callbackResult !== "object" && typeof callbackResult !== "function"
+        ) {
+            return undefined;
+        }
+
+        try {
+            return callbackResult.then;
+        } catch (error) {
+            return rollbackAfterCallbackError(error, transaction);
+        }
+    }
+
+    function resolveThenable(callbackResult, then) {
+        return new Promise((resolve, reject) => {
+            try {
+                then.call(callbackResult, resolve, reject);
+            } catch (error) {
+                reject(error);
+            }
+        });
     }
 
     return Object.freeze({
@@ -387,37 +455,23 @@ function createSqliteConnection(nativeBridge, handle) {
             try {
                 callbackResult = callback(transaction.tx);
             } catch (error) {
-                transaction.close();
-                return rollbackAfterCallbackError(error);
+                return rollbackAfterCallbackError(error, transaction);
             }
 
-            if (
-                callbackResult === null
-                || typeof callbackResult !== "object" && typeof callbackResult !== "function"
-                || typeof callbackResult.then !== "function"
-            ) {
-                transaction.close();
-                try {
-                    nativeBridge.transactionCommit(state.handle);
-                } finally {
-                    state.transactionActive = false;
-                }
+            const then = callbackResultThen(callbackResult, transaction);
+
+            if (typeof then !== "function") {
+                commitTransaction(transaction);
                 return callbackResult;
             }
 
-            return Promise.resolve(callbackResult).then(
+            return resolveThenable(callbackResult, then).then(
                 (value) => {
-                    transaction.close();
-                    try {
-                        nativeBridge.transactionCommit(state.handle);
-                    } finally {
-                        state.transactionActive = false;
-                    }
+                    commitTransaction(transaction);
                     return value;
                 },
                 (error) => {
-                    transaction.close();
-                    return rollbackAfterCallbackError(error);
+                    return rollbackAfterCallbackError(error, transaction);
                 },
             );
         },
@@ -425,6 +479,9 @@ function createSqliteConnection(nativeBridge, handle) {
         close() {
             if (state.closed) {
                 return;
+            }
+            if (state.transactionActive) {
+                throw createSqliteTransactionActiveError("close");
             }
 
             nativeBridge.close(state.handle);

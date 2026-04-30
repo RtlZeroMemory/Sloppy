@@ -537,6 +537,141 @@ function createForgedLoweredQuery() {
 }
 
 {
+    const previousSloppy = globalThis.__sloppy;
+    const calls = [];
+    let commitShouldFail = false;
+    let rollbackShouldFail = false;
+
+    globalThis.__sloppy = {
+        data: {
+            sqlite: {
+                open() {
+                    calls.push(["open"]);
+                    return { slot: calls.length, generation: 1, kind: "sqlite.connection" };
+                },
+                exec(handle, text, params) {
+                    calls.push(["exec", handle.slot, text, params]);
+                    return { affectedRows: 1 };
+                },
+                query(handle, text, params) {
+                    calls.push(["query", handle.slot, text, params]);
+                    return [];
+                },
+                queryOne(handle, text, params) {
+                    calls.push(["queryOne", handle.slot, text, params]);
+                    return null;
+                },
+                close(handle) {
+                    calls.push(["close", handle.slot]);
+                },
+                transactionBegin(handle) {
+                    calls.push(["begin", handle.slot]);
+                },
+                transactionCommit(handle) {
+                    calls.push(["commit", handle.slot]);
+                    if (commitShouldFail) {
+                        throw new Error("commit failed");
+                    }
+                },
+                transactionRollback(handle) {
+                    calls.push(["rollback", handle.slot]);
+                    if (rollbackShouldFail) {
+                        throw new Error("rollback failed");
+                    }
+                },
+                transactionExec(handle, text, params) {
+                    calls.push(["txExec", handle.slot, text, params]);
+                    return { affectedRows: 1 };
+                },
+                transactionQuery() {
+                    return [];
+                },
+                transactionQueryOne() {
+                    return null;
+                },
+            },
+        },
+    };
+
+    try {
+        const db = data.sqlite.open({
+            database: ":memory:",
+            capability: "data.main",
+        });
+        let releaseTransaction;
+        const pending = new Promise((resolve) => {
+            releaseTransaction = resolve;
+        });
+        const pendingTransaction = db.transaction(() => pending);
+        assertThrowsMessage(() => db.close(), /transaction is active/);
+        releaseTransaction("settled");
+        assert.equal(await pendingTransaction, "settled");
+        assert.equal(db.__debug().transactionActive, false);
+        db.close();
+
+        const thenGetterDb = data.sqlite.open({
+            database: ":memory:",
+            capability: "data.main",
+        });
+        assertThrowsMessage(() => thenGetterDb.transaction(() => ({
+            get then() {
+                throw new Error("then getter failed");
+            },
+        })), /then getter failed/);
+        assert.equal(thenGetterDb.__debug().transactionActive, false);
+        thenGetterDb.close();
+
+        const commitFailureDb = data.sqlite.open({
+            database: ":memory:",
+            capability: "data.main",
+        });
+        commitShouldFail = true;
+        assertThrowsMessage(() => commitFailureDb.transaction(() => "commit"), /commit failed/);
+        assert.equal(commitFailureDb.__debug().closed, true);
+        assert.equal(commitFailureDb.__debug().transactionActive, true);
+        assertThrowsMessage(() => commitFailureDb.query("select 1"), /sqlite connection is closed/);
+        commitShouldFail = false;
+
+        const rollbackFailureDb = data.sqlite.open({
+            database: ":memory:",
+            capability: "data.main",
+        });
+        rollbackShouldFail = true;
+        await assertRejectsMessage(() => rollbackFailureDb.transaction(async () => {
+            throw new Error("original callback error");
+        }), /original callback error/);
+        assert.equal(rollbackFailureDb.__debug().closed, true);
+        assert.equal(rollbackFailureDb.__debug().transactionActive, true);
+        rollbackShouldFail = false;
+    } finally {
+        if (previousSloppy === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previousSloppy;
+        }
+    }
+
+    assert.deepEqual(calls, [
+        ["open"],
+        ["begin", 1],
+        ["commit", 1],
+        ["close", 1],
+        ["open"],
+        ["begin", 5],
+        ["rollback", 5],
+        ["close", 5],
+        ["open"],
+        ["begin", 9],
+        ["commit", 9],
+        ["close", 9],
+        ["open"],
+        ["begin", 13],
+        ["rollback", 13],
+        ["close", 13],
+    ]);
+}
+
+{
     const SqliteModule = Sloppy.module("data.sqlite")
         .capabilities((caps) => {
             caps.addDatabase("data.main", {

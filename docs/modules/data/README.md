@@ -47,8 +47,9 @@ Implemented bootstrap API:
 - `data.sqlite("main")` provider shorthand and `data.sqlite.open(options)`. They validate
   metadata/options and return a safe SQLite connection wrapper when the V8 runtime installs
   `__sloppy.data.sqlite`; otherwise they fail honestly with bridge-unavailable.
-  `database` is canonical for explicit open, `path` is only a transitional alias,
-  `capability` is required, `access` defaults to `readwrite`, and unsupported fields fail
+  `database` is canonical for explicit open, `path` is only a transitional alias, and
+  `path` is accepted only when it is identical to `database`. `capability` is required,
+  `access` defaults to `readwrite`, and unsupported fields or mismatched aliases fail
   before bridge work.
 - `data.postgres` provider metadata, `$1` placeholder style, redaction helper, and
   `data.postgres.open(options)` as the future stdlib entry point. It validates options and

@@ -156,6 +156,16 @@ Operation:
   transaction`);
     }
 
+    function sqliteTransactionActiveError(operation) {
+        return new Error(`sloppy: sqlite transaction is active
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}`);
+    }
+
     function normalizeSqliteParams(params, operation) {
         if (params === undefined) {
             return [];
@@ -233,13 +243,64 @@ Operation:
             };
         }
 
-        function rollbackAfterCallbackError(error) {
+        function rollbackAfterCallbackError(error, transaction) {
             try {
                 bridge.transactionRollback(state.handle);
-            } finally {
-                state.transactionActive = false;
+            } catch {
+                transaction.close();
+                state.closed = true;
+                try {
+                    bridge.close(state.handle);
+                } catch {
+                    // Preserve the original callback or thenable error while preventing reuse.
+                }
+                throw error;
             }
+            transaction.close();
+            state.transactionActive = false;
             throw error;
+        }
+
+        function commitTransaction(transaction) {
+            try {
+                bridge.transactionCommit(state.handle);
+            } catch (error) {
+                transaction.close();
+                state.closed = true;
+                try {
+                    bridge.close(state.handle);
+                } catch {
+                    // Keep the commit failure as the observable error.
+                }
+                throw error;
+            }
+            transaction.close();
+            state.transactionActive = false;
+        }
+
+        function callbackResultThen(callbackResult, transaction) {
+            if (
+                callbackResult === null
+                || typeof callbackResult !== "object" && typeof callbackResult !== "function"
+            ) {
+                return undefined;
+            }
+
+            try {
+                return callbackResult.then;
+            } catch (error) {
+                return rollbackAfterCallbackError(error, transaction);
+            }
+        }
+
+        function resolveThenable(callbackResult, then) {
+            return new Promise((resolve, reject) => {
+                try {
+                    then.call(callbackResult, resolve, reject);
+                } catch (error) {
+                    reject(error);
+                }
+            });
         }
 
         return Object.freeze({
@@ -275,43 +336,32 @@ Operation:
                 try {
                     callbackResult = callback(transaction.tx);
                 } catch (error) {
-                    transaction.close();
-                    return rollbackAfterCallbackError(error);
+                    return rollbackAfterCallbackError(error, transaction);
                 }
 
-                if (
-                    callbackResult === null
-                    || typeof callbackResult !== "object" && typeof callbackResult !== "function"
-                    || typeof callbackResult.then !== "function"
-                ) {
-                    transaction.close();
-                    try {
-                        bridge.transactionCommit(state.handle);
-                    } finally {
-                        state.transactionActive = false;
-                    }
+                const then = callbackResultThen(callbackResult, transaction);
+
+                if (typeof then !== "function") {
+                    commitTransaction(transaction);
                     return callbackResult;
                 }
 
-                return Promise.resolve(callbackResult).then(
+                return resolveThenable(callbackResult, then).then(
                     (value) => {
-                        transaction.close();
-                        try {
-                            bridge.transactionCommit(state.handle);
-                        } finally {
-                            state.transactionActive = false;
-                        }
+                        commitTransaction(transaction);
                         return value;
                     },
                     (error) => {
-                        transaction.close();
-                        return rollbackAfterCallbackError(error);
+                        return rollbackAfterCallbackError(error, transaction);
                     },
                 );
             },
             close() {
                 if (state.closed) {
                     return;
+                }
+                if (state.transactionActive) {
+                    throw sqliteTransactionActiveError("close");
                 }
 
                 bridge.close(state.handle);
