@@ -1929,9 +1929,18 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
                     "  __sloppy.data.sqlite.exec(db, \"insert into users (name, raw) values (?, "
                     "x'0041ff')\", "
                     "['Ada']);"
+                    "  __sloppy.data.sqlite.transactionBegin(db);"
+                    "  __sloppy.data.sqlite.transactionExec(db, \"insert into users (name, raw) "
+                    "values (?, x'01')\", ['Grace']);"
+                    "  __sloppy.data.sqlite.transactionCommit(db);"
+                    "  __sloppy.data.sqlite.transactionBegin(db);"
+                    "  __sloppy.data.sqlite.transactionExec(db, \"insert into users (name, raw) "
+                    "values (?, x'02')\", ['Rollback']);"
+                    "  __sloppy.data.sqlite.transactionRollback(db);"
                     "  const row = __sloppy.data.sqlite.queryOne(db, 'select name, raw from users "
                     "where id = ?', [1]);"
-                    "  const rows = __sloppy.data.sqlite.query(db, 'select name from users', []);"
+                    "  const rows = __sloppy.data.sqlite.query(db, 'select name from users order "
+                    "by id', []);"
                     "  const typed = __sloppy.data.sqlite.queryOne(db, 'select typeof(?) as kind', "
                     "[9007199254740991]);"
                     "  const raw = Array.from(row.raw);"
@@ -1958,7 +1967,7 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
     if (result.kind != SL_ENGINE_RESULT_JSON ||
         expect_bytes_equal(result.response.body,
                            "{\"rowName\":\"Ada\",\"rawIsBytes\":true,\"raw\":[0,65,255],"
-                           "\"rows\":[{\"name\":\"Ada\"}],"
+                           "\"rows\":[{\"name\":\"Ada\"},{\"name\":\"Grace\"}],"
                            "\"typed\":{\"kind\":\"integer\"}}") != 0)
     {
         sl_engine_destroy(engine);

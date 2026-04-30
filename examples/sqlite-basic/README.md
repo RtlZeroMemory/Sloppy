@@ -18,7 +18,15 @@ What works today:
 - `data.sqlite.open({ database: ":memory:", capability: "data.main" })` opens a native
   SQLite connection only when the V8 runtime installs the SQLite bridge intrinsics and has
   Plan-backed capability metadata;
+- `data.sqlite.open({ database: ":memory:", capability: "data.main", access: "readwrite" })`
+  is the canonical explicit shape. `path` remains only a transitional alias for
+  `database`, and unsupported option fields fail before provider work;
+- `db.transaction(callback)` commits when the callback succeeds, rolls back when it throws
+  or rejects, rejects nested transactions, and rejects transaction-object use after
+  commit/rollback on the current synchronous SQLite bridge;
 - query templates lower to `?` placeholders without interpolating values.
+- public prepared statement handles are intentionally absent; SQLite prepare/bind/step/
+  finalize remains internal to `exec`, `query`, `queryOne`, and transaction operations.
 
 What does not work yet:
 
@@ -31,5 +39,5 @@ What does not work yet:
 - PostgreSQL and SQL Server providers are covered by their own examples and native C tests;
 - PostgreSQL and SQL Server do not have JS-to-native provider bridges yet;
 - no ORM, migrations, connection pooling, async worker offload, cancellation, deadline, or
-  blob support is implemented;
+  public prepared statement handle support is implemented;
 - the future bare `"sloppy"` import is planned only.

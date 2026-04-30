@@ -142,6 +142,13 @@ function validateSqliteOpenOptions(options) {
         throw new TypeError("Sloppy sqlite.open options must be a plain object.");
     }
 
+    const allowedKeys = new Set(["database", "path", "capability", "access"]);
+    for (const key of Object.keys(options)) {
+        if (!allowedKeys.has(key)) {
+            throw new TypeError(`Sloppy sqlite.open option '${key}' is not supported.`);
+        }
+    }
+
     const database = options.database ?? options.path;
     if (typeof database !== "string" || database.length === 0) {
         throw new TypeError("Sloppy sqlite.open database must be a non-empty string.");
@@ -197,6 +204,45 @@ Operation:
 
 Fix:
   Open a new SQLite connection before using ${operation}.`);
+}
+
+function createSqliteTransactionClosedError(operation) {
+    return new Error(`sloppy: sqlite transaction scope is closed
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}
+
+Fix:
+  Do not use the transaction object after transaction(...) resolves or rejects.`);
+}
+
+function createSqliteNestedTransactionError() {
+    return new Error(`sloppy: sqlite nested transactions are not supported
+
+Provider:
+  sqlite
+
+Operation:
+  transaction
+
+Fix:
+  Use the transaction object passed to the current callback, or start a new transaction after it settles.`);
+}
+
+function createSqliteTransactionActiveError(operation) {
+    return new Error(`sloppy: sqlite transaction is active
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}
+
+Fix:
+  Let the active transaction settle before closing this SQLite connection.`);
 }
 
 function validateSqliteParams(params, operation) {
@@ -255,12 +301,121 @@ function createSqliteConnection(nativeBridge, handle) {
     const state = {
         closed: false,
         handle,
+        transactionActive: false,
     };
 
     function assertOpen(operation) {
         if (state.closed) {
             throw createSqliteClosedError(operation);
         }
+    }
+
+    function createSqliteTransaction() {
+        const txState = {
+            closed: false,
+        };
+
+        function assertTransactionOpen(operation) {
+            assertOpen(operation);
+            if (txState.closed) {
+                throw createSqliteTransactionClosedError(operation);
+            }
+        }
+
+        const tx = Object.freeze({
+            query(...args) {
+                assertTransactionOpen("transaction.query");
+                const query = normalizeSqliteOperation("query", args);
+                return nativeBridge.transactionQuery(state.handle, query.text, query.parameters);
+            },
+
+            queryOne(...args) {
+                assertTransactionOpen("transaction.queryOne");
+                const query = normalizeSqliteOperation("queryOne", args);
+                return nativeBridge.transactionQueryOne(state.handle, query.text, query.parameters);
+            },
+
+            exec(...args) {
+                assertTransactionOpen("transaction.exec");
+                const query = normalizeSqliteOperation("exec", args);
+                return nativeBridge.transactionExec(state.handle, query.text, query.parameters);
+            },
+
+            transaction() {
+                throw createSqliteNestedTransactionError();
+            },
+        });
+
+        return {
+            tx,
+            close() {
+                txState.closed = true;
+            },
+        };
+    }
+
+    function rollbackAfterCallbackError(error, transaction) {
+        try {
+            nativeBridge.transactionRollback(state.handle);
+        } catch {
+            if (transaction !== undefined) {
+                transaction.close();
+            }
+            state.closed = true;
+            try {
+                nativeBridge.close(state.handle);
+            } catch {
+                // Preserve the original callback or thenable error while preventing reuse.
+            }
+            throw error;
+        }
+        if (transaction !== undefined) {
+            transaction.close();
+        }
+        state.transactionActive = false;
+        throw error;
+    }
+
+    function commitTransaction(transaction) {
+        try {
+            nativeBridge.transactionCommit(state.handle);
+        } catch (error) {
+            transaction.close();
+            state.closed = true;
+            try {
+                nativeBridge.close(state.handle);
+            } catch {
+                // Keep the commit failure as the observable error.
+            }
+            throw error;
+        }
+        transaction.close();
+        state.transactionActive = false;
+    }
+
+    function callbackResultThen(callbackResult, transaction) {
+        if (
+            callbackResult === null
+            || typeof callbackResult !== "object" && typeof callbackResult !== "function"
+        ) {
+            return undefined;
+        }
+
+        try {
+            return callbackResult.then;
+        } catch (error) {
+            return rollbackAfterCallbackError(error, transaction);
+        }
+    }
+
+    function resolveThenable(callbackResult, then) {
+        return new Promise((resolve, reject) => {
+            try {
+                then.call(callbackResult, resolve, reject);
+            } catch (error) {
+                reject(error);
+            }
+        });
     }
 
     return Object.freeze({
@@ -282,9 +437,51 @@ function createSqliteConnection(nativeBridge, handle) {
             return nativeBridge.exec(state.handle, query.text, query.parameters);
         },
 
+        transaction(callback) {
+            assertOpen("transaction");
+            if (typeof callback !== "function") {
+                throw new TypeError("Sloppy sqlite.transaction callback must be a function.");
+            }
+            if (state.transactionActive) {
+                throw createSqliteNestedTransactionError();
+            }
+
+            nativeBridge.transactionBegin(state.handle);
+            state.transactionActive = true;
+
+            const transaction = createSqliteTransaction();
+            let callbackResult;
+
+            try {
+                callbackResult = callback(transaction.tx);
+            } catch (error) {
+                return rollbackAfterCallbackError(error, transaction);
+            }
+
+            const then = callbackResultThen(callbackResult, transaction);
+
+            if (typeof then !== "function") {
+                commitTransaction(transaction);
+                return callbackResult;
+            }
+
+            return resolveThenable(callbackResult, then).then(
+                (value) => {
+                    commitTransaction(transaction);
+                    return value;
+                },
+                (error) => {
+                    return rollbackAfterCallbackError(error, transaction);
+                },
+            );
+        },
+
         close() {
             if (state.closed) {
                 return;
+            }
+            if (state.transactionActive) {
+                throw createSqliteTransactionActiveError("close");
             }
 
             nativeBridge.close(state.handle);
@@ -295,6 +492,7 @@ function createSqliteConnection(nativeBridge, handle) {
             return Object.freeze({
                 kind: "sqlite-connection",
                 closed: state.closed,
+                transactionActive: state.transactionActive,
                 resource: Object.freeze({
                     slot: state.handle.slot,
                     generation: state.handle.generation,
@@ -519,7 +717,8 @@ const sqliteSupports = {
     queryTemplates: true,
     parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
     transactions: true,
-    transactionsMode: "native-provider-only",
+    transactionsMode: "callback",
+    preparedStatements: false,
     pooling: false,
     migrations: false,
     orm: false,

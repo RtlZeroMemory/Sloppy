@@ -86,6 +86,13 @@ Reason:
             throw new TypeError("Sloppy sqlite.open options must be a plain object.");
         }
 
+        const allowedKeys = new Set(["database", "path", "capability", "access"]);
+        for (const key of Object.keys(options)) {
+            if (!allowedKeys.has(key)) {
+                throw new TypeError(`Sloppy sqlite.open option '${key}' is not supported.`);
+            }
+        }
+
         const database = options.database ?? options.path;
         if (typeof database !== "string" || database.length === 0) {
             throw new TypeError("Sloppy sqlite.open database must be a non-empty string.");
@@ -129,6 +136,36 @@ Operation:
   ${operation}`);
     }
 
+    function sqliteTransactionClosedError(operation) {
+        return new Error(`sloppy: sqlite transaction scope is closed
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}`);
+    }
+
+    function sqliteNestedTransactionError() {
+        return new Error(`sloppy: sqlite nested transactions are not supported
+
+Provider:
+  sqlite
+
+Operation:
+  transaction`);
+    }
+
+    function sqliteTransactionActiveError(operation) {
+        return new Error(`sloppy: sqlite transaction is active
+
+Provider:
+  sqlite
+
+Operation:
+  ${operation}`);
+    }
+
     function normalizeSqliteParams(params, operation) {
         if (params === undefined) {
             return [];
@@ -156,12 +193,114 @@ Operation:
         const state = {
             closed: false,
             handle,
+            transactionActive: false,
         };
 
         function assertOpen(operation) {
             if (state.closed) {
                 throw sqliteClosedError(operation);
             }
+        }
+
+        function createTransaction() {
+            const txState = {
+                closed: false,
+            };
+
+            function assertTransactionOpen(operation) {
+                assertOpen(operation);
+                if (txState.closed) {
+                    throw sqliteTransactionClosedError(operation);
+                }
+            }
+
+            const tx = Object.freeze({
+                exec(sql, params) {
+                    assertTransactionOpen("transaction.exec");
+                    const query = normalizeSqliteQuery("exec", sql, params);
+                    return bridge.transactionExec(state.handle, query.text, query.parameters);
+                },
+                query(sql, params) {
+                    assertTransactionOpen("transaction.query");
+                    const query = normalizeSqliteQuery("query", sql, params);
+                    return bridge.transactionQuery(state.handle, query.text, query.parameters);
+                },
+                queryOne(sql, params) {
+                    assertTransactionOpen("transaction.queryOne");
+                    const query = normalizeSqliteQuery("queryOne", sql, params);
+                    return bridge.transactionQueryOne(state.handle, query.text, query.parameters);
+                },
+                transaction() {
+                    throw sqliteNestedTransactionError();
+                },
+            });
+
+            return {
+                tx,
+                close() {
+                    txState.closed = true;
+                },
+            };
+        }
+
+        function rollbackAfterCallbackError(error, transaction) {
+            try {
+                bridge.transactionRollback(state.handle);
+            } catch {
+                transaction.close();
+                state.closed = true;
+                try {
+                    bridge.close(state.handle);
+                } catch {
+                    // Preserve the original callback or thenable error while preventing reuse.
+                }
+                throw error;
+            }
+            transaction.close();
+            state.transactionActive = false;
+            throw error;
+        }
+
+        function commitTransaction(transaction) {
+            try {
+                bridge.transactionCommit(state.handle);
+            } catch (error) {
+                transaction.close();
+                state.closed = true;
+                try {
+                    bridge.close(state.handle);
+                } catch {
+                    // Keep the commit failure as the observable error.
+                }
+                throw error;
+            }
+            transaction.close();
+            state.transactionActive = false;
+        }
+
+        function callbackResultThen(callbackResult, transaction) {
+            if (
+                callbackResult === null
+                || typeof callbackResult !== "object" && typeof callbackResult !== "function"
+            ) {
+                return undefined;
+            }
+
+            try {
+                return callbackResult.then;
+            } catch (error) {
+                return rollbackAfterCallbackError(error, transaction);
+            }
+        }
+
+        function resolveThenable(callbackResult, then) {
+            return new Promise((resolve, reject) => {
+                try {
+                    then.call(callbackResult, resolve, reject);
+                } catch (error) {
+                    reject(error);
+                }
+            });
         }
 
         return Object.freeze({
@@ -180,9 +319,49 @@ Operation:
                 const query = normalizeSqliteQuery("queryOne", sql, params);
                 return bridge.queryOne(state.handle, query.text, query.parameters);
             },
+            transaction(callback) {
+                assertOpen("transaction");
+                if (typeof callback !== "function") {
+                    throw new TypeError("Sloppy sqlite.transaction callback must be a function.");
+                }
+                if (state.transactionActive) {
+                    throw sqliteNestedTransactionError();
+                }
+
+                bridge.transactionBegin(state.handle);
+                state.transactionActive = true;
+
+                const transaction = createTransaction();
+                let callbackResult;
+                try {
+                    callbackResult = callback(transaction.tx);
+                } catch (error) {
+                    return rollbackAfterCallbackError(error, transaction);
+                }
+
+                const then = callbackResultThen(callbackResult, transaction);
+
+                if (typeof then !== "function") {
+                    commitTransaction(transaction);
+                    return callbackResult;
+                }
+
+                return resolveThenable(callbackResult, then).then(
+                    (value) => {
+                        commitTransaction(transaction);
+                        return value;
+                    },
+                    (error) => {
+                        return rollbackAfterCallbackError(error, transaction);
+                    },
+                );
+            },
             close() {
                 if (state.closed) {
                     return;
+                }
+                if (state.transactionActive) {
+                    throw sqliteTransactionActiveError("close");
                 }
 
                 bridge.close(state.handle);

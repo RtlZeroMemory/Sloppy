@@ -15,6 +15,7 @@ Expected behavior:
 - open an in-memory SQLite database through the JavaScript wrapper with a declared
   `data.main` capability;
 - create and populate a table;
+- insert one row through `transaction(callback)` and commit on callback success;
 - select one row with a positional parameter;
 - return a JSON result containing `Ada`;
 - close the resource in a `finally` block.

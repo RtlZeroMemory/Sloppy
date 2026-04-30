@@ -101,8 +101,9 @@ const DataModule = Sloppy.module("data")
 Capability tokens must be non-empty strings, duplicates fail, and
 `app.capabilities.has/get/list` exposes frozen debug metadata with the declaring module when
 applicable. SQLite JavaScript execution now checks the database hook before native
-open/read/write work when the engine has Plan/capability metadata. If the hook inputs are
-absent, SQLite bridge calls fail closed. Public file database policy remains future work.
+open/read/write and transaction work when the engine has Plan/capability metadata. If the
+hook inputs are absent, SQLite bridge calls fail closed. Public file database policy
+remains future work.
 
 ## Permission Grants
 
@@ -148,8 +149,9 @@ not connection string values. Raw secrets do not belong in `app.plan.json`.
 
 Bootstrap metadata does not validate live config keys. Runtime capability checks can deny
 database access by token, provider, and read/write mode before a caller invokes provider
-work. The V8 SQLite bridge now calls those hooks for open, exec, query, and queryOne when
-the app host passes the parsed Plan and capability registry into the engine.
+work. The V8 SQLite bridge now calls those hooks for open, exec, query, queryOne, and
+transaction operations when the app host passes the parsed Plan and capability registry
+into the engine.
 
 Async/offloaded provider work performs a capability check before executor admission.
 Provider executors require a capability-check hook and a configured provider token. The

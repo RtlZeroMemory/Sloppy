@@ -19,7 +19,7 @@ ENGINE-01 target contract:
 - cancellation must be plumbed through request-context SQLite calls; sync-backed calls
   check cancellation before work and before result conversion until real interruption
   exists.
-- prepared statement handles, ORM, migrations, query builders, PostgreSQL JavaScript
+- public prepared statement handles, ORM, migrations, query builders, PostgreSQL JavaScript
   bridge, and SQL Server JavaScript bridge remain deferred.
 
 Implemented bootstrap API example:
@@ -122,7 +122,10 @@ Implemented behavior:
 - `data.sqlite` exposes SQLite provider metadata, callable provider shorthand, and
   `open(options)`. In a V8-enabled Sloppy runtime that installs SQLite intrinsics and has
   Plan/capability metadata, `data.sqlite("main")` resolves provider token `data.main` and
-  returns a safe SQLite connection wrapper. In bootstrap-only or non-V8 contexts, it fails
+  returns a safe SQLite connection wrapper. Explicit open uses
+  `data.sqlite.open({ database, capability, access })`; `database` is canonical, `path` is
+  a transitional alias, `capability` is required, `access` defaults to `readwrite`, and
+  unsupported option fields fail clearly. In bootstrap-only or non-V8 contexts, it fails
   with a bridge-unavailable error.
 - `data.postgres` exposes PostgreSQL provider metadata, `$1` placeholder style, connection
   string redaction, and `open(options)` as the future stdlib entry point.
@@ -160,7 +163,8 @@ Implemented behavior:
   the ESM stdlib wrapper also accepts existing lowered query objects.
 - `queryOne` uses a supplied handler or falls back to the first row returned by `query`.
 - `transaction(callback)` passes a transaction object with `query`, `queryOne`, and `exec`,
-  commits when the callback resolves, and rolls back when it throws or rejects.
+  commits when the callback resolves, and rolls back when it throws or rejects. Nested
+  transactions are rejected, and transaction objects fail after commit/rollback.
 
 SQLite JS bridge support:
 
@@ -172,15 +176,21 @@ db.exec("insert into users (name) values (?)", ["Ada"]);
 
 const row = db.queryOne("select name from users where id = ?", [1]);
 
+await db.transaction(async tx => {
+  tx.exec("insert into users (name) values (?)", ["Grace"]);
+});
+
 db.close();
 ```
 
-The bridge is intentionally small. It supports `open`, `close`, `exec`, `query`, and
-`queryOne` for SQLite only. It returns arrays/plain objects, maps SQLite `NULL` to
-JavaScript `null`, and supports primitive positional parameters: `null`, string, number,
-and boolean. The wrapper stores only an opaque resource ID object; stale, closed, invalid,
-wrong-kind, missing-provider, and denied-capability handles fail before provider code runs.
-Double close is idempotent at the wrapper level.
+The bridge is intentionally small. It supports `open`, `close`, `exec`, `query`,
+`queryOne`, and callback transactions for SQLite only. It returns arrays/plain objects,
+maps SQLite `NULL` to JavaScript `null`, and supports primitive positional parameters:
+`null`, string, number, and boolean. The wrapper stores only an opaque resource ID object;
+stale, closed, invalid, wrong-kind, transaction use-after-close, missing-provider, and
+denied-capability handles fail before provider code runs. Double close is idempotent at
+the wrapper level. Public prepared statement handles are absent by design; internal
+prepare/bind/step/finalize remains per operation until a later resource-lifetime task.
 
 Layering matters for future providers: the public stdlib wrapper is JavaScript, the native
 resource table is engine-owned, and provider-specific V8 conversion code lives in
@@ -194,8 +204,8 @@ Not implemented yet:
 - no JavaScript-to-native SQL Server intrinsic bridge yet, so `data.sqlserver.open(...)`
   validates/redacts options and fails with an honest bridge-unavailable error in the stdlib;
 - no SQL parser, ORM, migrations, production pooling, cancellation, isolation levels,
-  transactions through the SQLite JS wrapper, or PostgreSQL/SQL Server native SQL execution
-  from JavaScript;
+  public prepared statement handles, or PostgreSQL/SQL Server native SQL execution from
+  JavaScript;
 - no public file database policy beyond the native provider accepting SQLite paths;
 - no compiler extraction of JavaScript template literals.
 

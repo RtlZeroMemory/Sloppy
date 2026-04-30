@@ -35,6 +35,7 @@ struct SqliteV8OpenRequest
 struct SqliteV8ConnectionResource
 {
     SlSqliteConnection connection = {};
+    SlSqliteTransaction transaction = {};
     std::string capability;
     std::string provider_token;
 };
@@ -540,6 +541,24 @@ bool sqlite_v8_prepare_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
                                     args.Length() == 3 ? args[2] : v8::Undefined(isolate), out);
 }
 
+bool sqlite_v8_make_exec_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                const SlSqliteExecResult& result, v8::Local<v8::Object>* out)
+{
+    v8::Local<v8::Object> output = v8::Object::New(isolate);
+    v8::Local<v8::String> key;
+
+    if (out == nullptr ||
+        !sl_status_is_ok(
+            sqlite_v8_to_local_string(isolate, sl_str_from_cstr("affectedRows"), &key)) ||
+        !output->Set(context, key, v8::Int32::New(isolate, result.changes)).FromMaybe(false))
+    {
+        return false;
+    }
+
+    *out = output;
+    return true;
+}
+
 bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
                         v8::Local<v8::Object> row, SlStr column_name, const SlSqliteValue* value)
 {
@@ -821,12 +840,8 @@ void sqlite_v8_exec_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    v8::Local<v8::Object> output = v8::Object::New(isolate);
-    v8::Local<v8::String> key;
-    if (!sl_status_is_ok(
-            sqlite_v8_to_local_string(isolate, sl_str_from_cstr("affectedRows"), &key)) ||
-        !output->Set(context, key, v8::Int32::New(isolate, result.changes)).FromMaybe(false))
-    {
+    v8::Local<v8::Object> output;
+    if (!sqlite_v8_make_exec_result(isolate, context, result, &output)) {
         sqlite_v8_throw_error(isolate, "sqlite bridge could not create exec result");
         return;
     }
@@ -956,6 +971,316 @@ void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     args.GetReturnValue().Set(row);
 }
 
+void sqlite_v8_transaction_begin_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 65536U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    SlDiag diag = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SqliteV8ConnectionResource* resource = nullptr;
+
+    if (backend == nullptr || args.Length() != 1) {
+        sqlite_v8_throw_type_error(
+            isolate, "__sloppy.data.sqlite.transactionBegin requires a resource handle");
+        return;
+    }
+
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr) {
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_WRITE))
+    {
+        return;
+    }
+
+    SlStatus status =
+        sl_sqlite_transaction_begin(&arena, &resource->connection, &resource->transaction, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite transaction begin failed", diag);
+        return;
+    }
+
+    args.GetReturnValue().Set(v8::Undefined(isolate));
+}
+
+void sqlite_v8_transaction_commit_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 65536U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    SlDiag diag = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SqliteV8ConnectionResource* resource = nullptr;
+
+    if (backend == nullptr || args.Length() != 1) {
+        sqlite_v8_throw_type_error(
+            isolate, "__sloppy.data.sqlite.transactionCommit requires a resource handle");
+        return;
+    }
+
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr) {
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_WRITE))
+    {
+        return;
+    }
+
+    SlStatus status = sl_sqlite_transaction_commit(&arena, &resource->transaction, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite transaction commit failed", diag);
+        return;
+    }
+
+    args.GetReturnValue().Set(v8::Undefined(isolate));
+}
+
+void sqlite_v8_transaction_rollback_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 65536U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    SlDiag diag = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SqliteV8ConnectionResource* resource = nullptr;
+
+    if (backend == nullptr || args.Length() != 1) {
+        sqlite_v8_throw_type_error(
+            isolate, "__sloppy.data.sqlite.transactionRollback requires a resource handle");
+        return;
+    }
+
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr) {
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_WRITE))
+    {
+        return;
+    }
+
+    SlStatus status = sl_sqlite_transaction_rollback(&arena, &resource->transaction, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite transaction rollback failed", diag);
+        return;
+    }
+
+    args.GetReturnValue().Set(v8::Undefined(isolate));
+}
+
+void sqlite_v8_transaction_exec_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 65536U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    SlDiag diag = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    std::string sql;
+    std::vector<SlSqliteParam> params;
+    SlSqliteExecResult result = {};
+    SqliteV8ConnectionResource* resource = nullptr;
+
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 ||
+        !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
+    {
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.transactionExec requires a "
+                                            "handle, SQL string, and optional params");
+        return;
+    }
+
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr) {
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_prepare_params(isolate, context, &arena, args, &params)) {
+        return;
+    }
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_WRITE))
+    {
+        return;
+    }
+
+    SlStatus status = sl_sqlite_transaction_exec(
+        &arena, &resource->transaction, sl_str_from_parts(sql.data(), sql.size()),
+        params.empty() ? nullptr : params.data(), params.size(), &result, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite transaction exec failed", diag);
+        return;
+    }
+
+    v8::Local<v8::Object> output;
+    if (!sqlite_v8_make_exec_result(isolate, context, result, &output)) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge could not create exec result");
+        return;
+    }
+
+    args.GetReturnValue().Set(output);
+}
+
+void sqlite_v8_transaction_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 131072U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    SlDiag diag = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    std::string sql;
+    std::vector<SlSqliteParam> params;
+    SlSqliteResult result = {};
+    SqliteV8ConnectionResource* resource = nullptr;
+    v8::Local<v8::Array> rows;
+
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 ||
+        !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
+    {
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.transactionQuery requires a "
+                                            "handle, SQL string, and optional params");
+        return;
+    }
+
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr) {
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_prepare_params(isolate, context, &arena, args, &params)) {
+        return;
+    }
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_READ))
+    {
+        return;
+    }
+
+    SlStatus status = sl_sqlite_transaction_query(
+        &arena, &resource->transaction, sl_str_from_parts(sql.data(), sql.size()),
+        params.empty() ? nullptr : params.data(), params.size(), nullptr, &result, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite transaction query failed", diag);
+        return;
+    }
+
+    if (!sqlite_v8_result_to_array(isolate, context, &result, &rows)) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge could not materialize query rows");
+        return;
+    }
+
+    args.GetReturnValue().Set(rows);
+}
+
+void sqlite_v8_transaction_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 65536U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    SlDiag diag = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    std::string sql;
+    std::vector<SlSqliteParam> params;
+    SlSqliteQueryOneResult result = {};
+    SqliteV8ConnectionResource* resource = nullptr;
+    v8::Local<v8::Value> row;
+
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 ||
+        !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
+    {
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.transactionQueryOne requires a "
+                                            "handle, SQL string, and optional params");
+        return;
+    }
+
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr) {
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge scratch arena initialization failed");
+        return;
+    }
+
+    if (!sqlite_v8_prepare_params(isolate, context, &arena, args, &params)) {
+        return;
+    }
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_READ))
+    {
+        return;
+    }
+
+    SlStatus status = sl_sqlite_transaction_query_one(
+        &arena, &resource->transaction, sl_str_from_parts(sql.data(), sql.size()),
+        params.empty() ? nullptr : params.data(), params.size(), &result, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite transaction queryOne failed", diag);
+        return;
+    }
+
+    if (!sqlite_v8_one_to_value(isolate, context, &result, &row)) {
+        sqlite_v8_throw_error(isolate, "sqlite bridge could not materialize queryOne row");
+        return;
+    }
+
+    args.GetReturnValue().Set(row);
+}
+
 bool sqlite_v8_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
                             v8::Local<v8::Object> object, const char* name,
                             v8::FunctionCallback callback)
@@ -996,6 +1321,18 @@ bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context
         !sqlite_v8_set_function(isolate, context, sqlite, "query", sqlite_v8_query_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "queryOne",
                                 sqlite_v8_query_one_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionBegin",
+                                sqlite_v8_transaction_begin_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionCommit",
+                                sqlite_v8_transaction_commit_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionRollback",
+                                sqlite_v8_transaction_rollback_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionExec",
+                                sqlite_v8_transaction_exec_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionQuery",
+                                sqlite_v8_transaction_query_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionQueryOne",
+                                sqlite_v8_transaction_query_one_callback) ||
         !data->Set(context, sqlite_key, sqlite).FromMaybe(false))
     {
         return false;
