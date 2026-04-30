@@ -37,6 +37,12 @@ conformance may execute `sloppy run --artifacts --once` and must be reported sep
 Unsupported or future behavior belongs in negative conformance or an explicit deferred
 marker, not a fake passing fixture.
 
+ENGINE-19.A defines the conformance evidence matrix in
+`docs/project/engine-19-conformance-matrix.md`. New conformance work must keep the evidence
+lanes separate: default non-V8, V8-gated, localhost transport, SQLite/capability, package
+outside-checkout, live-provider optional, stress/smoke, and benchmark harness. Skipped
+optional gates are not pass claims.
+
 ENGINE-17.E adds a V8-gated users API conformance proof that compiles a source SQLite app,
 starts `sloppy run --artifacts` on localhost, sends raw TCP HTTP requests, and verifies
 SQLite-backed JSON responses plus denied-capability and invalid-JSON failures. This is
@@ -202,6 +208,13 @@ tests/
   fuzz/
   benchmarks/
 ```
+
+ENGINE-19 conformance names should make the evidence lane visible. Prefer
+`conformance.foundation.*`, `conformance.v8.*`, `conformance.http.*`,
+`conformance.transport.*`, `conformance.sqlite.*`, `conformance.capability.*`,
+`conformance.package.*`, `smoke.*`, and `benchmark.*` for new tests. Existing
+`conformance.*` and `benchmarks.*` names may remain when their CTest labels and docs make
+the lane clear.
 
 ## Red/Green Intent Discipline
 

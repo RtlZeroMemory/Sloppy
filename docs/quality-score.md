@@ -63,6 +63,12 @@ package/release claims remain blocked or deferred until their evidence gates exi
 | Security / capability model | Yellow | Capability metadata, native Plan capability/provider validation, immutable runtime registry, database policy check hooks, generic provider-executor capability-gated admission through required provider-supplied hooks, denied diagnostics, V8 SQLite bridge enforcement, and filesystem/network skeleton checks exist. | Plan parser fixtures, `core.capability.registry`, `core.provider_executor` capability-denial tests, metadata/audit fixture checks, and V8 SQLite denied-open/use tests. | No OS sandbox, no filesystem/network API, no permission prompts, and PostgreSQL/SQL Server have no JS provider bridge yet. | Keep OS sandboxing as later research and require future provider bridges to enter through the capability-gated provider executor path. |
 | End-to-end conformance | Yellow | MAIN1-13 conformance layout ties public compiler examples and selected checked-in artifact fixtures to the real compile/run boundary, and ENGINE-02/04/06 add compile/reject/runtime coverage for method, async, provider/capability, source-map, HTTP body/header policy, and unsupported metadata cases. ENGINE-13.F adds default non-V8 HTTP conformance-style smoke for the implemented backend/parser/dispatch state model, ENGINE-24.F adds real localhost TCP smoke for the reusable transport MVP, and ENGINE-17.E adds a V8-gated source-built SQLite users API localhost proof. | Default CTest conformance compiles hello/request-context/ENGINE-02/users-api fixtures twice for deterministic artifact output and rejects unsupported dynamic routes/imports/async bodies/secret metadata without emitting artifacts. Default HTTP unit smoke covers implemented GET/POST/PUT/PATCH/DELETE dispatch preflight, route miss, method mismatch, malformed query/JSON, unsupported media, parser limits, body limits, overload, shutdown, stable diagnostics, raw localhost TCP request/response bytes, close-after-response, one-request-per-connection, and unsupported transfer/pipelining policy. V8-gated conformance/integration runs hello, request context, async handler, invalid result descriptor, HTTP method/body/header dispatch, SQLite bridge/capability fixtures, and the users API localhost transport proof when SDK evidence is available. | Default gates do not prove V8 execution, benchmark evidence, keep-alive/pipelining/streaming support, production-edge HTTP behavior, async/offload SQLite, or PostgreSQL/SQL Server JS bridges. | Add conformance for future source-input handoff, broader async handler source shapes, and future provider bridge capability enforcement only when those bridges are implemented. |
 
+ENGINE-19.A adds `docs/project/engine-19-conformance-matrix.md` as the naming and evidence
+lane policy for future conformance work. It is a docs/check foundation, not new runtime
+coverage: default non-V8, V8-gated, localhost transport, SQLite/capability, package
+outside-checkout, live-provider optional, stress/smoke, and benchmark harness evidence must
+remain distinct in status reports and PR bodies.
+
 ## Current Summary
 
 The repo has a surprisingly broad foundation now, and it has the first dev-only executable
@@ -99,6 +105,10 @@ Passing the default Windows gates means:
 - package smoke did not necessarily run and is not public release readiness or V8 execution
   evidence;
 - benchmark smoke ran only as harness correctness, not as performance evidence.
+
+ENGINE-19 reports should use the matrix wording from
+`docs/project/engine-19-conformance-matrix.md` and must list skipped optional lanes as
+skipped/not configured.
 
 Passing the default cross-platform CI additionally means:
 

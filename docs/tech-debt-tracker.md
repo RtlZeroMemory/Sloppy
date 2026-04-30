@@ -80,6 +80,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Conformance compatibility suite: ENGINE-19 owns compiler to Plan to runtime to V8 to
   HTTP evidence, async/body/header/SQLite/capability/lifecycle/package cases, and default
   versus optional gate reporting.
+- ENGINE-19.A conformance matrix is now documented in
+  `docs/project/engine-19-conformance-matrix.md` with a small static CMake check. The
+  remaining ENGINE-19 debt is executable coverage expansion in the V8/HTTP/async,
+  SQLite/capability, and package outside-checkout slices, not broader runtime behavior
+  hidden inside the matrix PR.
 - Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
   artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
   optimization hooks, versioning, and internal tooling leverage.
