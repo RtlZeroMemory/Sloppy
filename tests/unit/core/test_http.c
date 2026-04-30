@@ -159,10 +159,10 @@ static int test_parse_non_nul_terminated_request_storage(void)
     }
 
     status = parse_request_bytes(&arena, input, sizeof(input) - 1U, NULL, &request, NULL);
-    if (expect_status(status, SL_STATUS_OK) != 0 ||
-        expect_str_equal(request.raw_target, "/nonnul?x=1") != 0 ||
+    if (expect_status(status, SL_STATUS_OK) != 0 || request.headers == NULL ||
+        request.header_count == 0U || expect_str_equal(request.raw_target, "/nonnul?x=1") != 0 ||
         expect_str_equal(request.path, "/nonnul") != 0 ||
-        request.raw_target.ptr == (const char*)input || request.headers[0].name.ptr == NULL ||
+        request.raw_target.ptr == (const char*)input + 4U || request.headers[0].name.ptr == NULL ||
         request.headers[0].name.ptr == (const char*)input + 26U)
     {
         return 16;
@@ -203,6 +203,7 @@ static int test_failed_parse_rolls_back_transient_builder_memory(void)
     unsigned char storage[TEST_ARENA_SIZE];
     SlArena arena = {0};
     SlHttpRequestHead request = {0};
+    SlHttpRequestHead request_no_diag = {0};
     SlDiag diag = {0};
     SlHttpParseOptions options = {0};
     size_t used_before = 0U;
@@ -216,13 +217,22 @@ static int test_failed_parse_rolls_back_transient_builder_memory(void)
     options.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
     options.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     options.max_body_length = 2U;
+
+    status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 3\r\n\r\nabc", &options,
+                           &request_no_diag, NULL);
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        sl_arena_used(&arena) != used_before || request_no_diag.body.ptr != NULL)
+    {
+        return 20;
+    }
+
     status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 3\r\n\r\nabc", &options,
                            &request, &diag);
     if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         diag.code != SL_DIAG_HTTP_BODY_LIMIT || sl_arena_used(&arena) <= used_before ||
         request.body.ptr != NULL)
     {
-        return 20;
+        return 21;
     }
 
     return 0;

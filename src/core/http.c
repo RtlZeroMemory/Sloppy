@@ -495,6 +495,7 @@ static void sl_http_parse_context_init(SlHttpParseContext* ctx, SlArena* arena,
     size_t max_body_length = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
 
     if (options != NULL) {
+        /* Zero max_headers is an explicit no-headers limit; target/body zero use defaults. */
         max_headers = options->max_headers;
         max_target_length = options->max_target_length == 0U ? SL_HTTP_DEFAULT_MAX_TARGET_LENGTH
                                                              : options->max_target_length;

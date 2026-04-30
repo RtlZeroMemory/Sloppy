@@ -129,8 +129,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Memory/string adoption completion: #32 is absorbed by ENGINE-21.C's primitive builder
   surface, and ENGINE-22.A covers the current HTTP parser/body/response/route hot paths.
   Public alpha should not claim top-notch memory/string hot-path behavior until #367
-  V8/SQLite interop policy and the remaining ENGINE-22 adoption pass conformance or are
-  explicitly scoped down.
+  V8/SQLite interop policy is approved and the remaining ENGINE-22 adoption passes either
+  conform to requirements or are explicitly scoped down.
 
 ## Should Fix Soon
 

@@ -58,7 +58,7 @@ ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
   builders, formatting utilities, bounded app/static string interning and symbol tables,
   V8/native conversion policy, SQLite text/blob ownership, and memory safety/stress tests.
 - ENGINE-22 adopts those primitives in hot paths after they exist: HTTP parse/write/body
-  adoption is underway through ENGINE-22.A; V8 string conversions, SQLite
+  adoption is implemented through ENGINE-22.A for current HTTP hot paths; V8 string conversions, SQLite
   row/result/parameter conversion, diagnostics/source
   frames/JSON, Plan and artifact loading, stable metadata lookup, CLI output, and
   conformance/benchmark guards.
