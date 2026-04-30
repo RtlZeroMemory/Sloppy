@@ -1,6 +1,6 @@
-<compiler>/tests/fixtures/unsupported-dynamic-route/input.js:6:1: SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN: mapGet route pattern must be a string literal
+<compiler>/tests/fixtures/unsupported-dynamic-route/input.js:6:1: SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN: route pattern must be a string literal
   --> <compiler>/tests/fixtures/unsupported-dynamic-route/input.js:6:1
    |
 6 | app.mapGet(route, () => Results.text("Hello from Sloppy"));
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-hint: Dynamic route strings are not part of the compiler extraction MVP.
+hint: Dynamic route strings are not part of the supported app compiler.

@@ -104,6 +104,76 @@ static int test_valid_startup_succeeds(void)
     return 0;
 }
 
+static int test_non_get_metadata_is_valid_when_get_route_exists(void)
+{
+    unsigned char diag_storage[1024];
+    SlArena diag_arena = {0};
+    SlPlanHandler handlers[2];
+    SlPlanRoute routes[2];
+    SlPlan plan = valid_plan(handlers, routes);
+    SlDiag diag = {0};
+    SlAppHostStartupValidation options;
+
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    options = validation_options(&diag_arena);
+    handlers[1].id = 2U;
+    handlers[1].export_name = sl_str_from_cstr("__sloppy_handler_2");
+    handlers[1].display_name = sl_str_from_cstr("Create");
+    routes[1].method = sl_str_from_cstr("POST");
+    routes[1].pattern = sl_str_from_cstr("/");
+    routes[1].handler_id = 2U;
+    routes[1].name = sl_str_from_cstr("Create");
+    plan.handler_count = 2U;
+    plan.route_count = 2U;
+
+    if (expect_status(sl_app_host_validate_startup(&plan, &options, &diag), SL_STATUS_OK) != 0) {
+        return 4;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 5;
+    }
+
+    return 0;
+}
+
+static int test_non_get_only_metadata_is_not_runnable_yet(void)
+{
+    unsigned char diag_storage[1024];
+    SlArena diag_arena = {0};
+    SlPlanHandler handlers[1];
+    SlPlanRoute routes[1];
+    SlPlan plan = valid_plan(handlers, routes);
+    SlDiag diag = {0};
+    SlAppHostStartupValidation options;
+
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    options = validation_options(&diag_arena);
+    routes[0].method = sl_str_from_cstr("POST");
+
+    if (expect_status(sl_app_host_validate_startup(&plan, &options, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 6;
+    }
+    if (diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
+        !sl_str_equal(diag.message,
+                      sl_str_from_cstr("app plan does not contain runnable route metadata")))
+    {
+        return 7;
+    }
+
+    options.require_runnable_route = false;
+    diag = (SlDiag){0};
+    if (expect_status(sl_app_host_validate_startup(&plan, &options, &diag), SL_STATUS_OK) != 0) {
+        return 8;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 9;
+    }
+
+    return 0;
+}
+
 static int test_missing_route_handler_fails_startup(void)
 {
     unsigned char diag_storage[1024];
@@ -278,6 +348,14 @@ static int test_request_scope_cleans_up_on_failure(void)
 int main(void)
 {
     int result = test_valid_startup_succeeds();
+    if (result != 0) {
+        return result;
+    }
+    result = test_non_get_metadata_is_valid_when_get_route_exists();
+    if (result != 0) {
+        return result;
+    }
+    result = test_non_get_only_metadata_is_not_runnable_yet();
     if (result != 0) {
         return result;
     }

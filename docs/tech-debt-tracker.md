@@ -14,8 +14,9 @@ ENGINE-01 locks the framework contract in
 `docs/project/engine-framework-contract.md`; future implementation debt should be tracked
 against that contract rather than reopening ambiguous "minimum alpha" scope.
 
-- Compiler support for realistic supported Sloppy apps: async handlers, non-GET route
-  methods, SQLite/data metadata, capability metadata, and real source maps.
+- Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02
+  metadata: source-input handoff/cache, module/service/schema extraction, runtime Promise
+  settlement, non-GET dispatch, and provider/capability enforcement.
 - V8 async runtime: Promise return support, microtask policy, owner-thread continuation,
   cancellation-token propagation, bounded completion queues, rejected Promise diagnostics,
   and request-scope retention until settlement.
@@ -35,8 +36,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 ## Must Fix Before Public Alpha
 
-- Public API to plan emission beyond EPIC-21: bootstrap module/service/data metadata must
-  become compiler-produced plan metadata instead of in-memory debug snapshots.
+- Public API to plan emission beyond ENGINE-02: bootstrap module/service/schema metadata
+  must become compiler-produced plan metadata instead of in-memory debug snapshots.
 - `sloppy run` source/build handoff: EPIC-22 can load artifacts, but source input still
   needs a clean `sloppyc` handoff/cache story.
 - Source-input `sloppy run <source.js>` implementation: MAIN1-01 decided that alpha keeps
@@ -56,7 +57,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   does not add full async JavaScript. Promise support is deferred, not optional: before
   Sloppy claims async handlers, V8 Promise settlement, microtask policy, request-scope
   lifetime, cancellation propagation, bounded queues, and rejected-promise diagnostics must
-  be implemented and tested.
+  be implemented and tested. ENGINE-03 must also revisit the ENGINE-02 compiler rejection
+  `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` and update the compiler syntax matrix,
+  diagnostics fixtures, and conformance fixtures when `await`, multi-statement async
+  bodies, and non-direct async returns become executable.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.
@@ -104,9 +108,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   metadata.
 - Stronger provider/capability enforcement for future provider bridges beyond the current
   bridge-ready hook.
-- Source map strategy for compiler output and TypeScript remapping from V8 exceptions.
-  MAIN1-05 reports generated `app.js` line/column only because current maps are
-  placeholders.
+- Source map consumption for TypeScript remapping from V8 exceptions. ENGINE-02 emits
+  handler-line source maps, but MAIN1-05 still reports generated `app.js` line/column
+  because runtime diagnostics do not consume those maps yet.
 - Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
   drain behavior beyond the current idempotent close, thread-safety contract, and richer
   diagnostics.
@@ -152,8 +156,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Official TypeScript checking path: `tsgo` or `tsc`, subprocess versus library, and how
   diagnostics merge with extraction diagnostics.
 - JavaScript module format and bundling: ESM loading in V8, generated wrapper shape, import
-  maps if ever needed, source-map fidelity, and app entrypoint semantics beyond the EPIC-24
-  classic bootstrap runtime handoff.
+  maps if ever needed, runtime source-map remapping, and app entrypoint semantics beyond the
+  EPIC-24 classic bootstrap runtime handoff.
 - V8 process shutdown policy and whether process-wide platform teardown is ever attempted.
   Per-engine destroy is defined; global V8 platform teardown remains deliberately deferred.
 - Threading model evolution from inline skeletons to real worker threads/libuv posting,

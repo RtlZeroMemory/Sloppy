@@ -60,10 +60,12 @@ runtime intrinsics exist.
 EPIC-19 adds `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi` over
 plan-compatible metadata fixtures/artifacts. These commands do not compile apps, run
 handlers, start HTTP, enter V8, or run live provider checks by default.
-EPIC-21 adds the compiler extraction MVP. `sloppyc build` can parse one tiny public API
-source file with the bare `"sloppy"` import, extract literal `mapGet` routes and simple
-route groups, assign stable handler IDs, and emit deterministic `app.plan.json`, `app.js`,
-and placeholder `app.js.map` artifacts.
+EPIC-21 adds the first compiler extraction path, and ENGINE-02 expands it into the
+supported compiler/Plan pipeline. `sloppyc build` can parse one supported public API source
+file with the bare `"sloppy"` import, extract literal GET/POST/PUT/PATCH/DELETE route
+metadata, simple route groups, direct async handler metadata, and minimal SQLite
+capability/provider metadata, assign stable handler IDs, and emit deterministic
+`app.plan.json`, `app.js`, and real handler-line `app.js.map` artifacts.
 EPIC-24 makes that bare `"sloppy"` import an explicit compiler rewrite story rather than a
 Node resolution promise. The compiler accepts only `"sloppy"`, emits generated code that
 reads bootstrap runtime state from `globalThis.__sloppy_runtime`, and rejects arbitrary

@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;gCAIqB;;gCACC;;gCACQ;;gCACE;;gCACC",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.mapGet(\"/users\", () => Results.json([{ id: 1 }])).withName(\"Users.List\");\napp.mapPost(\"/users\", () => Results.json({ id: 2 })).withName(\"Users.Create\");\napp.mapPut(\"/users/{id:int}\", (ctx) => Results.json({ id: ctx.route.id, updated: true })).withName(\"Users.Update\");\napp.mapPatch(\"/users/{id:int}\", (ctx) => Results.json({ id: ctx.route.id, patched: true })).withName(\"Users.Patch\");\napp.mapDelete(\"/users/{id:int}\", () => Results.noContent()).withName(\"Users.Delete\");\n\nexport default app;\n"
+  ],
+  "version": 3
+}

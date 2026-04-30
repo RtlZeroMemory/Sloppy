@@ -182,6 +182,34 @@ static int expect_handler(const SlPlan* plan, SlHandlerId id, const char* export
     return 0;
 }
 
+static int expect_valid_route_methods(const SlPlan* plan)
+{
+    if (plan == NULL || plan->route_count != 5U) {
+        return 1;
+    }
+
+    if (!sl_str_equal(plan->routes[0].method, sl_str_from_cstr("GET")) ||
+        !sl_str_equal(plan->routes[0].pattern, sl_str_from_cstr("/users")) ||
+        plan->routes[0].handler_id != 1U ||
+        !sl_str_equal(plan->routes[1].method, sl_str_from_cstr("POST")) ||
+        !sl_str_equal(plan->routes[1].pattern, sl_str_from_cstr("/users")) ||
+        plan->routes[1].handler_id != 2U ||
+        !sl_str_equal(plan->routes[2].method, sl_str_from_cstr("PUT")) ||
+        !sl_str_equal(plan->routes[2].pattern, sl_str_from_cstr("/users/{id:int}")) ||
+        plan->routes[2].handler_id != 3U ||
+        !sl_str_equal(plan->routes[3].method, sl_str_from_cstr("PATCH")) ||
+        !sl_str_equal(plan->routes[3].pattern, sl_str_from_cstr("/users/{id:int}")) ||
+        plan->routes[3].handler_id != 4U ||
+        !sl_str_equal(plan->routes[4].method, sl_str_from_cstr("DELETE")) ||
+        !sl_str_equal(plan->routes[4].pattern, sl_str_from_cstr("/users/{id:int}")) ||
+        plan->routes[4].handler_id != 5U)
+    {
+        return 2;
+    }
+
+    return 0;
+}
+
 static int test_valid_fixture_matrix(void)
 {
     static const ValidFixtureCase cases[] = {
@@ -193,6 +221,8 @@ static int test_valid_fixture_matrix(void)
          NULL, 1U, 0U},
         {"tests/golden/plan/valid-route-section.plan.json", 1U, "__sloppy_handler_1", "Home", NULL,
          NULL, 1U, 0U},
+        {"tests/golden/plan/valid-route-methods.plan.json", 5U, "__sloppy_handler_1", "Users.List",
+         "__sloppy_handler_2", "Users.Create", 1U, 2U},
         {"tests/golden/plan/valid-provider-section.plan.json", 1U, "__sloppy_handler_1", "Home",
          NULL, NULL, 1U, 0U},
         {"tests/golden/plan/valid-capability-section.plan.json", 1U, "__sloppy_handler_1", "Home",
@@ -240,6 +270,7 @@ static int test_valid_fixture_matrix(void)
         if (sl_str_equal(sl_str_from_cstr(cases[index].path),
                          sl_str_from_cstr("tests/golden/plan/valid-route-section.plan.json")) &&
             (plan.route_count != 1U ||
+             !sl_str_equal(plan.routes[0].method, sl_str_from_cstr("GET")) ||
              !sl_str_equal(plan.routes[0].pattern, sl_str_from_cstr("/users/{id:int}")) ||
              plan.routes[0].handler_id != 1U ||
              !sl_str_equal(plan.routes[0].name, sl_str_from_cstr("Users.Get"))))
@@ -248,12 +279,19 @@ static int test_valid_fixture_matrix(void)
         }
 
         if (sl_str_equal(sl_str_from_cstr(cases[index].path),
+                         sl_str_from_cstr("tests/golden/plan/valid-route-methods.plan.json")) &&
+            expect_valid_route_methods(&plan) != 0)
+        {
+            return 66 + (int)index;
+        }
+
+        if (sl_str_equal(sl_str_from_cstr(cases[index].path),
                          sl_str_from_cstr("tests/golden/plan/valid-provider-section.plan.json")) &&
             (plan.data_provider_count != 1U ||
              !sl_str_equal(plan.data_providers[0].token, sl_str_from_cstr("data.main")) ||
              !sl_str_equal(plan.data_providers[0].provider, sl_str_from_cstr("sqlite"))))
         {
-            return 66 + (int)index;
+            return 67 + (int)index;
         }
 
         if (sl_str_equal(
@@ -263,7 +301,7 @@ static int test_valid_fixture_matrix(void)
              !sl_str_equal(plan.capabilities[0].kind, sl_str_from_cstr("database")) ||
              !sl_str_equal(plan.capabilities[0].access, sl_str_from_cstr("readwrite"))))
         {
-            return 67 + (int)index;
+            return 68 + (int)index;
         }
         if (sl_str_equal(
                 sl_str_from_cstr(cases[index].path),
@@ -274,7 +312,7 @@ static int test_valid_fixture_matrix(void)
              !sl_str_equal(plan.capabilities[1].kind, sl_str_from_cstr("network")) ||
              !sl_str_equal(plan.capabilities[1].access, sl_str_from_cstr("connect-listen"))))
         {
-            return 68 + (int)index;
+            return 69 + (int)index;
         }
     }
 

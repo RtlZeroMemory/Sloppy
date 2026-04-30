@@ -1,2 +1,6 @@
-<compiler>/tests/fixtures/unsupported-import-alias/input.js: SLOPPYC_E_UNSUPPORTED_IMPORT: input must import Sloppy and Results from "sloppy" without aliases
-hint: Import without aliases: import { Sloppy, Results } from "sloppy";
+<compiler>/tests/fixtures/unsupported-import-alias/input.js:1:10: SLOPPYC_E_UNSUPPORTED_IMPORT: unsupported sloppy import "Sloppy"
+  --> <compiler>/tests/fixtures/unsupported-import-alias/input.js:1:10
+   |
+1 | import { Sloppy as S, Results } from "sloppy";
+   |          ^^^^^^^^^^^
+hint: Use import { Sloppy, Results } from "sloppy"; or add data only when provider metadata is needed.

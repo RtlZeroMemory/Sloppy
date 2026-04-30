@@ -110,8 +110,7 @@ Rules:
 ## Testing
 
 - Add unit tests for extractor pieces.
-- Add golden tests for emitted `app.plan.json`, `app.js`, and source maps once emission
-  exists.
+- Keep golden tests current for emitted `app.plan.json`, `app.js`, and source maps.
 - Add diagnostics tests for unsupported syntax.
 - Treat snapshot/golden updates as intentional contract changes.
 - Test names should describe intended behavior.

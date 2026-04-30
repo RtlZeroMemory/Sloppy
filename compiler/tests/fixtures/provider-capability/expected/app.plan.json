@@ -1,0 +1,68 @@
+{
+  "bundle": {
+    "hash": "sha256:c0866569c29a5f4f2c365598256b8f28e3e80844aa26413446be697d7fee1dee",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "users.db",
+      "token": "users.db"
+    }
+  ],
+  "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "dataProviders": [
+    {
+      "capability": "users.db",
+      "provider": "sqlite",
+      "service": null,
+      "token": "users.db"
+    }
+  ],
+  "features": {
+    "asyncHandlers": false,
+    "capabilities": true,
+    "dataProviders": true,
+    "sourceMaps": true
+  },
+  "handlers": [
+    {
+      "async": false,
+      "displayName": "GET /users",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 22,
+        "line": 11,
+        "path": "input.js"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": null,
+      "pattern": "/users",
+      "source": {
+        "column": 1,
+        "line": 11,
+        "path": "input.js"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceMap": {
+    "hash": "sha256:920accea465b82956e7bff9cbbaa212d22bad636f8fd7a4674d84e6290612397",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

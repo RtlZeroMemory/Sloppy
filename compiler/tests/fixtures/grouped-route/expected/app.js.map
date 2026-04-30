@@ -1,8 +1,12 @@
 {
   "file": "app.js",
-  "mappings": "",
+  "mappings": ";;;;;;gCAK0B",
   "names": [],
-  "sources": [],
-  "sourcesContent": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\nconst users = app.mapGroup(\"/users\");\n\nusers.mapGet(\"/{id:int}\", () => Results.json({ ok: true })).withName(\"Users.Get\");\n\nexport default app;\n"
+  ],
   "version": 3
 }

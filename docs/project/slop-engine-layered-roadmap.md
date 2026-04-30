@@ -107,14 +107,20 @@ Purpose: compiler emits everything the runtime needs for realistic apps.
 
 EPICs: ENGINE-02.
 
+Status: ENGINE-02 compiler/Plan PR covers the first large-coherent slice: supported
+method extraction, async-handler metadata emission, minimal SQLite capability/provider
+metadata, deterministic artifacts, source-map artifacts, and rejected-shape fixtures.
+Source-input `sloppy run app.js`, module/service graph extraction, and runtime execution of
+async/non-GET/provider behavior remain later layers.
+
 Tasks:
 
-- async handler extraction;
-- non-GET route methods;
+- async handler extraction metadata;
+- non-GET route method metadata;
 - named handlers or documented rejection;
-- SQLite/data API extraction needs;
+- minimal SQLite/data capability extraction needs;
 - capability/provider Plan metadata emission;
-- real source map output;
+- real handler-line source map output;
 - deterministic Plan metadata/hashes;
 - #302 source-input `sloppy run app.js` compiler/CLI handoff, cache key, stale-artifact,
   diagnostics, and cleanup policy;
@@ -129,8 +135,8 @@ Non-goals: arbitrary JS bundler, npm resolution, Node compatibility.
 Acceptance criteria: supported source examples compile to complete artifacts and rejected
 source leaves no success artifacts.
 
-Likely PR grouping: method extraction; async handler extraction; data/capability emission;
-source-input handoff/cache; source maps; diagnostics matrix.
+Likely PR grouping: ENGINE-02 compiler/Plan slice first; source-input handoff/cache remains
+separate; broader module/service extraction remains separate.
 
 Parallelization: diagnostics fixture expansion and source-map work can proceed alongside
 method/data extraction after the contracts freeze.
@@ -155,6 +161,9 @@ Tasks:
 - deadline/timeout hooks built on the cancellation path;
 - bounded completion queues and explicit overflow diagnostics;
 - app shutdown with pending async policy;
+- compiler follow-through that reopens `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` and
+  graduates `await`, multi-statement async bodies, and non-direct async returns only after
+  the runtime Promise policy is executable;
 - V8-gated tests.
 
 Prerequisites: Layer 1 async contract; enough Layer 2 compiler support for async fixtures.
@@ -165,7 +174,8 @@ Non-goals: broad public timers API, multi-worker scaling, production async DB of
 beyond the initial policy.
 
 Acceptance criteria: async handler conformance covers fulfillment, rejection,
-cancellation, cleanup, bounded queue overflow, and no `[object Promise]` fake success.
+cancellation, cleanup, bounded queue overflow, compiler acceptance of the newly executable
+async source shapes, and no `[object Promise]` fake success.
 
 Likely PR grouping: bridge Promise detection/settlement; microtask policy; cancellation
 token propagation; bounded queue/overflow diagnostics; request-scope retention;

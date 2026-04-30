@@ -14,6 +14,11 @@ static SlStr sl_app_host_literal(const char* ptr, size_t length)
     return sl_str_from_parts(ptr, length);
 }
 
+static bool sl_app_host_route_method_runnable(SlStr method)
+{
+    return sl_plan_route_method_runnable(method);
+}
+
 static bool sl_app_host_token_syntax_valid(SlStr token)
 {
     size_t index = 0U;
@@ -248,12 +253,11 @@ static SlStatus sl_app_host_validate_routes(const SlPlan* plan,
                 options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
                 sl_app_host_literal("unsupported app plan route method",
                                     sizeof("unsupported app plan route method") - 1U),
-                sl_app_host_literal("the current dev app host supports GET routes only",
-                                    sizeof("the current dev app host supports GET routes only") -
-                                        1U),
+                sl_app_host_literal(
+                    "Plan route metadata must use a supported framework method",
+                    sizeof("Plan route metadata must use a supported framework method") - 1U),
                 SL_STATUS_UNSUPPORTED);
         }
-        runnable_routes += 1U;
         if (!sl_status_is_ok(sl_plan_find_handler_by_id(plan, route->handler_id, &handler))) {
             return sl_app_host_diag(
                 options, out_diag, SL_DIAG_INVALID_PLAN_FIELD,
@@ -266,6 +270,10 @@ static SlStatus sl_app_host_validate_routes(const SlPlan* plan,
                                         1U),
                 SL_STATUS_INVALID_ARGUMENT);
         }
+        if (!sl_app_host_route_method_runnable(route->method)) {
+            continue;
+        }
+        runnable_routes += 1U;
     }
 
     if (options != NULL && options->require_runnable_route && runnable_routes == 0U) {

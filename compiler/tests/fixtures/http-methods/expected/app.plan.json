@@ -1,0 +1,142 @@
+{
+  "bundle": {
+    "hash": "sha256:a05177e1800e305c5cc7a67cf8382a48f86210b134f3729cc692929309f8b72f",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [],
+  "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "dataProviders": [],
+  "features": {
+    "asyncHandlers": false,
+    "capabilities": false,
+    "dataProviders": false,
+    "sourceMaps": true
+  },
+  "handlers": [
+    {
+      "async": false,
+      "displayName": "Users.List",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 22,
+        "line": 5,
+        "path": "input.js"
+      }
+    },
+    {
+      "async": false,
+      "displayName": "Users.Create",
+      "exportName": "__sloppy_handler_2",
+      "id": 2,
+      "source": {
+        "column": 23,
+        "line": 6,
+        "path": "input.js"
+      }
+    },
+    {
+      "async": false,
+      "displayName": "Users.Update",
+      "exportName": "__sloppy_handler_3",
+      "id": 3,
+      "source": {
+        "column": 31,
+        "line": 7,
+        "path": "input.js"
+      }
+    },
+    {
+      "async": false,
+      "displayName": "Users.Patch",
+      "exportName": "__sloppy_handler_4",
+      "id": 4,
+      "source": {
+        "column": 33,
+        "line": 8,
+        "path": "input.js"
+      }
+    },
+    {
+      "async": false,
+      "displayName": "Users.Delete",
+      "exportName": "__sloppy_handler_5",
+      "id": 5,
+      "source": {
+        "column": 34,
+        "line": 9,
+        "path": "input.js"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": "Users.List",
+      "pattern": "/users",
+      "source": {
+        "column": 1,
+        "line": 5,
+        "path": "input.js"
+      }
+    },
+    {
+      "handlerId": 2,
+      "method": "POST",
+      "name": "Users.Create",
+      "pattern": "/users",
+      "source": {
+        "column": 1,
+        "line": 6,
+        "path": "input.js"
+      }
+    },
+    {
+      "handlerId": 3,
+      "method": "PUT",
+      "name": "Users.Update",
+      "pattern": "/users/{id:int}",
+      "source": {
+        "column": 1,
+        "line": 7,
+        "path": "input.js"
+      }
+    },
+    {
+      "handlerId": 4,
+      "method": "PATCH",
+      "name": "Users.Patch",
+      "pattern": "/users/{id:int}",
+      "source": {
+        "column": 1,
+        "line": 8,
+        "path": "input.js"
+      }
+    },
+    {
+      "handlerId": 5,
+      "method": "DELETE",
+      "name": "Users.Delete",
+      "pattern": "/users/{id:int}",
+      "source": {
+        "column": 1,
+        "line": 9,
+        "path": "input.js"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceMap": {
+    "hash": "sha256:3c37623b75f966269de9edecd998b2c2f466d63ef5695ac883302ec7d31c4b7e",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

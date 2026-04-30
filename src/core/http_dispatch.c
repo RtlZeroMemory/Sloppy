@@ -106,6 +106,11 @@ static SlStatus sl_http_dispatch_unsupported_method(SlArena* arena, SlDiag* out_
         SL_STATUS_UNSUPPORTED);
 }
 
+static bool sl_http_plan_route_is_get(const SlPlanRoute* route)
+{
+    return route != NULL && sl_plan_route_method_runnable(route->method);
+}
+
 static SlStatus sl_http_dispatch_missing_handler(SlArena* arena, SlDiag* out_diag)
 {
     return sl_http_dispatch_write_diag(
@@ -313,37 +318,65 @@ static SlStatus sl_http_route_table_alloc(SlArena* arena, size_t route_count,
 }
 
 static SlStatus sl_http_route_table_fill_entries(SlArena* arena, const SlPlan* plan,
-                                                 SlHttpRouteTableEntry* entries, SlDiag* out_diag)
+                                                 SlHttpRouteTableEntry* entries,
+                                                 size_t* out_entry_count, SlDiag* out_diag)
 {
     size_t index = 0U;
+    size_t entry_count = 0U;
 
     for (index = 0U; index < plan->route_count; index += 1U) {
         const SlPlanRoute* route = &plan->routes[index];
         const SlPlanHandler* handler = NULL;
         SlStatus status;
 
-        entries[index] = (SlHttpRouteTableEntry){0};
         if (!sl_plan_route_method_supported(route->method)) {
             return sl_http_dispatch_unsupported_method(arena, out_diag);
         }
+        if (!sl_http_plan_route_is_get(route)) {
+            continue;
+        }
 
+        entries[entry_count] = (SlHttpRouteTableEntry){0};
         status = sl_plan_find_handler_by_id(plan, route->handler_id, &handler);
         if (!sl_status_is_ok(status)) {
             return sl_http_route_table_missing_handler(arena, out_diag);
         }
 
-        status = sl_route_pattern_parse(arena, route->pattern, &entries[index].pattern, NULL);
+        status = sl_route_pattern_parse(arena, route->pattern, &entries[entry_count].pattern, NULL);
         if (!sl_status_is_ok(status)) {
             return sl_http_route_table_invalid_route(arena, out_diag);
         }
 
-        entries[index].binding.method = SL_HTTP_METHOD_GET;
-        entries[index].binding.pattern = &entries[index].pattern;
-        entries[index].binding.handler_id = route->handler_id;
-        entries[index].source_order = index;
-        entries[index].has_params = entries[index].binding.pattern->param_count != 0U;
+        entries[entry_count].binding.method = SL_HTTP_METHOD_GET;
+        entries[entry_count].binding.pattern = &entries[entry_count].pattern;
+        entries[entry_count].binding.handler_id = route->handler_id;
+        entries[entry_count].source_order = index;
+        entries[entry_count].has_params = entries[entry_count].binding.pattern->param_count != 0U;
+        entry_count += 1U;
     }
 
+    if (out_entry_count != NULL) {
+        *out_entry_count = entry_count;
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_route_table_count_runnable_routes(SlArena* arena, const SlPlan* plan,
+                                                          size_t* out_route_count, SlDiag* out_diag)
+{
+    size_t index = 0U;
+    size_t route_count = 0U;
+
+    for (index = 0U; index < plan->route_count; index += 1U) {
+        if (!sl_plan_route_method_supported(plan->routes[index].method)) {
+            return sl_http_dispatch_unsupported_method(arena, out_diag);
+        }
+        if (sl_http_plan_route_is_get(&plan->routes[index])) {
+            route_count += 1U;
+        }
+    }
+
+    *out_route_count = route_count;
     return sl_status_ok();
 }
 
@@ -354,6 +387,7 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
     SlHttpRouteTableEntry* entries = NULL;
     SlHttpRouteBinding* bindings = NULL;
     size_t index = 0U;
+    size_t runnable_route_count = 0U;
     SlStatus status;
 
     if (out_diag != NULL) {
@@ -374,28 +408,41 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
     }
 
     mark = sl_arena_mark(arena);
-    status = sl_http_route_table_alloc(arena, plan->route_count, &entries, &bindings);
-    if (!sl_status_is_ok(status)) {
-        goto failure;
-    }
-    if (plan->route_count != 0U && (entries == NULL || bindings == NULL)) {
-        status = sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
-        goto failure;
-    }
-    status = sl_http_route_table_fill_entries(arena, plan, entries, out_diag);
+    status =
+        sl_http_route_table_count_runnable_routes(arena, plan, &runnable_route_count, out_diag);
     if (!sl_status_is_ok(status)) {
         goto failure;
     }
 
-    sl_http_route_table_sort(entries, plan->route_count);
-    for (index = 0U; index < plan->route_count; index += 1U) {
+    status = sl_http_route_table_alloc(arena, runnable_route_count, &entries, &bindings);
+    if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+    if (runnable_route_count != 0U && (entries == NULL || bindings == NULL)) {
+        status = sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+        goto failure;
+    }
+    if (runnable_route_count == 0U) {
+        out_table->dispatch.routes = NULL;
+        out_table->dispatch.route_count = 0U;
+        out_table->route_count = 0U;
+        return sl_status_ok();
+    }
+    status =
+        sl_http_route_table_fill_entries(arena, plan, entries, &runnable_route_count, out_diag);
+    if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+
+    sl_http_route_table_sort(entries, runnable_route_count);
+    for (index = 0U; index < runnable_route_count; index += 1U) {
         entries[index].binding.pattern = &entries[index].pattern;
         bindings[index] = entries[index].binding;
     }
 
     out_table->dispatch.routes = bindings;
-    out_table->dispatch.route_count = plan->route_count;
-    out_table->route_count = plan->route_count;
+    out_table->dispatch.route_count = runnable_route_count;
+    out_table->route_count = runnable_route_count;
     return sl_status_ok();
 
 failure:

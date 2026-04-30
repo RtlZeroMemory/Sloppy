@@ -1,8 +1,12 @@
 {
   "file": "app.js",
-  "mappings": "",
+  "mappings": ";;;;;;gCAIwB;AACxB;AACA",
   "names": [],
-  "sources": [],
-  "sourcesContent": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.mapGet(\"/function\", function () {\n  return Results.text(\"Hello from a function handler\");\n});\n\nexport default app;\n"
+  ],
   "version": 3
 }

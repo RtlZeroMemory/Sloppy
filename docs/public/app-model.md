@@ -1,6 +1,6 @@
 # App Model
 
-Status: Bootstrap app-host skeleton, compiler extraction MVP, and dev-only artifact run MVP
+Status: Bootstrap app-host skeleton, ENGINE-02 compiler metadata, and dev-only artifact run
 implemented.
 
 Bootstrap status: `stdlib/sloppy/app.js` exports a frozen `Sloppy` object with
@@ -9,11 +9,13 @@ an in-memory conceptual object with route registration, route groups, structural
 behavior, config/log/services accessors, module debug metadata, and `app.__getRoutes()` for
 bootstrap tests/debugging.
 
-Compiler status: `sloppyc build` can extract one tiny app from either `Sloppy.create()` or
-`Sloppy.createBuilder()` plus `builder.build()`, then emit deterministic `app.plan.json`,
-`app.js`, and placeholder `app.js.map` artifacts. The compiler MVP supports only literal
-`mapGet` routes and simple route groups. It does not execute the bootstrap app object,
-extract modules/services/data providers, or run `app.run`.
+Compiler status: `sloppyc build` can extract one supported app from either
+`Sloppy.create()` or `Sloppy.createBuilder()` plus `builder.build()`, then emit
+deterministic `app.plan.json`, `app.js`, and handler-line `app.js.map` artifacts. The
+compiler supports literal GET/POST/PUT/PATCH/DELETE route metadata, simple route groups,
+direct async handler metadata, and minimal SQLite provider/capability metadata. It does not
+execute the bootstrap app object, extract modules/services/schema graphs, run `app.run`,
+settle Promises, serve non-GET requests, or open native providers from compiled handlers.
 See `docs/compiler-supported-syntax.md` for the exact supported and rejected compiler
 source matrix.
 

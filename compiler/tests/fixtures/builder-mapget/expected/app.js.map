@@ -1,8 +1,12 @@
 {
   "file": "app.js",
-  "mappings": "",
+  "mappings": ";;;;;;gCAKgB",
   "names": [],
-  "sources": [],
-  "sourcesContent": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst builder = Sloppy.createBuilder();\nconst app = builder.build();\n\napp.mapGet(\"/\", () => Results.text(\"Hello from Sloppy\"));\n\nexport default app;\n"
+  ],
   "version": 3
 }

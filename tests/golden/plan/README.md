@@ -9,6 +9,7 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `valid-minimal.plan.json` | success | `SLOPPY_NONE` | yes | Minimal Plan v1 with one handler. |
 | `valid-multiple-handlers.plan.json` | success | `SLOPPY_NONE` | yes | Valid handler table with more than one dispatch ID. |
 | `valid-route-section.plan.json` | success | `SLOPPY_NONE` | yes | Valid alpha `routes` metadata with one GET route. |
+| `valid-route-methods.plan.json` | success | `SLOPPY_NONE` | yes | Valid alpha `routes` metadata for GET, POST, PUT, PATCH, and DELETE. |
 | `valid-provider-section.plan.json` | success | `SLOPPY_NONE` | yes | Valid minimal `dataProviders` metadata. |
 | `valid-capability-section.plan.json` | success | `SLOPPY_NONE` | yes | Valid minimal `capabilities` metadata tied to a provider token. |
 | `valid-capability-skeletons.plan.json` | success | `SLOPPY_NONE` | yes | Valid filesystem and network skeleton capability metadata. |
@@ -26,7 +27,7 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `missing-handler-export.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Each handler requires an `exportName`. |
 | `empty-handler-export.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Handler `exportName` must be non-empty. |
 | `wrong-field-type.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Known fields with the wrong JSON type fail validation. |
-| `invalid-route-method.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Plan v1 alpha route metadata supports GET only. |
+| `invalid-route-method.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Plan v1 route metadata rejects methods outside GET, POST, PUT, PATCH, and DELETE. |
 | `invalid-route-pattern.plan.json` | failure | `SLOPPY_E_INVALID_ROUTE_PATTERN` | yes | Route patterns must use the supported native alpha syntax. |
 | `missing-route-handler.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Route `handlerId` values must reference `handlers[].id`. |
 | `duplicate-route.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Route `method` and `pattern` pairs must be unique. |

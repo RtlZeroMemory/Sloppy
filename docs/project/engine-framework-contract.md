@@ -12,7 +12,8 @@ until a later contract PR intentionally changes it.
 
 Current implementation evidence remains in the current-state docs and public status pages:
 
-- `sloppyc build` has a tiny one-file compiler extraction MVP.
+- `sloppyc build` has ENGINE-02 method, async metadata, capability/provider metadata, and
+  source-map artifact emission for a supported one-file compiler subset.
 - `sloppy run --artifacts` has a dev-only V8-required artifact run path for GET routes.
 - the current request context has route/query/request basics only.
 - returned Promises are still unsupported in the runtime today.

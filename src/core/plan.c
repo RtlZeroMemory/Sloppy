@@ -31,6 +31,15 @@ bool sl_handler_id_valid(SlHandlerId id)
 
 bool sl_plan_route_method_supported(SlStr method)
 {
+    return sl_str_equal(method, sl_str_from_cstr("GET")) ||
+           sl_str_equal(method, sl_str_from_cstr("POST")) ||
+           sl_str_equal(method, sl_str_from_cstr("PUT")) ||
+           sl_str_equal(method, sl_str_from_cstr("PATCH")) ||
+           sl_str_equal(method, sl_str_from_cstr("DELETE"));
+}
+
+bool sl_plan_route_method_runnable(SlStr method)
+{
     return sl_str_equal(method, sl_str_from_cstr("GET"));
 }
 

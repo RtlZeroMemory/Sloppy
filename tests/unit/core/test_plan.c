@@ -67,6 +67,33 @@ static int test_handler_id_helpers(void)
     return 0;
 }
 
+static int test_route_method_helpers(void)
+{
+    if (expect_true(sl_plan_route_method_supported(sl_str_from_cstr("GET"))) != 0 ||
+        expect_true(sl_plan_route_method_runnable(sl_str_from_cstr("GET"))) != 0 ||
+        expect_true(sl_plan_route_method_supported(sl_str_from_cstr("POST"))) != 0 ||
+        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("POST"))) != 0 ||
+        expect_true(sl_plan_route_method_supported(sl_str_from_cstr("PUT"))) != 0 ||
+        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("PUT"))) != 0 ||
+        expect_true(sl_plan_route_method_supported(sl_str_from_cstr("PATCH"))) != 0 ||
+        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("PATCH"))) != 0 ||
+        expect_true(sl_plan_route_method_supported(sl_str_from_cstr("DELETE"))) != 0 ||
+        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("DELETE"))) != 0)
+    {
+        return 15;
+    }
+
+    if (expect_true(!sl_plan_route_method_supported(sl_str_from_cstr("HEAD"))) != 0 ||
+        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("HEAD"))) != 0 ||
+        expect_true(!sl_plan_route_method_supported(sl_str_from_cstr("OPTIONS"))) != 0 ||
+        expect_true(!sl_plan_route_method_runnable(sl_str_from_cstr("OPTIONS"))) != 0)
+    {
+        return 16;
+    }
+
+    return 0;
+}
+
 static int test_handler_lookup(void)
 {
     SlPlanHandler handlers[2] = {
@@ -226,6 +253,11 @@ int main(void)
     }
 
     result = test_handler_id_helpers();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_route_method_helpers();
     if (result != 0) {
         return result;
     }

@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/unsupported-sloppy-default-import/input.js:1:20: SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER: unsupported import specifier "sloppy"
+  --> <compiler>/tests/fixtures/unsupported-sloppy-default-import/input.js:1:20
+   |
+1 | import Sloppy from "sloppy";
+   |                    ^^^^^^^^
+hint: Only the public bare import "sloppy" is accepted; Sloppy does not implement Node or npm resolution.

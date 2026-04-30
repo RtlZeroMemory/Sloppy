@@ -651,10 +651,11 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
             ctx,
             sl_plan_parse_literal("unsupported app plan route method",
                                   sizeof("unsupported app plan route method") - 1U),
-            sl_plan_parse_literal("Plan v1 alpha route metadata currently supports GET only",
-                                  sizeof("Plan v1 alpha route metadata currently supports GET "
-                                         "only") -
-                                      1U));
+            sl_plan_parse_literal(
+                "Plan v1 route metadata supports GET, POST, PUT, PATCH, and DELETE",
+                sizeof("Plan v1 route metadata supports GET, POST, PUT, "
+                       "PATCH, and DELETE") -
+                    1U));
     }
 
     status = sl_plan_parse_require_string(ctx, value, "pattern", true, &out->pattern);

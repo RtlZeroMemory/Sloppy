@@ -27,28 +27,30 @@ benchmark claims.
 
 ### 1. Compiler
 
-Current state: real Oxc-backed `sloppyc build` exists for one narrow JavaScript app shape.
-It emits deterministic `app.plan.json`, `app.js`, and `app.js.map` artifacts with stable
-handler IDs and `sha256:` hashes.
+Current state: real Oxc-backed `sloppyc build` exists for a supported single-file
+JavaScript app shape. It emits deterministic `app.plan.json`, `app.js`, and `app.js.map`
+artifacts with stable handler IDs and `sha256:` hashes.
 
-What works: one `.js/.mjs` source, public `"sloppy"` import, one app, literal `mapGet`,
-simple route groups, inline handlers, supported `Results.*` descriptors, deterministic
-artifacts, and clear rejection for many unsupported shapes.
+What works: one `.js/.mjs` source, public `"sloppy"` import, one app, literal
+GET/POST/PUT/PATCH/DELETE route metadata, simple route groups, inline handlers, direct
+async handler metadata, supported `Results.*` descriptors, minimal SQLite
+provider/capability metadata, deterministic artifacts, real handler-line source maps, and
+clear rejection for many unsupported shapes.
 
-Skeletal: source maps are placeholders; the compiler is a single-file extractor, not a
-general JS/TS compiler or bundler.
+Skeletal: source maps are not yet consumed by runtime diagnostics; the compiler is a
+single-file extractor, not a general JS/TS compiler or bundler.
 
-Deferred: async handlers, non-GET route extraction, named handlers, imports beyond the
-Sloppy facade, modules/services/data/capability extraction, TypeScript checking/lowering,
-source-input `sloppy run`.
+Deferred: runtime Promise settlement for async handlers, non-GET request dispatch, named
+handlers, imports beyond the Sloppy facade, modules/services/schema extraction, broad
+provider graph extraction, TypeScript checking/lowering, source-input `sloppy run`.
 
 Misleading risk: older compiler planning sections still read like implementation has not
 started; current docs must separate "MVP implemented" from "final compiler pipeline not
 complete."
 
-Must complete for engine foundation: supported app syntax for realistic APIs, async handler
-extraction, non-GET methods, provider/capability plan metadata, real source maps, rejected
-shape diagnostics, deterministic artifact metadata.
+Must complete for engine foundation: source-input handoff policy, runtime consumption of
+async/non-GET/provider metadata, rejected shape diagnostics as syntax grows, and
+deterministic artifact metadata.
 
 Can postpone: broad TypeScript type checking, arbitrary import graphs, npm/package
 resolution, bundling, dynamic route registration, package-manager behavior.
@@ -110,8 +112,8 @@ registered handlers, converts result descriptors, and maps some exceptions.
 What works: V8 SDK validation, owner-thread checks, handler registration, generated-source
 exception diagnostics, request-context calls, SQLite intrinsic bridge.
 
-Skeletal: ESM module loading and module cache are not final; source maps are not real
-author-source remaps; Promise returns are explicitly unsupported.
+Skeletal: ESM module loading and module cache are not final; compiler source maps are not
+consumed for author-source remaps; Promise returns are explicitly unsupported.
 
 Deferred: true ESM/bootstrap module graph, microtask integration, async stack/error policy,
 global platform teardown decision, packaged V8 runtime execution evidence.
@@ -272,12 +274,14 @@ exist.
 
 What works: deterministic code/severity/message output for implemented paths.
 
-Skeletal: source maps are placeholders and not used for author-source remapping.
+Skeletal: compiler source maps have handler-line mappings, but runtime diagnostics do not
+consume them for author-source remapping.
 
 Deferred: async stack/error policy, CLI-wide diagnostic format plumbing, structured fixes,
 localization.
 
-Misleading risk: validating `app.js.map` presence/hash is not source-map fidelity.
+Misleading risk: validating `app.js.map` presence/hash or compiler map emission is not the
+same as runtime source-map remapping.
 
 Must complete for engine foundation: compiler/runtime/V8 diagnostics, source frames, real
 source maps, JSON diagnostics, redaction, async rejection mapping.

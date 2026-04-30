@@ -124,6 +124,7 @@ typedef struct SlPlanParseOptions
 bool sl_plan_version_supported(uint32_t version);
 bool sl_handler_id_valid(SlHandlerId id);
 bool sl_plan_route_method_supported(SlStr method);
+bool sl_plan_route_method_runnable(SlStr method);
 bool sl_plan_provider_supported(SlStr provider);
 bool sl_plan_capability_kind_supported(SlStr kind);
 bool sl_plan_capability_access_supported(SlStr kind, SlStr access);

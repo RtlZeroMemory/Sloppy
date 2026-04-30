@@ -6,6 +6,8 @@ Default compiler conformance cases:
 | --- | --- | --- |
 | Dynamic route registration | `compiler/tests/fixtures/unsupported-dynamic-route/input.js` | Build fails with `SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN` and leaves no success artifacts. |
 | Arbitrary bare import | `compiler/tests/fixtures/unsupported-import-specifier/input.js` | Build fails with `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER` and leaves no success artifacts. |
+| Unsupported async handler body | `compiler/tests/fixtures/unsupported-async-handler-body/input.js` | Build fails with `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` and leaves no success artifacts. |
+| Secret-bearing capability metadata | `compiler/tests/fixtures/unsupported-secret-capability/input.js` | Build fails with `SLOPPYC_E_SECRET_PLAN_METADATA` and leaves no success artifacts. |
 
 Default runtime/process conformance cases already registered under `sloppy.run.*`:
 

@@ -1,6 +1,6 @@
 # Compiler Hello Example
 
-Status: compiler extraction MVP input.
+Status: supported compiler fixture input.
 
 This example is the first Sloppy source shape that `sloppyc build` can compile:
 

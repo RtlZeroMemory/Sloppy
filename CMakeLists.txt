@@ -780,6 +780,18 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_add_conformance_compile_test(
             conformance.request_context.compile_artifacts request-context
             examples/request-context/app.js)
+        sloppy_add_conformance_compile_test(
+            conformance.http_methods.compile_artifacts http-methods
+            compiler/tests/fixtures/http-methods/input.js)
+        sloppy_add_conformance_compile_test(
+            conformance.async_handler.compile_artifacts async-handler
+            compiler/tests/fixtures/async-handler/input.js)
+        sloppy_add_conformance_compile_test(
+            conformance.provider_capability.compile_artifacts provider-capability
+            compiler/tests/fixtures/provider-capability/input.js)
+        sloppy_add_conformance_compile_test(
+            conformance.source_map.compile_artifacts source-map
+            compiler/tests/fixtures/source-map/input.js)
         sloppy_add_conformance_rejected_test(
             conformance.unsupported.dynamic_route dynamic-route
             compiler/tests/fixtures/unsupported-dynamic-route/input.js
@@ -788,6 +800,14 @@ if(SLOPPY_ENABLE_TESTS)
             conformance.unsupported.bare_import bare-import
             compiler/tests/fixtures/unsupported-import-specifier/input.js
             SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER)
+        sloppy_add_conformance_rejected_test(
+            conformance.unsupported.async_handler_body async-handler-body
+            compiler/tests/fixtures/unsupported-async-handler-body/input.js
+            SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY)
+        sloppy_add_conformance_rejected_test(
+            conformance.unsupported.secret_capability secret-capability
+            compiler/tests/fixtures/unsupported-secret-capability/input.js
+            SLOPPYC_E_SECRET_PLAN_METADATA)
     endif()
 
     add_test(
@@ -1106,7 +1126,7 @@ if(SLOPPY_ENABLE_TESTS)
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
         set_tests_properties(sloppyc.cli.version PROPERTIES PASS_REGULAR_EXPRESSION "sloppyc")
         add_test(
-            NAME sloppyc.compiler_extraction
+            NAME sloppyc.supported_app_pipeline
             COMMAND "${CARGO_EXECUTABLE}" test --manifest-path
                     "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml"
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
@@ -1121,7 +1141,7 @@ if(SLOPPY_BUILD_COMPILER)
             COMMAND "${CARGO_EXECUTABLE}" build --manifest-path
                     "${PROJECT_SOURCE_DIR}/compiler/Cargo.toml"
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/compiler"
-            COMMENT "Building sloppyc compiler extraction MVP"
+            COMMENT "Building sloppyc supported app compiler"
             VERBATIM)
     else()
         message(WARNING "Cargo was not found; the sloppyc CMake target will not be available.")

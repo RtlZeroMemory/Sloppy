@@ -13,10 +13,10 @@ use oxc_ast::ast::{
 };
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
-use serde_json::{json, Value};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 
-const COMPILER_VERSION: &str = "sloppyc-0.8.0-compiler-extraction-mvp";
+const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
 const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
 const STDLIB_VERSION: &str = "0.1.0";
 
@@ -106,6 +106,7 @@ struct Route {
     method: &'static str,
     pattern: String,
     name: Option<String>,
+    span: Span,
     handler: Handler,
 }
 
@@ -113,23 +114,52 @@ struct Route {
 struct Handler {
     source: String,
     span: Span,
+    is_async: bool,
+}
+
+#[derive(Debug, Clone)]
+struct DatabaseCapability {
+    token: String,
+    provider: &'static str,
+    access: String,
+}
+
+#[derive(Debug, Clone)]
+struct SourceMapMapping {
+    generated_line: usize,
+    generated_column: usize,
+    original_line: usize,
+    original_column: usize,
+}
+
+#[derive(Debug)]
+struct EmittedAppJs {
+    source: String,
+    mappings: Vec<SourceMapMapping>,
 }
 
 #[derive(Debug)]
 struct ExtractedApp {
+    source_name: String,
+    source: String,
+    uses_data_runtime: bool,
     routes: Vec<Route>,
+    capabilities: Vec<DatabaseCapability>,
 }
 
 #[derive(Debug)]
 struct AppState {
     sloppy_imported: bool,
     results_imported: bool,
+    data_imported: bool,
     unsupported_import_alias: bool,
+    unsupported_import_name: Option<(String, Span)>,
     unsupported_import_specifier: Option<(String, Span)>,
     app_vars: BTreeSet<String>,
     builder_vars: BTreeSet<String>,
     group_vars: BTreeMap<String, String>,
     routes: Vec<Route>,
+    capabilities: Vec<DatabaseCapability>,
     default_export: Option<String>,
 }
 
@@ -138,12 +168,15 @@ impl AppState {
         Self {
             sloppy_imported: false,
             results_imported: false,
+            data_imported: false,
             unsupported_import_alias: false,
+            unsupported_import_name: None,
             unsupported_import_specifier: None,
             app_vars: BTreeSet::new(),
             builder_vars: BTreeSet::new(),
             group_vars: BTreeMap::new(),
             routes: Vec::new(),
+            capabilities: Vec::new(),
             default_export: None,
         }
     }
@@ -226,13 +259,13 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
 }
 
 fn version_text() -> String {
-    "sloppyc 0.8.0-compiler-extraction-mvp\n".to_string()
+    format!("{}\n", COMPILER_VERSION.replace("sloppyc-", "sloppyc "))
 }
 
 fn help_text() -> String {
     let mut text = version_text();
     text.push_str(
-        "Compiler extraction MVP: parses a narrow Sloppy app shape and emits deterministic artifacts.\n",
+        "Supported app compiler: parses the documented Sloppy app shape and emits deterministic artifacts.\n",
     );
     text.push('\n');
     text.push_str("Usage:\n");
@@ -276,7 +309,7 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
     if has_typescript_extension(path) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT",
-            "compiler extraction MVP accepts JavaScript input only",
+            "supported app compiler accepts JavaScript input only",
         )
         .with_path(path)
         .with_hint(
@@ -330,6 +363,16 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
         ));
     }
 
+    if let Some((specifier, span)) = &state.unsupported_import_name {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT",
+            format!("unsupported sloppy import \"{specifier}\""),
+        )
+        .with_path(path)
+        .with_span(*span)
+        .with_hint("Use import { Sloppy, Results } from \"sloppy\"; or add data only when provider metadata is needed."));
+    }
+
     if !state.sloppy_imported || !state.results_imported {
         let hint = if state.unsupported_import_alias {
             "Import without aliases: import { Sloppy, Results } from \"sloppy\";"
@@ -369,7 +412,7 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
     if state.app_vars.len() != 1 {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MULTIPLE_APPS",
-            "compiler extraction MVP supports exactly one app object",
+            "supported app compiler supports exactly one app object",
         )
         .with_path(path));
     }
@@ -406,8 +449,24 @@ fn extract(path: &Path, source: &str) -> Result<ExtractedApp, Diagnostic> {
         }
     }
 
+    let mut capability_tokens = BTreeSet::new();
+    for capability in &state.capabilities {
+        if !capability_tokens.insert(capability.token.clone()) {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_DUPLICATE_CAPABILITY",
+                "duplicate database capability token",
+            )
+            .with_path(path)
+            .with_hint("Declare each database capability token once."));
+        }
+    }
+
     Ok(ExtractedApp {
+        source_name: source_map_source_name(path),
+        source: source.to_string(),
+        uses_data_runtime: state.data_imported,
         routes: state.routes,
+        capabilities: state.capabilities,
     })
 }
 
@@ -420,17 +479,25 @@ fn extract_import(state: &mut AppState, import: &oxc_ast::ast::ImportDeclaration
 
     if let Some(specifiers) = &import.specifiers {
         for specifier in specifiers {
-            if let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier {
-                let imported = specifier.imported.name().as_str();
-                let local = specifier.local.name.as_str();
-                if matches!(imported, "Sloppy" | "Results") && imported != local {
-                    state.unsupported_import_alias = true;
-                }
-                if imported == "Sloppy" && local == "Sloppy" {
-                    state.sloppy_imported = true;
-                }
-                if imported == "Results" && local == "Results" {
-                    state.results_imported = true;
+            let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                state.unsupported_import_specifier =
+                    Some((import.source.value.as_str().to_string(), import.source.span));
+                return;
+            };
+
+            let imported = specifier.imported.name().as_str();
+            let local = specifier.local.name.as_str();
+            if matches!(imported, "Sloppy" | "Results" | "data") && imported != local {
+                state.unsupported_import_alias = true;
+                state.unsupported_import_name = Some((imported.to_string(), specifier.span));
+            }
+            match (imported, local) {
+                ("Sloppy", "Sloppy") => state.sloppy_imported = true,
+                ("Results", "Results") => state.results_imported = true,
+                ("data", "data") => state.data_imported = true,
+                ("Sloppy" | "Results" | "data", _) => {}
+                _ => {
+                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
             }
         }
@@ -447,7 +514,7 @@ fn extract_variable_declaration(
         let Some(name) = binding_identifier(&declarator.id) else {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_BINDING",
-                "compiler extraction MVP only supports identifier bindings",
+                "supported app compiler only supports identifier bindings",
             )
             .with_path(path)
             .with_span(declarator.span));
@@ -497,6 +564,11 @@ fn extract_expression_statement(
     state: &mut AppState,
     statement: &ExpressionStatement<'_>,
 ) -> Result<(), Diagnostic> {
+    if let Some(capability) = database_capability_call(path, &statement.expression, state)? {
+        state.capabilities.push(capability);
+        return Ok(());
+    }
+
     let (route_expr, name) = match &statement.expression {
         Expression::CallExpression(call) => match with_name_call(call)? {
             Some((inner, name)) => (inner, Some(name)),
@@ -505,7 +577,7 @@ fn extract_expression_statement(
         _ => (&statement.expression, None),
     };
 
-    let Some((receiver, pattern, handler)) = map_get_call(route_expr, source) else {
+    let Some((receiver, method, pattern, handler)) = route_call(route_expr, source) else {
         if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
         {
             return Err(diagnostic);
@@ -513,11 +585,13 @@ fn extract_expression_statement(
 
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_TOP_LEVEL",
-            "unsupported top-level expression in compiler extraction MVP",
+            "unsupported top-level expression in compiler extraction",
         )
         .with_path(path)
         .with_span(statement.span)
-        .with_hint("Use app.mapGet(\"/literal\", handler) or app.mapGroup(\"/prefix\").mapGet(\"/child\", handler)."));
+        .with_hint(
+            "Use literal route declarations or builder.capabilities.addDatabase(...) metadata.",
+        ));
     };
 
     let full_pattern = if state.app_vars.contains(receiver) {
@@ -527,7 +601,7 @@ fn extract_expression_statement(
     } else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_TARGET",
-            "mapGet must be called on the extracted app or a route group variable",
+            "route declarations must be called on the extracted app or a route group variable",
         )
         .with_path(path)
         .with_span(statement.span));
@@ -544,9 +618,10 @@ fn extract_expression_statement(
     }
 
     state.routes.push(Route {
-        method: "GET",
+        method,
         pattern: full_pattern,
         name,
+        span: statement.span,
         handler,
     });
     Ok(())
@@ -577,18 +652,18 @@ fn unsupported_route_call_diagnostic(
     }
 
     let (receiver, property) = static_member_name(&call.callee)?;
-    if property != "mapGet" {
+    if route_method_from_property(property).is_none() {
         if property.starts_with("map")
             && (state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver))
         {
             return Some(
                 Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_HTTP_METHOD",
-                    "only app.mapGet(...) route extraction is supported",
+                    "unsupported route declaration method",
                 )
                 .with_path(path)
                 .with_span(call.span)
-                .with_hint("Non-GET methods are deferred from the compiler extraction MVP."),
+                .with_hint("Supported compiler methods are mapGet, mapPost, mapPut, mapPatch, and mapDelete."),
             );
         }
         return None;
@@ -598,7 +673,7 @@ fn unsupported_route_call_diagnostic(
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE",
-                "mapGet requires a literal pattern and one handler",
+                "route declarations require a literal pattern and one handler",
             )
             .with_path(path)
             .with_span(call.span),
@@ -609,11 +684,11 @@ fn unsupported_route_call_diagnostic(
         return Some(
             Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN",
-                "mapGet route pattern must be a string literal",
+                "route pattern must be a string literal",
             )
             .with_path(path)
             .with_span(call.span)
-            .with_hint("Dynamic route strings are not part of the compiler extraction MVP."),
+            .with_hint("Dynamic route strings are not part of the supported app compiler."),
         );
     }
 
@@ -636,7 +711,7 @@ fn validate_supported_initializer(
     state: &AppState,
     init: &Expression<'_>,
 ) -> Result<(), Diagnostic> {
-    if let Some((_, _, _)) = map_get_call(init, source) {
+    if let Some((_, _, _, _)) = route_call(init, source) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE",
             "route registration must be a top-level statement, not a variable initializer",
@@ -648,6 +723,113 @@ fn validate_supported_initializer(
         return Err(diagnostic);
     }
     Ok(())
+}
+
+fn database_capability_call(
+    path: &Path,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<DatabaseCapability>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Some(chain) = static_member_chain(&call.callee) else {
+        return Ok(None);
+    };
+    if chain.len() != 3 || chain[1] != "capabilities" || chain[2] != "addDatabase" {
+        return Ok(None);
+    }
+    if !state.builder_vars.contains(chain[0]) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_TARGET",
+            "database capabilities must be declared on the extracted builder",
+        )
+        .with_path(path)
+        .with_span(call.span)
+        .with_hint("Use builder.capabilities.addDatabase(...) before builder.build()."));
+    }
+    if call.arguments.len() != 2 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+            "addDatabase requires a literal token and an options object",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+
+    let token = string_argument(call.arguments.first().ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+            "missing database capability token",
+        )
+        .with_path(path)
+        .with_span(call.span)
+    })?)
+    .ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_TOKEN",
+            "database capability token must be a string literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(&call.arguments[0]).unwrap_or(call.span))
+    })?;
+    if !plan_token_supported(token) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_TOKEN",
+            "database capability token uses unsupported characters",
+        )
+        .with_path(path)
+        .with_span(argument_span(&call.arguments[0]).unwrap_or(call.span))
+        .with_hint("Use letters, digits, '.', '_', and '-' in capability tokens."));
+    }
+
+    let options = object_argument(call.arguments.get(1).ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+            "missing database capability options",
+        )
+        .with_path(path)
+        .with_span(call.span)
+    })?)
+    .ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+            "database capability options must be an object literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(&call.arguments[1]).unwrap_or(call.span))
+    })?;
+
+    reject_secret_option_fields(path, options)?;
+
+    let provider = required_object_string_property(path, options, "provider")?;
+    if provider != "sqlite" {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_DATA_PROVIDER",
+            "compiler-emitted provider metadata currently supports sqlite only",
+        )
+        .with_path(path)
+        .with_span(options.span)
+        .with_hint("PostgreSQL and SQL Server JavaScript bridges remain deferred."));
+    }
+
+    let access = optional_object_string_property(path, options, "access")?
+        .unwrap_or("readwrite")
+        .to_string();
+    if !matches!(access.as_str(), "read" | "write" | "readwrite") {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_ACCESS",
+            "database capability access must be read, write, or readwrite",
+        )
+        .with_path(path)
+        .with_span(options.span));
+    }
+
+    Ok(Some(DatabaseCapability {
+        token: token.to_string(),
+        provider: "sqlite",
+        access,
+    }))
 }
 
 fn top_level_statement_diagnostic(
@@ -673,17 +855,17 @@ fn top_level_statement_diagnostic(
         )
         .with_path(path)
         .with_span(span)
-        .with_hint("List compiler-extracted routes as explicit top-level mapGet calls.");
+        .with_hint("List compiler-extracted routes as explicit top-level route method calls.");
     }
 
     Diagnostic::new(
         "SLOPPYC_E_UNSUPPORTED_TOP_LEVEL",
-        "unsupported top-level syntax in compiler extraction MVP",
+        "unsupported top-level syntax in supported app compiler",
     )
     .with_path(path)
     .with_span(span)
     .with_hint(
-        "Use imports, const app/builder/group declarations, mapGet calls, and export default app.",
+        "Use imports, const app/builder/group declarations, literal route calls, and export default app.",
     )
 }
 
@@ -760,22 +942,34 @@ fn app_group_call<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a st
     Some((object, prefix))
 }
 
-fn map_get_call<'a>(
+fn route_call<'a>(
     expression: &'a Expression<'a>,
     source: &str,
-) -> Option<(&'a str, &'a str, Handler)> {
+) -> Option<(&'a str, &'static str, &'a str, Handler)> {
     let Expression::CallExpression(call) = expression else {
         return None;
     };
     let (receiver, property) = static_member_name(&call.callee)?;
-    if property != "mapGet" || call.arguments.len() != 2 {
+    let method = route_method_from_property(property)?;
+    if call.arguments.len() != 2 {
         return None;
     }
 
     let pattern = string_argument(call.arguments.first()?)?;
     let handler_arg = call.arguments.get(1)?;
     let handler = handler_from_argument(handler_arg, source)?;
-    Some((receiver, pattern, handler))
+    Some((receiver, method, pattern, handler))
+}
+
+fn route_method_from_property(property: &str) -> Option<&'static str> {
+    match property {
+        "mapGet" => Some("GET"),
+        "mapPost" => Some("POST"),
+        "mapPut" => Some("PUT"),
+        "mapPatch" => Some("PATCH"),
+        "mapDelete" => Some("DELETE"),
+        _ => None,
+    }
 }
 
 fn with_name_call<'a>(
@@ -822,6 +1016,26 @@ fn static_member_name<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'
     Some((object, member.property.name.as_str()))
 }
 
+fn static_member_chain<'a>(expression: &'a Expression<'a>) -> Option<Vec<&'a str>> {
+    let mut parts = Vec::new();
+    let mut current = expression;
+
+    loop {
+        match current {
+            Expression::Identifier(identifier) => {
+                parts.push(identifier.name.as_str());
+                parts.reverse();
+                return Some(parts);
+            }
+            Expression::StaticMemberExpression(member) => {
+                parts.push(member.property.name.as_str());
+                current = &member.object;
+            }
+            _ => return None,
+        }
+    }
+}
+
 fn computed_member_receiver<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
     let Expression::ComputedMemberExpression(member) = expression else {
         return None;
@@ -837,6 +1051,117 @@ fn string_argument<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
         Argument::StringLiteral(literal) => Some(literal.value.as_str()),
         _ => None,
     }
+}
+
+fn object_argument<'a>(
+    argument: &'a Argument<'a>,
+) -> Option<&'a oxc_ast::ast::ObjectExpression<'a>> {
+    match argument {
+        Argument::ObjectExpression(object) => Some(object),
+        _ => None,
+    }
+}
+
+fn property_key_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.as_str()),
+        PropertyKey::StringLiteral(literal) => Some(literal.value.as_str()),
+        _ => None,
+    }
+}
+
+fn plan_token_supported(token: &str) -> bool {
+    !token.is_empty()
+        && token
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+fn reject_secret_option_fields(
+    path: &Path,
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+) -> Result<(), Diagnostic> {
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            continue;
+        };
+        let Some(name) = property_key_name(&property.key) else {
+            continue;
+        };
+        let normalized = name
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric())
+            .map(|character| character.to_ascii_lowercase())
+            .collect::<String>();
+        if matches!(
+            normalized.as_str(),
+            "connectionstring" | "password" | "pwd" | "secret" | "apikey" | "accesstoken"
+        ) {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_SECRET_PLAN_METADATA",
+                "provider and capability metadata must not contain secret-bearing fields",
+            )
+            .with_path(path)
+            .with_span(property.span)
+            .with_hint(
+                "Reference config keys in future provider metadata instead of embedding secrets.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn optional_object_string_property<'a>(
+    path: &Path,
+    object: &'a oxc_ast::ast::ObjectExpression<'a>,
+    property_name: &str,
+) -> Result<Option<&'a str>, Diagnostic> {
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+                "database capability options do not support spread properties",
+            )
+            .with_path(path)
+            .with_span(object.span));
+        };
+        if property.kind != PropertyKind::Init || property.method || property.computed {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+                "database capability options must use simple literal properties",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        }
+        if property_key_name(&property.key) != Some(property_name) {
+            continue;
+        }
+        let Expression::StringLiteral(value) = &property.value else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+                format!("database capability option '{property_name}' must be a string literal"),
+            )
+            .with_path(path)
+            .with_span(property.span));
+        };
+        return Ok(Some(value.value.as_str()));
+    }
+    Ok(None)
+}
+
+fn required_object_string_property<'a>(
+    path: &Path,
+    object: &'a oxc_ast::ast::ObjectExpression<'a>,
+    property_name: &str,
+) -> Result<&'a str, Diagnostic> {
+    optional_object_string_property(path, object, property_name)?.ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+            format!("database capability options must include '{property_name}'"),
+        )
+        .with_path(path)
+        .with_span(object.span)
+    })
 }
 
 fn route_pattern_supported(pattern: &str) -> bool {
@@ -883,6 +1208,7 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
             Some(Handler {
                 source: source_slice(source, function.span)?,
                 span: function.span,
+                is_async: function.r#async,
             })
         }
         Argument::FunctionExpression(function) => {
@@ -895,6 +1221,7 @@ fn handler_from_argument(argument: &Argument<'_>, source: &str) -> Option<Handle
             Some(Handler {
                 source: source_slice(source, function.span)?,
                 span: function.span,
+                is_async: function.r#async,
             })
         }
         _ => None,
@@ -913,7 +1240,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             } else if arrow_has_typescript_syntax(function) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER",
-                    "TypeScript handler syntax is not supported by the compiler extraction MVP",
+                    "TypeScript handler syntax is not supported by the supported app compiler",
                     Some("Use JavaScript handler syntax until TypeScript lowering is implemented."),
                 )
             } else if handler_result_uses_unsupported_values_arrow(function) {
@@ -921,6 +1248,12 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE",
                     "route handler result arguments must be inline JSON-safe values",
                     Some("Use literals, arrays, and object literals instead of closed-over bindings."),
+                )
+            } else if function.r#async {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY",
+                    "async handler extraction currently supports one direct Results.* return",
+                    Some("Keep async compiler fixtures to direct Results.* returns until ENGINE-03 owns Promise settlement."),
                 )
             } else {
                 (
@@ -940,7 +1273,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             } else if function_has_typescript_syntax(function) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER",
-                    "TypeScript handler syntax is not supported by the compiler extraction MVP",
+                    "TypeScript handler syntax is not supported by the supported app compiler",
                     Some("Use JavaScript handler syntax until TypeScript lowering is implemented."),
                 )
             } else if handler_result_uses_unsupported_values_function(function) {
@@ -948,6 +1281,12 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE",
                     "route handler result arguments must be inline JSON-safe values",
                     Some("Use literals, arrays, and object literals instead of closed-over bindings."),
+                )
+            } else if function.r#async {
+                (
+                    "SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY",
+                    "async handler extraction currently supports one direct Results.* return",
+                    Some("Keep async compiler fixtures to direct Results.* returns until ENGINE-03 owns Promise settlement."),
                 )
             } else {
                 (
@@ -1106,10 +1445,6 @@ fn argument_span(argument: &Argument<'_>) -> Option<Span> {
 
 fn handler_body_is_supported_arrow(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
     let roots = function_parameter_roots(&function.params);
-    if function.r#async {
-        return false;
-    }
-
     if function.expression {
         return function.body.statements.len() == 1
             && function.body.statements.first().is_some_and(|statement| {
@@ -1127,7 +1462,7 @@ fn handler_body_is_supported_arrow(function: &oxc_ast::ast::ArrowFunctionExpress
 
 fn handler_body_is_supported_function(function: &oxc_ast::ast::Function<'_>) -> bool {
     let roots = function_parameter_roots(&function.params);
-    if function.r#async || function.generator || function.body.is_none() {
+    if function.generator || function.body.is_none() {
         return false;
     }
     let Some(body) = &function.body else {
@@ -1401,10 +1736,10 @@ fn write_artifacts(out_dir: &Path, app: &ExtractedApp) -> Result<(), Diagnostic>
     })?;
 
     let app_js = emit_app_js(app);
-    let source_map = emit_source_map();
-    let plan = emit_plan(app, &sha256_hex(&app_js), &sha256_hex(&source_map))?;
+    let source_map = emit_source_map(app, &app_js.mappings);
+    let plan = emit_plan(app, &sha256_hex(&app_js.source), &sha256_hex(&source_map))?;
 
-    write_artifact(out_dir, "app.js", &app_js)?;
+    write_artifact(out_dir, "app.js", &app_js.source)?;
     write_artifact(out_dir, "app.js.map", &source_map)?;
     write_artifact(out_dir, "app.plan.json", &plan)?;
     Ok(())
@@ -1474,16 +1809,24 @@ fn emit_plan(
     bundle_hash: &str,
     source_map_hash: &str,
 ) -> Result<String, Diagnostic> {
+    let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
     let handlers = app
         .routes
         .iter()
         .enumerate()
         .map(|(index, route)| {
             let id = index + 1;
+            let (line, column) = line_column(&app.source, route.handler.span.start);
             json!({
+                "async": route.handler.is_async,
                 "id": id,
                 "exportName": format!("__sloppy_handler_{id}"),
-                "displayName": route.name.clone().unwrap_or_else(|| format!("GET {}", route.pattern)),
+                "displayName": route.name.clone().unwrap_or_else(|| format!("{} {}", route.method, route.pattern)),
+                "source": {
+                    "path": app.source_name,
+                    "line": line,
+                    "column": column
+                }
             })
         })
         .collect::<Vec<_>>();
@@ -1494,11 +1837,43 @@ fn emit_plan(
         .enumerate()
         .map(|(index, route)| {
             let id = index + 1;
+            let (line, column) = line_column(&app.source, route.span.start);
             json!({
                 "method": route.method,
                 "pattern": route.pattern,
                 "handlerId": id,
                 "name": route.name,
+                "source": {
+                    "path": app.source_name,
+                    "line": line,
+                    "column": column
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let data_providers = app
+        .capabilities
+        .iter()
+        .map(|capability| {
+            json!({
+                "token": capability.token,
+                "provider": capability.provider,
+                "capability": capability.token,
+                "service": null
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let capabilities = app
+        .capabilities
+        .iter()
+        .map(|capability| {
+            json!({
+                "token": capability.token,
+                "kind": "database",
+                "access": capability.access,
+                "provider": capability.token
             })
         })
         .collect::<Vec<_>>();
@@ -1514,16 +1889,24 @@ fn emit_plan(
         },
         "bundle": {
             "path": "app.js",
-            "id": "compiler-mvp-app-js",
+            "id": "sloppyc-app-js",
             "hash": bundle_hash
         },
         "sourceMap": {
             "path": "app.js.map",
-            "id": "compiler-mvp-app-js-map",
+            "id": "sloppyc-app-js-map",
             "hash": source_map_hash
         },
         "handlers": handlers,
-        "routes": routes
+        "routes": routes,
+        "dataProviders": data_providers,
+        "capabilities": capabilities,
+        "features": {
+            "asyncHandlers": has_async_handlers,
+            "dataProviders": !app.capabilities.is_empty(),
+            "capabilities": !app.capabilities.is_empty(),
+            "sourceMaps": true
+        }
     });
 
     serde_json::to_string_pretty(&value)
@@ -1536,42 +1919,221 @@ fn emit_plan(
         })
 }
 
-fn emit_app_js(app: &ExtractedApp) -> String {
+fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::new();
-    output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
-    output.push_str("if (__sloppyRuntime === undefined) {\n");
-    output.push_str("  throw new Error(\"Sloppy bootstrap runtime was not loaded\");\n");
-    output.push_str("}\n");
-    output.push_str("const { Results } = __sloppyRuntime;\n\n");
+    let mut mappings = Vec::new();
+    let mut generated_line = 0usize;
+
+    push_generated_line(
+        &mut output,
+        &mut generated_line,
+        "const __sloppyRuntime = globalThis.__sloppy_runtime;",
+    );
+    push_generated_line(
+        &mut output,
+        &mut generated_line,
+        "if (__sloppyRuntime === undefined) {",
+    );
+    push_generated_line(
+        &mut output,
+        &mut generated_line,
+        "  throw new Error(\"Sloppy bootstrap runtime was not loaded\");",
+    );
+    push_generated_line(&mut output, &mut generated_line, "}");
+    if app.uses_data_runtime {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "const { Results, data } = __sloppyRuntime;",
+        );
+    } else {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "const { Results } = __sloppyRuntime;",
+        );
+    }
+    push_generated_line(&mut output, &mut generated_line, "");
 
     for (index, route) in app.routes.iter().enumerate() {
         let id = index + 1;
-        output.push_str(&format!("globalThis.__sloppy_handler_{id} = "));
+        let prefix = format!("globalThis.__sloppy_handler_{id} = ");
+        let handler_start_line = generated_line;
+        let handler_start_column = prefix.len();
+        mappings.extend(handler_source_mappings(
+            &app.source,
+            route.handler.span,
+            &route.handler.source,
+            handler_start_line,
+            handler_start_column,
+        ));
+
+        output.push_str(&prefix);
         output.push_str(&route.handler.source);
         output.push_str(";\n");
-        output.push_str(&format!(
-            "globalThis.__sloppy_register_handler({id}, globalThis.__sloppy_handler_{id});\n"
-        ));
+        generated_line += route.handler.source.matches('\n').count() + 1;
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            &format!(
+                "globalThis.__sloppy_register_handler({id}, globalThis.__sloppy_handler_{id});"
+            ),
+        );
+    }
+
+    EmittedAppJs {
+        source: output,
+        mappings,
+    }
+}
+
+fn emit_source_map(app: &ExtractedApp, mappings: &[SourceMapMapping]) -> String {
+    let value = json!({
+        "version": 3,
+        "file": "app.js",
+        "sources": [app.source_name],
+        "sourcesContent": [app.source],
+        "names": [],
+        "mappings": encode_source_map_mappings(mappings)
+    });
+
+    let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
+    format!("{json}\n")
+}
+
+fn push_generated_line(output: &mut String, generated_line: &mut usize, line: &str) {
+    output.push_str(line);
+    output.push('\n');
+    *generated_line += 1;
+}
+
+fn handler_source_mappings(
+    source: &str,
+    span: Span,
+    handler_source: &str,
+    generated_start_line: usize,
+    generated_start_column: usize,
+) -> Vec<SourceMapMapping> {
+    let Some(source_start) = usize::try_from(span.start).ok() else {
+        return Vec::new();
+    };
+    let mut mappings = Vec::new();
+    let mut relative_start = 0usize;
+    let mut generated_line_offset = 0usize;
+
+    loop {
+        let original_offset = source_start.saturating_add(relative_start);
+        let (original_line, original_column) = line_column(
+            source,
+            span.start
+                .saturating_add(u32::try_from(relative_start).unwrap_or(u32::MAX)),
+        );
+        mappings.push(SourceMapMapping {
+            generated_line: generated_start_line + generated_line_offset,
+            generated_column: if generated_line_offset == 0 {
+                generated_start_column
+            } else {
+                0
+            },
+            original_line: original_line.saturating_sub(1),
+            original_column: original_column.saturating_sub(1),
+        });
+
+        let Some(next_newline) = handler_source[relative_start..].find('\n') else {
+            break;
+        };
+        relative_start += next_newline + 1;
+        generated_line_offset += 1;
+        if relative_start >= handler_source.len() || original_offset >= source.len() {
+            break;
+        }
+    }
+
+    mappings
+}
+
+fn encode_source_map_mappings(mappings: &[SourceMapMapping]) -> String {
+    if mappings.is_empty() {
+        return String::new();
+    }
+
+    let mut sorted = mappings.to_vec();
+    sorted.sort_by_key(|mapping| (mapping.generated_line, mapping.generated_column));
+    let Some(max_line) = sorted.last().map(|mapping| mapping.generated_line) else {
+        return String::new();
+    };
+
+    let mut output = String::new();
+    let mut mapping_index = 0usize;
+    let mut previous_source = 0i64;
+    let mut previous_original_line = 0i64;
+    let mut previous_original_column = 0i64;
+
+    for line in 0..=max_line {
+        if line > 0 {
+            output.push(';');
+        }
+
+        let mut previous_generated_column = 0i64;
+        let mut first_segment = true;
+        while mapping_index < sorted.len() && sorted[mapping_index].generated_line == line {
+            let mapping = &sorted[mapping_index];
+            if !first_segment {
+                output.push(',');
+            }
+            first_segment = false;
+
+            let generated_column = usize_to_i64(mapping.generated_column);
+            let original_line = usize_to_i64(mapping.original_line);
+            let original_column = usize_to_i64(mapping.original_column);
+            output.push_str(&encode_vlq(generated_column - previous_generated_column));
+            output.push_str(&encode_vlq(0 - previous_source));
+            output.push_str(&encode_vlq(original_line - previous_original_line));
+            output.push_str(&encode_vlq(original_column - previous_original_column));
+
+            previous_generated_column = generated_column;
+            previous_source = 0;
+            previous_original_line = original_line;
+            previous_original_column = original_column;
+            mapping_index += 1;
+        }
     }
 
     output
 }
 
-fn emit_source_map() -> String {
-    let value = json!({
-        "version": 3,
-        "file": "app.js",
-        "sources": [],
-        "sourcesContent": [],
-        "names": [],
-        "mappings": ""
-    });
+fn usize_to_i64(value: usize) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
 
-    let Value::Object(_) = value else {
-        return "{}\n".to_string();
+fn encode_vlq(value: i64) -> String {
+    const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut vlq = if value < 0 {
+        ((value.saturating_abs() as u64) << 1) | 1
+    } else {
+        (value as u64) << 1
     };
-    let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
-    format!("{json}\n")
+    let mut output = String::new();
+
+    loop {
+        let mut digit = (vlq & 31) as usize;
+        vlq >>= 5;
+        if vlq > 0 {
+            digit |= 32;
+        }
+        output.push(char::from(BASE64[digit]));
+        if vlq == 0 {
+            break;
+        }
+    }
+
+    output
+}
+
+fn source_map_source_name(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map_or_else(|| "input.js".to_string(), ToOwned::to_owned)
 }
 
 fn line_column(source: &str, offset: u32) -> (usize, usize) {
@@ -1805,6 +2367,36 @@ export default app;
     }
 
     #[test]
+    fn extracts_engine_02_metadata_without_runtime_claims() {
+        let source = r#"import { Sloppy, Results, data } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("users.db", { provider: "sqlite", access: "read" });
+const app = builder.build();
+app.mapPost("/users", async () => Results.json({ ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.routes[0].method, "POST");
+        assert!(app.routes[0].handler.is_async);
+        assert_eq!(app.capabilities.len(), 1);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains("const { Results, data }"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        assert!(emitted_source_map.contains("\"sourcesContent\""));
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        assert!(plan.contains("\"asyncHandlers\": true"));
+        assert!(plan.contains("\"method\": \"POST\""));
+        assert!(plan.contains("\"provider\": \"sqlite\""));
+    }
+
+    #[test]
     fn rejects_member_expression_captures_outside_context_roots() {
         let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
@@ -1866,6 +2458,10 @@ export default app;
             "grouped-route",
             "results-json",
             "function-handler",
+            "http-methods",
+            "async-handler",
+            "provider-capability",
+            "source-map",
         ] {
             let fixture = root
                 .join("tests/fixtures")
@@ -1881,10 +2477,10 @@ export default app;
                     .join("expected/app.js"),
             )
             .expect("expected app.js should exist");
-            assert_eq!(emitted_js, expected_js, "{fixture_name} app.js");
+            assert_eq!(emitted_js.source, expected_js, "{fixture_name} app.js");
 
-            let emitted_source_map = super::emit_source_map();
-            let emitted_js_hash = super::sha256_hex(&emitted_js);
+            let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+            let emitted_js_hash = super::sha256_hex(&emitted_js.source);
             let emitted_map_hash = super::sha256_hex(&emitted_source_map);
             let emitted_plan = super::emit_plan(&app, &emitted_js_hash, &emitted_map_hash)
                 .expect("plan should emit");
@@ -1922,11 +2518,15 @@ export default app;
             ("unsupported-handler-shape", "input.js"),
             ("unsupported-typescript-handler", "input.ts"),
             ("unsupported-import-alias", "input.js"),
+            ("unsupported-data-import-alias", "input.js"),
+            ("unsupported-sloppy-default-import", "input.js"),
             ("unsupported-import-specifier", "input.js"),
             ("node-fs-import", "input.js"),
             ("missing-app", "input.js"),
             ("multiple-apps", "input.js"),
             ("unsupported-http-method", "input.js"),
+            ("unsupported-async-handler-body", "input.js"),
+            ("unsupported-secret-capability", "input.js"),
         ] {
             let fixture = root
                 .join("tests/fixtures")

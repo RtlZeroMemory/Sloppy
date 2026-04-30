@@ -51,6 +51,12 @@ supported `sloppy run --artifacts` path verifies `sha256:` hashes for `app.js` a
 validation pass over the parsed Plan before route materialization, V8/user execution, or
 request serving. Minimal handler-only Plan v1 fixtures still parse for backward
 compatibility, but runnable artifact apps must provide route metadata.
+ENGINE-02 expands compiler-emitted Plan metadata without widening the runtime execution
+claim: supported apps can now emit GET/POST/PUT/PATCH/DELETE route metadata, async handler
+flags, declaration source locations, feature flags, and minimal SQLite
+data-provider/capability metadata. The current dev host still serves GET route metadata
+only, and provider/capability entries remain metadata until later runtime/provider work
+uses them.
 
 ## Public API Shape
 
@@ -186,17 +192,17 @@ Native route table input:
 
 TASK 10.A implements the native parser/matcher for the initial route path pattern subset
 that plan `routes[].pattern` values reuse. MAIN1-02 promotes the compiler-emitted route
-metadata into a Plan v1 alpha section. The native parser validates each route entry when the
-section is present:
+metadata into a Plan v1 alpha section. ENGINE-02 widens method metadata to the ENGINE-01
+core set. The native parser validates each route entry when the section is present:
 
-- `method` is required and must be `GET` in the alpha contract;
+- `method` is required and must be `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`;
 - `pattern` is required and must parse with the native route pattern parser;
 - `handlerId` is required and must reference a declared `handlers[].id`;
 - duplicate `method` + `pattern` pairs are rejected;
 - duplicate non-empty route names are rejected;
 - array order is preserved as source order. MAIN1-04 dev dispatch builds a native route
-  table from this source order and applies the alpha precedence policy: literal patterns
-  before parameter patterns, stable source order when precedence is equal.
+  table from GET route metadata only and applies the alpha precedence policy: literal
+  patterns before parameter patterns, stable source order when precedence is equal.
 
 TASK 10.C synthetic HTTP dispatch tests still build a manual borrowed table, but the
 compiler/runtime artifact path now owns its GET route mapping through `app.plan.json`.
@@ -204,14 +210,15 @@ EPIC-19 CLI introspection can read route metadata from plan-compatible JSON
 fixtures/artifacts. MAIN1-11 hardens the route, doctor, and OpenAPI commands so artifact
 metadata is validated by the native Plan v1 parser before output is produced.
 EPIC-21 compiler output uses the same plan-compatible metadata idea for extracted routes:
-each MVP route entry records `method`, `pattern`, `handlerId`, and `name`. Handler IDs
-start at `1` and are assigned in source order after route group prefix composition.
+each route entry records `method`, `pattern`, `handlerId`, `name`, and compiler-owned
+source metadata. Handler IDs start at `1` and are assigned in source order after route
+group prefix composition.
 EPIC-22 `sloppy run` consumes those route entries for dev-only GET dispatch and validates
 that each referenced handler ID exists in the parsed minimal Plan handler table before
 serving requests. EPIC-23 uses the same route entries to materialize route params into the
 handler request context; MAIN1-02 moves the route section validation into the native Plan
-parser but does not broaden route precedence, HTTP runtime behavior, middleware, or
-non-GET compiler extraction.
+parser. ENGINE-02 broadens compiler/Plan method metadata but does not broaden route
+precedence, HTTP runtime behavior, middleware, or non-GET request dispatch.
 
 Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
 and `{name:int}`. Query strings are parsed from request targets by EPIC-23 request context
@@ -461,9 +468,9 @@ Current TASK 06.B parser validation checks, with TASK 06.C golden fixture covera
 - every handler has nonzero unsigned integer `id`;
 - handler IDs are unique;
 - every handler has non-empty string `exportName` and `displayName`;
-- when `routes` is present, it is an array of GET route entries with valid native route
-  patterns, valid handler references, unique method/pattern pairs, and unique non-empty
-  names;
+- when `routes` is present, it is an array of GET/POST/PUT/PATCH/DELETE route entries with
+  valid native route patterns, valid handler references, unique method/pattern pairs, and
+  unique non-empty names;
 - when `dataProviders` is present, it is an array with valid unique tokens and supported
   provider values (`sqlite`, `postgres`, `sqlserver`);
 - when `capabilities` is present, it is an array with valid unique tokens, supported kinds,
@@ -543,9 +550,11 @@ package provenance.
 - produce golden-testable output.
 
 MAIN1-02 compiler output emits deterministic `sha256:` hashes for `app.js` and
-`app.js.map`, keeps artifact paths relative, emits the hardened route section, and still
-does not emit provider/capability sections because the compiler cannot extract those source
-shapes yet.
+`app.js.map`, keeps artifact paths relative, and emits the hardened route section.
+ENGINE-02 adds `handlers[].async`, compiler-owned `source` metadata under handlers/routes,
+top-level `features`, minimal SQLite `dataProviders`/database `capabilities`, and a real
+handler-line source map. Unsupported source must fail before `app.plan.json`, `app.js`, or
+`app.js.map` success artifacts are written.
 
 ## Error And Diagnostic Behavior
 
