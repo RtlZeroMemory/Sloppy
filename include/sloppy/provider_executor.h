@@ -171,10 +171,13 @@ struct SlProviderInstanceExecutor
     size_t next_sequence;
     size_t submitted_count;
     size_t completed_count;
+    size_t invalid_operation_count;
+    size_t operation_failure_count;
     size_t cancelled_count;
     size_t timed_out_count;
     size_t overflow_count;
     size_t shutdown_rejected_count;
+    size_t capability_denied_count;
     size_t worker_started_count;
     size_t worker_stopped_count;
     size_t worker_failure_count;

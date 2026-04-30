@@ -84,6 +84,11 @@ data-provider async codes, but it must keep cancelled, timed out, overflowed, sh
 permission-denied, and provider-failed outcomes distinguishable. Provider executor
 diagnostics must not include raw native pointers, V8/libuv implementation details, SQL
 parameter values, connection strings, or other secret-bearing payloads.
+ENGINE-23.G hardens this into tested native evidence: queue-full, shutdown, invalid
+operation/backend, worker failure, operation failure, cancellation, timeout, late
+completion, and capability-denial paths have deterministic counters or terminal
+diagnostics, and bounded stress smoke verifies redacted diagnostics without treating the
+result as performance proof.
 
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic

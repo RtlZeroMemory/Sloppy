@@ -27,15 +27,16 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   returned Promises that settle during the owner-thread microtask drain, rejection
   diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
   for the bounded call.
-- Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F serialized and blocking-pool
+- Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded
   admission, serialized SQLite-class blocking execution, bounded blocking-pool execution,
   generic cancellation/timeout/shutdown terminal handling, late-completion cleanup-only
-  behavior, and capability-gated dispatch now exist. Remaining ENGINE-23 work owns
-  diagnostics/stress evidence (#397) and the provider runtime integration guide (#398).
-  This evidence/guidance must land before ENGINE-17 claims scalable SQLite provider
-  execution or future PostgreSQL/SQL Server bridges depend on provider runtime behavior.
+  behavior, capability-gated dispatch, redacted diagnostics/counters, bounded stress
+  smoke, and the provider runtime integration guide now exist. ENGINE-17 still must route
+  SQLite through this executor before claiming scalable SQLite provider execution, and
+  future PostgreSQL/SQL Server bridges must consume the same runtime model instead of
+  bypassing it.
 - Proper HTTP runtime backend beyond ENGINE-04: ENGINE-13 owns listener/backend
   architecture, connection and request lifecycle, parser limits, richer header/body
   buffering policy, keep-alive, deadlines, disconnect/shutdown propagation, backpressure,
@@ -169,8 +170,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   covers represented route/provider/capability metadata and duplicate provider service
   tokens, but bootstrap module graphs and real service lifetimes still need compiler-emitted
   metadata.
-- Future provider bridges must route through the ENGINE-23.F capability-gated executor
-  dispatch path instead of using only direct bridge-ready hooks.
+- Future provider bridges must route through the ENGINE-23 capability-gated executor
+  dispatch path and follow `docs/project/provider-runtime-integration-guide.md` instead
+  of using only direct bridge-ready hooks.
 - Source map consumption for TypeScript remapping from V8 exceptions. ENGINE-02 emits
   handler-line source maps, but MAIN1-05 still reports generated `app.js` line/column
   because runtime diagnostics do not consume those maps yet. ENGINE-07 did not claim
@@ -225,12 +227,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - V8 process shutdown policy and whether process-wide platform teardown is ever attempted.
   Per-engine destroy is defined; global V8 platform teardown remains deliberately deferred.
 - Threading model evolution beyond provider worker execution: provider-specific
-  cancellation, stress evidence, and owner-thread continuation evidence for real provider
-  bridges.
-- Async provider strategy under ENGINE-23: serialized SQLite-class blocking calls and
-  bounded blocking pools now have generic terminal/capability semantics; remaining research
-  is nonblocking libpq/socket integration, stress evidence, and provider-specific native
-  cancellation/interruption semantics.
+  cancellation/interruption and owner-thread continuation evidence for real provider
+  bridges. ENGINE-23 bounded stress smoke covers native executor behavior only, not live
+  database throughput.
+- Async provider strategy after ENGINE-23: serialized SQLite-class blocking calls and
+  bounded blocking pools now have generic terminal/capability semantics plus bounded stress
+  smoke; remaining research is nonblocking libpq/socket integration and provider-specific
+  native cancellation/interruption semantics.
 - Cross-platform SQL Server support versus Windows-first ODBC-only policy.
 - Filesystem/network capability semantics: path normalization, symlinks, config/env
   access, and honest non-sandboxing language.
