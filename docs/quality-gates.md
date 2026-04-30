@@ -33,6 +33,11 @@ is the source document for reporting those evidence categories separately.
 MAIN1-13 conformance follows the same split: default conformance compiles supported public
 examples and rejects unsupported inputs, while V8-gated conformance runs compiled artifacts
 and selected bridge/result fixtures through `sloppy run --artifacts --once`.
+ENGINE-13.F HTTP stress/conformance smoke is default non-V8 correctness evidence over the
+core backend/parser/dispatch state model. It is reported separately from V8-gated
+`sloppy run` execution, live-provider evidence, package smoke, and benchmark evidence. It
+does not introduce throughput, latency, external-runtime comparison, or production-edge HTTP
+claims.
 
 ## Future Phase
 

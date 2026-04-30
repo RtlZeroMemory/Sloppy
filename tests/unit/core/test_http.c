@@ -630,6 +630,144 @@ static int test_parsed_path_can_feed_route_matcher(void)
     return 0;
 }
 
+static int test_stress_repeated_valid_requests_remain_bounded(void)
+{
+    static const char* requests[] = {
+        "GET /hello HTTP/1.1\r\nHost: example\r\n\r\n",
+        ("POST /items HTTP/1.1\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n"
+         "{\"ok\":true}"),
+        "PUT /items/1 HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello",
+        "PATCH /items/1 HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 0\r\n\r\n",
+        "DELETE /items/1 HTTP/1.1\r\nHost: example\r\n\r\n"};
+    enum
+    {
+        ITERATIONS = 64
+    };
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    size_t index = 0U;
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 100;
+    }
+
+    for (index = 0U; index < ITERATIONS; index += 1U) {
+        SlHttpRequestHead request = {0};
+        const char* input = requests[index % (sizeof(requests) / sizeof(requests[0]))];
+
+        sl_arena_reset(&arena);
+        status = parse_request(&arena, input, NULL, &request, NULL);
+        if (expect_status(status, SL_STATUS_OK) != 0 || request.path.ptr == NULL ||
+            sl_arena_used(&arena) == 0U || sl_arena_used(&arena) > sizeof(storage))
+        {
+            return 101;
+        }
+    }
+
+    return 0;
+}
+
+static int test_stress_repeated_malformed_requests_fail_deterministically(void)
+{
+    static const char* requests[] = {"GET / HTTP/1.1", "GET /\r\n\r\n",
+                                     "BAD METHOD / HTTP/1.1\r\n\r\n",
+                                     "GET http://example.test/ HTTP/1.1\r\n\r\n"};
+    enum
+    {
+        ITERATIONS = 64
+    };
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    size_t index = 0U;
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 110;
+    }
+
+    for (index = 0U; index < ITERATIONS; index += 1U) {
+        SlHttpRequestHead request = {0};
+        SlDiag diag = {0};
+        const char* input = requests[index % (sizeof(requests) / sizeof(requests[0]))];
+
+        sl_arena_reset(&arena);
+        status = parse_request(&arena, input, NULL, &request, &diag);
+        if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_INVALID_HTTP_REQUEST || request.raw_target.ptr != NULL)
+        {
+            return 111;
+        }
+    }
+
+    return 0;
+}
+
+static int test_stress_repeated_parser_limits_remain_enforced(void)
+{
+    enum
+    {
+        ITERATIONS = 32
+    };
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlHttpParseOptions options = {0};
+    size_t index = 0U;
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 120;
+    }
+
+    options.max_headers = 1U;
+    options.max_target_length = 4U;
+    options.max_header_name_length = 3U;
+    options.max_header_value_length = 4U;
+    options.max_total_header_bytes = 8U;
+    options.max_body_length = 4U;
+
+    for (index = 0U; index < ITERATIONS; index += 1U) {
+        SlHttpRequestHead request = {0};
+        SlHttpParseOptions body_options = options;
+        SlDiag diag = {0};
+
+        sl_arena_reset(&arena);
+        status = parse_request(&arena, "GET /toolong HTTP/1.1\r\n\r\n", &options, &request, &diag);
+        if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+            diag.code != SL_DIAG_HTTP_TARGET_LIMIT || request.raw_target.ptr != NULL)
+        {
+            return 121;
+        }
+
+        sl_arena_reset(&arena);
+        request = (SlHttpRequestHead){0};
+        diag = (SlDiag){0};
+        status = parse_request(&arena, "GET / HTTP/1.1\r\nA: 1\r\nB: 2\r\n\r\n", &options, &request,
+                               &diag);
+        if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+            diag.code != SL_DIAG_HTTP_HEADER_LIMIT || request.header_count != 0U)
+        {
+            return 122;
+        }
+
+        sl_arena_reset(&arena);
+        request = (SlHttpRequestHead){0};
+        diag = (SlDiag){0};
+        body_options.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
+        body_options.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
+        body_options.max_total_header_bytes = SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES;
+        status = parse_request(&arena, "POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\n12345",
+                               &body_options, &request, &diag);
+        if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+            diag.code != SL_DIAG_HTTP_BODY_LIMIT || request.body.ptr != NULL)
+        {
+            return 123;
+        }
+    }
+
+    return 0;
+}
+
 static int test_libuv_smoke(void)
 {
     return expect_status(sl_http_libuv_smoke(), SL_STATUS_OK) == 0 ? 0 : 90;
@@ -644,25 +782,29 @@ typedef struct HttpTestCase
 
 int main(void)
 {
-    static const HttpTestCase tests[] = {{test_parse_valid_targets},
-                                         {test_parse_headers},
-                                         {test_parse_body_bytes},
-                                         {test_parse_non_nul_terminated_request_storage},
-                                         {test_parse_binary_body_bytes},
-                                         {test_failed_parse_rolls_back_transient_builder_memory},
-                                         {test_supported_method_mapping},
-                                         {test_rejects_invalid_requests},
-                                         {test_rejects_unsupported_method},
-                                         {test_rejects_non_path_targets},
-                                         {test_callback_allocation_failure_preserved},
-                                         {test_max_target_length_enforced},
-                                         {test_max_headers_enforced},
-                                         {test_header_name_value_and_total_limits_enforced},
-                                         {test_max_body_length_enforced},
-                                         {test_zero_header_limit_allows_no_headers},
-                                         {test_invalid_arguments},
-                                         {test_parsed_path_can_feed_route_matcher},
-                                         {test_libuv_smoke}};
+    static const HttpTestCase tests[] = {
+        {test_parse_valid_targets},
+        {test_parse_headers},
+        {test_parse_body_bytes},
+        {test_parse_non_nul_terminated_request_storage},
+        {test_parse_binary_body_bytes},
+        {test_failed_parse_rolls_back_transient_builder_memory},
+        {test_supported_method_mapping},
+        {test_rejects_invalid_requests},
+        {test_rejects_unsupported_method},
+        {test_rejects_non_path_targets},
+        {test_callback_allocation_failure_preserved},
+        {test_max_target_length_enforced},
+        {test_max_headers_enforced},
+        {test_header_name_value_and_total_limits_enforced},
+        {test_max_body_length_enforced},
+        {test_zero_header_limit_allows_no_headers},
+        {test_invalid_arguments},
+        {test_parsed_path_can_feed_route_matcher},
+        {test_stress_repeated_valid_requests_remain_bounded},
+        {test_stress_repeated_malformed_requests_fail_deterministically},
+        {test_stress_repeated_parser_limits_remain_enforced},
+        {test_libuv_smoke}};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {

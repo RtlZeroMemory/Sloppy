@@ -123,6 +123,11 @@ Runtime execution:
   blocking-pool worker caps, cleanup-once behavior, shutdown safety, and redacted
   diagnostics/counters. They must not report throughput, latency, or public performance
   claims;
+- HTTP backend stress/conformance smoke tests must follow the same evidence boundary. They
+  may prove repeated valid parser/lifecycle paths, repeated malformed/parser-limit/body
+  failures, unsupported media, overload rejection, shutdown/cancellation safety, cleanup
+  once, and stable diagnostics. They must not use timing assertions, throughput/latency
+  numbers, external-runtime comparisons, or production-edge HTTP claims;
 - native async settlement skeleton before V8 Promise integration;
 - inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;
