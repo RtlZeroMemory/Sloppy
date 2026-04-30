@@ -56,6 +56,12 @@ close-after-response localhost path can carry a small app through compiler artif
 request parsing/body policy, V8 handler execution, SQLite calls, response serialization,
 and TCP response bytes. It does not add keep-alive, streaming, TLS, HTTP/2/3, WebSockets,
 middleware, benchmark evidence, or production-edge HTTP readiness.
+ENGINE-19.BC registers the implemented HTTP evidence under explicit conformance names.
+`conformance.http.default_dispatch` runs the synthetic default non-V8 dispatch suite,
+`conformance.transport.localhost_mvp` runs the loopback TCP transport MVP suite, and
+`conformance.v8.http_dispatch_execution` runs only in V8-enabled builds for synthetic HTTP
+dispatch through real V8 handlers. These registrations are evidence organization, not new
+HTTP behavior.
 There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser
 API, middleware, cookies/sessions, static file server, compression, multipart upload,
 streaming responses, public TypeScript `app.run`, or broad response framework.
@@ -606,6 +612,9 @@ Implemented CTest coverage:
 - V8-gated dispatch success returning `sloppy-ok`;
 - V8-gated non-GET dispatch, request headers, and JSON body context;
 - V8-gated missing JavaScript function and throwing handler failures;
+- ENGINE-19.BC CTest conformance aliases:
+  `conformance.http.default_dispatch`, `conformance.transport.localhost_mvp`, and
+  V8-gated `conformance.v8.http_dispatch_execution`;
 - default CLI tests for `sloppy run` help text, missing artifacts, malformed artifacts,
   source-input deferral, and clear V8-disabled failure;
 - V8-gated `sloppy run --once` tests for hello, route miss, unsupported method,

@@ -54,6 +54,12 @@ ENGINE-19.A adds the conformance evidence matrix in
 PR-reporting rules for default non-V8, V8-gated, localhost transport, SQLite/capability,
 package outside-checkout, live-provider optional, stress/smoke, and benchmark harness
 evidence. Skipped optional gates are not pass claims.
+ENGINE-19.BC adds first-class CTest registrations for the implemented V8, HTTP, and async
+evidence lanes: `conformance.http.default_dispatch`, `conformance.transport.localhost_mvp`,
+`conformance.async.*`, and V8-gated `conformance.v8.*`. These entries run existing
+validated executables under matrix-aligned names. Default gate success still does not prove
+V8 execution; V8-gated success still does not prove default, package, live-provider,
+benchmark, keep-alive, streaming, or production-edge HTTP behavior.
 
 ## Future Phase
 
