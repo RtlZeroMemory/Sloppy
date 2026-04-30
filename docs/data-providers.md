@@ -357,7 +357,8 @@ SQLite JS bridge behavior:
   numbers; text maps to strings; blob values map to V8-owned `Uint8Array` instances when a
   bridge path materializes them;
 - parameters are positional arrays containing only `null`, string, number, or boolean
-  values;
+  values. String parameters are copied into the bridge operation arena before the native
+  provider call so future async/offload work cannot depend on V8 transient storage;
 - wrapper double close is deterministic and idempotent; query/exec/queryOne after close
   fails before entering native code;
 - stale, invalid, and wrong-kind resource IDs fail through the core resource-table

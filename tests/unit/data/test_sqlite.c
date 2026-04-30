@@ -310,6 +310,68 @@ static int test_parameter_binding_and_types(void)
     return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 27;
 }
 
+static int test_result_and_parameter_lifetimes(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqliteConnection connection = {0};
+    char name_bytes[] = {'A', 'd', 'a'};
+    unsigned char blob_bytes[] = {0x10U, 0x00U, 0xffU};
+    const unsigned char expected_blob[] = {0x10U, 0x00U, 0xffU};
+    SlSqliteParam params[] = {
+        {.kind = SL_SQLITE_PARAM_TEXT,
+         .value.text = {.ptr = name_bytes, .length = sizeof(name_bytes)}},
+        blob_param(blob_bytes, sizeof(blob_bytes)),
+    };
+    SlSqliteExecResult exec_result = {0};
+    SlSqliteResult rows = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 120;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 121;
+    }
+    if (exec_sql(&arena, &connection, "create table lifetime_test (name text, raw blob)") != 0) {
+        return close_and_return(&connection, 122);
+    }
+
+    status = sl_sqlite_exec(&arena, &connection,
+                            sl_str_from_cstr("insert into lifetime_test (name, raw) values (?, ?)"),
+                            params, 2U, &exec_result, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
+        return close_and_return(&connection, 123);
+    }
+
+    name_bytes[0] = 'E';
+    blob_bytes[0] = 0x77U;
+
+    status = sl_sqlite_query(&arena, &connection,
+                             sl_str_from_cstr("select name, raw from lifetime_test"), NULL, 0U,
+                             NULL, &rows, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || rows.row_count != 1U || rows.column_count != 2U)
+    {
+        return close_and_return(&connection, 124);
+    }
+
+    status = sl_sqlite_close(&connection);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 125;
+    }
+
+    if (rows.rows[0].values[0].kind != SL_SQLITE_VALUE_TEXT ||
+        expect_str_equal(rows.rows[0].values[0].value.text, "Ada") != 0 ||
+        rows.rows[0].values[1].kind != SL_SQLITE_VALUE_BLOB ||
+        expect_bytes_equal(rows.rows[0].values[1].value.blob, expected_blob,
+                           sizeof(expected_blob)) != 0)
+    {
+        return 126;
+    }
+
+    return 0;
+}
+
 static int test_sqlite_text_blob_interop_helpers(void)
 {
     unsigned char storage[128];
@@ -719,6 +781,11 @@ int main(void)
     }
 
     result = test_parameter_binding_and_types();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_result_and_parameter_lifetimes();
     if (result != 0) {
         return result;
     }

@@ -122,6 +122,8 @@ SQLite text/blob ownership:
   operation-owned parameter adapters for future async/offloaded provider work;
 - synchronous native SQLite calls still bind text/blob parameters with SQLite transient
   ownership during the provider call;
+- V8 SQLite string parameters are copied through the private V8 string interop helper and
+  then into SQLite operation-owned parameter views before the native provider call;
 - no C row/result object and no V8 row object retains a native SQLite transient pointer.
 
 ## Invariants
