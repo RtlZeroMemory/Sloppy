@@ -111,6 +111,14 @@ requests can be cancelled through the shutdown hook with cleanup-once admission 
 This is still not a real timer integration, client-disconnect signal, socket drain timer,
 or stress evidence; those remain ENGINE-13.F/#324 and later platform/backend follow-ups.
 
+ENGINE-24.A/B adds the first reusable HTTP transport listener under the platform boundary.
+The libuv TCP listener runs inside `src/platform/libuv/`, accepts sockets into a bounded
+Slop-owned connection table, and parks accepted connections in `ACCEPTED` state. It does
+not start a request read loop, parse socket chunks, dispatch routes, write responses, use
+libuv's global threadpool, enter V8, or claim keep-alive/graceful-drain behavior. Later
+ENGINE-24 slices must post/read/write/cancel through the documented owner-loop and request
+lifetime rules before claiming scalable async HTTP behavior.
+
 Implement the full scalable async runtime when a real external async source is ready to
 wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
 async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes

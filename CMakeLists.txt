@@ -314,6 +314,7 @@ set(
     src/data/sqlite.c
     src/engine/engine.c
     src/platform/libuv/async_backend_libuv.c
+    src/platform/libuv/http_transport_libuv.c
     src/platform/libuv/thread.c)
 
 if(WIN32)
@@ -358,6 +359,7 @@ set(
     tests/unit/core/test_worker_pool.c
     tests/unit/core/test_http.c
     tests/unit/core/test_http_backend.c
+    tests/unit/core/test_http_transport.cc
     tests/unit/core/test_http_context.c
     tests/unit/core/test_http_dispatch.c
     tests/unit/core/test_http_response.c
@@ -628,6 +630,11 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
     sloppy_add_c_unit_test(
         core_http_backend core.http.backend tests/unit/core/test_http_backend.c)
+    if(CMAKE_CXX_COMPILER)
+        sloppy_add_cxx_unit_test(
+            core_http_transport core.http.transport tests/unit/core/test_http_transport.cc)
+        target_link_libraries(core_http_transport PRIVATE ${SLOPPY_LIBUV_TARGET})
+    endif()
     sloppy_add_c_unit_test(
         core_http_context core.http.context tests/unit/core/test_http_context.c)
     sloppy_add_c_unit_test(

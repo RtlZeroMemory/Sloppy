@@ -64,6 +64,18 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
                                sizeof("SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED") - 1U);
     case SL_DIAG_HTTP_SHUTDOWN:
         return sl_diag_literal("SLOPPY_E_HTTP_SHUTDOWN", sizeof("SLOPPY_E_HTTP_SHUTDOWN") - 1U);
+    case SL_DIAG_HTTP_TRANSPORT_CONFIG:
+        return sl_diag_literal("SLOPPY_E_HTTP_TRANSPORT_CONFIG",
+                               sizeof("SLOPPY_E_HTTP_TRANSPORT_CONFIG") - 1U);
+    case SL_DIAG_HTTP_BIND_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_BIND_FAILED",
+                               sizeof("SLOPPY_E_HTTP_BIND_FAILED") - 1U);
+    case SL_DIAG_HTTP_LISTEN_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_LISTEN_FAILED",
+                               sizeof("SLOPPY_E_HTTP_LISTEN_FAILED") - 1U);
+    case SL_DIAG_HTTP_ACCEPT_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_ACCEPT_FAILED",
+                               sizeof("SLOPPY_E_HTTP_ACCEPT_FAILED") - 1U);
     case SL_DIAG_HTTP_BODY_LIMIT:
         return sl_diag_literal("SLOPPY_E_HTTP_BODY_LIMIT", sizeof("SLOPPY_E_HTTP_BODY_LIMIT") - 1U);
     case SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE:
@@ -533,6 +545,10 @@ SlStr sl_diag_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_OVERLOAD:
     case SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED:
     case SL_DIAG_HTTP_SHUTDOWN:
+    case SL_DIAG_HTTP_TRANSPORT_CONFIG:
+    case SL_DIAG_HTTP_BIND_FAILED:
+    case SL_DIAG_HTTP_LISTEN_FAILED:
+    case SL_DIAG_HTTP_ACCEPT_FAILED:
     case SL_DIAG_INVALID_HTTP_REQUEST:
     case SL_DIAG_HTTP_HEADER_LIMIT:
     case SL_DIAG_HTTP_UNSUPPORTED_METHOD:

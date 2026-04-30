@@ -442,6 +442,26 @@ static int test_http_code_names(void)
     {
         return 71;
     }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_TRANSPORT_CONFIG),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_TRANSPORT_CONFIG")) != 0)
+    {
+        return 72;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_BIND_FAILED),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_BIND_FAILED")) != 0)
+    {
+        return 73;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_LISTEN_FAILED),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_LISTEN_FAILED")) != 0)
+    {
+        return 74;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_ACCEPT_FAILED),
+                         sl_str_from_cstr("SLOPPY_E_HTTP_ACCEPT_FAILED")) != 0)
+    {
+        return 75;
+    }
 
     return 0;
 }
