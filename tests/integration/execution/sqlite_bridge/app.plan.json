@@ -1,10 +1,33 @@
 {
   "bundle": {
-    "hash": "sha256:1101f30ed8ccc6cac12abbf470d3907dfeac778c7fee300211247ff62d28575e",
+    "hash": "sha256:eb776935a5b6354a9733979dc7c8297f96c52e02f452c4a38cf3b0936b72d0c1",
     "id": "sqlite-bridge-app-js",
     "path": "app.js"
   },
   "compilerVersion": "handwritten-main1-08-sqlite-bridge",
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.main",
+      "token": "data.main"
+    }
+  ],
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "database": ":memory:",
+      "provider": "sqlite",
+      "service": null,
+      "token": "data.main"
+    }
+  ],
+  "features": {
+    "asyncHandlers": true,
+    "capabilities": true,
+    "dataProviders": true,
+    "sourceMaps": true
+  },
   "handlers": [
     {
       "displayName": "GET /sqlite",

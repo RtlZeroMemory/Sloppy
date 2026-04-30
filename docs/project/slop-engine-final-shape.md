@@ -329,10 +329,7 @@ SQLite is the core foundation database story.
 Target public JS API:
 
 ```js
-const db = await data.sqlite.open({
-  database: ":memory:",
-  capability: "data.sqlite.main",
-});
+const db = data.sqlite("main");
 
 await db.exec("create table users (id integer primary key, name text not null)");
 await db.exec("insert into users (name) values (?)", ["Ada"]);
@@ -347,9 +344,10 @@ Foundation decisions:
 
 - JS never sees raw native pointers;
 - SQLite bridge uses resource IDs and generation checks;
-- a declared capability is required for open/use;
+- a declared capability is required for open/use and is checked by the SQLite bridge before
+  provider work;
 - `query`, `queryOne`, and `exec` are core;
-- transactions are core if examples need realistic write flows, but the exact callback
+- transactions are core if examples need realistic write flows, but JS wrapper transaction
   semantics can be one layer after open/query/exec if documented;
 - prepared statements need an explicit decision: either defer them or implement as scoped
   resources with cleanup;

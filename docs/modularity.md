@@ -103,7 +103,7 @@ const builder = Sloppy.createBuilder();
 builder
   .addModule(SqliteModule.configure({
     token: "data.main",
-    path: "app.db",
+    database: "app.db",
   }))
   .addModule(UsersModule);
 

@@ -23,8 +23,10 @@ Current implementation evidence remains in the current-state docs and public sta
   completion/backend integration, owner-thread continuation scheduling, deadlines,
   shutdown drain/cancel behavior, bounded queues/backpressure, provider/offload
   integration, and stress/performance evidence.
-- SQLite has native provider coverage and a small V8-gated bridge, but capability-wired
-  public API completion is still future work.
+- SQLite has native provider coverage and a V8-gated bridge for
+  `data.sqlite("main")`, open/close/exec/query/queryOne, Plan provider resolution, and
+  database capability hook checks. JS transactions, prepared statement handles, file
+  database policy, and scalable async/offload remain future work.
 
 This document defines the required final foundation contract, not the current executable
 surface.
@@ -286,11 +288,7 @@ SQLite is the core foundation data provider.
 Canonical public shape:
 
 ```js
-const db = await data.sqlite.open({
-  database: ":memory:",
-  capability: "data.sqlite.main",
-  access: "readwrite",
-});
+const db = data.sqlite("main");
 
 await db.exec("create table users (id integer primary key, name text not null)");
 await db.exec("insert into users (name) values (?)", ["Ada"]);
@@ -307,12 +305,16 @@ await db.close();
 
 Decisions:
 
-- `database` is the canonical final public option. Current bridge/user examples that use
-  `path` are transitional until ENGINE-05 aligns the stdlib wrapper.
+- `data.sqlite("main")` is the provider-token shorthand for Plan-backed handlers.
+- `data.sqlite.open({ database, capability, access })` is the explicit low-level public
+  shape. `database` is canonical; `path` is only a transitional alias.
 - `:memory:` is core and must have conformance coverage.
 - File databases require a capability/path policy before public examples bless them.
-- `capability` is required for public SQLite open/use once capability wiring lands.
-- `exec`, `query`, `queryOne`, `transaction`, and `close` are foundation operations.
+- `capability` is required for explicit public SQLite open/use. Provider shorthand obtains
+  it from Plan provider metadata.
+- `exec`, `query`, `queryOne`, and `close` are implemented foundation operations.
+- `transaction` remains part of the foundation API target, but the JS wrapper transaction
+  surface is deferred behind the current open/exec/query/queryOne bridge.
 - Positional parameters are the foundation parameter style.
 - Result rows are plain JS objects with deterministic column naming.
 - Transactions are core, but savepoints/isolation-level controls are deferred.

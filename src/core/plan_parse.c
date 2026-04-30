@@ -811,7 +811,11 @@ static SlStatus sl_plan_parse_one_provider(SlPlanParseContext* ctx, yyjson_val* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    return sl_plan_parse_optional_string(ctx, value, "service", true, &out->service);
+    status = sl_plan_parse_optional_string(ctx, value, "service", true, &out->service);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_plan_parse_optional_string(ctx, value, "database", true, &out->database);
 }
 
 static SlStatus sl_plan_parse_data_providers(SlPlanParseContext* ctx, yyjson_val* root, SlPlan* out)

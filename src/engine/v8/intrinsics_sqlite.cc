@@ -8,6 +8,7 @@
  */
 #include "engine_v8_internal.h"
 
+#include "sloppy/capability.h"
 #include "sloppy/data_sqlite.h"
 
 #include <cmath>
@@ -18,6 +19,22 @@
 #include <vector>
 
 namespace {
+
+struct SqliteV8OpenRequest
+{
+    std::string database;
+    std::string capability;
+    std::string provider_token;
+    SlSqliteAccess access = SL_SQLITE_ACCESS_READWRITE;
+    bool from_provider = false;
+};
+
+struct SqliteV8ConnectionResource
+{
+    SlSqliteConnection connection = {};
+    std::string capability;
+    std::string provider_token;
+};
 
 SlStatus sqlite_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
@@ -105,22 +122,6 @@ bool sqlite_v8_value_to_std_string(v8::Isolate* isolate, v8::Local<v8::Value> va
     return true;
 }
 
-bool sqlite_v8_get_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                 v8::Local<v8::Object> object, const char* key, std::string* out)
-{
-    v8::Local<v8::String> local_key;
-    v8::Local<v8::Value> value;
-
-    if (out == nullptr ||
-        !sl_status_is_ok(sqlite_v8_to_local_string(isolate, sl_str_from_cstr(key), &local_key)) ||
-        !object->Get(context, local_key).ToLocal(&value))
-    {
-        return false;
-    }
-
-    return sqlite_v8_value_to_std_string(isolate, value, out);
-}
-
 bool sqlite_v8_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                           v8::Local<v8::Object> object, const char* key,
                                           std::string* out, bool* present)
@@ -145,31 +146,16 @@ bool sqlite_v8_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Co
     return sqlite_v8_value_to_std_string(isolate, value, out);
 }
 
-bool sqlite_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                  v8::Local<v8::Value> value, std::string* path,
-                                  SlSqliteAccess* access)
+bool sqlite_v8_parse_access(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                            v8::Local<v8::Object> object, SlSqliteAccess* out)
 {
-    if (path == nullptr || access == nullptr) {
-        return false;
-    }
-
-    *access = SL_SQLITE_ACCESS_READWRITE;
-
-    if (sqlite_v8_value_to_std_string(isolate, value, path)) {
-        return !path->empty();
-    }
-
-    if (!value->IsObject()) {
-        return false;
-    }
-
-    v8::Local<v8::Object> object = value.As<v8::Object>();
-    if (!sqlite_v8_get_object_string(isolate, context, object, "path", path) || path->empty()) {
-        return false;
-    }
-
     std::string access_text;
     bool access_present = false;
+
+    if (out == nullptr) {
+        return false;
+    }
+
     if (!sqlite_v8_get_optional_object_string(isolate, context, object, "access", &access_text,
                                               &access_present))
     {
@@ -177,16 +163,201 @@ bool sqlite_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> c
     }
 
     if (!access_present || access_text == "readwrite") {
-        *access = SL_SQLITE_ACCESS_READWRITE;
+        *out = SL_SQLITE_ACCESS_READWRITE;
         return true;
     }
 
     if (access_text == "read") {
-        *access = SL_SQLITE_ACCESS_READ;
+        *out = SL_SQLITE_ACCESS_READ;
         return true;
     }
 
     return false;
+}
+
+bool sqlite_v8_parse_open_options(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                  v8::Local<v8::Value> value, SqliteV8OpenRequest* out)
+{
+    std::string database;
+    std::string path;
+    bool provider_present = false;
+    bool database_present = false;
+    bool path_present = false;
+    bool capability_present = false;
+
+    if (out == nullptr) {
+        return false;
+    }
+
+    *out = SqliteV8OpenRequest{};
+
+    if (sqlite_v8_value_to_std_string(isolate, value, &out->database)) {
+        return !out->database.empty();
+    }
+
+    if (!value->IsObject()) {
+        return false;
+    }
+
+    v8::Local<v8::Object> object = value.As<v8::Object>();
+    if (!sqlite_v8_get_optional_object_string(isolate, context, object, "provider",
+                                              &out->provider_token, &provider_present))
+    {
+        return false;
+    }
+    if (provider_present) {
+        out->from_provider = true;
+        return !out->provider_token.empty();
+    }
+
+    if (!sqlite_v8_get_optional_object_string(isolate, context, object, "database", &database,
+                                              &database_present) ||
+        !sqlite_v8_get_optional_object_string(isolate, context, object, "path", &path,
+                                              &path_present) ||
+        !sqlite_v8_get_optional_object_string(isolate, context, object, "capability",
+                                              &out->capability, &capability_present) ||
+        !sqlite_v8_parse_access(isolate, context, object, &out->access))
+    {
+        return false;
+    }
+
+    if (database_present && path_present && database != path) {
+        return false;
+    }
+
+    out->database = database_present ? database : path;
+    if (out->database.empty() || !capability_present || out->capability.empty()) {
+        return false;
+    }
+
+    if (out->provider_token.empty()) {
+        out->provider_token = out->capability;
+    }
+
+    return true;
+}
+
+bool sqlite_v8_plan_provider_matches(const SlPlanDataProvider& provider, SlStr token)
+{
+    if (sl_str_equal(provider.token, token)) {
+        return true;
+    }
+    if (!sl_str_is_empty(provider.service) && sl_str_equal(provider.service, token)) {
+        return true;
+    }
+    return !sl_str_is_empty(provider.capability) && sl_str_equal(provider.capability, token);
+}
+
+const SlPlanDataProvider* sqlite_v8_find_provider(const SlV8Engine* backend, SlStr token)
+{
+    size_t index = 0U;
+
+    if (backend == nullptr || backend->plan == nullptr || sl_str_is_empty(token) ||
+        (backend->plan->data_provider_count > 0U && backend->plan->data_providers == nullptr))
+    {
+        return nullptr;
+    }
+
+    for (index = 0U; index < backend->plan->data_provider_count; index += 1U) {
+        const SlPlanDataProvider& provider = backend->plan->data_providers[index];
+        if (sqlite_v8_plan_provider_matches(provider, token)) {
+            return &provider;
+        }
+    }
+
+    return nullptr;
+}
+
+bool sqlite_v8_capability_is_read_only(const SlCapabilityRegistry* registry, SlStr token)
+{
+    const SlPlanCapability* capability = nullptr;
+
+    if (registry == nullptr || sl_str_is_empty(token) ||
+        !sl_status_is_ok(sl_capability_registry_find(registry, token, &capability)) ||
+        capability == nullptr)
+    {
+        return false;
+    }
+
+    return sl_str_equal(capability->access, sl_str_from_cstr("read"));
+}
+
+bool sqlite_v8_resolve_provider_request(v8::Isolate* isolate, const SlV8Engine* backend,
+                                        SqliteV8OpenRequest* request)
+{
+    SlStr token;
+    const SlPlanDataProvider* provider = nullptr;
+
+    if (request == nullptr || !request->from_provider) {
+        return true;
+    }
+
+    token = sl_str_from_parts(request->provider_token.data(), request->provider_token.size());
+    provider = sqlite_v8_find_provider(backend, token);
+    if (provider == nullptr) {
+        sqlite_v8_throw_error(isolate, "sqlite provider is not configured in the app plan");
+        return false;
+    }
+    if (!sl_str_equal(provider->provider, sl_str_from_cstr("sqlite"))) {
+        sqlite_v8_throw_error(isolate, "sqlite provider token resolves to a non-sqlite provider");
+        return false;
+    }
+    if (sl_str_is_empty(provider->database)) {
+        sqlite_v8_throw_error(isolate, "sqlite provider metadata is missing database");
+        return false;
+    }
+
+    request->database.assign(provider->database.ptr, provider->database.length);
+    request->provider_token.assign(provider->token.ptr, provider->token.length);
+    if (!sl_str_is_empty(provider->capability)) {
+        request->capability.assign(provider->capability.ptr, provider->capability.length);
+    }
+    else {
+        request->capability.assign(provider->token.ptr, provider->token.length);
+    }
+
+    if (sqlite_v8_capability_is_read_only(
+            backend == nullptr ? nullptr : backend->capabilities,
+            sl_str_from_parts(request->capability.data(), request->capability.size())))
+    {
+        request->access = SL_SQLITE_ACCESS_READ;
+    }
+
+    return true;
+}
+
+bool sqlite_v8_check_capability(v8::Isolate* isolate, SlV8Engine* backend, SlArena* arena,
+                                const SqliteV8ConnectionResource* resource,
+                                SlCapabilityOperation operation)
+{
+    SlDiag diag = {};
+    SlStr token;
+    SlStr provider;
+    SlStatus status;
+
+    if (backend == nullptr || backend->capabilities == nullptr) {
+        sqlite_v8_throw_error(isolate,
+                              "sqlite capability registry is unavailable; database access is not "
+                              "enforced for this engine");
+        return false;
+    }
+    if (arena == nullptr || resource == nullptr || resource->capability.empty() ||
+        resource->provider_token.empty())
+    {
+        sqlite_v8_throw_error(isolate, "sqlite resource is missing capability metadata");
+        return false;
+    }
+
+    token = sl_str_from_parts(resource->capability.data(), resource->capability.size());
+    provider = sl_str_from_parts(resource->provider_token.data(), resource->provider_token.size());
+    status = sl_capability_check_database(backend->capabilities, arena, token, operation, provider,
+                                          &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite capability check failed", diag);
+        return false;
+    }
+
+    return true;
 }
 
 bool sqlite_v8_get_resource_id(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -251,16 +422,17 @@ void sqlite_v8_connection_cleanup(void* ptr, void* user)
 {
     (void)user;
 
-    SlSqliteConnection* connection = static_cast<SlSqliteConnection*>(ptr);
-    if (connection != nullptr) {
-        (void)sl_sqlite_close(connection);
-        delete connection;
+    SqliteV8ConnectionResource* resource = static_cast<SqliteV8ConnectionResource*>(ptr);
+    if (resource != nullptr) {
+        (void)sl_sqlite_close(&resource->connection);
+        delete resource;
     }
 }
 
-SlSqliteConnection* sqlite_v8_lookup_connection(v8::Isolate* isolate,
-                                                v8::Local<v8::Context> context, SlV8Engine* backend,
-                                                v8::Local<v8::Value> handle_value)
+SqliteV8ConnectionResource* sqlite_v8_lookup_connection(v8::Isolate* isolate,
+                                                        v8::Local<v8::Context> context,
+                                                        SlV8Engine* backend,
+                                                        v8::Local<v8::Value> handle_value)
 {
     SlResourceId id = {};
     SlDiag diag = {};
@@ -279,7 +451,7 @@ SlSqliteConnection* sqlite_v8_lookup_connection(v8::Isolate* isolate,
         return nullptr;
     }
 
-    return static_cast<SlSqliteConnection*>(ptr);
+    return static_cast<SqliteV8ConnectionResource*>(ptr);
 }
 
 bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -469,17 +641,18 @@ void sqlite_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
-    std::string path;
+    SqliteV8OpenRequest request;
     SlSqliteOpenOptions options = {};
-    SlSqliteConnection* connection = nullptr;
+    SqliteV8ConnectionResource* resource = nullptr;
     SlResourceId id = sl_resource_id_invalid();
     v8::Local<v8::Object> handle;
 
     if (backend == nullptr || args.Length() != 1 ||
-        !sqlite_v8_parse_open_options(isolate, context, args[0], &path, &options.access))
+        !sqlite_v8_parse_open_options(isolate, context, args[0], &request))
     {
-        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.open requires a non-empty path "
-                                            "and optional read/readwrite access");
+        sqlite_v8_throw_type_error(
+            isolate,
+            "__sloppy.data.sqlite.open requires database/capability options or a provider token");
         return;
     }
 
@@ -488,25 +661,46 @@ void sqlite_v8_open_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    connection = new (std::nothrow) SlSqliteConnection{};
-    if (connection == nullptr) {
+    if (!sqlite_v8_resolve_provider_request(isolate, backend, &request)) {
+        return;
+    }
+    if (request.capability.empty() || request.provider_token.empty()) {
+        sqlite_v8_throw_error(
+            isolate, "sqlite open requires capability metadata before provider work can begin");
+        return;
+    }
+
+    resource = new (std::nothrow) SqliteV8ConnectionResource{};
+    if (resource == nullptr) {
         sqlite_v8_throw_error(isolate, "sqlite bridge could not allocate a connection resource");
         return;
     }
 
-    options.path = sl_str_from_parts(path.data(), path.size());
-    SlStatus status = sl_sqlite_open(&arena, &options, connection, &diag);
+    resource->capability = request.capability;
+    resource->provider_token = request.provider_token;
+
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    request.access == SL_SQLITE_ACCESS_READ
+                                        ? SL_CAPABILITY_OPERATION_READ
+                                        : SL_CAPABILITY_OPERATION_WRITE))
+    {
+        delete resource;
+        return;
+    }
+
+    options.path = sl_str_from_parts(request.database.data(), request.database.size());
+    options.access = request.access;
+    SlStatus status = sl_sqlite_open(&arena, &options, &resource->connection, &diag);
     if (!sl_status_is_ok(status)) {
-        delete connection;
+        delete resource;
         sqlite_v8_throw_diag(isolate, "sqlite open failed", diag);
         return;
     }
 
-    status =
-        sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_SQLITE_CONNECTION,
-                                 connection, sqlite_v8_connection_cleanup, nullptr, &id, &diag);
+    status = sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_SQLITE_CONNECTION,
+                                      resource, sqlite_v8_connection_cleanup, nullptr, &id, &diag);
     if (!sl_status_is_ok(status)) {
-        sqlite_v8_connection_cleanup(connection, nullptr);
+        sqlite_v8_connection_cleanup(resource, nullptr);
         sqlite_v8_throw_diag(isolate, "sqlite resource registration failed", diag);
         return;
     }
@@ -568,7 +762,7 @@ void sqlite_v8_exec_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     std::vector<std::string> text_storage;
     std::vector<SlSqliteParam> params;
     SlSqliteExecResult result = {};
-    SlSqliteConnection* connection = nullptr;
+    SqliteV8ConnectionResource* resource = nullptr;
 
     if (backend == nullptr || args.Length() < 2 || args.Length() > 3 ||
         !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
@@ -579,8 +773,8 @@ void sqlite_v8_exec_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    connection = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
-    if (connection == nullptr ||
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr ||
         !sqlite_v8_convert_params(isolate, context,
                                   args.Length() == 3 ? args[2] : v8::Undefined(isolate),
                                   &text_storage, &params))
@@ -593,8 +787,14 @@ void sqlite_v8_exec_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_WRITE))
+    {
+        return;
+    }
+
     SlStatus status =
-        sl_sqlite_exec(&arena, connection, sl_str_from_parts(sql.data(), sql.size()),
+        sl_sqlite_exec(&arena, &resource->connection, sl_str_from_parts(sql.data(), sql.size()),
                        params.empty() ? nullptr : params.data(), params.size(), &result, &diag);
     if (!sl_status_is_ok(status)) {
         sqlite_v8_throw_diag(isolate, "sqlite exec failed", diag);
@@ -628,7 +828,7 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     std::vector<std::string> text_storage;
     std::vector<SlSqliteParam> params;
     SlSqliteResult result = {};
-    SlSqliteConnection* connection = nullptr;
+    SqliteV8ConnectionResource* resource = nullptr;
     v8::Local<v8::Array> rows;
 
     if (backend == nullptr || args.Length() < 2 || args.Length() > 3 ||
@@ -640,8 +840,8 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    connection = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
-    if (connection == nullptr ||
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr ||
         !sqlite_v8_convert_params(isolate, context,
                                   args.Length() == 3 ? args[2] : v8::Undefined(isolate),
                                   &text_storage, &params))
@@ -654,9 +854,15 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
 
-    SlStatus status = sl_sqlite_query(&arena, connection, sl_str_from_parts(sql.data(), sql.size()),
-                                      params.empty() ? nullptr : params.data(), params.size(),
-                                      nullptr, &result, &diag);
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_READ))
+    {
+        return;
+    }
+
+    SlStatus status = sl_sqlite_query(
+        &arena, &resource->connection, sl_str_from_parts(sql.data(), sql.size()),
+        params.empty() ? nullptr : params.data(), params.size(), nullptr, &result, &diag);
     if (!sl_status_is_ok(status)) {
         sqlite_v8_throw_diag(isolate, "sqlite query failed", diag);
         return;
@@ -684,7 +890,7 @@ void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     std::vector<std::string> text_storage;
     std::vector<SlSqliteParam> params;
     SlSqliteQueryOneResult result = {};
-    SlSqliteConnection* connection = nullptr;
+    SqliteV8ConnectionResource* resource = nullptr;
     v8::Local<v8::Value> row;
 
     if (backend == nullptr || args.Length() < 2 || args.Length() > 3 ||
@@ -696,8 +902,8 @@ void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
         return;
     }
 
-    connection = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
-    if (connection == nullptr ||
+    resource = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (resource == nullptr ||
         !sqlite_v8_convert_params(isolate, context,
                                   args.Length() == 3 ? args[2] : v8::Undefined(isolate),
                                   &text_storage, &params))
@@ -710,8 +916,14 @@ void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
         return;
     }
 
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, resource,
+                                    SL_CAPABILITY_OPERATION_READ))
+    {
+        return;
+    }
+
     SlStatus status = sl_sqlite_query_one(
-        &arena, connection, sl_str_from_parts(sql.data(), sql.size()),
+        &arena, &resource->connection, sl_str_from_parts(sql.data(), sql.size()),
         params.empty() ? nullptr : params.data(), params.size(), &result, &diag);
     if (!sl_status_is_ok(status)) {
         sqlite_v8_throw_diag(isolate, "sqlite queryOne failed", diag);

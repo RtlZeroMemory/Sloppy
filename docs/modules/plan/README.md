@@ -38,13 +38,16 @@ MAIN1-10 implemented scope:
   references;
 - provider/capability metadata rejects obvious secret-bearing fields;
 - an immutable runtime capability registry can be initialized from a parsed plan.
+- SQLite data providers may include canonical `database` metadata used by the V8 SQLite
+  bridge when resolving `data.sqlite("name")`.
 
 Future scope:
 
 - file-based loading;
 - native host graph construction;
 - real module section parsing and validation;
-- JS-to-native provider bridges calling the capability registry before provider work.
+- PostgreSQL/SQL Server JS-to-native provider bridges calling the capability registry
+  before provider work.
 
 ## Non-goals
 
@@ -154,8 +157,9 @@ Parser validation rules:
 - every handler must have non-empty string `exportName` and `displayName`;
 - `routes`, when present, must contain GET route entries with valid native patterns,
   declared handler references, unique method/pattern pairs, and unique non-empty names;
-- `dataProviders`, when present, must contain unique valid tokens and supported provider
-  values;
+- `dataProviders`, when present, must contain unique valid tokens, supported provider
+  values, optional capability references, optional service tokens, and optional canonical
+  SQLite `database` metadata;
 - `capabilities`, when present, must contain unique valid tokens, supported kind/access
   pairs, required provider references for database capabilities, and no provider reference
   for filesystem/network skeleton capabilities.

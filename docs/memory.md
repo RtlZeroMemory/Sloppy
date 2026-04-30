@@ -178,6 +178,9 @@ Implemented MAIN1-07 behavior:
   the generation;
 - using a closed ID after close fails as a stale handle once the generation advances;
 - slot reuse returns the same slot with the next generation;
+- ENGINE-05 SQLite JS resources store capability/provider metadata beside the native
+  connection so every open/read/write provider call can re-check authority without exposing
+  pointers to JavaScript;
 - table exhaustion returns `SL_STATUS_CAPACITY_EXCEEDED` without mutating caller-owned
   outputs or running cleanup;
 - dispose closes remaining live entries in deterministic ascending slot order.

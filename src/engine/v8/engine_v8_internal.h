@@ -29,6 +29,8 @@ struct SlV8Engine
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
     std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
     std::thread::id owner_thread;
+    const SlPlan* plan = nullptr;
+    const SlCapabilityRegistry* capabilities = nullptr;
     std::array<SlResourceEntry, 64U> resource_entries = {};
     SlResourceTable resources = {};
 };

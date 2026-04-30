@@ -158,18 +158,24 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlite.provider, "sqlite");
     assert.equal(data.sqlite.placeholderStyle, "question");
     assert.equal(data.sqlite.supports.memory, true);
-    assert.equal(data.sqlite.supports.transactions, true);
+    assert.equal(data.sqlite.supports.transactions, "native-provider-only");
     assert.equal(data.sqlite.supports.pooling, false);
     assert.equal(data.sqlite.supports.nativeStdlibBridge, false);
     assert.equal(data.sqlite.__debug().nativeStdlibBridge, false);
-    assertThrowsMessage(() => data.sqlite.open({}), /path must be a non-empty string/);
+    assertThrowsMessage(() => data.sqlite.open({}), /database must be a non-empty string/);
     assertThrowsMessage(() => data.sqlite.open({
-        path: ":memory:",
+        database: ":memory:",
+        capability: "data.main",
         access: "admin",
     }), /access must be read or readwrite/);
     assertThrowsMessage(() => data.sqlite.open({
-        path: ":memory:",
+        database: ":memory:",
+    }), /capability must be a non-empty string/);
+    assertThrowsMessage(() => data.sqlite.open({
+        database: ":memory:",
+        capability: "data.main",
     }), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
+    assertThrowsMessage(() => data.sqlite("main"), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
 }
 
 {
@@ -179,7 +185,13 @@ function createForgedLoweredQuery() {
         data: {
             sqlite: {
                 open(options) {
-                    calls.push(["open", options.path, options.access]);
+                    calls.push([
+                        "open",
+                        options.database,
+                        options.capability,
+                        options.access,
+                        options.provider,
+                    ]);
                     return { slot: 1, generation: 1, kind: "sqlite.connection" };
                 },
                 exec(handle, text, params) {
@@ -202,7 +214,12 @@ function createForgedLoweredQuery() {
     };
 
     try {
-        const db = data.sqlite.open(":memory:");
+        const db = data.sqlite.open({
+            database: ":memory:",
+            capability: "data.main",
+        });
+        const byProvider = data.sqlite("main");
+        byProvider.close();
         assert.equal(data.sqlite.supports.nativeStdlibBridge, true);
         assert.equal(data.sqlite.__debug().nativeStdlibBridge, true);
         assert.deepEqual(db.exec("insert into users (name) values (?)", ["Ada"]), {
@@ -215,7 +232,9 @@ function createForgedLoweredQuery() {
         db.close();
         assertThrowsMessage(() => db.query("select 1"), /sqlite connection is closed/);
         assert.deepEqual(calls, [
-            ["open", ":memory:", "readwrite"],
+            ["open", ":memory:", "data.main", "readwrite", "sqlite"],
+            ["open", undefined, undefined, undefined, "data.main"],
+            ["close", 1],
             ["exec", 1, "insert into users (name) values (?)", ["Ada"]],
             ["query", 1, "select name from users", []],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
@@ -410,7 +429,7 @@ function createForgedLoweredQuery() {
         .capabilities((caps) => {
             caps.addDatabase("data.main", {
                 provider: "sqlite",
-                path: ":memory:",
+                database: ":memory:",
                 access: "readwrite",
             });
         })
@@ -432,7 +451,7 @@ function createForgedLoweredQuery() {
     const db = app.services.get("data.main");
     assert.deepEqual(await db.query`select id from users`, [{ id: 1 }]);
     assert.equal(app.capabilities.get("data.main").provider, "sqlite");
-    assert.equal(app.capabilities.get("data.main").metadata.path, ":memory:");
+    assert.equal(app.capabilities.get("data.main").metadata.database, ":memory:");
 }
 
 {
@@ -440,13 +459,14 @@ function createForgedLoweredQuery() {
         .capabilities((caps) => {
             caps.addDatabase("data.main", {
                 provider: "sqlite",
-                path: ":memory:",
+                database: ":memory:",
                 access: "readwrite",
             });
         })
         .services((services) => {
             services.addSingleton("data.main", () => data.sqlite.open({
-                path: ":memory:",
+                database: ":memory:",
+                capability: "data.main",
             }));
         });
 
@@ -454,7 +474,7 @@ function createForgedLoweredQuery() {
         .addModule(SqliteModule)
         .build();
 
-    assert.equal(app.capabilities.get("data.main").metadata.path, ":memory:");
+    assert.equal(app.capabilities.get("data.main").metadata.database, ":memory:");
     assert.deepEqual(app.__debug().modules[0].services, ["data.main"]);
     assertThrowsMessage(() => app.services.get("data.main"), /native bridge unavailable/);
 }

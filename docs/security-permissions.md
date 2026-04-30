@@ -42,9 +42,11 @@ capabilities only, and EPIC-19 adds metadata-only `sloppy audit` fixture output.
 MAIN1-02 adds native Plan v1 alpha parsing and validation for `dataProviders` and
 `capabilities` sections. MAIN1-10 turns that metadata into an immutable runtime capability
 registry and explicit provider-bridge check hooks. Those checks are real where callers pass
-the registry before provider work begins. Filesystem and network capabilities are
-metadata/check-only skeletons: they can be stored and checked by token/kind/access, but no
-filesystem API, network API, permission prompt, or OS sandbox exists.
+the registry before provider work begins. ENGINE-05 wires the V8 SQLite bridge to the
+existing database hook; it does not add a new policy engine. Filesystem and network
+capabilities are metadata/check-only skeletons: they can be stored and checked by
+token/kind/access, but no filesystem API, network API, permission prompt, or OS sandbox
+exists.
 
 ## Future Phase
 
@@ -83,16 +85,17 @@ const DataModule = Sloppy.module("data")
   .capabilities(caps => {
     caps.addDatabase("data.main", {
       provider: "sqlite",
-      path: ":memory:",
+      database: ":memory:",
       access: "readwrite",
     });
   });
 ```
 
-The current registry stores metadata only. Capability tokens must be non-empty strings,
-duplicates fail, and `app.capabilities.has/get/list` exposes frozen debug metadata with the
-declaring module when applicable. EPIC-16 native SQLite tests can open `:memory:` databases,
-but JavaScript permission enforcement and public file database policy remain future work.
+Capability tokens must be non-empty strings, duplicates fail, and
+`app.capabilities.has/get/list` exposes frozen debug metadata with the declaring module when
+applicable. SQLite JavaScript execution now checks the database hook before native
+open/read/write work when the engine has Plan/capability metadata. If the hook inputs are
+absent, SQLite bridge calls fail closed. Public file database policy remains future work.
 
 ## Permission Grants
 
@@ -136,17 +139,15 @@ Database providers contribute capabilities:
 Plan entries must reference config keys, provider tokens, or already-redacted placeholders,
 not connection string values. Raw secrets do not belong in `app.plan.json`.
 
-Current bootstrap metadata does not open databases or validate config keys. Runtime
-capability checks can deny database access by token, provider, and read/write mode before a
-caller invokes provider work. The JavaScript-to-native SQLite bridge remains the next place
-to call those hooks once MAIN1-08 exposes a stable bridge boundary.
+Bootstrap metadata does not validate live config keys. Runtime capability checks can deny
+database access by token, provider, and read/write mode before a caller invokes provider
+work. The V8 SQLite bridge now calls those hooks for open, exec, query, and queryOne when
+the app host passes the parsed Plan and capability registry into the engine.
 
-MAIN1-08 adds a V8-gated SQLite bridge hook under `__sloppy.data.sqlite`, but it does not
-implement the MAIN1-10 capability policy engine. The hook is intentionally narrow:
-provider-specific V8 bridge code lives in `src/engine/v8/intrinsics_<provider>.cc`, while
-`engine_v8.cc` stays provider-neutral. Future provider capability checks should be called
-from those intrinsic modules or their shared aggregator before opening or using native
-provider resources; this document must not claim enforcement until that integration exists.
+The SQLite hook is intentionally narrow: provider-specific V8 bridge code lives in
+`src/engine/v8/intrinsics_<provider>.cc`, while `engine_v8.cc` stays provider-neutral.
+Future PostgreSQL and SQL Server bridge checks should follow the same pattern instead of
+embedding provider policy in the engine core.
 
 ## Environment And Config Secrets
 

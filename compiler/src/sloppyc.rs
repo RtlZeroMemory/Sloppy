@@ -122,6 +122,7 @@ struct DatabaseCapability {
     token: String,
     provider: &'static str,
     access: String,
+    database: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -825,10 +826,28 @@ fn database_capability_call(
         .with_span(options.span));
     }
 
+    let database = optional_object_string_property(path, options, "database")?;
+    let path_option = optional_object_string_property(path, options, "path")?;
+    if let (Some(database), Some(path_option)) = (database, path_option) {
+        if database != path_option {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_CAPABILITY_SHAPE",
+                "database capability cannot declare different database and path values",
+            )
+            .with_path(path)
+            .with_span(options.span)
+            .with_hint(
+                "Use the canonical database option; path is accepted only as a transitional alias.",
+            ));
+        }
+    }
+    let database = database.or(path_option).map(|value| value.to_string());
+
     Ok(Some(DatabaseCapability {
         token: token.to_string(),
         provider: "sqlite",
         access,
+        database,
     }))
 }
 
@@ -1877,12 +1896,16 @@ fn emit_plan(
         .capabilities
         .iter()
         .map(|capability| {
-            json!({
+            let mut provider = json!({
                 "token": capability.token,
                 "provider": capability.provider,
                 "capability": capability.token,
                 "service": null
-            })
+            });
+            if let Some(database) = &capability.database {
+                provider["database"] = json!(database);
+            }
+            provider
         })
         .collect::<Vec<_>>();
 

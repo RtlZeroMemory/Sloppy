@@ -271,7 +271,7 @@ static int test_duplicate_service_token_fails_startup(void)
     SlArena diag_arena = {0};
     SlPlanHandler handlers[1];
     SlPlanRoute routes[1];
-    SlPlanDataProvider providers[2];
+    SlPlanDataProvider providers[2] = {{0}};
     SlPlan plan = valid_plan(handlers, routes);
     SlDiag diag = {0};
     SlAppHostStartupValidation options;

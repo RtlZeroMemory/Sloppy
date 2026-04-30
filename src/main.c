@@ -1069,6 +1069,7 @@ typedef struct SlRunApp
     SlArena route_arena;
     SlArena engine_arena;
     SlPlan plan;
+    SlCapabilityRegistry capability_registry;
     SlBytes app_js_bytes;
     SlEngine* engine;
     SlAppLifecycle lifecycle;
@@ -1411,7 +1412,7 @@ static void sl_run_print_diag(const char* prefix, const SlDiag* diag)
     sl_cli_write_cstr(stderr, "operation failed\n");
 }
 
-static SlEngineOptions sl_run_v8_options(void)
+static SlEngineOptions sl_run_v8_options(const SlRunApp* app)
 {
     SlEngineOptions options = {0};
 
@@ -1420,6 +1421,8 @@ static SlEngineOptions sl_run_v8_options(void)
     options.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
     options.target_platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
     options.target_engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    options.plan = app == NULL ? NULL : &app->plan;
+    options.capabilities = app == NULL ? NULL : &app->capability_registry;
     return options;
 }
 
@@ -1468,6 +1471,12 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
                       sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0)))
     {
         sl_cli_write_cstr(stderr, "sloppy run: unsupported app.plan.json runtimeMinimumVersion\n");
+        return 1;
+    }
+
+    status = sl_capability_registry_init_from_plan(&app->plan, &app->capability_registry);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to initialize app capability registry\n");
         return 1;
     }
 
@@ -1563,7 +1572,7 @@ static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
 static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char* app_js_path)
 {
     SlStr source = {0};
-    SlEngineOptions options = sl_run_v8_options();
+    SlEngineOptions options = sl_run_v8_options(app);
     SlDiag diag = {0};
     SlStatus status;
 

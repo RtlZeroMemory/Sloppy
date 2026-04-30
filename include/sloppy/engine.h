@@ -2,6 +2,7 @@
 #define SLOPPY_ENGINE_H
 
 #include "sloppy/arena.h"
+#include "sloppy/capability.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/http_context.h"
 #include "sloppy/http_response.h"
@@ -44,6 +45,13 @@ typedef struct SlEngineOptions
     SlStr runtime_version;
     SlStr target_platform;
     SlStr target_engine;
+    /*
+     * Optional borrowed app metadata used by provider bridges. When present, these pointers
+     * must outlive the engine. The V8 SQLite bridge uses them only as hook inputs for
+     * Plan-backed provider resolution and capability checks before provider work begins.
+     */
+    const SlPlan* plan;
+    const SlCapabilityRegistry* capabilities;
 } SlEngineOptions;
 
 /*

@@ -20,6 +20,9 @@ an explicit owner-thread V8 microtask checkpoint, fulfilled values flow through 
 result conversion path, rejected Promises produce deterministic async diagnostics, and
 Promises still pending after the bounded microtask drain fail as a deadline-style handler
 failure rather than `[object Promise]` success.
+ENGINE-05 wires the SQLite V8 bridge to Plan provider metadata and the native database
+capability hook. The bridge fails closed when hook inputs are absent and keeps all
+provider-specific logic inside `src/engine/v8/intrinsics_sqlite.cc`.
 ENGINE-12 (#306 through #310) is the future full scalable async-runtime layer. It owns
 native completion queues/backends, owner-thread continuation scheduling for native
 completions, deadline/shutdown drain behavior, backpressure, provider/offload integration,
@@ -82,6 +85,9 @@ Implemented now:
 - provider-specific intrinsic modules are split out of `engine_v8.cc`. `intrinsics.cc`
   aggregates bridge registration and `intrinsics_sqlite.cc` installs the SQLite bridge
   under `__sloppy.data.sqlite`.
+- V8 creation can borrow the parsed Plan and immutable capability registry through
+  `SlEngineOptions`; provider bridges may use those pointers only as hook inputs while the
+  app host keeps their storage alive.
 
 Later scope:
 
@@ -119,7 +125,8 @@ Framework and provider bridge code belongs in sibling V8 modules:
 - `intrinsics.cc` is the aggregator that registers provider bridges into the private
   `__sloppy.data` namespace.
 - `intrinsics_sqlite.cc` owns SQLite-specific argument validation, parameter conversion,
-  row materialization, resource-table lookup, cleanup callback, and native provider calls.
+  row materialization, Plan provider lookup, capability checks, resource-table lookup,
+  cleanup callback, and native provider calls.
 
 Future framework-specific V8 bridge code must add a dedicated sibling module, not expand
 `engine_v8.cc`.
@@ -162,6 +169,10 @@ Current behavior:
 - `__sloppy.data.sqlite` exists only in the V8 runtime context and is installed by the
   SQLite provider intrinsic module. It exposes internal open/exec/query/queryOne/close
   callbacks used by the stdlib wrapper, not a public raw native API;
+- SQLite bridge opens can resolve `data.sqlite("main")` through Plan provider token
+  `data.main`; every open/read/write call checks the native database capability hook before
+  provider work. Missing Plan/capability hook inputs, missing providers, wrong provider
+  kinds, and denied access fail as ordinary V8 bridge exceptions;
 - `sl_engine_validate_registered_handlers` checks that every plan handler ID was registered
   by generated app code before `sloppy run` starts serving or dispatching `--once`;
 - `sl_engine_call_registered_handler_with_context` dispatches by registered handler ID and
@@ -311,8 +322,9 @@ Future JS-native resource intrinsics must expose only opaque JS objects that car
 or provider addresses are forbidden as JS-visible handles. The bridge must validate the
 resource table entry's slot, generation, live state, and expected kind before provider code
 runs. Stale and wrong-kind handles must fail with deterministic resource diagnostics. The
-SQLite MAIN1-08 bridge consumes the MAIN1-07 table from `intrinsics_sqlite.cc` rather than
-adding a V8-specific handle registry.
+SQLite bridge consumes the MAIN1-07 table from `intrinsics_sqlite.cc` rather than adding a
+V8-specific handle registry, and stores provider/capability metadata beside the native
+connection resource so later calls can re-check authority.
 
 Diagnostics produced by the V8 bridge are built through `SlDiagBuilder` in the engine
 arena. Exception message text, generated source names, hints, and bounded stack summaries
@@ -464,7 +476,9 @@ Current checks:
   dispatch, Promise fulfillment/rejection/pending behavior, stable JSON rendering for a
   Promise rejection diagnostic, cancellation/deadline context snapshots, request-scope
   cleanup across sync throw and async success/failure paths, and create/destroy/create
-  lifecycle behavior.
+  lifecycle behavior. It also covers SQLite provider-token opens, exec/query/queryOne,
+  close, stale handles, invalid parameters, missing provider metadata, missing capability
+  registry fail-closed behavior, and denied capability reads.
 - `engine.v8.owner_thread` is registered only when V8 is enabled and covers owner-thread
   lifecycle checks, wrong-thread eval rejection before entering V8, wrong-thread async
   handler call rejection before V8 microtasks run, and wrong-thread destroy deferral to the
@@ -479,6 +493,11 @@ Current checks:
 - `conformance.async_handler.run_once` is registered only when V8 is enabled and proves the
   compiler-emitted direct async handler artifact settles through `sloppy run --artifacts
   --once`.
+- `conformance.sqlite.bridge` and `sloppy.run.once_sqlite_bridge` are V8-gated and prove a
+  checked-in SQLite artifact can resolve `data.sqlite("main")`, write/query rows, return
+  JSON, and close the resource. `conformance.sqlite.denied_capability` and
+  `sloppy.run.once_sqlite_denied_capability` prove denied SQLite reads surface as 500
+  responses without implementing a broader policy engine in this slice.
 - `bootstrap.stdlib.assets` runs in the default CTest suite and verifies the bootstrap
   stdlib source files and copied build-tree assets exist. `bootstrap.stdlib.api_shape`
   statically checks the bootstrap JavaScript API shape. When `node` is available,
