@@ -583,6 +583,61 @@ static int test_pending_promise_returns_deadline_diagnostic(void)
     return 0;
 }
 
+static int test_recursive_microtasks_are_bounded(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 75;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 76;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-recursive-microtask.js"),
+                sl_str_from_cstr("globalThis.sloppy_recursive_microtask = function () {"
+                                 "  function loop() { return Promise.resolve().then(loop); }"
+                                 "  return Promise.resolve().then(loop);"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 77;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_recursive_microtask"),
+                                               &result, &diag),
+                      SL_STATUS_DEADLINE_EXCEEDED) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 78;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_PROMISE_PENDING ||
+        expect_str_contains(diag.message, sl_str_from_cstr("bounded checkpoint limit")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 79;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_create_destroy_create_reuses_process_platform(void)
 {
     unsigned char engine_storage[8192];
@@ -1663,6 +1718,11 @@ int main(void)
     }
 
     result = test_pending_promise_returns_deadline_diagnostic();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_recursive_microtasks_are_bounded();
     if (result != 0) {
         return result;
     }

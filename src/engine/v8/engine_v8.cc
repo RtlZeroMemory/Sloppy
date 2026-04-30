@@ -36,6 +36,15 @@ namespace {
 std::mutex g_v8_platform_mutex;
 v8::Platform* g_v8_platform = nullptr;
 bool g_v8_platform_initialized = false;
+constexpr size_t kSlV8MicrotaskDrainLimit = 1024U;
+
+struct SlV8MicrotaskDrainGuard
+{
+    size_t ran = 0U;
+    bool exceeded = false;
+};
+
+thread_local SlV8MicrotaskDrainGuard* g_sl_v8_microtask_guard = nullptr;
 
 SlStr sl_v8_literal(const char* ptr, size_t length)
 {
@@ -693,6 +702,28 @@ bool sl_v8_http_status_supported(uint16_t status)
     }
 }
 
+void sl_v8_microtask_drain_promise_hook(v8::PromiseHookType type, v8::Local<v8::Promise> promise,
+                                        v8::Local<v8::Value> parent)
+{
+    SlV8MicrotaskDrainGuard* guard = g_sl_v8_microtask_guard;
+
+    (void)promise;
+    (void)parent;
+    if (type != v8::PromiseHookType::kBefore || guard == nullptr || guard->exceeded) {
+        return;
+    }
+
+    guard->ran += 1U;
+    if (guard->ran <= kSlV8MicrotaskDrainLimit) {
+        return;
+    }
+
+    guard->exceeded = true;
+    if (v8::Isolate* isolate = v8::Isolate::TryGetCurrent()) {
+        isolate->TerminateExecution();
+    }
+}
+
 bool sl_v8_header_value_safe(const std::string& value)
 {
     return value.find('\r') == std::string::npos && value.find('\n') == std::string::npos;
@@ -800,12 +831,42 @@ SlStatus sl_v8_check_cancelled(SlEngine* engine, const SlCancellationToken* canc
     return sl_v8_write_cancelled_diag(engine, cancellation, out_diag);
 }
 
+SlStatus sl_v8_write_microtask_limit_diag(SlEngine* engine, SlDiag* out_diag)
+{
+    std::string message = "JavaScript microtask drain exceeded bounded checkpoint limit (";
+    message += std::to_string(kSlV8MicrotaskDrainLimit);
+    message += ")";
+
+    return sl_v8_write_diag_string(
+        engine->arena, out_diag, SL_DIAG_ENGINE_PROMISE_PENDING, SL_STATUS_DEADLINE_EXCEEDED,
+        message, sl_str_empty(),
+        sl_v8_literal(
+            "Break recursive Promise microtask chains with a real async boundary; "
+            "timers and native async completion queues are future ENGINE-12 work.",
+            sizeof("Break recursive Promise microtask chains with a real async boundary; "
+                   "timers and native async completion queues are future ENGINE-12 work.") -
+                1U));
+}
+
 SlStatus sl_v8_drain_microtasks(SlEngine* engine, v8::Isolate* isolate,
                                 v8::Local<v8::Context> context, SlDiag* out_diag)
 {
     v8::TryCatch try_catch(isolate);
+    SlV8MicrotaskDrainGuard guard;
+    SlV8MicrotaskDrainGuard* previous_guard = g_sl_v8_microtask_guard;
+
+    g_sl_v8_microtask_guard = &guard;
+    isolate->SetPromiseHook(sl_v8_microtask_drain_promise_hook);
 
     isolate->PerformMicrotaskCheckpoint();
+    isolate->SetPromiseHook(nullptr);
+    g_sl_v8_microtask_guard = previous_guard;
+
+    if (guard.exceeded) {
+        isolate->CancelTerminateExecution();
+        return sl_v8_write_microtask_limit_diag(engine, out_diag);
+    }
+
     if (try_catch.HasCaught()) {
         return sl_v8_write_exception_diag(
             engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, context,

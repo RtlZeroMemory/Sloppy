@@ -414,7 +414,7 @@ ENGINE-02 can implement compiler/Plan completion against this contract.
 ENGINE-03 can implement V8 Promise/microtask/cancellation behavior against this contract.
 
 ENGINE-12 can implement the scalable async runtime only after ENGINE-03 semantics are stable
-and a real external async source is ready to wire end to end. It is the required handoff for
+and a real external async source is ready to wire end-to-end. It is the required handoff for
 native completion queues, owner-thread continuation scheduling across queued work,
 deadline/shutdown drain policy, bounded async admission/backpressure, provider/offload
 integration, and stress evidence before any public scalability or performance claim.

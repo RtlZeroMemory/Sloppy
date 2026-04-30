@@ -471,7 +471,8 @@ own data explicitly or use resource table entries.
 
 Current Promise lifecycle requirements:
 
-- request scope stays alive until the returned promise settles;
+- request scope stays alive only until the owner-thread microtask drain completes the
+  bounded ENGINE-03 fulfilled/rejected/pending-timeout outcome handling;
 - continuations run on the owning JS event-loop thread;
 - cleanup runs exactly once;
 - rejected promises become diagnostics;

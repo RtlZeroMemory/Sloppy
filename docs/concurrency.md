@@ -66,7 +66,7 @@ scheduling for native completions, deadline/shutdown drain policy, bounded queue
 backpressure, provider/offload integration, and stress evidence.
 
 Implement the full scalable async runtime when a real external async source is ready to
-wire end to end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
+wire end-to-end, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
 async SQLite/provider work, or worker-pool offload. It is also required before Sloppy makes
 any public or alpha claim about scalable async behavior, production-ready async HTTP
 lifecycle, async provider execution, or performance with many pending requests.

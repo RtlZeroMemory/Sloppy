@@ -168,7 +168,8 @@ Current behavior:
   `SLOPPY_E_ENGINE_PROMISE_REJECTION`. A Promise that remains pending after the bounded
   microtask drain fails with `SLOPPY_E_ENGINE_PROMISE_PENDING` and
   `SL_STATUS_DEADLINE_EXCEEDED`; no timer/fetch/native async queue is invented to keep it
-  alive.
+  alive. Recursive Promise microtask chains that exceed the internal checkpoint cap also
+  fail through the same pending/deadline diagnostic instead of hanging the owner thread.
 - context-aware calls reject pre-cancelled request contexts before user code with
   `SLOPPY_E_ENGINE_CANCELLED` or `SLOPPY_E_ENGINE_BACKPRESSURE` depending on the native
   token reason. Deadlines cancel through the same token path. Request cleanup remains owned
@@ -329,12 +330,14 @@ work between threads, run worker callbacks, or allow native worker threads to en
 isolate. Future worker/event-loop integration must post work back to the owner thread.
 
 TASK 09.B's `SlAsync` model lives in the C runtime core and does not include V8 types.
-MAIN1-05 chooses the alpha Promise policy: returned Promises and `async` handlers are
-unsupported and fail clearly. Future support should settle returned JS promises by posting
-back to the owning loop and must continue to keep V8 handles and microtask policy inside
-`src/engine/v8/`. That support is deferred but required; Sloppy must not document or market
-async handler support until V8 Promise settlement, microtask policy, request-scope lifetime,
-and rejected-promise diagnostics are implemented and tested.
+ENGINE-03 updates the alpha Promise policy: returned Promises and `async` handlers are
+supported only when the Promise settles during the explicit owner-thread microtask drain.
+Fulfilled Promises convert through the normal result path, rejected Promises fail with
+`SLOPPY_E_ENGINE_PROMISE_REJECTION`, and Promises still pending after the bounded checkpoint
+fail with `SLOPPY_E_ENGINE_PROMISE_PENDING` and `SL_STATUS_DEADLINE_EXCEEDED`. The bridge
+checks the native cancellation token before entering JavaScript and before async result
+conversion. Future native completions must keep the same V8-owner-thread rule and keep V8
+handles and microtask policy inside `src/engine/v8/`.
 
 V8 requires process-wide platform initialization. TASK 07.C initializes that state once,
 keeps it private to `src/engine/v8/`, and intentionally leaves it alive for process
