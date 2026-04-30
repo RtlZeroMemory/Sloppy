@@ -153,6 +153,16 @@ static bool sl_http_request_terminal(SlHttpRequestState state)
            state == SL_HTTP_REQUEST_STATE_CLOSED;
 }
 
+static void sl_http_backend_maybe_finish_stop(SlHttpBackend* backend)
+{
+    if (backend != NULL && backend->state == SL_HTTP_BACKEND_STATE_STOPPING &&
+        backend->active_connections == 0U && backend->active_requests == 0U)
+    {
+        backend->state = SL_HTTP_BACKEND_STATE_STOPPED;
+        backend->listener.state = SL_HTTP_LISTENER_STATE_STOPPED;
+    }
+}
+
 static void sl_http_request_release_admission(SlHttpRequestLifecycle* request)
 {
     SlHttpBackend* backend = NULL;
@@ -166,6 +176,7 @@ static void sl_http_request_release_admission(SlHttpRequestLifecycle* request)
         backend->active_requests -= 1U;
     }
     request->admitted = false;
+    sl_http_backend_maybe_finish_stop(backend);
 }
 
 SlStatus sl_http_backend_init(SlHttpBackend* backend, const SlHttpBackendOptions* options,
@@ -223,10 +234,7 @@ SlStatus sl_http_backend_stop(SlHttpBackend* backend, SlDiag* out_diag)
 
     backend->state = SL_HTTP_BACKEND_STATE_STOPPING;
     backend->listener.state = SL_HTTP_LISTENER_STATE_STOPPING;
-    if (backend->active_connections == 0U && backend->active_requests == 0U) {
-        backend->state = SL_HTTP_BACKEND_STATE_STOPPED;
-        backend->listener.state = SL_HTTP_LISTENER_STATE_STOPPED;
-    }
+    sl_http_backend_maybe_finish_stop(backend);
     return sl_status_ok();
 }
 
@@ -300,12 +308,7 @@ SlStatus sl_http_connection_close(SlHttpConnection* connection, SlDiag* out_diag
         backend->active_connections -= 1U;
     }
     connection->slot_admitted = false;
-    if (backend != NULL && backend->state == SL_HTTP_BACKEND_STATE_STOPPING &&
-        backend->active_connections == 0U && backend->active_requests == 0U)
-    {
-        backend->state = SL_HTTP_BACKEND_STATE_STOPPED;
-        backend->listener.state = SL_HTTP_LISTENER_STATE_STOPPED;
-    }
+    sl_http_backend_maybe_finish_stop(backend);
     return sl_status_ok();
 }
 
@@ -325,6 +328,7 @@ SlStatus sl_http_connection_fail(SlHttpConnection* connection, SlDiag* out_diag)
         backend->active_connections -= 1U;
     }
     connection->slot_admitted = false;
+    sl_http_backend_maybe_finish_stop(backend);
     return sl_status_ok();
 }
 
@@ -382,12 +386,11 @@ SlStatus sl_http_request_parse_head(SlHttpRequestLifecycle* request, SlBytes byt
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (sl_http_request_terminal(request->state)) {
+    if (request->state != SL_HTTP_REQUEST_STATE_CREATED) {
         return sl_http_backend_invalid_state(out_diag);
     }
 
     backend = request->connection->backend;
-    request->state = SL_HTTP_REQUEST_STATE_READING;
     request->connection->state = SL_HTTP_CONNECTION_STATE_READING_REQUEST;
     status = sl_http_parse_request_head(request->arena, bytes,
                                         backend == NULL ? NULL : &backend->options.parse,
@@ -395,6 +398,9 @@ SlStatus sl_http_request_parse_head(SlHttpRequestLifecycle* request, SlBytes byt
     if (!sl_status_is_ok(status)) {
         request->state = SL_HTTP_REQUEST_STATE_FAILED;
         request->connection->state = SL_HTTP_CONNECTION_STATE_ERROR;
+    }
+    else {
+        request->state = SL_HTTP_REQUEST_STATE_READING;
     }
     return status;
 }
@@ -407,9 +413,7 @@ SlStatus sl_http_request_begin_dispatch(SlHttpRequestLifecycle* request, SlDiag*
     if (request == NULL || request->connection == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (request->state != SL_HTTP_REQUEST_STATE_READING &&
-        request->state != SL_HTTP_REQUEST_STATE_CREATED)
-    {
+    if (request->state != SL_HTTP_REQUEST_STATE_READING) {
         return sl_http_backend_invalid_state(out_diag);
     }
     if (sl_cancellation_token_is_cancelled(&request->cancellation)) {
@@ -447,7 +451,7 @@ SlStatus sl_http_request_complete(SlHttpRequestLifecycle* request, SlDiag* out_d
     if (request == NULL || request->connection == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (sl_http_request_terminal(request->state)) {
+    if (request->state != SL_HTTP_REQUEST_STATE_WRITING_RESPONSE) {
         return sl_http_backend_invalid_state(out_diag);
     }
 
@@ -483,6 +487,10 @@ SlStatus sl_http_request_timeout(SlHttpRequestLifecycle* request, SlStr detail, 
     if (request == NULL || !sl_http_backend_str_valid(detail)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    if (sl_http_request_terminal(request->state)) {
+        return sl_http_backend_invalid_state(out_diag);
+    }
+
     status = sl_cancellation_token_cancel(&request->cancellation,
                                           SL_CANCELLATION_REASON_DEADLINE_EXCEEDED, detail);
     if (!sl_status_is_ok(status) && sl_status_code(status) != SL_STATUS_INVALID_STATE) {
