@@ -76,6 +76,18 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_ACCEPT_FAILED:
         return sl_diag_literal("SLOPPY_E_HTTP_ACCEPT_FAILED",
                                sizeof("SLOPPY_E_HTTP_ACCEPT_FAILED") - 1U);
+    case SL_DIAG_HTTP_DISPATCH_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_DISPATCH_FAILED",
+                               sizeof("SLOPPY_E_HTTP_DISPATCH_FAILED") - 1U);
+    case SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED",
+                               sizeof("SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED") - 1U);
+    case SL_DIAG_HTTP_WRITE_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_WRITE_FAILED",
+                               sizeof("SLOPPY_E_HTTP_WRITE_FAILED") - 1U);
+    case SL_DIAG_HTTP_CLOSE_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLOSE_FAILED",
+                               sizeof("SLOPPY_E_HTTP_CLOSE_FAILED") - 1U);
     case SL_DIAG_HTTP_BODY_LIMIT:
         return sl_diag_literal("SLOPPY_E_HTTP_BODY_LIMIT", sizeof("SLOPPY_E_HTTP_BODY_LIMIT") - 1U);
     case SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE:
@@ -89,6 +101,40 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
                                sizeof("SLOPPY_E_INVALID_HTTP_RESULT") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static bool sl_diag_is_http_code(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_HTTP_BODY_LIMIT:
+    case SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE:
+    case SL_DIAG_HTTP_TARGET_LIMIT:
+    case SL_DIAG_HTTP_HEADER_NAME_LIMIT:
+    case SL_DIAG_HTTP_HEADER_VALUE_LIMIT:
+    case SL_DIAG_HTTP_HEADER_BYTES_LIMIT:
+    case SL_DIAG_HTTP_CONNECTION_CLOSED:
+    case SL_DIAG_HTTP_REQUEST_TIMEOUT:
+    case SL_DIAG_HTTP_OVERLOAD:
+    case SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED:
+    case SL_DIAG_HTTP_SHUTDOWN:
+    case SL_DIAG_HTTP_TRANSPORT_CONFIG:
+    case SL_DIAG_HTTP_BIND_FAILED:
+    case SL_DIAG_HTTP_LISTEN_FAILED:
+    case SL_DIAG_HTTP_ACCEPT_FAILED:
+    case SL_DIAG_HTTP_DISPATCH_FAILED:
+    case SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED:
+    case SL_DIAG_HTTP_WRITE_FAILED:
+    case SL_DIAG_HTTP_CLOSE_FAILED:
+    case SL_DIAG_INVALID_HTTP_REQUEST:
+    case SL_DIAG_HTTP_HEADER_LIMIT:
+    case SL_DIAG_HTTP_UNSUPPORTED_METHOD:
+    case SL_DIAG_HTTP_ROUTE_NOT_FOUND:
+    case SL_DIAG_HTTP_UNSUPPORTED_BODY:
+    case SL_DIAG_INVALID_HTTP_RESULT:
+        return true;
+    default:
+        return false;
     }
 }
 
@@ -480,6 +526,10 @@ SlStr sl_diag_severity_name(SlDiagSeverity severity)
 
 SlStr sl_diag_code_name(SlDiagCode code)
 {
+    if (sl_diag_is_http_code(code)) {
+        return sl_diag_http_code_name(code);
+    }
+
     switch (code) {
     case SL_DIAG_NONE:
         return sl_diag_literal("SLOPPY_NONE", sizeof("SLOPPY_NONE") - 1U);
@@ -534,28 +584,6 @@ SlStr sl_diag_code_name(SlDiagCode code)
                                sizeof("SLOPPY_E_ENGINE_BACKPRESSURE") - 1U);
     case SL_DIAG_APP_LIFECYCLE:
         return sl_diag_literal("SLOPPY_E_APP_LIFECYCLE", sizeof("SLOPPY_E_APP_LIFECYCLE") - 1U);
-    case SL_DIAG_HTTP_BODY_LIMIT:
-    case SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE:
-    case SL_DIAG_HTTP_TARGET_LIMIT:
-    case SL_DIAG_HTTP_HEADER_NAME_LIMIT:
-    case SL_DIAG_HTTP_HEADER_VALUE_LIMIT:
-    case SL_DIAG_HTTP_HEADER_BYTES_LIMIT:
-    case SL_DIAG_HTTP_CONNECTION_CLOSED:
-    case SL_DIAG_HTTP_REQUEST_TIMEOUT:
-    case SL_DIAG_HTTP_OVERLOAD:
-    case SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED:
-    case SL_DIAG_HTTP_SHUTDOWN:
-    case SL_DIAG_HTTP_TRANSPORT_CONFIG:
-    case SL_DIAG_HTTP_BIND_FAILED:
-    case SL_DIAG_HTTP_LISTEN_FAILED:
-    case SL_DIAG_HTTP_ACCEPT_FAILED:
-    case SL_DIAG_INVALID_HTTP_REQUEST:
-    case SL_DIAG_HTTP_HEADER_LIMIT:
-    case SL_DIAG_HTTP_UNSUPPORTED_METHOD:
-    case SL_DIAG_HTTP_ROUTE_NOT_FOUND:
-    case SL_DIAG_HTTP_UNSUPPORTED_BODY:
-    case SL_DIAG_INVALID_HTTP_RESULT:
-        return sl_diag_http_code_name(code);
     case SL_DIAG_INVALID_ROUTE_PATTERN:
         return sl_diag_literal("SLOPPY_E_INVALID_ROUTE_PATTERN",
                                sizeof("SLOPPY_E_INVALID_ROUTE_PATTERN") - 1U);

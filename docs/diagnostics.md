@@ -192,6 +192,10 @@ Implemented foundation codes:
 - `SLOPPY_E_HTTP_BIND_FAILED`;
 - `SLOPPY_E_HTTP_LISTEN_FAILED`;
 - `SLOPPY_E_HTTP_ACCEPT_FAILED`;
+- `SLOPPY_E_HTTP_DISPATCH_FAILED`;
+- `SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED`;
+- `SLOPPY_E_HTTP_WRITE_FAILED`;
+- `SLOPPY_E_HTTP_CLOSE_FAILED`;
 - `SLOPPY_E_DUPLICATE_ROUTE`;
 - `SLOPPY_E_HTTP_UNSUPPORTED_BODY`;
 - `SLOPPY_E_INVALID_HTTP_RESULT`;
@@ -394,6 +398,11 @@ Runtime diagnostics:
   pipelined bytes, and invalid connection state. These diagnostics stay redacted and do not
   include libuv handles, socket internals, native pointers, request bodies, or secret
   values;
+- HTTP transport dispatch/write diagnostics cover invalid dispatch state, missing dispatch
+  callback wiring, response serialization or response-buffer-capacity failure,
+  write-start/write-completion failure, and reserved close-after-write lifecycle failure
+  when detectable. These diagnostics stay redacted and do not include libuv handles, socket
+  internals, native pointers, response bodies, request bodies, or secret values;
 - unsupported request bodies;
 - unsupported request content types;
 - request body size limit failures;

@@ -33,9 +33,12 @@ ENGINE-24.A/B adds the first reusable transport listener foundation: Slop-owned 
 config/state, libuv-isolated TCP bind/listen/accept, bounded accepted-connection
 placeholders, overflow close behavior, and cleanup-once stop/dispose. ENGINE-24.C starts
 the accepted-connection read loop and accumulates real TCP chunks into one bounded parsed
-request-ready state using the existing ENGINE-13 parser and body policy. Dispatch and
-response writing remain #415; timeout/shutdown completion remains #416; localhost full
-smoke remains #417. This is not benchmark evidence and not production-edge HTTP evidence.
+request-ready state using the existing ENGINE-13 parser and body policy. ENGINE-24.D
+consumes request-ready state through a narrow dispatch callback, serializes
+`SlHttpResponse` values with the existing response writer, writes bytes back through libuv,
+and closes the TCP connection after the write. Timeout/shutdown completion remains #416;
+localhost full smoke/conformance remains #417; keep-alive remains #418. This is not V8
+transport conformance, benchmark evidence, or production-edge HTTP evidence.
 There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser
 API, middleware, cookies/sessions, static file server, compression, multipart upload,
 streaming responses, public TypeScript `app.run`, or broad response framework.
@@ -103,15 +106,20 @@ Implemented now:
   request-ready state, and an internal ready hook can observe the parsed request for tests.
   If no hook is configured in this slice, the parsed request is closed immediately so
   connection/request admission does not remain parked.
+- ENGINE-24.D transport dispatch/write: request-ready connections transition through the
+  backend dispatch/write lifecycle exactly once, a narrow internal dispatch callback
+  returns an `SlHttpResponse`, the existing response writer serializes bytes into
+  per-connection storage, libuv writes those bytes to TCP, the response buffer remains
+  alive until the write callback, and the connection closes after response write.
 
 Future scope:
 
 - streaming HTTP parser state;
 - production-edge HTTP proof beyond ENGINE-13.F's bounded smoke;
 - production server hardening if explicitly scoped later;
-- transport dispatch and response write loop (#415);
 - timeout/shutdown completion beyond listener cleanup (#416);
 - localhost conformance beyond the bounded unit smoke (#417);
+- keep-alive decision and any HTTP/1.1 upgrade plan (#418);
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
 
@@ -146,6 +154,11 @@ response writer.
   SQLite/provider work, keep-alive, HTTP pipelining, chunked/streaming bodies, TLS,
   HTTP/2/3, WebSockets, static files, compression, reverse proxy behavior, benchmark
   claims, or public alpha docs.
+- ENGINE-24.D does not add timeout/shutdown expansion beyond write cleanup, localhost full
+  conformance, users API proof, SQLite/provider work, keep-alive, pipelining, chunked or
+  streaming response bodies, TLS, HTTP/2/3, WebSockets, static files, compression, reverse
+  proxy behavior, benchmark claims, public alpha docs, or a default V8 transport success
+  claim.
 
 ## Public/Internal API
 
@@ -197,6 +210,7 @@ response writer.
 - server and connection state enums;
 - bounded read/request accumulation caps;
 - internal request-ready callback for #414/#415 handoff tests;
+- narrow internal dispatch callback for #415 transport dispatch/write integration;
 - init/listen/poll/stop/dispose;
 - accepted connection close;
 - internal/test request-byte feed helper;
@@ -359,11 +373,13 @@ The platform TCP handles are independently closed by the transport layer; JavaSc
 receives raw pointers or native handles.
 
 Each transport connection owns fixed server-arena storage for read chunks, request-byte
-accumulation, and a request arena. The accumulation buffer is driven through
-`SlByteBuilder`, not raw unbounded allocation. The parsed request head and accumulated body
-borrow the connection request arena until the parked request is consumed by a later dispatch
-slice or the connection is closed. ENGINE-24.C parks one request only; extra bytes after the
-first complete request are treated as unsupported pipelining.
+accumulation, response bytes, and a request arena. The accumulation buffer is driven
+through `SlByteBuilder`, not raw unbounded allocation. The parsed request head and
+accumulated body borrow the connection request arena until response serialization finishes
+or the connection is closed. ENGINE-24.D writes response bytes from connection-owned
+storage that remains valid until the libuv write callback. One request is served per
+connection; extra bytes after the first complete request are treated as unsupported
+pipelining.
 
 HTTP dispatch tables borrow route bindings, parsed route patterns, plans, and engine
 handles for the duration of the call only. `sl_http_dispatch_request_head` does not retain
@@ -445,8 +461,15 @@ Future diagnostics:
 - route conflict/source-span diagnostics.
 - route group/source metadata diagnostics once compiler extraction and plan route sections
   exist.
-- richer transport shutdown/read/write diagnostics when #414 through #416 wire the read and
-  write loops.
+- richer transport shutdown/read/write diagnostics when #416 wires cancellation, timeout,
+  and shutdown hardening.
+
+ENGINE-24.D adds transport dispatch/write diagnostics:
+
+- missing or invalid transport dispatch wiring;
+- response serialization or response-buffer-capacity failure;
+- response write-start or write-completion failure;
+- reserved close-after-write lifecycle failure if that becomes detectable.
 
 ## Tests
 
@@ -509,6 +532,12 @@ Implemented CTest coverage:
   rejection, pipelined request-byte rejection, request-ready internal hook observation,
   no-hook ready-request cleanup, cleanup after read/partial-body failure, and cleanup after
   ready request;
+- transport dispatch/write tests for request-ready dispatch exactly once, simple GET
+  success bytes observed by a real TCP client, route miss 404 mapping, method-not-allowed
+  405 mapping, dispatch failure safe 500 mapping, response write completion
+  close-after-response cleanup, response buffer lifetime through write callback,
+  no dispatch after close, no second request after close, and response buffer capacity
+  diagnostics;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;

@@ -157,7 +157,42 @@ $warnings = @()
 
 $includePattern = '^\s*#\s*include\s*[<"]([^>"]+)[>"]'
 $unsafeFunctionPattern = '\b(gets|strcpy|strcat|sprintf|vsprintf)\s*\('
+$memoryPrimitivePattern = '\b(snprintf|strlen|memcpy|memmove)\s*\('
 $allocPattern = '\b(malloc|free|realloc|calloc)\s*\('
+
+function Test-AllowedMemoryPrimitiveBoundary {
+    param(
+        [string]$RelativePath,
+        [string]$FunctionName,
+        [string]$Line
+    )
+
+    if ($Line -match 'sloppy-allow:\s*c-memory-boundary\s+.+$') {
+        return $true
+    }
+
+    if ($RelativePath -eq "src/core/string.c" -and $FunctionName -eq "strlen") {
+        return $true
+    }
+
+    if ($RelativePath -eq "src/main.c" -and $FunctionName -eq "strlen") {
+        return $true
+    }
+
+    if ($RelativePath -eq "src/data/postgres.c" -and $FunctionName -eq "snprintf") {
+        return $true
+    }
+
+    if ($RelativePath -eq "src/data/sqlserver.c" -and $FunctionName -eq "memcpy") {
+        return $true
+    }
+
+    if ($RelativePath -eq "src/engine/v8/intrinsics_sqlite.cc" -and $FunctionName -eq "memcpy") {
+        return $true
+    }
+
+    return $false
+}
 
 foreach ($file in $files) {
     $relativePath = Convert-ToRepoPath $file
@@ -207,6 +242,19 @@ foreach ($file in $files) {
                 -Rule "Unsafe C string/format functions are forbidden." `
                 -Fix "Use bounded helpers and follow docs/c-standards.md." `
                 -Severity "error"
+        }
+
+        if ($line -match $memoryPrimitivePattern) {
+            $functionName = $Matches[1]
+            if (-not (Test-AllowedMemoryPrimitiveBoundary -RelativePath $relativePath -FunctionName $functionName -Line $line)) {
+                $violations += New-Finding `
+                    -File $relativePath `
+                    -Line $lineNumber `
+                    -Pattern $functionName `
+                    -Rule "Use Slop memory/string/buffer primitives instead of ad hoc low-level operations." `
+                    -Fix "Use SlStr/SlBytes, arena copy helpers, SlStringBuilder/SlByteBuilder, checked helpers, or add a reusable primitive in the memory/string module." `
+                    -Severity "error"
+            }
         }
 
         if (($line -match $allocPattern) -and -not (Test-AllowedAllocPath $relativePath)) {

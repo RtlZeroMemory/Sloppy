@@ -19,6 +19,20 @@ is_allowed_alloc_path() {
     [[ "$1" == src/core/arena.* || "$1" == src/core/alloc.* || "$1" == src/memory/* ]]
 }
 
+is_allowed_memory_boundary() {
+    local file="$1"
+    local function_name="$2"
+    local line="$3"
+
+    [[ "$line" == *"sloppy-allow: c-memory-boundary "* ]] && return 0
+    [[ "$file" == "src/core/string.c" && "$function_name" == "strlen" ]] && return 0
+    [[ "$file" == "src/main.c" && "$function_name" == "strlen" ]] && return 0
+    [[ "$file" == "src/data/postgres.c" && "$function_name" == "snprintf" ]] && return 0
+    [[ "$file" == "src/data/sqlserver.c" && "$function_name" == "memcpy" ]] && return 0
+    [[ "$file" == "src/engine/v8/intrinsics_sqlite.cc" && "$function_name" == "memcpy" ]] && return 0
+    return 1
+}
+
 add_finding() {
     local target_array="$1"
     local file="$2"
@@ -64,6 +78,10 @@ while IFS= read -r file; do
 
         if [[ "$line" =~ (^|[^[:alnum:]_])(gets|strcpy|strcat|sprintf|vsprintf)[[:space:]]*\( ]]; then
             add_finding violations "$file" "$line_number" "Unsafe C string/format functions are forbidden." "${BASH_REMATCH[2]}"
+        fi
+
+        if [[ "$line" =~ (^|[^[:alnum:]_])(snprintf|strlen|memcpy|memmove)[[:space:]]*\( ]] && ! is_allowed_memory_boundary "$file" "${BASH_REMATCH[2]}" "$line"; then
+            add_finding violations "$file" "$line_number" "Use Slop memory/string/buffer primitives instead of ad hoc low-level operations." "${BASH_REMATCH[2]}"
         fi
 
         if [[ "$line" =~ (^|[^[:alnum:]_])(malloc|free|realloc|calloc)[[:space:]]*\( ]] && ! is_allowed_alloc_path "$file"; then

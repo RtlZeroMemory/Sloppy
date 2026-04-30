@@ -146,6 +146,9 @@ Cleanup blocks release only initialized resources.
 - unchecked `snprintf`, `memcpy`, `memmove`;
 - naked internal `char*` string APIs;
 - `strlen`-driven internal logic outside boundary adapters;
+- ad hoc string/byte append loops, local mini-builders, or manual buffer construction when
+  `SlStringBuilder`, `SlByteBuilder`, arena copy helpers, or existing string/byte helpers
+  fit;
 - JS raw pointer exposure;
 - V8 type leakage outside `src/engine/v8/`;
 - OS-specific includes outside `src/platform/*`.

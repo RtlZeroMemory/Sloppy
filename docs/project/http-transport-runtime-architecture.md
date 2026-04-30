@@ -30,9 +30,10 @@ stops the backend. Dispose stops as needed and then disposes backend state.
 ## Config
 
 Omitted config uses `127.0.0.1`, port `5173`, default backend connection/request caps, and
-a bounded backlog. Tests may pass port `0` for an OS-selected localhost port and read it
-through `sl_http_transport_server_bound_port`. Invalid host/address, port above `65535`,
-zero connection/request capacity, and invalid backlog fail before serving work.
+a bounded backlog, and bounded per-connection response storage. Tests may pass port `0`
+for an OS-selected localhost port and read it through `sl_http_transport_server_bound_port`.
+Invalid host/address, port above `65535`, zero connection/request/response capacity, and
+invalid backlog fail before serving work.
 
 These are foundation defaults, not production-edge defaults.
 
@@ -44,7 +45,7 @@ connection in `ACCEPTED`. No request read loop is started in ENGINE-24.A/B.
 
 When capacity is full, the transport accepts the pending socket into an internal overflow
 handle and closes it immediately. This prevents unbounded queue growth without pretending to
-write a `503` response before the response write loop exists.
+write a `503` response before a connection slot and response buffer are available.
 
 ## Read Loop And Request Accumulation
 
@@ -71,18 +72,30 @@ Supported request framing is intentionally small:
   or closed as unsupported MVP behavior.
 
 When a full request is parsed and the body reader finishes, the connection transitions to
-`REQUEST_READY`. The request is parked on the transport connection and exposed only through
-an internal request-ready callback/test hook when that hook is configured. If no hook is
-configured, the parsed request is closed immediately so backend admission is released rather
-than parked forever. ENGINE-24.C does not call route dispatch, does not enter V8, and does
-not write a response. #415 owns consuming the parked request, dispatching it, and
-writing/closing the response.
+`REQUEST_READY`. ENGINE-24.D consumes that state exactly once when a dispatch callback is
+configured: backend request state moves from reading to dispatching, the callback returns a
+normal `SlHttpResponse`, the existing response writer serializes bytes into the
+connection-owned response buffer, libuv writes those bytes, and the connection closes after
+the write callback. The optional request-ready hook remains for tests/observation, but it
+is no longer the only consumer of parsed requests.
+
+The MVP connection policy is still one request per connection. Extra/pipelined bytes are
+rejected before dispatch, keep-alive is not enabled, response bodies are serialized
+eagerly, and streaming/chunked response writing is not implemented.
+
+If no dispatch callback is configured, the parsed request is closed immediately so backend
+admission is released rather than parked forever. Full `sloppy run` localhost conformance
+through the reusable transport remains #417; this slice proves the transport dispatch/write
+lifecycle with native/fake dispatch callbacks and the existing response serializer without
+claiming V8 transport success.
 
 Connections can be closed directly, by server stop, by client disconnect, by read/parse/body
-failure, or by dispose. Cleanup stops reads before closing the handle, closes any unfinished
-body reader, closes the request lifecycle, and releases backend connection/request
-admission exactly once. A disconnect while reading the head or body produces a deterministic
-connection-closed diagnostic and does not enter V8.
+failure, dispatch failure, write completion, write failure, or dispose. Cleanup stops reads
+before closing the handle, preserves the response buffer until the libuv write callback,
+closes any unfinished body reader, closes the request lifecycle, and releases backend
+connection/request admission exactly once. A disconnect while reading the head or body
+produces a deterministic connection-closed diagnostic and does not enter V8. No V8 work
+runs from the write callback.
 
 ## Diagnostics
 
@@ -99,6 +112,12 @@ Transport diagnostics use stable Sloppy diagnostic codes:
 - `SLOPPY_E_HTTP_BODY_LIMIT` for oversized bodies;
 - `SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE` for unsupported body media;
 - `SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED` for detected pipelined request bytes;
+- `SLOPPY_E_HTTP_DISPATCH_FAILED` for missing/invalid transport dispatch wiring;
+- `SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED` for response writer/buffer-capacity
+  failures;
+- `SLOPPY_E_HTTP_WRITE_FAILED` for write-start or write-completion failures;
+- `SLOPPY_E_HTTP_CLOSE_FAILED` is reserved for detectable close-after-write lifecycle
+  failures;
 - existing `SLOPPY_E_HTTP_OVERLOAD` for backend admission pressure;
 - existing `SLOPPY_E_APP_LIFECYCLE` for lifecycle misuse.
 
