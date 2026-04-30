@@ -9,6 +9,7 @@
 #include "sloppy/arena.h"
 #include "sloppy/builder.h"
 #include "sloppy/capability.h"
+#include "sloppy/checked_math.h"
 #include "sloppy/compiler.h"
 #include "sloppy/data_postgres.h"
 #include "sloppy/data_sqlserver.h"
@@ -48,8 +49,7 @@
 #define SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_MAX_BYTES 8192U
 #define SL_RUN_RESPONSE_MAX_BYTES 16384U
-#define SL_RUN_PLAN_INTERN_CAPACITY 256U
-#define SL_RUN_PLAN_INTERN_BUCKETS 128U
+#define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
 #ifndef SLOPPY_BOOTSTRAP_BUILD_DIR
@@ -1449,27 +1449,79 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
         return 1;
     }
 
-    status = sl_capability_registry_init_from_plan(&app->plan, &app->capability_registry);
-    if (!sl_status_is_ok(status)) {
-        sl_cli_write_cstr(stderr, "sloppy run: failed to initialize app capability registry\n");
-        return 1;
+    return 0;
+}
+
+static SlStatus sl_run_plan_intern_capacity(const SlPlan* plan, size_t* out_capacity)
+{
+    size_t capacity = SL_RUN_PLAN_INTERN_BASE_FIELDS;
+    size_t addend = 0U;
+    SlStatus status;
+
+    if (plan == NULL || out_capacity == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    return 0;
+    status = sl_checked_mul_size(plan->handler_count, 2U, &addend);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(capacity, addend, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_mul_size(plan->route_count, 3U, &addend);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(capacity, addend, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_mul_size(plan->data_provider_count, 4U, &addend);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(capacity, addend, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_checked_mul_size(plan->capability_count, 4U, &addend);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(capacity, addend, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    *out_capacity = capacity;
+    return sl_status_ok();
 }
 
 static int sl_run_intern_plan_metadata(SlRunApp* app)
 {
     SlPlan interned_plan = {0};
     SlInternTable intern_table = {0};
+    size_t capacity = 0U;
     SlStatus status;
 
     if (app == NULL) {
         return 1;
     }
 
-    status = sl_plan_intern_metadata(&app->plan_arena, &app->plan, SL_RUN_PLAN_INTERN_CAPACITY,
-                                     SL_RUN_PLAN_INTERN_BUCKETS, &interned_plan, &intern_table);
+    status = sl_run_plan_intern_capacity(&app->plan, &capacity);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to size stable app plan metadata table\n");
+        return 1;
+    }
+
+    intern_table = app->plan_metadata_interns;
+    status = sl_plan_intern_metadata(&app->plan_arena, &app->plan, capacity, capacity,
+                                     &interned_plan, &intern_table);
     if (!sl_status_is_ok(status)) {
         sl_cli_write_cstr(stderr, "sloppy run: failed to intern stable app plan metadata\n");
         return 1;
@@ -1498,6 +1550,23 @@ static int sl_run_validate_startup(SlRunApp* app)
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: app graph startup validation failed: ", &app->engine_arena,
                           &diag);
+        return 1;
+    }
+
+    status = sl_capability_registry_init_from_plan(&app->plan, &app->capability_registry);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_cstr(stderr, "sloppy run: capability registry initialization failed\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_run_init_capability_registry(SlRunApp* app)
+{
+    SlStatus status;
+
+    if (app == NULL) {
         return 1;
     }
 
@@ -1662,7 +1731,8 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
     }
 
     if (sl_run_load_plan(app, plan_path) != 0 || sl_run_validate_startup(app) != 0 ||
-        sl_run_intern_plan_metadata(app) != 0 || sl_run_prepare_routes(app) != 0)
+        sl_run_intern_plan_metadata(app) != 0 || sl_run_init_capability_registry(app) != 0 ||
+        sl_run_prepare_routes(app) != 0)
     {
         return 1;
     }

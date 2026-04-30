@@ -497,6 +497,7 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
 
     mark = sl_arena_mark(arena);
     staged = *plan;
+    table.generation = out_table->generation;
 
     status = sl_intern_table_init(&table, arena, capacity, bucket_count);
     if (!sl_status_is_ok(status)) {

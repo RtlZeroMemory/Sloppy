@@ -292,6 +292,63 @@ static int test_plan_metadata_interns_stable_strings(void)
     return 0;
 }
 
+static int test_plan_metadata_rebuild_advances_generation(void)
+{
+    unsigned char arena_storage[2048];
+    SlArena arena = {0};
+    SlPlan plan = {0};
+    SlPlan interned_plan = {0};
+    SlPlan reinterned_plan = {0};
+    SlInternTable table = {0};
+    SlInternedString interned_id = {0};
+    SlInternedString stale_lookup = {0};
+    SlSymbol old_id_symbol = {0};
+    unsigned int first_generation = 0U;
+    SlStatus status;
+
+    plan.version = SL_PLAN_VERSION_1;
+    plan.compiler_version = sl_str_from_cstr("sloppyc-test");
+    plan.runtime_min_version = sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0);
+    plan.stdlib_version = sl_str_from_cstr(SL_PLAN_STDLIB_VERSION_0_1_0);
+    plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    plan.target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    plan.bundle.id = sl_str_from_cstr("app-js");
+    plan.source_map.id = sl_str_from_cstr("app-js-map");
+
+    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    if (!sl_status_is_ok(status)) {
+        return 90;
+    }
+    status = sl_plan_intern_metadata(&arena, &plan, 8U, 8U, &interned_plan, &table);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 91;
+    }
+    status = sl_intern_table_find(&table, sl_str_from_cstr("app-js"), &interned_id);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 92;
+    }
+    old_id_symbol = interned_id.symbol;
+    first_generation = table.generation;
+
+    status = sl_plan_intern_metadata(&arena, &interned_plan, 8U, 8U, &reinterned_plan, &table);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 93;
+    }
+    if (table.generation == first_generation) {
+        return 94;
+    }
+    if (expect_status(sl_intern_table_get(&table, old_id_symbol, &stale_lookup),
+                      SL_STATUS_STALE_RESOURCE) != 0)
+    {
+        return 95;
+    }
+    if (!sl_str_equal(reinterned_plan.bundle.id, sl_str_from_cstr("app-js"))) {
+        return 96;
+    }
+
+    return 0;
+}
+
 static int test_plan_metadata_intern_failure_preserves_outputs(void)
 {
     unsigned char arena_storage[2048];
@@ -410,6 +467,11 @@ int main(void)
     }
 
     result = test_plan_metadata_interns_stable_strings();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_plan_metadata_rebuild_advances_generation();
     if (result != 0) {
         return result;
     }
