@@ -43,6 +43,13 @@ lanes separate: default non-V8, V8-gated, localhost transport, SQLite/capability
 outside-checkout, live-provider optional, stress/smoke, and benchmark harness. Skipped
 optional gates are not pass claims.
 
+ENGINE-19.BC registers the current V8, HTTP, and async behavior under explicit conformance
+names without adding runtime behavior. `conformance.http.default_dispatch` is default
+non-V8 synthetic dispatch evidence, `conformance.transport.localhost_mvp` is localhost
+transport MVP evidence, `conformance.async.*` is default native async/backend evidence,
+and `conformance.v8.*` is V8-gated runtime evidence. These aliases make the evidence lane
+visible while the existing unit/integration executables remain the detailed coverage.
+
 ENGINE-17.E adds a V8-gated users API conformance proof that compiles a source SQLite app,
 starts `sloppy run --artifacts` on localhost, sends raw TCP HTTP requests, and verifies
 SQLite-backed JSON responses plus denied-capability and invalid-JSON failures. This is
@@ -150,6 +157,10 @@ Runtime execution:
   localhost TCP, request body handling, V8 handler execution, and SQLite bridge calls.
   They must still report the V8 SDK prerequisite explicitly and must not describe the
   current synchronous SQLite bridge as async/offloaded provider execution;
+- ENGINE-19.BC conformance registrations may reuse existing unit or integration
+  executables when the executable already covers the documented behavior. The CTest name
+  and labels must identify the evidence lane so reports do not blur default non-V8,
+  V8-gated, localhost transport, and native async evidence;
 - future keep-alive and streaming tests must be reported as a separate HTTP/1.1 upgrade
   evidence set. They must cover sequential requests per connection, read-loop resume only
   after response write completion, idle timeout, max requests per connection, shutdown

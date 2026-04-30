@@ -82,9 +82,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   versus optional gate reporting.
 - ENGINE-19.A conformance matrix is now documented in
   `docs/project/engine-19-conformance-matrix.md` with a small static CMake check. The
-  remaining ENGINE-19 debt is executable coverage expansion in the V8/HTTP/async,
-  SQLite/capability, and package outside-checkout slices, not broader runtime behavior
-  hidden inside the matrix PR.
+  ENGINE-19.BC V8/HTTP/async slice registers existing executable coverage under
+  matrix-aligned CTest names for default synthetic HTTP dispatch, localhost transport MVP,
+  native async/backend semantics, and V8-gated runtime/HTTP/async behavior. The remaining
+  ENGINE-19 debt is SQLite/capability expansion and package outside-checkout smoke, not
+  broader runtime behavior hidden inside conformance PRs.
 - Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
   artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
   optimization hooks, versioning, and internal tooling leverage.

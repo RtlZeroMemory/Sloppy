@@ -68,6 +68,10 @@ lane policy for future conformance work. It is a docs/check foundation, not new 
 coverage: default non-V8, V8-gated, localhost transport, SQLite/capability, package
 outside-checkout, live-provider optional, stress/smoke, and benchmark harness evidence must
 remain distinct in status reports and PR bodies.
+ENGINE-19.BC turns the current V8, HTTP, and async suites into matrix-visible CTest
+entries. It does not add runtime behavior, but it makes default non-V8 synthetic HTTP,
+localhost transport MVP, default native async/backend, and V8-gated runtime/HTTP/async
+evidence directly selectable and reportable.
 
 ## Current Summary
 

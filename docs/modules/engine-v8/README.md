@@ -32,6 +32,10 @@ defines cancellation/deadline/shutdown/backpressure policy for native provider/o
 operations and proves it in default native tests. V8 remains the owner-thread settlement
 boundary: provider executors may post completions, but provider threads must never enter V8
 and no libuv/provider concept is exposed to JavaScript.
+ENGINE-19.BC registers the existing V8 runtime, owner-thread, native async scheduler, and
+HTTP dispatch integration executables under `conformance.v8.*` CTest names. These tests
+remain V8-gated and skipped/not configured when the SDK is unavailable; default non-V8
+gates do not prove this lane.
 
 ## Purpose
 
@@ -522,6 +526,12 @@ Current checks:
 - `http.dispatch.execution` is registered only when V8 is enabled and covers synthetic
   in-memory GET dispatch from parsed HTTP request head through a manual route binding to a
   numeric handler ID, plus missing JavaScript function and throwing handler diagnostics.
+- ENGINE-19.BC aliases the V8-gated runtime evidence as
+  `conformance.v8.runtime_bridge`, `conformance.v8.owner_thread`,
+  `conformance.v8.native_async_scheduler`, and
+  `conformance.v8.http_dispatch_execution` so CTest reports show the evidence lane
+  directly. These aliases run the same validated executables above and do not make default
+  gates V8 evidence.
 - `conformance.async_handler.run_once` is registered only when V8 is enabled and proves the
   compiler-emitted direct async handler artifact settles through `sloppy run --artifacts
   --once`.

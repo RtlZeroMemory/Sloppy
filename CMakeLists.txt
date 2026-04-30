@@ -618,12 +618,23 @@ if(SLOPPY_ENABLE_TESTS)
         core_async_settlement core.async.settlement tests/unit/core/test_async.c)
     sloppy_add_c_unit_test(
         core_async_backend core.async.backend tests/unit/core/test_async_backend.c)
+    add_test(NAME conformance.async.native_settlement COMMAND $<TARGET_FILE:core_async_settlement>)
+    set_tests_properties(
+        conformance.async.native_settlement PROPERTIES LABELS "conformance;async")
+    add_test(NAME conformance.async.backend_completion COMMAND $<TARGET_FILE:core_async_backend>)
+    set_tests_properties(
+        conformance.async.backend_completion PROPERTIES LABELS "conformance;async")
     sloppy_add_c_unit_test(
         core_provider_executor core.provider_executor tests/unit/core/test_provider_executor.c)
     if(CMAKE_CXX_COMPILER)
         sloppy_add_cxx_unit_test(
             core_async_backend_libuv core.async.backend_libuv
             tests/unit/core/test_async_backend_libuv.cc)
+        add_test(
+            NAME conformance.async.backend_libuv
+            COMMAND $<TARGET_FILE:core_async_backend_libuv>)
+        set_tests_properties(
+            conformance.async.backend_libuv PROPERTIES LABELS "conformance;async;smoke")
     endif()
     sloppy_add_c_unit_test(
         core_worker_pool_inline core.worker_pool.inline tests/unit/core/test_worker_pool.c)
@@ -634,11 +645,19 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_add_cxx_unit_test(
             core_http_transport core.http.transport tests/unit/core/test_http_transport.cc)
         target_link_libraries(core_http_transport PRIVATE ${SLOPPY_LIBUV_TARGET})
+        add_test(
+            NAME conformance.transport.localhost_mvp
+            COMMAND $<TARGET_FILE:core_http_transport>)
+        set_tests_properties(
+            conformance.transport.localhost_mvp PROPERTIES LABELS "conformance;transport;http")
     endif()
     sloppy_add_c_unit_test(
         core_http_context core.http.context tests/unit/core/test_http_context.c)
     sloppy_add_c_unit_test(
         core_http_dispatch core.http.dispatch tests/unit/core/test_http_dispatch.c)
+    add_test(NAME conformance.http.default_dispatch COMMAND $<TARGET_FILE:core_http_dispatch>)
+    set_tests_properties(
+        conformance.http.default_dispatch PROPERTIES LABELS "conformance;http")
     sloppy_add_c_unit_test(
         core_http_response core.http.response tests/unit/core/test_http_response.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
@@ -654,14 +673,25 @@ if(SLOPPY_ENABLE_TESTS)
     if(SLOPPY_ENABLE_V8)
         sloppy_add_c_unit_test(
             engine_v8_smoke engine.v8.smoke tests/unit/engine/test_v8_smoke.c)
+        add_test(NAME conformance.v8.runtime_bridge COMMAND $<TARGET_FILE:engine_v8_smoke>)
+        set_tests_properties(
+            conformance.v8.runtime_bridge PROPERTIES LABELS "conformance;v8;http;async")
         sloppy_add_cxx_unit_test(
             engine_v8_owner_thread engine.v8.owner_thread
             tests/unit/engine/test_v8_owner_thread.cc)
+        add_test(NAME conformance.v8.owner_thread COMMAND $<TARGET_FILE:engine_v8_owner_thread>)
+        set_tests_properties(
+            conformance.v8.owner_thread PROPERTIES LABELS "conformance;v8;async")
         sloppy_add_cxx_unit_test(
             engine_v8_async_scheduler engine.v8.async_scheduler
             tests/unit/engine/test_v8_async_scheduler.cc)
         target_link_libraries(engine_v8_async_scheduler PRIVATE Sloppy::V8)
         target_compile_features(engine_v8_async_scheduler PRIVATE cxx_std_20)
+        add_test(
+            NAME conformance.v8.native_async_scheduler
+            COMMAND $<TARGET_FILE:engine_v8_async_scheduler>)
+        set_tests_properties(
+            conformance.v8.native_async_scheduler PROPERTIES LABELS "conformance;v8;async")
         sloppy_add_c_unit_test(
             execution_handwritten_artifact execution.handwritten_artifact
             tests/integration/execution/test_handwritten_artifact_execution.c)
@@ -672,6 +702,12 @@ if(SLOPPY_ENABLE_TESTS)
             tests/integration/http_dispatch/test_http_dispatch_execution.c)
         set_tests_properties(
             http.dispatch.execution PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        add_test(
+            NAME conformance.v8.http_dispatch_execution
+            COMMAND $<TARGET_FILE:http_dispatch_execution>)
+        set_tests_properties(
+            conformance.v8.http_dispatch_execution
+            PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" LABELS "conformance;v8;http")
     endif()
     sloppy_add_c_unit_test(
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
