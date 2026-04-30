@@ -165,7 +165,8 @@ Runtime execution:
   behavior. `conformance.sqlite.native_provider` is default native provider evidence;
   `conformance.capability.native_registry` and
   `conformance.capability.provider_executor` are default capability-policy/provider
-  admission evidence; `conformance.sqlite.*` bridge tests and
+  admission evidence; V8-gated `conformance.sqlite.bridge` and
+  `conformance.sqlite.denied_capability` tests plus
   `conformance.users_api_sqlite.localhost_transport` are V8-gated and, for the users API,
   localhost transport evidence. Default SQLite/capability success must not be reported as
   V8 bridge, PostgreSQL/SQL Server bridge, live-provider, async SQLite offload, package,

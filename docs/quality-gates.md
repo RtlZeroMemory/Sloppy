@@ -63,7 +63,7 @@ benchmark, keep-alive, streaming, or production-edge HTTP behavior.
 ENGINE-19.D adds first-class CTest registrations for the implemented SQLite and capability
 evidence lanes: `conformance.sqlite.native_provider`,
 `conformance.capability.native_registry`, `conformance.capability.provider_executor`,
-V8-gated `conformance.sqlite.*`, and
+V8-gated `conformance.sqlite.bridge`, `conformance.sqlite.denied_capability`, and
 `conformance.users_api_sqlite.localhost_transport`. Default SQLite/capability evidence
 still does not prove V8 execution, PostgreSQL/SQL Server JavaScript bridges,
 live-provider behavior, package smoke, async SQLite offload, benchmark claims, public alpha
