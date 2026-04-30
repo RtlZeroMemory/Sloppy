@@ -28,6 +28,15 @@ SQLite end-to-end with capability enforcement, cancellation/deadline/backpressur
 infrastructure, app/request lifecycle, diagnostics/source maps, conformance examples, and
 packaged evidence.
 
+ENGINE-03 now covers the bounded V8 owner-thread microtask async boundary. Sloppy still
+aims at a full scalable async runtime, but that is not implied by ENGINE-03. ENGINE-12
+(#306 through #310) tracks the future layer for native completion queues, owner-thread V8
+continuation scheduling, deadline/shutdown drain policy, bounded async backpressure,
+provider/offload integration, and stress evidence. Implement ENGINE-12 when a real
+external async source must cross the runtime boundary, and before any public alpha,
+benchmark, or product claim says Sloppy has scalable async performance or production-ready
+async lifecycle behavior.
+
 Direct source-input `sloppy run app.js` remains unsupported today, but is now tracked by
 #302 as a compiler/CLI handoff task once the compiler can emit complete artifacts for
 realistic supported apps. The current supported workflow remains explicit `sloppyc build`

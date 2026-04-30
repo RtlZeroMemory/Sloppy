@@ -17,12 +17,14 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02 and
   ENGINE-03: source-input handoff/cache, module/service/schema extraction, broader async
   source shapes, non-GET dispatch, and provider/capability enforcement.
-- V8 async runtime beyond ENGINE-03: native async completion queues, timer/fetch policy if
-  ever scoped, HTTP disconnect/shutdown drain behavior, richer deadline hooks, stress
-  evidence, source-remapped async diagnostics, and provider-backed cancellation. ENGINE-03
-  covers returned Promises that settle during the owner-thread microtask drain, rejection
-  diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
-  for the bounded call.
+- Full scalable async runtime beyond ENGINE-03: ENGINE-12 (#306, tasks #307-#310) owns
+  native async completion queues/backends, owner-thread V8 continuation scheduling for
+  native completions, timer/fetch policy if ever scoped, HTTP disconnect/shutdown drain
+  behavior, richer deadline hooks, bounded queue/backpressure diagnostics, provider/offload
+  integration, stress evidence, source-remapped async diagnostics, and provider-backed
+  cancellation. ENGINE-03 covers returned Promises that settle during the owner-thread
+  microtask drain, rejection diagnostics, pending-Promise failure, cancellation snapshots,
+  and request-scope cleanup for the bounded call.
 - Framework HTTP API runtime: method dispatch, headers in context, JSON/text body policy,
   header/body limits, request cancellation signal, timeout hooks, backpressure behavior,
   result serialization, and error response contract.
@@ -57,9 +59,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   maps, native async completion queues, HTTP disconnect/shutdown cancellation, and
   executable public examples through the final bootstrap module shape remain open.
   ENGINE-03 adds microtask-only Promise settlement for direct async handlers; it does not
-  add full JavaScript event-loop behavior. The compiler rejection
-  `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` remains valid for `await`, multi-statement
-  async bodies, and non-direct async returns until those shapes become executable.
+  add full JavaScript event-loop behavior. ENGINE-12 should be implemented when real
+  external async sources are ready to cross the runtime boundary, and before Sloppy makes
+  scalable async, async provider, async HTTP lifecycle, or performance claims. The
+  compiler rejection `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` remains valid for `await`,
+  multi-statement async bodies, and non-direct async returns until those shapes become
+  executable.
 - MAIN1-12 package/CI hardening follow-ups: exact dynamic V8 runtime file lists, hosted
   prebuilt SDK source, V8-enabled package execution validation, hosted package CI evidence,
   and stable sanitizer/fuzz jobs remain open.

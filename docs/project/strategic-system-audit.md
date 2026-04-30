@@ -139,19 +139,23 @@ What works: deterministic native completion queue and settlement contracts.
 
 Skeletal: no native async provider queue, no timers/fetch event loop, no real worker
 threads, no thread-safe posting, and no cross-turn request-scope retention beyond the
-bounded microtask drain.
+bounded microtask drain. ENGINE-12 (#306-#310) is the planned full scalable async runtime
+layer for those gaps.
 
 Deferred but foundation-required: richer cancellation-token propagation,
 deadline/timeout/shutdown hooks, bounded native queues, provider-backed backpressure,
-async database strategy, and public timer APIs if they are ever scoped.
+async database strategy, scalability/stress evidence, and public timer APIs if they are
+ever scoped.
 
 Misleading risk: "microtask-only async handler support" is not a Node-style event loop or
 native provider async scheduler.
 
-Must complete for engine foundation: native completion queue integration, owner-thread
-continuation dispatch for native completions, request cancellation propagation, deadline
-hooks, bounded completion queues, provider-backed rejection diagnostics, request-scope
-lifetime until native async settlement, cleanup on cancellation/error.
+Must complete before scalable async claims: native completion queue integration,
+owner-thread continuation dispatch for native completions, request cancellation
+propagation, deadline hooks, bounded completion queues, provider-backed rejection
+diagnostics, request-scope lifetime until native async settlement, cleanup on
+cancellation/error, and stress evidence that many pending operations are not
+thread-per-request behavior.
 
 Can postpone: broad public timer APIs, advanced provider-specific mid-operation
 interruption, multicore scaling.

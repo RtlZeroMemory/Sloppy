@@ -483,6 +483,14 @@ Future native async completion queues must post back to the JS owner before JS r
 ENGINE-03 intentionally does not add timers, fetch, native provider completion queues,
 worker-thread scheduling, or Node compatibility.
 
+ENGINE-12 (#306, tasks #307-#310) owns the full scalable async runtime target. That work
+should begin only when at least one real external async source needs to cross the native
+runtime boundary, such as HTTP disconnect/shutdown cancellation, timer/deadline wakeups,
+provider offload, or worker-pool work. It is also required before public docs, alpha
+readiness, benchmark methodology, or product language claim scalable async behavior,
+production-ready async HTTP lifecycle, async provider execution, or performance for many
+pending requests.
+
 ENGINE-01 makes that future lifecycle a foundation requirement rather than an optional
 enhancement. Async handlers returning Promises must be supported before Sloppy claims the
 framework HTTP foundation is complete. V8 microtasks must drain at documented app-load,
@@ -508,9 +516,10 @@ Current native skeleton:
 - discarded worker completions require an explicit `sl_worker_pool_reset_inline` cleanup
   after the owning `SlLoop` is reset.
 
-Future V8 Promise handling should resolve or reject through this model or a documented
-evolution of it so request cleanup remains owned by the runtime. Until then, tests must
-verify Promise rejection as unsupported rather than `[object Promise]` success.
+Current V8 Promise handling resolves or rejects only at the bounded owner-thread microtask
+checkpoint. Future native async completions must use this model or a documented evolution
+of it so request cleanup remains owned by the runtime across queued work; tests must
+continue to reject fake success, unresolved Promise success, and wrong-thread V8 entry.
 
 ## Source Map Diagnostic Flow
 
@@ -528,8 +537,9 @@ Runtime exception flow:
 MAIN1-05 behavior stops after generated source name, 1-based line/column, message, and a
 bounded stack note. ENGINE-02 compiler `app.js.map` files are hashed artifacts with real
 handler-line mappings, but TypeScript source remapping, map consumption by the V8
-diagnostic path, and code frames remain future work. Promise returns still have a clear
-unsupported diagnostic, not async stack handling.
+diagnostic path, and code frames remain future work. ENGINE-03 adds deterministic Promise
+rejection and pending-Promise diagnostics for the bounded microtask path; async
+stack/source-remapping across native completions remains future ENGINE-12/ENGINE-08 work.
 
 Source map task boundaries:
 

@@ -20,6 +20,12 @@ an explicit owner-thread V8 microtask checkpoint, fulfilled values flow through 
 result conversion path, rejected Promises produce deterministic async diagnostics, and
 Promises still pending after the bounded microtask drain fail as a deadline-style handler
 failure rather than `[object Promise]` success.
+ENGINE-12 (#306 through #310) is the future full scalable async-runtime layer. It owns
+native completion queues/backends, owner-thread continuation scheduling for native
+completions, deadline/shutdown drain behavior, backpressure, provider/offload integration,
+and stress/performance evidence. That work should start when a real external async source
+needs to cross the runtime boundary, and before Sloppy claims scalable async performance or
+production-ready async lifecycle behavior.
 
 ## Purpose
 
@@ -84,6 +90,9 @@ Later scope:
 - mapping future native async provider completions onto `SlAsync` or a documented evolution
   of it. ENGINE-03 settles microtask-only handler Promises but does not add timers, fetch,
   Node APIs, cross-thread posting, or provider completion queues;
+- ENGINE-12 scalable async runtime work: native completion backend, owner-thread V8
+  continuation scheduler, cancellation/deadline/shutdown drain policy, bounded queues,
+  provider/offload integration, and stress evidence for many pending operations;
 - runtime source-map remapping now that compiler source maps contain handler mappings.
 
 ## Non-goals

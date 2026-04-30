@@ -46,6 +46,20 @@ Those are foundation requirements, not framework perks. Higher-level middleware,
 validation, OpenAPI polish, package-manager behavior, and production hosting breadth remain
 later layers.
 
+The async target is intentionally bigger than ENGINE-03. ENGINE-03 proves real returned
+Promise settlement for the bounded V8 owner-thread microtask boundary. The final engine
+shape still aims at a full scalable async runtime with native completion queues, an
+owner-thread V8 continuation scheduler, deadline and shutdown wakeups, cancellation tokens
+that cross JS/native work, bounded async admission, explicit backpressure, provider/offload
+integration, and stress evidence for many pending operations. That target is tracked by
+ENGINE-12 (#306 through #310).
+
+ENGINE-12 should be implemented when Sloppy has a real external async source to wire end to
+end: HTTP disconnect/shutdown cancellation, timer/deadline wakeups, async SQLite/provider
+work, or worker-pool offload. It is required before public alpha docs, benchmark
+methodology, or product language claim scalable async behavior, production-ready async HTTP
+lifecycle, async provider execution, or performance with many pending requests.
+
 ## 2. Developer Workflow
 
 Target core workflow:
@@ -140,7 +154,7 @@ V8 owner-thread microtask drain are real in V8-enabled builds. Fulfilled Promise
 like sync returns, rejected Promises become deterministic diagnostics, request-scope
 cleanup runs for the bounded call, and still-pending Promises fail as deadline-style
 handler failures. Native async completion queues, timers, fetch, worker-thread scheduling,
-and HTTP disconnect/shutdown drain behavior remain future work.
+and HTTP disconnect/shutdown drain behavior remain future ENGINE-12 work.
 
 Initial native async and cancellation policy:
 

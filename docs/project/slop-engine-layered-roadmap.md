@@ -18,7 +18,8 @@ Recommended implementation chunks:
 | --- | --- | --- |
 | Contract lock | ENGINE-01.A through ENGINE-01.D | One contract PR for JS API, HTTP, async/cancellation, SQLite, and resource-limit decisions. |
 | Compiler/Plan pipeline | ENGINE-02.A through ENGINE-02.D | One large-coherent compiler+Plan PR, or split source maps only if diagnostics risk dominates. |
-| V8 async runtime | ENGINE-03.A through ENGINE-03.D plus ENGINE-08.B | One large-coherent V8 async PR covering Promise settlement, microtasks, cancellation, bounded queues, and async diagnostics. |
+| V8 bounded Promise runtime | ENGINE-03.A through ENGINE-03.D plus ENGINE-08.B | One large-coherent V8 async PR covering returned-Promise settlement, owner-thread microtasks, cancellation snapshots, bounded pending-Promise failure, cleanup, and async diagnostics. |
+| Scalable async runtime | ENGINE-12.A through ENGINE-12.D | One large-coherent async-runtime PR only when native completions/provider offload/deadline/shutdown work is ready to cross the runtime boundary. |
 | HTTP API runtime | ENGINE-04.A through ENGINE-04.C | One large-coherent HTTP PR for methods, headers/body limits, cancellation/backpressure, result serialization, and error contract. |
 | SQLite and capabilities | ENGINE-05.A through ENGINE-05.C plus ENGINE-06.A | One large-coherent SQLite bridge PR so capability enforcement, cancellation-aware operations, cleanup, and users API conformance move together. |
 | Lifecycle/source diagnostics | ENGINE-07.A, ENGINE-07.B, ENGINE-08.A | One or two PRs depending on source-map/V8 diagnostic blast radius. |
@@ -143,7 +144,7 @@ method/data extraction after the contracts freeze.
 
 Risks: accidental support for dynamic JS shapes the runtime cannot validate.
 
-## Layer 3 - V8 Runtime and Async Completion
+## Layer 3 - V8 Runtime and Bounded Promise Completion
 
 Purpose: async handlers and V8 execution become real.
 
@@ -154,8 +155,8 @@ slice. Returned handler Promises that settle during the explicit owner-thread mi
 drain fulfill/reject deterministically, pending Promises fail as deadline-style handler
 failures, cancellation/deadline/backpressure have a native token snapshot, and cleanup is
 covered for the bounded call path. Native async provider queues, public timer/fetch APIs,
-HTTP disconnect/shutdown drain behavior, and broader compiler async source shapes remain
-future Layer 3 work.
+HTTP disconnect/shutdown drain behavior, stress/performance evidence, and broader compiler
+async source shapes remain future work.
 
 Tasks:
 
@@ -165,10 +166,10 @@ Tasks:
 - fulfilled/rejected Promise result conversion;
 - async error diagnostics;
 - request-scope retention until settlement;
-- request cancellation propagation through JS and native completions;
-- deadline/timeout hooks built on the cancellation path;
-- bounded completion queues and explicit overflow diagnostics;
-- app shutdown with pending async policy;
+- request cancellation snapshots through the bounded handler call;
+- pending-Promise failure through the bounded deadline-style path;
+- app/request cleanup for success, rejection, cancellation, and bounded pending-Promise
+  failure;
 - compiler follow-through that reopens `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` and
   graduates `await`, multi-statement async bodies, and non-direct async returns only after
   the runtime Promise policy is executable;
@@ -178,22 +179,86 @@ Prerequisites: Layer 1 async contract; enough Layer 2 compiler support for async
 
 Dependencies: `SlLoop`/`SlAsync`, V8 bridge, resource lifecycle, diagnostics.
 
-Non-goals: broad public timers API, multi-worker scaling, production async DB offload
-beyond the initial policy.
+Non-goals: broad public timers API, native async provider queues, multi-worker scaling,
+production async DB offload, stress/performance claims, or full event-loop behavior.
 
 Acceptance criteria: async handler conformance covers fulfillment, rejection,
-cancellation, cleanup, bounded queue overflow, compiler acceptance of the newly executable
-async source shapes, and no `[object Promise]` fake success.
+cancellation snapshot behavior, cleanup, bounded pending-Promise failure, compiler
+acceptance only for newly executable async source shapes, and no `[object Promise]` fake
+success.
 
 Likely PR grouping: bridge Promise detection/settlement; microtask policy; cancellation
-token propagation; bounded queue/overflow diagnostics; request-scope retention;
+snapshot; bounded pending-Promise diagnostics; request-scope cleanup;
 diagnostics/conformance.
 
 Parallelization: diagnostic expectations and conformance fixtures can be prepared while the
 bridge mechanics are implemented.
 
 Risks: V8 owner-thread violations, leaked request resources, false success for pending
-Promises, and unbounded native work queues hidden behind an `async` facade.
+Promises, and accidentally documenting microtask-only async as scalable async.
+
+## Layer 3B - Scalable Async Runtime
+
+Purpose: make Sloppy's full async runtime real when native async work exists.
+
+EPICs: ENGINE-12 (#306).
+
+This layer is the explicit target for "full async runtime with all shenanigans": native
+completion queues/backends, owner-thread V8 continuation scheduling for native
+completions, cancellation/deadline/shutdown drain behavior, bounded queues and
+backpressure, provider/offload integration, cleanup-once behavior across queued work, and
+stress evidence. It is required before Sloppy claims scalable async performance,
+production-ready async HTTP lifecycle, async provider execution, or benchmark results for
+many pending requests.
+
+Implement when:
+
+- a real external async source is ready to cross the runtime boundary, such as HTTP
+  disconnect/shutdown cancellation, timer/deadline wakeups, async SQLite/provider work, or
+  worker-pool offload;
+- ENGINE-03's bounded Promise/microtask semantics are stable enough to preserve while
+  adding native completions;
+- request/app scope ownership is defined well enough to retain and release resources across
+  queued async work;
+- public alpha docs, packaged evidence, benchmark methodology, or product language would
+  otherwise imply scalable async behavior.
+
+Tasks:
+
+- #307 / TASK ENGINE-12.A: native event loop and completion queue backend;
+- #308 / TASK ENGINE-12.B: owner-thread V8 continuation scheduler;
+- #309 / TASK ENGINE-12.C: cancellation, deadline, and shutdown drain policy;
+- #310 / TASK ENGINE-12.D: async backpressure, provider offload, and scalability evidence.
+
+Prerequisites: ENGINE-03 accepted; native loop/worker/provider boundaries ready for a real
+async source; request-scope cleanup contract clear enough to survive pending work.
+
+Dependencies: `SlLoop`/`SlAsync`, V8 bridge, app/request lifecycle, diagnostics, HTTP
+shutdown/disconnect policy, provider/offload strategy, testing/evidence harness.
+
+Non-goals: Node compatibility, npm/package-manager behavior, public timers/fetch/fs/process
+APIs unless explicitly scoped, broad multi-isolate scaling, PostgreSQL/SQL Server JS bridge
+expansion before SQLite/core async evidence is solid, and external benchmark comparisons.
+
+Acceptance criteria: native completions resume JavaScript only on the owning V8 thread;
+queue capacity and overflow are documented/tested; cancellation/deadline/shutdown reasons
+produce deterministic diagnostics; cleanup runs exactly once on success, rejection,
+cancellation, timeout, overflow, and shutdown; stress evidence shows many pending
+operations do not become thread-per-request behavior; default, V8-gated, live-provider,
+stress, and benchmark evidence are reported separately.
+
+Likely PR grouping: one large-coherent async runtime PR if the completion backend,
+owner-thread scheduler, cancellation/deadline policy, and first realistic async source can
+be reviewed together. Split only if backend ownership or provider/offload evidence becomes
+too large to validate in one pass.
+
+Parallelization: diagnostics and stress/evidence fixtures can be prepared while the
+backend/scheduler API is implemented, but V8 continuation tests must wait for a real
+owner-thread dispatch path.
+
+Risks: unbounded queues hidden behind async APIs, worker/provider threads entering V8,
+request-scope leaks across pending work, shutdown hangs, and benchmark-looking smoke tests
+being mistaken for scalability proof.
 
 ## Layer 4 - HTTP Framework Runtime Completion
 
@@ -418,7 +483,10 @@ Tasks:
 - troubleshooting for V8/package evidence;
 - public non-claims review.
 
-Prerequisites: Layers 1-9 accepted or explicitly deferred with honest language.
+Prerequisites: Layers 1-9 accepted or explicitly deferred with honest language. ENGINE-12
+must also be accepted before public docs claim scalable async runtime behavior, async
+provider scalability, production-ready async HTTP lifecycle, or performance with many
+pending requests.
 
 Dependencies: conformance/evidence report, README/public docs, quality score.
 
