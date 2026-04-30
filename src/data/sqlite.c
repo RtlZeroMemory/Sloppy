@@ -547,12 +547,14 @@ SlStatus sl_sqlite_open(SlArena* diag_arena, const SlSqliteOpenOptions* options,
         return status;
     }
 
-    if (options->access == SL_SQLITE_ACCESS_READWRITE && sqlite3_db_readonly(db, "main") != 0) {
+    if ((options->access == SL_SQLITE_ACCESS_WRITE ||
+         options->access == SL_SQLITE_ACCESS_READWRITE) &&
+        sqlite3_db_readonly(db, "main") != 0)
+    {
         status = sl_sqlite_diag(
             diag_arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
-            sl_sqlite_literal("sqlite provider readwrite open produced read-only handle",
-                              sizeof("sqlite provider readwrite open produced read-only handle") -
-                                  1U),
+            sl_sqlite_literal("sqlite provider write open produced read-only handle",
+                              sizeof("sqlite provider write open produced read-only handle") - 1U),
             sl_sqlite_literal("operation: open", sizeof("operation: open") - 1U),
             sqlite3_errmsg(db), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
         sqlite3_close(db);
