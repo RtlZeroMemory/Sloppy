@@ -106,31 +106,19 @@ static SlStatus sl_plan_parse_field_diag(SlPlanParseContext* ctx, SlStr message,
 
 static SlStatus sl_plan_parse_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
-    void* ptr = NULL;
-    char* dst = NULL;
-    size_t index = 0U;
+    SlOwnedStr copied = {0};
     SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_plan_parse_str_valid(src)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (src.length == 0U) {
-        *out = sl_str_empty();
-        return sl_status_ok();
-    }
-
-    status = sl_arena_alloc(arena, src.length, 1U, &ptr);
+    status = sl_str_copy_to_arena(arena, src, &copied);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    dst = (char*)ptr;
-    for (index = 0U; index < src.length; index += 1U) {
-        dst[index] = src.ptr[index];
-    }
-
-    *out = sl_str_from_parts(dst, src.length);
+    *out = sl_owned_str_as_view(copied);
     return sl_status_ok();
 }
 

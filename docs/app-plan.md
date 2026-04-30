@@ -57,6 +57,14 @@ flags, declaration source locations, feature flags, and minimal SQLite
 data-provider/capability metadata. The current dev host still serves GET route metadata
 only. ENGINE-06 uses provider/capability entries for V8 SQLite bridge enforcement; other
 providers remain metadata until their JavaScript bridges exist.
+ENGINE-22.C keeps the public Plan struct shape as borrowed `SlStr` views, but the native
+parser now uses the shared arena string-copy primitive for JSON string ownership. The
+`sloppy run --artifacts` loader interns stable metadata after parsing and validation
+succeed: version/target strings, artifact identifiers, handler names, route
+methods/patterns/names, provider tokens/names, service/capability metadata, and capability
+token/kind/access/provider metadata. It does not intern artifact paths, hashes, source-map
+paths, provider database names, secrets, request data, connection strings, or transient
+diagnostics.
 
 ## Public API Shape
 
@@ -118,7 +126,10 @@ entries are metadata/check-only until scoped APIs exist.
 All native `SlStr` fields are borrowed views in the struct model. Manually constructed
 plans borrow caller-owned storage. `sl_plan_parse_json` copies JSON strings and handler
 arrays into the supplied arena, so parsed plan lifetime is tied to that arena rather than
-to the JSON parser document.
+to the JSON parser document. `sl_plan_intern_metadata` can build an arena-owned copy of a
+validated Plan with selected stable metadata interned into a caller-owned bounded
+`SlInternTable`. That helper leaves the input Plan untouched on failure and rolls back its
+own arena allocations.
 
 Handler rules implemented now:
 
@@ -536,7 +547,9 @@ MAIN1-02 implements the supported-path subset for `sloppy run --artifacts`: sche
 `bundle.path` and `sourceMap.path`, rejects missing files, and verifies `sha256:` hashes
 before evaluating bootstrap or user JavaScript. These hashes detect artifact drift between
 plan and files; they are not a security trust boundary and do not replace signing or
-package provenance.
+package provenance. Bundle and source-map paths must remain relative artifact paths; the
+loader rejects absolute paths, drive-qualified paths, `.`/`..` components, and paths that
+cannot fit in its bounded path builder.
 
 ## Compiler Emission Rules
 

@@ -4,6 +4,7 @@
 #include "sloppy/arena.h"
 #include "sloppy/bytes.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/intern.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -152,6 +153,29 @@ bool sl_plan_has_duplicate_routes(const SlPlan* plan);
 bool sl_plan_has_duplicate_route_names(const SlPlan* plan);
 bool sl_plan_has_duplicate_data_provider_tokens(const SlPlan* plan);
 bool sl_plan_has_duplicate_capability_tokens(const SlPlan* plan);
+
+/*
+ * Builds an arena-owned copy of stable Plan metadata with selected strings interned.
+ *
+ * `arena`, `plan`, `out_plan`, and `out_table` are required. `capacity` and
+ * `bucket_count` bound the app/static-lifetime intern table and must be nonzero. The
+ * returned `out_plan` is a Plan-shaped view over arena-owned arrays and interned string
+ * bytes. It remains valid until `arena` is reset or its caller-owned backing storage ends.
+ *
+ * The helper interns only stable metadata: version/target strings, artifact identifiers,
+ * handler names, route methods/patterns/names, provider/capability tokens, provider names,
+ * service names, and capability kind/access/provider metadata. It intentionally does not
+ * intern artifact paths, hashes, source-map paths, provider database names, request data,
+ * secrets, connection strings, or transient diagnostics. Byte equality remains the
+ * correctness rule; intern symbols are only a lookup/ownership aid.
+ *
+ * On failure, `out_plan` and `out_table` are left unchanged and allocations made by this
+ * helper are rolled back to the entry arena mark. The input `plan` is never mutated unless
+ * the caller also passes it as `out_plan`, in which case mutation happens only after all
+ * interning work succeeds.
+ */
+SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capacity,
+                                 size_t bucket_count, SlPlan* out_plan, SlInternTable* out_table);
 
 /*
  * Parses and validates minimal Sloppy Plan v1 JSON from caller-provided bytes.

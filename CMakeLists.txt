@@ -895,6 +895,16 @@ if(SLOPPY_ENABLE_TESTS)
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
+        NAME sloppy.run.invalid_source_map_path
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/invalid-source-map-path;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=invalid source map path in app.plan.json" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.invalid_source_map_path
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
         NAME sloppy.run.hash_mismatch
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
@@ -902,6 +912,16 @@ if(SLOPPY_ENABLE_TESTS)
             "-DSLOPPY_EXPECTED_ERROR=bundle hash mismatch" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.run.hash_mismatch PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.run.source_map_hash_mismatch
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/fixtures/run/source-map-hash-mismatch;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=source map hash mismatch" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.source_map_hash_mismatch
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
         NAME sloppy.run.missing_source_map

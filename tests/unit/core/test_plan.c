@@ -213,6 +213,133 @@ static int test_duplicate_handler_ids(void)
     return 0;
 }
 
+static int test_plan_metadata_interns_stable_strings(void)
+{
+    unsigned char arena_storage[4096];
+    SlArena arena = {0};
+    SlPlanHandler handlers[1] = {
+        {1U, sl_str_from_cstr("__sloppy_handler_1"), sl_str_from_cstr("home")}};
+    SlPlanRoute routes[1] = {
+        {sl_str_from_cstr("GET"), sl_str_from_cstr("/"), 1U, sl_str_from_cstr("home")}};
+    SlPlanDataProvider providers[1] = {
+        {sl_str_from_cstr("main.db"), sl_str_from_cstr("sqlite"), sl_str_from_cstr("main.db.read"),
+         sl_str_from_cstr("db.service"), sl_str_from_cstr("sensitive-ish-database-name")}};
+    SlPlanCapability capabilities[1] = {{sl_str_from_cstr("main.db.read"),
+                                         sl_str_from_cstr("database"), sl_str_from_cstr("read"),
+                                         sl_str_from_cstr("main.db")}};
+    SlPlan plan = {0};
+    SlPlan interned_plan = {0};
+    SlInternTable table = {0};
+    SlStatus status;
+
+    plan.version = SL_PLAN_VERSION_1;
+    plan.compiler_version = sl_str_from_cstr("sloppyc-test");
+    plan.runtime_min_version = sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0);
+    plan.stdlib_version = sl_str_from_cstr(SL_PLAN_STDLIB_VERSION_0_1_0);
+    plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    plan.target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    plan.bundle.path = sl_str_from_cstr("app.js");
+    plan.bundle.id = sl_str_from_cstr("same-artifact-id");
+    plan.bundle.hash = sl_str_from_cstr("sha256:not-interned");
+    plan.source_map.path = sl_str_from_cstr("app.js.map");
+    plan.source_map.id = sl_str_from_cstr("same-artifact-id");
+    plan.source_map.hash = sl_str_from_cstr("sha256:not-interned");
+    plan.handlers = handlers;
+    plan.handler_count = 1U;
+    plan.routes = routes;
+    plan.route_count = 1U;
+    plan.data_providers = providers;
+    plan.data_provider_count = 1U;
+    plan.capabilities = capabilities;
+    plan.capability_count = 1U;
+
+    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    if (!sl_status_is_ok(status)) {
+        return 70;
+    }
+
+    status = sl_plan_intern_metadata(&arena, &plan, 32U, 16U, &interned_plan, &table);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 71;
+    }
+
+    if (sl_intern_table_count(&table) == 0U) {
+        return 72;
+    }
+    if (interned_plan.source_map.id.ptr != interned_plan.bundle.id.ptr) {
+        return 73;
+    }
+    if (interned_plan.routes[0].name.ptr != interned_plan.handlers[0].display_name.ptr) {
+        return 74;
+    }
+    if (interned_plan.capabilities[0].provider.ptr != interned_plan.data_providers[0].token.ptr) {
+        return 75;
+    }
+    if (interned_plan.capabilities[0].token.ptr != interned_plan.data_providers[0].capability.ptr) {
+        return 76;
+    }
+    if (interned_plan.data_providers[0].database.ptr != plan.data_providers[0].database.ptr) {
+        return 77;
+    }
+    if (interned_plan.bundle.path.ptr != plan.bundle.path.ptr ||
+        interned_plan.bundle.hash.ptr != plan.bundle.hash.ptr ||
+        interned_plan.source_map.path.ptr != plan.source_map.path.ptr ||
+        interned_plan.source_map.hash.ptr != plan.source_map.hash.ptr)
+    {
+        return 78;
+    }
+
+    return 0;
+}
+
+static int test_plan_metadata_intern_failure_preserves_outputs(void)
+{
+    unsigned char arena_storage[2048];
+    SlArena arena = {0};
+    SlPlanHandler handlers[1] = {
+        {1U, sl_str_from_cstr("__sloppy_handler_1"), sl_str_from_cstr("home")}};
+    SlPlan plan = {0};
+    SlPlan sentinel_plan = {0};
+    SlInternTable sentinel_table = {0};
+    size_t used_before = 0U;
+    SlStatus status;
+
+    plan.version = SL_PLAN_VERSION_1;
+    plan.compiler_version = sl_str_from_cstr("sloppyc-test");
+    plan.runtime_min_version = sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0);
+    plan.stdlib_version = sl_str_from_cstr(SL_PLAN_STDLIB_VERSION_0_1_0);
+    plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    plan.target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    plan.bundle.id = sl_str_from_cstr("bundle-id");
+    plan.source_map.id = sl_str_from_cstr("source-map-id");
+    plan.handlers = handlers;
+    plan.handler_count = 1U;
+
+    sentinel_plan.version = 999U;
+    sentinel_table.generation = 42U;
+
+    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    if (!sl_status_is_ok(status)) {
+        return 80;
+    }
+    used_before = sl_arena_used(&arena);
+
+    status = sl_plan_intern_metadata(&arena, &plan, 1U, 1U, &sentinel_plan, &sentinel_table);
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0) {
+        return 81;
+    }
+    if (sl_arena_used(&arena) != used_before) {
+        return 82;
+    }
+    if (sentinel_plan.version != 999U || sentinel_table.generation != 42U ||
+        sentinel_table.initialized)
+    {
+        return 83;
+    }
+
+    return 0;
+}
+
 static int test_fixture_files_exist(void)
 {
     static const char* fixtures[] = {"tests/golden/plan/README.md",
@@ -278,6 +405,16 @@ int main(void)
     }
 
     result = test_duplicate_handler_ids();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_plan_metadata_interns_stable_strings();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_plan_metadata_intern_failure_preserves_outputs();
     if (result != 0) {
         return result;
     }
