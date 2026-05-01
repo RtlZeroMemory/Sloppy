@@ -148,6 +148,7 @@ struct Handler {
 struct DatabaseCapability {
     token: String,
     provider: &'static str,
+    config_name: Option<String>,
     access: String,
     database: Option<String>,
     config_source: Option<String>,
@@ -626,7 +627,7 @@ impl ConfigurationModel {
             if capability.provider != "sqlite" {
                 continue;
             }
-            let provider_name = provider_name_from_token(&capability.token);
+            let provider_name = provider_config_name(capability);
             let prefix = format!("Sloppy:Providers:sqlite:{provider_name}");
             if capability.database.is_none() {
                 let database_key = format!("{prefix}:database");
@@ -754,14 +755,15 @@ fn canonical_config_segment(segment: &str) -> String {
     }
 }
 
+fn provider_config_name(capability: &DatabaseCapability) -> String {
+    capability
+        .config_name
+        .clone()
+        .unwrap_or_else(|| provider_name_from_token(&capability.token))
+}
+
 fn provider_name_from_token(token: &str) -> String {
-    if let Some(name) = token.strip_prefix("data.") {
-        name.to_string()
-    } else if let Some(name) = token.strip_prefix("sqlite:") {
-        name.to_string()
-    } else {
-        token.to_string()
-    }
+    token.strip_prefix("sqlite:").unwrap_or(token).to_string()
 }
 
 fn json_type_name(value: &Value) -> &'static str {
@@ -1565,6 +1567,7 @@ fn database_capability_call(
     Ok(Some(DatabaseCapability {
         token: token.to_string(),
         provider: "sqlite",
+        config_name: None,
         access,
         database,
         config_source: None,
@@ -1703,6 +1706,7 @@ fn sqlite_provider_call_expression(call: &CallExpression<'_>) -> Option<Database
     Some(DatabaseCapability {
         token: normalize_sqlite_provider_token(name),
         provider: "sqlite",
+        config_name: Some(name.to_string()),
         access: "readwrite".to_string(),
         database: None,
         config_source: None,
@@ -1765,6 +1769,15 @@ fn app_use_module_call(expression: &Expression<'_>, state: &AppState) -> Option<
 fn add_sqlite_provider_capability(state: &mut AppState, provider: DatabaseCapability) {
     if state.app_provider_uses.insert(provider.token.clone()) {
         state.capabilities.push(provider);
+        return;
+    }
+
+    if let Some(existing) = state
+        .capabilities
+        .iter_mut()
+        .find(|capability| capability.from_provider_use && capability.token == provider.token)
+    {
+        *existing = provider;
     }
 }
 
@@ -3663,6 +3676,7 @@ mod tests {
             capabilities: vec![super::DatabaseCapability {
                 token: "data.main".to_string(),
                 provider: "sqlite",
+                config_name: Some("main".to_string()),
                 access: "readwrite".to_string(),
                 database: None,
                 config_source: None,
@@ -3677,6 +3691,66 @@ mod tests {
         assert!(app.configuration.is_some());
 
         fs::remove_dir_all(&root).expect("config test directory should be removable");
+    }
+
+    #[test]
+    fn provider_config_preserves_declared_name_for_dotted_sqlite_names() {
+        let root =
+            std::env::temp_dir().join(format!("sloppyc-config-dotted-test-{}", std::process::id()));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale config test directory should be removable");
+        }
+        fs::create_dir_all(&root).expect("config test directory should be created");
+        let input = root.join("app.js");
+        fs::write(
+            &input,
+            r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("data.main"));
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        )
+        .expect("input should be written");
+        fs::write(
+            root.join("appsettings.json"),
+            r#"{"Sloppy":{"Providers":{"sqlite":{"data.main":{"database":"dotted.db"},"main":{"database":"wrong.db"}}}}}"#,
+        )
+        .expect("appsettings should be written");
+        let out_dir = root.join(".sloppy");
+
+        super::build(&input, &out_dir, &BuildOptions::new())
+            .expect("dotted provider config should bind");
+        let plan = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should exist");
+        assert!(plan.contains("\"database\": \"dotted.db\""));
+        assert!(plan.contains("\"prefix\": \"Sloppy:Providers:sqlite:data.main\""));
+        assert!(!plan.contains("\"database\": \"wrong.db\""));
+
+        fs::remove_dir_all(&root).expect("config test directory should be removable");
+    }
+
+    #[test]
+    fn repeated_sqlite_provider_use_keeps_latest_declaration() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main"));
+app.use(sqlite("main", { database: ":memory:" }));
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let mut app = extract(std::path::Path::new("app.js"), source)
+            .expect("repeated provider use should extract");
+        assert_eq!(app.capabilities.len(), 1);
+        assert_eq!(app.capabilities[0].database.as_deref(), Some(":memory:"));
+        let config = super::ConfigurationModel {
+            environment: "Development".to_string(),
+            values: std::collections::BTreeMap::new(),
+        };
+        config
+            .apply_to_app(&mut app)
+            .expect("latest inline provider declaration should not require config");
     }
 
     #[test]
