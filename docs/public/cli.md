@@ -77,7 +77,7 @@ sloppy run --artifacts .sloppy --once GET /
 ```text
 app.plan.json
 app.js
-app.js.map   # optional for this MVP
+app.js.map
 ```
 
 The command loads `app.plan.json` through the native Plan parser, reads the interim

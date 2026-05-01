@@ -2234,8 +2234,13 @@ static int sl_run_read_required_config_string(yyjson_val* root, const char* fiel
 {
     yyjson_val* value = yyjson_obj_get(root, field);
 
-    if (value == NULL || !yyjson_is_str(value) || yyjson_get_len(value) == 0U) {
+    if (value == NULL) {
         sl_cli_write_cstr(stderr, missing_message);
+        return 1;
+    }
+
+    if (!yyjson_is_str(value) || yyjson_get_len(value) == 0U) {
+        sl_cli_write_cstr(stderr, invalid_message);
         return 1;
     }
 
@@ -2312,7 +2317,7 @@ static int sl_run_parse_project_config(SlRunSourceConfig* out)
         sl_run_read_required_config_string(
             root, "entry", out->entry, sizeof(out->entry),
             "sloppy run: missing entry in sloppy.json\n",
-            "sloppy run: invalid sloppy.json: entry is too long\n") == 0 &&
+            "sloppy run: invalid sloppy.json: entry must be a non-empty string\n") == 0 &&
         sl_run_read_optional_config_string(
             root, "outDir", out->out_dir, sizeof(out->out_dir), SL_RUN_DEFAULT_CONFIG_OUT_DIR,
             "sloppy run: invalid sloppy.json: outDir must be a string\n") == 0 &&

@@ -859,7 +859,7 @@ if(SLOPPY_ENABLE_TESTS)
             "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_engine19_conformance_matrix_docs.cmake")
 
-    if(CARGO_EXECUTABLE)
+    if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
         function(sloppy_add_conformance_compile_test test_name case_name source_path)
             add_test(
                 NAME ${test_name}
@@ -1047,7 +1047,7 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(sloppy.run.rejects_mixed_artifact_inputs
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
-    if(CARGO_EXECUTABLE)
+    if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
         set(SLOPPYC_BUILT_EXECUTABLE
             "${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
 
@@ -1136,6 +1136,18 @@ if(SLOPPY_ENABLE_TESTS)
                              PROPERTIES LABELS "source-input")
 
         add_test(
+            NAME sloppy.run.source_input_invalid_entry
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_CASE=invalid-entry" "-DSLOPPY_CONFIG_ENTRY={\"entry\":123}"
+                "-DSLOPPY_EXPECTED_ERROR=entry must be a non-empty string" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.run.source_input_invalid_entry
+                             PROPERTIES LABELS "source-input")
+
+        add_test(
             NAME sloppy.run.source_input_compiler_failure
             COMMAND
                 "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
@@ -1212,33 +1224,37 @@ if(SLOPPY_ENABLE_TESTS)
             sloppy_add_conformance_run_once_test(
                 conformance.async_handler.run_once async-handler
                 compiler/tests/fixtures/async-handler/input.js GET /async "\"ok\":true")
-            add_test(
-                NAME conformance.hello.source_input_run_once
-                COMMAND
-                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
-                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
-                    "-DSLOPPY_CASE=hello-v8" "-DSLOPPY_SOURCE=examples/compiler-hello/app.js"
-                    "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
-                    "-DSLOPPY_EXPECTED_OUTPUT=Hello from Sloppy"
-                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
-                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
-            set_tests_properties(conformance.hello.source_input_run_once
-                                 PROPERTIES LABELS "conformance;v8;source-input")
-            add_test(
-                NAME conformance.users_api_sqlite.source_input_run_once
-                COMMAND
-                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
-                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
-                    "-DSLOPPY_CASE=users-api-sqlite-v8"
-                    "-DSLOPPY_SOURCE=examples/users-api-sqlite/app.js"
-                    "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/users"
-                    "-DSLOPPY_EXPECTED_OUTPUT=Ada Lovelace"
-                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
-                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
-            set_tests_properties(conformance.users_api_sqlite.source_input_run_once
-                                 PROPERTIES LABELS "conformance;v8;source-input;sqlite")
+            if(SLOPPY_BUILD_COMPILER)
+                add_test(
+                    NAME conformance.hello.source_input_run_once
+                    COMMAND
+                        "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                        "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                        "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                        "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                        "-DSLOPPY_CASE=hello-v8" "-DSLOPPY_SOURCE=examples/compiler-hello/app.js"
+                        "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
+                        "-DSLOPPY_EXPECTED_OUTPUT=Hello from Sloppy"
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                        "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+                set_tests_properties(conformance.hello.source_input_run_once
+                                     PROPERTIES LABELS "conformance;v8;source-input")
+                add_test(
+                    NAME conformance.users_api_sqlite.source_input_run_once
+                    COMMAND
+                        "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                        "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                        "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                        "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                        "-DSLOPPY_CASE=users-api-sqlite-v8"
+                        "-DSLOPPY_SOURCE=examples/users-api-sqlite/app.js"
+                        "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/users"
+                        "-DSLOPPY_EXPECTED_OUTPUT=Ada Lovelace"
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                        "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+                set_tests_properties(conformance.users_api_sqlite.source_input_run_once
+                                     PROPERTIES LABELS "conformance;v8;source-input;sqlite")
+            endif()
             add_test(
                 NAME conformance.users_api_sqlite.localhost_transport
                 COMMAND
