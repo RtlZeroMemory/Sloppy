@@ -371,5 +371,7 @@ subset: `app.use(sqlite(...))`, `app.useModule(usersModule)`, `app.group(...)`, 
 the existing Plan and classic artifact path. This does not mean the bootstrap stdlib exposes a
 general runtime implementation of those APIs yet; the current classic bootstrap still executes the
 compiler-generated artifact helpers such as `mapGet`/`mapPost` plus provider metadata. Controllers,
-decorators, configuration, request binding, validation, and broader framework examples remain
-separate framework tasks.
+decorators, runtime validation, and broader framework examples remain separate framework tasks.
+COMPILER-30.E adds compiler metadata for supported config reads, schema declarations, request
+bindings, and result helpers; it does not make those bootstrap APIs executable outside the
+compiler-generated artifact path.

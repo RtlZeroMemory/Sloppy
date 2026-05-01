@@ -252,10 +252,13 @@ metadata is validated by the native Plan v1 parser before output is produced.
 EPIC-21 compiler output uses the same plan-compatible metadata idea for extracted routes:
 each route entry records `method`, `pattern`, `handlerId`, `name`, and compiler-owned
 source metadata. COMPILER-30.D extends that route source to Minimal API calls, nested
-literal route groups, and function-module contributions. Function-module route entries
-also include the module function name in `routes[].module`; the route `source.path` points
-at the contributing source file. Handler IDs start at `1` and are assigned in source order
-after route group prefix composition and module contribution expansion.
+literal route groups, and function-module contributions. COMPILER-30.E adds compiler-owned
+metadata for supported request bindings (`routes[].bindings`), preliminary result helper
+response metadata (`routes[].response`), top-level schema declarations (`schemas[]`), and
+config helper reads (`configReads[]`). Function-module route entries also include the
+module function name in `routes[].module`; the route `source.path` points at the
+contributing source file. Handler IDs start at `1` and are assigned in source order after
+route group prefix composition and module contribution expansion.
 EPIC-22 `sloppy run` consumes those route entries for dev-only GET dispatch and validates
 that each referenced handler ID exists in the parsed minimal Plan handler table before
 serving requests. EPIC-23 uses the same route entries to materialize route params into the
@@ -267,8 +270,14 @@ Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{
 and `{name:int}`. Query strings are parsed from request targets by EPIC-23 request context
 code, not route patterns. Literal route group prefixes compose before validation.
 Catch-all parameters, optional segments, regex constraints, method matching beyond GET dev
-dispatch, route precedence, OpenAPI metadata, middleware/filter metadata, and validation
-metadata remain future work.
+dispatch, route precedence, OpenAPI output, middleware/filter metadata, runtime validation,
+and Plan completeness remain future work.
+
+The COMPILER-30.E metadata is emitted for static tooling and later Strong Plan consumers.
+The native runtime parser may ignore unknown optional metadata until COMPILER-30.H/I owns
+versioned strong Plan validation. Emitting `schemas[]`, `configReads[]`, `routes[].bindings`,
+and `routes[].response` does not mean runtime request validation, OpenAPI generation, or
+provider/capability enforcement has been implemented.
 
 COMPILER-30 route metadata should also report completeness. Dynamic route paths are invalid
 in the compiler-owned static path unless a future explicit runtime-only escape hatch

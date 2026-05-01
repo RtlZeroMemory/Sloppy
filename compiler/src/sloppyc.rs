@@ -120,6 +120,8 @@ struct Handler {
     is_async: bool,
     source_name: String,
     source_text: String,
+    bindings: Vec<RequestBinding>,
+    response: Option<ResponseMetadata>,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +157,41 @@ struct ExtractedApp {
     routes: Vec<Route>,
     capabilities: Vec<DatabaseCapability>,
     configuration: Option<ConfigurationPlan>,
+    schemas: Vec<SchemaMetadata>,
+    config_reads: Vec<ConfigReadMetadata>,
+}
+
+#[derive(Debug, Clone)]
+struct RequestBinding {
+    kind: String,
+    name: Option<String>,
+    schema: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ResponseMetadata {
+    helper: String,
+    status: u16,
+    kind: String,
+}
+
+#[derive(Debug, Clone)]
+struct SchemaMetadata {
+    name: String,
+    definition: Value,
+    source_name: String,
+    source: String,
+    span: Span,
+}
+
+#[derive(Debug, Clone)]
+struct ConfigReadMetadata {
+    key: String,
+    value_type: String,
+    has_default: bool,
+    source_name: String,
+    source: String,
+    span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +236,7 @@ struct AppState {
     sloppy_imported: bool,
     results_imported: bool,
     data_imported: bool,
+    schema_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -213,6 +251,8 @@ struct AppState {
     used_modules: Vec<(String, Span)>,
     routes: Vec<Route>,
     capabilities: Vec<DatabaseCapability>,
+    schemas: Vec<SchemaMetadata>,
+    config_reads: Vec<ConfigReadMetadata>,
     default_export: Option<String>,
 }
 
@@ -222,6 +262,7 @@ impl AppState {
             sloppy_imported: false,
             results_imported: false,
             data_imported: false,
+            schema_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -236,6 +277,8 @@ impl AppState {
             used_modules: Vec::new(),
             routes: Vec::new(),
             capabilities: Vec::new(),
+            schemas: Vec::new(),
+            config_reads: Vec::new(),
             default_export: None,
         }
     }
@@ -1108,6 +1151,8 @@ fn extract_entry(
         routes: state.routes,
         capabilities: state.capabilities,
         configuration: None,
+        schemas: state.schemas,
+        config_reads: state.config_reads,
     })
 }
 
@@ -1190,7 +1235,7 @@ fn extract_import(
 
             let imported = specifier.imported.name().as_str();
             let local = specifier.local.name.as_str();
-            if matches!(imported, "Sloppy" | "Results" | "data") && imported != local {
+            if matches!(imported, "Sloppy" | "Results" | "data" | "schema") && imported != local {
                 state.unsupported_import_alias = true;
                 state.unsupported_import_name = Some((imported.to_string(), specifier.span));
             }
@@ -1198,7 +1243,8 @@ fn extract_import(
                 ("Sloppy", "Sloppy") => state.sloppy_imported = true,
                 ("Results", "Results") => state.results_imported = true,
                 ("data", "data") => state.data_imported = true,
-                ("Sloppy" | "Results" | "data", _) => {}
+                ("schema", "schema") => state.schema_imported = true,
+                ("Sloppy" | "Results" | "data" | "schema", _) => {}
                 _ => {
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
@@ -1262,6 +1308,16 @@ fn extract_variable_declaration(
             state
                 .provider_bindings
                 .insert(name.to_string(), provider.token);
+        } else if let Some(token) = app_provider_lookup(init, state) {
+            state.provider_bindings.insert(name.to_string(), token);
+        } else if let Some(schema) = schema_declaration(path, source, source_name, name, init)? {
+            state.schemas.push(schema);
+        } else if let Some(config_read) =
+            config_read_metadata(path, source, source_name, state, init)?
+        {
+            state.config_reads.push(config_read);
+        } else if let Some(diagnostic) = malformed_config_read_diagnostic(path, state, init) {
+            return Err(diagnostic);
         } else {
             validate_supported_initializer(path, source, source_name, state, init)?;
         }
@@ -1764,6 +1820,247 @@ fn app_group_call<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a st
     }
     let prefix = string_argument(call.arguments.first()?)?;
     Some((object, prefix))
+}
+
+fn app_provider_lookup(expression: &Expression<'_>, state: &AppState) -> Option<String> {
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    let (receiver, property) = static_member_name(&call.callee)?;
+    if property != "provider" || !state.app_vars.contains(receiver) || call.arguments.len() != 1 {
+        return None;
+    }
+    let token = string_argument(call.arguments.first()?)?;
+    Some(normalize_sqlite_provider_token(
+        token.strip_prefix("sqlite:").unwrap_or(token),
+    ))
+}
+
+fn config_read_metadata(
+    _path: &Path,
+    source: &str,
+    source_name: &str,
+    state: &AppState,
+    expression: &Expression<'_>,
+) -> Result<Option<ConfigReadMetadata>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Some((key, value_type, has_default)) = config_call_metadata(call, state) else {
+        return Ok(None);
+    };
+    Ok(Some(ConfigReadMetadata {
+        key,
+        value_type,
+        has_default,
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+        span: call.span,
+    }))
+}
+
+fn config_call_metadata(
+    call: &CallExpression<'_>,
+    state: &AppState,
+) -> Option<(String, String, bool)> {
+    let Expression::StaticMemberExpression(method_member) = &call.callee else {
+        return None;
+    };
+    let method = method_member.property.name.as_str();
+    let Expression::StaticMemberExpression(config_member) = &method_member.object else {
+        return None;
+    };
+    if config_member.property.name.as_str() != "config" {
+        return None;
+    }
+    let Expression::Identifier(app) = &config_member.object else {
+        return None;
+    };
+    if !state.app_vars.contains(app.name.as_str()) || call.arguments.is_empty() {
+        return None;
+    }
+    let key = string_argument(call.arguments.first()?)?.to_string();
+    let value_type = match method {
+        "getString" => "string",
+        "getInt" => "int",
+        "getNumber" => "number",
+        "getBool" => "bool",
+        _ => return None,
+    };
+    Some((key, value_type.to_string(), call.arguments.len() > 1))
+}
+
+fn malformed_config_read_diagnostic(
+    path: &Path,
+    state: &AppState,
+    expression: &Expression<'_>,
+) -> Option<Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    let Expression::StaticMemberExpression(method_member) = &call.callee else {
+        return None;
+    };
+    let method = method_member.property.name.as_str();
+    if !matches!(method, "getString" | "getInt" | "getNumber" | "getBool") {
+        return None;
+    }
+    let Expression::StaticMemberExpression(config_member) = &method_member.object else {
+        return None;
+    };
+    if config_member.property.name.as_str() != "config" {
+        return None;
+    }
+    let Expression::Identifier(app) = &config_member.object else {
+        return None;
+    };
+    if !state.app_vars.contains(app.name.as_str()) {
+        return None;
+    }
+    Some(
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_CONFIG_KEY",
+            "config helper keys must be string literals",
+        )
+        .with_path(path)
+        .with_span(call.span),
+    )
+}
+
+fn schema_declaration(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    name: &str,
+    expression: &Expression<'_>,
+) -> Result<Option<SchemaMetadata>, Diagnostic> {
+    if !expression_mentions_schema(expression) {
+        return Ok(None);
+    }
+    let definition = schema_definition(expression).ok_or_else(|| {
+        Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_SCHEMA",
+            "schema declarations must use the supported schema DSL",
+        )
+        .with_path(path)
+        .with_span(expression.span())
+        .with_hint("Use schema.object/string/int/number/bool/array with literal object fields.")
+    })?;
+    Ok(Some(SchemaMetadata {
+        name: name.to_string(),
+        definition,
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+        span: expression.span(),
+    }))
+}
+
+fn schema_definition(expression: &Expression<'_>) -> Option<Value> {
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    schema_definition_call(call)
+}
+
+fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value> {
+    if let Expression::StaticMemberExpression(member) = &call.callee {
+        let property = member.property.name.as_str();
+        if matches!(property, "optional" | "min" | "max" | "email") {
+            let mut base = schema_definition(&member.object)?;
+            if property == "optional" {
+                base["optional"] = json!(true);
+            } else if property == "email" {
+                base["format"] = json!("email");
+            } else if let Some(argument) = call.arguments.first() {
+                if let Some(number) = numeric_argument_value(argument) {
+                    base[property] = json!(number);
+                } else {
+                    return None;
+                }
+            } else {
+                return None;
+            }
+            return Some(base);
+        }
+    }
+
+    let (object, method) = static_member_name(&call.callee)?;
+    if object != "schema" {
+        return None;
+    }
+    match method {
+        "string" | "int" | "number" | "bool" if call.arguments.is_empty() => {
+            Some(json!({ "kind": method }))
+        }
+        "array" if call.arguments.len() == 1 => {
+            let inner = call
+                .arguments
+                .first()
+                .and_then(argument_schema_definition)?;
+            Some(json!({ "kind": "array", "items": inner }))
+        }
+        "object" if call.arguments.len() == 1 => {
+            let Argument::ObjectExpression(object) = call.arguments.first()? else {
+                return None;
+            };
+            let mut properties = serde_json::Map::new();
+            for property in &object.properties {
+                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                    return None;
+                };
+                if property.kind != PropertyKind::Init
+                    || property.method
+                    || property.shorthand
+                    || property.computed
+                {
+                    return None;
+                }
+                let key = property_key_string(&property.key)?;
+                let value = schema_definition(&property.value)?;
+                properties.insert(key, value);
+            }
+            Some(json!({ "kind": "object", "properties": properties }))
+        }
+        _ => None,
+    }
+}
+
+fn argument_schema_definition(argument: &Argument<'_>) -> Option<Value> {
+    match argument {
+        Argument::CallExpression(call) => schema_definition_call(call),
+        _ => None,
+    }
+}
+
+fn expression_mentions_schema(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::CallExpression(call) => {
+            static_member_name(&call.callee).is_some_and(|(object, _)| object == "schema")
+                || match &call.callee {
+                    Expression::StaticMemberExpression(member) => {
+                        expression_mentions_schema(&member.object)
+                    }
+                    _ => false,
+                }
+        }
+        _ => false,
+    }
+}
+
+fn property_key_string(key: &PropertyKey<'_>) -> Option<String> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.as_str().to_string()),
+        PropertyKey::StringLiteral(literal) => Some(literal.value.as_str().to_string()),
+        PropertyKey::NumericLiteral(literal) => Some(literal.value.to_string()),
+        _ => None,
+    }
+}
+
+fn numeric_argument_value(argument: &Argument<'_>) -> Option<f64> {
+    match argument {
+        Argument::NumericLiteral(literal) => Some(literal.value),
+        _ => None,
+    }
 }
 
 fn sqlite_provider_call(expression: &Expression<'_>) -> Option<DatabaseCapability> {
@@ -2457,6 +2754,8 @@ fn handler_from_argument(
                 is_async: function.r#async,
                 source_name: source_name.to_string(),
                 source_text: source.to_string(),
+                bindings: request_bindings_from_arrow(function),
+                response: response_metadata_from_arrow(function),
             })
         }
         Argument::FunctionExpression(function) => {
@@ -2472,6 +2771,8 @@ fn handler_from_argument(
                 is_async: function.r#async,
                 source_name: source_name.to_string(),
                 source_text: source.to_string(),
+                bindings: request_bindings_from_function(function),
+                response: response_metadata_from_function(function),
             })
         }
         _ => None,
@@ -2631,6 +2932,257 @@ fn handler_result_uses_unsupported_values_function(function: &oxc_ast::ast::Func
         .first()
         .and_then(return_statement_result_call)
         .is_some_and(|call| !results_call_arguments_are_supported(call, &roots))
+}
+
+fn response_metadata_from_arrow(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+) -> Option<ResponseMetadata> {
+    let call = if function.expression {
+        function
+            .body
+            .statements
+            .first()
+            .and_then(expression_statement_result_call)
+    } else {
+        function
+            .body
+            .statements
+            .first()
+            .and_then(return_statement_result_call)
+    }?;
+    response_metadata_from_call(call)
+}
+
+fn response_metadata_from_function(
+    function: &oxc_ast::ast::Function<'_>,
+) -> Option<ResponseMetadata> {
+    let body = function.body.as_ref()?;
+    let call = body
+        .statements
+        .first()
+        .and_then(return_statement_result_call)?;
+    response_metadata_from_call(call)
+}
+
+fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMetadata> {
+    let (_, helper) = static_member_name(&call.callee)?;
+    let (status, kind) = match helper {
+        "ok" => (200, "json"),
+        "json" => (200, "json"),
+        "text" => (200, "text"),
+        "html" => (200, "html"),
+        "created" => (201, "json"),
+        "accepted" => (202, "json"),
+        "noContent" => (204, "none"),
+        "badRequest" => (400, "problem"),
+        "notFound" => (404, "problem"),
+        "problem" => (500, "problem"),
+        "status" => (status_result_code(call).unwrap_or(200), "json"),
+        _ => return None,
+    };
+    Some(ResponseMetadata {
+        helper: helper.to_string(),
+        status,
+        kind: kind.to_string(),
+    })
+}
+
+fn status_result_code(call: &CallExpression<'_>) -> Option<u16> {
+    let Argument::NumericLiteral(literal) = call.arguments.first()? else {
+        return None;
+    };
+    let value = literal.value;
+    if value.fract() == 0.0 && (100.0..=599.0).contains(&value) {
+        Some(value as u16)
+    } else {
+        None
+    }
+}
+
+fn request_bindings_from_arrow(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+) -> Vec<RequestBinding> {
+    let mut bindings = Vec::new();
+    for statement in &function.body.statements {
+        collect_statement_request_bindings(statement, &mut bindings);
+    }
+    dedupe_request_bindings(bindings)
+}
+
+fn request_bindings_from_function(function: &oxc_ast::ast::Function<'_>) -> Vec<RequestBinding> {
+    let mut bindings = Vec::new();
+    if let Some(body) = &function.body {
+        for statement in &body.statements {
+            collect_statement_request_bindings(statement, &mut bindings);
+        }
+    }
+    dedupe_request_bindings(bindings)
+}
+
+fn dedupe_request_bindings(bindings: Vec<RequestBinding>) -> Vec<RequestBinding> {
+    let mut seen = BTreeSet::new();
+    let mut deduped = Vec::new();
+    for binding in bindings {
+        let key = format!(
+            "{}:{}:{}",
+            binding.kind,
+            binding.name.clone().unwrap_or_default(),
+            binding.schema.clone().unwrap_or_default()
+        );
+        if seen.insert(key) {
+            deduped.push(binding);
+        }
+    }
+    deduped
+}
+
+fn collect_statement_request_bindings(
+    statement: &Statement<'_>,
+    bindings: &mut Vec<RequestBinding>,
+) {
+    match statement {
+        Statement::ReturnStatement(statement) => {
+            if let Some(argument) = &statement.argument {
+                collect_expression_request_bindings(argument, bindings);
+            }
+        }
+        Statement::ExpressionStatement(statement) => {
+            collect_expression_request_bindings(&statement.expression, bindings);
+        }
+        _ => {}
+    }
+}
+
+fn collect_expression_request_bindings(
+    expression: &Expression<'_>,
+    bindings: &mut Vec<RequestBinding>,
+) {
+    if let Some(binding) = request_binding_from_expression(expression) {
+        bindings.push(binding);
+    }
+    match expression {
+        Expression::CallExpression(call) => {
+            if let Some(binding) = request_binding_from_call(call) {
+                bindings.push(binding);
+            }
+            for argument in &call.arguments {
+                collect_argument_request_bindings(argument, bindings);
+            }
+        }
+        Expression::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_request_bindings(&property.value, bindings);
+                }
+            }
+        }
+        Expression::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_request_bindings(element, bindings);
+            }
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            collect_expression_request_bindings(&parenthesized.expression, bindings);
+        }
+        Expression::StaticMemberExpression(member) => {
+            collect_expression_request_bindings(&member.object, bindings);
+        }
+        _ => {}
+    }
+}
+
+fn collect_argument_request_bindings(argument: &Argument<'_>, bindings: &mut Vec<RequestBinding>) {
+    match argument {
+        Argument::CallExpression(call) => {
+            if let Some(binding) = request_binding_from_call(call) {
+                bindings.push(binding);
+            }
+            for argument in &call.arguments {
+                collect_argument_request_bindings(argument, bindings);
+            }
+        }
+        Argument::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_request_bindings(&property.value, bindings);
+                }
+            }
+        }
+        Argument::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_request_bindings(element, bindings);
+            }
+        }
+        Argument::StaticMemberExpression(member) => {
+            collect_expression_request_bindings(&member.object, bindings);
+        }
+        _ => {}
+    }
+}
+
+fn collect_array_element_request_bindings(
+    element: &ArrayExpressionElement<'_>,
+    bindings: &mut Vec<RequestBinding>,
+) {
+    match element {
+        ArrayExpressionElement::CallExpression(call) => {
+            if let Some(binding) = request_binding_from_call(call) {
+                bindings.push(binding);
+            }
+        }
+        ArrayExpressionElement::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_request_bindings(&property.value, bindings);
+                }
+            }
+        }
+        ArrayExpressionElement::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_request_bindings(element, bindings);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn request_binding_from_expression(expression: &Expression<'_>) -> Option<RequestBinding> {
+    let chain = static_member_chain(expression)?;
+    if chain.len() == 3 && chain[0] == "ctx" && matches!(chain[1], "route" | "query" | "header") {
+        return Some(RequestBinding {
+            kind: chain[1].to_string(),
+            name: Some(chain[2].to_string()),
+            schema: None,
+        });
+    }
+    None
+}
+
+fn request_binding_from_call(call: &CallExpression<'_>) -> Option<RequestBinding> {
+    let chain = static_member_chain(&call.callee)?;
+    if chain.len() == 3 && chain[0] == "ctx" && chain[1] == "body" {
+        let schema = if chain[2] == "json" {
+            call.arguments
+                .first()
+                .and_then(argument_identifier)
+                .map(str::to_string)
+        } else {
+            None
+        };
+        return Some(RequestBinding {
+            kind: format!("body.{}", chain[2]),
+            name: None,
+            schema,
+        });
+    }
+    None
+}
+
+fn argument_identifier<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
+    match argument {
+        Argument::Identifier(identifier) => Some(identifier.name.as_str()),
+        _ => None,
+    }
 }
 
 fn argument_span(argument: &Argument<'_>) -> Option<Span> {
@@ -2835,6 +3387,7 @@ fn argument_is_inline_json_safe_value(
         Argument::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
         }
+        Argument::CallExpression(call) => request_binding_from_call(call).is_some(),
         Argument::ParenthesizedExpression(parenthesized) => {
             expression_is_inline_json_safe_value(&parenthesized.expression, allowed_roots)
         }
@@ -2901,6 +3454,7 @@ fn expression_is_inline_json_safe_value(
         Expression::ParenthesizedExpression(parenthesized) => {
             expression_is_inline_json_safe_value(&parenthesized.expression, allowed_roots)
         }
+        Expression::CallExpression(call) => request_binding_from_call(call).is_some(),
         Expression::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
         }
@@ -3112,6 +3666,32 @@ fn emit_plan(
             if let Some(module) = &route.module {
                 route_json["module"] = json!(module);
             }
+            if !route.handler.bindings.is_empty() {
+                route_json["bindings"] = json!(route
+                    .handler
+                    .bindings
+                    .iter()
+                    .map(|binding| {
+                        json!({
+                            "kind": binding.kind,
+                            "name": binding.name,
+                            "schema": binding.schema
+                        })
+                    })
+                    .collect::<Vec<_>>());
+            }
+            if !route.handler.bindings.is_empty()
+                || !app.schemas.is_empty()
+                || !app.config_reads.is_empty()
+            {
+                if let Some(response) = &route.handler.response {
+                    route_json["response"] = json!({
+                        "helper": response.helper,
+                        "status": response.status,
+                        "kind": response.kind
+                    });
+                }
+            }
             route_json
         })
         .collect::<Vec<_>>();
@@ -3178,6 +3758,41 @@ fn emit_plan(
         })
     });
 
+    let schemas = app
+        .schemas
+        .iter()
+        .map(|schema| {
+            let (line, column) = line_column(&schema.source, schema.span.start);
+            json!({
+                "name": schema.name,
+                "definition": schema.definition,
+                "source": {
+                    "path": schema.source_name,
+                    "line": line,
+                    "column": column
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let config_reads = app
+        .config_reads
+        .iter()
+        .map(|read| {
+            let (line, column) = line_column(&read.source, read.span.start);
+            json!({
+                "key": read.key,
+                "type": read.value_type,
+                "hasDefault": read.has_default,
+                "source": {
+                    "path": read.source_name,
+                    "line": line,
+                    "column": column
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
     let mut value = json!({
         "schemaVersion": 1,
         "compilerVersion": COMPILER_VERSION,
@@ -3210,6 +3825,15 @@ fn emit_plan(
     });
     if let Some(configuration) = configuration {
         value["configuration"] = configuration;
+    }
+    if !schemas.is_empty() {
+        value["schemas"] = json!(schemas);
+    }
+    if !config_reads.is_empty() {
+        value["configReads"] = json!(config_reads);
+    }
+    if !app.schemas.is_empty() || !app.config_reads.is_empty() {
+        value["features"]["metadataInference"] = json!(true);
     }
 
     serde_json::to_string_pretty(&value)
@@ -3705,6 +4329,8 @@ mod tests {
                 from_provider_use: true,
             }],
             configuration: None,
+            schemas: Vec::new(),
+            config_reads: Vec::new(),
         };
         config
             .apply_to_app(&mut app)
@@ -4204,6 +4830,78 @@ export default app;
     }
 
     #[test]
+    fn extracts_schema_binding_config_and_result_metadata() {
+        let source = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = schema.object({
+  name: schema.string().min(1),
+  tags: schema.array(schema.string()).optional()
+});
+const app = Sloppy.create();
+const host = app.config.getString("Sloppy:Server:Host", "127.0.0.1");
+app.post("/users/{id:int}", (ctx) => Results.json({
+  id: ctx.route.id,
+  search: ctx.query.q,
+  agent: ctx.header.userAgent,
+  body: ctx.body.json(UserCreate)
+}));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("metadata fixture should extract");
+        assert_eq!(app.schemas.len(), 1);
+        assert_eq!(app.schemas[0].name, "UserCreate");
+        assert_eq!(app.config_reads.len(), 1);
+        assert_eq!(app.config_reads[0].key, "Sloppy:Server:Host");
+        assert_eq!(app.routes[0].handler.bindings.len(), 4);
+        assert_eq!(
+            app.routes[0]
+                .handler
+                .response
+                .as_ref()
+                .map(|response| (response.helper.as_str(), response.status)),
+            Some(("json", 200))
+        );
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(plan["schemas"][0]["name"], "UserCreate");
+        assert_eq!(plan["configReads"][0]["key"], "Sloppy:Server:Host");
+        assert_eq!(plan["routes"][0]["bindings"][0]["kind"], "route");
+        assert_eq!(plan["routes"][0]["response"]["helper"], "json");
+    }
+
+    #[test]
+    fn rejects_invalid_schema_and_config_metadata() {
+        let invalid_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = schema.object(UserShape);
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), invalid_schema)
+            .expect_err("invalid schema should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+        let invalid_config = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const key = "Sloppy:Server:Host";
+const host = app.config.getString(key);
+app.get("/", () => Results.text(host));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), invalid_config)
+            .expect_err("invalid config key should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_CONFIG_KEY");
+    }
+
+    #[test]
     fn extracts_engine_02_metadata_without_runtime_claims() {
         let source = r#"import { Sloppy, Results, data } from "sloppy";
 const builder = Sloppy.createBuilder();
@@ -4472,6 +5170,7 @@ export default app;
             "http-methods",
             "async-handler",
             "provider-capability",
+            "metadata-extraction",
             "source-map",
         ] {
             let fixture = root

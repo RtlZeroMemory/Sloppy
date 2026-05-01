@@ -179,16 +179,21 @@ The compiler extracts:
   `Results.noContent()`;
 - zero-argument handlers or one-argument context handlers whose single parameter is a
   simple identifier;
-- result arguments that are inline JSON-safe literals, arrays, object literals, or simple
-  request-context property reads such as `route.id` and `query.q`;
+- result arguments that are inline JSON-safe literals, arrays, object literals, simple
+  request-context property reads such as `ctx.route.id` and `ctx.query.q`, or supported
+  body binding helpers such as `ctx.body.json(SchemaName)`;
 - source ranges for copied handler bodies;
-- `builder.capabilities.addDatabase(token, { provider: "sqlite", access })` as
-  metadata-only Plan `dataProviders` and database `capabilities` entries.
+- `builder.capabilities.addDatabase(token, { provider: "sqlite", access })` and
+  `app.use(sqlite("name", options?))` as metadata-only Plan `dataProviders` and database
+  `capabilities` entries;
+- `schema.object/string/int/number/bool/array` declarations, `app.config.get*` reads,
+  request binding helpers, and preliminary `Results.*` response metadata for the supported
+  handler subset.
 
 Extraction must be deterministic. Import order must not silently decide module ordering.
 
 Unsupported input fails with diagnostics. The compiler accepts only
-`import { Sloppy, Results } from "sloppy";` plus optional unaliased `data` as public import
+`import { Sloppy, Results } from "sloppy";` plus optional unaliased `data` and `schema` as public import
 syntax and rejects arbitrary bare imports such as `"express"`, `"fs"`, and `"node:fs"` with
 `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`. The compiler does not implement Node package
 resolution, npm resolution, import maps, dynamic imports, arbitrary module graphs, or
@@ -287,8 +292,11 @@ The bootstrap stdlib now also contains the EPIC-15 JavaScript-only data/capabili
 foundation: database capability metadata, query template lowering, fake providers, and
 transaction callback semantics. ENGINE-02 extracts only the minimal
 `builder.capabilities.addDatabase(...)` SQLite metadata shape into Plan `dataProviders` and
-database `capabilities`; it does not extract module-contributed provider registrations,
-service lifetimes, fake providers, or query template literals.
+database `capabilities`. COMPILER-30.E also extracts supported `app.use(sqlite(...))`
+provider registrations, `app.provider("sqlite:name")` handle lookups, config key reads,
+schema declarations, request bindings, and preliminary response metadata. It still does
+not extract service lifetimes, fake providers, query template literals, callgraph effects,
+or capability effects through helper/repository calls; those remain COMPILER-30.F/G.
 EPIC-16 adds native SQLite provider tests and the `data.sqlite` stdlib shape, but the
 compiler still does not extract SQLite modules, open native providers, or lower application
 template literals into native provider calls.
@@ -302,10 +310,10 @@ fixtures/artifacts. The compiler now emits the native-validated Plan v1 alpha `r
 dev-only GET dispatch metadata. EPIC-20 benchmarks measure current native foundations only
 and do not imply compiler output performance.
 `examples/ergonomics/app.js` follows the same static-example rule for the broader EPIC-13
-route group, result helper, and schema skeleton API shape. The compiler extracts only the
-route group and minimal database capability shapes covered by compiler fixtures; it still
-does not extract schemas, services, modules, or broad provider graphs from those broader
-examples.
+route group, result helper, and schema skeleton API shape. The compiler now extracts the
+COMPILER-30.E schema/config/request/result metadata covered by compiler fixtures, but it
+still does not extract services, middleware, filters, broad provider graphs, or provider
+effects from those broader examples.
 
 ## Internal Architecture
 

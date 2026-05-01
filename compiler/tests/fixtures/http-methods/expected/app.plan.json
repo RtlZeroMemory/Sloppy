@@ -94,10 +94,22 @@
       }
     },
     {
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "id",
+          "schema": null
+        }
+      ],
       "handlerId": 3,
       "method": "PUT",
       "name": "Users.Update",
       "pattern": "/users/{id:int}",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 7,
@@ -105,10 +117,22 @@
       }
     },
     {
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "id",
+          "schema": null
+        }
+      ],
       "handlerId": 4,
       "method": "PATCH",
       "name": "Users.Patch",
       "pattern": "/users/{id:int}",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 8,
