@@ -31,6 +31,7 @@ The compact source records for this reset are:
 - `docs/project/post-core-mvp-next-roadmap.md`;
 - `docs/project/post-core-next-wave-issue-map.md`;
 - `docs/project/framework-app-layer-roadmap.md`;
+- `docs/project/framework-api-shape.md`;
 - `docs/project/source-input-run-dev-loop-plan.md`;
 - `docs/project/strong-plan-strategic-layer-plan.md`;
 - `docs/project/http-post-mvp-transport-plan.md`;

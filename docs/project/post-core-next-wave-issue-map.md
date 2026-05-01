@@ -1,10 +1,16 @@
 # Post-Core Next-Wave Issue Map
 
-Status: 2026-05-01 planning/issues map after PR #430.
+Status: 2026-05-01 planning/issues map after PR #430. Framework/API shape lock added in
+the follow-up design pass.
 
 This map prevents duplicate EPIC creation after the post-Core MVP consolidation. Existing
 issues remain authoritative where they already cover the scope; new issues fill gaps for
 framework/app-layer, HTTP post-MVP transport, and immediate hardening.
+
+The framework/API shape locked for this issue wave is
+`docs/project/framework-api-shape.md`.
+
+Issue bodies updated with this lock: #302, #318, #355-#359, #432, and #435-#440.
 
 ## Existing Issues Reused
 
@@ -64,4 +70,3 @@ framework/app-layer, HTTP post-MVP transport, and immediate hardening.
 | HARDEN-01.B SQLite V8 Parameter Preflight | Not created | #431 already covers the exact safety issue. |
 | HARDEN-01.D Platform Scanner Fixture/Self-Test Proof | Not created | #26 already covers the exact scanner fixture/self-test proof. |
 | PostgreSQL/SQL Server JS bridge implementation tasks | Not created | Provider expansion remains later; only primitive cleanup planning was created. |
-

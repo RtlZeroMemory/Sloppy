@@ -805,6 +805,21 @@ CRUD apps. Raw Plan capability blocks remain useful as the runtime representatio
 output, fixture format, and advanced escape hatch, but they are not the target TypeScript
 developer experience.
 
+Post-Core framework target:
+
+```ts
+import { sqlite } from "sloppy/providers/sqlite";
+
+const db = app.use(sqlite("main"));
+```
+
+The compiler should infer read/write/readwrite capability needs from recognized provider
+calls (`query`, `queryOne`, `exec`, and `transaction`) when it can do so safely. Provider
+configuration is convention-bound by provider kind/name under keys such as
+`Sloppy:Providers:sqlite:main:*`. If capability inference is uncertain, the compiler must
+fail with a helpful diagnostic or require explicit metadata; it must not silently emit
+unsound capability metadata.
+
 Providers contribute:
 
 ```json

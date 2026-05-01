@@ -66,6 +66,12 @@ There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, strea
 API, middleware, cookies/sessions, static file server, compression, multipart upload,
 streaming responses, public TypeScript `app.run`, or broad response framework.
 
+Framework request/response ergonomics are locked in
+`docs/project/framework-api-shape.md`: explicit `ctx.route`, `ctx.query`, `ctx.header`, and
+`ctx.body.json(schema)` helpers first; safe validation problem responses; explicit
+`Results.*` descriptors first; buffered/non-streaming responses before files or streams.
+The current HTTP MVP still remains one request per connection and close-after-response.
+
 ## Purpose
 
 Provide native HTTP parsing, routing, and dispatch once prerequisite runtime contract work
@@ -151,10 +157,9 @@ Future scope:
 - streaming HTTP parser state;
 - production-edge HTTP proof beyond ENGINE-13.F's bounded smoke;
 - production server hardening if explicitly scoped later;
-- future `ENGINE-25: HTTP/1.1 Keep-Alive and Streaming` proposal covering keep-alive,
+- #433 `HTTP-25: HTTP/1.1 Keep-Alive and Streaming` covering keep-alive,
   idle timeout/max requests, sequential request lifecycle reset, chunked request decoding,
-  chunked/streaming response writing, and keep-alive stress/conformance. No ENGINE-25
-  issues exist yet;
+  chunked/streaming response writing, and keep-alive stress/conformance;
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
 
@@ -198,7 +203,7 @@ response writer.
   claim.
 - ENGINE-24.G does not add runtime code, keep-alive, pipelining, chunked request decoding,
   streaming response writing, TLS, HTTP/2/3, WebSockets, benchmark claims, public alpha
-  docs, or any ENGINE-25 GitHub issues.
+  docs, or any HTTP-25 behavior.
 
 ## Public/Internal API
 
@@ -656,5 +661,5 @@ Future tests:
 
 ## Open Questions
 
-- Exact timing for the proposed ENGINE-25 HTTP/1.1 keep-alive and streaming epic.
+- Exact timing for starting #433 HTTP-25 implementation.
 - Exact future production route table shape.

@@ -26,6 +26,9 @@ Created/reused issues:
 
 - #432 FRAMEWORK-01 plus #435-#440 for framework architecture, configuration,
   request binding, validation, Results, and examples hardening;
+- `docs/project/framework-api-shape.md` locks Minimal API first, function modules first,
+  generated/inferred capabilities by default, layered Plan-visible config, Plan-first DSL
+  extraction, explicit request binding, and explicit `Results.*` descriptors;
 - #259/#302 and #316/#345-#349 for source-input run/dev loop;
 - #318/#355-#359 for Plan-driven OpenAPI/doctor foundations.
 

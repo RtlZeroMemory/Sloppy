@@ -73,8 +73,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   close, and cleanup-once terminal paths. ENGINE-24.F/#417 is now bounded localhost TCP
   smoke/conformance evidence only. ENGINE-24.G/#418 records the explicit MVP
   close-after-response decision and defers HTTP/1.1 keep-alive, pipelining, chunked
-  request decoding, and streaming response writing. Remaining HTTP transport debt is a
-  future proposed ENGINE-25 keep-alive/streaming epic, production graceful-drain policy,
+  request decoding, and streaming response writing. Remaining HTTP transport debt is #433
+  HTTP-25 keep-alive/streaming, production graceful-drain policy,
   production hardening, and middleware policy if ever scoped. This is separate from
   ENGINE-12 because HTTP has parser, connection, body, and shutdown policy that sits above
   generic async completions.
@@ -94,6 +94,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - CLI/dev loop runtime: ENGINE-18 owns `sloppyc`/`sloppy run` UX, source-input run
   decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, watch/dev
   decision, and command diagnostics.
+- Framework API shape migration: the current proven stdlib/compiler examples still use
+  `mapGet`/builder/data shorthand shapes in several places. The locked post-Core target in
+  `docs/project/framework-api-shape.md` is Minimal API `app.get/post/...`, function
+  modules, explicit provider imports, generated capabilities, and Plan-visible config.
+  Future implementation PRs must migrate code/tests/examples deliberately instead of
+  mixing target examples with executable claims.
 - Conformance compatibility suite: ENGINE-19 owns compiler to Plan to runtime to V8 to
   HTTP evidence, async/body/header/SQLite/capability/lifecycle/package cases, and default
   versus optional gate reporting.

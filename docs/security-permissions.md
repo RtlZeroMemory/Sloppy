@@ -62,6 +62,17 @@ provider/module declarations. Handwritten capability blocks should be necessary 
 advanced policy shaping, plugin/provider hardening, split grants, or explicit production
 least-privilege review.
 
+Post-Core framework capability layers are:
+
+1. inferred capabilities from recognized provider calls;
+2. provider config/access policy, for example `app.use(sqlite("main", { access:
+   "readwrite" }))`;
+3. explicit advanced policy for unusual or locked-down cases.
+
+Every inferred capability must be Plan-visible and later inspectable through doctor,
+routes, audit, or capabilities tooling. If inference is not safe, compilation must fail or
+require explicit metadata; no silent unsound inference.
+
 A capability is a named authority token. Code receives a capability through services or
 explicit context, not through global APIs.
 
