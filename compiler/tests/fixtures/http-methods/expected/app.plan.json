@@ -277,7 +277,7 @@
       "bindings": true,
       "capabilities": false,
       "effects": false,
-      "providers": true,
+      "providers": false,
       "routes": true,
       "sourceGraph": true
     },

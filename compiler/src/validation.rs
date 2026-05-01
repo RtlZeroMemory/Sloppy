@@ -52,6 +52,16 @@ impl Completeness {
         }
     }
 
+    pub fn runtime_only() -> Self {
+        Self {
+            status: CompletenessStatus::RuntimeOnly,
+            reasons: vec![CompletenessReason::new(
+                "runtime-only-route",
+                "route explicitly requires runtime-only metadata",
+            )],
+        }
+    }
+
     pub fn invalid(reasons: Vec<CompletenessReason>) -> Self {
         Self {
             status: CompletenessStatus::Invalid,
@@ -65,6 +75,7 @@ pub struct RouteCompletenessInput {
     pub has_response_metadata: bool,
     pub body_json_without_schema: bool,
     pub missing_provider_registration: bool,
+    pub runtime_only: bool,
 }
 
 pub fn route_completeness(input: &RouteCompletenessInput) -> Completeness {
@@ -73,6 +84,9 @@ pub fn route_completeness(input: &RouteCompletenessInput) -> Completeness {
             "missing-provider",
             "route uses a provider effect that is not registered in the Plan",
         )]);
+    }
+    if input.runtime_only {
+        return Completeness::runtime_only();
     }
 
     let mut reasons = Vec::new();
@@ -131,4 +145,35 @@ pub fn plan_completeness(routes: &[Completeness]) -> Completeness {
     }
 
     Completeness::complete()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn route_runtime_only_flows_to_plan_completeness() {
+        let route = route_completeness(&RouteCompletenessInput {
+            has_response_metadata: true,
+            body_json_without_schema: false,
+            missing_provider_registration: false,
+            runtime_only: true,
+        });
+        assert_eq!(route.status, CompletenessStatus::RuntimeOnly);
+
+        let plan = plan_completeness(&[route]);
+        assert_eq!(plan.status, CompletenessStatus::RuntimeOnly);
+        assert_eq!(plan.reasons[0].code, "runtime-only-route");
+    }
+
+    #[test]
+    fn invalid_provider_registration_wins_over_runtime_only() {
+        let route = route_completeness(&RouteCompletenessInput {
+            has_response_metadata: true,
+            body_json_without_schema: false,
+            missing_provider_registration: true,
+            runtime_only: true,
+        });
+        assert_eq!(route.status, CompletenessStatus::Invalid);
+    }
 }

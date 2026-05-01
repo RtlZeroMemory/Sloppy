@@ -296,8 +296,10 @@ and does not imply Node or npm compatibility.
 `stdlib/sloppy/index.js`; that example remains a bootstrap API-shape example. The
 compiler-owned runnable artifact example is `examples/compiler-hello/`.
 The bootstrap stdlib now also contains the EPIC-14 JavaScript-only `Sloppy.module(...)`
-and `builder.addModule(...)` skeleton. The compiler still does not extract modules, sort
-module graphs, or emit module plan entries.
+and `builder.addModule(...)` skeleton. The compiler still does not sort general
+package/module graphs or execute module loaders. COMPILER-30.D/H/I does extract the
+supported function-module subset and emits route `module` attribution plus top-level
+`modules[]` summaries for Strong Plan consumers.
 The bootstrap stdlib now also contains the EPIC-15 JavaScript-only data/capabilities
 foundation: database capability metadata, query template lowering, fake providers, and
 transaction callback semantics. ENGINE-02 extracts only the minimal
@@ -379,7 +381,11 @@ focused module APIs:
   evaluation.
 
 Route graph extraction, provider/config/schema/results metadata extraction, effects,
-capabilities, completeness, and Strong Plan emission remain later COMPILER-30 tasks.
+capabilities, completeness, and Strong Plan emission are now implemented for the supported
+COMPILER-30.B through COMPILER-30.H/I subset in `sloppyc.rs`, with focused helper modules
+owning parser/resolver/symbol/DSL/static-eval foundations. Remaining module splits should
+move behavior behind the listed focused modules without changing the documented artifact
+contract.
 
 The current library entrypoints are:
 

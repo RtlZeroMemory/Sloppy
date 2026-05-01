@@ -328,6 +328,8 @@ static int test_invalid_fixture_matrix(void)
          SL_DIAG_INVALID_PLAN_VERSION, "invalid app plan version"},
         {"tests/golden/plan/unknown-required-feature.plan.json", SL_STATUS_INVALID_ARGUMENT,
          SL_DIAG_INVALID_PLAN_FIELD, "unsupported required app plan feature"},
+        {"tests/golden/plan/required-features-not-array.plan.json", SL_STATUS_INVALID_ARGUMENT,
+         SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type"},
         {"tests/golden/plan/missing-runtime-minimum-version.plan.json", SL_STATUS_INVALID_ARGUMENT,
          SL_DIAG_INVALID_PLAN_FIELD, "missing required app plan field"},
         {"tests/golden/plan/missing-bundle.plan.json", SL_STATUS_INVALID_ARGUMENT,

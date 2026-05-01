@@ -136,10 +136,10 @@
       "unknownRequiredFeatures": "rejected"
     },
     "evidence": {
-      "bindings": true,
+      "bindings": false,
       "capabilities": false,
       "effects": false,
-      "providers": true,
+      "providers": false,
       "routes": true,
       "sourceGraph": true
     },

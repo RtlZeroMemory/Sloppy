@@ -120,13 +120,14 @@ const testDb = app.use(sqlite("test", { database: ":memory:" }));
 The compiler emits the resolved SQLite database into `dataProviders[]` so the existing V8
 SQLite bridge has the runtime metadata it needs.
 
-COMPILER-30.H/I keeps provider metadata provider-kind-aware. Route effects and Plan
-provider entries carry both `capabilityKind` and `providerKind`; the compiler recognizes
-the first-party database provider family (`sqlite`, `postgres`, `sqlserver`) without
-assuming SQLite is the only provider kind. SQLite remains the only generated provider
-wrapper with an executable JS bridge today. PostgreSQL, SQL Server, and future non-database
-providers need their own runtime adapters before compiler-generated provider-backed
-handlers can run.
+COMPILER-30.H/I keeps provider metadata provider-kind-aware. Route effect metadata,
+capability metadata, and the compiler's optional `dataProviders[]` annotations carry
+`capabilityKind`/`providerKind`; the native Plan v1 struct still treats `dataProviders[]`
+as token/provider/service/capability metadata. The compiler recognizes the first-party
+database provider family (`sqlite`, `postgres`, `sqlserver`) without assuming SQLite is the
+only provider kind. SQLite remains the only generated provider wrapper with an executable
+JS bridge today. PostgreSQL, SQL Server, and future non-database providers need their own
+runtime adapters before compiler-generated provider-backed handlers can run.
 
 SQLite bridge continues to open through Plan metadata. COMPILER-30.E also source-locates
 supported SQLite provider registrations and `app.provider("sqlite:name")` handle lookups

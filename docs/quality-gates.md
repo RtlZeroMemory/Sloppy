@@ -162,9 +162,9 @@ COMPILER-30.A adds fixture harness coverage for current artifacts, diagnostics, 
 goldens, and staged generated-artifact hygiene. Passing those tests preserves current
 compiler behavior; it does not prove future route/provider/capability inference.
 COMPILER-30.H/I compiler changes must also prove strong Plan metadata and compatibility:
-refreshed Plan goldens, complete/partial/invalid completeness unit tests, missing-provider
-diagnostics, and native Plan parser coverage that accepts unknown optional fields while
-rejecting unknown required features.
+refreshed Plan goldens, complete/partial/runtime-only/invalid completeness unit tests,
+missing-provider diagnostics, and native Plan parser coverage that accepts unknown optional
+fields while rejecting unknown required features.
 
 Language standards scanners:
 

@@ -170,7 +170,7 @@
       "unknownRequiredFeatures": "rejected"
     },
     "evidence": {
-      "bindings": true,
+      "bindings": false,
       "capabilities": true,
       "effects": true,
       "providers": true,

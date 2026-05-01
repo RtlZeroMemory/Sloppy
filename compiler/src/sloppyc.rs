@@ -5097,6 +5097,7 @@ fn emit_plan(
                             && capability.provider == effect.provider_kind
                     })
                 }),
+                runtime_only: false,
             })
         })
         .collect::<Vec<_>>();
@@ -5177,13 +5178,13 @@ fn emit_plan(
     for route in &app.routes {
         if let Some(module) = &route.module {
             module_sources
-                .entry(module.clone())
-                .or_insert_with(|| route.source_name.clone());
+                .entry((route.source_name.clone(), module.clone()))
+                .or_insert(());
         }
     }
     let modules = module_sources
         .iter()
-        .map(|(name, source_name)| {
+        .map(|((source_name, name), ())| {
             json!({
                 "name": name,
                 "source": {
@@ -5204,8 +5205,13 @@ fn emit_plan(
         })
         .collect::<Vec<_>>();
 
-    let data_providers = app
+    let data_provider_capabilities = app
         .capabilities
+        .iter()
+        .filter(|capability| capability.capability_kind == "database")
+        .collect::<Vec<_>>();
+
+    let data_providers = data_provider_capabilities
         .iter()
         .map(|capability| {
             let mut provider = json!({
@@ -5340,15 +5346,15 @@ fn emit_plan(
             "evidence": {
                 "sourceGraph": true,
                 "routes": true,
-                "providers": true,
-                "bindings": emits_metadata,
+                "providers": !data_providers.is_empty(),
+                "bindings": app.routes.iter().any(|route| !route.handler.bindings.is_empty()),
                 "effects": app.routes.iter().any(|route| !route.handler.effects.is_empty()),
                 "capabilities": !app.capabilities.is_empty()
             }
         },
         "features": {
             "asyncHandlers": has_async_handlers,
-            "dataProviders": !app.capabilities.is_empty(),
+            "dataProviders": !data_providers.is_empty(),
             "capabilities": !app.capabilities.is_empty(),
             "strongPlanMetadata": true,
             "sourceMaps": true

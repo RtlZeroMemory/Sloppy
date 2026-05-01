@@ -223,7 +223,8 @@ App module graph:
 TASK 14 adds only bootstrap debug metadata for modules. `app.__debug().modules` includes
 module names, dependencies, deterministic order, capability tokens, service tokens, route
 strings, and custom metadata for tests and examples. The native Plan v1 parser still does
-not parse a `modules` section, and the compiler still does not emit one.
+not parse a `modules` section into `SlPlan`, but COMPILER-30.H/I now emits optional
+compiler `modules[]` metadata for function modules in generated Plans.
 
 COMPILER-30 target module metadata comes from the supported compiler module graph:
 relative imports, function modules, contributed routes, providers, config/schema/result
@@ -232,8 +233,9 @@ decorators remain out of scope.
 
 COMPILER-30.B/C establishes the compiler-side source graph foundations that later Plan
 metadata will consume. The current emitted Plan shape remains compatibility-preserving:
-relative imports and Slop-owned imports are resolved for compilation, but no new top-level
-`modules` or source-graph Plan section is emitted in this slice.
+relative imports and Slop-owned imports are resolved for compilation. COMPILER-30.H/I
+adds optional top-level `modules[]` and `sourceFiles[]` metadata for Strong Plan consumers;
+older native Plan v1 parsing ignores those optional fields.
 
 ### routes
 
@@ -296,17 +298,18 @@ and `{name:int}`. Query strings are parsed from request targets by EPIC-23 reque
 code, not route patterns. Literal route group prefixes compose before validation.
 Catch-all parameters, optional segments, regex constraints, method matching beyond GET dev
 dispatch, route precedence, OpenAPI output, middleware/filter metadata, runtime validation,
-and Plan completeness remain future work.
+and runtime validation remain future work. Compiler-emitted route and plan completeness are
+now present for the supported COMPILER-30.H/I subset.
 
-The COMPILER-30.E metadata is emitted for static tooling and later Strong Plan consumers.
-The native runtime parser may ignore unknown optional metadata until COMPILER-30.H/I owns
-versioned strong Plan validation. Emitting `schemas[]`, `configReads[]`, `routes[].bindings`,
-`routes[].response`, and `routes[].effects` does not mean runtime request validation,
-OpenAPI generation, or broader provider/capability enforcement has been implemented.
+The COMPILER-30.E/H/I metadata is emitted for static tooling and Strong Plan consumers.
+The native runtime parser accepts these unknown optional metadata fields while rejecting
+non-empty top-level `requiredFeatures`. Emitting `schemas[]`, `configReads[]`,
+`routes[].bindings`, `routes[].response`, `routes[].effects`, `routes[].completeness`, and
+top-level `strongPlan` does not mean runtime request validation, OpenAPI generation, or
+broader provider/capability enforcement has been implemented.
 
-COMPILER-30 route metadata should also report completeness. Dynamic route paths are invalid
-in the compiler-owned static path unless a future explicit runtime-only escape hatch
-provides all required provider/capability metadata.
+Dynamic route paths are invalid in the compiler-owned static path unless a future explicit
+runtime-only escape hatch provides all required provider/capability metadata.
 
 ### handlers
 
@@ -571,9 +574,10 @@ values, handler table presence, duplicate handler IDs, at least one runnable rou
 route-to-handler references, duplicate route method/pattern pairs, duplicate route names,
 provider/capability metadata consistency, and duplicate represented service tokens.
 
-Native module metadata is not represented in Plan v1 yet. Bootstrap module debug metadata
-remains JavaScript-only and is ignored by native startup validation until a future compiler
-task emits a real `modules` section.
+Native `SlPlan` module metadata is not represented in the parsed struct yet. Bootstrap
+module debug metadata remains JavaScript-only, while COMPILER-30.H/I compiler artifacts may
+emit optional top-level `modules[]` metadata that the Plan v1 parser ignores for runtime
+startup validation.
 
 Future plan validation must check:
 
