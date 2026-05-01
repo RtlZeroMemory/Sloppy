@@ -193,8 +193,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   graceful drain/force-cancel shutdown behavior for real native async work, bounded
   resource budgets, leak checks where possible, and richer cleanup-failure diagnostics.
 - Conformance/examples/packaging evidence: FRAMEWORK-01.F adds realistic source-input
-  examples and tooling checks, but packaged runtime smoke outside the checkout and public
-  alpha-ready docs remain open.
+  examples and tooling checks, but example-specific package smoke and public-alpha-ready
+  hosted packaging docs remain open.
 
 ## Must Fix Before Public Alpha
 

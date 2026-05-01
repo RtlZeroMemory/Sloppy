@@ -25,8 +25,11 @@ Route:
 Expected tooling after building artifacts:
 
 ```powershell
-sloppy doctor --plan .sloppy\app.plan.json
-sloppy audit --plan .sloppy\app.plan.json --format json
+..\..\build\windows-dev\sloppy.exe routes --plan .sloppy\app.plan.json
+..\..\build\windows-dev\sloppy.exe doctor --plan .sloppy\app.plan.json
+..\..\build\windows-dev\sloppy.exe capabilities --plan .sloppy\app.plan.json
+..\..\build\windows-dev\sloppy.exe audit --plan .sloppy\app.plan.json --format json
+..\..\build\windows-dev\sloppy.exe openapi --plan .sloppy\app.plan.json
 ```
 
 This example does not prove config values flowing into runtime handler responses,

@@ -1003,37 +1003,55 @@ if(SLOPPY_ENABLE_TESTS)
             SLOPPYC_E_SECRET_PLAN_METADATA)
 
         function(sloppy_add_example_tooling_test test_name case_name source_path expected_plan
-                 expected_routes expected_capabilities expected_openapi)
-            add_test(
-                NAME ${test_name}
-                COMMAND
-                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
-                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
-                    "-DCARGO_EXECUTABLE=${CARGO_EXECUTABLE}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-                    "-DSLOPPY_CASE=${case_name}" "-DSLOPPY_SOURCE=${source_path}"
-                    "-DSLOPPY_EXPECTED_PLAN=${expected_plan}"
-                    "-DSLOPPY_EXPECTED_ROUTES=${expected_routes}"
-                    "-DSLOPPY_EXPECTED_CAPABILITIES=${expected_capabilities}"
-                    "-DSLOPPY_EXPECTED_OPENAPI=${expected_openapi}" -P
-                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_example_tooling.cmake")
+                 expected_routes expected_capabilities expected_audit expected_openapi)
+            set(tooling_command
+                "${CMAKE_COMMAND}"
+                "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                "-DCARGO_EXECUTABLE=${CARGO_EXECUTABLE}"
+                "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_CASE=${case_name}"
+                "-DSLOPPY_SOURCE=${source_path}")
+
+            if(NOT "${expected_plan}" STREQUAL "")
+                list(APPEND tooling_command "-DSLOPPY_EXPECTED_PLAN=${expected_plan}")
+            endif()
+            if(NOT "${expected_routes}" STREQUAL "")
+                list(APPEND tooling_command "-DSLOPPY_EXPECTED_ROUTES=${expected_routes}")
+            endif()
+            if(NOT "${expected_capabilities}" STREQUAL "")
+                list(APPEND tooling_command
+                     "-DSLOPPY_EXPECTED_CAPABILITIES=${expected_capabilities}")
+            endif()
+            if(NOT "${expected_audit}" STREQUAL "")
+                list(APPEND tooling_command "-DSLOPPY_EXPECTED_AUDIT=${expected_audit}")
+            endif()
+            if(NOT "${expected_openapi}" STREQUAL "")
+                list(APPEND tooling_command "-DSLOPPY_EXPECTED_OPENAPI=${expected_openapi}")
+            endif()
+            list(APPEND tooling_command -P
+                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_example_tooling.cmake")
+
+            add_test(NAME ${test_name} COMMAND ${tooling_command})
             set_tests_properties(${test_name} PROPERTIES LABELS "conformance;examples")
         endfunction()
 
         sloppy_add_example_tooling_test(
             examples.hello_minimal.tooling hello-minimal examples/hello-minimal/app.ts
-            "Hello.Get" "/hello/\\{name\\}" "" "x-slop-completeness")
+            "Hello.Get" "/hello/\\{name\\}" "" "\"findings\"" "x-slop-completeness")
         sloppy_add_example_tooling_test(
             examples.configured_api.tooling configured-api examples/configured-api/app.js
-            "App:Greeting" "Config.Get" "" "/config")
+            "App:Greeting" "Config.Get" "" "\"findings\"" "/config")
         sloppy_add_example_tooling_test(
             examples.modules_api.tooling modules-api examples/modules-api/app.js
-            "modules" "Users.Get" "" "/users/\\{id\\}")
+            "modules" "Users.Get" "" "\"findings\"" "/users/\\{id\\}")
         sloppy_add_example_tooling_test(
             examples.validation_errors.tooling validation-errors examples/validation-errors/app.js
-            "UserCreate" "Users.Create" "" "UserCreate")
+            "UserCreate" "Users.Create" "" "\"findings\"" "UserCreate")
         sloppy_add_example_tooling_test(
             examples.users_api_sqlite.tooling users-api-sqlite examples/users-api-sqlite/app.js
-            "users-api-sqlite-runtime.db" "Users.Create" "data.main" "x-slop-capabilities")
+            "users-api-sqlite-runtime.db" "Users.Create" "data.main" "\"findings\""
+            "x-slop-capabilities")
     endif()
 
     add_test(

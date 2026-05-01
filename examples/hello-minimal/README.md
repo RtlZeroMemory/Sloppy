@@ -27,9 +27,9 @@ Routes:
 Expected tooling after building artifacts:
 
 ```powershell
-sloppy routes --plan .sloppy\app.plan.json
-sloppy doctor --plan .sloppy\app.plan.json
-sloppy openapi --plan .sloppy\app.plan.json
+..\..\build\windows-relwithdebinfo\sloppy.exe routes --plan .sloppy\app.plan.json
+..\..\build\windows-relwithdebinfo\sloppy.exe doctor --plan .sloppy\app.plan.json
+..\..\build\windows-relwithdebinfo\sloppy.exe openapi --plan .sloppy\app.plan.json
 ```
 
 This example requires V8 for execution. It does not prove runtime request validation,
