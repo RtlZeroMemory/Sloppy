@@ -1,6 +1,13 @@
+const SQLITE_PROVIDER_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/u;
+
 function validateSqliteProviderName(name) {
     if (typeof name !== "string" || name.length === 0) {
         throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");
+    }
+    if (name.trim() !== name || !SQLITE_PROVIDER_NAME_PATTERN.test(name)) {
+        throw new TypeError(
+            "Sloppy sqlite provider name must contain only letters, digits, dots, underscores, or hyphens.",
+        );
     }
 }
 

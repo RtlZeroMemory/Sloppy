@@ -33,6 +33,7 @@ function assertThrowsMessage(fn, expected) {
     assertThrowsMessage(() => builder.config.getInt("app.name"), /number/);
     assertThrowsMessage(() => builder.config.require("missing"), /required/);
     assertThrowsMessage(() => builder.config.get(""), /non-empty string/);
+    assertThrowsMessage(() => builder.config.get("A::B"), /empty segments/);
 
     const memorySink = builder.logging.addMemorySink();
     builder.logging.setMinimumLevel("info");
@@ -145,6 +146,10 @@ function assertThrowsMessage(fn, expected) {
     const builder = Sloppy.createBuilder();
     builder.config.addObject({
         Sloppy: {
+            Server: {
+                MaxRequestBodyBytes: 16384,
+                RequestTimeoutMs: 15000,
+            },
             Providers: {
                 sqlite: {
                     main: {
@@ -159,12 +164,32 @@ function assertThrowsMessage(fn, expected) {
     const options = app.config.bind("sqlite:main", SqliteOptions);
     assert.equal(options.database, "./app.db");
     assert.equal(options.queueCapacity, 8);
+    const serverOptions = app.config.bind("Sloppy:Server");
+    assert.equal(serverOptions.maxRequestBodyBytes, 16384);
+    assert.equal(serverOptions.requestTimeoutMs, 15000);
 
     const provider = app.use(sqlite("main", { database: ":memory:" }));
     assert.equal(provider.kind, "sqlite");
     assert.equal(provider.name, "main");
     assert.equal(provider.options.database, ":memory:");
     assert.equal(provider.options.queueCapacity, 8);
+}
+
+{
+    const app = Sloppy.create();
+
+    assertThrowsMessage(() => app.use(sqlite("missing")), /database option/);
+    assertThrowsMessage(() => sqlite("bad:name"), /provider name/);
+    assertThrowsMessage(() => sqlite(" main "), /provider name/);
+
+    const provider = app.use({
+        __sloppyProvider: true,
+        kind: "sqlite",
+        name: "main",
+        token: "wrong.token",
+        options: { database: ":memory:" },
+    });
+    assert.equal(provider.token, "data.main");
 }
 
 {

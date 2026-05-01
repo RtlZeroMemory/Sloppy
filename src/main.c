@@ -55,6 +55,7 @@
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_CONFIG_MAX_BYTES 8192U
 #define SL_RUN_PATH_MAX_BYTES 1024U
+#define SL_RUN_CONFIG_HOST_MAX_BYTES 128U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
 #define SL_RUN_DEFAULT_ENVIRONMENT "Development"
@@ -1053,7 +1054,13 @@ typedef struct SlRunApp
     SlEngine* engine;
     SlAppLifecycle lifecycle;
     SlHttpRouteTable route_table;
+    char config_host[SL_RUN_CONFIG_HOST_MAX_BYTES];
+    uint16_t config_port;
+    bool config_has_host;
+    bool config_has_port;
 } SlRunApp;
+
+static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
 
 static bool sl_run_span_ends_with(SlCliSpan span, const char* suffix)
 {
@@ -1256,6 +1263,99 @@ static bool sl_run_manifest_is_compatible(SlBytes manifest, const char* required
 
     yyjson_doc_free(doc);
     return compatible;
+}
+
+static bool sl_run_plan_config_parse_port(yyjson_val* value, uint16_t* out)
+{
+    uint64_t port = 0U;
+
+    if (value == NULL || out == NULL || !yyjson_is_uint(value)) {
+        return false;
+    }
+
+    port = yyjson_get_uint(value);
+    if (port == 0U || port > UINT16_MAX) {
+        return false;
+    }
+
+    *out = (uint16_t)port;
+    return true;
+}
+
+static int sl_run_load_config_metadata(SlRunApp* app, SlBytes json, const char* plan_path)
+{
+    yyjson_read_err error = {0};
+    yyjson_doc* doc = NULL;
+    yyjson_val* root = NULL;
+    yyjson_val* configuration = NULL;
+    yyjson_val* keys = NULL;
+    yyjson_arr_iter iter;
+    yyjson_val* entry = NULL;
+    int result = 0;
+
+    if (app == NULL || json.ptr == NULL || json.length == 0U) {
+        return 1;
+    }
+
+    doc = yyjson_read_opts((char*)json.ptr, json.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        sl_cli_write_error_with_value("sloppy run: malformed app.plan.json: ", plan_path, "\n");
+        return 1;
+    }
+
+    root = yyjson_doc_get_root(doc);
+    configuration = yyjson_is_obj(root) ? yyjson_obj_get(root, "configuration") : NULL;
+    keys = yyjson_is_obj(configuration) ? yyjson_obj_get(configuration, "keys") : NULL;
+    if (keys == NULL) {
+        yyjson_doc_free(doc);
+        return 0;
+    }
+    if (!yyjson_is_arr(keys)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: app.plan.json configuration.keys must be an array\n");
+        yyjson_doc_free(doc);
+        return 1;
+    }
+
+    yyjson_arr_iter_init(keys, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        yyjson_val* key = NULL;
+        yyjson_val* value = NULL;
+
+        if (!yyjson_is_obj(entry)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy run: app.plan.json configuration.keys entries must be objects\n");
+            result = 1;
+            break;
+        }
+
+        key = yyjson_obj_get(entry, "key");
+        value = yyjson_obj_get(entry, "value");
+        if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Host")) {
+            if (!sl_run_copy_json_string(app->config_host, sizeof(app->config_host), value) ||
+                app->config_host[0] == '\0')
+            {
+                sl_cli_write_cstr(
+                    stderr, "sloppy run: app.plan.json Sloppy:Server:Host must be a string\n");
+                result = 1;
+                break;
+            }
+            app->config_has_host = true;
+        }
+        else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Port")) {
+            if (!sl_run_plan_config_parse_port(value, &app->config_port)) {
+                sl_cli_write_cstr(
+                    stderr,
+                    "sloppy run: app.plan.json Sloppy:Server:Port must be an integer port\n");
+                result = 1;
+                break;
+            }
+            app->config_has_port = true;
+        }
+    }
+
+    yyjson_doc_free(doc);
+    return result;
 }
 
 typedef struct SlRunSha256
@@ -1534,6 +1634,10 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
                       sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0)))
     {
         sl_cli_write_cstr(stderr, "sloppy run: unsupported app.plan.json runtimeMinimumVersion\n");
+        return 1;
+    }
+
+    if (sl_run_load_config_metadata(app, json, plan_path) != 0) {
         return 1;
     }
 
@@ -2625,8 +2729,23 @@ static int sl_cli_command_run(const SlCliOptions* options)
     SlRunApp app = {0};
     const char* artifacts_path = options->artifacts_path;
     const char* stdlib_path = options->stdlib_path;
+    const char* run_host = options->host;
+    uint16_t run_port = options->port;
     char source_artifacts_path[SL_RUN_PATH_MAX_BYTES];
     int result = 0;
+
+    if (options->environment_explicit && artifacts_path == NULL && options->input_path != NULL &&
+        !sl_run_source_input_extension_supported(options->input_path))
+    {
+        sl_cli_write_cstr(
+            stderr, "sloppy run: --environment only applies to source input or sloppy.json\n");
+        return 1;
+    }
+    if (options->environment_explicit && artifacts_path != NULL) {
+        sl_cli_write_cstr(
+            stderr, "sloppy run: --environment only applies to source input or sloppy.json\n");
+        return 1;
+    }
 
     if (artifacts_path == NULL) {
         if (options->input_path == NULL ||
@@ -2663,7 +2782,13 @@ static int sl_cli_command_run(const SlCliOptions* options)
         result = sl_run_once(&app, options->once_method, options->once_target);
     }
     else {
-        result = sl_run_server(&app, options->host, options->port);
+        if (!options->host_explicit && app.config_has_host) {
+            run_host = app.config_host;
+        }
+        if (!options->port_explicit && app.config_has_port) {
+            run_port = app.config_port;
+        }
+        result = sl_run_server(&app, run_host, run_port);
     }
 
     if (sl_run_shutdown_app(&app) != 0 && result == 0) {

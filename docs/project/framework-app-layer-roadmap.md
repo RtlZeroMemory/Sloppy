@@ -62,7 +62,7 @@ boundaries documented in `docs/project/engine-framework-contract.md`.
 
 ## FRAMEWORK-01.B Status
 
-#436 now has the first implementation: built-in defaults, `appsettings.json`,
+Issue #436 now has the first implementation: built-in defaults, `appsettings.json`,
 `appsettings.{Environment}.json`, environment selection from `sloppy.json`/CLI, canonical
 Sloppy environment variables, bounded CLI overrides, typed config getters, `bind`,
 convention-bound SQLite provider config, and redacted compiler-emitted Plan metadata.

@@ -76,5 +76,5 @@ startup on the existing Plan route/provider/capability sections.
 FRAMEWORK-01.B feeds Strong Plan with compiler-emitted configuration metadata:
 environment name, effective config keys, source layers, redacted values, and provider
 binding prefixes. The native `SlPlan` struct does not yet model this as a typed graph.
-#355-#359 should promote this metadata into the Strong Plan graph when provider/config
+Issues #355-#359 should promote this metadata into the Strong Plan graph when provider/config
 diagnostics, doctor, audit, and OpenAPI consume it.

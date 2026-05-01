@@ -27,9 +27,12 @@ function validateConfigKey(key) {
 
 function normalizeConfigKey(key) {
     validateConfigKey(key);
+    const segments = key.split(":");
+    if (segments.some((segment) => segment.length === 0)) {
+        throw new TypeError("Sloppy config key must not contain empty segments.");
+    }
     return key
         .split(":")
-        .filter((segment) => segment.length > 0)
         .map((segment) => segment.toUpperCase())
         .join(":");
 }
@@ -163,8 +166,20 @@ function configBindSegmentName(segment) {
     switch (segment) {
         case "DATABASE":
             return "database";
+        case "HOST":
+            return "host";
+        case "MAXCONNECTIONS":
+            return "maxConnections";
+        case "MAXREQUESTBODYBYTES":
+            return "maxRequestBodyBytes";
+        case "PORT":
+            return "port";
         case "QUEUECAPACITY":
             return "queueCapacity";
+        case "REQUESTTIMEOUTMS":
+            return "requestTimeoutMs";
+        case "V8MICROTASKDRAINLIMIT":
+            return "v8MicrotaskDrainLimit";
         default:
             return segment.charAt(0).toLowerCase() + segment.slice(1).toLowerCase();
     }
@@ -197,6 +212,23 @@ function validateProviderDescriptor(provider) {
     }
     if (typeof provider.name !== "string" || provider.name.length === 0) {
         throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");
+    }
+}
+
+function sqliteProviderToken(name) {
+    return name.includes(".") ? name : `data.${name}`;
+}
+
+function validateMergedProviderOptions(provider, options) {
+    if (provider.kind === "sqlite") {
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy sqlite provider options must be a plain object.");
+        }
+        if (typeof options.database !== "string" || options.database.length === 0) {
+            throw new TypeError(
+                "Sloppy sqlite provider database option must be a non-empty string.",
+            );
+        }
     }
 }
 
@@ -1093,10 +1125,11 @@ function createApp(host) {
                 ...configured,
                 ...(provider.options ?? {}),
             });
+            validateMergedProviderOptions(provider, options);
             return Object.freeze({
                 kind: provider.kind,
                 name: provider.name,
-                token: provider.token,
+                token: sqliteProviderToken(provider.name),
                 options,
             });
         },

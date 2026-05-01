@@ -48,8 +48,8 @@ default, layered Plan-visible config, explicit `ctx` binding helpers, and explic
 
 | Area | ENGINE-01 decision |
 | --- | --- |
-| Source workflow | Supported foundation workflow is `sloppyc build app.js --out .sloppy` followed by `sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173`. |
-| Direct source run | Planned after full compiler artifact emission is reliable. `sloppy run app.ts` / `sloppy run <source>` remains unsupported until #302 implements a real compiler handoff, cache key, stale-artifact, and diagnostics policy. |
+| Source workflow | Supported foundation workflows are `sloppyc build app.js --out .sloppy` followed by `sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173`, plus the source-input dev loop that compiles `sloppy run app.js` / `sloppy run` with `sloppy.json` into the documented cache directory before running artifacts. |
+| Direct source run | Supported as a dev-loop compiler handoff for the current compiler subset. It is not a Node/npm loader, package manager, watch mode, hot reload loop, or production server contract. |
 | Public import | Core examples use `import { Sloppy, Results, data } from "sloppy";`. This is a compiler/stdlib contract, not Node/npm resolution. |
 | App API | Current compiler/runtime support uses `Sloppy.create()` plus `map*` calls; post-Core framework target is `app.get/post/put/patch/delete(...)`, `Results`, request context, cancellation signal, and explicit provider imports. |
 | Services/modules | Function modules are the first framework modularization target. Controllers, decorators, and full DI are deferred. |
@@ -104,10 +104,10 @@ Contract decisions:
 - Dynamic registration, conditional registration, loops, arbitrary factories, and broad
   module graphs remain rejected until compiler support intentionally expands.
 - `app.run`, `app.listen`, and `await app.run()` are deferred. Runtime startup belongs to
-  `sloppy run --artifacts` until source-input handoff is deliberately implemented.
-- Direct source-input run is tracked by #302 as a compiler/CLI integration task after the
-  supported compiler pipeline emits complete artifacts for realistic apps. It must not be
-  hidden inside runtime startup.
+  `sloppy run --artifacts` and the source-input `sloppy run <source.js>` / `sloppy run`
+  compiler handoff; app code does not own process startup.
+- Direct source-input run is a compiler/CLI handoff that emits artifacts before runtime
+  startup. It must stay explicit, debuggable, and separate from in-app startup APIs.
 - Node builtins, npm packages, package-manager behavior, and arbitrary bare imports are
   rejected unless a future scoped contract adds them.
 

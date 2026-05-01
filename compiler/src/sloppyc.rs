@@ -526,7 +526,8 @@ impl ConfigurationModel {
             )
             .with_path(path));
         };
-        self.flatten_json_object(Vec::new(), &object, source);
+        self.flatten_json_object(Vec::new(), &object, source)
+            .map_err(|diagnostic| diagnostic.with_path(path))?;
         Ok(())
     }
 
@@ -535,16 +536,29 @@ impl ConfigurationModel {
         prefix: Vec<String>,
         object: &serde_json::Map<String, Value>,
         source: &str,
-    ) {
+    ) -> Result<(), Diagnostic> {
         for (key, value) in object {
+            if key.is_empty() {
+                let path = if prefix.is_empty() {
+                    "<root>".to_string()
+                } else {
+                    prefix.join(":")
+                };
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_CONFIG_KEY",
+                    format!("{source} contains an empty config key segment under {path}"),
+                )
+                .with_hint("Config keys must not contain empty path segments."));
+            }
             let mut next = prefix.clone();
             next.push(key.clone());
             if let Value::Object(child) = value {
-                self.flatten_json_object(next, child, source);
+                self.flatten_json_object(next, child, source)?;
             } else {
                 self.set(&next.join(":"), value.clone(), source);
             }
         }
+        Ok(())
     }
 
     fn apply_environment_variables(&mut self) -> Result<(), Diagnostic> {
@@ -553,7 +567,11 @@ impl ConfigurationModel {
                 continue;
             }
             let logical = &name["SLOPPY_".len()..];
-            if logical.is_empty() || logical.contains("___") || logical.starts_with('_') {
+            if logical.is_empty()
+                || logical.contains("___")
+                || logical.starts_with('_')
+                || logical.split("__").any(|segment| segment.is_empty())
+            {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_CONFIG_ENV",
                     format!("invalid Sloppy environment variable name '{name}'"),
@@ -722,7 +740,6 @@ impl ConfigurationModel {
 
 fn normalize_config_key(key: &str) -> String {
     key.split(':')
-        .filter(|segment| !segment.is_empty())
         .map(|segment| segment.to_ascii_uppercase())
         .collect::<Vec<_>>()
         .join(":")
@@ -730,7 +747,6 @@ fn normalize_config_key(key: &str) -> String {
 
 fn canonical_config_key(key: &str) -> String {
     key.split(':')
-        .filter(|segment| !segment.is_empty())
         .map(canonical_config_segment)
         .collect::<Vec<_>>()
         .join(":")
@@ -779,6 +795,9 @@ fn json_type_name(value: &Value) -> &'static str {
 
 fn config_key_is_sensitive(key: &str) -> bool {
     let normalized = key.to_ascii_lowercase();
+    let has_sensitive_segment = normalized
+        .split(':')
+        .any(|segment| matches!(segment, "pwd" | "passwd"));
     normalized.contains("secret")
         || normalized.contains("password")
         || normalized.contains("token")
@@ -786,6 +805,7 @@ fn config_key_is_sensitive(key: &str) -> bool {
         || normalized.contains("connection_string")
         || normalized.contains("apikey")
         || normalized.contains("api_key")
+        || has_sensitive_segment
 }
 
 fn redact_config_value(key: &str, value: &str) -> String {
@@ -3769,6 +3789,52 @@ export default app;
         assert!(keys[0].sensitive);
         assert_eq!(keys[0].value, serde_json::json!("<redacted>"));
         assert!(!keys[0].value.to_string().contains("secret"));
+    }
+
+    #[test]
+    fn configuration_plan_redacts_pwd_alias_values() {
+        let mut config = super::ConfigurationModel {
+            environment: "Development".to_string(),
+            values: std::collections::BTreeMap::new(),
+        };
+        config.set(
+            "Sloppy:Providers:sqlite:main:Pwd",
+            serde_json::json!("secret"),
+            "test",
+        );
+        let keys = config.plan_keys();
+        assert_eq!(keys.len(), 1);
+        assert!(keys[0].sensitive);
+        assert_eq!(keys[0].value, serde_json::json!("<redacted>"));
+        assert!(!keys[0].value.to_string().contains("secret"));
+    }
+
+    #[test]
+    fn configuration_json_rejects_empty_key_segments() {
+        let root =
+            std::env::temp_dir().join(format!("sloppyc-config-empty-key-{}", std::process::id()));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale config test directory should be removable");
+        }
+        fs::create_dir_all(&root).expect("config test directory should be created");
+        let input = root.join("app.js");
+        fs::write(&input, "export default {};").expect("input should be written");
+        fs::write(
+            root.join("appsettings.json"),
+            r#"{"Sloppy":{"Server":{"":5173}}}"#,
+        )
+        .expect("appsettings should be written");
+
+        let diagnostic = super::ConfigurationModel::load(&input, &super::BuildOptions::new())
+            .expect_err("empty config key segment should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_CONFIG_KEY");
+        assert!(
+            diagnostic.message.contains("empty config key segment"),
+            "{}",
+            diagnostic.message
+        );
+
+        fs::remove_dir_all(&root).expect("config test directory should be removable");
     }
 
     #[test]

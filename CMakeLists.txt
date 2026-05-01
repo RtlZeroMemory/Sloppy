@@ -1053,6 +1053,16 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(sloppy.run.rejects_mixed_artifact_inputs
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
+    add_test(
+        NAME sloppy.run.rejects_environment_with_artifacts
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--environment;Development;--once;GET;/"
+            "-DSLOPPY_EXPECTED_ERROR=--environment only applies to source input or sloppy.json"
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.run.rejects_environment_with_artifacts
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
     if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
         set(SLOPPYC_BUILT_EXECUTABLE
             "${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")

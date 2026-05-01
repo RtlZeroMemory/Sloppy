@@ -107,6 +107,7 @@ under `Sloppy:Providers:<kind>:<name>` supplies provider defaults, and inline pr
 options override those defaults:
 
 ```ts
+import { Sloppy } from "sloppy";
 import { sqlite } from "sloppy/providers/sqlite";
 
 const app = Sloppy.create();
