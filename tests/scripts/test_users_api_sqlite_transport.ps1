@@ -150,6 +150,12 @@ try {
     $invalidResponse = Invoke-RawHttp $port "POST /users HTTP/1.1`r`nHost: localhost`r`nContent-Type: application/json`r`nContent-Length: $($invalid.Length)`r`n`r`n$invalid"
     Assert-Matches $invalidResponse "HTTP/1\.1 400 Bad Request" "POST /users invalid JSON"
     Assert-Matches $invalidResponse "Malformed JSON" "POST /users invalid JSON"
+
+    $invalidUser = '{"name":"","email":""}'
+    $invalidUserResponse = Invoke-RawHttp $port "POST /users HTTP/1.1`r`nHost: localhost`r`nContent-Type: application/json`r`nContent-Length: $($invalidUser.Length)`r`n`r`n$invalidUser"
+    Assert-Matches $invalidUserResponse "HTTP/1\.1 400 Bad Request" "POST /users invalid payload"
+    Assert-Matches $invalidUserResponse "application/problem\+json" "POST /users invalid payload"
+    Assert-Matches $invalidUserResponse "Invalid user payload" "POST /users invalid payload"
 }
 finally {
     Stop-SloppyServer $server $stdoutPath $stderrPath

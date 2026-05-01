@@ -1,0 +1,5 @@
+{
+  "entry": "app.js",
+  "outDir": ".sloppy",
+  "environment": "Development"
+}

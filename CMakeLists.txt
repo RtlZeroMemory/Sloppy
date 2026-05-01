@@ -957,6 +957,17 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_add_conformance_compile_test(
             conformance.hello.compile_artifacts hello examples/compiler-hello/app.js)
         sloppy_add_conformance_compile_test(
+            conformance.hello_minimal.compile_artifacts hello-minimal
+            examples/hello-minimal/app.ts)
+        sloppy_add_conformance_compile_test(
+            conformance.configured_api.compile_artifacts configured-api
+            examples/configured-api/app.js)
+        sloppy_add_conformance_compile_test(
+            conformance.modules_api.compile_artifacts modules-api examples/modules-api/app.js)
+        sloppy_add_conformance_compile_test(
+            conformance.validation_errors.compile_artifacts validation-errors
+            examples/validation-errors/app.js)
+        sloppy_add_conformance_compile_test(
             conformance.request_context.compile_artifacts request-context
             examples/request-context/app.js)
         sloppy_add_conformance_compile_test(
@@ -990,6 +1001,39 @@ if(SLOPPY_ENABLE_TESTS)
             conformance.unsupported.secret_capability secret-capability
             compiler/tests/fixtures/unsupported-secret-capability/input.js
             SLOPPYC_E_SECRET_PLAN_METADATA)
+
+        function(sloppy_add_example_tooling_test test_name case_name source_path expected_plan
+                 expected_routes expected_capabilities expected_openapi)
+            add_test(
+                NAME ${test_name}
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                    "-DCARGO_EXECUTABLE=${CARGO_EXECUTABLE}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPY_CASE=${case_name}" "-DSLOPPY_SOURCE=${source_path}"
+                    "-DSLOPPY_EXPECTED_PLAN=${expected_plan}"
+                    "-DSLOPPY_EXPECTED_ROUTES=${expected_routes}"
+                    "-DSLOPPY_EXPECTED_CAPABILITIES=${expected_capabilities}"
+                    "-DSLOPPY_EXPECTED_OPENAPI=${expected_openapi}" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_example_tooling.cmake")
+            set_tests_properties(${test_name} PROPERTIES LABELS "conformance;examples")
+        endfunction()
+
+        sloppy_add_example_tooling_test(
+            examples.hello_minimal.tooling hello-minimal examples/hello-minimal/app.ts
+            "Hello.Get" "/hello/\\{name\\}" "" "x-slop-completeness")
+        sloppy_add_example_tooling_test(
+            examples.configured_api.tooling configured-api examples/configured-api/app.js
+            "App:Greeting" "Config.Get" "" "/config")
+        sloppy_add_example_tooling_test(
+            examples.modules_api.tooling modules-api examples/modules-api/app.js
+            "modules" "Users.Get" "" "/users/\\{id\\}")
+        sloppy_add_example_tooling_test(
+            examples.validation_errors.tooling validation-errors examples/validation-errors/app.js
+            "UserCreate" "Users.Create" "" "UserCreate")
+        sloppy_add_example_tooling_test(
+            examples.users_api_sqlite.tooling users-api-sqlite examples/users-api-sqlite/app.js
+            "users-api-sqlite-runtime.db" "Users.Create" "data.main" "x-slop-capabilities")
     endif()
 
     add_test(
@@ -1193,6 +1237,21 @@ if(SLOPPY_ENABLE_TESTS)
                     "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
             set_tests_properties(sloppy.run.source_input_config_driven_sqlite_non_v8
                                  PROPERTIES LABELS "source-input")
+            add_test(
+                NAME sloppy.run.hello_minimal_source_input_non_v8
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                    "-DSLOPPY_CASE=hello-minimal-non-v8"
+                    "-DSLOPPY_SOURCE=examples/hello-minimal/app.ts" "-DSLOPPY_ONCE_METHOD=GET"
+                    "-DSLOPPY_ONCE_TARGET=/hello/Ada"
+                    "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input"
+                    "-DSLOPPY_EXPECTED_PLAN=Hello.Get" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+            set_tests_properties(sloppy.run.hello_minimal_source_input_non_v8
+                                 PROPERTIES LABELS "source-input")
         endif()
 
         add_test(
@@ -1334,6 +1393,21 @@ if(SLOPPY_ENABLE_TESTS)
                         "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
                         "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
                 set_tests_properties(conformance.hello.source_input_run_once
+                                     PROPERTIES LABELS "conformance;v8;source-input")
+                add_test(
+                    NAME conformance.hello_minimal.source_input_run_once
+                    COMMAND
+                        "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                        "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                        "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                        "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                        "-DSLOPPY_CASE=hello-minimal-v8"
+                        "-DSLOPPY_SOURCE=examples/hello-minimal/app.ts"
+                        "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/hello/Ada"
+                        "-DSLOPPY_EXPECTED_OUTPUT=\"hello\":\"Ada\""
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                        "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+                set_tests_properties(conformance.hello_minimal.source_input_run_once
                                      PROPERTIES LABELS "conformance;v8;source-input")
                 add_test(
                     NAME conformance.users_api_sqlite.source_input_run_once

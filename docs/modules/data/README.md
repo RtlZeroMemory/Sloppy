@@ -26,6 +26,10 @@ ORM/migrations, production HTTP edge behavior, or benchmark performance.
 FRAMEWORK-01.B changes that example to use configuration-driven SQLite:
 `app.use(sqlite("main"))` binds `Sloppy:Providers:sqlite:main:database` from
 `appsettings.json`; inline `{ database: ... }` remains supported and overrides config.
+FRAMEWORK-01.F hardens the example with `sloppy.json`, module route names, `/health`,
+Plan-driven routes/capabilities/doctor/openapi evidence, and a safe invalid-payload
+problem response. It still does not claim PostgreSQL/SQL Server JavaScript bridges,
+ORM/migrations, async SQLite offload, or production database behavior.
 
 ## Purpose
 

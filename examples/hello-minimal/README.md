@@ -1,0 +1,37 @@
+# Hello Minimal Example
+
+Status: executable source-input example for the currently supported framework subset.
+
+Run from this directory with a V8-enabled build:
+
+```powershell
+..\..\build\windows-relwithdebinfo\sloppy.exe run --once GET /health
+..\..\build\windows-relwithdebinfo\sloppy.exe run --once GET /hello/Ada
+```
+
+Run from the repository root:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run examples/hello-minimal/app.ts --once GET /hello/Ada
+```
+
+The example proves `sloppy run`, `sloppy.json`, a TypeScript-extension source file in the
+supported JavaScript subset, route binding, and explicit `Results.text`/`Results.json`
+helpers.
+
+Routes:
+
+- `GET /health`
+- `GET /hello/{name}`
+
+Expected tooling after building artifacts:
+
+```powershell
+sloppy routes --plan .sloppy\app.plan.json
+sloppy doctor --plan .sloppy\app.plan.json
+sloppy openapi --plan .sloppy\app.plan.json
+```
+
+This example requires V8 for execution. It does not prove runtime request validation,
+Node/npm/package-manager behavior, public alpha readiness, production HTTP edge behavior,
+or performance.

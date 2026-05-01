@@ -157,6 +157,11 @@ cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
 cargo test --manifest-path compiler/Cargo.toml
 ```
 
+Example hardening gates include CTest compile-artifact coverage for the current example
+set and `examples.*.tooling` checks that build artifacts and run Plan-driven
+routes/doctor/audit/capabilities/OpenAPI commands over representative examples. V8-gated
+example execution remains separate from the default lane.
+
 For compiler-module changes, the Rust gates must cover both the CLI and the library API.
 COMPILER-30.A adds fixture harness coverage for current artifacts, diagnostics, source-map
 goldens, and staged generated-artifact hygiene. Passing those tests preserves current

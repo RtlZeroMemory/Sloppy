@@ -107,6 +107,12 @@ service tokens when `dataProviders[].service` is represented.
 `sloppyc` and then enter this same artifact-backed app-host path. They do not make the
 native app host discover routes or providers from source at runtime.
 
+FRAMEWORK-01.F adds executable/source-input examples for the current app-host path:
+`examples/hello-minimal`, `examples/users-api-sqlite`, `examples/configured-api`,
+`examples/modules-api`, and `examples/validation-errors`. They are still compiler-owned
+source inputs that become classic artifacts before the app host starts; the native app host
+does not inspect source files at runtime.
+
 MAIN1-10 adds a native capability registry that future provider bridge calls can receive
 from the parsed plan. The registry is immutable after startup and has no global mutable
 state. It can deny database access before provider work when a boundary supplies token,
@@ -124,7 +130,7 @@ the bootstrap app host emit plans, activates services, opens providers, implemen
 enforces provider/capability access.
 
 Controllers, decorators, constructor injection, full DI, implicit object-to-JSON responses,
-and source-input public examples remain deferred until the corresponding issues land.
+and public-alpha example docs remain deferred until the corresponding issues land.
 
 ## Ownership/Lifetime Rules
 
