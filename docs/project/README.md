@@ -50,4 +50,14 @@ Do not include `.git/`, `build/`, `compiler/target/`, or other generated artifac
 - `docs/project/post-core-mvp-boundary-audit.md` records V8/libuv/provider/HTTP boundary
   findings.
 - `docs/project/post-core-mvp-next-roadmap.md` proposes the next wave. It is proposal-only;
-  create new GitHub EPICs only after owner approval.
+  the owner-approved post-Core issue wave is now mapped in
+  `docs/project/post-core-next-wave-issue-map.md`.
+- `docs/project/framework-app-layer-roadmap.md` records the FRAMEWORK-01 source of truth.
+- `docs/project/source-input-run-dev-loop-plan.md` records the reused source-input/dev-loop
+  plan for #259/#302 and #316/#345-#349.
+- `docs/project/strong-plan-strategic-layer-plan.md` records the reused Strong Plan plan
+  for #318/#355-#359.
+- `docs/project/http-post-mvp-transport-plan.md` records the HTTP-25 post-MVP transport
+  plan.
+- `docs/project/post-core-immediate-hardening-plan.md` records the HARDEN-01 and reused
+  hardening issue map.

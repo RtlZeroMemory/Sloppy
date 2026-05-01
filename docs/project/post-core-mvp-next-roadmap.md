@@ -1,7 +1,7 @@
 # Post-Core MVP Next Roadmap Proposal
 
-Status: proposal only. Do not create GitHub EPICs from this document without owner
-approval.
+Status: owner-approved planning wave created on 2026-05-01. The issue mapping source of
+truth is `docs/project/post-core-next-wave-issue-map.md`.
 
 ## 1. Core MVP Status
 
@@ -22,38 +22,33 @@ approval.
 
 ### Track A - Framework/App Layer
 
-Possible EPICs:
+Created/reused issues:
 
-- configuration system completion;
-- services/DI completion;
-- request binding and validation;
-- result/response model completion;
-- Plan-driven OpenAPI;
-- source-input run/dev loop;
-- examples hardening.
+- #432 FRAMEWORK-01 plus #435-#440 for framework architecture, configuration,
+  request binding, validation, Results, and examples hardening;
+- #259/#302 and #316/#345-#349 for source-input run/dev loop;
+- #318/#355-#359 for Plan-driven OpenAPI/doctor foundations.
 
 ### Track B - HTTP Post-MVP Transport
 
-Possible EPICs:
+Created issues:
 
-- HTTP/1.1 keep-alive and sequential request loop;
-- idle timeout and max requests per connection;
-- chunked request decoding;
-- streaming response writer;
-- TLS and reverse proxy awareness later;
-- WebSockets later;
-- HTTP/2 research/implementation later.
+- #433 HTTP-25 plus #441-#446 for keep-alive, idle/max request limits, sequential
+  request lifecycle reset, chunked request decoding, streaming response writer, and
+  stress/conformance.
+
+Later only: TLS/reverse proxy awareness, WebSockets, HTTP/2, and HTTP/3 research.
 
 ### Track C - Strong Plan Strategic Layer
 
-Possible EPICs:
+Reused issues:
 
-- typed Plan graph model;
-- route/body/provider/capability/response-shape graph;
-- Plan-driven validation/audit/doctor;
-- Plan-driven OpenAPI;
-- future native JSON serialization/fast-path candidates;
-- multi-isolate/route partitioning later as research.
+- #318 Strong Plan strategic layer;
+- #355 typed Plan graph model;
+- #356 route/body/provider/capability/response-shape metadata;
+- #357 Plan validation and startup diagnostics;
+- #358 Plan doctor/audit CLI and OpenAPI hooks;
+- #359 future fast-path candidate registry, no implementation.
 
 ### Track D - Provider Expansion Later
 
@@ -85,3 +80,5 @@ Possible EPICs:
 4. Plan-driven OpenAPI/doctor.
 5. HTTP keep-alive/streaming.
 6. Provider expansion later.
+
+The concrete issue map is `docs/project/post-core-next-wave-issue-map.md`.

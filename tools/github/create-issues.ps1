@@ -103,10 +103,11 @@ function Get-IssueBody {
     $qualityGates = if ($null -ne $Item.qualityGates) { @($Item.qualityGates) } else { @("Read AGENTS.md and relevant source docs before editing.", "Run available checks before claiming completion.", "Report commands honestly, including commands not run.", "No generated/build artifacts staged.", "No OS APIs outside src/platform/*.", "No V8 types outside src/engine/v8/*.", "No raw native pointers exposed to JS.") }
     $acceptance = if ($null -ne $Item.acceptanceCriteria) { @($Item.acceptanceCriteria) } else { @("The issue scope is implemented or documented as spec-only.", "Tests/checks pass or failures are reported honestly.", "Docs/ADRs are updated if behavior or architecture changes.", "The resulting PR is a bounded coherent review unit.") }
     $reviewerChecklist = if ($null -ne $Item.reviewerChecklist) { @($Item.reviewerChecklist) } else { @("Check source-doc compliance.", "Check non-goals and scope creep.", "Check tests and quality gates.", "Check platform/V8/C/Rust/JS standards boundaries as applicable.") }
+    $dependencyNotes = if ($null -ne $Item.dependencyNotes) { @($Item.dependencyNotes) } else { @() }
     $suggestedPrSize = if (-not [string]::IsNullOrWhiteSpace([string]$Item.suggestedPrSize)) { @($Item.suggestedPrSize) } else { @("size:bounded") }
     $recommendedPrGrouping = if ($null -ne $Item.recommendedPrGrouping) { @($Item.recommendedPrGrouping) } else { @("Prefer grouping this issue with related tasks into a mid-large bounded-context PR when ownership, docs, tests, and risk are shared.") }
 
-    foreach ($section in @(
+    $sections = @(
         @("Milestone", @($Item.milestone)),
         @("Source Docs", $sourceDocs),
         @("Goal", $goal),
@@ -118,12 +119,16 @@ function Get-IssueBody {
         @("Quality Gates", $qualityGates),
         @("Acceptance Criteria", $acceptance),
         @("Reviewer Checklist", $reviewerChecklist),
+        @("Dependency Notes", $dependencyNotes),
         @("Suggested Labels", @($Item.labels)),
         @("Suggested PR Size", $suggestedPrSize),
         @("Recommended PR Grouping", $recommendedPrGrouping)
-    )) {
+    )
+
+    foreach ($section in $sections) {
         $heading = $section[0]
         $values = @($section[1])
+        if ($values.Count -eq 0) { continue }
         $lines.Add("## $heading") | Out-Null
         if ($values.Count -eq 1) {
             $lines.Add([string]$values[0]) | Out-Null

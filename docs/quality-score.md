@@ -32,3 +32,8 @@ V8, package, live-provider, stress, and benchmark evidence must be reported sepa
 Passing default Windows/Linux/macOS CI does not prove V8 execution, live database access,
 package execution, public alpha readiness, production HTTP behavior, or benchmark claims.
 Those claims require their named gates and PR evidence.
+
+The next owner-approved planning wave is mapped in
+`docs/project/post-core-next-wave-issue-map.md`. It keeps source-input run, Strong Plan,
+framework ergonomics, hardening, and HTTP keep-alive/streaming as separate evidence lanes;
+it does not change public-alpha or production HTTP status.
