@@ -317,10 +317,11 @@ COMPILER-30 needs layered tests:
 - fixture/golden tests for supported artifacts and diagnostics;
 - invalid fixtures for dynamic routes, unsupported imports, capability ambiguity, recursion,
   missing providers, and runtime-only misuse;
-- realistic app fixtures for direct handlers, function modules, helper functions, imported
-  helpers, repository/factory functions, object-literal methods, simple class instances,
-  service-style patterns where statically resolvable, custom validation partial metadata,
-  custom response partial metadata, config, schemas, and provider use;
+- realistic app fixtures for direct handlers, function modules, helper functions, partial
+  completeness, config, schemas, provider use, and invalid provider/effect shapes; imported
+  helpers, repository/factory functions, object-literal methods, simple class instances, and
+  non-database provider adapters remain deferred until their static inference rules are
+  implemented;
 - compatibility goldens for hello, users, modules, config, validation, and Plan versioning.
 
 Tests must verify documented intent, not accidental implementation behavior. Generated

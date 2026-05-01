@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;gCAkBqB;AACrB;AACA;AACA",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst builder = Sloppy.createBuilder();\nbuilder.capabilities.addDatabase(\"data.analytics\", {\n  provider: \"postgres\",\n  access: \"read\",\n  database: \"analytics\"\n});\nbuilder.capabilities.addDatabase(\"data.reporting\", {\n  provider: \"sqlserver\",\n  access: \"readwrite\",\n  database: \"reporting\"\n});\n\nconst app = builder.build();\nconst analytics = app.provider(\"postgres:analytics\");\nconst reporting = app.provider(\"sqlserver:reporting\");\n\napp.get(\"/metadata\", () => Results.json({\n  analytics: \"postgres\",\n  reporting: \"sqlserver\"\n}));\n\nexport default app;\n"
+  ],
+  "version": 3
+}

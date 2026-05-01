@@ -56,10 +56,14 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   contracts into named modules while keeping artifact extraction compatibility in
   `sloppyc.rs`; COMPILER-30.D covers Minimal API route methods, nested literal route
   groups, function-module route contributions, duplicate route validation, and module
-  source locations. COMPILER-30.E covers supported SQLite provider registration/lookup
-  metadata, config reads, schema declarations, request bindings, and preliminary
-  `Results.*` response metadata. Effect/capability inference, validation/completeness, and
-  strong Plan logic still need later task slices. Cache reuse, broader async source shapes,
+  source locations. COMPILER-30.E covers supported provider registration/lookup metadata for
+  the current database family, config reads, schema declarations, request bindings, and
+  preliminary `Results.*` response metadata. COMPILER-30.F/G covers provider-kind-aware
+  database effect/capability inference for direct provider calls and same-file helpers.
+  COMPILER-30.H/I covers validation/completeness and strong Plan metadata. COMPILER-30.J
+  adds the broad fixture/golden suite for realistic supported apps, partial completeness,
+  multi-provider database metadata, and invalid provider/effect shapes. Cache reuse,
+  broader async source shapes,
   dispatch/runtime behavior, and provider/capability enforcement must not be hidden inside
   compiler planning.
 - Full scalable async runtime beyond ENGINE-03: ENGINE-12.AB adds the first bounded

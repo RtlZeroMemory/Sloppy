@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/non-sqlite-provider-bridge/input.js:13:1: SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE: postgres provider-backed handlers are not executable by the compiler-generated runtime bridge yet
+  --> <compiler>/tests/fixtures/non-sqlite-provider-bridge/input.js:13:1
+   |
+13 | app.get("/analytics", () => Results.json(analytics.query("select id from events", [])));
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+hint: Provider handle 'analytics' is recognized for Plan metadata, but only the SQLite generated bridge is executable in this compiler slice.

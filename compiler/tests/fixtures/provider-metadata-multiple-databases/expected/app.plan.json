@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:5e01c606fb55cabc218cb7718eb5b660924be1412235cdb1225e21158ebd7d95",
+    "hash": "sha256:676beb48213ade5b941e86d40a5f18c885582c74e1f02be45ffc3c4aa9222182",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -8,8 +8,14 @@
     {
       "access": "read",
       "kind": "database",
-      "provider": "data.main",
-      "token": "data.main"
+      "provider": "data.analytics",
+      "token": "data.analytics"
+    },
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.reporting",
+      "token": "data.reporting"
     }
   ],
   "compilerVersion": "sloppyc-0.8.0-engine-02",
@@ -75,24 +81,26 @@
         "value": 30000
       }
     ],
-    "providers": [
-      {
-        "name": "main",
-        "prefix": "Sloppy:Providers:sqlite:main",
-        "provider": "sqlite",
-        "source": "inline"
-      }
-    ]
+    "providers": []
   },
   "dataProviders": [
     {
-      "capability": "data.main",
+      "capability": "data.analytics",
       "capabilityKind": "database",
-      "database": ":memory:",
-      "provider": "sqlite",
-      "providerKind": "sqlite",
+      "database": "analytics",
+      "provider": "postgres",
+      "providerKind": "postgres",
       "service": null,
-      "token": "data.main"
+      "token": "data.analytics"
+    },
+    {
+      "capability": "data.reporting",
+      "capabilityKind": "database",
+      "database": "reporting",
+      "provider": "sqlserver",
+      "providerKind": "sqlserver",
+      "service": null,
+      "token": "data.reporting"
     }
   ],
   "features": {
@@ -106,12 +114,12 @@
   "handlers": [
     {
       "async": false,
-      "displayName": "GET /users",
+      "displayName": "GET /metadata",
       "exportName": "__sloppy_handler_1",
       "id": 1,
       "source": {
-        "column": 19,
-        "line": 12,
+        "column": 22,
+        "line": 19,
         "path": "input.js"
       }
     }
@@ -123,20 +131,10 @@
         "reasons": [],
         "status": "complete"
       },
-      "effects": [
-        {
-          "access": "read",
-          "capabilityKind": "database",
-          "operation": "query",
-          "provider": "data.main",
-          "providerKind": "sqlite",
-          "reason": "db.query"
-        }
-      ],
       "handlerId": 1,
       "method": "GET",
       "name": null,
-      "pattern": "/users",
+      "pattern": "/metadata",
       "response": {
         "helper": "json",
         "kind": "json",
@@ -144,7 +142,7 @@
       },
       "source": {
         "column": 1,
-        "line": 12,
+        "line": 19,
         "path": "input.js"
       }
     }
@@ -153,12 +151,12 @@
   "schemaVersion": 1,
   "sourceFiles": [
     {
-      "hash": "sha256:954ce8d8e0ec24fc5a52dadcdc473ebdf7fe9f82bc3b7c41a769d7c237ebdd5a",
+      "hash": "sha256:21cf75921f19f4f33919cb81845706a39db3d83ec0e288c2605b8b3253a2fe7d",
       "path": "input.js"
     }
   ],
   "sourceMap": {
-    "hash": "sha256:6381559771b977297f88e48555ce978216763c8da0f047586960b7e234df2304",
+    "hash": "sha256:2e6eaea6cb42cbbb476f5cfc1a00beaa0841057a6073313b20fea1006fef71b3",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
@@ -172,7 +170,7 @@
     "evidence": {
       "bindings": false,
       "capabilities": true,
-      "effects": true,
+      "effects": false,
       "providers": true,
       "routes": true,
       "sourceGraph": true

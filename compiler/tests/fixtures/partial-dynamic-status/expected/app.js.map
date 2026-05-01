@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;gCAI8B;AAC9B;AACA",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.get(\"/status/{code:int}\", (ctx) => Results.status(ctx.route.code, {\n  ok: true\n}));\n\nexport default app;\n"
+  ],
+  "version": 3
+}

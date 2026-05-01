@@ -1,21 +1,19 @@
 {
   "bundle": {
-    "hash": "sha256:5e01c606fb55cabc218cb7718eb5b660924be1412235cdb1225e21158ebd7d95",
+    "hash": "sha256:3175afdd7a085426a8025c6638f4d39f38bef19dfe25bc244ba2f4641527d0f4",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
-  "capabilities": [
-    {
-      "access": "read",
-      "kind": "database",
-      "provider": "data.main",
-      "token": "data.main"
-    }
-  ],
+  "capabilities": [],
   "compilerVersion": "sloppyc-0.8.0-engine-02",
   "completeness": {
-    "reasons": [],
-    "status": "complete"
+    "reasons": [
+      {
+        "code": "partial-route",
+        "message": "one or more routes have partial inferred metadata"
+      }
+    ],
+    "status": "partial"
   },
   "configuration": {
     "environment": "Development",
@@ -75,30 +73,13 @@
         "value": 30000
       }
     ],
-    "providers": [
-      {
-        "name": "main",
-        "prefix": "Sloppy:Providers:sqlite:main",
-        "provider": "sqlite",
-        "source": "inline"
-      }
-    ]
+    "providers": []
   },
-  "dataProviders": [
-    {
-      "capability": "data.main",
-      "capabilityKind": "database",
-      "database": ":memory:",
-      "provider": "sqlite",
-      "providerKind": "sqlite",
-      "service": null,
-      "token": "data.main"
-    }
-  ],
+  "dataProviders": [],
   "features": {
     "asyncHandlers": false,
-    "capabilities": true,
-    "dataProviders": true,
+    "capabilities": false,
+    "dataProviders": false,
     "metadataInference": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -106,12 +87,12 @@
   "handlers": [
     {
       "async": false,
-      "displayName": "GET /users",
+      "displayName": "POST /echo",
       "exportName": "__sloppy_handler_1",
       "id": 1,
       "source": {
         "column": 19,
-        "line": 12,
+        "line": 5,
         "path": "input.js"
       }
     }
@@ -119,24 +100,26 @@
   "modules": [],
   "routes": [
     {
-      "completeness": {
-        "reasons": [],
-        "status": "complete"
-      },
-      "effects": [
+      "bindings": [
         {
-          "access": "read",
-          "capabilityKind": "database",
-          "operation": "query",
-          "provider": "data.main",
-          "providerKind": "sqlite",
-          "reason": "db.query"
+          "kind": "body.json",
+          "name": null,
+          "schema": null
         }
       ],
+      "completeness": {
+        "reasons": [
+          {
+            "code": "body-schema-missing",
+            "message": "route reads JSON body data without a declared schema"
+          }
+        ],
+        "status": "partial"
+      },
       "handlerId": 1,
-      "method": "GET",
+      "method": "POST",
       "name": null,
-      "pattern": "/users",
+      "pattern": "/echo",
       "response": {
         "helper": "json",
         "kind": "json",
@@ -144,7 +127,7 @@
       },
       "source": {
         "column": 1,
-        "line": 12,
+        "line": 5,
         "path": "input.js"
       }
     }
@@ -153,12 +136,12 @@
   "schemaVersion": 1,
   "sourceFiles": [
     {
-      "hash": "sha256:954ce8d8e0ec24fc5a52dadcdc473ebdf7fe9f82bc3b7c41a769d7c237ebdd5a",
+      "hash": "sha256:c808b07c59691d5db507b1e062b685ead83e44eb25e587aabe041ecf32589998",
       "path": "input.js"
     }
   ],
   "sourceMap": {
-    "hash": "sha256:6381559771b977297f88e48555ce978216763c8da0f047586960b7e234df2304",
+    "hash": "sha256:f83c3fc470980cd1533451922e1e47e34a4d6c7bb1e478858d9a35ba5f2e81d0",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
@@ -170,10 +153,10 @@
       "unknownRequiredFeatures": "rejected"
     },
     "evidence": {
-      "bindings": false,
-      "capabilities": true,
-      "effects": true,
-      "providers": true,
+      "bindings": true,
+      "capabilities": false,
+      "effects": false,
+      "providers": false,
       "routes": true,
       "sourceGraph": true
     },
