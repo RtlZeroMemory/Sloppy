@@ -69,9 +69,10 @@ ENGINE-19.BC adds first-class CTest registrations for the implemented V8, HTTP, 
 evidence lanes: `conformance.http.default_dispatch`, `conformance.transport.localhost_mvp`,
 `conformance.async.*`, and V8-gated `conformance.v8.*`. These entries run existing
 validated executables under matrix-aligned names. Default gate success now includes the
-HTTP-25.A/B/C sequential keep-alive smoke only; it still does not prove V8 execution,
-package, live-provider, benchmark, chunked decoding, streaming, or production-edge HTTP
-behavior.
+HTTP-25.A/B/C sequential keep-alive smoke plus HTTP-25.D/E bounded chunked request decoding
+and internal/native chunked response writer checks only; it still does not prove V8
+execution, package, live-provider, benchmark, public streaming helpers, SSE/WebSockets/file
+streaming, or production-edge HTTP behavior.
 ENGINE-19.D adds first-class CTest registrations for the implemented SQLite and capability
 evidence lanes: `conformance.sqlite.native_provider`,
 `conformance.capability.native_registry`, `conformance.capability.provider_executor`,

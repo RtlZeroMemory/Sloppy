@@ -989,6 +989,21 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
     connection->stream_final_written = false;
     {
         SlBytes bytes = sl_byte_builder_view(&builder);
+        SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+        if (server == NULL || bytes.length > server->config.max_pending_write_bytes) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_RESPONSE_BACKPRESSURE,
+                SL_STATUS_CAPACITY_EXCEEDED,
+                sl_http_transport_literal("HTTP streaming response exceeded pending write cap",
+                                          sizeof("HTTP streaming response exceeded pending write "
+                                                 "cap") -
+                                              1U),
+                sl_http_transport_literal("stream response head must fit the configured pending "
+                                          "write cap",
+                                          sizeof("stream response head must fit the configured "
+                                                 "pending write cap") -
+                                              1U));
+        }
         connection->response_length = bytes.length;
         return sl_http_transport_start_write_bytes(connection, bytes, out_diag);
     }
@@ -2557,6 +2572,8 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     size_t connections_bytes = 0U;
     size_t platform_connections_bytes = 0U;
     size_t accumulation_capacity = 0U;
+    size_t chunked_wire_body_capacity = 0U;
+    size_t body_accumulation_capacity = 0U;
     size_t accumulation_bytes = 0U;
     size_t request_storage_bytes = 0U;
     size_t read_buffer_bytes = 0U;
@@ -2624,9 +2641,21 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     server->platform_connections = (SlHttpPlatformConnection*)memory;
     server->connection_capacity = server->config.connection_capacity;
 
-    status =
-        sl_checked_add_size(server->config.max_request_head_bytes,
-                            server->backend.options.parse.max_body_length, &accumulation_capacity);
+    status = sl_checked_mul_size(server->backend.options.parse.max_body_length, 8U,
+                                 &chunked_wire_body_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(chunked_wire_body_capacity, 5U, &chunked_wire_body_capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    body_accumulation_capacity =
+        chunked_wire_body_capacity > server->backend.options.parse.max_body_length
+            ? chunked_wire_body_capacity
+            : server->backend.options.parse.max_body_length;
+    status = sl_checked_add_size(server->config.max_request_head_bytes, body_accumulation_capacity,
+                                 &accumulation_capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }

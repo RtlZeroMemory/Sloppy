@@ -890,6 +890,44 @@ static int test_chunked_request_decoding_success_cases(void)
     return 0;
 }
 
+static int test_chunked_request_decoding_allows_bounded_wire_overhead(void)
+{
+    static const char request[] = "POST /tiny HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+                                  "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
+                                  "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
+                                  "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
+                                  "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
+                                  "0\r\n\r\n";
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    ReadyHook hook = {};
+    SlDiag diag = {};
+
+    config = small_config(&hook);
+    config.max_request_head_bytes = 64U;
+    config.parse.max_body_length = 20U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(&server.connections[0],
+                                                             bytes_from_cstr(request), &diag),
+                      SL_STATUS_OK) != 0 ||
+        hook.count != 1U || expect_bytes_equal(hook.body, "aaaaaaaaaaaaaaaaaaaa") != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 433;
+    }
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
 static int test_chunked_request_decoding_rejections(void)
 {
     static const struct
@@ -1285,13 +1323,19 @@ static int test_streaming_response_backpressure_rejection(void)
     SlHttpResponseStreamChunk chunks[1] = {};
     SlDiag diag = {};
 
-    chunks[0].bytes = bytes_from_cstr("too-large");
+    chunks[0].bytes = bytes_from_cstr(
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-"
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-"
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-"
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-"
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-"
+        "large");
     dispatch.response =
         sl_http_response_stream(200U, sl_str_from_cstr("text/plain; charset=utf-8"), chunks, 1U);
     config = small_config(nullptr);
     config.dispatch = dispatch_hook;
     config.dispatch_user = &dispatch;
-    config.max_pending_write_bytes = 4U;
+    config.max_pending_write_bytes = 256U;
 
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
         expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
@@ -2007,6 +2051,10 @@ int main(void)
         return result;
     }
     result = test_chunked_request_decoding_success_cases();
+    if (result != 0) {
+        return result;
+    }
+    result = test_chunked_request_decoding_allows_bounded_wire_overhead();
     if (result != 0) {
         return result;
     }

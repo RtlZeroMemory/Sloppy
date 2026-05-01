@@ -3,7 +3,7 @@
 Status: source of truth for #433 and HTTP-25 tasks. HTTP-25.A/B/C are implemented as a
 bounded sequential keep-alive upgrade. HTTP-25.D/E adds bounded chunked request decoding
 and the first internal chunked streaming response writer; stress/conformance remains the
-#446 follow-up.
+`#446` follow-up.
 
 ## Current HTTP MVP
 
@@ -40,8 +40,9 @@ and the first internal chunked streaming response writer; stress/conformance rem
 ## HTTP-25.D/E Implemented Semantics
 
 - Requests with exactly one `Transfer-Encoding: chunked` header are decoded into the same
-  bounded full-body request storage used by `Content-Length`; there is no JavaScript-visible
-  request streaming API.
+  bounded full-body request storage used by `Content-Length`. The decoded body uses the
+  configured body cap, while raw wire accumulation is separately bounded for the current
+  no-extension chunked subset; there is no JavaScript-visible request streaming API.
 - Chunk size lines accept upper/lowercase hexadecimal byte counts. Invalid sizes, size
   overflow, malformed chunk body delimiters, decoded body overflow, unsupported transfer
   encodings, and `Content-Length` plus `Transfer-Encoding` conflicts fail before dispatch.

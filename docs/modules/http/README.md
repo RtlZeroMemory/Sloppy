@@ -165,11 +165,12 @@ Implemented now:
   cleanly once. Pipelining and concurrent requests on one connection are not supported.
 - HTTP-25.D/E chunked/streaming lifecycle: `Transfer-Encoding: chunked` requests are
   decoded before dispatch into the same bounded body bytes used by `ctx.request.text()` and
-  `ctx.request.json()`. Chunk trailers are rejected. Internal/native streaming responses
-  require stream chunk metadata and payload views to point into request-lifetime storage,
-  copy those views before async writes begin, write `Transfer-Encoding: chunked`, one
-  bounded frame at a time, followed by a final zero chunk; keep-alive resumes only after
-  that final chunk completes.
+  `ctx.request.json()`, with a separate bounded raw-wire accumulation allowance for the
+  current no-extension chunked subset. Chunk trailers are rejected. Internal/native
+  streaming responses require stream chunk metadata and payload views to point into
+  request-lifetime storage, copy those views before async writes begin, write
+  `Transfer-Encoding: chunked`, one bounded frame at a time, followed by a final zero chunk;
+  keep-alive resumes only after that final chunk completes.
 
 Future scope:
 
@@ -676,5 +677,7 @@ Future tests:
 
 ## Open Questions
 
-- Exact timing for starting #433 HTTP-25 implementation.
+- Remaining `#433` HTTP-25 follow-up after A/B/C/D/E is `#446` stress/conformance plus
+  future owner-approved public streaming API work such as `Results.stream`, SSE/WebSockets,
+  or file streaming.
 - Exact future production route table shape.

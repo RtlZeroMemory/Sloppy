@@ -77,8 +77,8 @@ SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
     response.status = status;
     response.kind = SL_HTTP_RESPONSE_STREAM;
     response.content_type = content_type;
-    response.stream_chunks = chunks;
-    response.stream_chunk_count = chunk_count;
+    response.stream_chunks = chunk_count == 0U ? NULL : chunks;
+    response.stream_chunk_count = chunks == NULL ? 0U : chunk_count;
     return response;
 }
 

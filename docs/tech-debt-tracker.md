@@ -180,9 +180,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   lowering, relative imports/function modules, richer source-map diagnostics, and
   watch/dev-loop policy.
 - HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F,
-  ENGINE-24.A/B/C/D/E/F/G, HTTP-25.A/B/C, and the ENGINE-17.E users API proof: redirect
-  helpers, streaming/files, cookies, content negotiation, #444 chunked request decoding,
-  #445 streaming response writing, #446 keep-alive/streaming stress and conformance,
+  ENGINE-24.A/B/C/D/E/F/G, HTTP-25.A/B/C/D/E, and the ENGINE-17.E users API proof: redirect
+  helpers, streaming/files, cookies, content negotiation, #446 keep-alive/streaming stress
+  and conformance,
   graceful drain behavior beyond immediate-cancel/drain-lite transport shutdown, broader
   V8 transport conformance, and production error pages.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
