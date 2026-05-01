@@ -20,11 +20,22 @@ users to use `--artifacts`.
 The desired post-Core workflow is a direct source-input command such as:
 
 ```powershell
-sloppy run app.js
+sloppy run app.ts
+sloppy run
 ```
 
 The command should perform an explicit compiler handoff, produce or reuse artifacts, and
 then run the same artifact path that is already proven.
+
+The default no-argument form uses `sloppy.json` when present:
+
+```json
+{
+  "entry": "app.ts",
+  "outDir": ".sloppy",
+  "environment": "Development"
+}
+```
 
 ## Build/Cache/Artifact Policy
 
@@ -33,6 +44,9 @@ then run the same artifact path that is already proven.
 - Detect stale artifacts before execution.
 - Keep generated artifacts out of source control.
 - Preserve `sloppy run --artifacts` as the explicit debugging and conformance path.
+- Prefer `.sloppy/cache/dev` or a configured artifact cache for source-input development
+  artifacts.
+- Source-input run should land before major example hardening or public-ish docs work.
 
 ## Diagnostics and Source Maps
 
@@ -61,4 +75,4 @@ separate.
 - No Node compatibility.
 - No hot reload unless later scoped.
 - No public alpha docs from source-input alone.
-
+- No full TypeScript typechecker in the first source-input handoff.

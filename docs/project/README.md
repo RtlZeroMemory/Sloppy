@@ -53,6 +53,8 @@ Do not include `.git/`, `build/`, `compiler/target/`, or other generated artifac
   the owner-approved post-Core issue wave is now mapped in
   `docs/project/post-core-next-wave-issue-map.md`.
 - `docs/project/framework-app-layer-roadmap.md` records the FRAMEWORK-01 source of truth.
+- `docs/project/framework-api-shape.md` locks the post-Core framework/API ergonomics and
+  Plan-first design target before implementation.
 - `docs/project/source-input-run-dev-loop-plan.md` records the reused source-input/dev-loop
   plan for #259/#302 and #316/#345-#349.
 - `docs/project/strong-plan-strategic-layer-plan.md` records the reused Strong Plan plan

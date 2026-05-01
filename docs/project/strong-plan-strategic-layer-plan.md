@@ -13,15 +13,29 @@ diagnose, audit, document, and eventually optimize supported apps.
 
 | Graph node | Purpose |
 | --- | --- |
+| App entry | Entrypoint, environment, source-input/cache relationship, and artifact roots. |
+| Modules | Function-module graph, route/provider contributions, and source locations. |
 | Routes | Handler identity, route pattern, source location, and artifact link. |
 | Methods | Supported HTTP methods and dispatch policy. |
 | Body policy | Body size/media limits, parse policy, and binding expectations. |
-| Query/route params | Names, coercion policy, validation hooks, and diagnostic spans. |
+| Query/route/header/body params | Names, coercion policy, validation hooks, and diagnostic spans. |
 | Providers | Provider usage, service tokens, resource policy, and bridge requirements. |
-| Capabilities | Required permissions and explanation paths for denial diagnostics. |
+| Capabilities | Inferred/generated permissions, source locations, and explanation paths for denial diagnostics. |
+| Config keys | Provider-bound and Slop-owned runtime config needed by the app. |
 | Response shapes | Result metadata, status/header/body expectations, and OpenAPI hints. |
 | Diagnostics/source maps | Source mapping and stable diagnostic references. |
 | Examples/OpenAPI metadata | Documentation and schema seed data when explicitly supported. |
+
+## DSL Recognition Boundary
+
+Strong Plan work recognizes the Slop app DSL, not arbitrary JavaScript static analysis.
+Target recognition includes `Sloppy.create()`, `app.use(...)`, `app.useModule(...)`,
+`app.group(...)`, `app.get/post/put/patch/delete(...)`, `ctx.body.json(schema)`,
+`db.query/queryOne/exec/transaction`, `Results.*`, and `schema.*`.
+
+If route, provider, capability, body, config, or response behavior is not Plan-visible, it
+is not part of the optimized/safe Slop framework path. Dynamic patterns must fail with a
+helpful diagnostic or require explicit metadata; no silent unsound inference.
 
 ## Uses
 
@@ -30,6 +44,7 @@ diagnose, audit, document, and eventually optimize supported apps.
 - Plan-driven OpenAPI.
 - Request binding validation.
 - Capability enforcement explanation.
+- Config and provider policy explanation.
 - Future native JSON fast-path candidate identification.
 - Future multi-isolate or route-partitioning research.
 
@@ -48,4 +63,4 @@ diagnose, audit, document, and eventually optimize supported apps.
 - Do not implement native JSON fast paths now.
 - Do not make benchmark claims.
 - Do not make OpenAPI/public-alpha claims before framework metadata and examples are honest.
-
+- Do not attempt full arbitrary JS/TS analysis.

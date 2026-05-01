@@ -123,7 +123,7 @@ EPICs: ENGINE-02.
 Status: ENGINE-02 compiler/Plan PR covers the first large-coherent slice: supported
 method extraction, async-handler metadata emission, minimal SQLite capability/provider
 metadata, deterministic artifacts, source-map artifacts, and rejected-shape fixtures.
-Source-input `sloppy run app.js`, module/service graph extraction, and runtime execution of
+Source-input `sloppy run app.ts` / `sloppy run <source>`, module/service graph extraction, and runtime execution of
 async/non-GET/provider behavior remain later layers.
 
 Tasks:
@@ -135,7 +135,7 @@ Tasks:
 - capability/provider Plan metadata emission;
 - real handler-line source map output;
 - deterministic Plan metadata/hashes;
-- #302 source-input `sloppy run app.js` compiler/CLI handoff, cache key, stale-artifact,
+- #302 source-input `sloppy run app.ts` / `sloppy run <source>` compiler/CLI handoff, cache key, stale-artifact,
   diagnostics, and cleanup policy;
 - rejected-shape fixture matrix.
 

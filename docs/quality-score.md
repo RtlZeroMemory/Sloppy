@@ -37,3 +37,8 @@ The next owner-approved planning wave is mapped in
 `docs/project/post-core-next-wave-issue-map.md`. It keeps source-input run, Strong Plan,
 framework ergonomics, hardening, and HTTP keep-alive/streaming as separate evidence lanes;
 it does not change public-alpha or production HTTP status.
+
+Framework/API ergonomics are now locked in `docs/project/framework-api-shape.md` as a
+design target: Minimal API first, function modules first, inferred capabilities by
+default, layered Plan-visible config, explicit request binding, explicit `Results.*`, and
+Plan-first DSL extraction. This design lock is not implementation evidence.

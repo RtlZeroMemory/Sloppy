@@ -10,6 +10,10 @@ ENGINE-01 locks the concrete framework contract for implementation handoff in
 `docs/project/engine-framework-contract.md`. That contract is the immediate source of truth
 for ENGINE-02 through ENGINE-05 decisions around JS app shape, Results, request context,
 async/microtasks, cancellation, HTTP, SQLite, capabilities, and deferred behavior.
+The post-Core framework ergonomics target is locked in
+`docs/project/framework-api-shape.md`; it supersedes older aspirational examples where they
+conflict with Minimal API `app.get/post/...`, function modules, explicit provider imports,
+inferred capabilities, layered config, and Plan-first DSL extraction.
 
 ## 1. Runtime Philosophy
 
@@ -105,7 +109,7 @@ validated artifact directory.
 Optional future:
 
 ```powershell
-sloppy run app.js
+sloppy run app.ts
 ```
 
 That shortcut is allowed only if a deliberate source-input handoff is implemented:
@@ -121,16 +125,16 @@ import { Sloppy, Results, data } from "sloppy";
 
 const app = Sloppy.create();
 
-app.mapGet("/users", async ctx => {
+app.get("/users", async ctx => {
   ctx.signal.throwIfAborted();
   return Results.json(await ctx.services.users.list());
 });
 
-app.mapGet("/users/{id:int}", async ctx => {
+app.get("/users/{id:int}", async ctx => {
   return Results.json(await ctx.services.users.get(ctx.route.id));
 });
 
-app.mapPost("/users", async ctx => {
+app.post("/users", async ctx => {
   const body = await ctx.request.json();
   return Results.created(`/users/${body.id}`, body);
 });
