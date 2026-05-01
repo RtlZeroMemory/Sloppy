@@ -19,6 +19,7 @@
 #include "sloppy/http.h"
 #include "sloppy/http_dispatch.h"
 #include "sloppy/http_response.h"
+#include "sloppy/http_transport.h"
 #include "sloppy/plan.h"
 #include "sloppy/platform.h"
 #include "sloppy/route.h"
@@ -29,7 +30,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <uv.h>
 #include <yyjson.h>
 
 #define SL_CLI_MAX_ROUTES 128U
@@ -49,6 +49,7 @@
 #define SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS 16U
 #define SL_RUN_REQUEST_MAX_BYTES 8192U
 #define SL_RUN_RESPONSE_MAX_BYTES 16384U
+#define SL_RUN_TRANSPORT_ARENA_BYTES 524288U
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
@@ -1021,29 +1022,6 @@ typedef struct SlRunApp
     SlHttpRouteTable route_table;
 } SlRunApp;
 
-typedef struct SlRunServer SlRunServer;
-
-typedef struct SlRunClient
-{
-    uv_tcp_t handle;
-    SlRunServer* server;
-    char request[SL_RUN_REQUEST_MAX_BYTES];
-    size_t request_length;
-    char response[SL_RUN_RESPONSE_MAX_BYTES];
-    uv_write_t write_request;
-    bool active;
-} SlRunClient;
-
-struct SlRunServer
-{
-    SlRunApp* app;
-    uv_loop_t loop;
-    uv_tcp_t listener;
-    unsigned char request_arena_storage[SL_RUN_ARENA_BYTES];
-    unsigned char dispatch_storage[SL_RUN_ARENA_BYTES];
-    SlRunClient clients[SL_RUN_MAX_CLIENTS];
-};
-
 static bool sl_run_span_ends_with(SlCliSpan span, const char* suffix)
 {
     size_t suffix_length = strlen(suffix);
@@ -1840,9 +1818,7 @@ typedef struct SlRunDispatchContext
     SlRunApp* app;
     SlArena* arena;
     const SlHttpRequestHead* request;
-    char* response;
-    size_t response_capacity;
-    int response_length;
+    SlHttpResponse* response;
 } SlRunDispatchContext;
 
 static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_scope, void* user,
@@ -1850,7 +1826,6 @@ static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_sc
 {
     SlRunDispatchContext* context = (SlRunDispatchContext*)user;
     SlEngineResult result = {0};
-    SlBytes response_bytes = {0};
     SlStatus status;
 
     /* The scope is represented by the callback boundary; this slice registers no cleanups here. */
@@ -1865,14 +1840,68 @@ static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_sc
         return status;
     }
 
-    status = sl_http_response_write(&result.response, (unsigned char*)context->response,
-                                    context->response_capacity, &response_bytes);
-    if (!sl_status_is_ok(status) || response_bytes.length > (size_t)INT32_MAX) {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    if (context->response == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *context->response = result.response;
+    return sl_status_ok();
+}
+
+static SlStatus sl_run_dispatch_response_with_storage(SlRunApp* app,
+                                                      const SlHttpRequestHead* request,
+                                                      SlArena* dispatch_arena,
+                                                      SlHttpResponse* out_response,
+                                                      SlDiag* out_diag)
+{
+    SlScopeCleanup request_cleanups[SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS];
+    SlRunDispatchContext dispatch_context = {0};
+
+    if (app == NULL || request == NULL || dispatch_arena == NULL || out_response == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    context->response_length = (int)response_bytes.length;
-    return sl_status_ok();
+    dispatch_context.app = app;
+    dispatch_context.arena = dispatch_arena;
+    dispatch_context.request = request;
+    dispatch_context.response = out_response;
+
+    return sl_app_request_scope_execute(
+        request_cleanups, sizeof(request_cleanups) / sizeof(request_cleanups[0]),
+        sl_run_dispatch_with_request_scope, &dispatch_context, out_diag);
+}
+
+static bool sl_run_dispatch_failure_is_cli_mapped(SlStatus status, const SlDiag* diag)
+{
+    if (diag == NULL) {
+        return false;
+    }
+
+    if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
+        (diag->code == SL_DIAG_HTTP_UNSUPPORTED_METHOD ||
+         diag->code == SL_DIAG_HTTP_UNSUPPORTED_BODY ||
+         diag->code == SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE))
+    {
+        return true;
+    }
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED &&
+        diag->code == SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        return true;
+    }
+    if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT &&
+        diag->code == SL_DIAG_MALFORMED_JSON)
+    {
+        return true;
+    }
+    return sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
+           diag->code == SL_DIAG_HTTP_ROUTE_NOT_FOUND;
+}
+
+static SlStatus sl_run_dispatch_transport_status(SlStatus status, const SlDiag* diag)
+{
+    return sl_run_dispatch_failure_is_cli_mapped(status, diag)
+               ? status
+               : sl_status_from_code(SL_STATUS_INTERNAL);
 }
 
 static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestHead* request,
@@ -1881,8 +1910,8 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
                                              size_t dispatch_storage_size)
 {
     SlArena dispatch_arena = {0};
-    SlScopeCleanup request_cleanups[SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS];
-    SlRunDispatchContext dispatch_context = {0};
+    SlHttpResponse result = {0};
+    SlBytes response_bytes = {0};
     SlDiag diag = {0};
     SlStatus status;
 
@@ -1892,18 +1921,14 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
         return -1;
     }
 
-    dispatch_context.app = app;
-    dispatch_context.arena = &dispatch_arena;
-    dispatch_context.request = request;
-    dispatch_context.response = response;
-    dispatch_context.response_capacity = response_capacity;
-    dispatch_context.response_length = -1;
-
-    status = sl_app_request_scope_execute(
-        request_cleanups, sizeof(request_cleanups) / sizeof(request_cleanups[0]),
-        sl_run_dispatch_with_request_scope, &dispatch_context, &diag);
+    status = sl_run_dispatch_response_with_storage(app, request, &dispatch_arena, &result, &diag);
     if (sl_status_is_ok(status)) {
-        return dispatch_context.response_length;
+        status = sl_http_response_write(&result, (unsigned char*)response, response_capacity,
+                                        &response_bytes);
+        if (!sl_status_is_ok(status) || response_bytes.length > (size_t)INT32_MAX) {
+            return -1;
+        }
+        return (int)response_bytes.length;
     }
 
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
@@ -1996,468 +2021,91 @@ static int sl_run_once(SlRunApp* app, const char* method, const char* target)
     return 0;
 }
 
-static bool sl_run_find_request_head_end(const char* request, size_t length, size_t* out_head_end)
+static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection, SlArena* arena,
+                                          const SlHttpRequestLifecycle* request,
+                                          SlHttpResponse* out_response, SlDiag* out_diag,
+                                          void* user)
 {
-    size_t index = 0U;
-
-    if (out_head_end != NULL) {
-        *out_head_end = 0U;
-    }
-    if (request == NULL || out_head_end == NULL || length < 4U) {
-        return false;
-    }
-
-    for (index = 3U; index < length; index += 1U) {
-        if (request[index - 3U] == '\r' && request[index - 2U] == '\n' &&
-            request[index - 1U] == '\r' && request[index] == '\n')
-        {
-            *out_head_end = index + 1U;
-            return true;
-        }
-    }
-
-    return false;
-}
-
-static void sl_run_client_close_cb(uv_handle_t* handle)
-{
-    SlRunClient* client = (SlRunClient*)handle->data;
-
-    if (client != NULL) {
-        client->active = false;
-        client->request_length = 0U;
-    }
-}
-
-static void sl_run_client_write_cb(uv_write_t* request, int status)
-{
-    SlRunClient* client = (SlRunClient*)request->data;
-
-    (void)status;
-    if (client != NULL) {
-        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
-    }
-}
-
-static void sl_run_client_alloc_cb(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf)
-{
-    SlRunClient* client = (SlRunClient*)handle->data;
-    size_t remaining = 0U;
-
-    (void)suggested_size;
-    if (client == NULL || client->request_length >= sizeof(client->request)) {
-        *buf = uv_buf_init(NULL, 0U);
-        return;
-    }
-
-    remaining = sizeof(client->request) - client->request_length;
-    *buf = uv_buf_init(client->request + client->request_length, (unsigned int)remaining);
-}
-
-static int sl_run_ascii_lower(int ch)
-{
-    if (ch >= 'A' && ch <= 'Z') {
-        return ch - 'A' + 'a';
-    }
-    return ch;
-}
-
-static bool sl_run_header_name_equal(const char* ptr, size_t length, const char* expected)
-{
-    size_t index = 0U;
-
-    if (ptr == NULL || expected == NULL) {
-        return false;
-    }
-
-    while (length > 0U && (ptr[length - 1U] == ' ' || ptr[length - 1U] == '\t')) {
-        length -= 1U;
-    }
-
-    while (index < length && expected[index] != '\0') {
-        if (sl_run_ascii_lower((unsigned char)ptr[index]) !=
-            sl_run_ascii_lower((unsigned char)expected[index]))
-        {
-            return false;
-        }
-        index += 1U;
-    }
-
-    return index == length && expected[index] == '\0';
-}
-
-static bool sl_run_parse_content_length_value(const char* ptr, size_t length, size_t* out_value)
-{
-    size_t index = 0U;
-    size_t value = 0U;
-    bool saw_digit = false;
-
-    if (out_value != NULL) {
-        *out_value = 0U;
-    }
-    if (ptr == NULL || out_value == NULL) {
-        return false;
-    }
-
-    while (index < length && (ptr[index] == ' ' || ptr[index] == '\t')) {
-        index += 1U;
-    }
-
-    while (index < length && ptr[index] >= '0' && ptr[index] <= '9') {
-        size_t digit = (size_t)(ptr[index] - '0');
-        if (value > (SIZE_MAX - digit) / 10U) {
-            return false;
-        }
-        value = (value * 10U) + digit;
-        saw_digit = true;
-        index += 1U;
-    }
-
-    while (index < length && (ptr[index] == ' ' || ptr[index] == '\t')) {
-        index += 1U;
-    }
-
-    *out_value = value;
-    return saw_digit && index == length;
-}
-
-static bool sl_run_request_body_info(const char* request, size_t head_end,
-                                     size_t* out_content_length, bool* out_transfer_encoding,
-                                     bool* out_invalid)
-{
-    size_t line_start = 0U;
-    size_t line_end = 0U;
-    bool saw_content_length = false;
-
-    if (out_content_length != NULL) {
-        *out_content_length = 0U;
-    }
-    if (out_transfer_encoding != NULL) {
-        *out_transfer_encoding = false;
-    }
-    if (out_invalid != NULL) {
-        *out_invalid = false;
-    }
-
-    if (request == NULL || out_content_length == NULL || out_transfer_encoding == NULL ||
-        out_invalid == NULL)
-    {
-        return false;
-    }
-
-    while (line_end + 1U < head_end &&
-           !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
-    {
-        line_end += 1U;
-    }
-    if (line_end + 1U >= head_end) {
-        *out_invalid = true;
-        return false;
-    }
-
-    line_start = line_end + 2U;
-    while (line_start + 1U < head_end) {
-        size_t colon = 0U;
-        line_end = line_start;
-        while (line_end + 1U < head_end &&
-               !(request[line_end] == '\r' && request[line_end + 1U] == '\n'))
-        {
-            line_end += 1U;
-        }
-        if (line_end + 1U >= head_end) {
-            *out_invalid = true;
-            return false;
-        }
-        if (line_end == line_start) {
-            return true;
-        }
-
-        while (colon < line_end - line_start && request[line_start + colon] != ':') {
-            colon += 1U;
-        }
-        if (colon == line_end - line_start) {
-            *out_invalid = true;
-            return false;
-        }
-
-        if (sl_run_header_name_equal(request + line_start, colon, "Transfer-Encoding")) {
-            *out_transfer_encoding = true;
-        }
-        if (sl_run_header_name_equal(request + line_start, colon, "Content-Length")) {
-            size_t value = 0U;
-            if (saw_content_length ||
-                !sl_run_parse_content_length_value(request + line_start + colon + 1U,
-                                                   line_end - line_start - colon - 1U, &value))
-            {
-                *out_invalid = true;
-                return false;
-            }
-            saw_content_length = true;
-            *out_content_length = value;
-        }
-        line_start = line_end + 2U;
-    }
-
-    *out_invalid = true;
-    return false;
-}
-
-typedef enum SlRunReadState
-{
-    SL_RUN_READ_WAIT = 0,
-    SL_RUN_READ_RESPONDED = 1,
-    SL_RUN_READ_READY = 2
-} SlRunReadState;
-
-static bool sl_run_client_write_text_response(SlRunClient* client, uv_stream_t* stream,
-                                              unsigned status, SlStr body)
-{
-    int response_length;
-    uv_buf_t response_buf;
-
-    if (client == NULL || stream == NULL) {
-        return false;
-    }
-
-    response_length = sl_run_write_response(client->response, sizeof(client->response), status,
-                                            "text/plain; charset=utf-8", body);
-    if (response_length < 0) {
-        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
-        return false;
-    }
-
-    response_buf = uv_buf_init(client->response, (unsigned int)response_length);
-    client->write_request.data = client;
-    (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
-    return true;
-}
-
-static SlRunReadState sl_run_client_request_read_state(SlRunClient* client, uv_stream_t* stream,
-                                                       size_t head_end, size_t* out_complete_length)
-{
-    size_t content_length = 0U;
-    bool transfer_encoding = false;
-    bool invalid_body_headers = false;
-
-    if (out_complete_length != NULL) {
-        *out_complete_length = 0U;
-    }
-    if (client == NULL || stream == NULL || out_complete_length == NULL) {
-        return SL_RUN_READ_RESPONDED;
-    }
-
-    if (!sl_run_request_body_info(client->request, head_end, &content_length, &transfer_encoding,
-                                  &invalid_body_headers) ||
-        invalid_body_headers)
-    {
-        (void)sl_run_client_write_text_response(client, stream, 400U,
-                                                sl_str_from_cstr("Malformed HTTP request\n"));
-        return SL_RUN_READ_RESPONDED;
-    }
-
-    if (transfer_encoding) {
-        (void)sl_run_client_write_text_response(
-            client, stream, 501U, sl_str_from_cstr("Request body framing is not supported\n"));
-        return SL_RUN_READ_RESPONDED;
-    }
-
-    if (content_length > SL_HTTP_DEFAULT_MAX_BODY_LENGTH ||
-        content_length > sizeof(client->request) - head_end)
-    {
-        (void)sl_run_client_write_text_response(client, stream, 413U,
-                                                sl_str_from_cstr("Payload Too Large\n"));
-        return SL_RUN_READ_RESPONDED;
-    }
-
-    *out_complete_length = head_end + content_length;
-    if (client->request_length > *out_complete_length) {
-        (void)sl_run_client_write_text_response(client, stream, 400U,
-                                                sl_str_from_cstr("Malformed HTTP request\n"));
-        return SL_RUN_READ_RESPONDED;
-    }
-    return client->request_length < *out_complete_length ? SL_RUN_READ_WAIT : SL_RUN_READ_READY;
-}
-
-static int sl_run_client_dispatch_complete_request(SlRunClient* client, size_t complete_length)
-{
-    SlArena request_arena = {0};
-    SlHttpRequestHead request = {0};
-    SlDiag diag = {0};
+    SlRunApp* app = (SlRunApp*)user;
     SlStatus status;
 
-    if (client == NULL || client->server == NULL) {
-        return -1;
+    (void)connection;
+    if (app == NULL || arena == NULL || request == NULL || out_response == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (!sl_status_is_ok(sl_arena_init(&request_arena, client->server->request_arena_storage,
-                                       sizeof(client->server->request_arena_storage))))
-    {
-        return -1;
-    }
-
-    status = sl_http_parse_request_head(
-        &request_arena, sl_bytes_from_parts((const unsigned char*)client->request, complete_length),
-        NULL, &request, &diag);
-    if (sl_status_is_ok(status)) {
-        return sl_run_dispatch_head_with_storage(
-            client->server->app, &request, client->response, sizeof(client->response),
-            client->server->dispatch_storage, sizeof(client->server->dispatch_storage));
-    }
-
-    return sl_run_write_response(
-        client->response, sizeof(client->response),
-        (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED ||
-         diag.code == SL_DIAG_HTTP_BODY_LIMIT || diag.code == SL_DIAG_HTTP_HEADER_LIMIT)
-            ? 413U
-            : 400U,
-        "text/plain; charset=utf-8", sl_str_from_cstr("Malformed HTTP request\n"));
+    status =
+        sl_run_dispatch_response_with_storage(app, &request->head, arena, out_response, out_diag);
+    return sl_status_is_ok(status) ? status : sl_run_dispatch_transport_status(status, out_diag);
 }
 
-static void sl_run_client_write_buffer_or_close(SlRunClient* client, uv_stream_t* stream,
-                                                int response_length)
+static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t port, SlRunApp* app)
 {
-    uv_buf_t response_buf;
+    SlHttpTransportConfig config = {0};
 
-    if (client == NULL || stream == NULL) {
-        return;
-    }
-    if (response_length < 0) {
-        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
-        return;
-    }
-
-    response_buf = uv_buf_init(client->response, (unsigned int)response_length);
-    client->write_request.data = client;
-    (void)uv_write(&client->write_request, stream, &response_buf, 1U, sl_run_client_write_cb);
-}
-
-static void sl_run_client_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buf)
-{
-    SlRunClient* client = (SlRunClient*)stream->data;
-    int response_length = 0;
-    size_t head_end = 0U;
-    size_t complete_length = 0U;
-    SlRunReadState read_state = SL_RUN_READ_WAIT;
-
-    (void)buf;
-    if (client == NULL) {
-        return;
-    }
-
-    if (nread < 0) {
-        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
-        return;
-    }
-
-    client->request_length += (size_t)nread;
-    if (!sl_run_find_request_head_end(client->request, client->request_length, &head_end)) {
-        if (client->request_length >= sizeof(client->request)) {
-            (void)sl_run_client_write_text_response(client, stream, 413U,
-                                                    sl_str_from_cstr("Request head too large\n"));
-        }
-        return;
-    }
-
-    read_state = sl_run_client_request_read_state(client, stream, head_end, &complete_length);
-    if (read_state != SL_RUN_READ_READY) {
-        return;
-    }
-
-    response_length = sl_run_client_dispatch_complete_request(client, complete_length);
-    sl_run_client_write_buffer_or_close(client, stream, response_length);
-}
-
-static SlRunClient* sl_run_server_acquire_client(SlRunServer* server)
-{
-    size_t index = 0U;
-
-    for (index = 0U; index < SL_RUN_MAX_CLIENTS; index += 1U) {
-        if (!server->clients[index].active) {
-            server->clients[index] = (SlRunClient){0};
-            server->clients[index].active = true;
-            server->clients[index].server = server;
-            return &server->clients[index];
-        }
-    }
-
-    return NULL;
-}
-
-static void sl_run_server_connection_cb(uv_stream_t* listener, int status)
-{
-    SlRunServer* server = (SlRunServer*)listener->data;
-    SlRunClient* client = NULL;
-
-    if (status < 0 || server == NULL) {
-        return;
-    }
-
-    client = sl_run_server_acquire_client(server);
-    if (client == NULL) {
-        return;
-    }
-
-    if (uv_tcp_init(&server->loop, &client->handle) != 0) {
-        client->active = false;
-        return;
-    }
-
-    client->handle.data = client;
-    if (uv_accept(listener, (uv_stream_t*)&client->handle) != 0) {
-        uv_close((uv_handle_t*)&client->handle, sl_run_client_close_cb);
-        return;
-    }
-
-    (void)uv_read_start((uv_stream_t*)&client->handle, sl_run_client_alloc_cb,
-                        sl_run_client_read_cb);
+    config.host = sl_str_from_cstr(host);
+    config.port = port;
+    config.max_connections = SL_RUN_MAX_CLIENTS;
+    config.max_active_requests = SL_RUN_MAX_CLIENTS;
+    config.connection_capacity = SL_RUN_MAX_CLIENTS;
+    config.backlog = 16;
+    config.max_request_head_bytes = SL_RUN_REQUEST_MAX_BYTES;
+    config.request_arena_bytes = SL_RUN_ARENA_BYTES;
+    config.read_chunk_bytes = SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES;
+    config.max_response_bytes = SL_RUN_RESPONSE_MAX_BYTES;
+    config.parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    config.parse.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
+    config.parse.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
+    config.parse.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
+    config.parse.max_total_header_bytes = SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES;
+    config.parse.max_body_length = SL_RUN_REQUEST_MAX_BYTES;
+    config.dispatch = sl_run_transport_dispatch;
+    config.dispatch_user = app;
+    return config;
 }
 
 static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
 {
-    SlRunServer server = {0};
-    struct sockaddr_in address;
-    int rc = 0;
-    bool listener_initialized = false;
+    unsigned char transport_storage[SL_RUN_TRANSPORT_ARENA_BYTES];
+    SlArena transport_arena = {0};
+    SlHttpTransportServer server = {0};
+    SlHttpTransportConfig config = sl_run_transport_config(host, port, app);
+    SlDiag diag = {0};
+    SlStatus status;
+    int result = 0;
 
-    server.app = app;
-    rc = uv_loop_init(&server.loop);
-    if (rc != 0) {
-        sl_cli_write_cstr(stderr, "sloppy run: failed to initialize dev server loop\n");
+    if (!sl_status_is_ok(
+            sl_arena_init(&transport_arena, transport_storage, sizeof(transport_storage))))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: failed to initialize dev server storage\n");
         return 1;
     }
 
-    rc = uv_ip4_addr(host, (int)port, &address);
-    if (rc != 0) {
-        sl_cli_write_cstr(stderr, "sloppy run: --host must be an IPv4 address\n");
-        (void)uv_loop_close(&server.loop);
+    status = sl_http_transport_server_init(&server, &transport_arena, &config, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: failed to initialize dev server: ", &transport_arena, &diag);
         return 1;
     }
-
-    rc = uv_tcp_init(&server.loop, &server.listener);
-    if (rc == 0) {
-        listener_initialized = true;
-        server.listener.data = &server;
-        rc = uv_tcp_bind(&server.listener, (const struct sockaddr*)&address, 0U);
-    }
-    if (rc == 0) {
-        rc = uv_listen((uv_stream_t*)&server.listener, 16, sl_run_server_connection_cb);
-    }
-
-    if (rc != 0) {
-        sl_cli_write_cstr(stderr, "sloppy run: failed to listen on requested host/port\n");
-        if (listener_initialized) {
-            uv_close((uv_handle_t*)&server.listener, NULL);
-            (void)uv_run(&server.loop, UV_RUN_DEFAULT);
+    status = sl_http_transport_server_listen(&server, &diag);
+    if (!sl_status_is_ok(status)) {
+        if (diag.code == SL_DIAG_HTTP_TRANSPORT_CONFIG) {
+            sl_cli_write_cstr(stderr, "sloppy run: --host must be an IPv4 address\n");
         }
-        (void)uv_loop_close(&server.loop);
+        else {
+            sl_cli_write_cstr(stderr, "sloppy run: failed to listen on requested host/port\n");
+        }
+        (void)sl_http_transport_server_dispose(&server, NULL);
         return 1;
     }
 
     (void)printf("Sloppy dev server listening on http://%s:%u\n", host, (unsigned)port);
     (void)printf("Dev-only MVP: no TLS, no streaming, no middleware.\n");
-    rc = uv_run(&server.loop, UV_RUN_DEFAULT);
-    (void)uv_loop_close(&server.loop);
-    return rc == 0 ? 0 : 1;
+    status = sl_http_transport_server_run(&server, &diag);
+    if (!sl_status_is_ok(status)) {
+        result = 1;
+    }
+    (void)sl_http_transport_server_dispose(&server, NULL);
+    return result;
 }
 
 static int sl_run_shutdown_app(SlRunApp* app)

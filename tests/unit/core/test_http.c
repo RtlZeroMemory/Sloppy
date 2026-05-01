@@ -768,11 +768,6 @@ static int test_stress_repeated_parser_limits_remain_enforced(void)
     return 0;
 }
 
-static int test_libuv_smoke(void)
-{
-    return expect_status(sl_http_libuv_smoke(), SL_STATUS_OK) == 0 ? 0 : 90;
-}
-
 typedef int (*HttpTestFn)(void);
 
 typedef struct HttpTestCase
@@ -803,8 +798,7 @@ int main(void)
         {test_parsed_path_can_feed_route_matcher},
         {test_stress_repeated_valid_requests_remain_bounded},
         {test_stress_repeated_malformed_requests_fail_deterministically},
-        {test_stress_repeated_parser_limits_remain_enforced},
-        {test_libuv_smoke}};
+        {test_stress_repeated_parser_limits_remain_enforced}};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {

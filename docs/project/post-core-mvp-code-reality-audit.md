@@ -34,6 +34,8 @@ architecture source.
 - `src/engine/v8/engine_v8.cc` microtask-limit hint now names remaining deferred async sources instead of old ENGINE-12 queue wording.
 - `include/sloppy/http_transport.h` stopped calling accepted connections placeholders.
 - `tests/README.md` now reflects current unit/integration/conformance/package/compiler coverage.
+- HARDEN-01.A removed the public `sl_http_libuv_smoke` helper and routed the dev-only CLI
+  server through the reusable HTTP transport boundary.
 
 ## Stale Comments / Docs Requiring Follow-Up
 
@@ -52,5 +54,4 @@ architecture source.
 ## Human-Review Items
 
 - Decide when SQLite bridge conversion through provider executors blocks stronger alpha claims.
-- Decide whether `src/main.c` direct libuv dev-run code remains acceptable as a temporary CLI boundary or should move behind the reusable transport wrapper in a narrow follow-up.
 - Decide when source-input run becomes the next owner-approved EPIC.

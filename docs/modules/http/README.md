@@ -5,11 +5,12 @@
 Partially implemented.
 
 TASK 10.A adds a native route pattern parser and matcher foundation. TASK 10.B adds the
-first llhttp/libuv dependency integration skeleton and a complete-buffer HTTP/1 request-head
+first llhttp dependency integration skeleton and a complete-buffer HTTP/1 request-head
 parser. TASK 10.C adds a synthetic in-memory GET dispatch helper that maps a parsed request
 head and manual route binding to a numeric Sloppy Plan handler ID, then calls the existing
-runtime-contract/engine boundary. EPIC-22 adds a dev-only `sloppy run` path that uses libuv
-to accept one complete request head per connection. EPIC-23 adds the first native response
+runtime-contract/engine boundary. EPIC-22 adds a dev-only `sloppy run` path that now enters
+through the reusable HTTP transport boundary for one complete request per connection.
+EPIC-23 adds the first native response
 descriptor/writer and minimal request context for that path: route params, query params,
 and method/path/rawTarget are passed to V8 handlers, supported descriptors become HTTP/1.1
 bytes, and the connection is closed. MAIN1-04 hardens that dev-only path with a native
@@ -87,13 +88,13 @@ Implemented now:
 - parse one complete in-memory HTTP/1 request head with llhttp;
 - map supported request methods into `SlHttpMethod`;
 - copy request target, path, header names, and header values into a caller-provided arena;
-- run a minimal libuv loop init/close smoke to prove dependency linkage;
 - dispatch parsed in-memory GET/POST/PUT/PATCH/DELETE requests through route metadata to a
   Sloppy Plan handler ID;
 - invoke the matched handler through the context-aware runtime-contract helper when an
   engine is available;
 - convert supported handler descriptors into `SlHttpResponse` values for `sloppy run`;
-- dev-only `sloppy run --artifacts <dir>` server over libuv;
+- dev-only `sloppy run --artifacts <dir>` server over the reusable HTTP transport
+  boundary;
 - deterministic `sloppy run --artifacts <dir> --once METHOD TARGET` synthetic dispatch;
 - startup route table construction from Plan v1 route metadata;
 - deterministic route precedence: literal patterns before parameter patterns, stable
@@ -222,8 +223,7 @@ response writer.
 - `SlHttpHeader`;
 - `SlHttpRequestHead`;
 - `SlHttpParseOptions`;
-- `sl_http_parse_request_head`;
-- `sl_http_libuv_smoke`.
+- `sl_http_parse_request_head`.
 
 `include/sloppy/http_dispatch.h` exposes the synthetic TASK 10.C dispatch helper:
 
@@ -257,6 +257,7 @@ response writer.
 - internal request-ready callback for #414/#415 handoff tests;
 - narrow internal dispatch callback for #415 transport dispatch/write integration;
 - init/listen/poll/stop/dispose;
+- blocking run loop for CLI integration;
 - accepted connection close;
 - internal/test request-byte feed helper;
 - bounded active-connection and bound-port query helpers.
@@ -452,15 +453,15 @@ maximums for one pattern: `SL_ROUTE_MAX_SEGMENTS` and `SL_ROUTE_MAX_PARAMS`.
 The route foundation is pure core C: no OS APIs, V8 types, llhttp, libuv, sockets, or heap
 allocation are introduced by route parsing/matching.
 
-The HTTP parser skeleton depends on llhttp and libuv through vcpkg/CMake. The parser itself
-uses no OS-specific headers or direct OS APIs. libuv use is limited to a local loop
-init/close smoke helper and does not integrate with `SlLoop`.
+The HTTP parser skeleton depends on llhttp through vcpkg/CMake. The parser itself uses no
+OS-specific headers, libuv headers, or direct OS APIs. Libuv use belongs to the reusable
+transport implementation under `src/platform/libuv/` and does not integrate with `SlLoop`.
 
 The dispatch helper is pure core C over existing parser, route, plan, runtime-contract, and
 engine boundaries. It does not include V8 headers, expose V8 handles, call OS APIs, create
 sockets, drive libuv, allocate outside the caller arena, or build a production router
-object. The dev-only socket loop lives in the CLI executable and uses libuv without OS
-headers or platform-specific calls.
+object. The dev-only CLI server path enters through `SlHttpTransportServer` instead of
+using libuv types or handles directly.
 
 The backend foundation is also pure core C. It does not include OS headers, libuv types,
 V8 types, provider handles, or direct socket APIs. Concrete accept/read/write/timer work
@@ -582,7 +583,6 @@ Implemented CTest coverage:
 - route table construction, duplicate route rejection, and literal-before-parameter
   precedence;
 - query parameter limit enforcement;
-- libuv init/close smoke without network I/O;
 - synthetic dispatch no-route failure;
 - synthetic dispatch method mismatch failure;
 - synthetic dispatch GET/POST/PUT/PATCH/DELETE method routing;

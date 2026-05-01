@@ -151,6 +151,8 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
 SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* out_diag);
 /* Runs one nonblocking platform event-loop tick for deterministic tests/runtime integration. */
 SlStatus sl_http_transport_server_poll(SlHttpTransportServer* server, SlDiag* out_diag);
+/* Runs the platform event loop until the transport stops or the loop has no active handles. */
+SlStatus sl_http_transport_server_run(SlHttpTransportServer* server, SlDiag* out_diag);
 /* Stops accepting, closes accepted connections, and releases listener handles. */
 SlStatus sl_http_transport_server_stop(SlHttpTransportServer* server, SlDiag* out_diag);
 /* Disposes backend state after stopping as needed. Arena-owned storage is not freed. */
@@ -160,7 +162,7 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
                                             SlDiag* out_diag);
 /*
  * Internal/test helper that feeds bytes through the same bounded accumulation path used by
- * the libuv read callback. This does not dispatch or write a response.
+ * the platform read callback. This does not dispatch or write a response.
  */
 SlStatus sl_http_transport_connection_feed_test(SlHttpTransportConnection* connection,
                                                 SlBytes bytes, SlDiag* out_diag);

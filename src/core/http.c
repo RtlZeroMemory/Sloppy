@@ -1,9 +1,9 @@
 /*
  * src/core/http.c
  *
- * Implements the first bounded HTTP dependency skeleton. llhttp parses a complete
- * in-memory request head into Sloppy-owned request-head fields, and libuv is touched only
- * through a dependency/link smoke.
+ * Implements the bounded complete-buffer HTTP parser. llhttp parses a complete in-memory
+ * request head into Sloppy-owned request-head fields; socket/event-loop transport lives
+ * behind the platform HTTP transport boundary.
  *
  * Safety invariants:
  * - parsed request-head strings and headers are copied into the caller-provided arena;
@@ -22,7 +22,6 @@
 #include "sloppy/checked_math.h"
 
 #include <llhttp.h>
-#include <uv.h>
 
 typedef struct SlHttpParseContext
 {
@@ -792,17 +791,4 @@ failure:
     }
 
     return status;
-}
-
-SlStatus sl_http_libuv_smoke(void)
-{
-    uv_loop_t loop;
-    int rc = uv_loop_init(&loop);
-
-    if (rc != 0) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
-    }
-
-    rc = uv_loop_close(&loop);
-    return rc == 0 ? sl_status_ok() : sl_status_from_code(SL_STATUS_INTERNAL);
 }

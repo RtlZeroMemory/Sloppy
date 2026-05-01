@@ -39,11 +39,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   <a id="tests-strcpy-boundary"></a>Test-only C-string boundary helpers should either
   use shared checked helpers or document why a local boundary helper is acceptable.
 - Post-core boundary follow-up:
-  `docs/project/post-core-mvp-boundary-audit.md` records remaining libuv boundary debt.
-  The new reusable transport API hides libuv, but the legacy `sl_http_libuv_smoke` helper
-  and dev-only CLI socket path still expose/use libuv outside the final platform boundary
-  shape. Retire or hide them in a narrow follow-up instead of doing a broad rewrite here;
-  tracked by #434/#447.
+  `docs/project/post-core-mvp-boundary-audit.md` records the current libuv boundary state.
+  HARDEN-01.A retires the legacy public `sl_http_libuv_smoke` helper and routes the
+  dev-only CLI server path through `SlHttpTransportServer`; remaining HTTP transport debt
+  is the explicit future keep-alive/streaming/production-hardening work below.
 - Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02 and
   ENGINE-03: source-input handoff/cache, module/service/schema extraction, broader async
   source shapes, non-GET dispatch, and provider/capability enforcement.
