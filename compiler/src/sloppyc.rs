@@ -1310,8 +1310,18 @@ fn extract_variable_declaration(
                 .insert(name.to_string(), provider.token);
         } else if let Some(token) = app_provider_lookup(init, state) {
             state.provider_bindings.insert(name.to_string(), token);
-        } else if let Some(schema) = schema_declaration(path, source, source_name, name, init)? {
-            state.schemas.push(schema);
+        } else if state.schema_imported {
+            if let Some(schema) = schema_declaration(path, source, source_name, name, init)? {
+                state.schemas.push(schema);
+            } else if let Some(config_read) =
+                config_read_metadata(path, source, source_name, state, init)?
+            {
+                state.config_reads.push(config_read);
+            } else if let Some(diagnostic) = malformed_config_read_diagnostic(path, state, init) {
+                return Err(diagnostic);
+            } else {
+                validate_supported_initializer(path, source, source_name, state, init)?;
+            }
         } else if let Some(config_read) =
             config_read_metadata(path, source, source_name, state, init)?
         {
@@ -2749,7 +2759,9 @@ fn handler_from_argument(
                 return None;
             }
             let handler_source = source_slice(source, function.span)?;
-            let schema_spans = body_json_schema_argument_spans_arrow(function);
+            let schema_spans = handler_context_parameter_name(&function.params)
+                .map(|ctx_name| body_json_schema_argument_spans_arrow(function, &ctx_name))
+                .unwrap_or_default();
             Some(Handler {
                 source: sanitize_handler_schema_references(
                     handler_source,
@@ -2772,7 +2784,9 @@ fn handler_from_argument(
                 return None;
             }
             let handler_source = source_slice(source, function.span)?;
-            let schema_spans = body_json_schema_argument_spans_function(function);
+            let schema_spans = handler_context_parameter_name(&function.params)
+                .map(|ctx_name| body_json_schema_argument_spans_function(function, &ctx_name))
+                .unwrap_or_default();
             Some(Handler {
                 source: sanitize_handler_schema_references(
                     handler_source,
@@ -2886,6 +2900,16 @@ fn handler_parameters_are_unsupported(parameters: &oxc_ast::ast::FormalParameter
 
     parameter.initializer.is_some()
         || !matches!(parameter.pattern, BindingPattern::BindingIdentifier(_))
+}
+
+fn handler_context_parameter_name(
+    parameters: &oxc_ast::ast::FormalParameters<'_>,
+) -> Option<String> {
+    let parameter = parameters.items.first()?;
+    let BindingPattern::BindingIdentifier(identifier) = &parameter.pattern else {
+        return None;
+    };
+    Some(identifier.name.as_str().to_string())
 }
 
 fn arrow_has_typescript_syntax(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
@@ -3014,18 +3038,24 @@ fn status_result_code(call: &CallExpression<'_>) -> Option<u16> {
 fn request_bindings_from_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
 ) -> Vec<RequestBinding> {
+    let Some(ctx_name) = handler_context_parameter_name(&function.params) else {
+        return Vec::new();
+    };
     let mut bindings = Vec::new();
     for statement in &function.body.statements {
-        collect_statement_request_bindings(statement, &mut bindings);
+        collect_statement_request_bindings(statement, &ctx_name, &mut bindings);
     }
     dedupe_request_bindings(bindings)
 }
 
 fn request_bindings_from_function(function: &oxc_ast::ast::Function<'_>) -> Vec<RequestBinding> {
+    let Some(ctx_name) = handler_context_parameter_name(&function.params) else {
+        return Vec::new();
+    };
     let mut bindings = Vec::new();
     if let Some(body) = &function.body {
         for statement in &body.statements {
-            collect_statement_request_bindings(statement, &mut bindings);
+            collect_statement_request_bindings(statement, &ctx_name, &mut bindings);
         }
     }
     dedupe_request_bindings(bindings)
@@ -3050,16 +3080,17 @@ fn dedupe_request_bindings(bindings: Vec<RequestBinding>) -> Vec<RequestBinding>
 
 fn collect_statement_request_bindings(
     statement: &Statement<'_>,
+    ctx_name: &str,
     bindings: &mut Vec<RequestBinding>,
 ) {
     match statement {
         Statement::ReturnStatement(statement) => {
             if let Some(argument) = &statement.argument {
-                collect_expression_request_bindings(argument, bindings);
+                collect_expression_request_bindings(argument, ctx_name, bindings);
             }
         }
         Statement::ExpressionStatement(statement) => {
-            collect_expression_request_bindings(&statement.expression, bindings);
+            collect_expression_request_bindings(&statement.expression, ctx_name, bindings);
         }
         _ => {}
     }
@@ -3067,66 +3098,71 @@ fn collect_statement_request_bindings(
 
 fn collect_expression_request_bindings(
     expression: &Expression<'_>,
+    ctx_name: &str,
     bindings: &mut Vec<RequestBinding>,
 ) {
-    if let Some(binding) = request_binding_from_expression(expression) {
+    if let Some(binding) = request_binding_from_expression(expression, ctx_name) {
         bindings.push(binding);
     }
     match expression {
         Expression::CallExpression(call) => {
-            if let Some(binding) = request_binding_from_call(call) {
+            if let Some(binding) = request_binding_from_call(call, ctx_name) {
                 bindings.push(binding);
             }
             for argument in &call.arguments {
-                collect_argument_request_bindings(argument, bindings);
+                collect_argument_request_bindings(argument, ctx_name, bindings);
             }
         }
         Expression::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_request_bindings(&property.value, bindings);
+                    collect_expression_request_bindings(&property.value, ctx_name, bindings);
                 }
             }
         }
         Expression::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_request_bindings(element, bindings);
+                collect_array_element_request_bindings(element, ctx_name, bindings);
             }
         }
         Expression::ParenthesizedExpression(parenthesized) => {
-            collect_expression_request_bindings(&parenthesized.expression, bindings);
+            collect_expression_request_bindings(&parenthesized.expression, ctx_name, bindings);
         }
         Expression::StaticMemberExpression(member) => {
-            collect_expression_request_bindings(&member.object, bindings);
+            collect_expression_request_bindings(&member.object, ctx_name, bindings);
         }
         _ => {}
     }
 }
 
-fn collect_argument_request_bindings(argument: &Argument<'_>, bindings: &mut Vec<RequestBinding>) {
+fn collect_argument_request_bindings(
+    argument: &Argument<'_>,
+    ctx_name: &str,
+    bindings: &mut Vec<RequestBinding>,
+) {
     match argument {
         Argument::CallExpression(call) => {
-            if let Some(binding) = request_binding_from_call(call) {
+            if let Some(binding) = request_binding_from_call(call, ctx_name) {
                 bindings.push(binding);
             }
             for argument in &call.arguments {
-                collect_argument_request_bindings(argument, bindings);
+                collect_argument_request_bindings(argument, ctx_name, bindings);
             }
         }
         Argument::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_request_bindings(&property.value, bindings);
+                    collect_expression_request_bindings(&property.value, ctx_name, bindings);
                 }
             }
         }
         Argument::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_request_bindings(element, bindings);
+                collect_array_element_request_bindings(element, ctx_name, bindings);
             }
         }
         Argument::StaticMemberExpression(member) => {
-            collect_expression_request_bindings(&member.object, bindings);
+            collect_expression_request_bindings(&member.object, ctx_name, bindings);
         }
         _ => {}
     }
@@ -3134,33 +3170,38 @@ fn collect_argument_request_bindings(argument: &Argument<'_>, bindings: &mut Vec
 
 fn collect_array_element_request_bindings(
     element: &ArrayExpressionElement<'_>,
+    ctx_name: &str,
     bindings: &mut Vec<RequestBinding>,
 ) {
     match element {
         ArrayExpressionElement::CallExpression(call) => {
-            if let Some(binding) = request_binding_from_call(call) {
+            if let Some(binding) = request_binding_from_call(call, ctx_name) {
                 bindings.push(binding);
             }
         }
         ArrayExpressionElement::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_request_bindings(&property.value, bindings);
+                    collect_expression_request_bindings(&property.value, ctx_name, bindings);
                 }
             }
         }
         ArrayExpressionElement::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_request_bindings(element, bindings);
+                collect_array_element_request_bindings(element, ctx_name, bindings);
             }
         }
         _ => {}
     }
 }
 
-fn request_binding_from_expression(expression: &Expression<'_>) -> Option<RequestBinding> {
+fn request_binding_from_expression(
+    expression: &Expression<'_>,
+    ctx_name: &str,
+) -> Option<RequestBinding> {
     let chain = static_member_chain(expression)?;
-    if chain.len() == 3 && chain[0] == "ctx" && matches!(chain[1], "route" | "query" | "header") {
+    if chain.len() == 3 && chain[0] == ctx_name && matches!(chain[1], "route" | "query" | "header")
+    {
         return Some(RequestBinding {
             kind: chain[1].to_string(),
             name: Some(chain[2].to_string()),
@@ -3170,26 +3211,10 @@ fn request_binding_from_expression(expression: &Expression<'_>) -> Option<Reques
     None
 }
 
-fn request_binding_from_call(call: &CallExpression<'_>) -> Option<RequestBinding> {
+fn request_binding_from_call(call: &CallExpression<'_>, ctx_name: &str) -> Option<RequestBinding> {
     let chain = static_member_chain(&call.callee)?;
-    if chain.len() == 3 && chain[0] == "ctx" && chain[1] == "body" {
-        if !matches!(chain[2], "text" | "json") {
-            return None;
-        }
-        if chain[2] == "text" && !call.arguments.is_empty() {
-            return None;
-        }
-        if chain[2] == "json" && call.arguments.len() > 1 {
-            return None;
-        }
-        let schema = if chain[2] == "json" {
-            call.arguments
-                .first()
-                .and_then(argument_identifier)
-                .map(str::to_string)
-        } else {
-            None
-        };
+    if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" {
+        let schema = body_binding_schema(call, chain[2])?;
         return Some(RequestBinding {
             kind: format!("body.{}", chain[2]),
             name: None,
@@ -3199,89 +3224,131 @@ fn request_binding_from_call(call: &CallExpression<'_>) -> Option<RequestBinding
     None
 }
 
+fn body_binding_schema(call: &CallExpression<'_>, method: &str) -> Option<Option<String>> {
+    match method {
+        "text" if call.arguments.is_empty() => Some(None),
+        "json" if call.arguments.len() <= 1 => Some(
+            call.arguments
+                .first()
+                .and_then(argument_identifier)
+                .map(str::to_string),
+        ),
+        _ => None,
+    }
+}
+
+fn body_binding_call_is_supported(
+    call: &CallExpression<'_>,
+    allowed_roots: &BTreeSet<String>,
+) -> bool {
+    let Some(chain) = static_member_chain(&call.callee) else {
+        return false;
+    };
+    chain.len() == 3
+        && allowed_roots.contains(chain[0])
+        && chain[1] == "body"
+        && body_binding_schema(call, chain[2]).is_some()
+}
+
 fn body_json_schema_argument_spans_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    ctx_name: &str,
 ) -> Vec<Span> {
     let mut spans = Vec::new();
     for statement in &function.body.statements {
-        collect_statement_schema_argument_spans(statement, &mut spans);
+        collect_statement_schema_argument_spans(statement, ctx_name, &mut spans);
     }
     spans
 }
 
-fn body_json_schema_argument_spans_function(function: &oxc_ast::ast::Function<'_>) -> Vec<Span> {
+fn body_json_schema_argument_spans_function(
+    function: &oxc_ast::ast::Function<'_>,
+    ctx_name: &str,
+) -> Vec<Span> {
     let mut spans = Vec::new();
     if let Some(body) = &function.body {
         for statement in &body.statements {
-            collect_statement_schema_argument_spans(statement, &mut spans);
+            collect_statement_schema_argument_spans(statement, ctx_name, &mut spans);
         }
     }
     spans
 }
 
-fn collect_statement_schema_argument_spans(statement: &Statement<'_>, spans: &mut Vec<Span>) {
+fn collect_statement_schema_argument_spans(
+    statement: &Statement<'_>,
+    ctx_name: &str,
+    spans: &mut Vec<Span>,
+) {
     match statement {
         Statement::ReturnStatement(statement) => {
             if let Some(argument) = &statement.argument {
-                collect_expression_schema_argument_spans(argument, spans);
+                collect_expression_schema_argument_spans(argument, ctx_name, spans);
             }
         }
         Statement::ExpressionStatement(statement) => {
-            collect_expression_schema_argument_spans(&statement.expression, spans);
+            collect_expression_schema_argument_spans(&statement.expression, ctx_name, spans);
         }
         _ => {}
     }
 }
 
-fn collect_expression_schema_argument_spans(expression: &Expression<'_>, spans: &mut Vec<Span>) {
+fn collect_expression_schema_argument_spans(
+    expression: &Expression<'_>,
+    ctx_name: &str,
+    spans: &mut Vec<Span>,
+) {
     match expression {
         Expression::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call) {
+            if let Some(span) = body_json_schema_argument_span(call, ctx_name) {
                 spans.push(span);
             }
             for argument in &call.arguments {
-                collect_argument_schema_argument_spans(argument, spans);
+                collect_argument_schema_argument_spans(argument, ctx_name, spans);
             }
         }
         Expression::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_schema_argument_spans(&property.value, spans);
+                    collect_expression_schema_argument_spans(&property.value, ctx_name, spans);
                 }
             }
         }
         Expression::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_schema_argument_spans(element, spans);
+                collect_array_element_schema_argument_spans(element, ctx_name, spans);
             }
         }
         Expression::ParenthesizedExpression(parenthesized) => {
-            collect_expression_schema_argument_spans(&parenthesized.expression, spans);
+            collect_expression_schema_argument_spans(&parenthesized.expression, ctx_name, spans);
         }
         _ => {}
     }
 }
 
-fn collect_argument_schema_argument_spans(argument: &Argument<'_>, spans: &mut Vec<Span>) {
+fn collect_argument_schema_argument_spans(
+    argument: &Argument<'_>,
+    ctx_name: &str,
+    spans: &mut Vec<Span>,
+) {
     match argument {
         Argument::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call) {
+            if let Some(span) = body_json_schema_argument_span(call, ctx_name) {
                 spans.push(span);
             }
             for argument in &call.arguments {
-                collect_argument_schema_argument_spans(argument, spans);
+                collect_argument_schema_argument_spans(argument, ctx_name, spans);
             }
         }
         Argument::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_schema_argument_spans(&property.value, spans);
+                    collect_expression_schema_argument_spans(&property.value, ctx_name, spans);
                 }
             }
         }
         Argument::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_schema_argument_spans(element, spans);
+                collect_array_element_schema_argument_spans(element, ctx_name, spans);
             }
         }
         _ => {}
@@ -3290,33 +3357,34 @@ fn collect_argument_schema_argument_spans(argument: &Argument<'_>, spans: &mut V
 
 fn collect_array_element_schema_argument_spans(
     element: &ArrayExpressionElement<'_>,
+    ctx_name: &str,
     spans: &mut Vec<Span>,
 ) {
     match element {
         ArrayExpressionElement::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call) {
+            if let Some(span) = body_json_schema_argument_span(call, ctx_name) {
                 spans.push(span);
             }
         }
         ArrayExpressionElement::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_schema_argument_spans(&property.value, spans);
+                    collect_expression_schema_argument_spans(&property.value, ctx_name, spans);
                 }
             }
         }
         ArrayExpressionElement::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_schema_argument_spans(element, spans);
+                collect_array_element_schema_argument_spans(element, ctx_name, spans);
             }
         }
         _ => {}
     }
 }
 
-fn body_json_schema_argument_span(call: &CallExpression<'_>) -> Option<Span> {
+fn body_json_schema_argument_span(call: &CallExpression<'_>, ctx_name: &str) -> Option<Span> {
     let chain = static_member_chain(&call.callee)?;
-    if chain.len() == 3 && chain[0] == "ctx" && chain[1] == "body" && chain[2] == "json" {
+    if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" && chain[2] == "json" {
         let Argument::Identifier(identifier) = call.arguments.first()? else {
             return None;
         };
@@ -3561,7 +3629,7 @@ fn argument_is_inline_json_safe_value(
         Argument::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
         }
-        Argument::CallExpression(call) => request_binding_from_call(call).is_some(),
+        Argument::CallExpression(call) => body_binding_call_is_supported(call, allowed_roots),
         Argument::ParenthesizedExpression(parenthesized) => {
             expression_is_inline_json_safe_value(&parenthesized.expression, allowed_roots)
         }
@@ -3628,7 +3696,7 @@ fn expression_is_inline_json_safe_value(
         Expression::ParenthesizedExpression(parenthesized) => {
             expression_is_inline_json_safe_value(&parenthesized.expression, allowed_roots)
         }
-        Expression::CallExpression(call) => request_binding_from_call(call).is_some(),
+        Expression::CallExpression(call) => body_binding_call_is_supported(call, allowed_roots),
         Expression::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
         }
@@ -3798,6 +3866,12 @@ fn emit_plan(
     source_map_hash: &str,
 ) -> Result<String, Diagnostic> {
     let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
+    let emits_app_metadata = !app.schemas.is_empty() || !app.config_reads.is_empty();
+    let emits_metadata = emits_app_metadata
+        || app
+            .routes
+            .iter()
+            .any(|route| !route.handler.bindings.is_empty());
     let handlers = app
         .routes
         .iter()
@@ -3840,6 +3914,7 @@ fn emit_plan(
             if let Some(module) = &route.module {
                 route_json["module"] = json!(module);
             }
+            let emits_route_metadata = emits_app_metadata || !route.handler.bindings.is_empty();
             if !route.handler.bindings.is_empty() {
                 route_json["bindings"] = json!(route
                     .handler
@@ -3854,10 +3929,7 @@ fn emit_plan(
                     })
                     .collect::<Vec<_>>());
             }
-            if !route.handler.bindings.is_empty()
-                || !app.schemas.is_empty()
-                || !app.config_reads.is_empty()
-            {
+            if emits_route_metadata {
                 if let Some(response) = &route.handler.response {
                     route_json["response"] = json!({
                         "helper": response.helper,
@@ -4006,7 +4078,7 @@ fn emit_plan(
     if !config_reads.is_empty() {
         value["configReads"] = json!(config_reads);
     }
-    if !app.schemas.is_empty() || !app.config_reads.is_empty() {
+    if emits_metadata {
         value["features"]["metadataInference"] = json!(true);
     }
 
@@ -5051,6 +5123,60 @@ export default app;
         assert_eq!(plan["configReads"][0]["key"], "Sloppy:Server:Host");
         assert_eq!(plan["routes"][0]["bindings"][0]["kind"], "route");
         assert_eq!(plan["routes"][0]["response"]["helper"], "json");
+        assert_eq!(plan["features"]["metadataInference"], true);
+    }
+
+    #[test]
+    fn extracts_bindings_for_named_context_parameter() {
+        let source = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = schema.object({ name: schema.string() });
+const app = Sloppy.create();
+app.post("/users/{id:int}", (request) => Results.json({
+  id: request.route.id,
+  body: request.body.json(UserCreate)
+}));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("named context fixture should extract");
+        assert_eq!(app.routes[0].handler.bindings.len(), 2);
+        assert_eq!(app.routes[0].handler.bindings[0].kind, "route");
+        assert_eq!(
+            app.routes[0].handler.bindings[0].name.as_deref(),
+            Some("id")
+        );
+        assert_eq!(app.routes[0].handler.bindings[1].kind, "body.json");
+        assert_eq!(
+            app.routes[0].handler.bindings[1].schema.as_deref(),
+            Some("UserCreate")
+        );
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains("request.body.json(undefined)"));
+        assert!(!emitted_js.source.contains("request.body.json(UserCreate)"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(plan["features"]["metadataInference"], true);
+        assert_eq!(plan["routes"][0]["response"]["helper"], "json");
+    }
+
+    #[test]
+    fn does_not_extract_schema_without_schema_import() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const UserCreate = schema.object({ name: schema.string() });
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("unbound local schema expression should stay outside Sloppy DSL");
+        assert!(app.schemas.is_empty());
     }
 
     #[test]

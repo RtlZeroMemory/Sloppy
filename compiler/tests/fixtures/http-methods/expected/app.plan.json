@@ -11,6 +11,7 @@
     "asyncHandlers": false,
     "capabilities": false,
     "dataProviders": false,
+    "metadataInference": true,
     "sourceMaps": true
   },
   "handlers": [
