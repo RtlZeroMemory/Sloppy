@@ -824,8 +824,8 @@ Future platform tests should live in platform-specific suites and CI jobs.
 
 Scanner test expectations:
 
-- one fixture with forbidden include in core fails;
-- one fixture under platform directory passes;
+- self-test fixtures with forbidden includes in `include/` and core `src/` fail;
+- self-test fixtures under platform directories pass;
 - CI lint runs scanner with repository paths.
 
 ## Static Structural Checks

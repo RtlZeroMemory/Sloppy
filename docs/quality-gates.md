@@ -353,8 +353,11 @@ Forbidden outside allowed platform dirs:
 
 The scanner runs from `tools/windows/dev.ps1 lint`.
 
-Near-term hardening task: add scanner fixtures or a self-test mode so CI proves the scanner
-detects a forbidden include outside `src/platform/*`.
+The scanner runs a self-test before the repository scan. The self-test creates temporary
+fixtures that prove forbidden includes under `include/` and core `src/` fail with the
+offending file/header, while matching includes under the allowed platform implementation
+directories pass. The scanner remains a conservative lexical header-boundary check; it is
+not a general C parser for every possible OS symbol reference.
 
 ## C Standards Scanner
 
