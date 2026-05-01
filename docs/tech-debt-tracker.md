@@ -325,9 +325,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Full route table/trie optimization, catch-all routes, optional segments, regex
   constraints, nested route groups, and ambiguity diagnostics beyond MAIN1-04's
   literal-before-parameter precedence policy.
-- Full OpenAPI generation, request/response schema emission, examples, and security
-  schemes. MAIN1-11 emits only a route skeleton and marks schemas/security as deferred;
-  ENGINE-20.C leaves richer Plan-driven OpenAPI to #358.
+- Full OpenAPI generation, versioned schema graph coverage, validation/security schemes,
+  and owner-approved runtime optimization. COMPILER-30 plus ENGINE-20.C/D now ship the
+  Plan-derived OpenAPI subset and report-only optimization candidate hooks; remaining debt
+  is broader graph/versioning coverage, validation/security metadata, and any future native
+  JSON or route/provider optimization implementation.
 - Full validation engine behavior: body/query/headers/route binding, automatic problem
   responses, coercion, arrays, unions, and custom refinements.
 - Production database features: migrations, isolation levels, savepoints, blob/date/json

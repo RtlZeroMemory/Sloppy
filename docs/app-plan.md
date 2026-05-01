@@ -298,9 +298,10 @@ Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{
 and `{name:int}`. Query strings are parsed from request targets by EPIC-23 request context
 code, not route patterns. Literal route group prefixes compose before validation.
 Catch-all parameters, optional segments, regex constraints, method matching beyond GET dev
-dispatch, route precedence, OpenAPI output, middleware/filter metadata, runtime validation,
-and runtime validation remain future work. Compiler-emitted route and plan completeness are
-now present for the supported COMPILER-30.H/I subset.
+dispatch, route precedence, middleware/filter metadata, and runtime validation remain future
+work. Compiler-emitted route and plan completeness are now present for the supported
+COMPILER-30.H/I subset, and `sloppy openapi` emits the supported Plan-derived OpenAPI
+subset while keeping unsupported metadata explicit.
 
 The COMPILER-30.E/H/I metadata is emitted for static tooling and Strong Plan consumers.
 The native runtime parser accepts these unknown optional metadata fields while rejecting

@@ -226,7 +226,7 @@ both text and JSON output.
 - route completeness that is not complete;
 - body JSON bindings that lack schema metadata;
 - unknown response metadata on Strong Plan routes;
-- future optimization candidate notes derived from response schema, body schema, and
+- future optimization candidate notes derived from JSON response metadata and
   provider/effect metadata;
 - modules with missing dependencies;
 - direct two-module dependency cycles;
@@ -237,15 +237,18 @@ exit code so the command can be used in CI/static review; warnings and notes do 
 the command by themselves. This is not a large rule engine. Future audit rules should be
 added with fixtures and source-doc updates.
 
+The current audit rule set does not yet surface native body-validation optimization notes
+from request body schemas; that wording should expand only when the audit output does.
+
 ## openapi
 
 `sloppy openapi` emits an OpenAPI 3.0.3 document from validated Plan metadata for the
 currently supported framework subset. It sets default `info.title` and `info.version`,
 marks `x-slop-openapi-policy.status` as `plan-supported-subset`, writes deterministic
-paths/methods, uses route names as `operationId`, converts route/query/header parameters
-when Plan-visible, emits request bodies for schema-backed `ctx.body.json(...)` bindings,
-emits known response statuses/helpers from `Results.*` metadata, and includes a validation
-problem response component.
+paths/methods, uses route names as `operationId` when present, converts route/query/header
+parameters when Plan-visible, emits request bodies for schema-backed `ctx.body.json(...)`
+bindings, emits known response statuses/helpers from `Results.*` metadata, and includes a
+validation problem response component for routes with validation surfaces.
 
 The document includes Slop extensions:
 

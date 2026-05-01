@@ -18,8 +18,7 @@
         "x-slop-optimization-candidates": [],
         "parameters": [],
         "responses": {
-          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
-          "400": { "$ref": "#/components/responses/SlopValidationProblem" }
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
         }
       }
     },
@@ -46,8 +45,7 @@
         "x-slop-optimization-candidates": [],
         "parameters": [],
         "responses": {
-          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
-          "400": { "$ref": "#/components/responses/SlopValidationProblem" }
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
         }
       }
     }

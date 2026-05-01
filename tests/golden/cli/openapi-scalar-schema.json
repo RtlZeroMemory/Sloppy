@@ -22,7 +22,7 @@
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchTerm" } } }
         },
         "responses": {
-          "200": { "description": "json", "content": { "application/json": { "schema": { "type": "object", "x-slop-partial": "response schema shape not declared" } } } },
+          "200": { "description": "json", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } },
           "400": { "$ref": "#/components/responses/SlopValidationProblem" }
         }
       }
