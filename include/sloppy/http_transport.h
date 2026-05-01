@@ -162,7 +162,8 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
                                             SlDiag* out_diag);
 /*
  * Internal/test helper that feeds bytes through the same bounded accumulation path used by
- * the platform read callback. This does not dispatch or write a response.
+ * the platform read callback. Request bytes move through normal lifecycle transitions;
+ * configured callbacks may still trigger dispatch or write paths.
  */
 SlStatus sl_http_transport_connection_feed_test(SlHttpTransportConnection* connection,
                                                 SlBytes bytes, SlDiag* out_diag);

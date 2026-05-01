@@ -1912,6 +1912,7 @@ SlStatus sl_http_transport_server_poll(SlHttpTransportServer* server, SlDiag* ou
 SlStatus sl_http_transport_server_run(SlHttpTransportServer* server, SlDiag* out_diag)
 {
     int rc = 0;
+    size_t previous_accept_failures = 0U;
 
     sl_http_transport_clear_diag(out_diag);
     if (server == NULL || server->platform == NULL || !server->platform->loop_initialized) {
@@ -1923,8 +1924,9 @@ SlStatus sl_http_transport_server_run(SlHttpTransportServer* server, SlDiag* out
         return sl_http_transport_invalid_state(out_diag);
     }
 
+    previous_accept_failures = server->accept_failures;
     rc = uv_run(&server->platform->loop, UV_RUN_DEFAULT);
-    if (rc != 0 || server->accept_failures != 0U) {
+    if (rc != 0 || server->accept_failures != previous_accept_failures) {
         return sl_http_transport_diag(
             out_diag, SL_DIAG_HTTP_ACCEPT_FAILED, SL_STATUS_INTERNAL,
             sl_http_transport_literal("HTTP transport run failed",
