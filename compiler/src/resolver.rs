@@ -13,6 +13,7 @@ pub enum ImportKind {
     Relative(PathBuf),
     SlopStdlib,
     SqliteProvider,
+    UnresolvedRelative(String),
     UnsupportedBare(String),
     Remote(String),
 }
@@ -20,7 +21,7 @@ pub enum ImportKind {
 pub fn classify_import(from_path: &Path, specifier: &str) -> ImportKind {
     if specifier.starts_with("./") || specifier.starts_with("../") {
         return resolve_relative_import(from_path, specifier).map_or_else(
-            || ImportKind::UnsupportedBare(specifier.to_string()),
+            || ImportKind::UnresolvedRelative(specifier.to_string()),
             ImportKind::Relative,
         );
     }
@@ -83,6 +84,14 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "https://example.test/app.js"),
             ImportKind::Remote("https://example.test/app.js".to_string())
+        );
+    }
+
+    #[test]
+    fn distinguishes_missing_relative_imports_from_bare_imports() {
+        assert_eq!(
+            classify_import(Path::new("app.js"), "./missing.js"),
+            ImportKind::UnresolvedRelative("./missing.js".to_string())
         );
     }
 }

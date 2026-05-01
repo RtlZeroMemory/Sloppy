@@ -57,10 +57,11 @@ runs those artifacts exactly as `sloppy run --artifacts` would.
 slice.
 
 The source-input handoff follows the compiler's existing source support. JavaScript input
-is supported when it matches the documented subset. TypeScript extensions are accepted at
-the CLI boundary only so `sloppyc` can return the documented unsupported-TypeScript
-diagnostic. No full TypeScript typechecking, npm/package-manager behavior, `node_modules`
-resolution, broad module graph bundling, watch mode, or hot reload is implemented.
+is supported when it matches the documented subset. `.ts` inputs are parsed only for the
+supported Slop-owned subset and for source-located unsupported-TypeScript diagnostics;
+`.tsx`, `.jsx`, `.cjs`, `.mts`, and `.cts` remain outside the supported compiler subset.
+No full TypeScript typechecking, npm/package-manager behavior, `node_modules` resolution,
+broad module graph bundling, watch mode, or hot reload is implemented.
 
 ## Matrix
 
@@ -100,7 +101,7 @@ resolution, broad module graph bundling, watch mode, or hot reload is implemente
 | Secret-bearing provider/capability fields | Rejected with diagnostic | Rejected before artifact emission. | `SLOPPYC_E_SECRET_PLAN_METADATA`. | `unsupported-secret-capability` diagnostic fixture. | Permanent policy. |
 | Services/modules/broad provider extraction | Deferred | Bootstrap-only APIs beyond the minimal database capability metadata are not compiler plan input yet. | Unsupported top-level/route-shape diagnostics if used in compiler input. | Matrix-documented; no success fixtures until implemented. | Later framework/module tasks. |
 | Decorators | Not supported by the current compiler subset | Not accepted as compiler-extractable API shape. | Parse or unsupported syntax diagnostic. | Matrix-documented. | No alpha target. |
-| TypeScript input or TS-only handler syntax | Rejected with diagnostic | `.ts/.tsx/.mts/.cts` inputs are rejected; handler type annotations are rejected. | `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT` or `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER`. | `unsupported-typescript-handler` diagnostic fixture. | Official TypeScript checking/lowering later. |
+| TypeScript input or TS-only handler syntax | Partially parsed for diagnostics | `.ts` input is accepted at the parser boundary for the supported subset, but TypeScript-only handler syntax is rejected; `.tsx/.mts/.cts` remain rejected as unsupported source extensions. | `SLOPPYC_E_UNSUPPORTED_INPUT` for unsupported extensions or `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER` for TS-only handler syntax. | `unsupported-typescript-handler` diagnostic fixture plus parser module extension tests. | Official TypeScript checking/lowering later. |
 
 ## COMPILER-30 Target Subset
 

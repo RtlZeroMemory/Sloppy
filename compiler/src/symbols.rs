@@ -1,6 +1,6 @@
 //! Symbol binding for Slop app, route group, provider, schema, and helper identifiers.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SymbolKind {
@@ -27,23 +27,6 @@ impl SymbolTable {
 
     pub fn get(&self, name: &str) -> Option<&SymbolKind> {
         self.bindings.get(name)
-    }
-
-    pub fn contains_kind(&self, kind: &SymbolKind) -> bool {
-        self.bindings.values().any(|value| value == kind)
-    }
-
-    pub fn names_for_kind(&self, kind: &SymbolKind) -> BTreeSet<String> {
-        self.bindings
-            .iter()
-            .filter_map(|(name, value)| {
-                if value == kind {
-                    Some(name.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
     }
 }
 
