@@ -194,6 +194,14 @@ struct ConfigReadMetadata {
     span: Span,
 }
 
+fn schema_names(state: &AppState) -> BTreeSet<String> {
+    state
+        .schemas
+        .iter()
+        .map(|schema| schema.name.clone())
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 struct ConfigurationPlan {
     environment: String,
@@ -1365,9 +1373,14 @@ fn extract_expression_statement(
         _ => (&statement.expression, None),
     };
 
-    let Some((receiver, method, pattern, handler)) =
-        route_call(route_expr, source, source_name, state.data_imported)
-    else {
+    let schema_names = schema_names(state);
+    let Some((receiver, method, pattern, handler)) = route_call(
+        route_expr,
+        source,
+        source_name,
+        state.data_imported,
+        &schema_names,
+    ) else {
         if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
         {
             return Err(diagnostic);
@@ -1489,7 +1502,15 @@ fn unsupported_route_call_diagnostic(
     if call
         .arguments
         .get(1)
-        .and_then(|argument| handler_from_argument(argument, source, "", state.data_imported))
+        .and_then(|argument| {
+            handler_from_argument(
+                argument,
+                source,
+                "",
+                state.data_imported,
+                &schema_names(state),
+            )
+        })
         .is_none()
     {
         let handler_argument = call.arguments.get(1)?;
@@ -1510,7 +1531,13 @@ fn validate_supported_initializer(
     state: &AppState,
     init: &Expression<'_>,
 ) -> Result<(), Diagnostic> {
-    if let Some((_, _, _, _)) = route_call(init, source, source_name, state.data_imported) {
+    if let Some((_, _, _, _)) = route_call(
+        init,
+        source,
+        source_name,
+        state.data_imported,
+        &schema_names(state),
+    ) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE",
             "route registration must be a top-level statement, not a variable initializer",
@@ -1966,10 +1993,13 @@ fn schema_declaration(
 }
 
 fn schema_definition(expression: &Expression<'_>) -> Option<Value> {
-    let Expression::CallExpression(call) = expression else {
-        return None;
-    };
-    schema_definition_call(call)
+    match expression {
+        Expression::CallExpression(call) => schema_definition_call(call),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            schema_definition(&parenthesized.expression)
+        }
+        _ => None,
+    }
 }
 
 fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value> {
@@ -1978,17 +2008,21 @@ fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value> {
         if matches!(property, "optional" | "min" | "max" | "email") {
             let mut base = schema_definition(&member.object)?;
             if property == "optional" {
-                base["optional"] = json!(true);
-            } else if property == "email" {
-                base["format"] = json!("email");
-            } else if let Some(argument) = call.arguments.first() {
-                if let Some(number) = numeric_argument_value(argument) {
-                    base[property] = json!(number);
-                } else {
+                if !call.arguments.is_empty() {
                     return None;
                 }
+                base["optional"] = json!(true);
+            } else if property == "email" {
+                if !call.arguments.is_empty() {
+                    return None;
+                }
+                base["format"] = json!("email");
             } else {
-                return None;
+                if call.arguments.len() != 1 {
+                    return None;
+                }
+                let number = call.arguments.first().and_then(numeric_argument_value)?;
+                base[property] = json!(number);
             }
             return Some(base);
         }
@@ -2038,6 +2072,9 @@ fn schema_definition_call(call: &CallExpression<'_>) -> Option<Value> {
 fn argument_schema_definition(argument: &Argument<'_>) -> Option<Value> {
     match argument {
         Argument::CallExpression(call) => schema_definition_call(call),
+        Argument::ParenthesizedExpression(parenthesized) => {
+            schema_definition(&parenthesized.expression)
+        }
         _ => None,
     }
 }
@@ -2053,6 +2090,27 @@ fn expression_mentions_schema(expression: &Expression<'_>) -> bool {
                     _ => false,
                 }
         }
+        Expression::ParenthesizedExpression(node) => expression_mentions_schema(&node.expression),
+        Expression::ConditionalExpression(node) => {
+            expression_mentions_schema(&node.test)
+                || expression_mentions_schema(&node.consequent)
+                || expression_mentions_schema(&node.alternate)
+        }
+        Expression::UnaryExpression(node) => expression_mentions_schema(&node.argument),
+        Expression::BinaryExpression(node) => {
+            expression_mentions_schema(&node.left) || expression_mentions_schema(&node.right)
+        }
+        Expression::LogicalExpression(node) => {
+            expression_mentions_schema(&node.left) || expression_mentions_schema(&node.right)
+        }
+        Expression::SequenceExpression(node) => {
+            node.expressions.iter().any(expression_mentions_schema)
+        }
+        Expression::TSAsExpression(node) => expression_mentions_schema(&node.expression),
+        Expression::TSSatisfiesExpression(node) => expression_mentions_schema(&node.expression),
+        Expression::TSTypeAssertion(node) => expression_mentions_schema(&node.expression),
+        Expression::TSNonNullExpression(node) => expression_mentions_schema(&node.expression),
+        Expression::TSInstantiationExpression(node) => expression_mentions_schema(&node.expression),
         _ => false,
     }
 }
@@ -2418,7 +2476,7 @@ fn extract_module_function_routes(
                     _ => (&statement.expression, None),
                 };
                 let Some((receiver, method, pattern, mut handler)) =
-                    route_call(route_expr, source, source_name, true)
+                    route_call(route_expr, source, source_name, true, &BTreeSet::new())
                 else {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
@@ -2532,6 +2590,7 @@ fn route_call<'a>(
     source: &str,
     source_name: &str,
     allow_data_handler_body: bool,
+    schema_names: &BTreeSet<String>,
 ) -> Option<(&'a str, &'static str, &'a str, Handler)> {
     let Expression::CallExpression(call) = expression else {
         return None;
@@ -2544,7 +2603,13 @@ fn route_call<'a>(
 
     let pattern = string_argument(call.arguments.first()?)?;
     let handler_arg = call.arguments.get(1)?;
-    let handler = handler_from_argument(handler_arg, source, source_name, allow_data_handler_body)?;
+    let handler = handler_from_argument(
+        handler_arg,
+        source,
+        source_name,
+        allow_data_handler_body,
+        schema_names,
+    )?;
     Some((receiver, method, pattern, handler))
 }
 
@@ -2749,18 +2814,22 @@ fn handler_from_argument(
     source: &str,
     source_name: &str,
     allow_data_handler_body: bool,
+    schema_names: &BTreeSet<String>,
 ) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
             if handler_parameters_are_unsupported(&function.params)
                 || arrow_has_typescript_syntax(function)
-                || (!allow_data_handler_body && !handler_body_is_supported_arrow(function))
+                || (!allow_data_handler_body
+                    && !handler_body_is_supported_arrow(function, schema_names))
             {
                 return None;
             }
             let handler_source = source_slice(source, function.span)?;
             let schema_spans = handler_context_parameter_name(&function.params)
-                .map(|ctx_name| body_json_schema_argument_spans_arrow(function, &ctx_name))
+                .map(|ctx_name| {
+                    body_json_schema_argument_spans_arrow(function, &ctx_name, schema_names)
+                })
                 .unwrap_or_default();
             Some(Handler {
                 source: sanitize_handler_schema_references(
@@ -2772,20 +2841,23 @@ fn handler_from_argument(
                 is_async: function.r#async,
                 source_name: source_name.to_string(),
                 source_text: source.to_string(),
-                bindings: request_bindings_from_arrow(function),
+                bindings: request_bindings_from_arrow(function, schema_names),
                 response: response_metadata_from_arrow(function),
             })
         }
         Argument::FunctionExpression(function) => {
             if handler_parameters_are_unsupported(&function.params)
                 || function_has_typescript_syntax(function)
-                || (!allow_data_handler_body && !handler_body_is_supported_function(function))
+                || (!allow_data_handler_body
+                    && !handler_body_is_supported_function(function, schema_names))
             {
                 return None;
             }
             let handler_source = source_slice(source, function.span)?;
             let schema_spans = handler_context_parameter_name(&function.params)
-                .map(|ctx_name| body_json_schema_argument_spans_function(function, &ctx_name))
+                .map(|ctx_name| {
+                    body_json_schema_argument_spans_function(function, &ctx_name, schema_names)
+                })
                 .unwrap_or_default();
             Some(Handler {
                 source: sanitize_handler_schema_references(
@@ -2797,7 +2869,7 @@ fn handler_from_argument(
                 is_async: function.r#async,
                 source_name: source_name.to_string(),
                 source_text: source.to_string(),
-                bindings: request_bindings_from_function(function),
+                bindings: request_bindings_from_function(function, schema_names),
                 response: response_metadata_from_function(function),
             })
         }
@@ -2806,6 +2878,7 @@ fn handler_from_argument(
 }
 
 fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span) -> Diagnostic {
+    let schema_names = BTreeSet::new();
     let (code, message, hint) = match argument {
         Argument::ArrowFunctionExpression(function) => {
             if handler_parameters_are_unsupported(&function.params) {
@@ -2820,7 +2893,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
                     "TypeScript handler syntax is not supported by the supported app compiler",
                     Some("Use JavaScript handler syntax until TypeScript lowering is implemented."),
                 )
-            } else if handler_result_uses_unsupported_values_arrow(function) {
+            } else if handler_result_uses_unsupported_values_arrow(function, &schema_names) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE",
                     "route handler result arguments must be inline JSON-safe values",
@@ -2853,7 +2926,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
                     "TypeScript handler syntax is not supported by the supported app compiler",
                     Some("Use JavaScript handler syntax until TypeScript lowering is implemented."),
                 )
-            } else if handler_result_uses_unsupported_values_function(function) {
+            } else if handler_result_uses_unsupported_values_function(function, &schema_names) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE",
                     "route handler result arguments must be inline JSON-safe values",
@@ -2940,6 +3013,7 @@ fn parameters_have_typescript_syntax(parameters: &oxc_ast::ast::FormalParameters
 
 fn handler_result_uses_unsupported_values_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    schema_names: &BTreeSet<String>,
 ) -> bool {
     let roots = function_parameter_roots(&function.params);
     if function.expression {
@@ -2948,7 +3022,7 @@ fn handler_result_uses_unsupported_values_arrow(
             .statements
             .first()
             .and_then(expression_statement_result_call)
-            .is_some_and(|call| !results_call_arguments_are_supported(call, &roots));
+            .is_some_and(|call| !results_call_arguments_are_supported(call, &roots, schema_names));
     }
 
     function
@@ -2956,10 +3030,13 @@ fn handler_result_uses_unsupported_values_arrow(
         .statements
         .first()
         .and_then(return_statement_result_call)
-        .is_some_and(|call| !results_call_arguments_are_supported(call, &roots))
+        .is_some_and(|call| !results_call_arguments_are_supported(call, &roots, schema_names))
 }
 
-fn handler_result_uses_unsupported_values_function(function: &oxc_ast::ast::Function<'_>) -> bool {
+fn handler_result_uses_unsupported_values_function(
+    function: &oxc_ast::ast::Function<'_>,
+    schema_names: &BTreeSet<String>,
+) -> bool {
     let roots = function_parameter_roots(&function.params);
     let Some(body) = &function.body else {
         return false;
@@ -2967,7 +3044,7 @@ fn handler_result_uses_unsupported_values_function(function: &oxc_ast::ast::Func
     body.statements
         .first()
         .and_then(return_statement_result_call)
-        .is_some_and(|call| !results_call_arguments_are_supported(call, &roots))
+        .is_some_and(|call| !results_call_arguments_are_supported(call, &roots, schema_names))
 }
 
 fn response_metadata_from_arrow(
@@ -3037,25 +3114,29 @@ fn status_result_code(call: &CallExpression<'_>) -> Option<u16> {
 
 fn request_bindings_from_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    schema_names: &BTreeSet<String>,
 ) -> Vec<RequestBinding> {
     let Some(ctx_name) = handler_context_parameter_name(&function.params) else {
         return Vec::new();
     };
     let mut bindings = Vec::new();
     for statement in &function.body.statements {
-        collect_statement_request_bindings(statement, &ctx_name, &mut bindings);
+        collect_statement_request_bindings(statement, &ctx_name, schema_names, &mut bindings);
     }
     dedupe_request_bindings(bindings)
 }
 
-fn request_bindings_from_function(function: &oxc_ast::ast::Function<'_>) -> Vec<RequestBinding> {
+fn request_bindings_from_function(
+    function: &oxc_ast::ast::Function<'_>,
+    schema_names: &BTreeSet<String>,
+) -> Vec<RequestBinding> {
     let Some(ctx_name) = handler_context_parameter_name(&function.params) else {
         return Vec::new();
     };
     let mut bindings = Vec::new();
     if let Some(body) = &function.body {
         for statement in &body.statements {
-            collect_statement_request_bindings(statement, &ctx_name, &mut bindings);
+            collect_statement_request_bindings(statement, &ctx_name, schema_names, &mut bindings);
         }
     }
     dedupe_request_bindings(bindings)
@@ -3081,16 +3162,22 @@ fn dedupe_request_bindings(bindings: Vec<RequestBinding>) -> Vec<RequestBinding>
 fn collect_statement_request_bindings(
     statement: &Statement<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
     bindings: &mut Vec<RequestBinding>,
 ) {
     match statement {
         Statement::ReturnStatement(statement) => {
             if let Some(argument) = &statement.argument {
-                collect_expression_request_bindings(argument, ctx_name, bindings);
+                collect_expression_request_bindings(argument, ctx_name, schema_names, bindings);
             }
         }
         Statement::ExpressionStatement(statement) => {
-            collect_expression_request_bindings(&statement.expression, ctx_name, bindings);
+            collect_expression_request_bindings(
+                &statement.expression,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
         }
         _ => {}
     }
@@ -3099,6 +3186,7 @@ fn collect_statement_request_bindings(
 fn collect_expression_request_bindings(
     expression: &Expression<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
     bindings: &mut Vec<RequestBinding>,
 ) {
     if let Some(binding) = request_binding_from_expression(expression, ctx_name) {
@@ -3106,30 +3194,40 @@ fn collect_expression_request_bindings(
     }
     match expression {
         Expression::CallExpression(call) => {
-            if let Some(binding) = request_binding_from_call(call, ctx_name) {
+            if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
             }
             for argument in &call.arguments {
-                collect_argument_request_bindings(argument, ctx_name, bindings);
+                collect_argument_request_bindings(argument, ctx_name, schema_names, bindings);
             }
         }
         Expression::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_request_bindings(&property.value, ctx_name, bindings);
+                    collect_expression_request_bindings(
+                        &property.value,
+                        ctx_name,
+                        schema_names,
+                        bindings,
+                    );
                 }
             }
         }
         Expression::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_request_bindings(element, ctx_name, bindings);
+                collect_array_element_request_bindings(element, ctx_name, schema_names, bindings);
             }
         }
         Expression::ParenthesizedExpression(parenthesized) => {
-            collect_expression_request_bindings(&parenthesized.expression, ctx_name, bindings);
+            collect_expression_request_bindings(
+                &parenthesized.expression,
+                ctx_name,
+                schema_names,
+                bindings,
+            );
         }
         Expression::StaticMemberExpression(member) => {
-            collect_expression_request_bindings(&member.object, ctx_name, bindings);
+            collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
         }
         _ => {}
     }
@@ -3138,31 +3236,37 @@ fn collect_expression_request_bindings(
 fn collect_argument_request_bindings(
     argument: &Argument<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
     bindings: &mut Vec<RequestBinding>,
 ) {
     match argument {
         Argument::CallExpression(call) => {
-            if let Some(binding) = request_binding_from_call(call, ctx_name) {
+            if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
             }
             for argument in &call.arguments {
-                collect_argument_request_bindings(argument, ctx_name, bindings);
+                collect_argument_request_bindings(argument, ctx_name, schema_names, bindings);
             }
         }
         Argument::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_request_bindings(&property.value, ctx_name, bindings);
+                    collect_expression_request_bindings(
+                        &property.value,
+                        ctx_name,
+                        schema_names,
+                        bindings,
+                    );
                 }
             }
         }
         Argument::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_request_bindings(element, ctx_name, bindings);
+                collect_array_element_request_bindings(element, ctx_name, schema_names, bindings);
             }
         }
         Argument::StaticMemberExpression(member) => {
-            collect_expression_request_bindings(&member.object, ctx_name, bindings);
+            collect_expression_request_bindings(&member.object, ctx_name, schema_names, bindings);
         }
         _ => {}
     }
@@ -3171,24 +3275,30 @@ fn collect_argument_request_bindings(
 fn collect_array_element_request_bindings(
     element: &ArrayExpressionElement<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
     bindings: &mut Vec<RequestBinding>,
 ) {
     match element {
         ArrayExpressionElement::CallExpression(call) => {
-            if let Some(binding) = request_binding_from_call(call, ctx_name) {
+            if let Some(binding) = request_binding_from_call(call, ctx_name, schema_names) {
                 bindings.push(binding);
             }
         }
         ArrayExpressionElement::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_request_bindings(&property.value, ctx_name, bindings);
+                    collect_expression_request_bindings(
+                        &property.value,
+                        ctx_name,
+                        schema_names,
+                        bindings,
+                    );
                 }
             }
         }
         ArrayExpressionElement::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_request_bindings(element, ctx_name, bindings);
+                collect_array_element_request_bindings(element, ctx_name, schema_names, bindings);
             }
         }
         _ => {}
@@ -3211,10 +3321,14 @@ fn request_binding_from_expression(
     None
 }
 
-fn request_binding_from_call(call: &CallExpression<'_>, ctx_name: &str) -> Option<RequestBinding> {
+fn request_binding_from_call(
+    call: &CallExpression<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<RequestBinding> {
     let chain = static_member_chain(&call.callee)?;
     if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" {
-        let schema = body_binding_schema(call, chain[2])?;
+        let schema = body_binding_schema(call, chain[2], schema_names)?;
         return Some(RequestBinding {
             kind: format!("body.{}", chain[2]),
             name: None,
@@ -3224,15 +3338,22 @@ fn request_binding_from_call(call: &CallExpression<'_>, ctx_name: &str) -> Optio
     None
 }
 
-fn body_binding_schema(call: &CallExpression<'_>, method: &str) -> Option<Option<String>> {
+fn body_binding_schema(
+    call: &CallExpression<'_>,
+    method: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<Option<String>> {
     match method {
         "text" if call.arguments.is_empty() => Some(None),
-        "json" if call.arguments.len() <= 1 => Some(
-            call.arguments
-                .first()
-                .and_then(argument_identifier)
-                .map(str::to_string),
-        ),
+        "json" if call.arguments.is_empty() => Some(None),
+        "json" if call.arguments.len() == 1 => {
+            let schema = call.arguments.first().and_then(argument_identifier)?;
+            if schema_names.contains(schema) {
+                Some(Some(schema.to_string()))
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }
@@ -3240,6 +3361,7 @@ fn body_binding_schema(call: &CallExpression<'_>, method: &str) -> Option<Option
 fn body_binding_call_is_supported(
     call: &CallExpression<'_>,
     allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
 ) -> bool {
     let Some(chain) = static_member_chain(&call.callee) else {
         return false;
@@ -3247,16 +3369,17 @@ fn body_binding_call_is_supported(
     chain.len() == 3
         && allowed_roots.contains(chain[0])
         && chain[1] == "body"
-        && body_binding_schema(call, chain[2]).is_some()
+        && body_binding_schema(call, chain[2], schema_names).is_some()
 }
 
 fn body_json_schema_argument_spans_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
 ) -> Vec<Span> {
     let mut spans = Vec::new();
     for statement in &function.body.statements {
-        collect_statement_schema_argument_spans(statement, ctx_name, &mut spans);
+        collect_statement_schema_argument_spans(statement, ctx_name, schema_names, &mut spans);
     }
     spans
 }
@@ -3264,11 +3387,12 @@ fn body_json_schema_argument_spans_arrow(
 fn body_json_schema_argument_spans_function(
     function: &oxc_ast::ast::Function<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
 ) -> Vec<Span> {
     let mut spans = Vec::new();
     if let Some(body) = &function.body {
         for statement in &body.statements {
-            collect_statement_schema_argument_spans(statement, ctx_name, &mut spans);
+            collect_statement_schema_argument_spans(statement, ctx_name, schema_names, &mut spans);
         }
     }
     spans
@@ -3277,16 +3401,22 @@ fn body_json_schema_argument_spans_function(
 fn collect_statement_schema_argument_spans(
     statement: &Statement<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
     spans: &mut Vec<Span>,
 ) {
     match statement {
         Statement::ReturnStatement(statement) => {
             if let Some(argument) = &statement.argument {
-                collect_expression_schema_argument_spans(argument, ctx_name, spans);
+                collect_expression_schema_argument_spans(argument, ctx_name, schema_names, spans);
             }
         }
         Statement::ExpressionStatement(statement) => {
-            collect_expression_schema_argument_spans(&statement.expression, ctx_name, spans);
+            collect_expression_schema_argument_spans(
+                &statement.expression,
+                ctx_name,
+                schema_names,
+                spans,
+            );
         }
         _ => {}
     }
@@ -3295,31 +3425,42 @@ fn collect_statement_schema_argument_spans(
 fn collect_expression_schema_argument_spans(
     expression: &Expression<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
     spans: &mut Vec<Span>,
 ) {
     match expression {
         Expression::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call, ctx_name) {
+            if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
                 spans.push(span);
             }
             for argument in &call.arguments {
-                collect_argument_schema_argument_spans(argument, ctx_name, spans);
+                collect_argument_schema_argument_spans(argument, ctx_name, schema_names, spans);
             }
         }
         Expression::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_schema_argument_spans(&property.value, ctx_name, spans);
+                    collect_expression_schema_argument_spans(
+                        &property.value,
+                        ctx_name,
+                        schema_names,
+                        spans,
+                    );
                 }
             }
         }
         Expression::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_schema_argument_spans(element, ctx_name, spans);
+                collect_array_element_schema_argument_spans(element, ctx_name, schema_names, spans);
             }
         }
         Expression::ParenthesizedExpression(parenthesized) => {
-            collect_expression_schema_argument_spans(&parenthesized.expression, ctx_name, spans);
+            collect_expression_schema_argument_spans(
+                &parenthesized.expression,
+                ctx_name,
+                schema_names,
+                spans,
+            );
         }
         _ => {}
     }
@@ -3328,27 +3469,33 @@ fn collect_expression_schema_argument_spans(
 fn collect_argument_schema_argument_spans(
     argument: &Argument<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
     spans: &mut Vec<Span>,
 ) {
     match argument {
         Argument::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call, ctx_name) {
+            if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
                 spans.push(span);
             }
             for argument in &call.arguments {
-                collect_argument_schema_argument_spans(argument, ctx_name, spans);
+                collect_argument_schema_argument_spans(argument, ctx_name, schema_names, spans);
             }
         }
         Argument::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_schema_argument_spans(&property.value, ctx_name, spans);
+                    collect_expression_schema_argument_spans(
+                        &property.value,
+                        ctx_name,
+                        schema_names,
+                        spans,
+                    );
                 }
             }
         }
         Argument::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_schema_argument_spans(element, ctx_name, spans);
+                collect_array_element_schema_argument_spans(element, ctx_name, schema_names, spans);
             }
         }
         _ => {}
@@ -3358,36 +3505,49 @@ fn collect_argument_schema_argument_spans(
 fn collect_array_element_schema_argument_spans(
     element: &ArrayExpressionElement<'_>,
     ctx_name: &str,
+    schema_names: &BTreeSet<String>,
     spans: &mut Vec<Span>,
 ) {
     match element {
         ArrayExpressionElement::CallExpression(call) => {
-            if let Some(span) = body_json_schema_argument_span(call, ctx_name) {
+            if let Some(span) = body_json_schema_argument_span(call, ctx_name, schema_names) {
                 spans.push(span);
             }
         }
         ArrayExpressionElement::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
-                    collect_expression_schema_argument_spans(&property.value, ctx_name, spans);
+                    collect_expression_schema_argument_spans(
+                        &property.value,
+                        ctx_name,
+                        schema_names,
+                        spans,
+                    );
                 }
             }
         }
         ArrayExpressionElement::ArrayExpression(array) => {
             for element in &array.elements {
-                collect_array_element_schema_argument_spans(element, ctx_name, spans);
+                collect_array_element_schema_argument_spans(element, ctx_name, schema_names, spans);
             }
         }
         _ => {}
     }
 }
 
-fn body_json_schema_argument_span(call: &CallExpression<'_>, ctx_name: &str) -> Option<Span> {
+fn body_json_schema_argument_span(
+    call: &CallExpression<'_>,
+    ctx_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<Span> {
     let chain = static_member_chain(&call.callee)?;
     if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" && chain[2] == "json" {
         let Argument::Identifier(identifier) = call.arguments.first()? else {
             return None;
         };
+        if !schema_names.contains(identifier.name.as_str()) {
+            return None;
+        }
         return Some(identifier.span);
     }
     None
@@ -3476,24 +3636,28 @@ fn argument_span(argument: &Argument<'_>) -> Option<Span> {
     }
 }
 
-fn handler_body_is_supported_arrow(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
+fn handler_body_is_supported_arrow(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    schema_names: &BTreeSet<String>,
+) -> bool {
     let roots = function_parameter_roots(&function.params);
     if function.expression {
         return function.body.statements.len() == 1
             && function.body.statements.first().is_some_and(|statement| {
-                expression_statement_is_supported_result(statement, &roots)
+                expression_statement_is_supported_result(statement, &roots, schema_names)
             });
     }
 
     function.body.statements.len() == 1
-        && function
-            .body
-            .statements
-            .first()
-            .is_some_and(|statement| return_statement_returns_supported_result(statement, &roots))
+        && function.body.statements.first().is_some_and(|statement| {
+            return_statement_returns_supported_result(statement, &roots, schema_names)
+        })
 }
 
-fn handler_body_is_supported_function(function: &oxc_ast::ast::Function<'_>) -> bool {
+fn handler_body_is_supported_function(
+    function: &oxc_ast::ast::Function<'_>,
+    schema_names: &BTreeSet<String>,
+) -> bool {
     let roots = function_parameter_roots(&function.params);
     if function.generator || function.body.is_none() {
         return false;
@@ -3502,26 +3666,27 @@ fn handler_body_is_supported_function(function: &oxc_ast::ast::Function<'_>) -> 
         return false;
     };
     body.statements.len() == 1
-        && body
-            .statements
-            .first()
-            .is_some_and(|statement| return_statement_returns_supported_result(statement, &roots))
+        && body.statements.first().is_some_and(|statement| {
+            return_statement_returns_supported_result(statement, &roots, schema_names)
+        })
 }
 
 fn return_statement_returns_supported_result(
     statement: &Statement<'_>,
     allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
 ) -> bool {
     return_statement_result_call(statement)
-        .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots))
+        .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots, schema_names))
 }
 
 fn expression_statement_is_supported_result(
     statement: &Statement<'_>,
     allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
 ) -> bool {
     expression_statement_result_call(statement)
-        .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots))
+        .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots, schema_names))
 }
 
 fn return_statement_result_call<'a>(
@@ -3576,6 +3741,7 @@ fn results_helper_is_supported(property: &str) -> bool {
 fn results_call_arguments_are_supported(
     call: &CallExpression<'_>,
     allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
 ) -> bool {
     let Some((object, property)) = static_member_name(&call.callee) else {
         return false;
@@ -3594,25 +3760,24 @@ fn results_call_arguments_are_supported(
     };
 
     argument_count_supported
-        && call
-            .arguments
-            .iter()
-            .all(|argument| argument_is_inline_json_safe_value(argument, allowed_roots))
+        && call.arguments.iter().all(|argument| {
+            argument_is_inline_json_safe_value(argument, allowed_roots, schema_names)
+        })
 }
 
 fn argument_is_inline_json_safe_value(
     argument: &Argument<'_>,
     allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
 ) -> bool {
     match argument {
         Argument::StringLiteral(_)
         | Argument::NumericLiteral(_)
         | Argument::BooleanLiteral(_)
         | Argument::NullLiteral(_) => true,
-        Argument::ArrayExpression(array) => array
-            .elements
-            .iter()
-            .all(|element| array_element_is_inline_json_safe_value(element, allowed_roots)),
+        Argument::ArrayExpression(array) => array.elements.iter().all(|element| {
+            array_element_is_inline_json_safe_value(element, allowed_roots, schema_names)
+        }),
         Argument::ObjectExpression(object) => {
             object.properties.iter().all(|property| match property {
                 ObjectPropertyKind::ObjectProperty(property) => {
@@ -3621,7 +3786,11 @@ fn argument_is_inline_json_safe_value(
                         && !property.shorthand
                         && !property.computed
                         && property_key_is_inline_json_safe(&property.key)
-                        && expression_is_inline_json_safe_value(&property.value, allowed_roots)
+                        && expression_is_inline_json_safe_value(
+                            &property.value,
+                            allowed_roots,
+                            schema_names,
+                        )
                 }
                 ObjectPropertyKind::SpreadProperty(_) => false,
             })
@@ -3629,10 +3798,14 @@ fn argument_is_inline_json_safe_value(
         Argument::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
         }
-        Argument::CallExpression(call) => body_binding_call_is_supported(call, allowed_roots),
-        Argument::ParenthesizedExpression(parenthesized) => {
-            expression_is_inline_json_safe_value(&parenthesized.expression, allowed_roots)
+        Argument::CallExpression(call) => {
+            body_binding_call_is_supported(call, allowed_roots, schema_names)
         }
+        Argument::ParenthesizedExpression(parenthesized) => expression_is_inline_json_safe_value(
+            &parenthesized.expression,
+            allowed_roots,
+            schema_names,
+        ),
         _ => false,
     }
 }
@@ -3640,16 +3813,16 @@ fn argument_is_inline_json_safe_value(
 fn array_element_is_inline_json_safe_value(
     element: &ArrayExpressionElement<'_>,
     allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
 ) -> bool {
     match element {
         ArrayExpressionElement::StringLiteral(_)
         | ArrayExpressionElement::NumericLiteral(_)
         | ArrayExpressionElement::BooleanLiteral(_)
         | ArrayExpressionElement::NullLiteral(_) => true,
-        ArrayExpressionElement::ArrayExpression(array) => array
-            .elements
-            .iter()
-            .all(|element| array_element_is_inline_json_safe_value(element, allowed_roots)),
+        ArrayExpressionElement::ArrayExpression(array) => array.elements.iter().all(|element| {
+            array_element_is_inline_json_safe_value(element, allowed_roots, schema_names)
+        }),
         ArrayExpressionElement::ObjectExpression(object) => {
             object.properties.iter().all(|property| match property {
                 ObjectPropertyKind::ObjectProperty(property) => {
@@ -3658,7 +3831,11 @@ fn array_element_is_inline_json_safe_value(
                         && !property.shorthand
                         && !property.computed
                         && property_key_is_inline_json_safe(&property.key)
-                        && expression_is_inline_json_safe_value(&property.value, allowed_roots)
+                        && expression_is_inline_json_safe_value(
+                            &property.value,
+                            allowed_roots,
+                            schema_names,
+                        )
                 }
                 ObjectPropertyKind::SpreadProperty(_) => false,
             })
@@ -3670,16 +3847,16 @@ fn array_element_is_inline_json_safe_value(
 fn expression_is_inline_json_safe_value(
     expression: &Expression<'_>,
     allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
 ) -> bool {
     match expression {
         Expression::StringLiteral(_)
         | Expression::NumericLiteral(_)
         | Expression::BooleanLiteral(_)
         | Expression::NullLiteral(_) => true,
-        Expression::ArrayExpression(array) => array
-            .elements
-            .iter()
-            .all(|element| array_element_is_inline_json_safe_value(element, allowed_roots)),
+        Expression::ArrayExpression(array) => array.elements.iter().all(|element| {
+            array_element_is_inline_json_safe_value(element, allowed_roots, schema_names)
+        }),
         Expression::ObjectExpression(object) => {
             object.properties.iter().all(|property| match property {
                 ObjectPropertyKind::ObjectProperty(property) => {
@@ -3688,15 +3865,23 @@ fn expression_is_inline_json_safe_value(
                         && !property.shorthand
                         && !property.computed
                         && property_key_is_inline_json_safe(&property.key)
-                        && expression_is_inline_json_safe_value(&property.value, allowed_roots)
+                        && expression_is_inline_json_safe_value(
+                            &property.value,
+                            allowed_roots,
+                            schema_names,
+                        )
                 }
                 ObjectPropertyKind::SpreadProperty(_) => false,
             })
         }
-        Expression::ParenthesizedExpression(parenthesized) => {
-            expression_is_inline_json_safe_value(&parenthesized.expression, allowed_roots)
+        Expression::ParenthesizedExpression(parenthesized) => expression_is_inline_json_safe_value(
+            &parenthesized.expression,
+            allowed_roots,
+            schema_names,
+        ),
+        Expression::CallExpression(call) => {
+            body_binding_call_is_supported(call, allowed_roots, schema_names)
         }
-        Expression::CallExpression(call) => body_binding_call_is_supported(call, allowed_roots),
         Expression::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
         }
@@ -5210,6 +5395,37 @@ export default app;
         let diagnostic = extract(std::path::Path::new("app.js"), invalid_body_helper)
             .expect_err("invalid body helper should fail");
         assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+
+        let unknown_body_schema = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const options = {};
+app.post("/", (ctx) => Results.json({ body: ctx.body.json(options) }));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), unknown_body_schema)
+            .expect_err("unknown body schema identifier should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+
+        let invalid_schema_modifier = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = schema.object({ email: schema.string().email("strict") });
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), invalid_schema_modifier)
+            .expect_err("schema modifier arity should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+        let conditional_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const flag = true;
+const UserCreate = flag ? schema.string() : schema.number();
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), conditional_schema)
+            .expect_err("conditional schema should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
     }
 
     #[test]
