@@ -332,3 +332,10 @@ SQLite JS bridge registration, and no SQLite package dependency claim.
 - No full DI container.
 - No native JSON fast path.
 - No multi-isolate implementation.
+## ENGINE-14 Implementation Note
+
+The framework MVP function-module shape is now supported in the compiler-owned subset:
+`app.use(sqlite(...))`, `app.useModule(usersModule)`, `app.group(...)`, and literal
+`group.get/post/put/patch/delete(...)` registrations compile into the existing Plan and
+classic artifact path. Controllers, decorators, configuration, request binding, validation,
+and broader framework examples remain separate framework tasks.

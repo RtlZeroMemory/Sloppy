@@ -64,3 +64,9 @@ helpful diagnostic or require explicit metadata; no silent unsound inference.
 - Do not make benchmark claims.
 - Do not make OpenAPI/public-alpha claims before framework metadata and examples are honest.
 - Do not attempt full arbitrary JS/TS analysis.
+## ENGINE-14 Plan Input
+
+ENGINE-14 feeds Strong Plan work with compiler-emitted module route attribution,
+multi-source source-map metadata, and provider/capability entries from function modules.
+The native typed module graph remains future Strong Plan work; this PR keeps runtime
+startup on the existing Plan route/provider/capability sections.

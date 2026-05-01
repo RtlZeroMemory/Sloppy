@@ -10,8 +10,10 @@ This example is a deliberately small users API backed by SQLite:
 - `GET /users/{id}` returns one user as JSON or `404`.
 - `POST /users` accepts a JSON object with `name` and `email`, inserts the user, and returns `201`.
 
-The example uses the public `data.sqlite("main")` JavaScript API and Plan-emitted
-`data.main` database capability metadata. The database file is
+The example uses the explicit provider import
+`import { sqlite } from "sloppy/providers/sqlite"` and a relative function module. The
+compiler rewrites that supported source graph into the classic artifact runtime path and
+emits Plan-visible `data.main` provider/capability metadata. The database file is
 `users-api-sqlite-runtime.db`; tests remove it before and after the localhost transport
 proof. Each handler creates the table if needed and seeds Ada Lovelace and Grace Hopper
 only when their deterministic IDs are absent.

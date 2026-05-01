@@ -775,3 +775,11 @@ Acceptance:
 - Exact validation schema DSL ownership.
 - Whether `Sloppy.create()` is v0.1 or later convenience.
 - Exact command output formats for plan-powered tools.
+## ENGINE-14 Function Modules
+
+ENGINE-14 adds the first compiler-owned multi-file app shape for framework MVP work:
+relative function-module imports, explicit SQLite provider imports from
+`"sloppy/providers/sqlite"`, Minimal API aliases (`app.get(...)`, `app.group(...)`) in the
+supported compiler subset, and Plan-visible provider/capability metadata. Artifact runtime
+format remains classic/bootstrap-executed; source-level imports are not a Node/npm
+compatibility promise.

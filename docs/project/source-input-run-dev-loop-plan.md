@@ -80,3 +80,10 @@ separate.
 - No hot reload unless later scoped.
 - No public alpha docs from source-input alone.
 - No full TypeScript typechecker in the first source-input handoff.
+## ENGINE-14 Update
+
+Source-input run now accepts the compiler-owned module subset: static relative function
+modules, `"sloppy"`, and `"sloppy/providers/sqlite"`. It still rebuilds into the same
+`.sloppy/cache/dev/source-input` artifact directory and executes through the existing
+artifact path. Cache reuse, watch mode, Node/npm resolution, package-manager behavior, and
+full TypeScript typechecking remain deferred.

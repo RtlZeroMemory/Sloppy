@@ -334,3 +334,10 @@ Reviewers must ask:
 - Are negative cases covered?
 - Would this test catch a real regression?
 - Did docs change if expected behavior changed?
+## ENGINE-14 Test Split
+
+ENGINE-14 module tests are split by evidence lane. Default compiler/golden tests cover
+relative import success and failure, provider import rewriting, function-module Plan
+contribution, dynamic import rejection, and multi-source source maps. V8/source-input
+execution remains V8-gated; passing default non-V8 tests must not be reported as V8 module
+runtime success.

@@ -214,3 +214,10 @@ Benchmarks are currently exposed through `tools/windows/bench.ps1` and the nativ
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/app-plan.md`,
 `docs/compiler.md`, `docs/modules/plan/README.md`.
+## Source Input Modules
+
+`sloppy run <source>` remains a shortcut over compile-to-artifacts followed by the existing
+artifact runtime path. The supported source graph is static and compiler-owned: `"sloppy"`,
+`"sloppy/providers/sqlite"`, and relative app modules under the source root. Unsupported
+bare imports, dynamic imports, Node/npm resolution, `node_modules`, and package-manager
+behavior are rejected rather than emulated.

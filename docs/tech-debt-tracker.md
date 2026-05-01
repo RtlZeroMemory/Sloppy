@@ -398,3 +398,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   resolution, database capability hook checks, resource-table-owned handles, batched row
   mapping, JSON handler fixture, denied-capability fixture, and fail-closed missing-hook
   behavior.
+## ENGINE-14 Follow-ups
+
+- Source-map diagnostics are multi-file at artifact level, but richer runtime remapping and
+  code-frame diagnostics remain part of the source-map diagnostics completion track.
+- Full V8 native ESM loading, dynamic import, package/module distribution, and
+  package-manager behavior remain intentionally deferred.
+- Function modules support the framework MVP shape only; controllers, decorators,
+  framework configuration, request binding, validation, Results completion, and example
+  hardening remain tracked by the framework follow-up issues.

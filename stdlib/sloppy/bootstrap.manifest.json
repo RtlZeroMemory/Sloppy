@@ -5,6 +5,7 @@
   "modules": [
     "sloppy/index.js",
     "sloppy/data.js",
+    "sloppy/providers/sqlite.js",
     "sloppy/results.js",
     "sloppy/schema.js",
     "sloppy/app.js",

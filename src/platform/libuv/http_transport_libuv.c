@@ -338,6 +338,15 @@ static SlStr sl_http_transport_body_for_status(uint16_t status)
     }
 }
 
+static SlStr sl_http_transport_body_for_failure(uint16_t status, const SlDiag* diag)
+{
+    if (diag != NULL && diag->code == SL_DIAG_MALFORMED_JSON) {
+        return sl_http_transport_literal("Malformed JSON\n", sizeof("Malformed JSON\n") - 1U);
+    }
+
+    return sl_http_transport_body_for_status(status);
+}
+
 static void sl_http_transport_store_diag(SlHttpTransportConnection* connection, const SlDiag* diag)
 {
     if (connection != NULL && diag != NULL) {
@@ -1039,8 +1048,8 @@ static SlStatus sl_http_transport_dispatch_ready(SlHttpTransportConnection* conn
     if (!sl_status_is_ok(status)) {
         safe_status = sl_http_transport_status_for_failure(status, &dispatch_diag);
         sl_http_transport_store_diag(connection, &dispatch_diag);
-        response =
-            sl_http_response_text(safe_status, sl_http_transport_body_for_status(safe_status));
+        response = sl_http_response_text(
+            safe_status, sl_http_transport_body_for_failure(safe_status, &dispatch_diag));
     }
 
     status = sl_http_transport_write_response(connection, &response, out_diag);

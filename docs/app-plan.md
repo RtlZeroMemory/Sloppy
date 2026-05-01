@@ -678,3 +678,11 @@ Plan v1 loader is accepted when:
 - Whether plan JSON permits comments in dev mode.
 - Whether unknown fields are warnings or errors in v1.
 - Exact source location representation for generated module contributions.
+## ENGINE-14 Module Metadata
+
+ENGINE-14 does not add a top-level native `modules` Plan section yet, but compiler-emitted
+routes may carry module attribution and module source locations. Function-module routes
+and provider/capability metadata are emitted into the same Plan route/provider/capability
+graph as direct app registration. The generated source map may list multiple author files
+so diagnostics can point at module files where the current runtime can use source-map
+metadata.

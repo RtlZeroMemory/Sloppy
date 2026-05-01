@@ -552,3 +552,8 @@ For Phase 1 implementation PRs:
 - Which CI runner gets sanitizer gates first.
 - Whether clang-tidy should lint every C file through a generated target.
 - Exact benchmark regression threshold once benchmarks exist.
+## ENGINE-14 Gate Reporting
+
+ENGINE-14 module-loading evidence follows the existing source-input split: compiler
+module-graph tests can pass without V8, while source-input execution of generated module
+artifacts is V8-gated. Default non-V8 success must not be reported as V8 runtime success.

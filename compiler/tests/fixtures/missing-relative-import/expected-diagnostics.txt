@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/missing-relative-import/input.js:2:29: SLOPPYC_E_MISSING_RELATIVE_IMPORT: relative import "./missing.js" could not be resolved
+  --> <compiler>/tests/fixtures/missing-relative-import/input.js:2:29
+   |
+2 | import { usersModule } from "./missing.js";
+   |                             ^^^^^^^^^^^^^^
+hint: Use a relative .js/.mjs/.ts module inside the source root.

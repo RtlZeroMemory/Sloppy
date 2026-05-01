@@ -1163,6 +1163,29 @@ static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size
         "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ");
 }
 
+static bool sl_run_bytes_contains_cstr(SlBytes bytes, const char* needle)
+{
+    size_t needle_length = 0U;
+    size_t index = 0U;
+
+    if (bytes.ptr == NULL || needle == NULL) {
+        return false;
+    }
+
+    needle_length = strlen(needle);
+    if (needle_length == 0U || bytes.length < needle_length) {
+        return false;
+    }
+
+    for (index = 0U; index <= bytes.length - needle_length; index += 1U) {
+        if (memcmp(bytes.ptr + index, needle, needle_length) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 typedef struct SlRunSha256
 {
     uint32_t state[8];
@@ -1596,6 +1619,8 @@ static int sl_run_prepare_routes(SlRunApp* app)
 static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
 {
     char bootstrap_path[1024];
+    char manifest_path[1024];
+    SlBytes manifest = {0};
     SlBytes js = {0};
     SlStr source = {0};
     SlDiag diag = {0};
@@ -1610,6 +1635,27 @@ static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
                                    "internal/runtime-classic.js"))
     {
         sl_cli_write_cstr(stderr, "sloppy run: invalid bootstrap stdlib directory\n");
+        return 1;
+    }
+
+    if (!sl_run_artifact_file_path(manifest_path, sizeof(manifest_path), stdlib_root,
+                                   "bootstrap.manifest.json"))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid bootstrap stdlib directory\n");
+        return 1;
+    }
+
+    if (sl_run_read_stdlib_file(manifest_path, app->bootstrap_js_storage,
+                                sizeof(app->bootstrap_js_storage), &manifest) != 0)
+    {
+        return 1;
+    }
+
+    if (!sl_run_bytes_contains_cstr(manifest, "\"stdlibVersion\": \"0.1.0\"") ||
+        !sl_run_bytes_contains_cstr(manifest, "\"sloppy/internal/runtime-classic.js\""))
+    {
+        sl_cli_write_cstr(
+            stderr, "sloppy run: bootstrap stdlib manifest is incompatible with this runtime\n");
         return 1;
     }
 
@@ -2043,6 +2089,7 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
 {
     SlRunApp* app = (SlRunApp*)user;
     SlStatus status;
+    SlStatus transport_status;
 
     (void)connection;
     if (app == NULL || arena == NULL || request == NULL || out_response == NULL) {
@@ -2051,7 +2098,15 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
 
     status =
         sl_run_dispatch_response_with_storage(app, &request->head, arena, out_response, out_diag);
-    return sl_status_is_ok(status) ? status : sl_run_dispatch_transport_status(status, out_diag);
+    if (sl_status_is_ok(status)) {
+        return status;
+    }
+
+    transport_status = sl_run_dispatch_transport_status(status, out_diag);
+    if (sl_status_code(transport_status) == SL_STATUS_INTERNAL && out_diag != NULL) {
+        sl_run_print_diag("sloppy run: HTTP dispatch failed\n", arena, out_diag);
+    }
+    return transport_status;
 }
 
 static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t port, SlRunApp* app)

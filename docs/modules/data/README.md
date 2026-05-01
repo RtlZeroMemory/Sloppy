@@ -344,3 +344,10 @@ based on skipped or unavailable services.
 
 - Exact app-host disposal/resource-table shape for PostgreSQL and SQL Server pool and
   connection handles.
+## ENGINE-14 Provider Import
+
+The supported source-level SQLite provider import is
+`import { sqlite } from "sloppy/providers/sqlite"`. The compiler recognizes
+`app.use(sqlite("name", { database: "..." }))` as provider/capability metadata and
+rewrites the app into the classic artifact path. This does not add PostgreSQL or SQL
+Server JavaScript bridges, package resolution, or provider expansion.
