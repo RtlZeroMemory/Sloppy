@@ -86,7 +86,51 @@ static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* ar
         return sl_status_from_code(hook->status_code);
     }
 
+    if (hook->response.kind == SL_HTTP_RESPONSE_STREAM && hook->response.stream_chunk_count != 0U) {
+        void* chunk_storage = nullptr;
+        SlHttpResponse response = hook->response;
+        SlHttpResponseStreamChunk* chunks = nullptr;
+        size_t chunk_bytes = sizeof(SlHttpResponseStreamChunk) * response.stream_chunk_count;
+        SlStatus status =
+            sl_arena_alloc(arena, chunk_bytes, alignof(SlHttpResponseStreamChunk), &chunk_storage);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        chunks = static_cast<SlHttpResponseStreamChunk*>(chunk_storage);
+        for (size_t index = 0U; index < response.stream_chunk_count; index += 1U) {
+            SlOwnedBytes copy = {};
+            status = sl_bytes_copy_to_arena(arena, response.stream_chunks[index].bytes, &copy);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            chunks[index].bytes = sl_owned_bytes_as_view(copy);
+        }
+        response.stream_chunks = chunks;
+        *out_response = response;
+        return sl_status_ok();
+    }
+
     *out_response = hook->response;
+    return sl_status_ok();
+}
+
+static SlStatus stack_stream_dispatch_hook(SlHttpTransportConnection* connection, SlArena* arena,
+                                           const SlHttpRequestLifecycle* request,
+                                           SlHttpResponse* out_response, SlDiag* out_diag,
+                                           void* user)
+{
+    unsigned char chunk_storage[5] = {'s', 't', 'a', 'c', 'k'};
+    SlHttpResponseStreamChunk chunks[1] = {};
+    DispatchHook* hook = static_cast<DispatchHook*>(user);
+
+    (void)arena;
+    (void)out_diag;
+    if (hook == nullptr || connection == nullptr || request == nullptr || out_response == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    hook->count += 1U;
+    chunks[0].bytes = sl_bytes_from_parts(chunk_storage, sizeof(chunk_storage));
+    *out_response = sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 1U);
     return sl_status_ok();
 }
 
@@ -775,6 +819,181 @@ static int test_body_same_chunk_split_chunk_and_empty_body(void)
     return 0;
 }
 
+static int test_chunked_request_decoding_success_cases(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    ClientConnect client = {};
+    ReadyHook hook = {};
+    SlDiag diag = {};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        start_one_connection(&arena, &server, &client, &hook) != 0 ||
+        expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0],
+                bytes_from_cstr("POST /chunk HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                                "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n"),
+                &diag),
+            SL_STATUS_OK) != 0 ||
+        hook.count != 1U || expect_str_equal(hook.path, "/chunk") != 0 ||
+        expect_bytes_equal(hook.body, "hello") != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 430;
+    }
+    stop_one_connection(&server, &client);
+
+    sl_arena_reset(&arena);
+    server = {};
+    client = {};
+    hook = {};
+    diag = {};
+    if (start_one_connection(&arena, &server, &client, &hook) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("POST /multi HTTP/1.1\r\nContent-Type: application/"
+                                          "json\r\nTransfer-Encoding: chunked\r\n\r\nA\r\nhello"),
+                          &diag),
+                      SL_STATUS_OK) != 0 ||
+        server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0], bytes_from_cstr("world\r\n0\r\n\r\n"), &diag),
+                      SL_STATUS_OK) != 0 ||
+        hook.count != 1U || expect_bytes_equal(hook.body, "helloworld") != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 431;
+    }
+    stop_one_connection(&server, &client);
+
+    sl_arena_reset(&arena);
+    server = {};
+    client = {};
+    hook = {};
+    diag = {};
+    if (start_one_connection(&arena, &server, &client, &hook) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("POST /empty HTTP/1.1\r\nTransfer-Encoding: chunked\r\n"
+                                          "\r\n0\r\n\r\n"),
+                          &diag),
+                      SL_STATUS_OK) != 0 ||
+        hook.count != 1U || hook.body.length != 0U)
+    {
+        stop_one_connection(&server, &client);
+        return 432;
+    }
+    stop_one_connection(&server, &client);
+
+    return 0;
+}
+
+static int test_chunked_request_decoding_allows_bounded_wire_overhead(void)
+{
+    static const char request[] = "POST /tiny HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+                                  "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
+                                  "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
+                                  "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
+                                  "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
+                                  "0\r\n\r\n";
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    ReadyHook hook = {};
+    SlDiag diag = {};
+
+    config = small_config(&hook);
+    config.max_request_head_bytes = 64U;
+    config.parse.max_body_length = 20U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(&server.connections[0],
+                                                             bytes_from_cstr(request), &diag),
+                      SL_STATUS_OK) != 0 ||
+        hook.count != 1U || expect_bytes_equal(hook.body, "aaaaaaaaaaaaaaaaaaaa") != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 433;
+    }
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_chunked_request_decoding_rejections(void)
+{
+    static const struct
+    {
+        const char* request;
+        SlStatusCode status_code;
+        SlDiagCode diag_code;
+    } cases[] = {
+        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nz\r\nx\r\n0\r\n\r\n",
+         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_CHUNK_SIZE_INVALID},
+        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nx\n0\r\n\r\n",
+         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_CHUNK_DELIMITER_INVALID},
+        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n20\r\n", SL_STATUS_OK, SL_DIAG_NONE},
+        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\n\r\n0\r\n\r\n",
+         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_HTTP_REQUEST},
+        {"POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n", SL_STATUS_UNSUPPORTED,
+         SL_DIAG_HTTP_UNSUPPORTED_BODY},
+        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX: y\r\n\r\n",
+         SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_TRAILERS_UNSUPPORTED},
+    };
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char storage[65536];
+        SlArena arena = {};
+        SlHttpTransportServer server = {};
+        ClientConnect client = {};
+        SlDiag diag = {};
+
+        if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+            start_one_connection(&arena, &server, &client, nullptr) != 0)
+        {
+            return 440 + (int)index;
+        }
+        if (index == 2U) {
+            if (expect_status(
+                    sl_http_transport_connection_feed_test(
+                        &server.connections[0], bytes_from_cstr(cases[index].request), &diag),
+                    SL_STATUS_OK) != 0 ||
+                server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY)
+            {
+                stop_one_connection(&server, &client);
+                return 450;
+            }
+            if (expect_status(sl_http_transport_connection_close(&server.connections[0], &diag),
+                              SL_STATUS_OK) != 0 ||
+                server.connections[0].last_diag.code != SL_DIAG_HTTP_CHUNK_FINAL_MISSING)
+            {
+                stop_one_connection(&server, &client);
+                return 451;
+            }
+            stop_one_connection(&server, &client);
+            continue;
+        }
+        if (expect_status(sl_http_transport_connection_feed_test(
+                              &server.connections[0], bytes_from_cstr(cases[index].request), &diag),
+                          cases[index].status_code) != 0 ||
+            diag.code != cases[index].diag_code)
+        {
+            stop_one_connection(&server, &client);
+            return 460 + (int)index;
+        }
+        stop_one_connection(&server, &client);
+    }
+    return 0;
+}
+
 static int test_limits_and_malformed_requests_are_deterministic(void)
 {
     unsigned char storage[65536];
@@ -858,7 +1077,7 @@ static int test_body_policy_and_pipelining_rejections(void)
         start_one_connection(&arena, &server, &client, nullptr) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"),
+                          bytes_from_cstr("POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n"),
                           &diag),
                       SL_STATUS_UNSUPPORTED) != 0 ||
         diag.code != SL_DIAG_HTTP_UNSUPPORTED_BODY)
@@ -1024,6 +1243,122 @@ static int test_dispatch_success_writes_response_and_closes(void)
     {
         stop_one_connection(&server, &client);
         return 81;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_streaming_response_writes_chunked_frames(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\n"
+        "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n";
+    SlHttpResponseStreamChunk chunks[1] = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
+    SlBytes response = {};
+
+    chunks[0].bytes = bytes_from_cstr("hello");
+    dispatch.response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain; charset=utf-8"), chunks, 1U);
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (run_localhost_request(&config, "GET /stream HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.count != 1U || !server.connections[0].write_completed ||
+        expect_bytes_equal(response, expected) != 0)
+    {
+        return 810;
+    }
+    return 0;
+}
+
+static int test_streaming_response_rejects_non_arena_chunks(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    config = small_config(nullptr);
+    config.dispatch = stack_stream_dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0], bytes_from_cstr("GET /stream HTTP/1.1\r\n\r\n"), &diag),
+            SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        dispatch.count != 1U ||
+        server.connections[0].last_diag.code != SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED)
+    {
+        stop_one_connection(&server, &client);
+        return 813;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_streaming_response_backpressure_rejection(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlHttpResponseStreamChunk chunks[1] = {};
+    SlDiag diag = {};
+
+    chunks[0].bytes = bytes_from_cstr(
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-"
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-"
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-"
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-"
+        "too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-large-too-"
+        "large");
+    dispatch.response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain; charset=utf-8"), chunks, 1U);
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    config.max_pending_write_bytes = 256U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0], bytes_from_cstr("GET /stream HTTP/1.1\r\n\r\n"), &diag),
+            SL_STATUS_OK) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 811;
+    }
+    for (size_t index = 0U; index < 64U && server.backend.active_requests != 0U; index += 1U) {
+        (void)sl_http_transport_server_poll(&server, &diag);
+    }
+    if (server.connections[0].last_diag.code != SL_DIAG_HTTP_RESPONSE_BACKPRESSURE ||
+        server.backend.active_requests != 0U)
+    {
+        stop_one_connection(&server, &client);
+        return 812;
     }
 
     stop_one_connection(&server, &client);
@@ -1454,7 +1789,7 @@ static int test_localhost_transport_smoke_body_success_and_rejections(void)
 
     config = small_config(nullptr);
     if (run_localhost_request(&config,
-                              "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: chunked\r\n"
+                              "POST / HTTP/1.1\r\nHost: local\r\nTransfer-Encoding: gzip\r\n"
                               "\r\n",
                               &response, &server, nullptr) != 0)
     {
@@ -1715,6 +2050,18 @@ int main(void)
     if (result != 0) {
         return result;
     }
+    result = test_chunked_request_decoding_success_cases();
+    if (result != 0) {
+        return result;
+    }
+    result = test_chunked_request_decoding_allows_bounded_wire_overhead();
+    if (result != 0) {
+        return result;
+    }
+    result = test_chunked_request_decoding_rejections();
+    if (result != 0) {
+        return result;
+    }
     result = test_limits_and_malformed_requests_are_deterministic();
     if (result != 0) {
         return result;
@@ -1728,6 +2075,18 @@ int main(void)
         return result;
     }
     result = test_dispatch_success_writes_response_and_closes();
+    if (result != 0) {
+        return result;
+    }
+    result = test_streaming_response_writes_chunked_frames();
+    if (result != 0) {
+        return result;
+    }
+    result = test_streaming_response_rejects_non_arena_chunks();
+    if (result != 0) {
+        return result;
+    }
+    result = test_streaming_response_backpressure_rejection();
     if (result != 0) {
         return result;
     }

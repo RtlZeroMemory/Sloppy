@@ -238,6 +238,22 @@ static int test_capacity_failure_returns_empty_output(void)
     return expect_true(bytes.ptr == NULL && bytes.length == 0U);
 }
 
+static int test_stream_descriptor_normalizes_null_chunks(void)
+{
+    SlHttpResponseStreamChunk chunks[1] = {{0}};
+    SlHttpResponse response =
+        sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), NULL, 1U);
+
+    if (response.kind != SL_HTTP_RESPONSE_STREAM || response.stream_chunks != NULL ||
+        response.stream_chunk_count != 0U)
+    {
+        return 1;
+    }
+
+    response = sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 0U);
+    return expect_true(response.stream_chunks == NULL && response.stream_chunk_count == 0U);
+}
+
 static int run_test(const char* name, int (*test)(void))
 {
     int result = test();
@@ -309,6 +325,12 @@ int main(void)
         return result;
     }
 
-    return run_test("test_capacity_failure_returns_empty_output",
-                    test_capacity_failure_returns_empty_output);
+    result = run_test("test_capacity_failure_returns_empty_output",
+                      test_capacity_failure_returns_empty_output);
+    if (result != 0) {
+        return result;
+    }
+
+    return run_test("test_stream_descriptor_normalizes_null_chunks",
+                    test_stream_descriptor_normalizes_null_chunks);
 }

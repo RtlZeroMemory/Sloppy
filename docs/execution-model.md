@@ -38,12 +38,14 @@ This document does not implement:
 ## Current Phase
 
 HTTP-25.A/B/C update: the libuv localhost transport now supports bounded sequential
-HTTP/1.1 keep-alive. Eligible successful HTTP/1.1 responses write managed
+HTTP/1.1 keep-alive. HTTP-25.D/E adds bounded chunked request decoding and an internal
+chunked response writer. Eligible successful HTTP/1.1 responses write managed
 `Connection: keep-alive`, reset request-owned state after the response write callback, and
 return the same connection to idle/read-wait for one next request. `Connection: close`,
 HTTP/1.0, disabled keep-alive config, shutdown, unsafe error responses, and max-request
 exhaustion write `Connection: close` and close after write. Pipelined bytes are rejected
-deterministically; chunked request decoding and streaming responses remain #444/#445.
+deterministically; request streaming APIs, public response streaming helpers, SSE,
+WebSockets, and file streaming remain deferred.
 
 `sloppyc` now has the ENGINE-02 compiler/Plan pipeline. It can compile a supported
 single-file Sloppy app into deterministic `app.plan.json`, `app.js`, and real handler-line
@@ -512,8 +514,11 @@ previous response write completes, request-owned state is reset, shutdown has no
 the configured max-request count has not been reached, and the request/response lifecycle
 is safe to reuse. The loop still forces close for HTTP/1.0, explicit `Connection: close`,
 disabled keep-alive config, shutdown, unsafe error/body/parse failures, unsupported
-pipelining, and max-request exhaustion. Chunked request decoding, streaming response
-writers, keep-alive stress/conformance, and production graceful drain remain future
+pipelining, and max-request exhaustion. HTTP-25.D/E adds bounded chunked request decoding
+before dispatch and an internal/native chunked response writer that sequences transport
+writes through the write callback and writes the final zero chunk before keep-alive reset.
+Public request streaming, public JS response streaming helpers, SSE/WebSockets/file
+streaming, keep-alive stress/conformance, and production graceful drain remain future
 HTTP-25 follow-ups.
 
 The current shutdown policy is bounded and honest: shutdown stops acceptance and rejects

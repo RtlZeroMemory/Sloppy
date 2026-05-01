@@ -18,7 +18,8 @@ typedef enum SlHttpResponseKind
     SL_HTTP_RESPONSE_TEXT = 0,
     SL_HTTP_RESPONSE_JSON = 1,
     SL_HTTP_RESPONSE_EMPTY = 2,
-    SL_HTTP_RESPONSE_PROBLEM = 3
+    SL_HTTP_RESPONSE_PROBLEM = 3,
+    SL_HTTP_RESPONSE_STREAM = 4
 } SlHttpResponseKind;
 
 typedef enum SlHttpResponseConnectionPolicy
@@ -31,6 +32,11 @@ typedef struct SlHttpResponseWriteOptions
 {
     SlHttpResponseConnectionPolicy connection;
 } SlHttpResponseWriteOptions;
+
+typedef struct SlHttpResponseStreamChunk
+{
+    SlBytes bytes;
+} SlHttpResponseStreamChunk;
 
 /*
  * Native HTTP response descriptor for the EPIC-23 dev response writer.
@@ -48,12 +54,20 @@ typedef struct SlHttpResponse
     const SlHttpHeader* headers;
     size_t header_count;
     SlBytes body;
+    const SlHttpResponseStreamChunk* stream_chunks;
+    size_t stream_chunk_count;
 } SlHttpResponse;
 
 SlHttpResponse sl_http_response_text(uint16_t status, SlStr body);
 SlHttpResponse sl_http_response_json(uint16_t status, SlBytes body);
 SlHttpResponse sl_http_response_empty(uint16_t status);
 SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body);
+/*
+ * Internal/native streaming descriptor. Transport dispatch callbacks must store `chunks`
+ * and every non-empty chunk byte view in the dispatch arena passed to the callback.
+ */
+SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
+                                       const SlHttpResponseStreamChunk* chunks, size_t chunk_count);
 
 /*
  * Writes deterministic HTTP/1.1 response bytes into `buffer`.

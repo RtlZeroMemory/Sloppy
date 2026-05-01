@@ -40,6 +40,11 @@ causes for client `Connection: close`, server-forced close, idle timeout, max re
 reached, unsupported pipelining, and shutdown closing idle keep-alive connections. These
 diagnostics are stable Sloppy codes/counters and do not expose libuv handles, socket
 pointers, raw native pointers, or secret-bearing values.
+HTTP-25.D/E adds stable diagnostics for invalid chunk sizes, chunk-size overflow,
+malformed chunk delimiters, missing final chunks on close, decoded body-limit failures,
+unsupported transfer encodings, conflicting `Content-Length` plus `Transfer-Encoding`,
+rejected trailers, and streaming response backpressure. Diagnostic messages remain bounded
+and do not include request body bytes.
 
 MAIN1-06 completes the bounded alpha diagnostic renderer surface:
 
@@ -212,6 +217,12 @@ Implemented foundation codes:
 - `SLOPPY_E_HTTP_KEEP_ALIVE_IDLE_TIMEOUT`;
 - `SLOPPY_E_HTTP_MAX_REQUESTS_REACHED`;
 - `SLOPPY_E_HTTP_PIPELINING_UNSUPPORTED`;
+- `SLOPPY_E_HTTP_CHUNK_SIZE_INVALID`;
+- `SLOPPY_E_HTTP_CHUNK_SIZE_OVERFLOW`;
+- `SLOPPY_E_HTTP_CHUNK_DELIMITER_INVALID`;
+- `SLOPPY_E_HTTP_CHUNK_FINAL_MISSING`;
+- `SLOPPY_E_HTTP_TRAILERS_UNSUPPORTED`;
+- `SLOPPY_E_HTTP_RESPONSE_BACKPRESSURE`;
 - `SLOPPY_E_HTTP_SHUTDOWN`;
 - `SLOPPY_E_HTTP_TRANSPORT_CONFIG`;
 - `SLOPPY_E_HTTP_BIND_FAILED`;

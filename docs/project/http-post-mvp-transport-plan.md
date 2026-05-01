@@ -1,8 +1,9 @@
 # HTTP Post-MVP Transport Plan
 
 Status: source of truth for #433 and HTTP-25 tasks. HTTP-25.A/B/C are implemented as a
-bounded sequential keep-alive upgrade; chunked request decoding, response streaming, and
-stress/conformance remain separate follow-ups.
+bounded sequential keep-alive upgrade. HTTP-25.D/E adds bounded chunked request decoding
+and the first internal chunked streaming response writer; stress/conformance remains the
+`#446` follow-up.
 
 ## Current HTTP MVP
 
@@ -10,9 +11,9 @@ stress/conformance remain separate follow-ups.
 | --- | --- |
 | Request model | Sequential HTTP/1.1 keep-alive; one request is dispatched at a time per connection. |
 | Connection close | HTTP/1.1 keeps alive by default unless disabled, `Connection: close` is present, shutdown starts, an unsafe error occurs, or max requests is reached. |
-| Request body framing | Content-Length only. |
+| Request body framing | Content-Length and bounded `Transfer-Encoding: chunked`. |
 | Transport scope | Bounded localhost transport. |
-| Claims | No production-edge, benchmark, TLS, HTTP/2, HTTP/3, WebSocket, pipelining, chunked, or streaming claims. |
+| Claims | No production-edge, benchmark, TLS, HTTP/2, HTTP/3, WebSocket, pipelining, SSE, file streaming, or public streaming API claims. |
 
 ## HTTP-25.A/B/C Implemented Semantics
 
@@ -36,6 +37,30 @@ stress/conformance remain separate follow-ups.
 - Shutdown stops accepting, closes idle keep-alive connections, lets an already active
   response follow the existing drain-lite policy, and prevents new keep-alive requests.
 
+## HTTP-25.D/E Implemented Semantics
+
+- Requests with exactly one `Transfer-Encoding: chunked` header are decoded into the same
+  bounded full-body request storage used by `Content-Length`. The decoded body uses the
+  configured body cap, while raw wire accumulation is separately bounded for the current
+  no-extension chunked subset; there is no JavaScript-visible request streaming API.
+- Chunk size lines accept upper/lowercase hexadecimal byte counts. Invalid sizes, size
+  overflow, malformed chunk body delimiters, decoded body overflow, unsupported transfer
+  encodings, and `Content-Length` plus `Transfer-Encoding` conflicts fail before dispatch.
+- Trailers are rejected deterministically. The supported final chunk is exactly the zero
+  chunk followed by an empty trailer section.
+- The first response streaming writer is an internal/native descriptor, not a public
+  `Results.stream` helper. It emits HTTP/1.1 chunked response framing, writes each frame
+  through sequenced transport writes, requires stream chunk metadata and payload views to
+  point into the request arena, copies those views before async writes begin, and writes
+  the final zero chunk.
+- Streaming response backpressure is bounded by `max_pending_write_bytes` per connection.
+  A chunk that exceeds the cap fails deterministically with an HTTP response backpressure
+  diagnostic; late writes after close/cancel/shutdown fail through the existing write/
+  shutdown terminal paths.
+- After the final response chunk, keep-alive follows the same sequential policy as buffered
+  responses: eligible HTTP/1.1 connections return to idle/read-wait, while close policy,
+  shutdown, unsafe errors, and max-request exhaustion close.
+
 Configuration keys emitted by the compiler and consumed by `sloppy run --artifacts`:
 
 | Key | Default | Behavior |
@@ -53,8 +78,9 @@ Configuration keys emitted by the compiler and consumed by `sloppy run --artifac
   configuration keys above.
 - #443 defines request lifecycle reset between sequential requests. Implemented for the
   current buffered request/response transport path.
-- #444 adds chunked request decoding.
-- #445 adds streaming response writer behavior.
+- #444 adds chunked request decoding. Implemented for bounded full-body request storage.
+- #445 adds streaming response writer behavior. Implemented as an internal/native chunked
+  response descriptor; public JS helpers remain future framework design.
 - #446 adds stress/conformance evidence for keep-alive and streaming.
 
 ## Later
