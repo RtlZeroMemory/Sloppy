@@ -45,6 +45,11 @@ malformed chunk delimiters, missing final chunks on close, decoded body-limit fa
 unsupported transfer encodings, conflicting `Content-Length` plus `Transfer-Encoding`,
 rejected trailers, and streaming response backpressure. Diagnostic messages remain bounded
 and do not include request body bytes.
+HTTP-25.F adds conformance/stress assertions for those diagnostics and counters: keep-alive
+idle timeout, max requests reached, chunked decode failures, streaming response
+backpressure, shutdown/cancel cleanup, and lifecycle cleanup-once paths. These assertions
+remain transport-internal evidence and do not expose libuv handles, socket internals, raw
+native pointers, request bodies, response bodies, or secret-bearing values.
 
 MAIN1-06 completes the bounded alpha diagnostic renderer surface:
 

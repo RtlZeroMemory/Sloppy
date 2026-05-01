@@ -42,8 +42,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   `docs/project/post-core-mvp-boundary-audit.md` records the current libuv boundary state.
   HARDEN-01.A retires the legacy public `sl_http_libuv_smoke` helper and routes the
   dev-only CLI server path through `SlHttpTransportServer`; HTTP-25.A/B/C adds bounded
-  sequential keep-alive. Remaining HTTP transport debt is the explicit future chunked
-  decoding, streaming, stress/conformance, and production-hardening work below.
+  sequential keep-alive, HTTP-25.D/E adds chunked decoding and internal streaming, and
+  HTTP-25.F adds bounded stress/conformance evidence. Remaining HTTP transport debt is
+  future owner-approved production hardening or public streaming API work.
 - Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02 and
   ENGINE-03: source-input handoff/cache, module/service/schema extraction, broader async
   source shapes, non-GET dispatch, and provider/capability enforcement.
@@ -89,9 +90,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   request decoding, and streaming response writing. HTTP-25.A/B/C adds bounded sequential
   keep-alive with no pipelining, idle timeout, max requests, lifecycle reset, and shutdown
   close policy. HTTP-25.D/E adds bounded chunked request decoding and the first
-  internal/native chunked response writer. Remaining HTTP transport debt is #446
-  keep-alive/streaming stress and conformance, public request/response streaming APIs if
-  owner-approved, production graceful-drain policy, production hardening, and middleware policy if ever scoped. This
+  internal/native chunked response writer. HTTP-25.F adds bounded keep-alive/streaming
+  stress and conformance evidence. Remaining HTTP transport debt is public
+  request/response streaming APIs if owner-approved, production graceful-drain policy,
+  production hardening, and middleware policy if ever scoped. This
   is separate from ENGINE-12 because HTTP has parser, connection, body, and shutdown policy
   that sits above generic async completions.
 - Module/bootstrap completion: ENGINE-14 owns stdlib/bootstrap asset loading, app module
@@ -180,9 +182,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   lowering, relative imports/function modules, richer source-map diagnostics, and
   watch/dev-loop policy.
 - HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F,
-  ENGINE-24.A/B/C/D/E/F/G, HTTP-25.A/B/C/D/E, and the ENGINE-17.E users API proof: redirect
-  helpers, streaming/files, cookies, content negotiation, #446 keep-alive/streaming stress
-  and conformance,
+  ENGINE-24.A/B/C/D/E/F/G, HTTP-25.A/B/C/D/E/F, and the ENGINE-17.E users API proof: redirect
+  helpers, streaming/files, cookies, content negotiation, hardening beyond #446 bounded
+  keep-alive/streaming stress and conformance,
   graceful drain behavior beyond immediate-cancel/drain-lite transport shutdown, broader
   V8 transport conformance, and production error pages.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
@@ -293,9 +295,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   sequential keep-alive connection loop, idle timeout, max requests per connection,
   lifecycle reset, close policy, and default localhost conformance. HTTP-25.D/E adds
   bounded chunked request decoding, rejected trailers, an internal/native chunked response
-  writer, and pending-write cap diagnostics. Deferred HTTP-25 work remains #446
-  keep-alive/streaming stress/conformance plus any future owner-approved public streaming
-  API, SSE/WebSocket/file streaming, or production hardening. No pipelining, concurrent
+  writer, pending-write cap diagnostics, and HTTP-25.F bounded keep-alive/streaming
+  stress/conformance. Deferred HTTP-25 work remains any future owner-approved public
+  streaming API, SSE/WebSocket/file streaming, or production hardening. No pipelining, concurrent
   requests on one connection, or production-edge HTTP claim is implied.
 - Full route table/trie optimization, catch-all routes, optional segments, regex
   constraints, nested route groups, and ambiguity diagnostics beyond MAIN1-04's

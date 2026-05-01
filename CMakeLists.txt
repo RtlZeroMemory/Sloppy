@@ -666,6 +666,25 @@ if(SLOPPY_ENABLE_TESTS)
             COMMAND $<TARGET_FILE:core_http_transport>)
         set_tests_properties(
             conformance.transport.localhost_mvp PROPERTIES LABELS "conformance;transport;http")
+        foreach(
+            test_name
+            IN
+            ITEMS conformance.transport.keep_alive
+                  conformance.transport.keep_alive_idle_timeout
+                  conformance.transport.keep_alive_max_requests
+                  conformance.transport.lifecycle_reset
+                  conformance.transport.chunked_request
+                  conformance.transport.streaming_response
+                  conformance.transport.backpressure
+                  conformance.transport.shutdown_cancel)
+            add_test(NAME ${test_name} COMMAND $<TARGET_FILE:core_http_transport>)
+            set_tests_properties(${test_name} PROPERTIES LABELS "conformance;transport;http")
+        endforeach()
+        add_test(
+            NAME smoke.transport.keep_alive_streaming_bounded
+            COMMAND $<TARGET_FILE:core_http_transport>)
+        set_tests_properties(
+            smoke.transport.keep_alive_streaming_bounded PROPERTIES LABELS "smoke;transport;http")
     endif()
     sloppy_add_c_unit_test(
         core_http_context core.http.context tests/unit/core/test_http_context.c)

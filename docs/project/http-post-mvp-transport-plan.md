@@ -2,8 +2,9 @@
 
 Status: source of truth for #433 and HTTP-25 tasks. HTTP-25.A/B/C are implemented as a
 bounded sequential keep-alive upgrade. HTTP-25.D/E adds bounded chunked request decoding
-and the first internal chunked streaming response writer; stress/conformance remains the
-`#446` follow-up.
+and the first internal chunked streaming response writer. HTTP-25.F adds bounded
+stress/conformance evidence for the implemented transport behavior without adding new
+transport features.
 
 ## Current HTTP MVP
 
@@ -61,6 +62,32 @@ and the first internal chunked streaming response writer; stress/conformance rem
   responses: eligible HTTP/1.1 connections return to idle/read-wait, while close policy,
   shutdown, unsafe errors, and max-request exhaustion close.
 
+## HTTP-25.F Evidence
+
+HTTP-25.F registers the implemented keep-alive/chunked/streaming behavior under
+ENGINE-19-aligned evidence names:
+
+- default non-V8 localhost transport conformance:
+  `conformance.transport.keep_alive`,
+  `conformance.transport.keep_alive_idle_timeout`,
+  `conformance.transport.keep_alive_max_requests`,
+  `conformance.transport.lifecycle_reset`,
+  `conformance.transport.chunked_request`,
+  `conformance.transport.streaming_response`,
+  `conformance.transport.backpressure`, and
+  `conformance.transport.shutdown_cancel`;
+- bounded stress/smoke:
+  `smoke.transport.keep_alive_streaming_bounded`;
+- optional V8-gated HTTP/app evidence remains separate and is not implied by default
+  transport success;
+- no benchmark evidence is registered for HTTP-25.F.
+
+The bounded smoke covers repeated keep-alive requests on one connection, repeated
+short-lived keep-alive connections, repeated chunked requests, repeated streaming
+responses, repeated malformed requests, and shutdown/cleanup counters. It reports only
+correctness/lifecycle evidence. It does not claim throughput, latency, scalability,
+production readiness, or comparison to other runtimes.
+
 Configuration keys emitted by the compiler and consumed by `sloppy run --artifacts`:
 
 | Key | Default | Behavior |
@@ -81,7 +108,9 @@ Configuration keys emitted by the compiler and consumed by `sloppy run --artifac
 - #444 adds chunked request decoding. Implemented for bounded full-body request storage.
 - #445 adds streaming response writer behavior. Implemented as an internal/native chunked
   response descriptor; public JS helpers remain future framework design.
-- #446 adds stress/conformance evidence for keep-alive and streaming.
+- #446 adds stress/conformance evidence for keep-alive and streaming. Implemented as
+  bounded default non-V8 localhost transport conformance aliases plus a bounded stress
+  smoke alias over the existing transport test executable.
 
 ## Later
 

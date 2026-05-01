@@ -54,10 +54,11 @@ lifecycle state is reset after each completed response before the next request c
 dispatch. Pipelining remains unsupported and is rejected/closed deterministically.
 HTTP-25.D/E adds bounded `Transfer-Encoding: chunked` request decoding into the existing
 full-body request storage and the first internal/native chunked streaming response writer.
-Request streaming APIs, public `Results.stream`, SSE/WebSockets/file streaming, and #446
-keep-alive/streaming stress evidence remain separate work. This is not V8 transport
-conformance, benchmark evidence, production graceful-drain evidence, or production-edge
-HTTP evidence.
+HTTP-25.F adds bounded keep-alive/chunked/streaming conformance and stress smoke evidence
+over the implemented localhost transport behavior. Request streaming APIs, public
+`Results.stream`, SSE/WebSockets/file streaming, V8 app transport evidence, benchmark
+evidence, production graceful-drain evidence, and production-edge HTTP evidence remain
+separate work.
 ENGINE-17.E adds a V8-gated users API proof over `sloppy run --artifacts` and real
 localhost TCP requests for SQLite-backed GET/POST JSON handlers. That proof was
 evidence-only and did not introduce keep-alive. HTTP-25.A/B/C later makes the localhost
@@ -179,7 +180,8 @@ Future scope:
 - production server hardening if explicitly scoped later;
 - public request streaming API;
 - public JavaScript `Results.stream` helper;
-- #446 keep-alive/streaming stress and conformance beyond the current smoke;
+- future owner-approved public streaming API or production-hardening work beyond the
+  current HTTP-25.F bounded keep-alive/streaming stress and conformance smoke;
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
 
@@ -629,6 +631,11 @@ Implemented CTest coverage:
   media type, unsupported transfer encodings, chunked request decoding, chunked streaming
   response framing, response `Content-Length`/managed `Connection` bytes, and cleanup/counter coherence; the same
   transport target also covers unsupported pipelining through the deterministic feed path;
+- HTTP-25.F bounded stress/conformance tests for N sequential keep-alive requests on one
+  connection, POST then GET lifecycle reset, repeated short-lived keep-alive connections,
+  repeated chunked requests, repeated streaming responses, repeated malformed requests,
+  streaming keep-alive after the final zero chunk, streaming backpressure rejection, and
+  shutdown/cancel cleanup counters;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
 - V8-gated dispatch success returning `sloppy-ok`;
@@ -656,10 +663,8 @@ Future tests:
 
 - route table ambiguity tests;
 - broader HTTP server/socket integration tests;
-- future keep-alive stress/conformance tests for higher-volume sequential reuse, socket
-  backpressure, and richer shutdown drain timing;
-- #446 future keep-alive/streaming stress tests for higher-volume reuse, richer write
-  backpressure timing, and shutdown/client-disconnect stress beyond the current smoke;
+- future owner-approved keep-alive/streaming hardening beyond HTTP-25.F's bounded,
+  CI-friendly smoke, such as richer drain timing or broader production-edge behavior;
 - fuzz target for route patterns;
 - broader response writer behavior beyond the current dev-only MVP.
 

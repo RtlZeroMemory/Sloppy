@@ -63,7 +63,12 @@ Existing tests do not need churn-only renames. Existing CTest names such as
 `conformance.hello.compile_artifacts`, `conformance.request_context.run_once`,
 `conformance.sqlite.native_provider`, `conformance.sqlite.bridge`,
 `conformance.capability.native_registry`,
-`conformance.users_api_sqlite.localhost_transport`, and
+`conformance.users_api_sqlite.localhost_transport`, `conformance.transport.keep_alive`,
+`conformance.transport.keep_alive_idle_timeout`,
+`conformance.transport.keep_alive_max_requests`, `conformance.transport.lifecycle_reset`,
+`conformance.transport.chunked_request`, `conformance.transport.streaming_response`,
+`conformance.transport.backpressure`, `conformance.transport.shutdown_cancel`,
+`smoke.transport.keep_alive_streaming_bounded`, and
 `benchmarks.sloppy_bench.smoke_json` remain acceptable while their labels and docs make the
 lane clear.
 
@@ -91,6 +96,9 @@ Skipped optional gates are not pass claims.
 - Benchmark list/smoke: harness proof only, no performance claim.
 - Stress/smoke: bounded safety or lifecycle proof only, no performance claim.
 - Localhost transport: loopback MVP proof only, no production-edge HTTP claim.
+- HTTP-25.F transport: bounded keep-alive/chunked/streaming conformance and stress smoke,
+  no benchmark/performance claim and no TLS/HTTP2/HTTP3/WebSocket/SSE/multipart/
+  compression/static-file/reverse-proxy or production-edge claim.
 - SQLite users API proof: SQLite proof only, no PostgreSQL/SQL Server JS bridge claim.
 
 ## PR Body Checklist

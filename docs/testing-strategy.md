@@ -77,7 +77,12 @@ pipelining rejection. These are correctness smoke/conformance checks, not benchm
 production-edge, TLS, HTTP/2/3, SSE, WebSocket, file streaming, or public JS
 streaming-helper evidence. HTTP-25.D/E adds default transport coverage for bounded chunked
 request decoding, malformed chunk diagnostics, internal chunked streaming response
-framing, final zero chunk emission, and pending-write backpressure rejection.
+framing, final zero chunk emission, and pending-write backpressure rejection. HTTP-25.F
+registers bounded keep-alive/chunked/streaming conformance aliases and a CI-friendly
+stress smoke over the same localhost executable. That smoke repeats keep-alive reuse,
+short-lived keep-alive connections, chunked requests, streaming responses, malformed
+requests, and shutdown cleanup only; it is not throughput, latency, scalability, benchmark,
+V8, public streaming API, or production-edge HTTP evidence.
 
 - C unit tests;
 - Rust/`sloppyc` tests;
