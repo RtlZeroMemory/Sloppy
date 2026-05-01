@@ -163,6 +163,8 @@ typedef struct SlCliSchemaProperty
 typedef struct SlCliSchema
 {
     SlCliSpan name;
+    SlCliSpan kind;
+    SlCliSpan item_kind;
     SlCliSpan source_path;
     uint64_t source_line;
     uint64_t source_column;
@@ -1110,11 +1112,17 @@ static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema
 {
     yyjson_val* definition = yyjson_obj_get(schema_value, "definition");
     yyjson_val* properties = NULL;
+    yyjson_val* items = NULL;
     yyjson_obj_iter iter;
     yyjson_val* key = NULL;
 
     if (definition == NULL || !yyjson_is_obj(definition)) {
         return;
+    }
+    schema->kind = sl_cli_json_span(definition, "kind");
+    items = yyjson_obj_get(definition, "items");
+    if (items != NULL && yyjson_is_obj(items)) {
+        schema->item_kind = sl_cli_json_span(items, "kind");
     }
     properties = yyjson_obj_get(definition, "properties");
     if (properties == NULL || !yyjson_is_obj(properties)) {
@@ -4313,13 +4321,15 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliRoute* route)
     sl_cli_json_escape_lower(out, route->method);
     sl_cli_write_cstr(out, ": {\n        \"operationId\": ");
     sl_cli_json_escape(out, route->name);
-    sl_cli_write_cstr(out, ",\n        \"x-slop-source\": { \"path\": ");
-    sl_cli_json_escape(out, route->source_path);
-    sl_cli_write_cstr(out, ", \"line\": ");
-    sl_cli_write_u64(out, route->source_line);
-    sl_cli_write_cstr(out, ", \"column\": ");
-    sl_cli_write_u64(out, route->source_column);
-    sl_cli_write_cstr(out, " }");
+    if (!sl_cli_span_empty(route->source_path)) {
+        sl_cli_write_cstr(out, ",\n        \"x-slop-source\": { \"path\": ");
+        sl_cli_json_escape(out, route->source_path);
+        sl_cli_write_cstr(out, ", \"line\": ");
+        sl_cli_write_u64(out, route->source_line);
+        sl_cli_write_cstr(out, ", \"column\": ");
+        sl_cli_write_u64(out, route->source_column);
+        sl_cli_write_cstr(out, " }");
+    }
     sl_cli_write_cstr(out, ",\n        \"x-slop-completeness\": ");
     sl_cli_json_escape(out, route->completeness);
     sl_cli_write_cstr(out, ",\n        \"x-slop-capabilities\": ");
@@ -4377,17 +4387,33 @@ static void sl_cli_openapi_emit_schema(FILE* out, const SlCliSchema* schema, boo
 {
     size_t index = 0U;
     bool first_required = true;
+    bool is_object =
+        sl_cli_span_empty(schema->kind) || sl_cli_span_equal_cstr(schema->kind, "object");
 
     sl_cli_write_cstr(out, comma ? ",\n      " : "\n      ");
     sl_cli_json_escape(out, schema->name);
-    sl_cli_write_cstr(
-        out, ": {\n        \"type\": \"object\",\n        \"x-slop-source\": { \"path\": ");
-    sl_cli_json_escape(out, schema->source_path);
-    sl_cli_write_cstr(out, ", \"line\": ");
-    sl_cli_write_u64(out, schema->source_line);
-    sl_cli_write_cstr(out, ", \"column\": ");
-    sl_cli_write_u64(out, schema->source_column);
-    sl_cli_write_cstr(out, " },\n        \"properties\": {");
+    sl_cli_write_cstr(out, ": {\n        \"type\": ");
+    sl_cli_json_escape(out, is_object ? sl_cli_span_cstr("object")
+                                      : sl_cli_openapi_type_for_kind(schema->kind));
+    if (sl_cli_span_equal_cstr(schema->kind, "array")) {
+        sl_cli_write_cstr(out, ",\n        \"items\": { \"type\": ");
+        sl_cli_json_escape(out, sl_cli_openapi_type_for_kind(schema->item_kind));
+        sl_cli_write_cstr(out, " }");
+    }
+    if (!sl_cli_span_empty(schema->source_path)) {
+        sl_cli_write_cstr(out, ",\n        \"x-slop-source\": { \"path\": ");
+        sl_cli_json_escape(out, schema->source_path);
+        sl_cli_write_cstr(out, ", \"line\": ");
+        sl_cli_write_u64(out, schema->source_line);
+        sl_cli_write_cstr(out, ", \"column\": ");
+        sl_cli_write_u64(out, schema->source_column);
+        sl_cli_write_cstr(out, " }");
+    }
+    if (!is_object) {
+        sl_cli_write_cstr(out, "\n      }");
+        return;
+    }
+    sl_cli_write_cstr(out, ",\n        \"properties\": {");
     for (index = 0U; index < schema->property_count; index += 1U) {
         sl_cli_write_cstr(out, index == 0U ? "\n          " : ",\n          ");
         sl_cli_json_escape(out, schema->properties[index].name);

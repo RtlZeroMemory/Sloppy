@@ -13,7 +13,6 @@
     "/": {
       "get": {
         "operationId": "Hello.Index",
-        "x-slop-source": { "path": "", "line": 0, "column": 0 },
         "x-slop-completeness": "",
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
@@ -27,7 +26,6 @@
     "/users/{id}": {
       "get": {
         "operationId": "Users.Get",
-        "x-slop-source": { "path": "", "line": 0, "column": 0 },
         "x-slop-completeness": "",
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
@@ -43,7 +41,6 @@
     "/users/create": {
       "get": {
         "operationId": "Users.Create",
-        "x-slop-source": { "path": "", "line": 0, "column": 0 },
         "x-slop-completeness": "",
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
