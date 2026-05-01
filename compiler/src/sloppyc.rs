@@ -160,6 +160,7 @@ struct ExtractedApp {
     uses_data_runtime: bool,
     source_files: Vec<SourceFile>,
     routes: Vec<Route>,
+    modules: Vec<FunctionModule>,
     helper_sources: Vec<String>,
     capabilities: Vec<DatabaseCapability>,
     configuration: Option<ConfigurationPlan>,
@@ -270,6 +271,12 @@ struct ImportedModule {
     span: Span,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct FunctionModule {
+    name: String,
+    source_name: String,
+}
+
 #[derive(Debug)]
 struct AppState {
     sloppy_imported: bool,
@@ -290,6 +297,7 @@ struct AppState {
     app_provider_uses: BTreeSet<String>,
     imported_modules: Vec<ImportedModule>,
     used_modules: Vec<(String, Span)>,
+    modules: BTreeMap<(String, String), FunctionModule>,
     routes: Vec<Route>,
     capabilities: Vec<DatabaseCapability>,
     schemas: Vec<SchemaMetadata>,
@@ -319,6 +327,7 @@ impl AppState {
             app_provider_uses: BTreeSet::new(),
             imported_modules: Vec::new(),
             used_modules: Vec::new(),
+            modules: BTreeMap::new(),
             routes: Vec::new(),
             capabilities: Vec::new(),
             schemas: Vec::new(),
@@ -1127,6 +1136,14 @@ fn extract_entry(
             ));
         };
         let module_routes = extract_relative_module(graph, &imported)?;
+        let module = FunctionModule {
+            name: imported.export_name.clone(),
+            source_name: source_map_source_name(&imported.path),
+        };
+        state
+            .modules
+            .entry((module.source_name.clone(), module.name.clone()))
+            .or_insert(module);
         state.routes.extend(module_routes);
     }
 
@@ -1214,6 +1231,7 @@ fn extract_entry(
                 .any(|route| !route.handler.effects.is_empty()),
         source_files: graph.source_files.clone(),
         routes: state.routes,
+        modules: state.modules.into_values().collect(),
         helper_sources: state.helper_sources.into_values().collect(),
         capabilities: state.capabilities,
         configuration: None,
@@ -5174,21 +5192,14 @@ fn emit_plan(
         })
         .collect::<Vec<_>>();
 
-    let mut module_sources = BTreeMap::new();
-    for route in &app.routes {
-        if let Some(module) = &route.module {
-            module_sources
-                .entry((route.source_name.clone(), module.clone()))
-                .or_insert(());
-        }
-    }
-    let modules = module_sources
+    let modules = app
+        .modules
         .iter()
-        .map(|((source_name, name), ())| {
+        .map(|module| {
             json!({
-                "name": name,
+                "name": module.name,
                 "source": {
-                    "path": source_name
+                    "path": module.source_name
                 }
             })
         })
@@ -5891,6 +5902,7 @@ mod tests {
             uses_data_runtime: true,
             source_files: Vec::new(),
             routes: Vec::new(),
+            modules: Vec::new(),
             helper_sources: Vec::new(),
             capabilities: vec![super::DatabaseCapability {
                 token: "data.main".to_string(),
@@ -6138,6 +6150,8 @@ app.get("/health", () => Results.text("ok"));
 export default app;
 "#;
         let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert_eq!(app.modules.len(), 1);
+        assert_eq!(app.modules[0].name, "usersModule");
         let routes = app
             .routes
             .iter()
@@ -6168,6 +6182,46 @@ export default app;
         .expect("plan should emit");
         assert!(plan.contains("\"module\": \"usersModule\""));
         assert!(plan.contains("\"path\": \"users.js\""));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn emits_used_function_modules_without_routes() {
+        let root = fixture_temp_dir("empty-function-module");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("empty.js"),
+            r#"export function emptyModule(app) {
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { emptyModule } from "./modules/empty.js";
+
+const app = Sloppy.create();
+app.useModule(emptyModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.modules.len(), 1);
+        assert_eq!(app.modules[0].name, "emptyModule");
+        assert!(app.modules[0].source_name.ends_with("empty.js"));
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        assert!(plan.contains("\"name\": \"emptyModule\""));
+        assert!(plan.contains("empty.js"));
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }
