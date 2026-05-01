@@ -8,8 +8,8 @@ use std::{
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BindingPattern, CallExpression, Declaration, Expression,
-    ExpressionStatement, ImportDeclarationSpecifier, ObjectPropertyKind, PropertyKey, PropertyKind,
-    Statement,
+    ExpressionStatement, ForStatementInit, ImportDeclarationSpecifier, ObjectPropertyKind,
+    PropertyKey, PropertyKind, Statement,
 };
 use oxc_parser::Parser;
 use oxc_span::Span;
@@ -191,6 +191,7 @@ struct EffectMetadata {
 struct FunctionEffectSummary {
     effects: Vec<EffectMetadata>,
     provider_bindings: BTreeMap<String, ProviderBinding>,
+    helper_calls: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1178,6 +1179,7 @@ fn extract_entry(
         }
     }
 
+    coalesce_manual_capability_overrides(&mut state.capabilities);
     apply_inferred_capability_access(&mut state.capabilities, &state.routes);
 
     let mut capability_tokens = BTreeSet::new();
@@ -1402,6 +1404,7 @@ fn extract_variable_declaration(
             let summary = helper_effects_from_initializer(init, &state.provider_bindings);
             state.helper_sources.insert(name.to_string(), helper_source);
             state.helper_effects.insert(name.to_string(), summary);
+            resolve_helper_effect_callgraph(&mut state.helper_effects);
         } else if state.schema_imported {
             if let Some(schema) = schema_declaration(path, source, source_name, name, init)? {
                 state.schemas.push(schema);
@@ -1454,6 +1457,7 @@ fn extract_function_declaration(
         function_effects_from_function(function, &state.provider_bindings, &BTreeMap::new());
     state.helper_sources.insert(name.clone(), helper_source);
     state.helper_effects.insert(name, summary);
+    resolve_helper_effect_callgraph(&mut state.helper_effects);
     Ok(())
 }
 
@@ -1472,7 +1476,7 @@ fn extract_expression_statement(
     statement: &ExpressionStatement<'_>,
 ) -> Result<(), Diagnostic> {
     if let Some(capability) = database_capability_call(path, &statement.expression, state)? {
-        state.capabilities.push(capability);
+        add_manual_database_capability(state, capability);
         return Ok(());
     }
 
@@ -1548,6 +1552,23 @@ fn extract_expression_statement(
     let mut handler = handler;
     if !handler.effects.is_empty() {
         let providers = providers_used_by_effects(&state.provider_bindings, &handler.effects);
+        if let Some((name, binding)) = providers
+            .iter()
+            .find(|(_, binding)| !provider_has_generated_runtime_bridge(binding))
+        {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE",
+                format!(
+                    "{} provider-backed handlers are not executable by the compiler-generated runtime bridge yet",
+                    binding.provider
+                ),
+            )
+            .with_path(path)
+            .with_span(statement.span)
+            .with_hint(format!(
+                "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable in this compiler slice."
+            )));
+        }
         let helper_sources = state.helper_sources.values().cloned().collect::<Vec<_>>();
         handler.source = wrap_handler_with_providers_and_helpers(
             &handler.source,
@@ -1711,6 +1732,102 @@ fn statement_dynamic_import_span(statement: &Statement<'_>) -> Option<Span> {
             .and_then(expression_dynamic_import_span),
         Statement::BlockStatement(block) => {
             block.body.iter().find_map(statement_dynamic_import_span)
+        }
+        Statement::FunctionDeclaration(function) => function.body.as_ref().and_then(|body| {
+            body.statements
+                .iter()
+                .find_map(statement_dynamic_import_span)
+        }),
+        Statement::IfStatement(statement) => expression_dynamic_import_span(&statement.test)
+            .or_else(|| statement_dynamic_import_span(&statement.consequent))
+            .or_else(|| {
+                statement
+                    .alternate
+                    .as_ref()
+                    .and_then(statement_dynamic_import_span)
+            }),
+        Statement::DoWhileStatement(statement) => statement_dynamic_import_span(&statement.body)
+            .or_else(|| expression_dynamic_import_span(&statement.test)),
+        Statement::WhileStatement(statement) => expression_dynamic_import_span(&statement.test)
+            .or_else(|| statement_dynamic_import_span(&statement.body)),
+        Statement::ForStatement(statement) => statement
+            .init
+            .as_ref()
+            .and_then(for_init_dynamic_import_span)
+            .or_else(|| {
+                statement
+                    .test
+                    .as_ref()
+                    .and_then(expression_dynamic_import_span)
+            })
+            .or_else(|| {
+                statement
+                    .update
+                    .as_ref()
+                    .and_then(expression_dynamic_import_span)
+            })
+            .or_else(|| statement_dynamic_import_span(&statement.body)),
+        Statement::ForInStatement(statement) => expression_dynamic_import_span(&statement.right)
+            .or_else(|| statement_dynamic_import_span(&statement.body)),
+        Statement::ForOfStatement(statement) => expression_dynamic_import_span(&statement.right)
+            .or_else(|| statement_dynamic_import_span(&statement.body)),
+        Statement::SwitchStatement(statement) => {
+            expression_dynamic_import_span(&statement.discriminant).or_else(|| {
+                statement.cases.iter().find_map(|case| {
+                    case.test
+                        .as_ref()
+                        .and_then(expression_dynamic_import_span)
+                        .or_else(|| {
+                            case.consequent
+                                .iter()
+                                .find_map(statement_dynamic_import_span)
+                        })
+                })
+            })
+        }
+        Statement::TryStatement(statement) => statement
+            .block
+            .body
+            .iter()
+            .find_map(statement_dynamic_import_span)
+            .or_else(|| {
+                statement.handler.as_ref().and_then(|handler| {
+                    handler
+                        .body
+                        .body
+                        .iter()
+                        .find_map(statement_dynamic_import_span)
+                })
+            })
+            .or_else(|| {
+                statement.finalizer.as_ref().and_then(|finalizer| {
+                    finalizer
+                        .body
+                        .iter()
+                        .find_map(statement_dynamic_import_span)
+                })
+            }),
+        Statement::ThrowStatement(statement) => expression_dynamic_import_span(&statement.argument),
+        _ => None,
+    }
+}
+
+fn for_init_dynamic_import_span(init: &ForStatementInit<'_>) -> Option<Span> {
+    match init {
+        ForStatementInit::VariableDeclaration(declaration) => {
+            declaration.declarations.iter().find_map(|declarator| {
+                declarator
+                    .init
+                    .as_ref()
+                    .and_then(expression_dynamic_import_span)
+            })
+        }
+        ForStatementInit::ImportExpression(node) => Some(node.span),
+        ForStatementInit::AwaitExpression(node) => expression_dynamic_import_span(&node.argument),
+        ForStatementInit::CallExpression(call) => expression_dynamic_import_span(&call.callee)
+            .or_else(|| call.arguments.iter().find_map(argument_dynamic_import_span)),
+        ForStatementInit::ParenthesizedExpression(node) => {
+            expression_dynamic_import_span(&node.expression)
         }
         _ => None,
     }
@@ -2414,6 +2531,15 @@ fn app_use_module_call(expression: &Expression<'_>, state: &AppState) -> Option<
 }
 
 fn add_sqlite_provider_capability(state: &mut AppState, provider: DatabaseCapability) {
+    if state
+        .capabilities
+        .iter()
+        .any(|capability| !capability.from_provider_use && capability.token == provider.token)
+    {
+        state.app_provider_uses.insert(provider.token);
+        return;
+    }
+
     if state.app_provider_uses.insert(provider.token.clone()) {
         state.capabilities.push(provider);
         return;
@@ -2426,6 +2552,13 @@ fn add_sqlite_provider_capability(state: &mut AppState, provider: DatabaseCapabi
     {
         *existing = provider;
     }
+}
+
+fn add_manual_database_capability(state: &mut AppState, capability: DatabaseCapability) {
+    state
+        .capabilities
+        .retain(|existing| !(existing.from_provider_use && existing.token == capability.token));
+    state.capabilities.push(capability);
 }
 
 fn normalize_sqlite_provider_token(name: &str) -> String {
@@ -2730,11 +2863,31 @@ fn extract_module_function_routes(
                     .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
                 }
 
-                handler.source = wrap_module_handler_with_providers(
-                    &handler.source,
-                    &providers,
-                    handler.is_async,
-                );
+                if !handler.effects.is_empty() {
+                    let used_providers = providers_used_by_effects(&providers, &handler.effects);
+                    if let Some((name, binding)) = used_providers
+                        .iter()
+                        .find(|(_, binding)| !provider_has_generated_runtime_bridge(binding))
+                    {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE",
+                            format!(
+                                "{} provider-backed handlers are not executable by the compiler-generated runtime bridge yet",
+                                binding.provider
+                            ),
+                        )
+                        .with_path(path)
+                        .with_span(statement.span)
+                        .with_hint(format!(
+                            "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable in this compiler slice."
+                        )));
+                    }
+                    handler.source = wrap_module_handler_with_providers(
+                        &handler.source,
+                        &used_providers,
+                        handler.is_async,
+                    );
+                }
                 routes.push(Route {
                     method,
                     pattern: full_pattern,
@@ -2778,6 +2931,10 @@ fn wrap_module_handler_with_providers(
     is_async: bool,
 ) -> String {
     wrap_handler_with_providers_and_helpers(handler_source, providers, &[], is_async)
+}
+
+fn provider_has_generated_runtime_bridge(binding: &ProviderBinding) -> bool {
+    binding.capability_kind == "database" && binding.provider == "sqlite"
 }
 
 fn wrap_handler_with_providers_and_helpers(
@@ -3330,6 +3487,96 @@ fn collect_statement_effects(
                 collect_statement_effects(statement, helper_effects, summary);
             }
         }
+        Statement::IfStatement(statement) => {
+            collect_expression_effects(&statement.test, helper_effects, summary);
+            collect_statement_effects(&statement.consequent, helper_effects, summary);
+            if let Some(alternate) = &statement.alternate {
+                collect_statement_effects(alternate, helper_effects, summary);
+            }
+        }
+        Statement::DoWhileStatement(statement) => {
+            collect_statement_effects(&statement.body, helper_effects, summary);
+            collect_expression_effects(&statement.test, helper_effects, summary);
+        }
+        Statement::WhileStatement(statement) => {
+            collect_expression_effects(&statement.test, helper_effects, summary);
+            collect_statement_effects(&statement.body, helper_effects, summary);
+        }
+        Statement::ForStatement(statement) => {
+            if let Some(init) = &statement.init {
+                collect_for_init_effects(init, helper_effects, summary);
+            }
+            if let Some(test) = &statement.test {
+                collect_expression_effects(test, helper_effects, summary);
+            }
+            if let Some(update) = &statement.update {
+                collect_expression_effects(update, helper_effects, summary);
+            }
+            collect_statement_effects(&statement.body, helper_effects, summary);
+        }
+        Statement::ForInStatement(statement) => {
+            collect_expression_effects(&statement.right, helper_effects, summary);
+            collect_statement_effects(&statement.body, helper_effects, summary);
+        }
+        Statement::ForOfStatement(statement) => {
+            collect_expression_effects(&statement.right, helper_effects, summary);
+            collect_statement_effects(&statement.body, helper_effects, summary);
+        }
+        Statement::SwitchStatement(statement) => {
+            collect_expression_effects(&statement.discriminant, helper_effects, summary);
+            for case in &statement.cases {
+                if let Some(test) = &case.test {
+                    collect_expression_effects(test, helper_effects, summary);
+                }
+                for statement in &case.consequent {
+                    collect_statement_effects(statement, helper_effects, summary);
+                }
+            }
+        }
+        Statement::TryStatement(statement) => {
+            for statement in &statement.block.body {
+                collect_statement_effects(statement, helper_effects, summary);
+            }
+            if let Some(handler) = &statement.handler {
+                for statement in &handler.body.body {
+                    collect_statement_effects(statement, helper_effects, summary);
+                }
+            }
+            if let Some(finalizer) = &statement.finalizer {
+                for statement in &finalizer.body {
+                    collect_statement_effects(statement, helper_effects, summary);
+                }
+            }
+        }
+        Statement::ThrowStatement(statement) => {
+            collect_expression_effects(&statement.argument, helper_effects, summary);
+        }
+        _ => {}
+    }
+}
+
+fn collect_for_init_effects(
+    init: &ForStatementInit<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    match init {
+        ForStatementInit::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(init) = &declarator.init {
+                    collect_expression_effects(init, helper_effects, summary);
+                }
+            }
+        }
+        ForStatementInit::CallExpression(call) => {
+            collect_call_effects(call, helper_effects, summary);
+            for argument in &call.arguments {
+                collect_argument_effects(argument, helper_effects, summary);
+            }
+        }
+        ForStatementInit::ParenthesizedExpression(parenthesized) => {
+            collect_expression_effects(&parenthesized.expression, helper_effects, summary);
+        }
         _ => {}
     }
 }
@@ -3360,6 +3607,9 @@ fn collect_expression_effects(
         }
         Expression::ParenthesizedExpression(parenthesized) => {
             collect_expression_effects(&parenthesized.expression, helper_effects, summary);
+        }
+        Expression::AwaitExpression(await_expression) => {
+            collect_expression_effects(&await_expression.argument, helper_effects, summary);
         }
         Expression::StaticMemberExpression(member) => {
             collect_expression_effects(&member.object, helper_effects, summary);
@@ -3394,6 +3644,9 @@ fn collect_argument_effects(
         }
         Argument::ParenthesizedExpression(parenthesized) => {
             collect_expression_effects(&parenthesized.expression, helper_effects, summary);
+        }
+        Argument::AwaitExpression(await_expression) => {
+            collect_expression_effects(&await_expression.argument, helper_effects, summary);
         }
         _ => {}
     }
@@ -3446,8 +3699,46 @@ fn collect_call_effects(
 
     if let Expression::Identifier(identifier) = &call.callee {
         let helper_name = identifier.name.as_str();
+        summary.helper_calls.insert(helper_name.to_string());
         if let Some(helper) = helper_effects.get(helper_name) {
             summary.effects.extend(helper.effects.iter().cloned());
+            for (name, binding) in &helper.provider_bindings {
+                summary
+                    .provider_bindings
+                    .entry(name.clone())
+                    .or_insert_with(|| binding.clone());
+            }
+        }
+    }
+}
+
+fn resolve_helper_effect_callgraph(helper_effects: &mut BTreeMap<String, FunctionEffectSummary>) {
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let snapshot = helper_effects.clone();
+        for summary in helper_effects.values_mut() {
+            let calls = summary.helper_calls.iter().cloned().collect::<Vec<_>>();
+            for helper_name in calls {
+                let Some(callee) = snapshot.get(&helper_name) else {
+                    continue;
+                };
+                let before_effects = summary.effects.len();
+                summary.effects.extend(callee.effects.iter().cloned());
+                dedupe_effects(&mut summary.effects);
+                if summary.effects.len() != before_effects {
+                    changed = true;
+                }
+                for (name, binding) in &callee.provider_bindings {
+                    if summary
+                        .provider_bindings
+                        .insert(name.clone(), binding.clone())
+                        .is_none()
+                    {
+                        changed = true;
+                    }
+                }
+            }
         }
     }
 }
@@ -3487,7 +3778,7 @@ fn provider_method_access(
 fn sql_access_from_call(call: &CallExpression<'_>) -> Option<&'static str> {
     let sql = call.arguments.first().and_then(string_argument)?;
     let trimmed = sql.trim_start().to_ascii_uppercase();
-    if trimmed.starts_with("SELECT") || trimmed.starts_with("WITH") {
+    if trimmed.starts_with("SELECT") {
         Some("read")
     } else {
         Some("write")
@@ -3501,6 +3792,17 @@ fn dedupe_effects(effects: &mut Vec<EffectMetadata>) {
             "{}:{}:{}",
             effect.provider, effect.access, effect.operation
         ))
+    });
+}
+
+fn coalesce_manual_capability_overrides(capabilities: &mut Vec<DatabaseCapability>) {
+    let manual_tokens = capabilities
+        .iter()
+        .filter(|capability| !capability.from_provider_use)
+        .map(|capability| capability.token.clone())
+        .collect::<BTreeSet<_>>();
+    capabilities.retain(|capability| {
+        !capability.from_provider_use || !manual_tokens.contains(&capability.token)
     });
 }
 
@@ -6279,7 +6581,7 @@ builder.capabilities.addDatabase("data.analytics", { provider: "postgres", acces
 builder.capabilities.addDatabase("data.reporting", { provider: "sqlserver", access: "read" });
 const app = builder.build();
 const analytics = app.provider("postgres:analytics");
-app.get("/analytics", () => Results.json(analytics.query("select id from events", [])));
+app.get("/analytics", () => Results.json({ ok: true }));
 export default app;
 "#;
         let app = extract(std::path::Path::new("app.js"), source)
@@ -6287,15 +6589,27 @@ export default app;
         assert_eq!(app.capabilities.len(), 2);
         assert_eq!(app.capabilities[0].provider, "postgres");
         assert_eq!(app.capabilities[1].provider, "sqlserver");
-        assert_eq!(app.routes[0].handler.effects.len(), 1);
-        assert_eq!(app.routes[0].handler.effects[0].capability_kind, "database");
-        assert_eq!(app.routes[0].handler.effects[0].provider_kind, "postgres");
-        assert_eq!(app.routes[0].handler.effects[0].provider, "data.analytics");
-        assert_eq!(app.routes[0].handler.effects[0].access, "read");
-        assert!(app.routes[0]
-            .handler
-            .source
-            .contains("__sloppy_open_data_provider(\"postgres\", \"data.analytics\")"));
+        assert!(app.routes[0].handler.effects.is_empty());
+        let binding = super::database_provider_binding_from_token("postgres:analytics")
+            .expect("postgres binding should be recognized");
+        assert_eq!(binding.capability_kind, "database");
+        assert_eq!(binding.provider, "postgres");
+        assert_eq!(binding.token, "data.analytics");
+    }
+
+    #[test]
+    fn rejects_non_sqlite_generated_provider_bridge_until_runtime_exists() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.analytics", { provider: "postgres", access: "readwrite" });
+const app = builder.build();
+const analytics = app.provider("postgres:analytics");
+app.get("/analytics", () => Results.json(analytics.query("select id from events", [])));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("non-sqlite generated bridge should be rejected honestly");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE");
     }
 
     #[test]
@@ -6324,6 +6638,114 @@ export default app;
             .source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
         assert!(!app.routes[0].handler.source.contains("uses"));
+    }
+
+    #[test]
+    fn infers_provider_effects_inside_control_flow() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", (ctx) => {
+  if (ctx.query.write) {
+    db.exec("insert into users (name) values (?)", ["Ada"]);
+  }
+  return Results.json(db.query("select id from users", []));
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("control-flow provider calls should infer effects");
+        assert_eq!(app.capabilities[0].access, "readwrite");
+        assert!(app.routes[0]
+            .handler
+            .effects
+            .iter()
+            .any(|effect| effect.access == "write"));
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+    }
+
+    #[test]
+    fn resolves_multi_hop_helper_effects() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+function readUsers() {
+  return db.query("select id from users", []);
+}
+function listUsers() {
+  return readUsers();
+}
+app.get("/users", () => Results.json(listUsers()));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("multi-hop helper effects should be resolved");
+        assert_eq!(app.routes[0].handler.effects.len(), 1);
+        assert_eq!(app.routes[0].handler.effects[0].access, "read");
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+    }
+
+    #[test]
+    fn manual_database_capability_overrides_provider_use_duplicate() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", { provider: "sqlite", access: "readwrite", database: ":memory:" });
+const app = builder.build();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(db.query("select id from users", [])));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("manual capability should override synthetic provider use");
+        assert_eq!(app.capabilities.len(), 1);
+        assert_eq!(app.capabilities[0].access, "readwrite");
+        assert!(!app.capabilities[0].from_provider_use);
+    }
+
+    #[test]
+    fn detects_dynamic_import_inside_function_helper() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+function loadPlugin() {
+  return import("./plugin.js");
+}
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("dynamic import in helper should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT");
+    }
+
+    #[test]
+    fn classifies_with_sql_as_write_by_default() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.post("/users", () => {
+  db.exec("with input(name) as (values ('Ada')) insert into users(name) select name from input", []);
+  return Results.noContent();
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("WITH SQL should default to write access");
+        assert_eq!(app.routes[0].handler.effects[0].access, "write");
+        assert_eq!(app.capabilities[0].access, "write");
     }
 
     #[test]

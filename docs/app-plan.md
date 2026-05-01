@@ -266,7 +266,10 @@ source-level reason such as `db.query`. Provider registrations created with
 `app.use(sqlite(...))` narrow their emitted capability access to the merged route effects
 when those effects are statically known. Builder database capability metadata can represent
 SQLite, PostgreSQL, and SQL Server provider kinds even though only the SQLite generated
-runtime opener is executable today.
+runtime opener is executable today. If a route would require a generated PostgreSQL or
+SQL Server provider-backed runtime wrapper, `sloppyc` rejects the source with
+`SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE` instead of emitting a handler that fails at
+runtime.
 EPIC-22 `sloppy run` consumes those route entries for dev-only GET dispatch and validates
 that each referenced handler ID exists in the parsed minimal Plan handler table before
 serving requests. EPIC-23 uses the same route entries to materialize route params into the

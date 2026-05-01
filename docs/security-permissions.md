@@ -89,9 +89,10 @@ COMPILER-30.F/G starts the inferred capability path for provider calls in the co
 Static database provider handles and same-file helpers can now produce route `effects[]`
 metadata with capability kind, provider kind, token, operation, and access. SQLite,
 PostgreSQL, and SQL Server metadata are representable; only SQLite has an executable
-generated runtime opener today. This remains Plan-visible inference and request-scoped
-provider handle generation where supported; it does not add OS sandboxing, new provider
-bridges, non-database provider adapters, or a broad manual policy system.
+generated runtime opener today. Generated PostgreSQL and SQL Server provider-backed route
+wrappers are rejected until those JS bridges exist. This remains Plan-visible inference and
+request-scoped provider handle generation where supported; it does not add OS sandboxing,
+new provider bridges, non-database provider adapters, or a broad manual policy system.
 
 A capability is a named authority token. Code receives a capability through services or
 explicit context, not through global APIs.

@@ -49,5 +49,7 @@ library API, diagnostics shape, and fixture/golden harness. COMPILER-30.B/C and 
 parser/import/symbol/DSL/static-eval and route/group/function-module extraction evidence;
 COMPILER-30.E adds provider/config/schema/request/result metadata evidence. COMPILER-30.F/G
 adds the first provider-kind-aware route effect and inferred capability evidence for the
-database adapter family. Completeness, strong Plan, non-database provider adapters,
-imported/repository/service inference, and realistic fixture-suite coverage remain open.
+database adapter family, including an honest rejection path for generated non-SQLite
+provider-backed handlers until those JS bridges exist. Completeness, strong Plan,
+non-database provider adapters, imported/repository/service inference, and realistic
+fixture-suite coverage remain open.

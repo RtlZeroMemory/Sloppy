@@ -299,9 +299,10 @@ adds the first effect summaries and inferred capability access for direct databa
 calls and same-file helpers that close over static provider handles. The effect model is
 not SQLite-only: it records capability kind and provider kind, and can represent
 PostgreSQL/SQL Server database metadata even though only the SQLite generated runtime
-opener is executable today. It still does not extract service lifetimes, fake providers,
-query template literals, non-database provider adapters, imported helper effects,
-repository/object/class service graphs, or arbitrary TypeScript callgraphs.
+opener is executable today. PostgreSQL/SQL Server provider-backed generated handlers are
+rejected until those JS bridges exist. It still does not extract service lifetimes, fake
+providers, query template literals, non-database provider adapters, imported helper
+effects, repository/object/class service graphs, or arbitrary TypeScript callgraphs.
 EPIC-16 adds native SQLite provider tests and the `data.sqlite` stdlib shape, but the
 compiler still does not extract SQLite modules, open native providers, or lower application
 template literals into native provider calls.

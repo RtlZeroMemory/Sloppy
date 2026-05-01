@@ -234,6 +234,8 @@ Current COMPILER-30.F/G implementation status:
   database providers;
 - SQLite provider-backed route handlers are generated with request-scoped runtime provider
   handles, so normal static SQLite usage does not need route-level `uses` hints;
+- PostgreSQL and SQL Server provider handles are recognized for metadata, but generated
+  provider-backed runtime wrappers are rejected until those JS bridges are executable;
 - imported helper effects, repository factories, object-literal services, simple classes,
   non-database provider adapters, recursion policy, and unknown-call completeness remain
   documented COMPILER-30 follow-up work unless a later PR in this sequence expands them.

@@ -124,8 +124,10 @@ for effect/capability inference. COMPILER-30.F/G generalizes the compiler effect
 database providers carry capability kind, provider kind, token, operation, and inferred
 access. SQLite, PostgreSQL, and SQL Server can be represented in provider/capability
 metadata, while only SQLite has an executable generated runtime opener today. Normal app
-authors do not write manual capabilities for statically resolvable provider paths;
-capability generation remains compiler/Plan owned.
+authors do not write manual capabilities for statically resolvable SQLite provider paths;
+capability generation remains compiler/Plan owned. PostgreSQL and SQL Server provider
+metadata is accepted, but generated route wrappers that would need those JS bridges are
+rejected until the bridges exist.
 
 ENGINE-23.A/B adds the first provider execution runtime foundation: operation descriptors
 own queued inputs, per-provider-instance executors enforce bounded admission, accepted
