@@ -16,13 +16,26 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Post-core primitive adoption follow-up:
   `docs/project/post-core-mvp-memory-string-audit.md` records provider-specific cleanup
-  outside this consolidation PR.
-  <a id="postgresql-provider-copy-helpers"></a>PostgreSQL still has local
-  C-string/manual copy helpers and `snprintf`-based parameter formatting.
-  <a id="sqlserver-odbc-redaction"></a>SQL Server still has local redaction/copy
-  helpers and streamed text append logic that should move toward shared builders/copy
-  helpers. <a id="sqlite-v8-param-preflight"></a>SQLite V8 parameter conversion should
-  preflight JS array length before reserving native vectors; tracked by #431.
+  outside the completed consolidation/audit work.
+  <a id="postgresql-provider-copy-helpers"></a>PostgreSQL cleanup should move
+  `src/data/postgres.c` local copy helpers `sl_pg_copy_str`, `sl_pg_copy_cstr`,
+  `sl_pg_safe_config_hint`, `sl_pg_copy_columns`, and pool connection-string copies toward
+  shared arena copy/C-string boundary helpers. `sl_pg_param_text` integer/float formatting
+  still uses `snprintf` into local fixed buffers; add a shared bounded numeric formatting
+  helper before rewriting that path. Leave direct libpq C-string adapters in provider
+  boundary code until the shared helper exists.
+  <a id="sqlserver-odbc-redaction"></a>SQL Server cleanup should move
+  `src/data/sqlserver.c` local copy helpers `sl_sqlsrv_copy_str`, `sl_sqlsrv_copy_cstr`,
+  `sl_sqlsrv_safe_config_hint`, doctor-result copies in `sl_sqlsrv_set_doctor`, pool
+  connection-string copies, and streamed text accumulation in `sl_sqlsrv_append_chunk` /
+  `sl_sqlsrv_copy_streamed_text` toward shared arena copy, C-string boundary, and bounded
+  string-builder primitives. Keep ODBC handle adapters, `SQLGetData` streaming boundaries,
+  and provider-specific connection-string parsing/redaction local unless a shared redaction
+  primitive is explicitly scoped.
+  <a id="sqlite-v8-param-preflight"></a>SQLite V8 parameter conversion now preflights JS
+  array length before reserving native vectors; #431 is handled by the bridge cap and
+  V8-gated regression coverage. Future SQLite work should only revisit the cap if the
+  documented provider limit changes.
   <a id="tests-strcpy-boundary"></a>Test-only C-string boundary helpers should either
   use shared checked helpers or document why a local boundary helper is acceptable.
 - Post-core boundary follow-up:
@@ -73,8 +86,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   close, and cleanup-once terminal paths. ENGINE-24.F/#417 is now bounded localhost TCP
   smoke/conformance evidence only. ENGINE-24.G/#418 records the explicit MVP
   close-after-response decision and defers HTTP/1.1 keep-alive, pipelining, chunked
-  request decoding, and streaming response writing. Remaining HTTP transport debt is a
-  future proposed ENGINE-25 keep-alive/streaming epic, production graceful-drain policy,
+  request decoding, and streaming response writing. Remaining HTTP transport debt is #433 HTTP-25
+  keep-alive/streaming, production graceful-drain policy,
   production hardening, and middleware policy if ever scoped. This is separate from
   ENGINE-12 because HTTP has parser, connection, body, and shutdown policy that sits above
   generic async completions.
@@ -94,6 +107,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - CLI/dev loop runtime: ENGINE-18 owns `sloppyc`/`sloppy run` UX, source-input run
   decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, watch/dev
   decision, and command diagnostics.
+- Framework API shape migration: the current proven stdlib/compiler examples still use
+  `mapGet`/builder/data shorthand shapes in several places. The locked post-Core target in
+  `docs/project/framework-api-shape.md` is Minimal API `app.get/post/...`, function
+  modules, explicit provider imports, generated capabilities, and Plan-visible config.
+  Future implementation PRs must migrate code/tests/examples deliberately instead of
+  mixing target examples with executable claims.
 - Conformance compatibility suite: ENGINE-19 owns compiler to Plan to runtime to V8 to
   HTTP evidence, async/body/header/SQLite/capability/lifecycle/package cases, and default
   versus optional gate reporting.
@@ -155,8 +174,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   source diagnostics, cleanup policy, and rebuild policy.
 - HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F and
   ENGINE-24.A/B/C/D/E/F/G plus the ENGINE-17.E users API proof: redirect helpers,
-  streaming/files, cookies, content negotiation, future ENGINE-25 keep-alive/streaming
-  implementation, graceful drain behavior beyond immediate-cancel/drain-lite transport
+  streaming/files, cookies, content negotiation, #433 HTTP-25 keep-alive/streaming,
+  graceful drain behavior beyond immediate-cancel/drain-lite transport
   shutdown, broader V8 transport conformance, and production error pages.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
   services/config/log injection, and real request-scoped lifetime boundaries.

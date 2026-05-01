@@ -33,13 +33,22 @@ surface.
 
 ## Decision Summary
 
+Post-Core framework/API ergonomics are locked in
+`docs/project/framework-api-shape.md`. Where this older ENGINE-01 handoff document still
+mentions `app.mapGet(...)`, `Sloppy.createBuilder()`, or `data.sqlite("main")`, read those
+as the current proven/bootstrap/compiler shapes unless the API-shape document explicitly
+names the post-Core target. The locked target is Minimal API first (`app.get/post/...`),
+function modules first, explicit provider imports, generated/inferred capabilities by
+default, layered Plan-visible config, explicit `ctx` binding helpers, and explicit
+`Results.*` descriptors.
+
 | Area | ENGINE-01 decision |
 | --- | --- |
 | Source workflow | Supported foundation workflow is `sloppyc build app.js --out .sloppy` followed by `sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173`. |
-| Direct source run | Planned after full compiler artifact emission is reliable. `sloppy run app.js` remains unsupported until #302 implements a real compiler handoff, cache key, stale-artifact, and diagnostics policy. |
+| Direct source run | Planned after full compiler artifact emission is reliable. `sloppy run app.ts` / `sloppy run <source>` remains unsupported until #302 implements a real compiler handoff, cache key, stale-artifact, and diagnostics policy. |
 | Public import | Core examples use `import { Sloppy, Results, data } from "sloppy";`. This is a compiler/stdlib contract, not Node/npm resolution. |
-| App API | `Sloppy.create()`, route mapping, `Results`, request context, cancellation signal, and SQLite data access are core foundation. |
-| Services/modules | Service/module registration is a later framework layer unless a narrow piece is required to prove core examples. The engine foundation must not depend on broad DI/module behavior. |
+| App API | Current compiler/runtime support uses `Sloppy.create()` plus `map*` calls; post-Core framework target is `app.get/post/put/patch/delete(...)`, `Results`, request context, cancellation signal, and explicit provider imports. |
+| Services/modules | Function modules are the first framework modularization target. Controllers, decorators, and full DI are deferred. |
 | HTTP methods | GET, POST, PUT, PATCH, and DELETE are core. OPTIONS is framework-owned for allowed-method/preflight-style responses. HEAD is deferred until its body/metadata policy is explicit. |
 | Body support | JSON and text request bodies are core. Multipart/file upload, streaming uploads, and form binding are deferred. |
 | Results | Text, JSON, status, empty, and problem results are core. Files, streams, redirects, cookies, content negotiation, and filters are deferred. |
@@ -48,7 +57,7 @@ surface.
 | Limits/backpressure | Header, target, query, body, request, response, queue, and resource limits are core infrastructure. Exceeding a limit rejects work with diagnostics. |
 | SQLite | SQLite is the core database foundation. `data.sqlite.open`, `exec`, `query`, `queryOne`, `transaction`, and `close` are the foundation API. |
 | PostgreSQL/SQL Server | Native provider boundaries can remain, but JS bridges and public foundation examples are deferred until SQLite is excellent. |
-| Capabilities | SQLite open/use must be capability-wired. Filesystem/network capabilities remain skeleton metadata until APIs exist. No OS sandbox claims. |
+| Capabilities | SQLite open/use must be capability-wired. Normal framework apps should receive compiler/Plan-generated provider capabilities by default; manual declarations are advanced-only. Filesystem/network capabilities remain skeleton metadata until APIs exist. No OS sandbox claims. |
 | Public alpha docs | Blocked until foundation examples and conformance pass through real compiler/runtime evidence. |
 | Benchmarks | Non-claim evidence only until comparable methodology and executable paths exist. |
 
@@ -387,7 +396,7 @@ without requiring the runtime to infer app shape from JS at startup.
 
 Deferred:
 
-- `sloppy run app.js` implementation until #302 has cache, stale-artifact, diagnostics,
+- `sloppy run app.ts` / `sloppy run <source>` implementation until #302 has cache, stale-artifact, diagnostics,
   and cleanup acceptance criteria implemented;
 - `app.run` and `app.listen`;
 - service/module framework expansion beyond narrow proof needs;

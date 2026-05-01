@@ -98,6 +98,9 @@ Implemented SQLite JS bridge API:
   binding, stepping, and finalization remain internal to each provider operation until a
   later task implements JS-visible statement resource lifetime and tests;
 - primitive parameter arrays for `null`, string, number, and boolean values;
+- JavaScript parameter arrays are capped at 32,766 elements before the bridge reserves
+  native parameter storage. Larger arrays fail before provider work with a redacted,
+  stable parameter-count diagnostic;
 - `query` rows as arrays of plain objects, `queryOne` as one plain object or `null`;
 - deterministic closed/stale/invalid-handle failure behavior before provider calls.
 
@@ -217,7 +220,9 @@ They report operation and resource kind context without printing native pointer 
 
 Native SQLite diagnostics use `SL_DIAG_SQLITE_PROVIDER_ERROR` and
 `SL_DIAG_DATABASE_UNSUPPORTED_VALUE`. They include provider `sqlite`, operation, SQLite
-error text where available, and SQL text without parameter values.
+error text where available, and SQL text without parameter values. The V8 bridge
+parameter-array cap diagnostic reports only the count-limit class of failure and does not
+include individual parameter values.
 
 Native PostgreSQL diagnostics use `SL_DIAG_POSTGRES_PROVIDER_ERROR`,
 `SL_DIAG_POSTGRES_POOL_EXHAUSTED`, and `SL_DIAG_DATABASE_UNSUPPORTED_VALUE`. They include

@@ -16,9 +16,9 @@ runtime rewrite.
 
 ## Violations Fixed In This PR
 
-No production primitive rewrites were made. The consolidation kept code changes to stale
-comments and status text because the remaining adoption gaps are provider/boundary work,
-not safe drive-by edits.
+- SQLite V8 parameter conversion now checks JavaScript parameter-array length before
+  reserving native parameter storage. Arrays above the bridge cap fail deterministically
+  without inspecting or copying parameter values.
 
 ## Violations Left As Tech Debt
 
@@ -26,7 +26,6 @@ not safe drive-by edits.
 | --- | --- | --- |
 | PostgreSQL provider | Local C-string copy helpers and manual loops should move to checked arena copy helpers; integer/float parameter formatting still uses `snprintf`. | Tracker: `docs/tech-debt-tracker.md#postgresql-provider-copy-helpers`. |
 | SQL Server provider | Redaction/copy helpers and streamed text appends use local loops/manual append logic where shared builders would fit. | Tracker: `docs/tech-debt-tracker.md#sqlserver-odbc-redaction`. |
-| SQLite V8 bridge | JS parameter arrays can reserve a `std::vector` based on arbitrary JS array length before native bind-count rejection. | Tracker: `docs/tech-debt-tracker.md#sqlite-v8-param-preflight`; issue #431. |
 | Tests | A PostgreSQL live test uses `strcpy` after a stack length check. | Tracker: `docs/tech-debt-tracker.md#tests-strcpy-boundary`. |
 
 ## Allowed Boundary Uses
@@ -36,7 +35,7 @@ not safe drive-by edits.
 - `yyjson_doc_free`, `sqlite3_free`, and driver-owned cleanup APIs at their dependency
   boundaries.
 - C++ `std::string`/`std::vector` inside `src/engine/v8/*` where the bridge boundary owns
-  conversion, with the SQLite parameter-count caveat above.
+  conversion and preflights externally controlled counts before reserve/allocation.
 
 ## Needs Human Review
 

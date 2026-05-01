@@ -48,6 +48,9 @@ Future scope:
 - real module section parsing and validation;
 - PostgreSQL/SQL Server JS-to-native provider bridges calling the capability registry
   before provider work.
+- post-Core Strong Plan metadata for Minimal API routes, function modules, explicit
+  provider imports, inferred capabilities, layered config keys, request binding/schema
+  metadata, declared response shapes, and source locations.
 
 ## Non-goals
 
@@ -55,6 +58,10 @@ No general file I/O API, production route table construction, service model, mod
 provider opening, permission enforcement, source map parser, HTTP runtime broadening, V8
 execution changes, JSON serialization inside the C runtime, streaming parser, schema
 framework, plugin validator, or package-manager behavior.
+
+Strong Plan extraction recognizes the Slop app DSL and must not become arbitrary
+JavaScript magic. Dynamic route/provider/capability/body/response behavior that is not
+Plan-visible must fail with diagnostics or require explicit metadata.
 
 TASK 14 exposes bootstrap module debug metadata through `app.__debug().modules`, but this
 is not parsed by the native plan loader and is not emitted as `app.plan.json`.

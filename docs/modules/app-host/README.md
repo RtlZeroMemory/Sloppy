@@ -10,6 +10,13 @@ ENGINE-07 adds `SlAppLifecycle`, an explicit app startup/shutdown cleanup scope 
 `sloppy run` to release app-scoped resources such as the engine.
 Full native app-host behavior is still not implemented.
 
+Post-Core framework/API shape is locked in
+`docs/project/framework-api-shape.md`. The current bootstrap app-host still exposes
+`mapGet`, route groups, builder config, service registration, and module debug metadata;
+the next framework target is Minimal API `app.get/post/...`, function modules first,
+layered Plan-visible config, explicit provider imports, inferred provider capabilities,
+explicit `ctx` binding helpers, and explicit `Results.*` descriptors.
+
 ## Purpose
 
 Provide the developer-facing app host model: builder, app freeze, config, logging,
@@ -105,6 +112,9 @@ remain future work. MAIN1-02 validates compiler-emitted route/provider/capabilit
 metadata, and MAIN1-03 validates that metadata at app-host startup, but neither PR makes
 the bootstrap app host emit plans, activates services, opens providers, implements DI, or
 enforces provider/capability access.
+
+Controllers, decorators, constructor injection, full DI, implicit object-to-JSON responses,
+and source-input public examples remain deferred until the corresponding issues land.
 
 ## Ownership/Lifetime Rules
 

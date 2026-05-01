@@ -491,7 +491,9 @@ SQLite JS bridge behavior:
 - parameters are positional arrays containing only `null`, string, number, or boolean
   values. Boolean parameters bind as SQLite integers `0` or `1`. String parameters are
   copied into the bridge operation arena before the native provider call so future async/
-  offload work cannot depend on V8 transient storage;
+  offload work cannot depend on V8 transient storage. JavaScript parameter arrays are
+  capped at 32,766 elements before the bridge reserves native parameter storage; larger
+  arrays fail with a stable redacted parameter-count diagnostic before provider work;
 - wrapper double close is deterministic and idempotent; query/exec/queryOne/transaction
   after close fails before entering native code;
 - stale, closed, invalid, and wrong-kind resource IDs fail through the core resource-table
@@ -804,6 +806,21 @@ hand-write the provider capability metadata shown here. Provider module declarat
 CRUD apps. Raw Plan capability blocks remain useful as the runtime representation, audit
 output, fixture format, and advanced escape hatch, but they are not the target TypeScript
 developer experience.
+
+Post-Core framework target:
+
+```ts
+import { sqlite } from "sloppy/providers/sqlite";
+
+const db = app.use(sqlite("main"));
+```
+
+The compiler should infer read/write/readwrite capability needs from recognized provider
+calls (`query`, `queryOne`, `exec`, and `transaction`) when it can do so safely. Provider
+configuration is convention-bound by provider kind/name under keys such as
+`Sloppy:Providers:sqlite:main:*`. If capability inference is uncertain, the compiler must
+fail with a helpful diagnostic or require explicit metadata; it must not silently emit
+unsound capability metadata.
 
 Providers contribute:
 
