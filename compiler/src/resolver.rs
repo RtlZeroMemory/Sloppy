@@ -40,8 +40,11 @@ pub fn classify_import(from_path: &Path, specifier: &str) -> ImportKind {
 pub fn resolve_relative_import(from_path: &Path, specifier: &str) -> Option<PathBuf> {
     let base = from_path.parent().unwrap_or_else(|| Path::new(""));
     let candidate = base.join(specifier);
-    let candidates = if candidate.extension().is_some() {
-        vec![candidate]
+    let candidates = if let Some(extension) = candidate.extension().and_then(|ext| ext.to_str()) {
+        match extension {
+            "js" | "mjs" | "ts" => vec![candidate],
+            _ => return None,
+        }
     } else {
         vec![
             candidate.with_extension("js"),
@@ -56,7 +59,12 @@ pub fn resolve_relative_import(from_path: &Path, specifier: &str) -> Option<Path
 }
 
 pub fn stays_within_source_root(resolved: &Path, source_root: &Path) -> bool {
-    resolved.starts_with(source_root)
+    let Ok(resolved) = fs::canonicalize(resolved) else {
+        return false;
+    };
+    fs::canonicalize(source_root)
+        .map(|root| resolved.starts_with(root))
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -93,5 +101,24 @@ mod tests {
             classify_import(Path::new("app.js"), "./missing.js"),
             ImportKind::UnresolvedRelative("./missing.js".to_string())
         );
+    }
+
+    #[test]
+    fn rejects_explicit_relative_extensions_outside_supported_subset() {
+        assert_eq!(
+            classify_import(Path::new("app.js"), "./helper.tsx"),
+            ImportKind::UnresolvedRelative("./helper.tsx".to_string())
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "./data.json"),
+            ImportKind::UnresolvedRelative("./data.json".to_string())
+        );
+    }
+
+    #[test]
+    fn source_root_check_canonicalizes_the_root() {
+        let resolved = std::env::current_dir().expect("current directory should exist");
+        let relative_root = Path::new(".");
+        assert!(stays_within_source_root(&resolved, relative_root));
     }
 }
