@@ -46,14 +46,18 @@ connections, and late callbacks are cleanup-only. ENGINE-24.F/#417 adds bounded 
 TCP transport smoke/conformance for the implemented MVP path: raw client bytes, simple GET,
 route miss, method mismatch, POST text body success, malformed input, body limits,
 unsupported media, unsupported `Transfer-Encoding`, close-after-response, one request per
-connection, and shutdown cleanup. ENGINE-24.G/#418 records that this close-after-response
-policy is the intended ENGINE-24 MVP and that HTTP/1.1 keep-alive, pipelining, chunked
-bodies, and streaming are deferred to a future upgrade plan. This is not V8 transport
-conformance, benchmark evidence, production graceful-drain evidence, or production-edge
-HTTP evidence.
+connection, and shutdown cleanup. ENGINE-24.G/#418 recorded close-after-response as the
+ENGINE-24 MVP. HTTP-25.A/B/C upgrades that path to bounded sequential HTTP/1.1
+keep-alive: HTTP/1.1 reuses connections by default, `Connection: close` forces close,
+HTTP/1.0 closes by policy, idle timeout and max requests bound reuse, and request-owned
+lifecycle state is reset after each completed response before the next request can
+dispatch. Pipelining remains unsupported and is rejected/closed deterministically. Chunked
+request decoding (#444), streaming response writing (#445), and keep-alive/streaming
+stress evidence (#446) remain separate work. This is not V8 transport conformance,
+benchmark evidence, production graceful-drain evidence, or production-edge HTTP evidence.
 ENGINE-17.E adds a V8-gated users API proof over `sloppy run --artifacts` and real
 localhost TCP requests for SQLite-backed GET/POST JSON handlers. It proves the current
-close-after-response localhost path can carry a small app through compiler artifacts,
+sequential keep-alive capable localhost path can carry a small app through compiler artifacts,
 request parsing/body policy, V8 handler execution, SQLite calls, response serialization,
 and TCP response bytes. It does not add keep-alive, streaming, TLS, HTTP/2/3, WebSockets,
 middleware, benchmark evidence, or production-edge HTTP readiness.
@@ -71,7 +75,8 @@ Framework request/response ergonomics are locked in
 `docs/project/framework-api-shape.md`: explicit `ctx.route`, `ctx.query`, `ctx.header`, and
 `ctx.body.json(schema)` helpers first; safe validation problem responses; explicit
 `Results.*` descriptors first; buffered/non-streaming responses before files or streams.
-The current HTTP MVP still remains one request per connection and close-after-response.
+The current HTTP transport remains sequential-only and buffered; it does not implement
+pipelining, chunked request decoding, or streaming responses.
 
 ## Purpose
 
@@ -100,7 +105,7 @@ Implemented now:
 - deterministic route precedence: literal patterns before parameter patterns, stable
   source order when precedence is equal;
 - native `SlHttpResponse` descriptors for text, JSON, empty, and problem responses;
-- deterministic HTTP/1.1 response writing with status line, `Connection: close`,
+- deterministic HTTP/1.1 response writing with status line, managed `Connection` policy,
   `Content-Type`, `Content-Length`, CRLF formatting, body bytes, and 204 no-body behavior;
 - minimal query parsing with `%XX`/`+` decoding, last-wins repeated keys, and
   `SL_HTTP_DEFAULT_MAX_QUERY_PARAMS` pair bounds;
@@ -144,23 +149,22 @@ Implemented now:
 - ENGINE-24.D transport dispatch/write: request-ready connections transition through the
   backend dispatch/write lifecycle exactly once, a narrow internal dispatch callback
   returns an `SlHttpResponse`, the existing response writer serializes bytes into
-  per-connection storage, libuv writes those bytes to TCP, the response buffer remains
-  alive until the write callback, and the connection closes after response write.
-- ENGINE-24.G keep-alive decision: the transport MVP is one request per connection,
-  close-after-response, no sequential second request, no pipelining, no chunked bodies, and
-  no streaming response writer. Future HTTP/1.1 keep-alive requires a new connection loop,
-  idle timeout, max requests per connection, shutdown drain policy, parser/body/request
-  lifecycle reset, request-arena reset between requests, and diagnostics for idle timeout,
-  max requests, client close, and shutdown drain/force-close.
+  per-connection storage, libuv writes those bytes to TCP, and the response buffer remains
+  alive until the write callback.
+- HTTP-25.A/B/C keep-alive lifecycle: after a successful HTTP/1.1 response write, eligible
+  connections reset request-owned state and return to an idle/read-wait state for one next
+  sequential request. `Connection: close`, HTTP/1.0, disabled keep-alive config, shutdown,
+  unsafe error responses, and max-request exhaustion close after write. Idle timeout closes
+  cleanly once. Pipelining and concurrent requests on one connection are not supported.
 
 Future scope:
 
 - streaming HTTP parser state;
 - production-edge HTTP proof beyond ENGINE-13.F's bounded smoke;
 - production server hardening if explicitly scoped later;
-- #433 `HTTP-25: HTTP/1.1 Keep-Alive and Streaming` covering keep-alive,
-  idle timeout/max requests, sequential request lifecycle reset, chunked request decoding,
-  chunked/streaming response writing, and keep-alive stress/conformance;
+- #444 chunked request decoding;
+- #445 chunked/streaming response writing;
+- #446 keep-alive/streaming stress and conformance beyond the current smoke;
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
 
@@ -202,9 +206,11 @@ response writer.
   streaming response bodies, TLS, HTTP/2/3, WebSockets, static files, compression, reverse
   proxy behavior, benchmark claims, public alpha docs, or a default V8 transport success
   claim.
-- ENGINE-24.G does not add runtime code, keep-alive, pipelining, chunked request decoding,
-  streaming response writing, TLS, HTTP/2/3, WebSockets, benchmark claims, public alpha
-  docs, or any HTTP-25 behavior.
+- HTTP-25.A/B/C does not add pipelining, concurrent requests on one connection, chunked
+  request decoding, streaming request bodies, streaming response writing, SSE, WebSockets,
+  TLS, HTTP/2/3, reverse-proxy behavior, static files, compression, benchmark claims,
+  public alpha docs, framework binding changes, provider work, or production-edge HTTP
+  behavior.
 
 ## Public/Internal API
 
@@ -354,14 +360,13 @@ request: created -> reading -> dispatching -> writing response -> completed/canc
 
 `SlHttpBackend` owns only counters, limits, and state. `SlHttpListener` carries an opaque
 platform listener pointer but no socket or OS handle type. `SlHttpConnection` owns one
-admitted connection slot until close/fail. `SlHttpRequestLifecycle` owns one active request
-admission slot and a cancellation token; parsed request-head memory remains in the caller's
-request arena and is cleared on request close. Keep-alive is disabled for the dev runtime
-today; the backend can return a connection to `OPEN` after a request completes, but the
-current CLI response writer still sends `Connection: close` and closes the socket.
-Production keep-alive policy is deferred. The transport MVP likewise closes after one
-response and does not reset the request arena for another request on the same TCP
-connection.
+admitted connection slot until close/fail and preserves connection id/request count across
+sequential keep-alive requests. `SlHttpRequestLifecycle` owns one active request admission
+slot and a cancellation token; parsed request-head memory remains in the caller's request
+arena and is cleared before the arena is reset for the next keep-alive request. The current
+transport keeps HTTP/1.1 connections alive by default, but only sequentially: no second
+request dispatch begins until the first response write has completed. Production
+keep-alive tuning, graceful drain, pipelining, and streaming remain deferred.
 
 ## Ownership/Lifetime Rules
 
@@ -425,15 +430,11 @@ accumulation, response bytes, and a request arena. The accumulation buffer is dr
 through `SlByteBuilder`, not raw unbounded allocation. The parsed request head and
 accumulated body borrow the connection request arena until response serialization finishes
 or the connection is closed. ENGINE-24.D writes response bytes from connection-owned
-storage that remains valid until the libuv write callback. One request is served per
-connection; extra bytes after the first complete request are treated as unsupported
-pipelining.
-
-Future keep-alive support must make per-request memory ownership explicit before it can
-reuse a TCP connection. At minimum, accumulated bytes, parser state, body-reader state,
-response storage, request lifecycle state, and the request arena must be reset or rotated
-between sequential requests, while the longer-lived connection retains only connection
-state that is safe to carry across requests.
+storage that remains valid until the libuv write callback. HTTP-25.A/B/C preserves those
+ownership boundaries for sequential keep-alive by resetting accumulated bytes, parser
+state, body-reader state, response storage, request lifecycle state, and the request arena
+between requests. The TCP handle, connection id, server reference, request count, idle
+timer, counters, and bounded read buffer remain connection-owned.
 
 Transport timeout responses are serialized through the existing `SlHttpResponse` writer and
 connection-owned response buffer. Timeout diagnostics do not expose socket internals. If a
@@ -607,10 +608,11 @@ Implemented CTest coverage:
   no dispatch after close, no second request after close, and response buffer capacity
   diagnostics;
 - localhost TCP transport smoke/conformance tests for raw client request bytes, GET
-  success, 404 route miss, 405 method mismatch, POST text body success, malformed input,
-  body-too-large, unsupported media type, unsupported `Transfer-Encoding`/chunked framing,
-  explicit `Connection: keep-alive` still closing after response, response
-  `Content-Length`/`Connection: close` bytes, and cleanup/counter coherence; the same
+  success, sequential two-request keep-alive reuse, `Connection: close`, disabled
+  keep-alive config, HTTP/1.0 close policy, idle timeout, max requests, 404 route miss, 405
+  method mismatch, POST text body success, malformed input, body-too-large, unsupported
+  media type, unsupported `Transfer-Encoding`/chunked framing, response
+  `Content-Length`/managed `Connection` bytes, and cleanup/counter coherence; the same
   transport target also covers unsupported pipelining through the deterministic feed path;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
@@ -639,9 +641,8 @@ Future tests:
 
 - route table ambiguity tests;
 - broader HTTP server/socket integration tests;
-- future keep-alive tests for sequential requests per connection, idle timeout, max
-  requests per connection, shutdown drain/force-close, request-arena reset between
-  requests, and client close while idle;
+- future keep-alive stress/conformance tests for higher-volume sequential reuse, socket
+  backpressure, and richer shutdown drain timing;
 - future chunked/streaming tests for decoding, response writer backpressure, body stream
   lifetime, and cancellation;
 - fuzz target for route patterns;

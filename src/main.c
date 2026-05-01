@@ -1056,8 +1056,14 @@ typedef struct SlRunApp
     SlHttpRouteTable route_table;
     char config_host[SL_RUN_CONFIG_HOST_MAX_BYTES];
     uint16_t config_port;
+    uint64_t config_keep_alive_idle_timeout_ms;
+    uint64_t config_max_requests_per_connection;
+    bool config_keep_alive_enabled;
     bool config_has_host;
     bool config_has_port;
+    bool config_has_keep_alive_enabled;
+    bool config_has_keep_alive_idle_timeout_ms;
+    bool config_has_max_requests_per_connection;
 } SlRunApp;
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
@@ -1282,6 +1288,74 @@ static bool sl_run_plan_config_parse_port(yyjson_val* value, uint16_t* out)
     return true;
 }
 
+static bool sl_run_plan_config_parse_u64(yyjson_val* value, uint64_t* out)
+{
+    if (value == NULL || out == NULL || !yyjson_is_uint(value)) {
+        return false;
+    }
+    *out = yyjson_get_uint(value);
+    return *out != 0U;
+}
+
+static bool sl_run_plan_config_parse_bool(yyjson_val* value, bool* out)
+{
+    if (value == NULL || out == NULL || !yyjson_is_bool(value)) {
+        return false;
+    }
+    *out = yyjson_get_bool(value);
+    return true;
+}
+
+static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yyjson_val* value)
+{
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Host")) {
+        if (!sl_run_copy_json_string(app->config_host, sizeof(app->config_host), value) ||
+            app->config_host[0] == '\0')
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: app.plan.json Sloppy:Server:Host must be a string\n");
+            return 1;
+        }
+        app->config_has_host = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Port")) {
+        if (!sl_run_plan_config_parse_port(value, &app->config_port)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy run: app.plan.json Sloppy:Server:Port must be an integer port\n");
+            return 1;
+        }
+        app->config_has_port = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:KeepAliveEnabled")) {
+        if (!sl_run_plan_config_parse_bool(value, &app->config_keep_alive_enabled)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:KeepAliveEnabled must be a boolean\n");
+            return 1;
+        }
+        app->config_has_keep_alive_enabled = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:KeepAliveIdleTimeoutMs")) {
+        if (!sl_run_plan_config_parse_u64(value, &app->config_keep_alive_idle_timeout_ms)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:KeepAliveIdleTimeoutMs must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_keep_alive_idle_timeout_ms = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestsPerConnection")) {
+        if (!sl_run_plan_config_parse_u64(value, &app->config_max_requests_per_connection)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:MaxRequestsPerConnection must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_max_requests_per_connection = true;
+    }
+
+    return 0;
+}
+
 static int sl_run_load_config_metadata(SlRunApp* app, SlBytes json, const char* plan_path)
 {
     yyjson_read_err error = {0};
@@ -1331,26 +1405,9 @@ static int sl_run_load_config_metadata(SlRunApp* app, SlBytes json, const char* 
 
         key = yyjson_obj_get(entry, "key");
         value = yyjson_obj_get(entry, "value");
-        if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Host")) {
-            if (!sl_run_copy_json_string(app->config_host, sizeof(app->config_host), value) ||
-                app->config_host[0] == '\0')
-            {
-                sl_cli_write_cstr(
-                    stderr, "sloppy run: app.plan.json Sloppy:Server:Host must be a string\n");
-                result = 1;
-                break;
-            }
-            app->config_has_host = true;
-        }
-        else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Port")) {
-            if (!sl_run_plan_config_parse_port(value, &app->config_port)) {
-                sl_cli_write_cstr(
-                    stderr,
-                    "sloppy run: app.plan.json Sloppy:Server:Port must be an integer port\n");
-                result = 1;
-                break;
-            }
-            app->config_has_port = true;
+        if (sl_run_apply_config_metadata_entry(app, key, value) != 0) {
+            result = 1;
+            break;
         }
     }
 
@@ -2303,6 +2360,15 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     config.parse.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
     config.parse.max_total_header_bytes = SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES;
     config.parse.max_body_length = SL_RUN_REQUEST_MAX_BYTES;
+    if (app != NULL && app->config_has_keep_alive_enabled) {
+        config.keep_alive_disabled = !app->config_keep_alive_enabled;
+    }
+    if (app != NULL && app->config_has_keep_alive_idle_timeout_ms) {
+        config.keep_alive_idle_timeout_ms = app->config_keep_alive_idle_timeout_ms;
+    }
+    if (app != NULL && app->config_has_max_requests_per_connection) {
+        config.max_requests_per_connection = (size_t)app->config_max_requests_per_connection;
+    }
     config.dispatch = sl_run_transport_dispatch;
     config.dispatch_user = app;
     return config;

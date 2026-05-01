@@ -21,6 +21,17 @@ typedef enum SlHttpResponseKind
     SL_HTTP_RESPONSE_PROBLEM = 3
 } SlHttpResponseKind;
 
+typedef enum SlHttpResponseConnectionPolicy
+{
+    SL_HTTP_RESPONSE_CONNECTION_CLOSE = 0,
+    SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE = 1
+} SlHttpResponseConnectionPolicy;
+
+typedef struct SlHttpResponseWriteOptions
+{
+    SlHttpResponseConnectionPolicy connection;
+} SlHttpResponseWriteOptions;
+
 /*
  * Native HTTP response descriptor for the EPIC-23 dev response writer.
  *
@@ -55,6 +66,10 @@ SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body);
  */
 SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
                                 size_t capacity, SlBytes* out_bytes);
+SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
+                                             const SlHttpResponseWriteOptions* options,
+                                             unsigned char* buffer, size_t capacity,
+                                             SlBytes* out_bytes);
 
 #ifdef __cplusplus
 }

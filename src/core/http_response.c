@@ -2,7 +2,7 @@
  * src/core/http_response.c
  *
  * Implements EPIC-23's small native response descriptor writer for dev HTTP responses.
- * It writes deterministic HTTP/1.1 status, Connection: close, Content-Type when present,
+ * It writes deterministic HTTP/1.1 status, managed Connection policy, Content-Type when present,
  * bounded custom headers, Content-Length, and body bytes. It is not a streaming writer,
  * cookie layer, compression layer, or production response pipeline.
  *
@@ -256,8 +256,10 @@ static SlStatus sl_http_response_append_size(SlByteBuilder* builder, size_t valu
     return sl_status_ok();
 }
 
-static SlStatus sl_http_response_append_status_line(SlByteBuilder* builder, uint16_t status_code,
-                                                    const char* reason)
+static SlStatus
+sl_http_response_append_status_line(SlByteBuilder* builder, uint16_t status_code,
+                                    const char* reason,
+                                    SlHttpResponseConnectionPolicy connection_policy)
 {
     SlStatus status;
 
@@ -278,7 +280,17 @@ static SlStatus sl_http_response_append_status_line(SlByteBuilder* builder, uint
         return status;
     }
 
-    return sl_http_response_append_cstr(builder, "\r\nConnection: close\r\n");
+    status = sl_http_response_append_cstr(builder, "\r\nConnection: ");
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_http_response_append_cstr(
+        builder,
+        connection_policy == SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE ? "keep-alive" : "close");
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_http_response_append_cstr(builder, "\r\n");
 }
 
 static SlStatus sl_http_response_append_content_type(SlByteBuilder* builder, SlStr content_type)
@@ -334,13 +346,56 @@ static SlStatus sl_http_response_append_content_length(SlByteBuilder* builder, s
     return sl_http_response_append_cstr(builder, "\r\n");
 }
 
-SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
-                                size_t capacity, SlBytes* out_bytes)
+static bool sl_http_response_connection_policy_valid(SlHttpResponseConnectionPolicy policy)
+{
+    return policy == SL_HTTP_RESPONSE_CONNECTION_CLOSE ||
+           policy == SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE;
+}
+
+static SlStatus sl_http_response_append_head(SlByteBuilder* builder, const SlHttpResponse* response,
+                                             const char* reason,
+                                             SlHttpResponseConnectionPolicy connection_policy,
+                                             bool has_content_type, size_t body_length)
+{
+    SlStatus status =
+        sl_http_response_append_status_line(builder, response->status, reason, connection_policy);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (has_content_type) {
+        status = sl_http_response_append_content_type(builder, response->content_type);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    status =
+        sl_http_response_append_custom_headers(builder, response->headers, response->header_count);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (response->status != 204U) {
+        status = sl_http_response_append_content_length(builder, body_length);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    return sl_http_response_append_cstr(builder, "\r\n");
+}
+
+SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
+                                             const SlHttpResponseWriteOptions* options,
+                                             unsigned char* buffer, size_t capacity,
+                                             SlBytes* out_bytes)
 {
     const char* reason = NULL;
     SlBytes body = {0};
     SlByteBuilder builder = {0};
     bool has_content_type = false;
+    SlHttpResponseConnectionPolicy connection_policy = SL_HTTP_RESPONSE_CONNECTION_CLOSE;
     SlStatus status;
 
     if (response == NULL || buffer == NULL || out_bytes == NULL || capacity == 0U) {
@@ -359,6 +414,12 @@ SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* b
     if (!sl_http_response_headers_valid(response)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    if (options != NULL && !sl_http_response_connection_policy_valid(options->connection)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (options != NULL) {
+        connection_policy = options->connection;
+    }
 
     body = response->status == 204U ? sl_bytes_empty() : response->body;
     has_content_type = response->content_type.length != 0U && response->status != 204U;
@@ -368,32 +429,8 @@ SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* b
         return status;
     }
 
-    status = sl_http_response_append_status_line(&builder, response->status, reason);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    if (has_content_type) {
-        status = sl_http_response_append_content_type(&builder, response->content_type);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-
-    status =
-        sl_http_response_append_custom_headers(&builder, response->headers, response->header_count);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    if (response->status != 204U) {
-        status = sl_http_response_append_content_length(&builder, body.length);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-
-    status = sl_http_response_append_cstr(&builder, "\r\n");
+    status = sl_http_response_append_head(&builder, response, reason, connection_policy,
+                                          has_content_type, body.length);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -404,4 +441,10 @@ SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* b
 
     *out_bytes = sl_byte_builder_view(&builder);
     return sl_status_ok();
+}
+
+SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
+                                size_t capacity, SlBytes* out_bytes)
+{
+    return sl_http_response_write_with_options(response, NULL, buffer, capacity, out_bytes);
 }

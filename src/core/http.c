@@ -22,6 +22,7 @@
 #include "sloppy/checked_math.h"
 
 #include <llhttp.h>
+#include <stdint.h>
 
 typedef struct SlHttpParseContext
 {
@@ -769,6 +770,8 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
     }
 
     out_request->method = method;
+    out_request->version_major = parser.http_major;
+    out_request->version_minor = parser.http_minor;
     out_request->raw_target = ctx.raw_target;
     out_request->path = sl_http_extract_path(ctx.raw_target);
     out_request->headers = ctx.headers;

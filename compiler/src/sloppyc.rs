@@ -493,6 +493,9 @@ impl ConfigurationModel {
             ("Sloppy:Server:Port", json!(5173)),
             ("Sloppy:Server:MaxConnections", json!(4)),
             ("Sloppy:Server:MaxRequestBodyBytes", json!(8192)),
+            ("Sloppy:Server:KeepAliveEnabled", json!(true)),
+            ("Sloppy:Server:KeepAliveIdleTimeoutMs", json!(5000)),
+            ("Sloppy:Server:MaxRequestsPerConnection", json!(100)),
             ("Sloppy:Server:RequestTimeoutMs", json!(30000)),
             ("Sloppy:Runtime:V8MicrotaskDrainLimit", json!(64)),
         ] {

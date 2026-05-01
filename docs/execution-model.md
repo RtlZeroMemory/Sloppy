@@ -37,6 +37,14 @@ This document does not implement:
 
 ## Current Phase
 
+HTTP-25.A/B/C update: the libuv localhost transport now supports bounded sequential
+HTTP/1.1 keep-alive. Eligible successful HTTP/1.1 responses write managed
+`Connection: keep-alive`, reset request-owned state after the response write callback, and
+return the same connection to idle/read-wait for one next request. `Connection: close`,
+HTTP/1.0, disabled keep-alive config, shutdown, unsafe error responses, and max-request
+exhaustion write `Connection: close` and close after write. Pipelined bytes are rejected
+deterministically; chunked request decoding and streaming responses remain #444/#445.
+
 `sloppyc` now has the ENGINE-02 compiler/Plan pipeline. It can compile a supported
 single-file Sloppy app into deterministic `app.plan.json`, `app.js`, and real handler-line
 `app.js.map` artifacts. The execution model beyond artifact emission is still staged. The

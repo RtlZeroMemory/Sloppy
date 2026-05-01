@@ -35,6 +35,12 @@ The foundation phase does not implement:
 
 ## Current Phase
 
+HTTP-25.A/B/C update: HTTP transport diagnostics/counters now distinguish keep-alive close
+causes for client `Connection: close`, server-forced close, idle timeout, max requests
+reached, unsupported pipelining, and shutdown closing idle keep-alive connections. These
+diagnostics are stable Slop codes/counters and do not expose libuv handles, socket
+pointers, raw native pointers, or secret-bearing values.
+
 MAIN1-06 completes the bounded alpha diagnostic renderer surface:
 
 - severity enum;

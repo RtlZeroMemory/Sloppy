@@ -12,8 +12,10 @@ Core MVP / Slop Engine proof has landed for the scoped development path:
 - `sloppy run --artifacts` executes selected V8-gated artifacts.
 - V8 runtime execution covers registered handlers, bounded direct Promise/microtask
   settlement, request context, result conversion, and SQLite bridge calls.
-- HTTP backend semantics and libuv localhost transport exist for the one-request-per-
-  connection, close-after-response MVP.
+- HTTP backend semantics and libuv localhost transport exist for bounded sequential
+  HTTP/1.1 keep-alive over localhost, including idle timeout, max requests, and lifecycle
+  reset. Pipelining, chunked decoding, streaming, and production-edge HTTP remain out of
+  scope.
 - SQLite users API proof runs through compiler -> artifacts -> localhost TCP -> V8 handler
   -> capability-gated SQLite bridge -> JSON response.
 - Provider executor/offload infrastructure exists, but the current SQLite bridge is not
@@ -69,8 +71,8 @@ Durable architecture sources remain:
 | Compiler -> Plan/artifacts | Complete/proven | Supported subset only; no full TypeScript checking, package resolution, or broad module/service/schema extraction. |
 | V8 runtime execution | Complete/proven for scoped path | Optional V8 SDK lane; default gates do not prove V8. |
 | Async semantics | Partial | Direct returned Promises that settle during bounded owner-thread microtask drain are supported; timers/fetch/arbitrary native async sources are missing. |
-| HTTP backend | Complete/proven for MVP | No production HTTP, keep-alive, streaming, TLS, HTTP/2/3, WebSockets, middleware, or benchmark claims. |
-| Libuv localhost transport | Complete/proven for MVP | One request per connection, close-after-response, bounded localhost transport only. |
+| HTTP backend | Complete/proven for MVP | Sequential keep-alive only; no pipelining, chunked decoding, streaming, production HTTP, TLS, HTTP/2/3, WebSockets, middleware, or benchmark claims. |
+| Libuv localhost transport | Complete/proven for MVP | Bounded localhost transport with sequential HTTP/1.1 keep-alive, idle timeout, max requests, and close policy. |
 | SQLite users API | Complete/proven for proof fixture | Current bridge is synchronous and not provider-executor-backed. |
 | Capability enforcement | Complete/proven for integrated paths | SQLite/provider-executor paths enforce before provider work; filesystem/network remain metadata/check skeletons. |
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
@@ -120,7 +122,8 @@ short:
 3. Strong Plan typed graph through reused #318/#355-#359.
 4. Framework config, binding, validation, Results, and examples through #432/#435-#440.
 5. Plan-driven doctor/OpenAPI after Plan metadata is real.
-6. HTTP keep-alive/streaming through #433/#441-#446 after MVP transport boundary cleanup.
+6. HTTP chunked decoding, streaming, and stress/conformance through #433/#444-#446 after
+   the HTTP-25.A/B/C keep-alive lifecycle slice.
 7. Provider expansion later after SQLite/provider-executor integration is proven.
 
 ## Deferred By Design
@@ -131,8 +134,9 @@ short:
 - Production-edge HTTP claims.
 - PostgreSQL/SQL Server JavaScript bridges.
 - ORM/migrations.
-- TLS, HTTP/2, HTTP/3, WebSockets, keep-alive, streaming, reverse-proxy behavior, static
-  files, compression, and production hardening unless a future scoped issue says so.
+- TLS, HTTP/2, HTTP/3, WebSockets, pipelining, chunked decoding, streaming,
+  reverse-proxy behavior, static files, compression, and production hardening unless a
+  future scoped issue says so.
 
 ## Cleanup Policy
 

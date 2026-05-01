@@ -62,6 +62,15 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED:
         return sl_diag_literal("SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED",
                                sizeof("SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED") - 1U);
+    case SL_DIAG_HTTP_KEEP_ALIVE_IDLE_TIMEOUT:
+        return sl_diag_literal("SLOPPY_E_HTTP_KEEP_ALIVE_IDLE_TIMEOUT",
+                               sizeof("SLOPPY_E_HTTP_KEEP_ALIVE_IDLE_TIMEOUT") - 1U);
+    case SL_DIAG_HTTP_MAX_REQUESTS_REACHED:
+        return sl_diag_literal("SLOPPY_E_HTTP_MAX_REQUESTS_REACHED",
+                               sizeof("SLOPPY_E_HTTP_MAX_REQUESTS_REACHED") - 1U);
+    case SL_DIAG_HTTP_PIPELINING_UNSUPPORTED:
+        return sl_diag_literal("SLOPPY_E_HTTP_PIPELINING_UNSUPPORTED",
+                               sizeof("SLOPPY_E_HTTP_PIPELINING_UNSUPPORTED") - 1U);
     case SL_DIAG_HTTP_SHUTDOWN:
         return sl_diag_literal("SLOPPY_E_HTTP_SHUTDOWN", sizeof("SLOPPY_E_HTTP_SHUTDOWN") - 1U);
     case SL_DIAG_HTTP_TRANSPORT_CONFIG:
@@ -117,6 +126,9 @@ static bool sl_diag_is_http_code(SlDiagCode code)
     case SL_DIAG_HTTP_REQUEST_TIMEOUT:
     case SL_DIAG_HTTP_OVERLOAD:
     case SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED:
+    case SL_DIAG_HTTP_KEEP_ALIVE_IDLE_TIMEOUT:
+    case SL_DIAG_HTTP_MAX_REQUESTS_REACHED:
+    case SL_DIAG_HTTP_PIPELINING_UNSUPPORTED:
     case SL_DIAG_HTTP_SHUTDOWN:
     case SL_DIAG_HTTP_TRANSPORT_CONFIG:
     case SL_DIAG_HTTP_BIND_FAILED:

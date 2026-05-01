@@ -26,6 +26,8 @@ extern "C" {
 #define SL_HTTP_TRANSPORT_DEFAULT_BODY_READ_TIMEOUT_MS 30000U
 #define SL_HTTP_TRANSPORT_DEFAULT_REQUEST_TIMEOUT_MS 60000U
 #define SL_HTTP_TRANSPORT_DEFAULT_WRITE_TIMEOUT_MS 30000U
+#define SL_HTTP_TRANSPORT_DEFAULT_KEEP_ALIVE_IDLE_TIMEOUT_MS 5000U
+#define SL_HTTP_TRANSPORT_DEFAULT_MAX_REQUESTS_PER_CONNECTION 100U
 
 typedef struct SlHttpPlatformConnection SlHttpPlatformConnection;
 typedef struct SlHttpTransportConnection SlHttpTransportConnection;
@@ -57,9 +59,10 @@ typedef enum SlHttpTransportConnectionState
     SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY = 4,
     SL_HTTP_TRANSPORT_CONNECTION_STATE_DISPATCHING = 5,
     SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE = 6,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING = 7,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED = 8,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 9
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE = 7,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING = 8,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED = 9,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 10
 } SlHttpTransportConnectionState;
 
 typedef struct SlHttpTransportConfig
@@ -87,6 +90,9 @@ typedef struct SlHttpTransportConfig
     uint64_t body_read_timeout_ms;
     uint64_t request_timeout_ms;
     uint64_t write_timeout_ms;
+    uint64_t keep_alive_idle_timeout_ms;
+    size_t max_requests_per_connection;
+    bool keep_alive_disabled;
     /* Caller/arena-backed table size for accepted connection placeholders. */
     size_t connection_capacity;
     int backlog;
@@ -120,6 +126,8 @@ struct SlHttpTransportConnection
     bool body_reader_finished;
     bool write_started;
     bool write_completed;
+    bool close_after_write;
+    bool keep_alive_after_write;
     SlDiag last_diag;
     bool slot_claimed;
 };
@@ -139,6 +147,12 @@ typedef struct SlHttpTransportServer
     size_t accepted_connections;
     size_t rejected_connections;
     size_t accept_failures;
+    size_t client_close_requests;
+    size_t server_forced_closes;
+    size_t idle_timeouts;
+    size_t max_requests_reached;
+    size_t pipelining_attempts;
+    size_t shutdown_idle_closes;
 } SlHttpTransportServer;
 
 /*
