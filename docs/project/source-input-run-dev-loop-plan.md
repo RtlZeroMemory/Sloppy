@@ -13,6 +13,9 @@ sloppy run --artifacts <artifacts>
 ```
 
 Direct source input now compiles first and then runs that same artifact path.
+FRAMEWORK-01.B also passes the selected environment and selected CLI runtime overrides
+through that compiler handoff so source-input runs see the same application config model
+as explicit `sloppyc build`.
 
 ## Desired Workflow
 
@@ -37,6 +40,12 @@ The default no-argument form uses `sloppy.json` when present:
   "environment": "Development"
 }
 ```
+
+`sloppy.json` remains project/run config. Application configuration lives in
+`appsettings.json` and `appsettings.{Environment}.json` next to the source entry. The
+environment from `sloppy.json` selects the overlay unless `sloppy run --environment <name>`
+is supplied, in which case the CLI value wins. `--artifacts <dir>` remains an explicit
+artifact/debug path and does not require `sloppy.json` or appsettings files.
 
 ## Build/Cache/Artifact Policy
 

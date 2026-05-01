@@ -73,6 +73,13 @@ Every inferred capability must be Plan-visible and later inspectable through doc
 routes, audit, or capabilities tooling. If inference is not safe, compilation must fail or
 require explicit metadata; no silent unsound inference.
 
+FRAMEWORK-01.B keeps normal provider configuration on the inferred path:
+`app.use(sqlite("main"))` binds `Sloppy:Providers:sqlite:main`, the compiler emits the
+matching provider/capability metadata, and missing required provider config fails before
+provider work. Application config may contain secrets later, but this slice does not add a
+secrets manager, user secrets, remote providers, or raw environment access from JS.
+Secret-looking config values are redacted in diagnostics and Plan metadata.
+
 A capability is a named authority token. Code receives a capability through services or
 explicit context, not through global APIs.
 

@@ -6,6 +6,48 @@
   },
   "capabilities": [],
   "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "configuration": {
+    "environment": "Development",
+    "keys": [
+      {
+        "key": "Sloppy:Runtime:V8MicrotaskDrainLimit",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 64
+      },
+      {
+        "key": "Sloppy:Server:Host",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": "127.0.0.1"
+      },
+      {
+        "key": "Sloppy:Server:MaxConnections",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 4
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestBodyBytes",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 8192
+      },
+      {
+        "key": "Sloppy:Server:Port",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5173
+      },
+      {
+        "key": "Sloppy:Server:RequestTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 30000
+      }
+    ],
+    "providers": []
+  },
   "dataProviders": [],
   "features": {
     "asyncHandlers": false,

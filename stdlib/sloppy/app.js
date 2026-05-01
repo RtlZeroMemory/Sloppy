@@ -25,6 +25,151 @@ function validateConfigKey(key) {
     }
 }
 
+function normalizeConfigKey(key) {
+    validateConfigKey(key);
+    return key
+        .split(":")
+        .filter((segment) => segment.length > 0)
+        .map((segment) => segment.toUpperCase())
+        .join(":");
+}
+
+function providerConfigPrefix(key) {
+    validateConfigKey(key);
+    if (/^[A-Za-z][A-Za-z0-9.-]*:[A-Za-z0-9_.-]+$/u.test(key) && !key.startsWith("Sloppy:")) {
+        const [provider, name] = key.split(":");
+        return `Sloppy:Providers:${provider}:${name}`;
+    }
+    return key;
+}
+
+function setConfigPath(target, segments, value) {
+    let cursor = target;
+    for (let index = 0; index < segments.length - 1; index += 1) {
+        const segment = segments[index];
+        const next = cursor[segment];
+        if (next !== undefined && !isPlainObject(next)) {
+            throw new Error(`Sloppy config bind cannot merge scalar and object at '${segments.slice(0, index + 1).join(":")}'.`);
+        }
+        cursor[segment] = next ?? {};
+        cursor = cursor[segment];
+    }
+    cursor[segments[segments.length - 1]] = value;
+}
+
+function flattenConfigObject(values, object, prefix = []) {
+    for (const [key, value] of Object.entries(object)) {
+        validateConfigKey(key);
+        const segments = [...prefix, key];
+        if (isPlainObject(value)) {
+            flattenConfigObject(values, value, segments);
+        } else {
+            values[normalizeConfigKey(segments.join(":"))] = value;
+        }
+    }
+}
+
+function getConfigValue(values, key, fallback) {
+    const normalized = normalizeConfigKey(key);
+    return Object.prototype.hasOwnProperty.call(values, normalized) ? values[normalized] : fallback;
+}
+
+function requireConfigValue(values, key) {
+    const normalized = normalizeConfigKey(key);
+    if (!Object.prototype.hasOwnProperty.call(values, normalized)) {
+        throw new Error(`Sloppy config key '${key}' is required but was not provided.`);
+    }
+    return values[normalized];
+}
+
+function hasConfigValue(values, key) {
+    return Object.prototype.hasOwnProperty.call(values, normalizeConfigKey(key));
+}
+
+function coerceConfigString(value, key) {
+    if (typeof value !== "string") {
+        throw new TypeError(`Sloppy config key '${key}' must be a string.`);
+    }
+    return value;
+}
+
+function coerceConfigNumber(value, key) {
+    const parsed = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+    if (typeof parsed !== "number" || !Number.isFinite(parsed)) {
+        throw new TypeError(`Sloppy config key '${key}' must be a number.`);
+    }
+    return parsed;
+}
+
+function coerceConfigInt(value, key) {
+    const parsed = coerceConfigNumber(value, key);
+    if (!Number.isInteger(parsed)) {
+        throw new TypeError(`Sloppy config key '${key}' must be an integer.`);
+    }
+    return parsed;
+}
+
+function coerceConfigBool(value, key) {
+    if (typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "string") {
+        if (value.toLowerCase() === "true") {
+            return true;
+        }
+        if (value.toLowerCase() === "false") {
+            return false;
+        }
+    }
+    throw new TypeError(`Sloppy config key '${key}' must be a boolean.`);
+}
+
+function bindConfigValues(values, prefix, schema) {
+    const logicalPrefix = providerConfigPrefix(prefix);
+    const normalizedPrefix = normalizeConfigKey(logicalPrefix);
+    const result = {};
+
+    for (const [key, value] of Object.entries(values)) {
+        if (key === normalizedPrefix || !key.startsWith(`${normalizedPrefix}:`)) {
+            continue;
+        }
+        const segments = key.slice(normalizedPrefix.length + 1).split(":");
+        setConfigPath(
+            result,
+            segments.map(configBindSegmentName),
+            value,
+        );
+    }
+
+    if (schema === undefined || schema === null) {
+        return Object.freeze(result);
+    }
+    if (typeof schema === "function") {
+        if (typeof schema.bindConfig === "function") {
+            return schema.bindConfig(Object.freeze({ ...result }), Object.freeze({ key: logicalPrefix }));
+        }
+        if (/^[A-Z]/u.test(schema.name)) {
+            return new schema(Object.freeze({ ...result }));
+        }
+        return schema(Object.freeze({ ...result }));
+    }
+    if (isPlainObject(schema)) {
+        return Object.freeze({ ...schema, ...result });
+    }
+    throw new TypeError("Sloppy config.bind schema must be a function, plain object, or omitted.");
+}
+
+function configBindSegmentName(segment) {
+    switch (segment) {
+        case "DATABASE":
+            return "database";
+        case "QUEUECAPACITY":
+            return "queueCapacity";
+        default:
+            return segment.charAt(0).toLowerCase() + segment.slice(1).toLowerCase();
+    }
+}
+
 function validateLogLevel(level) {
     if (!Object.prototype.hasOwnProperty.call(LOG_LEVEL_RANK, level)) {
         throw new TypeError("Sloppy log level must be one of trace, debug, info, warn, or error.");
@@ -40,6 +185,18 @@ function validateServiceToken(token) {
 function validateCapabilityToken(token) {
     if (typeof token !== "string" || token.length === 0) {
         throw new TypeError("Sloppy capability token must be a non-empty string.");
+    }
+}
+
+function validateProviderDescriptor(provider) {
+    if (!isPlainObject(provider) || provider.__sloppyProvider !== true) {
+        throw new TypeError("Sloppy app.use expects a Sloppy provider descriptor.");
+    }
+    if (provider.kind !== "sqlite") {
+        throw new TypeError("Sloppy app.use currently supports sqlite provider descriptors.");
+    }
+    if (typeof provider.name !== "string" || provider.name.length === 0) {
+        throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");
     }
 }
 
@@ -270,32 +427,45 @@ function createConfigBuilder(guard) {
                 throw new TypeError("Sloppy config.addObject value must be a plain object.");
             }
 
-            for (const [key, value] of Object.entries(object)) {
-                validateConfigKey(key);
-                values[key] = value;
-            }
+            flattenConfigObject(values, object);
 
             return config;
         },
 
         get(key, fallback) {
-            validateConfigKey(key);
-            return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : fallback;
+            return getConfigValue(values, key, fallback);
         },
 
         has(key) {
-            validateConfigKey(key);
-            return Object.prototype.hasOwnProperty.call(values, key);
+            return hasConfigValue(values, key);
         },
 
         require(key) {
-            validateConfigKey(key);
+            return requireConfigValue(values, key);
+        },
 
-            if (!Object.prototype.hasOwnProperty.call(values, key)) {
-                throw new Error(`Sloppy config key '${key}' is required but was not provided.`);
-            }
+        getString(key, fallback) {
+            const value = fallback === undefined ? requireConfigValue(values, key) : getConfigValue(values, key, fallback);
+            return coerceConfigString(value, key);
+        },
 
-            return values[key];
+        getInt(key, fallback) {
+            const value = fallback === undefined ? requireConfigValue(values, key) : getConfigValue(values, key, fallback);
+            return coerceConfigInt(value, key);
+        },
+
+        getNumber(key, fallback) {
+            const value = fallback === undefined ? requireConfigValue(values, key) : getConfigValue(values, key, fallback);
+            return coerceConfigNumber(value, key);
+        },
+
+        getBool(key, fallback) {
+            const value = fallback === undefined ? requireConfigValue(values, key) : getConfigValue(values, key, fallback);
+            return coerceConfigBool(value, key);
+        },
+
+        bind(prefix, schema) {
+            return bindConfigValues(values, prefix, schema);
         },
 
         __snapshot() {
@@ -309,23 +479,39 @@ function createConfigBuilder(guard) {
 function createConfigProvider(snapshot) {
     return Object.freeze({
         get(key, fallback) {
-            validateConfigKey(key);
-            return Object.prototype.hasOwnProperty.call(snapshot, key) ? snapshot[key] : fallback;
+            return getConfigValue(snapshot, key, fallback);
         },
 
         has(key) {
-            validateConfigKey(key);
-            return Object.prototype.hasOwnProperty.call(snapshot, key);
+            return hasConfigValue(snapshot, key);
         },
 
         require(key) {
-            validateConfigKey(key);
+            return requireConfigValue(snapshot, key);
+        },
 
-            if (!Object.prototype.hasOwnProperty.call(snapshot, key)) {
-                throw new Error(`Sloppy config key '${key}' is required but was not provided.`);
-            }
+        getString(key, fallback) {
+            const value = fallback === undefined ? requireConfigValue(snapshot, key) : getConfigValue(snapshot, key, fallback);
+            return coerceConfigString(value, key);
+        },
 
-            return snapshot[key];
+        getInt(key, fallback) {
+            const value = fallback === undefined ? requireConfigValue(snapshot, key) : getConfigValue(snapshot, key, fallback);
+            return coerceConfigInt(value, key);
+        },
+
+        getNumber(key, fallback) {
+            const value = fallback === undefined ? requireConfigValue(snapshot, key) : getConfigValue(snapshot, key, fallback);
+            return coerceConfigNumber(value, key);
+        },
+
+        getBool(key, fallback) {
+            const value = fallback === undefined ? requireConfigValue(snapshot, key) : getConfigValue(snapshot, key, fallback);
+            return coerceConfigBool(value, key);
+        },
+
+        bind(prefix, schema) {
+            return bindConfigValues(snapshot, prefix, schema);
         },
     });
 }
@@ -897,6 +1083,23 @@ function createApp(host) {
         log: host.log,
         services: host.services,
         capabilities: host.capabilities,
+
+        use(provider) {
+            assertAppMutable();
+            validateProviderDescriptor(provider);
+
+            const configured = host.config.bind(`${provider.kind}:${provider.name}`);
+            const options = Object.freeze({
+                ...configured,
+                ...(provider.options ?? {}),
+            });
+            return Object.freeze({
+                kind: provider.kind,
+                name: provider.name,
+                token: provider.token,
+                options,
+            });
+        },
 
         mapGet(pattern, optionsOrHandler, maybeHandler) {
             return registerRoute(

@@ -1,3 +1,33 @@
-import { data } from "../data.js";
+function validateSqliteProviderName(name) {
+    if (typeof name !== "string" || name.length === 0) {
+        throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");
+    }
+}
 
-export const sqlite = data.sqlite;
+function validateSqliteProviderOptions(options) {
+    if (options === undefined) {
+        return Object.freeze({});
+    }
+    if (options === null || typeof options !== "object" || Array.isArray(options)) {
+        throw new TypeError("Sloppy sqlite provider options must be a plain object.");
+    }
+    if (
+        Object.prototype.hasOwnProperty.call(options, "database") &&
+        typeof options.database !== "string"
+    ) {
+        throw new TypeError("Sloppy sqlite provider database option must be a string.");
+    }
+    return Object.freeze({ ...options });
+}
+
+export function sqlite(name, options) {
+    validateSqliteProviderName(name);
+
+    return Object.freeze({
+        __sloppyProvider: true,
+        kind: "sqlite",
+        name,
+        token: name.includes(".") ? name : `data.${name}`,
+        options: validateSqliteProviderOptions(options),
+    });
+}

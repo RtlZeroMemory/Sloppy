@@ -14,9 +14,10 @@ The example uses the explicit provider import
 `import { sqlite } from "sloppy/providers/sqlite"` and a relative function module. The
 compiler rewrites that supported source graph into the classic artifact runtime path and
 emits Plan-visible `data.main` provider/capability metadata. The database file is
-`users-api-sqlite-runtime.db`; tests remove it before and after the localhost transport
-proof. Each handler creates the table if needed and seeds Ada Lovelace and Grace Hopper
-only when their deterministic IDs are absent.
+configured through `appsettings.json` at `Sloppy:Providers:sqlite:main:database`. Tests
+remove `users-api-sqlite-runtime.db` before and after the localhost transport proof. Each
+handler creates the table if needed and seeds Ada Lovelace and Grace Hopper only when
+their deterministic IDs are absent.
 
 With a V8-enabled build, the direct source-input shortcut compiles and then runs the same
 artifact path:

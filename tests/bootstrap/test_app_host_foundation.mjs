@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import { Sloppy, Results, schema } from "../../stdlib/sloppy/index.js";
+import { sqlite } from "../../stdlib/sloppy/providers/sqlite.js";
 
 function assertThrowsMessage(fn, expected) {
     assert.throws(fn, (error) => {
@@ -21,9 +22,15 @@ function assertThrowsMessage(fn, expected) {
     });
 
     assert.equal(builder.config.get("app.name"), "second");
+    assert.equal(builder.config.get("APP.NAME"), "second");
     assert.equal(builder.config.get("missing", "fallback"), "fallback");
     assert.equal(builder.config.has("server.port"), true);
     assert.equal(builder.config.require("server.port"), 3000);
+    assert.equal(builder.config.getInt("server.port"), 3000);
+    assert.equal(builder.config.getString("Sloppy:Server:Host", "127.0.0.1"), "127.0.0.1");
+    assert.equal(builder.config.getBool("Feature:X", false), false);
+    assert.equal(builder.config.getNumber("Feature:Limit", 1.5), 1.5);
+    assertThrowsMessage(() => builder.config.getInt("app.name"), /number/);
     assertThrowsMessage(() => builder.config.require("missing"), /required/);
     assertThrowsMessage(() => builder.config.get(""), /non-empty string/);
 
@@ -55,6 +62,8 @@ function assertThrowsMessage(fn, expected) {
     assertThrowsMessage(() => builder.logging.addMemorySink(), /builder is frozen/);
     assertThrowsMessage(() => builder.services.addSingleton("later", "value"), /builder is frozen/);
     assertThrowsMessage(() => builder.build(), /builder is frozen/);
+
+    assert.equal(app.config.getInt("server.port"), 3000);
 
     const scope = app.services.createScope();
     assert.equal(scope.get("message"), "Hello from Sloppy");
@@ -123,6 +132,39 @@ function assertThrowsMessage(fn, expected) {
     assert.equal(afterFreeze[0].name, beforeFreeze[0].name);
     assertThrowsMessage(() => app.mapGet("/late", () => Results.text("late")), /app is frozen/);
     assertThrowsMessage(() => users.mapGet("/late", () => Results.text("late")), /app is frozen/);
+}
+
+{
+    class SqliteOptions {
+        constructor(values) {
+            this.database = values.database;
+            this.queueCapacity = values.queueCapacity;
+        }
+    }
+
+    const builder = Sloppy.createBuilder();
+    builder.config.addObject({
+        Sloppy: {
+            Providers: {
+                sqlite: {
+                    main: {
+                        database: "./app.db",
+                        queueCapacity: 8,
+                    },
+                },
+            },
+        },
+    });
+    const app = builder.build();
+    const options = app.config.bind("sqlite:main", SqliteOptions);
+    assert.equal(options.database, "./app.db");
+    assert.equal(options.queueCapacity, 8);
+
+    const provider = app.use(sqlite("main", { database: ":memory:" }));
+    assert.equal(provider.kind, "sqlite");
+    assert.equal(provider.name, "main");
+    assert.equal(provider.options.database, ":memory:");
+    assert.equal(provider.options.queueCapacity, 8);
 }
 
 {

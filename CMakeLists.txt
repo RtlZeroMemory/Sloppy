@@ -1103,6 +1103,23 @@ if(SLOPPY_ENABLE_TESTS)
                     "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
             set_tests_properties(sloppy.run.project_config_shell_metacharacters_non_v8
                                  PROPERTIES LABELS "source-input")
+
+            add_test(
+                NAME sloppy.run.source_input_config_driven_sqlite_non_v8
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                    "-DSLOPPY_CASE=config-sqlite-non-v8"
+                    "-DSLOPPY_SOURCE=examples/users-api-sqlite/app.js" "-DSLOPPY_ONCE_METHOD=GET"
+                    "-DSLOPPY_ONCE_TARGET=/users"
+                    "-DSLOPPY_ENVIRONMENT=Development"
+                    "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input"
+                    "-DSLOPPY_EXPECTED_PLAN=users-api-sqlite-runtime.db" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+            set_tests_properties(sloppy.run.source_input_config_driven_sqlite_non_v8
+                                 PROPERTIES LABELS "source-input")
         endif()
 
         add_test(

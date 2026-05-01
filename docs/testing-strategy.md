@@ -63,6 +63,11 @@ V8-required runtime boundary. V8-gated conformance adds executable source-input 
 users-api-sqlite run-once cases. Source-input success in the default lane must not be
 reported as V8 execution success.
 
+FRAMEWORK-01.B adds configuration coverage across Rust compiler tests, JS stdlib tests,
+compiler golden artifacts, source-input process tests, and the SQLite users API fixture.
+Tests should keep source precedence, typed conversion, `bind`, provider config, Plan
+metadata, redaction, and non-V8/V8 evidence boundaries separate.
+
 ## Test Categories
 
 - C unit tests;

@@ -12,7 +12,8 @@ Implemented commands:
 sloppy run <source.js>
 sloppy run
 sloppy run --artifacts <dir> [--stdlib <dir>]
-           [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]
+           [--environment Development] [--host 127.0.0.1] [--port 5173]
+           [--once METHOD TARGET]
 sloppy routes --plan <path> [--format text|json]
 sloppy doctor [--plan <path>] [--format text|json]
 sloppy audit --plan <path> [--format text|json]
@@ -39,9 +40,11 @@ project-run config shape is:
 ```
 
 `entry` is required and resolves relative to `sloppy.json` in the current directory.
-`outDir` defaults to `.sloppy`. `environment` defaults to `Development`; it is currently a
-source-input handoff/cache input, not a broad runtime configuration system. Unknown fields,
-invalid JSON, non-string values, and missing `entry` fail clearly.
+`outDir` defaults to `.sloppy`. `environment` defaults to `Development` and selects the
+`appsettings.{Environment}.json` overlay for source-input compilation. `sloppy.json` is
+project/run configuration only; app configuration lives in `appsettings.json` and
+`appsettings.{Environment}.json`. Unknown fields, invalid JSON, non-string values, and
+missing `entry` fail clearly.
 
 The other commands inspect `app.plan.json` artifact metadata only. `routes`, `doctor`, and
 `openapi` first validate the file through the native Plan v1 parser, then read the same
@@ -69,6 +72,7 @@ Supported forms:
 sloppy run --artifacts .sloppy
 sloppy run --artifacts .sloppy --stdlib build\windows-dev\lib\sloppy\bootstrap\sloppy
 sloppy run .sloppy --host 127.0.0.1 --port 5173
+sloppy run app.js --environment Development --host 127.0.0.1 --port 5173
 sloppy run --artifacts .sloppy --once GET /
 ```
 
@@ -100,6 +104,19 @@ The explicit artifact path remains supported and is the advanced/debug path:
 sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
 sloppy run --artifacts .sloppy-main-smoke --once GET /
 ```
+
+Source-input app configuration uses this precedence:
+
+1. built-in defaults;
+2. `appsettings.json` next to the source entry;
+3. `appsettings.{Environment}.json` next to the source entry;
+4. canonical environment variables such as `SLOPPY_SLOPPY__SERVER__PORT`;
+5. selected CLI overrides: `--environment`, `--host`, and `--port`.
+
+Environment variables use the `SLOPPY_` prefix and double-underscore separators. Values are
+parsed as string/int/bool based on the existing config value where Sloppy knows the key;
+invalid values fail during compiler handoff. Secret-like keys are redacted in diagnostics
+and Plan metadata.
 
 The direct source shortcut does not bypass artifacts. Positional source input writes to
 `.sloppy/cache/dev/source-input` and rebuilds conservatively on each invocation. The

@@ -51,6 +51,11 @@ writing `app.plan.json`, preserving relative artifact paths and repeated-build i
 ENGINE-02 broadens the extracted metadata to include GET/POST/PUT/PATCH/DELETE route
 methods, direct async handler metadata, minimal SQLite database capability/provider plan
 metadata, source locations, feature flags, and real handler-source source-map mappings.
+FRAMEWORK-01.B loads built-in defaults, optional `appsettings.json`, optional
+`appsettings.{Environment}.json`, canonical `SLOPPY_...` environment variables, and
+selected CLI overrides before writing artifacts. The compiler binds
+`app.use(sqlite("name"))` to `Sloppy:Providers:sqlite:name`, emits the resolved SQLite
+database into Plan provider metadata, and emits redacted configuration metadata for tooling.
 
 Compiler diagnostics render a single-line source frame when the extractor already has a
 source span and source text. That renderer is separate from the generated source-map
@@ -84,6 +89,7 @@ Current compiler command:
 sloppyc --help
 sloppyc --version
 sloppyc build examples/compiler-hello/app.js --out .sloppy
+sloppyc build app.js --out .sloppy --environment Development --host 127.0.0.1 --port 5173
 ```
 
 The build command writes only inside the requested output directory. It creates the output

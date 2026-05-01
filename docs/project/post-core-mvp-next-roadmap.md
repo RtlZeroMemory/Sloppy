@@ -16,6 +16,7 @@ truth is `docs/project/post-core-next-wave-issue-map.md`.
 | Capability enforcement | complete/proven for integrated paths | SQLite bridge and provider executor enforce before provider work; filesystem/network remain skeletons. |
 | Conformance/package evidence | complete/proven for current lanes | ENGINE-19 evidence lanes and package smoke exist; optional V8/package/live lanes must stay separate. |
 | Source-input run | partial/proven | `sloppy run <source.js>` and `sloppy run` with `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; TypeScript/module graphs/cache reuse remain deferred. |
+| Framework configuration | partial/proven | FRAMEWORK-01.B adds appsettings overlays, environment/CLI/env binding, typed access, `bind`, SQLite provider convention binding, and redacted Plan metadata. Reload/secrets/custom providers and doctor/OpenAPI consumption remain deferred. |
 | Public alpha | blocked | Needs canonical docs, executable examples, source-input decision, ergonomics, and package/platform story. |
 
 ## 2. Next Tracks

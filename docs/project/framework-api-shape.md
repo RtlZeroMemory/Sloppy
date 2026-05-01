@@ -151,8 +151,13 @@ Default precedence:
 ```ts
 const port = app.config.getInt("Sloppy:Server:Port", 5173);
 const options = app.config.bind("Sloppy:Providers:sqlite:main", SqliteOptions);
+const providerOptions = app.config.bind("sqlite:main", SqliteOptions);
 const db = app.use(sqlite("main"));
 ```
+
+`bind` is implemented in this slice. It accepts colon keys and provider shorthand such as
+`sqlite:main`, returns the matching subtree as an options object, and passes that object to
+the supplied schema/constructor when one is provided.
 
 Provider config is convention-bound by provider kind/name. Inline provider overrides are
 allowed for tests and examples:

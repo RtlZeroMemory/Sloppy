@@ -23,6 +23,9 @@ for a small source-built SQLite users API. It proves the current synchronous SQL
 can serve GET/POST JSON handlers over real TCP through `sloppy run --artifacts`; it does
 not prove async/offload SQLite, public alpha readiness, PostgreSQL/SQL Server JS bridges,
 ORM/migrations, production HTTP edge behavior, or benchmark performance.
+FRAMEWORK-01.B changes that example to use configuration-driven SQLite:
+`app.use(sqlite("main"))` binds `Sloppy:Providers:sqlite:main:database` from
+`appsettings.json`; inline `{ database: ... }` remains supported and overrides config.
 
 ## Purpose
 
@@ -55,6 +58,9 @@ Implemented bootstrap API:
   `access` defaults to `readwrite`, and unsupported fields or mismatched aliases fail
   before bridge work. Provider shorthand keeps that default; read-only capabilities need
   explicit `access: "read"`.
+- `import { sqlite } from "sloppy/providers/sqlite"` returns a framework provider
+  descriptor for `app.use(...)`; it does not expose native pointers or package-manager
+  resolution.
 - `data.postgres` provider metadata, `$1` placeholder style, redaction helper, and
   `data.postgres.open(options)` as the future stdlib entry point. It validates options and
   fails honestly until the native bridge exists.

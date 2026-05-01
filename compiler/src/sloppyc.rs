@@ -14,6 +14,7 @@ use oxc_ast::ast::{
 use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 use serde_json::json;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
@@ -24,8 +25,29 @@ const STDLIB_VERSION: &str = "0.1.0";
 enum CliCommand {
     Help,
     Version,
-    Build { input: PathBuf, out_dir: PathBuf },
+    Build {
+        input: PathBuf,
+        out_dir: PathBuf,
+        options: BuildOptions,
+    },
     Invalid(String),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct BuildOptions {
+    environment: Option<String>,
+    host: Option<String>,
+    port: Option<u16>,
+}
+
+impl BuildOptions {
+    fn new() -> Self {
+        Self {
+            environment: None,
+            host: None,
+            port: None,
+        }
+    }
 }
 
 pub enum CliExit {
@@ -128,6 +150,8 @@ struct DatabaseCapability {
     provider: &'static str,
     access: String,
     database: Option<String>,
+    config_source: Option<String>,
+    from_provider_use: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +175,30 @@ struct ExtractedApp {
     source_files: Vec<SourceFile>,
     routes: Vec<Route>,
     capabilities: Vec<DatabaseCapability>,
+    configuration: Option<ConfigurationPlan>,
+}
+
+#[derive(Debug, Clone)]
+struct ConfigurationPlan {
+    environment: String,
+    keys: Vec<ConfigurationPlanKey>,
+    providers: Vec<ConfigurationProviderPlan>,
+}
+
+#[derive(Debug, Clone)]
+struct ConfigurationPlanKey {
+    key: String,
+    source: String,
+    value: Value,
+    sensitive: bool,
+}
+
+#[derive(Debug, Clone)]
+struct ConfigurationProviderPlan {
+    provider: String,
+    name: String,
+    prefix: String,
+    source: String,
 }
 
 #[derive(Debug, Clone)]
@@ -222,7 +270,11 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> CliExit {
             code: 2,
             diagnostic: format!("{}sloppyc: {message}", help_text()),
         },
-        CliCommand::Build { input, out_dir } => match build(&input, &out_dir) {
+        CliCommand::Build {
+            input,
+            out_dir,
+            options,
+        } => match build(&input, &out_dir, &options) {
             Ok(()) => CliExit::Success,
             Err(failure) => CliExit::Failure {
                 code: failure.code,
@@ -260,6 +312,7 @@ fn command_from_args(args: impl IntoIterator<Item = OsString>) -> CliCommand {
 fn parse_build_args(values: Vec<OsString>) -> CliCommand {
     let mut input = None;
     let mut out_dir = None;
+    let mut options = BuildOptions::new();
     let mut index = 0;
 
     while index < values.len() {
@@ -273,6 +326,46 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
                 return CliCommand::Invalid("build requires a directory after --out".to_string());
             }
             out_dir = Some(PathBuf::from(&values[index]));
+        } else if arg == "--environment" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid(
+                    "build requires an environment name after --environment".to_string(),
+                );
+            }
+            let Some(environment) = values[index].to_str() else {
+                return CliCommand::Invalid("build environment must be valid UTF-8".to_string());
+            };
+            if environment.trim().is_empty() {
+                return CliCommand::Invalid("build environment must not be empty".to_string());
+            }
+            options.environment = Some(environment.to_string());
+        } else if arg == "--host" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid("build requires a host after --host".to_string());
+            }
+            let Some(host) = values[index].to_str() else {
+                return CliCommand::Invalid("build host must be valid UTF-8".to_string());
+            };
+            if host.trim().is_empty() {
+                return CliCommand::Invalid("build host must not be empty".to_string());
+            }
+            options.host = Some(host.to_string());
+        } else if arg == "--port" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid("build requires a port after --port".to_string());
+            }
+            let Some(port_text) = values[index].to_str() else {
+                return CliCommand::Invalid("build port must be valid UTF-8".to_string());
+            };
+            let Ok(port) = port_text.parse::<u16>() else {
+                return CliCommand::Invalid(format!(
+                    "build --port expects an integer from 0 to 65535, got '{port_text}'"
+                ));
+            };
+            options.port = Some(port);
         } else if arg.starts_with('-') {
             return CliCommand::Invalid(format!("unsupported build option '{arg}'"));
         } else if input.is_none() {
@@ -284,7 +377,11 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
     }
 
     match (input, out_dir) {
-        (Some(input), Some(out_dir)) => CliCommand::Build { input, out_dir },
+        (Some(input), Some(out_dir)) => CliCommand::Build {
+            input,
+            out_dir,
+            options,
+        },
         (None, _) => CliCommand::Invalid("build requires an input file".to_string()),
         (_, None) => CliCommand::Invalid("build requires --out <directory>".to_string()),
     }
@@ -303,11 +400,13 @@ fn help_text() -> String {
     text.push_str("Usage:\n");
     text.push_str("  sloppyc --help\n");
     text.push_str("  sloppyc --version\n");
-    text.push_str("  sloppyc build <input.js> --out <directory>\n");
+    text.push_str(
+        "  sloppyc build <input.js> --out <directory> [--environment <name>] [--host <host>] [--port <port>]\n",
+    );
     text
 }
 
-fn build(input: &Path, out_dir: &Path) -> Result<(), Box<BuildFailure>> {
+fn build(input: &Path, out_dir: &Path, options: &BuildOptions) -> Result<(), Box<BuildFailure>> {
     let source = fs::read_to_string(input).map_err(|error| {
         Box::new(BuildFailure {
             code: 1,
@@ -320,13 +419,29 @@ fn build(input: &Path, out_dir: &Path) -> Result<(), Box<BuildFailure>> {
         })
     })?;
 
-    let extracted = extract(input, &source).map_err(|diagnostic| {
+    let mut extracted = extract(input, &source).map_err(|diagnostic| {
         Box::new(BuildFailure {
             code: 1,
             diagnostic,
             source: Some(source.clone()),
         })
     })?;
+    let configuration = ConfigurationModel::load(input, options).map_err(|diagnostic| {
+        Box::new(BuildFailure {
+            code: 1,
+            diagnostic,
+            source: Some(source.clone()),
+        })
+    })?;
+    configuration
+        .apply_to_app(&mut extracted)
+        .map_err(|diagnostic| {
+            Box::new(BuildFailure {
+                code: 1,
+                diagnostic,
+                source: Some(source.clone()),
+            })
+        })?;
     write_artifacts(out_dir, &extracted).map_err(|diagnostic| {
         Box::new(BuildFailure {
             code: 1,
@@ -335,6 +450,348 @@ fn build(input: &Path, out_dir: &Path) -> Result<(), Box<BuildFailure>> {
         })
     })?;
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct ConfigEntry {
+    key: String,
+    value: Value,
+    source: String,
+}
+
+#[derive(Debug)]
+struct ConfigurationModel {
+    environment: String,
+    values: BTreeMap<String, ConfigEntry>,
+}
+
+impl ConfigurationModel {
+    fn load(input: &Path, options: &BuildOptions) -> Result<Self, Diagnostic> {
+        let environment = options
+            .environment
+            .clone()
+            .unwrap_or_else(|| "Development".to_string());
+        let config_dir = input.parent().unwrap_or_else(|| Path::new(""));
+        let mut model = Self {
+            environment,
+            values: BTreeMap::new(),
+        };
+
+        model.add_defaults();
+        model.load_optional_json(&config_dir.join("appsettings.json"), "appsettings.json")?;
+        let env_file_name = format!("appsettings.{}.json", model.environment);
+        model.load_optional_json(&config_dir.join(&env_file_name), &env_file_name)?;
+        model.apply_environment_variables()?;
+        model.apply_cli_overrides(options);
+        Ok(model)
+    }
+
+    fn add_defaults(&mut self) {
+        for (key, value) in [
+            ("Sloppy:Server:Host", json!("127.0.0.1")),
+            ("Sloppy:Server:Port", json!(5173)),
+            ("Sloppy:Server:MaxConnections", json!(4)),
+            ("Sloppy:Server:MaxRequestBodyBytes", json!(8192)),
+            ("Sloppy:Server:RequestTimeoutMs", json!(30000)),
+            ("Sloppy:Runtime:V8MicrotaskDrainLimit", json!(64)),
+        ] {
+            self.set(key, value, "built-in defaults");
+        }
+    }
+
+    fn load_optional_json(&mut self, path: &Path, source: &str) -> Result<(), Diagnostic> {
+        let contents = match fs::read_to_string(path) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_CONFIG_READ",
+                    format!("failed to read {source}: {error}"),
+                )
+                .with_path(path));
+            }
+        };
+        let value = serde_json::from_str::<Value>(&contents).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_CONFIG_MALFORMED",
+                format!("malformed {source}: {error}"),
+            )
+            .with_path(path)
+        })?;
+        let Value::Object(object) = value else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_CONFIG_MALFORMED",
+                format!("{source} must contain a JSON object"),
+            )
+            .with_path(path));
+        };
+        self.flatten_json_object(Vec::new(), &object, source);
+        Ok(())
+    }
+
+    fn flatten_json_object(
+        &mut self,
+        prefix: Vec<String>,
+        object: &serde_json::Map<String, Value>,
+        source: &str,
+    ) {
+        for (key, value) in object {
+            let mut next = prefix.clone();
+            next.push(key.clone());
+            if let Value::Object(child) = value {
+                self.flatten_json_object(next, child, source);
+            } else {
+                self.set(&next.join(":"), value.clone(), source);
+            }
+        }
+    }
+
+    fn apply_environment_variables(&mut self) -> Result<(), Diagnostic> {
+        for (name, value) in std::env::vars() {
+            if !name.starts_with("SLOPPY_SLOPPY__") {
+                continue;
+            }
+            let logical = &name["SLOPPY_".len()..];
+            if logical.is_empty() || logical.contains("___") || logical.starts_with('_') {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_CONFIG_ENV",
+                    format!("invalid Sloppy environment variable name '{name}'"),
+                )
+                .with_hint("Use SLOPPY_SLOPPY__SERVER__PORT style names."));
+            }
+            let key = logical
+                .split("__")
+                .map(canonical_config_segment)
+                .collect::<Vec<_>>()
+                .join(":");
+            let parsed = self.parse_env_value(&key, &value)?;
+            self.set(&key, parsed, &format!("env:{name}"));
+        }
+        Ok(())
+    }
+
+    fn parse_env_value(&self, key: &str, value: &str) -> Result<Value, Diagnostic> {
+        match self.get(key).map(|entry| &entry.value) {
+            Some(Value::Number(existing)) if existing.is_i64() || existing.is_u64() => {
+                let parsed = value.parse::<i64>().map_err(|_| {
+                    Diagnostic::new(
+                        "SLOPPYC_E_CONFIG_ENV",
+                        format!(
+                            "environment override for {key} expects an integer, got {}",
+                            redact_config_value(key, value)
+                        ),
+                    )
+                })?;
+                Ok(json!(parsed))
+            }
+            Some(Value::Number(_)) => {
+                let parsed = value.parse::<f64>().map_err(|_| {
+                    Diagnostic::new(
+                        "SLOPPYC_E_CONFIG_ENV",
+                        format!(
+                            "environment override for {key} expects a number, got {}",
+                            redact_config_value(key, value)
+                        ),
+                    )
+                })?;
+                Ok(json!(parsed))
+            }
+            Some(Value::Bool(_)) => match value.to_ascii_lowercase().as_str() {
+                "true" => Ok(json!(true)),
+                "false" => Ok(json!(false)),
+                _ => Err(Diagnostic::new(
+                    "SLOPPYC_E_CONFIG_ENV",
+                    format!(
+                        "environment override for {key} expects true or false, got {}",
+                        redact_config_value(key, value)
+                    ),
+                )),
+            },
+            _ => Ok(json!(value)),
+        }
+    }
+
+    fn apply_cli_overrides(&mut self, options: &BuildOptions) {
+        if let Some(host) = &options.host {
+            self.set("Sloppy:Server:Host", json!(host), "CLI --host");
+        }
+        if let Some(port) = options.port {
+            self.set("Sloppy:Server:Port", json!(port), "CLI --port");
+        }
+    }
+
+    fn apply_to_app(&self, app: &mut ExtractedApp) -> Result<(), Diagnostic> {
+        let mut provider_plans = Vec::new();
+        for capability in &mut app.capabilities {
+            if capability.provider != "sqlite" {
+                continue;
+            }
+            let provider_name = provider_name_from_token(&capability.token);
+            let prefix = format!("Sloppy:Providers:sqlite:{provider_name}");
+            if capability.database.is_none() {
+                let database_key = format!("{prefix}:database");
+                if let Some(database) = self.get_string(&database_key)? {
+                    let source = self
+                        .get(&database_key)
+                        .map(|entry| entry.source.clone())
+                        .unwrap_or_else(|| "configuration".to_string());
+                    capability.database = Some(database);
+                    capability.config_source = Some(source);
+                } else if capability.from_provider_use {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_CONFIG_MISSING_PROVIDER",
+                        format!(
+                            "sqlite provider '{provider_name}' is missing required config value {database_key}"
+                        ),
+                    )
+                    .with_hint(
+                        "Add Sloppy:Providers:sqlite:<name>:database to appsettings.json or pass inline sqlite options.",
+                    ));
+                }
+            }
+            if let Some(source) = capability.config_source.clone() {
+                provider_plans.push(ConfigurationProviderPlan {
+                    provider: "sqlite".to_string(),
+                    name: provider_name,
+                    prefix,
+                    source,
+                });
+            }
+        }
+
+        app.configuration = Some(ConfigurationPlan {
+            environment: self.environment.clone(),
+            keys: self.plan_keys(),
+            providers: provider_plans,
+        });
+        Ok(())
+    }
+
+    fn plan_keys(&self) -> Vec<ConfigurationPlanKey> {
+        self.values
+            .values()
+            .map(|entry| {
+                let sensitive = config_key_is_sensitive(&entry.key);
+                ConfigurationPlanKey {
+                    key: entry.key.clone(),
+                    source: entry.source.clone(),
+                    value: if sensitive {
+                        json!("<redacted>")
+                    } else {
+                        entry.value.clone()
+                    },
+                    sensitive,
+                }
+            })
+            .collect()
+    }
+
+    fn get_string(&self, key: &str) -> Result<Option<String>, Diagnostic> {
+        let Some(entry) = self.get(key) else {
+            return Ok(None);
+        };
+        match &entry.value {
+            Value::String(value) => Ok(Some(value.clone())),
+            other => Err(Diagnostic::new(
+                "SLOPPYC_E_CONFIG_TYPE",
+                format!(
+                    "config key {key} from {} expects a string, got {}",
+                    entry.source,
+                    json_type_name(other)
+                ),
+            )),
+        }
+    }
+
+    fn get(&self, key: &str) -> Option<&ConfigEntry> {
+        self.values.get(&normalize_config_key(key))
+    }
+
+    fn set(&mut self, key: &str, value: Value, source: &str) {
+        self.values.insert(
+            normalize_config_key(key),
+            ConfigEntry {
+                key: canonical_config_key(key),
+                value,
+                source: source.to_string(),
+            },
+        );
+    }
+}
+
+fn normalize_config_key(key: &str) -> String {
+    key.split(':')
+        .filter(|segment| !segment.is_empty())
+        .map(|segment| segment.to_ascii_uppercase())
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+fn canonical_config_key(key: &str) -> String {
+    key.split(':')
+        .filter(|segment| !segment.is_empty())
+        .map(canonical_config_segment)
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+fn canonical_config_segment(segment: &str) -> String {
+    match segment.to_ascii_uppercase().as_str() {
+        "SLOPPY" => "Sloppy".to_string(),
+        "SERVER" => "Server".to_string(),
+        "RUNTIME" => "Runtime".to_string(),
+        "PROVIDERS" => "Providers".to_string(),
+        "SQLITE" => "sqlite".to_string(),
+        "HOST" => "Host".to_string(),
+        "PORT" => "Port".to_string(),
+        "MAXCONNECTIONS" => "MaxConnections".to_string(),
+        "MAXREQUESTBODYBYTES" => "MaxRequestBodyBytes".to_string(),
+        "REQUESTTIMEOUTMS" => "RequestTimeoutMs".to_string(),
+        "V8MICROTASKDRAINLIMIT" => "V8MicrotaskDrainLimit".to_string(),
+        "DATABASE" => "database".to_string(),
+        "QUEUECAPACITY" => "queueCapacity".to_string(),
+        _ => segment.to_string(),
+    }
+}
+
+fn provider_name_from_token(token: &str) -> String {
+    if let Some(name) = token.strip_prefix("data.") {
+        name.to_string()
+    } else if let Some(name) = token.strip_prefix("sqlite:") {
+        name.to_string()
+    } else {
+        token.to_string()
+    }
+}
+
+fn json_type_name(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+fn config_key_is_sensitive(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase();
+    normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("token")
+        || normalized.contains("connectionstring")
+        || normalized.contains("connection_string")
+        || normalized.contains("apikey")
+        || normalized.contains("api_key")
+}
+
+fn redact_config_value(key: &str, value: &str) -> String {
+    if config_key_is_sensitive(key) {
+        "<redacted>".to_string()
+    } else {
+        format!("'{value}'")
+    }
 }
 
 struct ModuleGraph {
@@ -574,6 +1031,7 @@ fn extract_entry(
         source_files: graph.source_files.clone(),
         routes: state.routes,
         capabilities: state.capabilities,
+        configuration: None,
     })
 }
 
@@ -1109,6 +1567,8 @@ fn database_capability_call(
         provider: "sqlite",
         access,
         database,
+        config_source: None,
+        from_provider_use: false,
     }))
 }
 
@@ -1245,6 +1705,8 @@ fn sqlite_provider_call_expression(call: &CallExpression<'_>) -> Option<Database
         provider: "sqlite",
         access: "readwrite".to_string(),
         database: None,
+        config_source: None,
+        from_provider_use: true,
     })
 }
 
@@ -1279,6 +1741,9 @@ fn app_use_provider_call(
         })?;
         provider.database =
             optional_object_string_property(path, options, "database")?.map(ToOwned::to_owned);
+        if provider.database.is_some() {
+            provider.config_source = Some("inline".to_string());
+        }
     }
     Ok(Some(provider))
 }
@@ -2621,7 +3086,39 @@ fn emit_plan(
         })
         .collect::<Vec<_>>();
 
-    let value = json!({
+    let configuration = app.configuration.as_ref().map(|configuration| {
+        let keys = configuration
+            .keys
+            .iter()
+            .map(|key| {
+                json!({
+                    "key": key.key,
+                    "source": key.source,
+                    "value": key.value,
+                    "sensitive": key.sensitive
+                })
+            })
+            .collect::<Vec<_>>();
+        let providers = configuration
+            .providers
+            .iter()
+            .map(|provider| {
+                json!({
+                    "provider": provider.provider,
+                    "name": provider.name,
+                    "prefix": provider.prefix,
+                    "source": provider.source
+                })
+            })
+            .collect::<Vec<_>>();
+        json!({
+            "environment": configuration.environment,
+            "keys": keys,
+            "providers": providers
+        })
+    });
+
+    let mut value = json!({
         "schemaVersion": 1,
         "compilerVersion": COMPILER_VERSION,
         "runtimeMinimumVersion": RUNTIME_MINIMUM_VERSION,
@@ -2651,6 +3148,9 @@ fn emit_plan(
             "sourceMaps": true
         }
     });
+    if let Some(configuration) = configuration {
+        value["configuration"] = configuration;
+    }
 
     serde_json::to_string_pretty(&value)
         .map(|json| format!("{json}\n"))
@@ -3058,7 +3558,7 @@ impl AstSpan for Expression<'_> {
 mod tests {
     use std::{ffi::OsString, fs};
 
-    use super::{command_from_args, extract, route_pattern_supported, CliCommand};
+    use super::{command_from_args, extract, route_pattern_supported, BuildOptions, CliCommand};
 
     #[test]
     fn no_argument_prints_help() {
@@ -3079,6 +3579,122 @@ mod tests {
             command_from_args([OsString::from("build")]),
             CliCommand::Invalid("build requires an input file".to_string())
         );
+    }
+
+    #[test]
+    fn build_args_accept_environment_and_runtime_overrides() {
+        assert_eq!(
+            command_from_args([
+                OsString::from("build"),
+                OsString::from("app.js"),
+                OsString::from("--out"),
+                OsString::from(".sloppy"),
+                OsString::from("--environment"),
+                OsString::from("Development"),
+                OsString::from("--host"),
+                OsString::from("127.0.0.1"),
+                OsString::from("--port"),
+                OsString::from("5173"),
+            ]),
+            CliCommand::Build {
+                input: std::path::PathBuf::from("app.js"),
+                out_dir: std::path::PathBuf::from(".sloppy"),
+                options: BuildOptions {
+                    environment: Some("Development".to_string()),
+                    host: Some("127.0.0.1".to_string()),
+                    port: Some(5173),
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn configuration_files_overlay_and_bind_sqlite_provider() {
+        let root = std::env::temp_dir().join(format!("sloppyc-config-test-{}", std::process::id()));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale config test directory should be removable");
+        }
+        fs::create_dir_all(&root).expect("config test directory should be created");
+        let input = root.join("app.js");
+        fs::write(&input, "export default {};").expect("input should be written");
+        fs::write(
+            root.join("appsettings.json"),
+            r#"{"Sloppy":{"Server":{"Port":5000},"Providers":{"sqlite":{"main":{"database":"base.db"}}}}}"#,
+        )
+        .expect("base appsettings should be written");
+        fs::write(
+            root.join("appsettings.Development.json"),
+            r#"{"Sloppy":{"Server":{"Port":5173},"Providers":{"sqlite":{"main":{"database":"dev.db"}}}}}"#,
+        )
+        .expect("environment appsettings should be written");
+
+        let options = BuildOptions {
+            environment: Some("Development".to_string()),
+            host: Some("0.0.0.0".to_string()),
+            port: Some(6000),
+        };
+        let config =
+            super::ConfigurationModel::load(&input, &options).expect("configuration should load");
+        assert_eq!(
+            config
+                .get_string("Sloppy:Providers:sqlite:main:database")
+                .expect("database key should be string"),
+            Some("dev.db".to_string())
+        );
+        assert_eq!(
+            &config
+                .get("Sloppy:Server:Port")
+                .expect("port should exist")
+                .value,
+            &serde_json::json!(6000)
+        );
+        assert_eq!(
+            &config
+                .get("Sloppy:Server:Host")
+                .expect("host should exist")
+                .value,
+            &serde_json::json!("0.0.0.0")
+        );
+
+        let mut app = super::ExtractedApp {
+            uses_data_runtime: true,
+            source_files: Vec::new(),
+            routes: Vec::new(),
+            capabilities: vec![super::DatabaseCapability {
+                token: "data.main".to_string(),
+                provider: "sqlite",
+                access: "readwrite".to_string(),
+                database: None,
+                config_source: None,
+                from_provider_use: true,
+            }],
+            configuration: None,
+        };
+        config
+            .apply_to_app(&mut app)
+            .expect("provider config should bind");
+        assert_eq!(app.capabilities[0].database.as_deref(), Some("dev.db"));
+        assert!(app.configuration.is_some());
+
+        fs::remove_dir_all(&root).expect("config test directory should be removable");
+    }
+
+    #[test]
+    fn configuration_plan_redacts_sensitive_values() {
+        let mut config = super::ConfigurationModel {
+            environment: "Development".to_string(),
+            values: std::collections::BTreeMap::new(),
+        };
+        config.set(
+            "Sloppy:Providers:sqlite:main:password",
+            serde_json::json!("secret"),
+            "test",
+        );
+        let keys = config.plan_keys();
+        assert_eq!(keys.len(), 1);
+        assert!(keys[0].sensitive);
+        assert_eq!(keys[0].value, serde_json::json!("<redacted>"));
+        assert!(!keys[0].value.to_string().contains("secret"));
     }
 
     #[test]
@@ -3510,7 +4126,8 @@ export default app;
             fs::remove_dir_all(&out_dir).expect("stale test output directory should be removable");
         }
 
-        let failure = super::build(&input, &out_dir).expect_err("fixture should fail to build");
+        let failure = super::build(&input, &out_dir, &BuildOptions::new())
+            .expect_err("fixture should fail to build");
         assert_eq!(
             failure.diagnostic.code,
             "SLOPPYC_E_UNSUPPORTED_COMPUTED_ROUTE_METHOD"
@@ -3538,7 +4155,8 @@ export default app;
             fs::remove_dir_all(&out_dir).expect("stale test output directory should be removable");
         }
 
-        super::build(&input, &out_dir).expect("compiler example should build");
+        super::build(&input, &out_dir, &BuildOptions::new())
+            .expect("compiler example should build");
 
         let emitted_plan =
             fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be written");
@@ -3579,8 +4197,8 @@ export default app;
             fs::remove_dir_all(&base).expect("stale test output directory should be removable");
         }
 
-        super::build(&input, &first).expect("first build should succeed");
-        super::build(&input, &second).expect("second build should succeed");
+        super::build(&input, &first, &BuildOptions::new()).expect("first build should succeed");
+        super::build(&input, &second, &BuildOptions::new()).expect("second build should succeed");
 
         for artifact in ["app.plan.json", "app.js", "app.js.map"] {
             let first_text =

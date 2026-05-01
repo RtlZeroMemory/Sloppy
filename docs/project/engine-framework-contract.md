@@ -27,6 +27,10 @@ Current implementation evidence remains in the current-state docs and public sta
   `data.sqlite("main")`, open/close/exec/query/queryOne, Plan provider resolution, and
   database capability hook checks. JS transactions, prepared statement handles, file
   database policy, and scalable async/offload remain future work.
+- FRAMEWORK-01.B implements the first layered application configuration model in the
+  compiler/stdlib/source-input path: appsettings overlays, environment selection, canonical
+  Sloppy env vars, selected CLI overrides, typed access, `bind`, convention-bound SQLite
+  provider config, and Plan-visible redacted metadata.
 
 This document defines the required final foundation contract, not the current executable
 surface.
@@ -58,6 +62,7 @@ default, layered Plan-visible config, explicit `ctx` binding helpers, and explic
 | SQLite | SQLite is the core database foundation. `data.sqlite.open`, `exec`, `query`, `queryOne`, `transaction`, and `close` are the foundation API. |
 | PostgreSQL/SQL Server | Native provider boundaries can remain, but JS bridges and public foundation examples are deferred until SQLite is excellent. |
 | Capabilities | SQLite open/use must be capability-wired. Normal framework apps should receive compiler/Plan-generated provider capabilities by default; manual declarations are advanced-only. Filesystem/network capabilities remain skeleton metadata until APIs exist. No OS sandbox claims. |
+| Configuration | Layered Slop-owned application configuration is core. `sloppy.json` remains project/run config; `appsettings*.json` is app config. No Node/npm/package-manager semantics, reload, user secrets, custom providers, or remote config are part of this contract slice. |
 | Public alpha docs | Blocked until foundation examples and conformance pass through real compiler/runtime evidence. |
 | Benchmarks | Non-claim evidence only until comparable methodology and executable paths exist. |
 

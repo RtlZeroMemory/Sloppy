@@ -69,6 +69,11 @@ methods/patterns/names, provider tokens/names, service/capability metadata, and 
 token/kind/access/provider metadata. It does not intern artifact paths, hashes, source-map
 paths, provider database names, secrets, request data, connection strings, or transient
 diagnostics.
+FRAMEWORK-01.B adds compiler-emitted configuration metadata. `sloppyc` records the
+selected environment, declared/effective config keys, each key's winning source layer, and
+provider bindings such as `Sloppy:Providers:sqlite:main`. Sensitive-looking values are
+redacted. The native Plan v1 parser intentionally ignores this metadata for now; broader
+typed Plan graph expansion remains a Strong Plan follow-up under #355-#359.
 
 ## Public API Shape
 
@@ -109,6 +114,9 @@ The implemented native C shape in `include/sloppy/plan.h` is deliberately small:
   and `dataProviders[].capability`;
 - optional `capabilities[].token`, `capabilities[].kind`, `capabilities[].access`, and
   `capabilities[].provider`.
+- optional compiler metadata `configuration.environment`, `configuration.keys[]`, and
+  `configuration.providers[]`. This is emitted for tooling/diagnostics and is not yet part
+  of the native `SlPlan` struct.
 
 MAIN1-10 capability rules:
 

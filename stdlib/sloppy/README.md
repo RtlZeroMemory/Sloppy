@@ -41,10 +41,12 @@ installed, denied SQLite operations fail with capability-access errors rather th
 bridge-unavailable errors. `data.postgres.open(...)` and
 `data.sqlserver.open(...)` are future stdlib entry points for native providers and still
 report bridge-unavailable until their own bridge modules exist.
-`Sloppy.createBuilder()` exposes minimal config, logging, capabilities, and services builders;
+`Sloppy.createBuilder()` exposes minimal typed config, logging, capabilities, and services builders;
 `Sloppy.module(...)` creates bootstrap app module definitions; `builder.addModule(...)`
 registers them; `builder.build()` freezes builder mutation and returns an in-memory app
-object. `Sloppy.create()` remains supported as a default builder plus `build()`.
+object. Config supports case-insensitive logical keys, nested object flattening, typed
+getters, and `bind(prefix, schema)`. `Sloppy.create()` remains supported as a default
+builder plus `build()`.
 
 The current app object supports `app.mapGet(...)`, `app.mapGroup(...)`, route registration
 storage, route metadata storage, `.withName(...)`, structural `app.freeze()`,
@@ -69,7 +71,7 @@ Not implemented here:
   capability-wired SQLite bridge;
 - nested route groups, middleware, automatic validation/request binding, module package
   loading, or native plugins;
-- config files, environment variables, command-line config, or secret managers;
+- config file/environment/CLI loading inside the JS stdlib itself, or secret managers;
 - console, file, or native logging sinks;
 - request-scoped service lifetimes, disposal hooks, async factories, or typed tokens;
 - broad runtime intrinsic binding;
