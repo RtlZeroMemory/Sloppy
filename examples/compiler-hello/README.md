@@ -48,6 +48,23 @@ Expected body:
 Hello from Sloppy
 ```
 
+The source-input shortcut performs the compile step and then enters the same artifact
+runtime path:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run app.js --once GET /
+```
+
+From the repository root:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run examples/compiler-hello/app.js --once GET /
+```
+
+This writes generated artifacts under `.sloppy/cache/dev/source-input` for positional
+source input. The explicit `--artifacts` form remains useful when inspecting a known output
+directory or debugging generated files.
+
 This run path is dev-only and requires V8. It does not use Node/npm/package-manager
 behavior, does not claim full TypeScript checking or broad bundling, and does not include
 production server hardening, HTTPS, request body parsing, streaming, middleware, hot reload,

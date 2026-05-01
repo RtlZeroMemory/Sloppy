@@ -315,6 +315,7 @@ set(
     src/engine/engine.c
     src/platform/libuv/async_backend_libuv.c
     src/platform/libuv/http_transport_libuv.c
+    src/platform/libuv/process.c
     src/platform/libuv/thread.c)
 
 if(WIN32)
@@ -420,7 +421,10 @@ target_link_libraries(sloppy PRIVATE sloppy_core)
 target_link_libraries(sloppy PRIVATE yyjson::yyjson ${SLOPPY_LIBUV_TARGET})
 target_include_directories(sloppy PRIVATE "${PROJECT_SOURCE_DIR}/include")
 target_compile_features(sloppy PRIVATE c_std_17)
-target_compile_definitions(sloppy PRIVATE SLOPPY_BOOTSTRAP_BUILD_DIR="${SLOPPY_BOOTSTRAP_BUILD_DIR}")
+target_compile_definitions(
+    sloppy
+    PRIVATE SLOPPY_BOOTSTRAP_BUILD_DIR="${SLOPPY_BOOTSTRAP_BUILD_DIR}"
+            SLOPPY_COMPILER_BUILD_PATH="${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
 
 add_executable(
     sloppy_bench
@@ -855,7 +859,7 @@ if(SLOPPY_ENABLE_TESTS)
             "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_engine19_conformance_matrix_docs.cmake")
 
-    if(CARGO_EXECUTABLE)
+    if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
         function(sloppy_add_conformance_compile_test test_name case_name source_path)
             add_test(
                 NAME ${test_name}
@@ -956,16 +960,6 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(sloppy.run.missing_plan PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
-        NAME sloppy.run.source_input_deferred
-        COMMAND
-            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
-            "-DSLOPPY_CLI_ARGS=run;examples/compiler-hello/app.js;--once;GET;/"
-            "-DSLOPPY_EXPECTED_ERROR=source input handoff to sloppyc is deferred" -P
-            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
-    set_tests_properties(sloppy.run.source_input_deferred
-                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
-
-    add_test(
         NAME sloppy.run.malformed_plan
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
@@ -1053,6 +1047,146 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(sloppy.run.rejects_mixed_artifact_inputs
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
+    if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
+        set(SLOPPYC_BUILT_EXECUTABLE
+            "${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
+
+        if(NOT SLOPPY_ENABLE_V8)
+            add_test(
+                NAME sloppy.run.source_input_emits_artifacts_non_v8
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                    "-DSLOPPY_CASE=hello-non-v8" "-DSLOPPY_SOURCE=examples/compiler-hello/app.js"
+                    "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
+                    "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+            set_tests_properties(sloppy.run.source_input_emits_artifacts_non_v8
+                                 PROPERTIES LABELS "source-input")
+
+            add_test(
+                NAME sloppy.run.project_config_emits_artifacts_non_v8
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                    "-DSLOPPY_CASE=config-non-v8"
+                    "-DSLOPPY_CONFIG_ENTRY={\"entry\":\"app.js\",\"outDir\":\".sloppy\",\"environment\":\"Development\"}"
+                    "-DSLOPPY_CONFIG_SOURCE=examples/compiler-hello/app.js"
+                    "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
+                    "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+            set_tests_properties(sloppy.run.project_config_emits_artifacts_non_v8
+                                 PROPERTIES LABELS "source-input")
+
+            add_test(
+                NAME sloppy.run.project_config_shell_metacharacters_non_v8
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                    "-DSLOPPY_CASE=config-metacharacters-non-v8"
+                    "-DSLOPPY_CONFIG_ENTRY={\"entry\":\"app.js\",\"outDir\":\".sloppy/$(not-a-command)\",\"environment\":\"Development\"}"
+                    "-DSLOPPY_CONFIG_SOURCE=examples/compiler-hello/app.js"
+                    "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
+                    "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/$(not-a-command)" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+            set_tests_properties(sloppy.run.project_config_shell_metacharacters_non_v8
+                                 PROPERTIES LABELS "source-input")
+        endif()
+
+        add_test(
+            NAME sloppy.run.source_input_missing_source
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_CASE=missing-source" "-DSLOPPY_SOURCE=tests/fixtures/run/missing.js"
+                "-DSLOPPY_EXPECTED_ERROR=missing source file" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.run.source_input_missing_source
+                             PROPERTIES LABELS "source-input")
+
+        add_test(
+            NAME sloppy.run.source_input_invalid_config
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_CASE=invalid-config" "-DSLOPPY_CONFIG_ENTRY={"
+                "-DSLOPPY_EXPECTED_ERROR=invalid sloppy.json" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.run.source_input_invalid_config
+                             PROPERTIES LABELS "source-input")
+
+        add_test(
+            NAME sloppy.run.source_input_missing_entry
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_CASE=missing-entry" "-DSLOPPY_CONFIG_ENTRY={\"outDir\":\".sloppy\"}"
+                "-DSLOPPY_EXPECTED_ERROR=missing entry" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.run.source_input_missing_entry
+                             PROPERTIES LABELS "source-input")
+
+        add_test(
+            NAME sloppy.run.source_input_invalid_entry
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_CASE=invalid-entry" "-DSLOPPY_CONFIG_ENTRY={\"entry\":123}"
+                "-DSLOPPY_EXPECTED_ERROR=entry must be a non-empty string" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.run.source_input_invalid_entry
+                             PROPERTIES LABELS "source-input")
+
+        add_test(
+            NAME sloppy.run.source_input_compiler_failure
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_CASE=compiler-failure"
+                "-DSLOPPY_SOURCE=compiler/tests/fixtures/computed-method/input.js"
+                "-DSLOPPY_EXPECTED_ERROR=compiler handoff failed" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.run.source_input_compiler_failure
+                             PROPERTIES LABELS "source-input")
+
+        add_test(
+            NAME sloppy.run.source_input_unsupported_typescript
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                "-DSLOPPY_CASE=unsupported-typescript"
+                "-DSLOPPY_SOURCE=compiler/tests/fixtures/unsupported-typescript-handler/input.ts"
+                "-DSLOPPY_EXPECTED_ERROR=UNSUPPORTED_TYPESCRIPT_INPUT" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.run.source_input_unsupported_typescript
+                             PROPERTIES LABELS "source-input")
+
+        add_test(
+            NAME sloppy.run.source_input_missing_compiler
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${CMAKE_BINARY_DIR}/missing-sloppyc.exe"
+                "-DSLOPPY_CASE=missing-compiler"
+                "-DSLOPPY_SOURCE=examples/compiler-hello/app.js"
+                "-DSLOPPY_EXPECTED_ERROR=compiler unavailable" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+        set_tests_properties(sloppy.run.source_input_missing_compiler
+                             PROPERTIES LABELS "source-input")
+    endif()
+
     if(NOT SLOPPY_ENABLE_V8)
         add_test(
             NAME sloppy.run.v8_disabled_is_clear
@@ -1090,6 +1224,37 @@ if(SLOPPY_ENABLE_TESTS)
             sloppy_add_conformance_run_once_test(
                 conformance.async_handler.run_once async-handler
                 compiler/tests/fixtures/async-handler/input.js GET /async "\"ok\":true")
+            if(SLOPPY_BUILD_COMPILER)
+                add_test(
+                    NAME conformance.hello.source_input_run_once
+                    COMMAND
+                        "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                        "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                        "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                        "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                        "-DSLOPPY_CASE=hello-v8" "-DSLOPPY_SOURCE=examples/compiler-hello/app.js"
+                        "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
+                        "-DSLOPPY_EXPECTED_OUTPUT=Hello from Sloppy"
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                        "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+                set_tests_properties(conformance.hello.source_input_run_once
+                                     PROPERTIES LABELS "conformance;v8;source-input")
+                add_test(
+                    NAME conformance.users_api_sqlite.source_input_run_once
+                    COMMAND
+                        "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                        "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                        "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                        "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                        "-DSLOPPY_CASE=users-api-sqlite-v8"
+                        "-DSLOPPY_SOURCE=examples/users-api-sqlite/app.js"
+                        "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/users"
+                        "-DSLOPPY_EXPECTED_OUTPUT=Ada Lovelace"
+                        "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/cache/dev/source-input" -P
+                        "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+                set_tests_properties(conformance.users_api_sqlite.source_input_run_once
+                                     PROPERTIES LABELS "conformance;v8;source-input;sqlite")
+            endif()
             add_test(
                 NAME conformance.users_api_sqlite.localhost_transport
                 COMMAND

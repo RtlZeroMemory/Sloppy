@@ -1,6 +1,7 @@
 # CLI
 
-Status: Metadata introspection and dev-only `sloppy run` MVP implemented.
+Status: Metadata introspection, dev-only artifact run, and direct source-input handoff
+implemented for the current supported compiler subset.
 
 Purpose: document Sloppy CLI commands for dev-only artifact execution, metadata
 inspection, local readiness checks, audit findings, and OpenAPI skeleton generation.
@@ -8,7 +9,9 @@ inspection, local readiness checks, audit findings, and OpenAPI skeleton generat
 Implemented commands:
 
 ```powershell
-sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]
+sloppy run <source.js>
+sloppy run
+sloppy run --artifacts <dir> [--stdlib <dir>]
            [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]
 sloppy routes --plan <path> [--format text|json]
 sloppy doctor [--plan <path>] [--format text|json]
@@ -16,12 +19,29 @@ sloppy audit --plan <path> [--format text|json]
 sloppy openapi --plan <path> [--output <path>]
 ```
 
-`sloppy run` is a dev-only MVP that loads EPIC-21/24 artifacts, enters V8, loads the
-classic bootstrap runtime asset, validates handler registration, dispatches GET routes,
-passes a minimal route/query/request context, converts supported `Results.*` descriptors,
-and writes HTTP/1.1 responses through the native response writer. It requires a V8-enabled
-build. Source input handoff to `sloppyc` is deferred; use `sloppyc build ... --out <dir>`
-first, then run the emitted artifact directory.
+`sloppy run <source.js>` invokes `sloppyc build`, writes artifacts to a deterministic
+tool-owned output directory, validates `app.plan.json`, `app.js`, and `app.js.map`, then
+enters the same runtime path as `sloppy run --artifacts <dir>`. Runtime execution is still
+dev-only and requires a V8-enabled build. Default non-V8 builds may prove the compiler
+handoff and artifact validation, but they must not be reported as V8 execution success.
+The compiler handoff passes argv through the platform process runner; source paths and
+`sloppy.json` values are not interpolated through a shell command string.
+
+`sloppy run` with no source reads `sloppy.json` from the current directory. The supported
+project-run config shape is:
+
+```json
+{
+  "entry": "app.js",
+  "outDir": ".sloppy",
+  "environment": "Development"
+}
+```
+
+`entry` is required and resolves relative to `sloppy.json` in the current directory.
+`outDir` defaults to `.sloppy`. `environment` defaults to `Development`; it is currently a
+source-input handoff/cache input, not a broad runtime configuration system. Unknown fields,
+invalid JSON, non-string values, and missing `entry` fail clearly.
 
 The other commands inspect `app.plan.json` artifact metadata only. `routes`, `doctor`, and
 `openapi` first validate the file through the native Plan v1 parser, then read the same
@@ -57,7 +77,7 @@ sloppy run --artifacts .sloppy --once GET /
 ```text
 app.plan.json
 app.js
-app.js.map   # optional for this MVP
+app.js.map
 ```
 
 The command loads `app.plan.json` through the native Plan parser, reads the interim
@@ -74,16 +94,26 @@ bootstrap root compiled into the binary. Package layouts stage the same assets u
 `lib/sloppy/bootstrap/sloppy`; executable-relative package lookup is still deferred, so
 package smoke tests may pass that directory explicitly.
 
-Source input handoff to `sloppyc` is deferred. MAIN supports the two-step artifact path:
+The explicit artifact path remains supported and is the advanced/debug path:
 
 ```powershell
 sloppyc build examples/compiler-hello/app.js --out .sloppy-main-smoke
 sloppy run --artifacts .sloppy-main-smoke --once GET /
 ```
 
-MAIN1-01 keeps this as the alpha policy. `sloppy run <source.js>` must not implicitly build
-or cache source input until a future scoped task designs the compiler handoff, cache keys,
-stale-artifact checks, source diagnostics, and rebuild behavior.
+The direct source shortcut does not bypass artifacts. Positional source input writes to
+`.sloppy/cache/dev/source-input` and rebuilds conservatively on each invocation. The
+`sloppy.json` form writes to `outDir` and also rebuilds every time in this first slice.
+Users can delete `.sloppy/` and `.sloppy/cache/` safely; they are generated outputs. A
+future cache-reuse slice must include source/import hashes, compiler/runtime/stdlib
+identity, target platform/engine, environment, and feature/options before claiming stale
+cache correctness.
+
+Current source input follows the compiler's existing JavaScript policy. `.js` and `.mjs`
+can compile when they match the supported source shape. `.ts`/`.mts` are handed to
+`sloppyc` so they fail with the compiler's TypeScript-not-supported diagnostic; there is
+no full TypeScript typechecker, package-manager behavior, `node_modules` resolution, watch
+mode, hot reload, public alpha claim, or benchmark/performance claim in this command.
 
 Default server binding is `127.0.0.1:5173`. The server is single-process, dev-only, and
 intentionally tiny: HTTP/1 request heads only, GET dispatch only, route/query/request

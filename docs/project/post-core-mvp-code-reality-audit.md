@@ -20,7 +20,7 @@ architecture source.
 
 | Area | Boundary |
 | --- | --- |
-| Source-input run | `sloppy run app.js` is still deferred; the supported path is explicit `sloppyc build` plus `sloppy run --artifacts`. |
+| Source-input run | ENGINE-02.E adds `sloppy run <source.js>` and `sloppy run` with `sloppy.json` as rebuild-always compiler handoffs into the existing artifact runtime path. TypeScript, module graphs, cache reuse, watch/hot reload remain deferred. |
 | HTTP/1.1 depth | Keep-alive, pipelining, chunked request decoding, streaming response writing, TLS, HTTP/2/3, WebSockets, middleware, and production-edge behavior are not implemented. |
 | SQLite provider execution | The current V8 SQLite bridge is synchronous and single-thread-owned; it is not yet routed through the ENGINE-23 provider executor. |
 | Async JavaScript | Direct returned Promises are bounded by owner-thread microtask drain; timers, fetch, arbitrary native async sources, and broad async source syntax are deferred. |

@@ -51,6 +51,10 @@ supported `sloppy run --artifacts` path verifies `sha256:` hashes for `app.js` a
 validation pass over the parsed Plan before route materialization, V8/user execution, or
 request serving. Minimal handler-only Plan v1 fixtures still parse for backward
 compatibility, but runnable artifact apps must provide route metadata.
+ENGINE-02.E makes `sloppy run <source>` and `sloppy run` with `sloppy.json` compile first
+and then reuse this exact artifact validation path. Source-input run still treats
+`app.plan.json` as the runtime source of truth; it does not introduce runtime source-file
+discovery.
 ENGINE-02 expands compiler-emitted Plan metadata without widening the runtime execution
 claim: supported apps can now emit GET/POST/PUT/PATCH/DELETE route metadata, async handler
 flags, declaration source locations, feature flags, and minimal SQLite
@@ -427,7 +431,8 @@ Current handwritten fixture shape:
 
 Later schema phases may add modules, services, middleware, filters, schemas, permissions,
 diagnostics metadata, and build cache metadata beyond the MAIN1-02 route/provider/capability
-alpha sections.
+alpha sections. ENGINE-02.E does not add Plan cache metadata; it documents cache-key
+requirements and rebuilds source-input artifacts conservatively.
 
 Illustrative future shape, not implemented:
 

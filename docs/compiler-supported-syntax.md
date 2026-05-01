@@ -30,17 +30,37 @@ separate source-copy and closure policy before they can be accepted honestly.
 
 ## Source-Input Run Policy
 
-Alpha keeps the explicit two-step artifact workflow:
+The explicit two-step artifact workflow remains supported:
 
 ```powershell
 sloppyc build app.js --out .sloppy
 sloppy run --artifacts .sloppy
 ```
 
-`sloppy run <source.js>` remains deferred. The direct source-input path would need a
-designed handoff to `sloppyc`, cache keys, stale-artifact detection, source diagnostics,
-and rebuild policy. The current pipeline deliberately avoids hiding those decisions inside
-the runtime.
+`sloppy run <source.js>` is implemented as a shortcut over the same compiler and artifact
+runtime path. It invokes `sloppyc build`, writes generated artifacts to
+`.sloppy/cache/dev/source-input`, validates the emitted plan, bundle, and source map, then
+runs those artifacts exactly as `sloppy run --artifacts` would.
+
+`sloppy run` with no source reads `sloppy.json` in the current directory:
+
+```json
+{
+  "entry": "app.js",
+  "outDir": ".sloppy",
+  "environment": "Development"
+}
+```
+
+`entry` is required. `outDir` defaults to `.sloppy`; `environment` defaults to
+`Development`. Unsupported config fields fail clearly in this first project-run config
+slice.
+
+The source-input handoff follows the compiler's existing source support. JavaScript input
+is supported when it matches the documented subset. TypeScript extensions are accepted at
+the CLI boundary only so `sloppyc` can return the documented unsupported-TypeScript
+diagnostic. No full TypeScript typechecking, npm/package-manager behavior, `node_modules`
+resolution, broad module graph bundling, watch mode, or hot reload is implemented.
 
 ## Matrix
 

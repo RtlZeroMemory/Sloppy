@@ -29,6 +29,8 @@ Implemented now:
 - compiler-emitted minimal Plan v1 JSON plus a native-validated `routes` section;
 - supported-path `sloppy run --artifacts` hash and compatibility checks for `app.js` and
   `app.js.map`.
+- source-input `sloppy run <source.js>` / `sloppy run` handoff that compiles first and
+  then reuses the same artifact loader and Plan validation path.
 
 MAIN1-10 implemented scope:
 

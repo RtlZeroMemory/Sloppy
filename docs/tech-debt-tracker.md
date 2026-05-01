@@ -164,13 +164,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Public API to plan emission beyond ENGINE-02: bootstrap module/service/schema metadata
   must become compiler-produced plan metadata instead of in-memory debug snapshots.
-- `sloppy run` source/build handoff: EPIC-22 can load artifacts, but source input still
-  needs a clean `sloppyc` handoff/cache story.
-- Source-input `sloppy run <source.js>` implementation: MAIN1-01 decided that alpha keeps
-  the explicit two-step artifact workflow. #302 now tracks the dedicated source-input
-  handoff task after the compiler emits full supported-app artifacts. Implementing direct
-  source input still needs a scoped compiler handoff, cache keys, stale-artifact checks,
-  source diagnostics, cleanup policy, and rebuild policy.
+- Source-input follow-up after ENGINE-02.E: `sloppy run <source.js>` and `sloppy run`
+  through `sloppy.json` now compile through `sloppyc`, validate artifacts, and reuse the
+  `--artifacts` path. Remaining debt is cache reuse/stale-cache rejection, TypeScript
+  lowering, relative imports/function modules, richer source-map diagnostics, and
+  watch/dev-loop policy.
 - HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F and
   ENGINE-24.A/B/C/D/E/F/G plus the ENGINE-17.E users API proof: redirect helpers,
   streaming/files, cookies, content negotiation, #433 HTTP-25 keep-alive/streaming,

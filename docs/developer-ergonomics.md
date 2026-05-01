@@ -98,17 +98,18 @@ Foundation ergonomics are intentionally small:
 - SQLite is the core data provider foundation with `data.sqlite.open`, `exec`, `query`,
   `queryOne`, `transaction`, and `close`.
 
-The foundation workflow remains explicit artifacts:
+The foundation workflow can still be driven explicitly through artifacts:
 
 ```powershell
 sloppyc build app.js --out .sloppy
 sloppy run --artifacts .sloppy --host 127.0.0.1 --port 5173
 ```
 
-`sloppy run app.js` is tracked by #302 as a compiler/CLI source handoff after the compiler
-emits complete artifacts for realistic apps. `app.run`, broad service/module registration,
-PostgreSQL/SQL Server JavaScript bridges, public alpha docs, and benchmark claims remain
-deferred.
+ENGINE-02.E adds `sloppy run app.js` and `sloppy run` with `sloppy.json` as shortcuts over
+that same compiler/artifact/runtime path. Source-input run rebuilds through `sloppyc`,
+validates artifacts, and does not add Node/npm compatibility, package-manager behavior,
+watch mode, hot reload, public alpha docs, or benchmark claims. `app.run`, broad
+service/module registration, and PostgreSQL/SQL Server JavaScript bridges remain deferred.
 
 ## Future Phase
 
@@ -149,8 +150,8 @@ Acceptance criteria for this API shape:
 - route declaration remains compiler-readable;
 - handler receives a typed context only when it asks for one;
 - emitted plan contains one route and one handler ID;
-- runtime startup uses `sloppy run --artifacts` until direct source input and `app.run`
-  have an intentional handoff contract.
+- runtime startup uses the Plan-backed artifact path; `sloppy run <source>` is only a
+  compiler handoff into that path, and `app.run` remains deferred.
 
 TASK 11.A creates the bootstrap source layout that will eventually provide the `"sloppy"`
 module:
@@ -185,10 +186,11 @@ That example is static bootstrap validation only. It is not compiled by `sloppyc
 emit `app.plan.json`, and does not serve HTTP.
 
 EPIC-21 adds `examples/compiler-hello/` as the compiler input example. It uses
-`import { Sloppy, Results } from "sloppy";`, can be compiled with `sloppyc build`, and
-documents the current V8-required dev-only `sloppy run --artifacts` path for serving the
-result. EPIC-24 runtime startup loads the classic bootstrap runtime asset before the
-generated app artifact, then dispatches through `__sloppy_register_handler` registrations.
+`import { Sloppy, Results } from "sloppy";`, can be compiled with `sloppyc build`, and can
+now be run through the direct source-input shortcut or the explicit V8-required dev-only
+`sloppy run --artifacts` path. EPIC-24 runtime startup loads the classic bootstrap runtime
+asset before the generated app artifact, then dispatches through
+`__sloppy_register_handler` registrations.
 
 ## Builder/App Shape
 

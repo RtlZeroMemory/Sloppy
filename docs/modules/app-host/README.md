@@ -96,6 +96,9 @@ supported target/runtime values, handler table presence and duplicate IDs, runna
 route metadata, route-to-handler references, duplicate method/pattern pairs, duplicate
 non-empty route names, provider/capability token consistency, and duplicate provider
 service tokens when `dataProviders[].service` is represented.
+`sloppy run <source.js>` and `sloppy run` with `sloppy.json` compile first through
+`sloppyc` and then enter this same artifact-backed app-host path. They do not make the
+native app host discover routes or providers from source at runtime.
 
 MAIN1-10 adds a native capability registry that future provider bridge calls can receive
 from the parsed plan. The registry is immutable after startup and has no global mutable

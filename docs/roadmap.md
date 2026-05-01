@@ -75,7 +75,8 @@ Durable architecture sources remain:
 | Capability enforcement | Complete/proven for integrated paths | SQLite/provider-executor paths enforce before provider work; filesystem/network remain metadata/check skeletons. |
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
-| Public alpha | Blocked | Needs source-input decision, canonical docs, executable examples, ergonomics, package/platform story, and no fake claims. |
+| Source-input run | Partial/proven for current compiler subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; TypeScript, module graphs, cache reuse, watch/hot reload remain deferred. |
+| Public alpha | Blocked | Needs canonical docs, executable examples, broader ergonomics, package/platform story, and no fake claims. |
 
 ## Active Issue Map
 
@@ -88,7 +89,8 @@ Closed during this reset or immediately before it:
 
 Kept open intentionally:
 
-- #259/#302 compiler/source-input handoff;
+- #259/#302 compiler/source-input handoff, with ENGINE-02.E covering the current
+  rebuild-always JavaScript shortcut and leaving TypeScript/module/cache reuse follow-ups;
 - #312/#325-#329 module/bootstrap runtime completion;
 - #313/#330-#334 source maps and diagnostics;
 - #314/#335-#339 app/resource lifetime runtime;
@@ -112,7 +114,8 @@ The owner-approved next-wave map is `docs/project/post-core-next-wave-issue-map.
 short:
 
 1. HARDEN-01 small boundary/safety cleanup if selected.
-2. Source-input run/dev-loop through reused #259/#302 and #316/#345-#349.
+2. Source-input follow-ups through reused #259/#302 and #316/#345-#349: TypeScript/module
+   completion, cache reuse, and watch/dev-loop decisions.
 3. Strong Plan typed graph through reused #318/#355-#359.
 4. Framework config, binding, validation, Results, and examples through #432/#435-#440.
 5. Plan-driven doctor/OpenAPI after Plan metadata is real.
