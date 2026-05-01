@@ -8,7 +8,7 @@ globalThis.__sloppy_handler_1 = (ctx) => Results.json({
   id: ctx.route.id,
   search: ctx.query.q,
   agent: ctx.header.userAgent,
-  body: ctx.body.json(UserCreate)
+  body: ctx.body.json(undefined)
 });
 globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);
 globalThis.__sloppy_handler_2 = () => Results.text("ok");

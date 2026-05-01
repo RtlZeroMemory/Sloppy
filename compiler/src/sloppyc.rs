@@ -2748,8 +2748,14 @@ fn handler_from_argument(
             {
                 return None;
             }
+            let handler_source = source_slice(source, function.span)?;
+            let schema_spans = body_json_schema_argument_spans_arrow(function);
             Some(Handler {
-                source: source_slice(source, function.span)?,
+                source: sanitize_handler_schema_references(
+                    handler_source,
+                    function.span.start,
+                    &schema_spans,
+                ),
                 span: function.span,
                 is_async: function.r#async,
                 source_name: source_name.to_string(),
@@ -2765,8 +2771,14 @@ fn handler_from_argument(
             {
                 return None;
             }
+            let handler_source = source_slice(source, function.span)?;
+            let schema_spans = body_json_schema_argument_spans_function(function);
             Some(Handler {
-                source: source_slice(source, function.span)?,
+                source: sanitize_handler_schema_references(
+                    handler_source,
+                    function.span.start,
+                    &schema_spans,
+                ),
                 span: function.span,
                 is_async: function.r#async,
                 source_name: source_name.to_string(),
@@ -3161,6 +3173,15 @@ fn request_binding_from_expression(expression: &Expression<'_>) -> Option<Reques
 fn request_binding_from_call(call: &CallExpression<'_>) -> Option<RequestBinding> {
     let chain = static_member_chain(&call.callee)?;
     if chain.len() == 3 && chain[0] == "ctx" && chain[1] == "body" {
+        if !matches!(chain[2], "text" | "json") {
+            return None;
+        }
+        if chain[2] == "text" && !call.arguments.is_empty() {
+            return None;
+        }
+        if chain[2] == "json" && call.arguments.len() > 1 {
+            return None;
+        }
         let schema = if chain[2] == "json" {
             call.arguments
                 .first()
@@ -3176,6 +3197,159 @@ fn request_binding_from_call(call: &CallExpression<'_>) -> Option<RequestBinding
         });
     }
     None
+}
+
+fn body_json_schema_argument_spans_arrow(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+) -> Vec<Span> {
+    let mut spans = Vec::new();
+    for statement in &function.body.statements {
+        collect_statement_schema_argument_spans(statement, &mut spans);
+    }
+    spans
+}
+
+fn body_json_schema_argument_spans_function(function: &oxc_ast::ast::Function<'_>) -> Vec<Span> {
+    let mut spans = Vec::new();
+    if let Some(body) = &function.body {
+        for statement in &body.statements {
+            collect_statement_schema_argument_spans(statement, &mut spans);
+        }
+    }
+    spans
+}
+
+fn collect_statement_schema_argument_spans(statement: &Statement<'_>, spans: &mut Vec<Span>) {
+    match statement {
+        Statement::ReturnStatement(statement) => {
+            if let Some(argument) = &statement.argument {
+                collect_expression_schema_argument_spans(argument, spans);
+            }
+        }
+        Statement::ExpressionStatement(statement) => {
+            collect_expression_schema_argument_spans(&statement.expression, spans);
+        }
+        _ => {}
+    }
+}
+
+fn collect_expression_schema_argument_spans(expression: &Expression<'_>, spans: &mut Vec<Span>) {
+    match expression {
+        Expression::CallExpression(call) => {
+            if let Some(span) = body_json_schema_argument_span(call) {
+                spans.push(span);
+            }
+            for argument in &call.arguments {
+                collect_argument_schema_argument_spans(argument, spans);
+            }
+        }
+        Expression::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_schema_argument_spans(&property.value, spans);
+                }
+            }
+        }
+        Expression::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_schema_argument_spans(element, spans);
+            }
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            collect_expression_schema_argument_spans(&parenthesized.expression, spans);
+        }
+        _ => {}
+    }
+}
+
+fn collect_argument_schema_argument_spans(argument: &Argument<'_>, spans: &mut Vec<Span>) {
+    match argument {
+        Argument::CallExpression(call) => {
+            if let Some(span) = body_json_schema_argument_span(call) {
+                spans.push(span);
+            }
+            for argument in &call.arguments {
+                collect_argument_schema_argument_spans(argument, spans);
+            }
+        }
+        Argument::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_schema_argument_spans(&property.value, spans);
+                }
+            }
+        }
+        Argument::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_schema_argument_spans(element, spans);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_array_element_schema_argument_spans(
+    element: &ArrayExpressionElement<'_>,
+    spans: &mut Vec<Span>,
+) {
+    match element {
+        ArrayExpressionElement::CallExpression(call) => {
+            if let Some(span) = body_json_schema_argument_span(call) {
+                spans.push(span);
+            }
+        }
+        ArrayExpressionElement::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_schema_argument_spans(&property.value, spans);
+                }
+            }
+        }
+        ArrayExpressionElement::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_schema_argument_spans(element, spans);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn body_json_schema_argument_span(call: &CallExpression<'_>) -> Option<Span> {
+    let chain = static_member_chain(&call.callee)?;
+    if chain.len() == 3 && chain[0] == "ctx" && chain[1] == "body" && chain[2] == "json" {
+        let Argument::Identifier(identifier) = call.arguments.first()? else {
+            return None;
+        };
+        return Some(identifier.span);
+    }
+    None
+}
+
+fn sanitize_handler_schema_references(
+    mut source: String,
+    handler_start: u32,
+    spans: &[Span],
+) -> String {
+    let mut spans = spans.to_vec();
+    spans.sort_by_key(|span| std::cmp::Reverse(span.start));
+    for span in spans {
+        let Some(start) = span.start.checked_sub(handler_start) else {
+            continue;
+        };
+        let Some(end) = span.end.checked_sub(handler_start) else {
+            continue;
+        };
+        let Ok(start) = usize::try_from(start) else {
+            continue;
+        };
+        let Ok(end) = usize::try_from(end) else {
+            continue;
+        };
+        if start <= end && end <= source.len() {
+            source.replace_range(start..end, "undefined");
+        }
+    }
+    source
 }
 
 fn argument_identifier<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
@@ -4863,6 +5037,8 @@ export default app;
         );
 
         let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
+        assert!(!emitted_js.source.contains("ctx.body.json(UserCreate)"));
         let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
         let plan = super::emit_plan(
             &app,
@@ -4899,6 +5075,15 @@ export default app;
         let diagnostic = extract(std::path::Path::new("app.js"), invalid_config)
             .expect_err("invalid config key should fail");
         assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_CONFIG_KEY");
+
+        let invalid_body_helper = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/", (ctx) => Results.json({ form: ctx.body.formData() }));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), invalid_body_helper)
+            .expect_err("invalid body helper should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
     }
 
     #[test]

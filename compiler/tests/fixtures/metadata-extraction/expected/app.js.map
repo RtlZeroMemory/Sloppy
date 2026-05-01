@@ -1,6 +1,6 @@
 {
   "file": "app.js",
-  "mappings": ";;;;;;gCAa4B;AAC5B;AACA;AACA;AACA;AACA;;gCAEmB",
+  "mappings": ";;;;;;gCAa4B;AAC5B;AACA;AACA;AACA;AAAiC;;gCAGd",
   "names": [],
   "sources": [
     "input.js"
