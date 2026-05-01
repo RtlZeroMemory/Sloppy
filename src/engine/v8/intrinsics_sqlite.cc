@@ -41,6 +41,7 @@ struct SqliteV8ConnectionResource
     SlSqliteAccess access = SL_SQLITE_ACCESS_READWRITE;
 };
 
+/* Keep aligned with SQLite parameter limits and the documented V8 bridge cap tests. */
 constexpr uint32_t sqlite_v8_max_parameter_count = 32766U;
 
 SlStatus sqlite_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
