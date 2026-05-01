@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;;;;;;;;;gCAWkB;AAG+G",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\nimport { sqlite } from \"sloppy/providers/sqlite\";\n\nconst app = Sloppy.create();\napp.use(sqlite(\"main\", { database: \":memory:\" }));\nconst db = app.provider(\"sqlite:main\");\n\nfunction listUsers() {\n  return db.query(\"select id, name from users\", []);\n}\n\napp.get(\"/users\", () => Results.json(listUsers()));\n\nexport default app;\n"
+  ],
+  "version": 3
+}

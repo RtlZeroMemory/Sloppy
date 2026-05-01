@@ -212,7 +212,8 @@ Capability inference tiers:
 SQLite method defaults:
 
 - `query` and `queryOne` imply read;
-- `exec` implies write unless a later SQL classifier proves a narrower safe case;
+- `exec` implies write unless the current literal SQL classifier identifies a read-only
+  `SELECT` or `WITH` statement;
 - `transaction` implies readwrite unless a later scoped policy proves a narrower summary.
 
 No silent unsound inference is allowed. The compiler must attempt deep static effect
@@ -220,6 +221,24 @@ inference through normal Minimal API, function-module, repository, and service-s
 patterns before asking developers for hints. If a route might use a provider in a way the
 compiler cannot prove, runtime-required capability truth must come from explicit fallback
 metadata or the route is invalid.
+
+Current COMPILER-30.F/G implementation status:
+
+- route effects carry capability kind, provider kind, provider token, operation, inferred
+  access, and source-level reason;
+- direct calls through static first-party database provider handles emit route `effects[]`;
+- same-file helpers declared after the provider handle can contribute effects when routes
+  call them directly;
+- the database adapter family supports SQLite, PostgreSQL, and SQL Server metadata;
+- `query`/`queryOne`, `exec`, and `transaction` map to read/write/readwrite access for
+  database providers;
+- SQLite provider-backed route handlers are generated with request-scoped runtime provider
+  handles, so normal static SQLite usage does not need route-level `uses` hints;
+- PostgreSQL and SQL Server provider handles are recognized for metadata, but generated
+  provider-backed runtime wrappers are rejected until those JS bridges are executable;
+- imported helper effects, repository factories, object-literal services, simple classes,
+  non-database provider adapters, recursion policy, and unknown-call completeness remain
+  documented COMPILER-30 follow-up work unless a later PR in this sequence expands them.
 
 ## Escape Hatches
 

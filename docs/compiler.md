@@ -294,9 +294,15 @@ transaction callback semantics. ENGINE-02 extracts only the minimal
 `builder.capabilities.addDatabase(...)` SQLite metadata shape into Plan `dataProviders` and
 database `capabilities`. COMPILER-30.E also extracts supported `app.use(sqlite(...))`
 provider registrations, `app.provider("sqlite:name")` handle lookups, config key reads,
-schema declarations, request bindings, and preliminary response metadata. It still does
-not extract service lifetimes, fake providers, query template literals, callgraph effects,
-or capability effects through helper/repository calls; those remain COMPILER-30.F/G.
+schema declarations, request bindings, and preliminary response metadata. COMPILER-30.F/G
+adds the first effect summaries and inferred capability access for direct database provider
+calls and same-file helpers that close over static provider handles. The effect model is
+not SQLite-only: it records capability kind and provider kind, and can represent
+PostgreSQL/SQL Server database metadata even though only the SQLite generated runtime
+opener is executable today. PostgreSQL/SQL Server provider-backed generated handlers are
+rejected until those JS bridges exist. It still does not extract service lifetimes, fake
+providers, query template literals, non-database provider adapters, imported helper
+effects, repository/object/class service graphs, or arbitrary TypeScript callgraphs.
 EPIC-16 adds native SQLite provider tests and the `data.sqlite` stdlib shape, but the
 compiler still does not extract SQLite modules, open native providers, or lower application
 template literals into native provider calls.

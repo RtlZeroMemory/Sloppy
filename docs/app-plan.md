@@ -259,6 +259,17 @@ config helper reads (`configReads[]`). Function-module route entries also includ
 module function name in `routes[].module`; the route `source.path` points at the
 contributing source file. Handler IDs start at `1` and are assigned in source order after
 route group prefix composition and module contribution expansion.
+COMPILER-30.F/G adds optional route `effects[]` metadata for supported provider effects.
+Each effect records capability kind, provider kind, provider token, inferred access
+(`read`, `write`, or `readwrite` for the database adapter family), operation, and the
+source-level reason such as `db.query`. Provider registrations created with
+`app.use(sqlite(...))` narrow their emitted capability access to the merged route effects
+when those effects are statically known. Builder database capability metadata can represent
+SQLite, PostgreSQL, and SQL Server provider kinds even though only the SQLite-generated
+runtime opener is executable today. If a route would require a generated PostgreSQL or
+SQL Server provider-backed runtime wrapper, `sloppyc` rejects the source with
+`SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE` instead of emitting a handler that fails at
+runtime.
 EPIC-22 `sloppy run` consumes those route entries for dev-only GET dispatch and validates
 that each referenced handler ID exists in the parsed minimal Plan handler table before
 serving requests. EPIC-23 uses the same route entries to materialize route params into the
@@ -276,8 +287,8 @@ and Plan completeness remain future work.
 The COMPILER-30.E metadata is emitted for static tooling and later Strong Plan consumers.
 The native runtime parser may ignore unknown optional metadata until COMPILER-30.H/I owns
 versioned strong Plan validation. Emitting `schemas[]`, `configReads[]`, `routes[].bindings`,
-and `routes[].response` does not mean runtime request validation, OpenAPI generation, or
-provider/capability enforcement has been implemented.
+`routes[].response`, and `routes[].effects` does not mean runtime request validation,
+OpenAPI generation, or broader provider/capability enforcement has been implemented.
 
 COMPILER-30 route metadata should also report completeness. Dynamic route paths are invalid
 in the compiler-owned static path unless a future explicit runtime-only escape hatch
