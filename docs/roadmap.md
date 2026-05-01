@@ -1,7 +1,7 @@
 # Roadmap
 
-Status: 2026-05-01 post-core source-of-truth reset. This is an audit and planning
-document, not a release promise.
+Status: 2026-05-01 post-core source-of-truth reset plus owner-approved next-wave
+planning. This is an audit and planning document, not a release promise.
 
 ## Current Reality
 
@@ -28,7 +28,13 @@ The compact source records for this reset are:
 - `docs/project/post-core-mvp-issue-reconciliation.md`;
 - `docs/project/post-core-mvp-memory-string-audit.md`;
 - `docs/project/post-core-mvp-boundary-audit.md`;
-- `docs/project/post-core-mvp-next-roadmap.md`.
+- `docs/project/post-core-mvp-next-roadmap.md`;
+- `docs/project/post-core-next-wave-issue-map.md`;
+- `docs/project/framework-app-layer-roadmap.md`;
+- `docs/project/source-input-run-dev-loop-plan.md`;
+- `docs/project/strong-plan-strategic-layer-plan.md`;
+- `docs/project/http-post-mvp-transport-plan.md`;
+- `docs/project/post-core-immediate-hardening-plan.md`.
 
 Durable architecture sources remain:
 
@@ -92,16 +98,25 @@ Kept open intentionally:
 - #268/#300/#301 public alpha readiness and non-claims review;
 - #26 platform scanner fixture/self-test proof.
 
+Created for the owner-approved post-Core next wave:
+
+- #432/#435-#440 FRAMEWORK-01 framework/app-layer source-of-truth and ergonomics;
+- #433/#441-#446 HTTP-25 HTTP/1.1 keep-alive and streaming;
+- #434/#447/#448 HARDEN-01 post-Core foundation hardening, with #431 and #26 reused for
+  SQLite preflight and platform scanner proof.
+
 ## Next Recommended Tracks
 
-The next roadmap proposal is `docs/project/post-core-mvp-next-roadmap.md`. In short:
+The owner-approved next-wave map is `docs/project/post-core-next-wave-issue-map.md`. In
+short:
 
-1. Framework/app-layer source-of-truth docs and issues.
-2. Source-input run/dev-loop decision.
-3. Request binding, validation, and config.
-4. Strong Plan doctor/audit/OpenAPI layer.
-5. HTTP keep-alive/streaming after the MVP transport boundary is stable.
-6. Provider expansion after SQLite/provider-executor integration is proven.
+1. HARDEN-01 small boundary/safety cleanup if selected.
+2. Source-input run/dev-loop through reused #259/#302 and #316/#345-#349.
+3. Strong Plan typed graph through reused #318/#355-#359.
+4. Framework config, binding, validation, Results, and examples through #432/#435-#440.
+5. Plan-driven doctor/OpenAPI after Plan metadata is real.
+6. HTTP keep-alive/streaming through #433/#441-#446 after MVP transport boundary cleanup.
+7. Provider expansion later after SQLite/provider-executor integration is proven.
 
 ## Deferred By Design
 

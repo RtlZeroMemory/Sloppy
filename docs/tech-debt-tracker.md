@@ -29,7 +29,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   `docs/project/post-core-mvp-boundary-audit.md` records remaining libuv boundary debt.
   The new reusable transport API hides libuv, but the legacy `sl_http_libuv_smoke` helper
   and dev-only CLI socket path still expose/use libuv outside the final platform boundary
-  shape. Retire or hide them in a narrow follow-up instead of doing a broad rewrite here.
+  shape. Retire or hide them in a narrow follow-up instead of doing a broad rewrite here;
+  tracked by #434/#447.
 - Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02 and
   ENGINE-03: source-input handoff/cache, module/service/schema extraction, broader async
   source shapes, non-GET dispatch, and provider/capability enforcement.
@@ -228,6 +229,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Future provider bridges must route through the ENGINE-23 capability-gated executor
   dispatch path and follow `docs/project/provider-runtime-integration-guide.md` instead
   of using only direct bridge-ready hooks.
+- Provider primitive cleanup follow-up is mapped to #448; PostgreSQL/SQL Server JS bridge
+  implementation remains deferred and is not part of immediate next-wave work.
 - Source map consumption for TypeScript remapping from V8 exceptions. ENGINE-02 emits
   handler-line source maps, but MAIN1-05 still reports generated `app.js` line/column
   because runtime diagnostics do not consume those maps yet. ENGINE-07 did not claim
@@ -257,10 +260,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   terminal-state foundation.
 - Full response pipeline: streaming, files, redirects, cookies, content negotiation,
   compression, keep-alive tuning, and middleware/result filters.
-- Proposed future `ENGINE-25: HTTP/1.1 Keep-Alive and Streaming`: keep-alive connection
+- #433 `HTTP-25: HTTP/1.1 Keep-Alive and Streaming`: keep-alive connection
   loop, idle timeout, max requests per connection, sequential request lifecycle and
   request-arena reset, chunked request decoding, chunked/streaming response writer, socket
-  backpressure, and keep-alive stress/conformance. No issues exist for this proposal yet.
+  backpressure, and keep-alive stress/conformance. This remains post-MVP transport work and
+  does not change the current close-after-response HTTP proof.
 - Full route table/trie optimization, catch-all routes, optional segments, regex
   constraints, nested route groups, and ambiguity diagnostics beyond MAIN1-04's
   literal-before-parameter precedence policy.
