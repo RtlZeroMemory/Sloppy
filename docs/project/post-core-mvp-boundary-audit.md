@@ -24,7 +24,7 @@ Status: 2026-05-01 consolidation audit.
 - Hide or retire `sl_http_libuv_smoke` behind platform/internal test boundaries.
 - Move remaining dev-only libuv socket loop in `src/main.c` behind the reusable transport
   boundary or an internal CLI adapter.
-- Add SQLite V8 parameter-count allocation preflight.
+- Add SQLite V8 parameter-count allocation preflight; tracked by #431.
 
 ## Human-Review Items
 

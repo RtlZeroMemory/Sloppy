@@ -16,11 +16,15 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Post-core primitive adoption follow-up:
   `docs/project/post-core-mvp-memory-string-audit.md` records provider-specific cleanup
-  outside this consolidation PR. PostgreSQL still has local C-string/manual copy helpers
-  and `snprintf`-based parameter formatting. SQL Server still has local redaction/copy
+  outside this consolidation PR.
+  <a id="postgresql-provider-copy-helpers"></a>PostgreSQL still has local
+  C-string/manual copy helpers and `snprintf`-based parameter formatting.
+  <a id="sqlserver-odbc-redaction"></a>SQL Server still has local redaction/copy
   helpers and streamed text append logic that should move toward shared builders/copy
-  helpers. SQLite V8 parameter conversion should preflight JS array length before
-  reserving native vectors.
+  helpers. <a id="sqlite-v8-param-preflight"></a>SQLite V8 parameter conversion should
+  preflight JS array length before reserving native vectors; tracked by #431.
+  <a id="tests-strcpy-boundary"></a>Test-only C-string boundary helpers should either
+  use shared checked helpers or document why a local boundary helper is acceptable.
 - Post-core boundary follow-up:
   `docs/project/post-core-mvp-boundary-audit.md` records remaining libuv boundary debt.
   The new reusable transport API hides libuv, but the legacy `sl_http_libuv_smoke` helper
@@ -345,7 +349,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   closed completed ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12, ENGINE-21,
   ENGINE-22, and old #32 with evidence comments; documented kept-open and human-review
   issues in `docs/project/post-core-mvp-issue-reconciliation.md` and
-  `docs/project/post-core-mvp-issue-reconciliation.md`.
+  related project audit documents.
 - Added the ENGINE-01 framework contract source of truth for JS app API, Results, request
   context, async/microtasks, cancellation/deadlines, HTTP, SQLite, capabilities, and
   deferred behavior.

@@ -222,7 +222,6 @@ Non-goals:
 Files likely touched:
 
 - `docs/project/post-core-mvp-issue-reconciliation.md`;
-- `docs/project/post-core-mvp-issue-reconciliation.md`;
 - `tools/github/roadmap-main-issues.json`.
 
 Tests required:

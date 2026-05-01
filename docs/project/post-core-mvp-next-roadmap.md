@@ -10,7 +10,7 @@ approval.
 | Compiler -> Plan/artifacts | complete/proven | Supported subset emits deterministic artifacts and source maps. |
 | V8 runtime execution | complete/proven for scoped path | V8-gated artifact execution, handlers, request context, direct async microtask settlement, and SQLite bridge paths exist. |
 | HTTP backend semantics | complete/proven for MVP | Parser/body/response/dispatch/shutdown/admission semantics exist for bounded non-production paths. |
-| Libuv localhost transport | complete/proven for MVP | One request per connection, close-after-response, bounded read/write/timeout/shutdown. |
+| Libuv localhost transport | complete/proven for scoped MVP path; boundary debt remains | One request per connection path is proven; boundary audit still tracks libuv API/dev-path leakage as mixed debt. |
 | SQLite users API proof | complete/proven | Source-built users API runs over localhost TCP through V8 and capability-gated SQLite. |
 | Provider execution/offload | partial | Native executor exists; current SQLite bridge is not yet routed through it. |
 | Capability enforcement | complete/proven for integrated paths | SQLite bridge and provider executor enforce before provider work; filesystem/network remain skeletons. |

@@ -24,10 +24,10 @@ not safe drive-by edits.
 
 | Area | Finding | Follow-up |
 | --- | --- | --- |
-| PostgreSQL provider | Local C-string copy helpers and manual loops should move to checked arena copy helpers; integer/float parameter formatting still uses `snprintf`. | Add a focused provider-primitive cleanup using checked size helpers and shared formatting/copy helpers. |
-| SQL Server provider | Redaction/copy helpers and streamed text appends use local loops/manual append logic where shared builders would fit. | Add a focused ODBC provider cleanup once tests can isolate driver-enabled and stub paths. |
-| SQLite V8 bridge | JS parameter arrays can reserve a `std::vector` based on arbitrary JS array length before native bind-count rejection. | Add a small max-count preflight before allocation/reserve. |
-| Tests | A PostgreSQL live test uses `strcpy` after a stack length check. | Replace in a low-risk test cleanup or allow as test-only boundary code with an explicit helper. |
+| PostgreSQL provider | Local C-string copy helpers and manual loops should move to checked arena copy helpers; integer/float parameter formatting still uses `snprintf`. | Tracker: `docs/tech-debt-tracker.md#postgresql-provider-copy-helpers`. |
+| SQL Server provider | Redaction/copy helpers and streamed text appends use local loops/manual append logic where shared builders would fit. | Tracker: `docs/tech-debt-tracker.md#sqlserver-odbc-redaction`. |
+| SQLite V8 bridge | JS parameter arrays can reserve a `std::vector` based on arbitrary JS array length before native bind-count rejection. | Tracker: `docs/tech-debt-tracker.md#sqlite-v8-param-preflight`; issue #431. |
+| Tests | A PostgreSQL live test uses `strcpy` after a stack length check. | Tracker: `docs/tech-debt-tracker.md#tests-strcpy-boundary`. |
 
 ## Allowed Boundary Uses
 

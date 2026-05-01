@@ -71,7 +71,6 @@
       "goal": "Approve an issue cleanup plan before mutating GitHub or creating any fresh MAIN/MAIN.1 issues.",
       "sourceDocs": [
         "docs/project/post-core-mvp-issue-reconciliation.md",
-        "docs/project/post-core-mvp-issue-reconciliation.md",
         "docs/project/issue-workflow.md"
       ],
       "nonGoals": [

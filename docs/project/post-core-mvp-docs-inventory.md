@@ -46,7 +46,7 @@ records that still had context value moved under `docs/project/archive/post-core
 | `docs/project/memory-string-current-state-audit.md` | historical audit | Archived | `docs/project/post-core-mvp-memory-string-audit.md` |
 | `docs/project/memory-string-foundation-architecture.md` | historical architecture | Archived | `docs/memory.md` |
 | `docs/project/memory-string-adoption-map.md` | historical adoption map | Archived | `docs/project/post-core-mvp-memory-string-audit.md` |
-| `docs/project/provider-execution-current-state-audit.md` | historical audit | Archived | `docs/project/provider-execution-runtime-architecture.md` |
+| `docs/project/archive/post-core-mvp/provider-execution-current-state-audit.md` | historical audit | Archived | `docs/project/provider-execution-runtime-architecture.md` |
 | `docs/project/strategic-current-state-audit.md` | historical audit | Archived | `docs/roadmap.md`, `docs/project/post-core-mvp-next-roadmap.md` |
 | `docs/project/strategic-system-audit.md` | historical audit | Archived | `docs/project/post-core-mvp-code-reality-audit.md` |
 

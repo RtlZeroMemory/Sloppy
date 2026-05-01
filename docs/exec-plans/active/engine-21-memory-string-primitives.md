@@ -12,7 +12,6 @@ starting ENGINE-22 subsystem adoption.
 - docs/memory.md
 - docs/project/post-core-mvp-memory-string-audit.md
 - docs/project/archive/post-core-mvp/memory-string-foundation-architecture.md
-- docs/project/post-core-mvp-memory-string-audit.md
 - docs/project/slop-engine-layered-roadmap.md
 - docs/project/archive/post-core-mvp/engine-13-plus-architecture.md
 - docs/quality-gates.md
