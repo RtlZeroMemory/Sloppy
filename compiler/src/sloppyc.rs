@@ -416,36 +416,56 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
     })?;
 
     let mut extracted = extract(input, &source).map_err(|diagnostic| {
+        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
         Box::new(CompileError {
             code: 1,
             diagnostic,
-            source: Some(source.clone()),
+            source: diagnostic_source,
         })
     })?;
     let configuration = ConfigurationModel::load(input, options).map_err(|diagnostic| {
+        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
         Box::new(CompileError {
             code: 1,
             diagnostic,
-            source: Some(source.clone()),
+            source: diagnostic_source,
         })
     })?;
     configuration
         .apply_to_app(&mut extracted)
         .map_err(|diagnostic| {
+            let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
             Box::new(CompileError {
                 code: 1,
                 diagnostic,
-                source: Some(source.clone()),
+                source: diagnostic_source,
             })
         })?;
     write_artifacts(out_dir, &extracted).map_err(|diagnostic| {
+        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
         Box::new(CompileError {
             code: 1,
             diagnostic,
-            source: Some(source),
+            source: diagnostic_source,
         })
     })?;
     Ok(())
+}
+
+fn diagnostic_render_source(
+    input: &Path,
+    entry_source: &str,
+    diagnostic: &Diagnostic,
+) -> Option<String> {
+    let Some(path) = diagnostic.path.as_deref() else {
+        return Some(entry_source.to_string());
+    };
+    if path == input {
+        return Some(entry_source.to_string());
+    }
+    fs::read_to_string(path)
+        .ok()
+        .or_else(|| Some(entry_source.to_string()))
 }
 
 fn read_compile_output(out_dir: &Path) -> Result<CompileOutput, Box<CompileError>> {
@@ -1232,7 +1252,7 @@ fn extract_variable_declaration(
             } else {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_ROUTE_GROUP",
-                    "route groups must be created from the extracted app object",
+                    "route groups must be created from the extracted app object or another extracted route group",
                 )
                 .with_path(path)
                 .with_span(init.span()));
@@ -3933,6 +3953,106 @@ export default app;
         let diagnostic = extract(std::path::Path::new("app.js"), source)
             .expect_err("duplicate routes should fail");
         assert_eq!(diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE");
+    }
+
+    #[test]
+    fn duplicate_module_routes_report_module_source() {
+        let root = fixture_temp_dir("duplicate-module-routes");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        let module_path = modules.join("users.js");
+        fs::write(
+            &module_path,
+            r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/dupe", () => Results.text("module"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let input = root.join("input.js");
+        fs::write(
+            &input,
+            r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/dupe", () => Results.text("entry"));
+export default app;
+"#,
+        )
+        .expect("input fixture should be writable");
+        let out_dir = root.join("out");
+
+        let failure = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("duplicate route should fail");
+        assert_eq!(failure.diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE");
+        let canonical_module_path =
+            fs::canonicalize(&module_path).expect("module path should canonicalize");
+        assert_eq!(
+            failure.diagnostic.path.as_deref(),
+            Some(canonical_module_path.as_path())
+        );
+        let rendered = failure.diagnostic.render(failure.source.as_deref());
+        assert!(rendered.contains("users.js:4:5"), "{rendered}");
+        assert!(
+            rendered.contains(r#"4 |     app.get("/dupe", () => Results.text("module"));"#),
+            "{rendered}"
+        );
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn duplicate_module_route_names_report_module_source() {
+        let root = fixture_temp_dir("duplicate-module-route-names");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        let module_path = modules.join("users.js");
+        fs::write(
+            &module_path,
+            r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/module", () => Results.text("module")).withName("Users.Get");
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let input = root.join("input.js");
+        fs::write(
+            &input,
+            r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/entry", () => Results.text("entry")).withName("Users.Get");
+export default app;
+"#,
+        )
+        .expect("input fixture should be writable");
+        let out_dir = root.join("out");
+
+        let failure = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("duplicate route name should fail");
+        assert_eq!(failure.diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE_NAME");
+        let canonical_module_path =
+            fs::canonicalize(&module_path).expect("module path should canonicalize");
+        assert_eq!(
+            failure.diagnostic.path.as_deref(),
+            Some(canonical_module_path.as_path())
+        );
+        let rendered = failure.diagnostic.render(failure.source.as_deref());
+        assert!(rendered.contains("users.js:4:5"), "{rendered}");
+        assert!(
+            rendered.contains(
+                r#"4 |     app.get("/module", () => Results.text("module")).withName("Users.Get");"#
+            ),
+            "{rendered}"
+        );
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
     }
 
     #[test]
