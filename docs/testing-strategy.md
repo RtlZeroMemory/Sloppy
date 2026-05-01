@@ -149,6 +149,14 @@ Compiler:
 - deterministic, path-normalized golden outputs;
 - no absolute local paths, timestamps, or random IDs in golden artifacts unless explicitly
   normalized and documented.
+- library API fixture coverage for `compile_file(...)` and `compile_project(...)` as the
+  compiler grows beyond a CLI-only surface.
+
+COMPILER-30.A adds the first library/fixture harness layer around the existing compiler
+goldens. It proves the CLI and library API build the current compiler hello artifact path,
+invalid input returns structured diagnostics, source-map goldens remain stable, and staged
+generated/cache artifacts are rejected by test coverage. This does not add inference
+behavior.
 
 Runtime execution:
 

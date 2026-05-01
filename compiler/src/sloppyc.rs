@@ -17,6 +17,9 @@ use serde_json::json;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::diagnostic::Diagnostic;
+use crate::source::{line_column, source_map_source_name};
+
 const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
 const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
 const STDLIB_VERSION: &str = "0.1.0";
@@ -28,25 +31,31 @@ enum CliCommand {
     Build {
         input: PathBuf,
         out_dir: PathBuf,
-        options: BuildOptions,
+        options: CompileOptions,
     },
     Invalid(String),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-struct BuildOptions {
-    environment: Option<String>,
-    host: Option<String>,
-    port: Option<u16>,
+pub struct CompileOptions {
+    pub environment: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
 }
 
-impl BuildOptions {
-    fn new() -> Self {
+impl CompileOptions {
+    pub fn new() -> Self {
         Self {
             environment: None,
             host: None,
             port: None,
         }
+    }
+}
+
+impl Default for CompileOptions {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -57,70 +66,36 @@ pub enum CliExit {
 }
 
 #[derive(Debug, Clone)]
-struct Diagnostic {
-    code: &'static str,
-    path: Option<PathBuf>,
-    span: Option<Span>,
-    message: String,
-    hint: Option<String>,
+pub struct PlanOutput {
+    pub path: PathBuf,
+    pub contents: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct BundleOutput {
+    pub path: PathBuf,
+    pub contents: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SourceMapOutput {
+    pub path: PathBuf,
+    pub contents: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompileOutput {
+    pub out_dir: PathBuf,
+    pub plan: PlanOutput,
+    pub bundle: BundleOutput,
+    pub source_map: SourceMapOutput,
 }
 
 #[derive(Debug)]
-struct BuildFailure {
-    code: i32,
-    diagnostic: Diagnostic,
-    source: Option<String>,
-}
-
-impl Diagnostic {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            path: None,
-            span: None,
-            message: message.into(),
-            hint: None,
-        }
-    }
-
-    fn with_path(mut self, path: &Path) -> Self {
-        self.path = Some(path.to_path_buf());
-        self
-    }
-
-    fn with_span(mut self, span: Span) -> Self {
-        self.span = Some(span);
-        self
-    }
-
-    fn with_hint(mut self, hint: impl Into<String>) -> Self {
-        self.hint = Some(hint.into());
-        self
-    }
-
-    fn render(&self, source: Option<&str>) -> String {
-        let location = match (&self.path, self.span, source) {
-            (Some(path), Some(span), Some(source_text)) => {
-                let (line, column) = line_column(source_text, span.start);
-                format!("{}:{line}:{column}", display_path(path))
-            }
-            (Some(path), _, _) => display_path(path),
-            _ => "sloppyc".to_string(),
-        };
-
-        let mut output = format!("{location}: {}: {}", self.code, self.message);
-        if let (Some(path), Some(span), Some(source_text)) = (&self.path, self.span, source) {
-            if let Some(frame) = source_frame(path, source_text, span) {
-                output.push('\n');
-                output.push_str(&frame);
-            }
-        }
-        if let Some(hint) = &self.hint {
-            output.push_str("\nhint: ");
-            output.push_str(hint);
-        }
-        output
-    }
+pub struct CompileError {
+    pub code: i32,
+    pub diagnostic: Diagnostic,
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -275,8 +250,8 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> CliExit {
             input,
             out_dir,
             options,
-        } => match build(&input, &out_dir, &options) {
-            Ok(()) => CliExit::Success,
+        } => match compile_file(&input, &out_dir, &options) {
+            Ok(_) => CliExit::Success,
             Err(failure) => CliExit::Failure {
                 code: failure.code,
                 diagnostic: failure.diagnostic.render(failure.source.as_deref()),
@@ -313,7 +288,7 @@ fn command_from_args(args: impl IntoIterator<Item = OsString>) -> CliCommand {
 fn parse_build_args(values: Vec<OsString>) -> CliCommand {
     let mut input = None;
     let mut out_dir = None;
-    let mut options = BuildOptions::new();
+    let mut options = CompileOptions::new();
     let mut index = 0;
 
     while index < values.len() {
@@ -407,9 +382,26 @@ fn help_text() -> String {
     text
 }
 
-fn build(input: &Path, out_dir: &Path, options: &BuildOptions) -> Result<(), Box<BuildFailure>> {
+pub fn compile_project(
+    input: &Path,
+    out_dir: &Path,
+    options: &CompileOptions,
+) -> Result<CompileOutput, Box<CompileError>> {
+    compile_file(input, out_dir, options)
+}
+
+pub fn compile_file(
+    input: &Path,
+    out_dir: &Path,
+    options: &CompileOptions,
+) -> Result<CompileOutput, Box<CompileError>> {
+    build(input, out_dir, options)?;
+    read_compile_output(out_dir)
+}
+
+fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), Box<CompileError>> {
     let source = fs::read_to_string(input).map_err(|error| {
-        Box::new(BuildFailure {
+        Box::new(CompileError {
             code: 1,
             diagnostic: Diagnostic::new(
                 "SLOPPYC_E_INPUT",
@@ -421,14 +413,14 @@ fn build(input: &Path, out_dir: &Path, options: &BuildOptions) -> Result<(), Box
     })?;
 
     let mut extracted = extract(input, &source).map_err(|diagnostic| {
-        Box::new(BuildFailure {
+        Box::new(CompileError {
             code: 1,
             diagnostic,
             source: Some(source.clone()),
         })
     })?;
     let configuration = ConfigurationModel::load(input, options).map_err(|diagnostic| {
-        Box::new(BuildFailure {
+        Box::new(CompileError {
             code: 1,
             diagnostic,
             source: Some(source.clone()),
@@ -437,20 +429,59 @@ fn build(input: &Path, out_dir: &Path, options: &BuildOptions) -> Result<(), Box
     configuration
         .apply_to_app(&mut extracted)
         .map_err(|diagnostic| {
-            Box::new(BuildFailure {
+            Box::new(CompileError {
                 code: 1,
                 diagnostic,
                 source: Some(source.clone()),
             })
         })?;
     write_artifacts(out_dir, &extracted).map_err(|diagnostic| {
-        Box::new(BuildFailure {
+        Box::new(CompileError {
             code: 1,
             diagnostic,
             source: Some(source),
         })
     })?;
     Ok(())
+}
+
+fn read_compile_output(out_dir: &Path) -> Result<CompileOutput, Box<CompileError>> {
+    let bundle_path = out_dir.join("app.js");
+    let source_map_path = out_dir.join("app.js.map");
+    let plan_path = out_dir.join("app.plan.json");
+    let bundle = read_artifact(&bundle_path, "app.js")?;
+    let source_map = read_artifact(&source_map_path, "app.js.map")?;
+    let plan = read_artifact(&plan_path, "app.plan.json")?;
+
+    Ok(CompileOutput {
+        out_dir: out_dir.to_path_buf(),
+        plan: PlanOutput {
+            path: plan_path,
+            contents: plan,
+        },
+        bundle: BundleOutput {
+            path: bundle_path,
+            contents: bundle,
+        },
+        source_map: SourceMapOutput {
+            path: source_map_path,
+            contents: source_map,
+        },
+    })
+}
+
+fn read_artifact(path: &Path, name: &str) -> Result<String, Box<CompileError>> {
+    fs::read_to_string(path).map_err(|error| {
+        Box::new(CompileError {
+            code: 1,
+            diagnostic: Diagnostic::new(
+                "SLOPPYC_E_OUTPUT",
+                format!("failed to read emitted {name}: {error}"),
+            )
+            .with_path(path),
+            source: None,
+        })
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -467,7 +498,7 @@ struct ConfigurationModel {
 }
 
 impl ConfigurationModel {
-    fn load(input: &Path, options: &BuildOptions) -> Result<Self, Diagnostic> {
+    fn load(input: &Path, options: &CompileOptions) -> Result<Self, Diagnostic> {
         let environment = options
             .environment
             .clone()
@@ -633,7 +664,7 @@ impl ConfigurationModel {
         }
     }
 
-    fn apply_cli_overrides(&mut self, options: &BuildOptions) {
+    fn apply_cli_overrides(&mut self, options: &CompileOptions) {
         if let Some(host) = &options.host {
             self.set("Sloppy:Server:Host", json!(host), "CLI --host");
         }
@@ -3433,72 +3464,6 @@ fn encode_vlq(value: i64) -> String {
     output
 }
 
-fn source_map_source_name(path: &Path) -> String {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .map_or_else(|| "input.js".to_string(), ToOwned::to_owned)
-}
-
-fn line_column(source: &str, offset: u32) -> (usize, usize) {
-    let target = usize::try_from(offset).unwrap_or(source.len());
-    let mut line = 1;
-    let mut last_newline_byte = 0usize;
-
-    for (index, character) in source.char_indices() {
-        if index >= target {
-            break;
-        }
-        if character == '\n' {
-            line += 1;
-            last_newline_byte = index + 1;
-        }
-    }
-
-    let column = target.saturating_sub(last_newline_byte) + 1;
-    (line, column)
-}
-
-fn line_bounds(source: &str, offset: usize) -> Option<(usize, usize)> {
-    if offset > source.len() {
-        return None;
-    }
-    let line_start = source[..offset].rfind('\n').map_or(0, |index| index + 1);
-    let line_end = source[offset..]
-        .find('\n')
-        .map_or(source.len(), |index| offset + index);
-    let line_end = if line_end > line_start && source.as_bytes()[line_end - 1] == b'\r' {
-        line_end - 1
-    } else {
-        line_end
-    };
-    Some((line_start, line_end))
-}
-
-fn source_frame(path: &Path, source: &str, span: Span) -> Option<String> {
-    let start = usize::try_from(span.start).ok()?;
-    let end = usize::try_from(span.end).ok()?;
-    let (line, column) = line_column(source, span.start);
-    let (line_start, line_end) = line_bounds(source, start)?;
-    let line_text = &source[line_start..line_end];
-    let underline = end.saturating_sub(start).max(1);
-    let prefix = format!("{line} | ");
-    let mut output = String::new();
-
-    output.push_str(&format!("  --> {}:{line}:{column}\n", display_path(path)));
-    output.push_str("   |\n");
-    output.push_str(&prefix);
-    output.push_str(line_text);
-    output.push('\n');
-    output.push_str("   | ");
-    output.push_str(&" ".repeat(column.saturating_sub(1)));
-    output.push_str(&"^".repeat(underline.min(line_text.len().saturating_add(1))));
-    Some(output)
-}
-
-fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
 trait AstSpan {
     fn span(&self) -> Span;
 }
@@ -3598,8 +3563,8 @@ mod tests {
     use std::{ffi::OsString, fs};
 
     use super::{
-        canonical_config_key, command_from_args, extract, route_pattern_supported, BuildOptions,
-        CliCommand,
+        canonical_config_key, command_from_args, extract, route_pattern_supported, CliCommand,
+        CompileOptions,
     };
 
     #[test]
@@ -3641,7 +3606,7 @@ mod tests {
             CliCommand::Build {
                 input: std::path::PathBuf::from("app.js"),
                 out_dir: std::path::PathBuf::from(".sloppy"),
-                options: BuildOptions {
+                options: CompileOptions {
                     environment: Some("Development".to_string()),
                     host: Some("127.0.0.1".to_string()),
                     port: Some(5173),
@@ -3686,7 +3651,7 @@ mod tests {
         )
         .expect("environment appsettings should be written");
 
-        let options = BuildOptions {
+        let options = CompileOptions {
             environment: Some("Development".to_string()),
             host: Some("0.0.0.0".to_string()),
             port: Some(6000),
@@ -3765,7 +3730,7 @@ export default app;
         .expect("appsettings should be written");
         let out_dir = root.join(".sloppy");
 
-        super::build(&input, &out_dir, &BuildOptions::new())
+        super::build(&input, &out_dir, &CompileOptions::new())
             .expect("dotted provider config should bind");
         let plan = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should exist");
         assert!(plan.contains("\"database\": \"dotted.db\""));
@@ -3850,7 +3815,7 @@ export default app;
         )
         .expect("appsettings should be written");
 
-        let diagnostic = super::ConfigurationModel::load(&input, &super::BuildOptions::new())
+        let diagnostic = super::ConfigurationModel::load(&input, &super::CompileOptions::new())
             .expect_err("empty config key segment should fail");
         assert_eq!(diagnostic.code, "SLOPPYC_E_CONFIG_KEY");
         assert!(
@@ -4273,7 +4238,7 @@ export default app;
             .expect("expected diagnostic should exist");
             let rendered = diagnostic
                 .render(Some(&source))
-                .replace(&super::display_path(root), "<compiler>");
+                .replace(&crate::source::display_path(root), "<compiler>");
             assert_eq!(format!("{rendered}\n"), expected, "{fixture_name}");
         }
     }
@@ -4291,7 +4256,7 @@ export default app;
             fs::remove_dir_all(&out_dir).expect("stale test output directory should be removable");
         }
 
-        let failure = super::build(&input, &out_dir, &BuildOptions::new())
+        let failure = super::build(&input, &out_dir, &CompileOptions::new())
             .expect_err("fixture should fail to build");
         assert_eq!(
             failure.diagnostic.code,
@@ -4320,7 +4285,7 @@ export default app;
             fs::remove_dir_all(&out_dir).expect("stale test output directory should be removable");
         }
 
-        super::build(&input, &out_dir, &BuildOptions::new())
+        super::build(&input, &out_dir, &CompileOptions::new())
             .expect("compiler example should build");
 
         let emitted_plan =
@@ -4362,8 +4327,8 @@ export default app;
             fs::remove_dir_all(&base).expect("stale test output directory should be removable");
         }
 
-        super::build(&input, &first, &BuildOptions::new()).expect("first build should succeed");
-        super::build(&input, &second, &BuildOptions::new()).expect("second build should succeed");
+        super::build(&input, &first, &CompileOptions::new()).expect("first build should succeed");
+        super::build(&input, &second, &CompileOptions::new()).expect("second build should succeed");
 
         for artifact in ["app.plan.json", "app.js", "app.js.map"] {
             let first_text =

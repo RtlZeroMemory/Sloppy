@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-mod sloppyc;
-
 use sloppyc::{run, CliExit};
 
 fn main() {

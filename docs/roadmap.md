@@ -71,7 +71,7 @@ Durable architecture sources remain:
 
 | Area | Status | Current boundary |
 | --- | --- | --- |
-| Compiler -> Plan/artifacts | Complete/proven | Supported subset only; no full TypeScript checking, package resolution, or broad module/service/schema extraction. |
+| Compiler -> Plan/artifacts | Complete/proven | Supported subset only; COMPILER-30.A adds module/library/test-harness foundation, not full TypeScript checking, package resolution, or broad module/service/schema/effect/capability inference. |
 | V8 runtime execution | Complete/proven for scoped path | Optional V8 SDK lane; default gates do not prove V8. |
 | Async semantics | Partial | Direct returned Promises that settle during bounded owner-thread microtask drain are supported; timers/fetch/arbitrary native async sources are missing. |
 | HTTP backend | Complete/proven for MVP | Sequential keep-alive, bounded chunked request decoding, and internal chunked response writer only; no pipelining, public streaming APIs, SSE/WebSockets/file streaming, production HTTP, TLS, HTTP/2/3, middleware, or benchmark claims. |
@@ -125,8 +125,9 @@ short:
 1. HARDEN-01 small boundary/safety cleanup if selected.
 2. Source-input follow-ups through reused #259/#302 and #316/#345-#349: TypeScript/module
    completion, cache reuse, and watch/dev-loop decisions.
-3. COMPILER-30 compiler inference through #460/#461-#470, starting with #461 module
-   architecture/test harness.
+3. COMPILER-30 compiler inference through #460/#461-#470. #461/COMPILER-30.A establishes
+   the module architecture, library API, and fixture harness; later tasks own parser,
+   resolver, DSL, route/provider/schema/effect/capability, and completeness behavior.
 4. Strong Plan typed graph through reused #318/#355-#359 once compiler metadata exists.
 5. Framework config, binding, validation, Results, and examples through #432/#435-#440.
 6. Plan-driven doctor/OpenAPI after Plan metadata is real.

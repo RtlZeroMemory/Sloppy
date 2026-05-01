@@ -319,6 +319,23 @@ The compiler must not remain one giant god file. Target modules under `compiler/
 Module APIs should be explicit and testable. Avoid broad `utils` dumping grounds. Shared
 helpers need a named domain owner.
 
+COMPILER-30.A establishes this layout and the public library boundary without changing the
+current compiler-supported source subset. `main.rs` delegates to the library API,
+`diagnostic.rs` and `source.rs` own the first shared compiler data types/helpers, and the
+remaining module files are intentionally narrow placeholders for later tasks. Full import
+resolution, symbol binding, DSL recognition, effect summaries, capability inference,
+schema/result inference, and Plan completeness remain future COMPILER-30 tasks.
+
+The fixture harness keeps current behavior stable while preparing for inference:
+
+- success fixtures compare `app.plan.json`, `app.js`, and `app.js.map`;
+- rejection fixtures compare stable diagnostics;
+- diagnostics fixtures require source-located errors when spans are available;
+- source-map fixtures compare deterministic Source Map v3 output;
+- multi-file fixtures keep fixture-local source modules under the fixture directory;
+- future inference metadata may add expected metadata files only when a scoped task emits
+  real metadata.
+
 ## Rust Standards
 
 All Rust code must follow existing repo standards:

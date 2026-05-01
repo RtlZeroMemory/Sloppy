@@ -305,17 +305,52 @@ examples.
 
 ## Internal Architecture
 
-Current Rust layout:
+Current Rust layout after COMPILER-30.A:
 
 ```text
 compiler/src/
   main.rs
+  lib.rs
   sloppyc.rs
+  diagnostic.rs
+  source.rs
+  parser.rs
+  module_graph.rs
+  resolver.rs
+  symbols.rs
+  slop_dsl.rs
+  static_eval.rs
+  graph.rs
+  effects.rs
+  capability_inference.rs
+  schema_inference.rs
+  result_inference.rs
+  validation.rs
+  plan_emit.rs
+  bundle_emit.rs
+  source_map.rs
+  fixtures.rs
 compiler/tests/fixtures/
+compiler/tests/compiler_fixture_harness.rs
 ```
 
-Keep the implementation direct until more than one real compiler slice needs additional
-module boundaries.
+`main.rs` is the thin CLI entrypoint. `lib.rs` exposes the compiler library API used by
+tests and future tooling. `sloppyc.rs` still owns most behavior while COMPILER-30.A keeps
+emitted artifacts stable; the named modules establish the boundaries for subsequent parser,
+resolver, symbol, DSL, effect, capability, schema, result, validation, Plan, bundle, source
+map, and fixture work. Those modules are architecture boundaries, not claims that full
+inference exists yet.
+
+The current library entrypoints are:
+
+- `compile_file(input, out_dir, options)`;
+- `compile_project(input, out_dir, options)`;
+- `CompileOptions`;
+- `CompileOutput` with Plan, bundle, and source-map artifact contents;
+- structured compiler `Diagnostic` with code, severity, message, path, source span, and
+  optional hint.
+
+The CLI calls the same library API instead of owning compiler behavior directly.
 
 COMPILER-30 changes that threshold. The compiler should be split into focused modules such
 as `diagnostic.rs`, `source.rs`, `syntax.rs` or `ast.rs`, `parser.rs`,
@@ -386,6 +421,9 @@ Golden tests cover:
 - missing app/default export diagnostics;
 - multiple app diagnostics;
 - deterministic generated `app.plan.json`, `app.js`, and `app.js.map`.
+- the COMPILER-30.A library API and CLI fixture harness for current hello artifacts,
+  invalid-input diagnostics, source-map golden output, and staged generated-artifact
+  hygiene.
 
 Future golden tests should add module ordering and broader provider/schema plan
 contribution only when those features exist.

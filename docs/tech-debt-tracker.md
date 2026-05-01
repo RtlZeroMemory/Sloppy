@@ -51,8 +51,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   binding, schemas, Results, effect summaries, capabilities, source locations, diagnostics,
   and Plan completeness. Normal repository/service patterns should not require manual
   `uses` metadata when effects are statically resolvable. Runtime work remains separate:
-  cache reuse, broader async source
-  shapes, dispatch/runtime behavior, and provider/capability enforcement must not be
+  COMPILER-30.A establishes module boundaries, the compiler library API, and fixture/
+  golden harness; cache reuse, broader async source shapes, dispatch/runtime behavior,
+  and provider/capability enforcement must not be
   hidden inside compiler planning.
 - Full scalable async runtime beyond ENGINE-03: ENGINE-12.AB adds the first bounded
   `SlAsyncLoop` backend abstraction, libuv backend, and owner-thread V8 continuation
