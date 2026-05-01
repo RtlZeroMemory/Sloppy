@@ -6,6 +6,10 @@
   },
   "capabilities": [],
   "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "completeness": {
+    "reasons": [],
+    "status": "complete"
+  },
   "configuration": {
     "environment": "Development",
     "keys": [
@@ -72,7 +76,8 @@
     "capabilities": false,
     "dataProviders": false,
     "metadataInference": true,
-    "sourceMaps": true
+    "sourceMaps": true,
+    "strongPlanMetadata": true
   },
   "handlers": [
     {
@@ -87,8 +92,13 @@
       }
     }
   ],
+  "modules": [],
   "routes": [
     {
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
       "handlerId": 1,
       "method": "GET",
       "name": null,
@@ -107,12 +117,35 @@
   ],
   "runtimeMinimumVersion": "0.1.0",
   "schemaVersion": 1,
+  "sourceFiles": [
+    {
+      "hash": "sha256:881ad698ba4ef863fb3fddc1166f26726ef5a0a86e1032510131e555d806d1e7",
+      "path": "app.js"
+    }
+  ],
   "sourceMap": {
     "hash": "sha256:d64a841fdad0cf4830f2a59b2774a2c21dea4245cfaf7065ce117ba14d35a1e0",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
   "stdlibVersion": "0.1.0",
+  "strongPlan": {
+    "compatibility": {
+      "schemaVersion": 1,
+      "unknownOptionalFields": "ignored",
+      "unknownRequiredFeatures": "rejected"
+    },
+    "evidence": {
+      "bindings": true,
+      "capabilities": false,
+      "effects": false,
+      "providers": true,
+      "routes": true,
+      "sourceGraph": true
+    },
+    "profile": "compiler-30-strong-plan",
+    "version": 1
+  },
   "target": {
     "engine": "v8",
     "platform": "windows-x64"

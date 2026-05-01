@@ -277,6 +277,10 @@ understand arbitrary JavaScript magic.
 Plan graph should include app entry, modules, routes, methods, route patterns,
 route/query/header/body params, body policies/schemas, providers, capabilities, config
 keys, response shapes where declared, diagnostics/source maps, and later OpenAPI metadata.
+COMPILER-30.H/I emits the first strong Plan layer for the implemented subset: source files,
+function modules, route/plan completeness, provider-kind-aware effects, and compatibility
+evidence. Provider facts use capability kind plus provider kind, so the framework can add
+future provider families without treating SQLite or databases as the universal model.
 
 Supported DSL recognition target:
 

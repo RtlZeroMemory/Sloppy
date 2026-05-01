@@ -56,6 +56,11 @@ FRAMEWORK-01.B loads built-in defaults, optional `appsettings.json`, optional
 selected CLI overrides before writing artifacts. The compiler binds
 `app.use(sqlite("name"))` to `Sloppy:Providers:sqlite:name`, emits the resolved SQLite
 database into Plan provider metadata, and emits redacted configuration metadata for tooling.
+COMPILER-30.H/I now emits strong Plan metadata for the supported subset: source-file
+hashes, function-module summaries, route and whole-plan completeness, response/binding/
+effect facts, provider-kind-aware capability metadata, and compatibility evidence. This
+metadata is compiler/tooling input; it does not add package-manager behavior, arbitrary
+TypeScript inference, or new provider runtime bridges.
 
 Compiler diagnostics render a single-line source frame when the extractor already has a
 source span and source text. That renderer is separate from the generated source-map
@@ -158,7 +163,7 @@ COMPILER-30 target phases are broader and explicit:
 9. compute effect summaries;
 10. infer provider/capability/config/body/response metadata;
 11. compute Plan completeness;
-12. validate graph;
+12. validate graph, including missing provider registrations for inferred effects;
 13. emit Plan, bundle, source maps, diagnostics, and goldens.
 
 ## App Graph Extraction
@@ -189,6 +194,11 @@ The compiler extracts:
 - `schema.object/string/int/number/bool/array` declarations, `app.config.get*` reads,
   request binding helpers, and preliminary `Results.*` response metadata for the supported
   handler subset.
+- provider effect metadata with explicit `capabilityKind` and `providerKind`, so the
+  compiler is not hard-coded to SQLite or to database-only future providers;
+- Plan completeness: `complete` when required route/provider/body/response facts are
+  visible, `partial` when optional metadata such as response/body schema is incomplete,
+  and invalid diagnostics before artifact emission when runtime-required truth is missing.
 
 Extraction must be deterministic. Import order must not silently decide module ordering.
 

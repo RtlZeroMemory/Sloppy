@@ -7,6 +7,12 @@ COMPILER-30 (#460) now owns compiler inference implementation. Strong Plan work 
 COMPILER-30 output; it should not duplicate source parsing, Slop DSL recognition, effect
 summary, or capability inference logic.
 
+COMPILER-30.H/I emits the first strong Plan metadata surface directly from the compiler:
+source files, function modules, route-level completeness, whole-plan completeness,
+provider-kind-aware effects, and compatibility/evidence metadata. Strong Plan consumer
+issues should treat that output as the artifact source of truth and build typed graph,
+doctor, audit, OpenAPI, and optimization behavior on top of it.
+
 ## Strategic Role
 
 Plan is Slop's strategic differentiator: the engine should understand the app shape before

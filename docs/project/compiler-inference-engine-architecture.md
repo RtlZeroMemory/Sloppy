@@ -240,6 +240,21 @@ Current COMPILER-30.F/G implementation status:
   non-database provider adapters, recursion policy, and unknown-call completeness remain
   documented COMPILER-30 follow-up work unless a later PR in this sequence expands them.
 
+Current COMPILER-30.H/I implementation status:
+
+- `validation.rs` owns the first reusable completeness model;
+- emitted Plans include route and whole-plan completeness, source file hashes, function
+  module summaries, and strong Plan evidence metadata;
+- missing provider registration for an inferred effect is invalid and source-located before
+  artifact emission;
+- partial metadata is represented for supported runnable shapes where response or body
+  schema facts are incomplete;
+- native Plan v1 compatibility accepts unknown optional fields but rejects non-empty
+  `requiredFeatures`;
+- provider and capability facts stay kind-based through `capabilityKind` and
+  `providerKind`; SQLite is not assumed as the only provider kind, and future non-database
+  providers require explicit adapters rather than DB-specific hard-coding.
+
 ## Escape Hatches
 
 Escape hatches are fallback metadata, not normal workflow and not permission to hide

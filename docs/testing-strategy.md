@@ -157,6 +157,11 @@ goldens. It proves the CLI and library API build the current compiler hello arti
 invalid input returns structured diagnostics, source-map goldens remain stable, and staged
 generated/cache artifacts are rejected by test coverage. This does not add inference
 behavior.
+COMPILER-30.H/I expands the compiler golden contract to strong Plan metadata: route and
+plan completeness, source files, function modules, provider-kind-aware effects, and native
+Plan compatibility fixtures for unknown optional fields versus unknown required features.
+Tests should keep completeness cases explicit: complete route, partial response/body
+metadata, invalid missing provider, and refreshed deterministic Plan goldens.
 
 Runtime execution:
 

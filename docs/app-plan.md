@@ -81,6 +81,12 @@ groups, function modules, providers, config keys, request binding, schemas, resu
 function effects, capabilities, source locations, diagnostics, and completeness. Strong
 Plan issues #355-#359 consume that output for typed graph representation, validation,
 doctor/audit, OpenAPI/optimization hooks, and versioning.
+COMPILER-30.H/I adds the first compiler-emitted strong metadata layer: `modules`,
+`sourceFiles`, route and plan `completeness`, provider-kind-aware `effects`, and
+`strongPlan` evidence/compatibility metadata. The native Plan v1 parser still stores only
+the implemented runtime struct fields, but it accepts these optional compiler metadata
+fields and rejects non-empty top-level `requiredFeatures` so future required features do
+not get silently ignored by older runtimes.
 
 ## Public API Shape
 
@@ -98,7 +104,9 @@ deliberately invalid problem fixtures without running user code.
 - Runtime must reject plans with unsupported major schema versions.
 - Runtime may accept compatible minor additions only if unknown fields are explicitly
   allowed by that schema version.
-- Plan must declare runtime minimum version. Feature requirements are future schema work.
+- Plan must declare runtime minimum version. Unknown optional fields are ignored in Plan
+  v1. Non-empty top-level `requiredFeatures` is rejected until a runtime explicitly owns
+  those required features.
 - Plan must declare target platform and target engine.
 - Compiler version is diagnostic metadata and cache input.
 - TASK 06.A supports only schema version `1` through `sl_plan_version_supported`.
@@ -124,6 +132,10 @@ The implemented native C shape in `include/sloppy/plan.h` is deliberately small:
 - optional compiler metadata `configuration.environment`, `configuration.keys[]`, and
   `configuration.providers[]`. This is emitted for tooling/diagnostics and is not yet part
   of the native `SlPlan` struct.
+- optional compiler metadata `modules[]`, `sourceFiles[]`, route/plan `completeness`,
+  route `bindings`, `response`, `effects`, `configReads[]`, `schemas[]`, and `strongPlan`.
+  These fields are emitted for Strong Plan consumers and are intentionally ignored by the
+  native Plan v1 struct until typed graph consumers land.
 
 MAIN1-10 capability rules:
 
@@ -161,7 +173,9 @@ Handler rules implemented now:
 - display names are diagnostic/user-facing only.
 
 Unknown JSON fields are allowed and ignored in Plan v1 for forward compatibility. Known
-fields with the wrong JSON type fail validation.
+fields with the wrong JSON type fail validation. Top-level `requiredFeatures` is the
+exception: an empty array is accepted, but any entry is rejected because an older runtime
+must not ignore features that an artifact marks as required.
 
 ## Schema Sections
 
