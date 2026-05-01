@@ -74,3 +74,9 @@ Not implemented here:
 - request-scoped service lifetimes, disposal hooks, async factories, or typed tokens;
 - broad runtime intrinsic binding;
 - Node/npm module resolution, compiler module extraction, or arbitrary import rewriting.
+## ENGINE-14 Import Surface
+
+ENGINE-14 adds a source-level compiler contract for `"sloppy"` and
+`"sloppy/providers/sqlite"` imports. This directory is still the staged bootstrap stdlib,
+not a Node compatibility shim, and `sloppy run` still loads the classic runtime script
+before evaluating generated artifacts.

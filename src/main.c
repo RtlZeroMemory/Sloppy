@@ -1163,6 +1163,81 @@ static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size
         "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ");
 }
 
+static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expected)
+{
+    const char* text = NULL;
+    size_t expected_length = 0U;
+    size_t text_length = 0U;
+
+    if (value == NULL || expected == NULL || !yyjson_is_str(value)) {
+        return false;
+    }
+
+    text = yyjson_get_str(value);
+    text_length = yyjson_get_len(value);
+    expected_length = strlen(expected);
+
+    return text != NULL && text_length == expected_length &&
+           memcmp(text, expected, expected_length) == 0;
+}
+
+static bool sl_run_manifest_array_contains_asset(yyjson_val* array, const char* required_asset)
+{
+    yyjson_arr_iter iter;
+    yyjson_val* value = NULL;
+
+    if (array == NULL || required_asset == NULL || !yyjson_is_arr(array)) {
+        return false;
+    }
+
+    yyjson_arr_iter_init(array, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (sl_run_json_string_equals_cstr(value, required_asset)) {
+            return true;
+        }
+        if (yyjson_is_obj(value) &&
+            sl_run_json_string_equals_cstr(yyjson_obj_get(value, "path"), required_asset))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool sl_run_manifest_is_compatible(SlBytes manifest, const char* required_stdlib_version,
+                                          const char* required_asset)
+{
+    yyjson_read_err error = {0};
+    yyjson_doc* doc = NULL;
+    yyjson_val* root = NULL;
+    bool compatible = false;
+
+    if (manifest.ptr == NULL || manifest.length == 0U || required_stdlib_version == NULL ||
+        required_asset == NULL)
+    {
+        return false;
+    }
+
+    doc = yyjson_read_opts((char*)manifest.ptr, manifest.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        return false;
+    }
+
+    root = yyjson_doc_get_root(doc);
+    if (yyjson_is_obj(root) &&
+        sl_run_json_string_equals_cstr(yyjson_obj_get(root, "stdlibVersion"),
+                                       required_stdlib_version) &&
+        (sl_run_manifest_array_contains_asset(yyjson_obj_get(root, "modules"), required_asset) ||
+         sl_run_manifest_array_contains_asset(yyjson_obj_get(root, "assets"), required_asset)))
+    {
+        compatible = true;
+    }
+
+    yyjson_doc_free(doc);
+    return compatible;
+}
+
 typedef struct SlRunSha256
 {
     uint32_t state[8];
@@ -1596,6 +1671,8 @@ static int sl_run_prepare_routes(SlRunApp* app)
 static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
 {
     char bootstrap_path[1024];
+    char manifest_path[1024];
+    SlBytes manifest = {0};
     SlBytes js = {0};
     SlStr source = {0};
     SlDiag diag = {0};
@@ -1610,6 +1687,25 @@ static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
                                    "internal/runtime-classic.js"))
     {
         sl_cli_write_cstr(stderr, "sloppy run: invalid bootstrap stdlib directory\n");
+        return 1;
+    }
+
+    if (!sl_run_artifact_file_path(manifest_path, sizeof(manifest_path), stdlib_root,
+                                   "bootstrap.manifest.json"))
+    {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid bootstrap stdlib directory\n");
+        return 1;
+    }
+
+    if (sl_run_read_stdlib_file(manifest_path, app->bootstrap_js_storage,
+                                sizeof(app->bootstrap_js_storage), &manifest) != 0)
+    {
+        return 1;
+    }
+
+    if (!sl_run_manifest_is_compatible(manifest, "0.1.0", "sloppy/internal/runtime-classic.js")) {
+        sl_cli_write_cstr(
+            stderr, "sloppy run: bootstrap stdlib manifest is incompatible with this runtime\n");
         return 1;
     }
 
@@ -2043,6 +2139,7 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
 {
     SlRunApp* app = (SlRunApp*)user;
     SlStatus status;
+    SlStatus transport_status;
 
     (void)connection;
     if (app == NULL || arena == NULL || request == NULL || out_response == NULL) {
@@ -2051,7 +2148,15 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
 
     status =
         sl_run_dispatch_response_with_storage(app, &request->head, arena, out_response, out_diag);
-    return sl_status_is_ok(status) ? status : sl_run_dispatch_transport_status(status, out_diag);
+    if (sl_status_is_ok(status)) {
+        return status;
+    }
+
+    transport_status = sl_run_dispatch_transport_status(status, out_diag);
+    if (sl_status_code(transport_status) == SL_STATUS_INTERNAL && out_diag != NULL) {
+        sl_run_print_diag("sloppy run: HTTP dispatch failed\n", arena, out_diag);
+    }
+    return transport_status;
 }
 
 static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t port, SlRunApp* app)

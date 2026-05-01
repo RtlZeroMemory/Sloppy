@@ -117,3 +117,20 @@ Rejected input must fail before success artifacts are emitted. Diagnostics inclu
 codes, source path, and line/column when the parser exposes a span. The text renderer stays
 intentionally small; JSON diagnostics, multi-location source frames, and richer fix metadata
 belong to later diagnostics work.
+## ENGINE-14 Module Syntax
+
+Supported source imports are intentionally small:
+
+- `import { Sloppy, Results } from "sloppy";`
+- `import { sqlite } from "sloppy/providers/sqlite";`
+- named relative imports such as `import { usersModule } from "./modules/users.js";`
+
+The compiler resolves relative imports before runtime startup and rewrites the supported
+graph into the classic generated artifact. Unsupported bare imports, Node/npm specifiers,
+remote imports, dynamic `import(...)`, missing relative imports, circular relative imports,
+missing named exports, and unsupported module shapes fail at compile time with diagnostics.
+
+Function modules may export one named function that receives the app, obtains providers
+through `app.provider("sqlite:<name>")`, creates route groups with `app.group(...)`, and
+registers literal routes on that group. Controllers, decorators, package modules, TS path
+aliases, and full TypeScript typechecking remain deferred.

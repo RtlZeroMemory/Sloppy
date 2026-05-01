@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/unsupported-dynamic-import/input.js:5:15: SLOPPYC_E_UNSUPPORTED_DYNAMIC_IMPORT: dynamic import is not supported by the Sloppy module compiler
+  --> <compiler>/tests/fixtures/unsupported-dynamic-import/input.js:5:15
+   |
+5 | const users = import /* unsupported */ ("./users.js");
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+hint: Use static relative imports or documented Sloppy stdlib imports.

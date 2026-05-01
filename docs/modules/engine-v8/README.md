@@ -401,6 +401,10 @@ V8 requires process-wide platform initialization. TASK 07.C initializes that sta
 keeps it private to `src/engine/v8/`, and intentionally leaves it alive for process
 lifetime. Per-engine destroy releases isolates and contexts only. A future explicit runtime
 shutdown task owns any decision to call `v8::V8::Dispose()` / `DisposePlatform()`.
+The bridge sets a bounded V8 stack size during process initialization. On Windows MSVC-style
+builds, `sloppy.exe` also reserves enough process stack for V8 handler entry from the deeper
+libuv HTTP transport callback path; this is transport/runtime stability evidence, not a
+performance claim.
 
 Expected SDK layout:
 
@@ -578,3 +582,9 @@ provided.
 
 - Exact prebuilt V8 SDK hosting and checksum format.
 - Exact dynamic runtime DLL/shared-library list for non-monolithic release builds.
+## ENGINE-14 Boundary
+
+ENGINE-14 keeps module loading outside the V8 bridge. The compiler accepts a supported
+source-level import subset and rewrites/bundles it into the existing classic artifact. The
+V8 bridge still loads the bootstrap classic runtime asset, validates registered handler
+IDs, and evaluates generated `app.js`; it does not own a native ESM module graph.

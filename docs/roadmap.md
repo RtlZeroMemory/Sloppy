@@ -75,7 +75,7 @@ Durable architecture sources remain:
 | Capability enforcement | Complete/proven for integrated paths | SQLite/provider-executor paths enforce before provider work; filesystem/network remain metadata/check skeletons. |
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
-| Source-input run | Partial/proven for current compiler subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; TypeScript, module graphs, cache reuse, watch/hot reload remain deferred. |
+| Source-input run | Partial/proven for compiler-owned module subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; supported relative function modules and Sloppy provider imports are compiler-owned. Cache reuse, watch/hot reload, Node/npm, and full TypeScript remain deferred. |
 | Public alpha | Blocked | Needs canonical docs, executable examples, broader ergonomics, package/platform story, and no fake claims. |
 
 ## Active Issue Map

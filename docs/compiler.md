@@ -17,12 +17,12 @@ golden tests, implementation phases, and acceptance criteria.
 The current compiler pipeline does not:
 
 - perform full TypeScript type checking;
-- bundle module graphs;
+- bundle arbitrary module graphs beyond the supported Sloppy-relative subset;
 - resolve npm packages or implement package-manager behavior;
 - assume Node compatibility;
 - execute application JavaScript during compilation;
-- extract services, modules, middleware, validation schemas, or arbitrary provider
-  module graphs;
+- extract services, middleware, validation schemas, arbitrary provider module graphs, or
+  module systems beyond supported function modules;
 - lower database query templates or open native providers;
 - implement `app.run`;
 - implement Node/npm package resolution, arbitrary import graphs, or runtime module loading;
@@ -505,3 +505,18 @@ Compiler foundation is ready for implementation when:
 - Exact CLI command layout.
 - Whether `sloppyc` invokes `tsgo`/`tsc` as subprocess or library later.
 - Exact JavaScript module format and bundling strategy.
+## ENGINE-14 Module Loading
+
+ENGINE-14 keeps module loading compiler-owned. Source may use static ESM-style imports for
+the supported subset: `"sloppy"`, `"sloppy/providers/sqlite"`, and relative app modules
+under the source root. `sloppyc` resolves that graph before runtime startup, rejects
+unsupported bare imports and dynamic `import(...)`, and emits the existing classic
+`app.js` artifact plus `app.plan.json` and `app.js.map`. The runtime still evaluates the
+generated classic artifact through the bootstrap path; it does not implement V8 native ESM,
+Node resolution, `node_modules`, `package.json`, or package-manager behavior.
+
+Function modules are supported as named relative exports passed to `app.useModule(...)`.
+Inside a function module, the compiler recognizes `app.provider("sqlite:<name>")`,
+`app.group(...)`, and literal `group.get/post/put/patch/delete(...)` registrations.
+Contributed routes, provider metadata, capability metadata, module attribution, and module
+source files remain Plan/source-map visible.

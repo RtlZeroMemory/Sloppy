@@ -572,6 +572,7 @@ SlStatus sl_v8_platform_acquire(void)
     if (!g_v8_platform_initialized) {
         v8::V8::InitializeICUDefaultLocation("");
         v8::V8::InitializeExternalStartupData("");
+        v8::V8::SetFlagsFromString("--stack-size=4096");
         std::unique_ptr<v8::Platform> platform = v8::platform::NewDefaultPlatform();
         if (!platform) {
             return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);

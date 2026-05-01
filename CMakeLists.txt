@@ -39,6 +39,7 @@ set(
     bootstrap.manifest.json
     data.js
     index.js
+    providers/sqlite.js
     results.js
     schema.js
     internal/intrinsics.js
@@ -425,6 +426,11 @@ target_compile_definitions(
     sloppy
     PRIVATE SLOPPY_BOOTSTRAP_BUILD_DIR="${SLOPPY_BOOTSTRAP_BUILD_DIR}"
             SLOPPY_COMPILER_BUILD_PATH="${PROJECT_SOURCE_DIR}/compiler/target/debug/sloppyc${CMAKE_EXECUTABLE_SUFFIX}")
+if(WIN32 AND MSVC)
+    # The V8-backed HTTP transport enters JavaScript from a deeper libuv callback stack than
+    # --once dispatch. Reserve enough process stack for V8's guard to allow real handler entry.
+    target_link_options(sloppy PRIVATE "/STACK:8388608")
+endif()
 
 add_executable(
     sloppy_bench
@@ -1168,7 +1174,7 @@ if(SLOPPY_ENABLE_TESTS)
                 "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
                 "-DSLOPPY_CASE=unsupported-typescript"
                 "-DSLOPPY_SOURCE=compiler/tests/fixtures/unsupported-typescript-handler/input.ts"
-                "-DSLOPPY_EXPECTED_ERROR=UNSUPPORTED_TYPESCRIPT_INPUT" -P
+                "-DSLOPPY_EXPECTED_ERROR=UNSUPPORTED_TYPESCRIPT_HANDLER" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
         set_tests_properties(sloppy.run.source_input_unsupported_typescript
                              PROPERTIES LABELS "source-input")

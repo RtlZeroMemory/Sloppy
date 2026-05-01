@@ -2,7 +2,9 @@ set(required_bootstrap_assets
     README.md
     app.js
     bootstrap.manifest.json
+    data.js
     index.js
+    providers/sqlite.js
     results.js
     schema.js
     internal/intrinsics.js

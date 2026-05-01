@@ -914,3 +914,15 @@ The first execution milestone is accepted when:
 - Whether final handler registration is explicit exports, bootstrap calls, or both.
 - Whether source map parsing lives in runtime C or a helper library.
 - Exact dev watch/restart behavior.
+## ENGINE-14 Module Bootstrap Decision
+
+Framework MVP module loading is source-level ESM syntax with compiler-owned graph
+resolution and classic artifact execution. `sloppyc` resolves supported relative modules
+and Sloppy stdlib/provider imports, then emits the existing `app.js` artifact that the V8
+bootstrap runtime evaluates as a classic script. Full V8 native ESM loading, dynamic
+imports, Node/npm resolution, and package-manager behavior are not part of this execution
+model.
+
+Bootstrap assets are loaded from a deterministic stdlib root. `sloppy run` validates the
+bootstrap manifest version and required classic runtime asset before evaluating user
+artifacts, and missing or incompatible assets fail closed instead of silently falling back.
