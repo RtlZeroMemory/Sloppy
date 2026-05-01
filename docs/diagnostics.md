@@ -625,6 +625,20 @@ error[SLP_PLAN_UNSUPPORTED_VERSION]: app.plan.json schema version is not support
 help: rebuild the app with a compatible sloppyc version
 ```
 
+### Missing Compiler-Inferred Provider
+
+```text
+error[SLOPPYC_E_MISSING_PROVIDER]: route uses unregistered database provider 'data.main'
+
+help: Register the provider with app.use(...), builder.capabilities metadata, or an
+explicit runtime-only escape hatch once that pattern is supported.
+```
+
+COMPILER-30.H/I uses this diagnostic when effect inference proves a provider operation but
+the Plan has no matching provider/capability registration. This is invalid because the
+runtime-required provider truth is missing. Optional metadata gaps are instead represented
+in Plan completeness as `partial`.
+
 ### Bundle Missing Handler
 
 ```text

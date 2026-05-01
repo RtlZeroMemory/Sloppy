@@ -21,6 +21,9 @@ use crate::diagnostic::Diagnostic;
 use crate::parser::{source_type_for_path, ParseContext};
 use crate::resolver;
 use crate::source::{line_column, source_map_source_name};
+use crate::validation::{
+    plan_completeness, route_completeness, Completeness, RouteCompletenessInput,
+};
 
 const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
 const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
@@ -128,6 +131,7 @@ struct Handler {
 #[derive(Debug, Clone)]
 struct DatabaseCapability {
     token: String,
+    capability_kind: String,
     provider: String,
     config_name: Option<String>,
     access: String,
@@ -156,6 +160,7 @@ struct ExtractedApp {
     uses_data_runtime: bool,
     source_files: Vec<SourceFile>,
     routes: Vec<Route>,
+    modules: Vec<FunctionModule>,
     helper_sources: Vec<String>,
     capabilities: Vec<DatabaseCapability>,
     configuration: Option<ConfigurationPlan>,
@@ -266,6 +271,12 @@ struct ImportedModule {
     span: Span,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct FunctionModule {
+    name: String,
+    source_name: String,
+}
+
 #[derive(Debug)]
 struct AppState {
     sloppy_imported: bool,
@@ -286,6 +297,7 @@ struct AppState {
     app_provider_uses: BTreeSet<String>,
     imported_modules: Vec<ImportedModule>,
     used_modules: Vec<(String, Span)>,
+    modules: BTreeMap<(String, String), FunctionModule>,
     routes: Vec<Route>,
     capabilities: Vec<DatabaseCapability>,
     schemas: Vec<SchemaMetadata>,
@@ -315,6 +327,7 @@ impl AppState {
             app_provider_uses: BTreeSet::new(),
             imported_modules: Vec::new(),
             used_modules: Vec::new(),
+            modules: BTreeMap::new(),
             routes: Vec::new(),
             capabilities: Vec::new(),
             schemas: Vec::new(),
@@ -1123,6 +1136,14 @@ fn extract_entry(
             ));
         };
         let module_routes = extract_relative_module(graph, &imported)?;
+        let module = FunctionModule {
+            name: imported.export_name.clone(),
+            source_name: source_map_source_name(&imported.path),
+        };
+        state
+            .modules
+            .entry((module.source_name.clone(), module.name.clone()))
+            .or_insert(module);
         state.routes.extend(module_routes);
     }
 
@@ -1186,6 +1207,7 @@ fn extract_entry(
 
     coalesce_manual_capability_overrides(&mut state.capabilities);
     apply_inferred_capability_access(&mut state.capabilities, &state.routes);
+    validate_provider_effect_registrations(path, &state.routes, &state.capabilities)?;
 
     let mut capability_tokens = BTreeSet::new();
     for capability in &state.capabilities {
@@ -1209,6 +1231,7 @@ fn extract_entry(
                 .any(|route| !route.handler.effects.is_empty()),
         source_files: graph.source_files.clone(),
         routes: state.routes,
+        modules: state.modules.into_values().collect(),
         helper_sources: state.helper_sources.into_values().collect(),
         capabilities: state.capabilities,
         configuration: None,
@@ -2001,6 +2024,7 @@ fn database_capability_call(
 
     Ok(Some(DatabaseCapability {
         token: token.to_string(),
+        capability_kind: "database".to_string(),
         provider: provider.to_string(),
         config_name: None,
         access,
@@ -2472,6 +2496,7 @@ fn sqlite_provider_call_expression(call: &CallExpression<'_>) -> Option<Database
     let name = string_argument(call.arguments.first()?)?;
     Some(DatabaseCapability {
         token: normalize_sqlite_provider_token(name),
+        capability_kind: "database".to_string(),
         provider: "sqlite".to_string(),
         config_name: Some(name.to_string()),
         access: "readwrite".to_string(),
@@ -3899,6 +3924,37 @@ fn coalesce_manual_capability_overrides(capabilities: &mut Vec<DatabaseCapabilit
     });
 }
 
+fn validate_provider_effect_registrations(
+    _path: &Path,
+    routes: &[Route],
+    capabilities: &[DatabaseCapability],
+) -> Result<(), Diagnostic> {
+    for route in routes {
+        for effect in &route.handler.effects {
+            let registered = capabilities.iter().any(|capability| {
+                capability.token == effect.provider
+                    && capability.capability_kind == effect.capability_kind
+                    && capability.provider == effect.provider_kind
+            });
+            if !registered {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_MISSING_PROVIDER",
+                    format!(
+                        "route uses unregistered {} provider '{}'",
+                        effect.capability_kind, effect.provider
+                    ),
+                )
+                .with_path(&route.source_path)
+                .with_span(route.span)
+                .with_hint(
+                    "Register the provider with app.use(...), builder.capabilities metadata, or an explicit runtime-only escape hatch once that pattern is supported.",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn apply_inferred_capability_access(capabilities: &mut [DatabaseCapability], routes: &[Route]) {
     let mut inferred = BTreeMap::<String, &'static str>::new();
     for route in routes {
@@ -4991,6 +5047,22 @@ fn sha256_hex(contents: &str) -> String {
     output
 }
 
+fn completeness_json(completeness: &Completeness) -> Value {
+    json!({
+        "status": completeness.status.as_str(),
+        "reasons": completeness
+            .reasons
+            .iter()
+            .map(|reason| {
+                json!({
+                    "code": reason.code,
+                    "message": reason.message
+                })
+            })
+            .collect::<Vec<_>>()
+    })
+}
+
 fn emit_plan(
     app: &ExtractedApp,
     bundle_hash: &str,
@@ -5025,6 +5097,30 @@ fn emit_plan(
         })
         .collect::<Vec<_>>();
 
+    let route_completeness_values = app
+        .routes
+        .iter()
+        .map(|route| {
+            route_completeness(&RouteCompletenessInput {
+                has_response_metadata: route.handler.response.is_some(),
+                body_json_without_schema: route
+                    .handler
+                    .bindings
+                    .iter()
+                    .any(|binding| binding.kind == "body.json" && binding.schema.is_none()),
+                missing_provider_registration: route.handler.effects.iter().any(|effect| {
+                    !app.capabilities.iter().any(|capability| {
+                        capability.token == effect.provider
+                            && capability.capability_kind == effect.capability_kind
+                            && capability.provider == effect.provider_kind
+                    })
+                }),
+                runtime_only: false,
+            })
+        })
+        .collect::<Vec<_>>();
+    let app_completeness = plan_completeness(&route_completeness_values);
+
     let routes = app
         .routes
         .iter()
@@ -5032,6 +5128,7 @@ fn emit_plan(
         .map(|(index, route)| {
             let id = index + 1;
             let (line, column) = line_column(&route.source, route.span.start);
+            let completeness = &route_completeness_values[index];
             let mut route_json = json!({
                 "method": route.method,
                 "pattern": route.pattern,
@@ -5090,16 +5187,48 @@ fn emit_plan(
                     })
                     .collect::<Vec<_>>());
             }
+            route_json["completeness"] = completeness_json(completeness);
             route_json
         })
         .collect::<Vec<_>>();
 
-    let data_providers = app
+    let modules = app
+        .modules
+        .iter()
+        .map(|module| {
+            json!({
+                "name": module.name,
+                "source": {
+                    "path": module.source_name
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let source_files = app
+        .source_files
+        .iter()
+        .map(|source_file| {
+            json!({
+                "path": source_file.name,
+                "hash": sha256_hex(&source_file.source)
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let data_provider_capabilities = app
         .capabilities
+        .iter()
+        .filter(|capability| capability.capability_kind == "database")
+        .collect::<Vec<_>>();
+
+    let data_providers = data_provider_capabilities
         .iter()
         .map(|capability| {
             let mut provider = json!({
                 "token": capability.token,
+                "capabilityKind": capability.capability_kind,
+                "providerKind": capability.provider,
                 "provider": capability.provider,
                 "capability": capability.token,
                 "service": null
@@ -5117,7 +5246,7 @@ fn emit_plan(
         .map(|capability| {
             json!({
                 "token": capability.token,
-                "kind": "database",
+                "kind": capability.capability_kind,
                 "access": capability.access,
                 "provider": capability.token
             })
@@ -5212,12 +5341,33 @@ fn emit_plan(
         },
         "handlers": handlers,
         "routes": routes,
+        "modules": modules,
+        "sourceFiles": source_files,
         "dataProviders": data_providers,
         "capabilities": capabilities,
+        "completeness": completeness_json(&app_completeness),
+        "strongPlan": {
+            "version": 1,
+            "profile": "compiler-30-strong-plan",
+            "compatibility": {
+                "schemaVersion": 1,
+                "unknownOptionalFields": "ignored",
+                "unknownRequiredFeatures": "rejected"
+            },
+            "evidence": {
+                "sourceGraph": true,
+                "routes": true,
+                "providers": !data_providers.is_empty(),
+                "bindings": app.routes.iter().any(|route| !route.handler.bindings.is_empty()),
+                "effects": app.routes.iter().any(|route| !route.handler.effects.is_empty()),
+                "capabilities": !app.capabilities.is_empty()
+            }
+        },
         "features": {
             "asyncHandlers": has_async_handlers,
-            "dataProviders": !app.capabilities.is_empty(),
+            "dataProviders": !data_providers.is_empty(),
             "capabilities": !app.capabilities.is_empty(),
+            "strongPlanMetadata": true,
             "sourceMaps": true
         }
     });
@@ -5752,9 +5902,11 @@ mod tests {
             uses_data_runtime: true,
             source_files: Vec::new(),
             routes: Vec::new(),
+            modules: Vec::new(),
             helper_sources: Vec::new(),
             capabilities: vec![super::DatabaseCapability {
                 token: "data.main".to_string(),
+                capability_kind: "database".to_string(),
                 provider: "sqlite".to_string(),
                 config_name: Some("main".to_string()),
                 access: "readwrite".to_string(),
@@ -5998,6 +6150,8 @@ app.get("/health", () => Results.text("ok"));
 export default app;
 "#;
         let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert_eq!(app.modules.len(), 1);
+        assert_eq!(app.modules[0].name, "usersModule");
         let routes = app
             .routes
             .iter()
@@ -6028,6 +6182,46 @@ export default app;
         .expect("plan should emit");
         assert!(plan.contains("\"module\": \"usersModule\""));
         assert!(plan.contains("\"path\": \"users.js\""));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn emits_used_function_modules_without_routes() {
+        let root = fixture_temp_dir("empty-function-module");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("empty.js"),
+            r#"export function emptyModule(app) {
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { emptyModule } from "./modules/empty.js";
+
+const app = Sloppy.create();
+app.useModule(emptyModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.modules.len(), 1);
+        assert_eq!(app.modules[0].name, "emptyModule");
+        assert!(app.modules[0].source_name.ends_with("empty.js"));
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        assert!(plan.contains("\"name\": \"emptyModule\""));
+        assert!(plan.contains("empty.js"));
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }
@@ -6389,7 +6583,12 @@ export default app;
         .expect("plan should emit");
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert_eq!(plan["features"]["metadataInference"], true);
+        assert_eq!(plan["features"]["strongPlanMetadata"], true);
+        assert_eq!(plan["completeness"]["status"], "complete");
+        assert_eq!(plan["routes"][0]["completeness"]["status"], "complete");
         assert_eq!(plan["routes"][0]["response"]["helper"], "text");
+        assert_eq!(plan["sourceFiles"][0]["path"], "app.js");
+        assert_eq!(plan["strongPlan"]["profile"], "compiler-30-strong-plan");
     }
 
     #[test]
@@ -6402,6 +6601,45 @@ export default app;
         let app = extract(std::path::Path::new("app.js"), source)
             .expect("dynamic status route should extract");
         assert!(app.routes[0].handler.response.is_none());
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("partial plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(plan["completeness"]["status"], "partial");
+        assert_eq!(
+            plan["routes"][0]["completeness"]["reasons"][0]["code"],
+            "response-metadata-missing"
+        );
+    }
+
+    #[test]
+    fn body_json_without_schema_marks_route_partial() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => Results.json({ body: ctx.body.json() }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("body json without schema should extract as partial metadata");
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("partial body plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(plan["routes"][0]["completeness"]["status"], "partial");
+        assert_eq!(
+            plan["routes"][0]["completeness"]["reasons"][0]["code"],
+            "body-schema-missing"
+        );
     }
 
     #[test]
@@ -6635,6 +6873,9 @@ export default app;
         .expect("plan should emit");
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert_eq!(plan["capabilities"][0]["access"], "read");
+        assert_eq!(plan["capabilities"][0]["kind"], "database");
+        assert_eq!(plan["dataProviders"][0]["capabilityKind"], "database");
+        assert_eq!(plan["dataProviders"][0]["providerKind"], "sqlite");
         assert_eq!(
             plan["routes"][0]["effects"][0]["capabilityKind"],
             "database"
@@ -6709,6 +6950,20 @@ export default app;
         let diagnostic = extract(std::path::Path::new("app.js"), source)
             .expect_err("non-sqlite generated bridge should be rejected honestly");
         assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE");
+    }
+
+    #[test]
+    fn rejects_provider_effect_without_registered_provider() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(db.query("select id from users", [])));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("provider effects require a registered provider");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_MISSING_PROVIDER");
+        assert!(diagnostic.message.contains("database provider"));
     }
 
     #[test]
@@ -7132,7 +7387,11 @@ export default app;
                 .join(fixture_name)
                 .join("input.js");
             let source = fs::read_to_string(&fixture).expect("fixture input should exist");
-            let app = extract(&fixture, &source).expect("fixture should extract");
+            let mut app = extract(&fixture, &source).expect("fixture should extract");
+            super::ConfigurationModel::load(&fixture, &CompileOptions::new())
+                .expect("fixture configuration should load")
+                .apply_to_app(&mut app)
+                .expect("fixture configuration should apply");
 
             let emitted_js = super::emit_app_js(&app);
             let expected_js = fs::read_to_string(

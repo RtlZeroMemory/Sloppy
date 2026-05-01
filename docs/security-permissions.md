@@ -94,6 +94,13 @@ wrappers are rejected until those JS bridges exist. This remains Plan-visible in
 request-scoped provider handle generation where supported; it does not add OS sandboxing,
 new provider bridges, non-database provider adapters, or a broad manual policy system.
 
+COMPILER-30.H/I validates that inferred provider effects have matching Plan-visible
+provider/capability registrations before artifacts are emitted. Missing provider truth is
+invalid, while optional gaps such as unknown response shape or body schema are represented
+as partial completeness. Capability facts are emitted by kind rather than by SQLite-specific
+assumption, so future provider families can plug into the same Plan shape once their
+compiler and runtime adapters exist.
+
 A capability is a named authority token. Code receives a capability through services or
 explicit context, not through global APIs.
 

@@ -16,6 +16,8 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `unknown-future-field.plan.json` | success | `SLOPPY_NONE` | yes | Unknown top-level and nested fields are ignored in Plan v1. |
 | `malformed-json.plan.json` | failure | `SLOPPY_E_MALFORMED_JSON` | yes | Invalid JSON bytes produce a diagnostic instead of a crash. |
 | `invalid-version.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_VERSION` | yes | Unsupported `schemaVersion` is rejected. |
+| `unknown-required-feature.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Unknown `requiredFeatures` entries are rejected instead of ignored. |
+| `required-features-not-array.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | `requiredFeatures` must be a JSON array when present. |
 | `missing-runtime-minimum-version.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Required top-level string fields must be present. |
 | `missing-bundle.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | The required `bundle` section must be present. |
 | `missing-bundle-path.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Required bundle string fields must be present. |

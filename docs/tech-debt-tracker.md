@@ -448,3 +448,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   repository/factory objects, object-literal services, simple class services,
   non-database provider adapters, recursion diagnostics, and unknown-call completeness are
   still tracked by the remaining COMPILER-30 sequence.
+
+## COMPILER-30.H/I Follow-ups
+
+- Completeness/static validation now emits strong Plan metadata, rejects missing providers
+  for inferred effects, and adds native Plan `requiredFeatures` fail-closed compatibility.
+  Future provider adapters must keep capability/provider facts kind-based instead of
+  reintroducing SQLite-only or database-only assumptions.

@@ -351,6 +351,36 @@ static SlStatus sl_plan_parse_schema_version(SlPlanParseContext* ctx, yyjson_val
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_parse_required_features(SlPlanParseContext* ctx, yyjson_val* root)
+{
+    yyjson_val* features = yyjson_obj_get(root, "requiredFeatures");
+
+    if (features == NULL) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_arr(features)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("requiredFeatures must be a JSON array",
+                                  sizeof("requiredFeatures must be a JSON array") - 1U));
+    }
+    if (yyjson_arr_size(features) == 0U) {
+        return sl_status_ok();
+    }
+
+    return sl_plan_parse_field_diag(
+        ctx,
+        sl_plan_parse_literal("unsupported required app plan feature",
+                              sizeof("unsupported required app plan feature") - 1U),
+        sl_plan_parse_literal(
+            "this runtime accepts unknown optional fields but rejects unknown required features",
+            sizeof("this runtime accepts unknown optional fields but rejects unknown required "
+                   "features") -
+                1U));
+}
+
 static SlStatus sl_plan_parse_target(SlPlanParseContext* ctx, yyjson_val* root, SlPlanTarget* out)
 {
     yyjson_val* target = NULL;
@@ -1095,6 +1125,11 @@ static SlStatus sl_plan_parse_document(SlPlanParseContext* ctx, yyjson_val* root
     }
 
     status = sl_plan_parse_schema_version(ctx, root, &out->version);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_plan_parse_required_features(ctx, root);
     if (!sl_status_is_ok(status)) {
         return status;
     }
