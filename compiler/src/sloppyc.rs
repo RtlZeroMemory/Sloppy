@@ -7380,6 +7380,11 @@ export default app;
             "provider-capability",
             "metadata-extraction",
             "effects-capability",
+            "realistic-users-api",
+            "partial-body-without-schema",
+            "partial-dynamic-status",
+            "provider-metadata-multiple-databases",
+            "function-module-empty",
             "source-map",
         ] {
             let fixture = root
@@ -7452,6 +7457,9 @@ export default app;
             ("unsupported-secret-capability", "input.js"),
             ("unsupported-dynamic-import", "input.js"),
             ("missing-relative-import", "input.js"),
+            ("missing-provider-effect", "input.js"),
+            ("non-sqlite-provider-bridge", "input.js"),
+            ("unsupported-provider-method", "input.js"),
         ] {
             let fixture = root
                 .join("tests/fixtures")

@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/unsupported-provider-method/input.js:8:19: SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE: route handler result arguments must be inline JSON-safe values
+  --> <compiler>/tests/fixtures/unsupported-provider-method/input.js:8:19
+   |
+8 | app.get("/users", () => Results.json(db.prepare("select id from users")));
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+hint: Use literals, arrays, and object literals instead of closed-over bindings.

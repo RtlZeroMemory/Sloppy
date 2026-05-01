@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;gCAIkB;AAClB;AACA",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.post(\"/echo\", (ctx) => Results.json({\n  body: ctx.body.json()\n}));\n\nexport default app;\n"
+  ],
+  "version": 3
+}

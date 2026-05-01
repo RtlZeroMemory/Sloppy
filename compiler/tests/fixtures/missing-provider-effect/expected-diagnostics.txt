@@ -1,0 +1,6 @@
+<compiler>/tests/fixtures/missing-provider-effect/input.js:6:1: SLOPPYC_E_MISSING_PROVIDER: route uses unregistered database provider 'data.main'
+  --> <compiler>/tests/fixtures/missing-provider-effect/input.js:6:1
+   |
+6 | app.get("/users", () => Results.json(db.query("select id from users", [])));
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+hint: Register the provider with app.use(...), builder.capabilities metadata, or an explicit runtime-only escape hatch once that pattern is supported.

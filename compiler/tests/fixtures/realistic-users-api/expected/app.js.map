@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;;;;;;;;;;;;;gCAyBe;AAMuB;AAGQ;AAE2B;AAC7D;AAEgC;AAGjC;;;;gCAZK;AAMd;AACD;AAKD;;;;;;gCARuB;AAKQ;AAGkB;;;;;;;;gCAH9B",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results, schema } from \"sloppy\";\nimport { sqlite } from \"sloppy/providers/sqlite\";\n\nconst UserCreate = schema.object({\n  name: schema.string().min(1),\n  email: schema.string().email().optional(),\n  tags: schema.array(schema.string()).optional()\n});\n\nconst app = Sloppy.create();\napp.use(sqlite(\"main\", { database: \":memory:\" }));\nconst db = app.provider(\"sqlite:main\");\nconst api = app.group(\"/api\");\nconst users = api.group(\"/users\");\nconst host = app.config.getString(\"Sloppy:Server:Host\", \"127.0.0.1\");\n\nfunction listUsers() {\n  return db.query(\"select id, name, email from users\", []);\n}\n\nfunction createUser(body) {\n  db.exec(\"insert into users (name, email) values (?, ?)\", [body.name, body.email]);\n  return db.queryOne(\"select id, name, email from users where id = last_insert_rowid()\", []);\n}\n\nusers.get(\"/\", (ctx) => Results.json({\n  q: ctx.query.q,\n  users: listUsers()\n})).withName(\"Users.List\");\n\nusers.post(\"/\", (ctx) => Results.created(\"/api/users/1\", {\n  user: createUser(ctx.body.json(UserCreate))\n})).withName(\"Users.Create\");\n\nusers.get(\"/{id:int}\", (ctx) => Results.json({\n  id: ctx.route.id,\n  user: db.queryOne(\"select id, name, email from users where id = ?\", [ctx.route.id])\n})).withName(\"Users.Get\");\n\napp.get(\"/health\", () => Results.text(\"ok\"));\n\nexport default app;\n"
+  ],
+  "version": 3
+}

@@ -1,0 +1,14 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;gCAKmB",
+  "names": [],
+  "sources": [
+    "input.js",
+    "empty.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\nimport { emptyModule } from \"./modules/empty.js\";\n\nconst app = Sloppy.create();\napp.useModule(emptyModule);\napp.get(\"/health\", () => Results.text(\"ok\"));\n\nexport default app;\n",
+    "export function emptyModule(app) {\n}\n"
+  ],
+  "version": 3
+}

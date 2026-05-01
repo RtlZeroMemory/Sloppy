@@ -470,9 +470,9 @@ Golden tests cover:
 - the COMPILER-30.A library API and CLI fixture harness for current hello artifacts,
   invalid-input diagnostics, source-map golden output, and staged generated-artifact
   hygiene.
-
-Future golden tests should add module ordering and broader provider/schema plan
-contribution only when those features exist.
+- COMPILER-30.J fixture coverage for realistic supported apps, partial completeness,
+  provider-kind database metadata, zero-route function-module source graph entries, and
+  invalid provider/effect shapes.
 
 Golden files are public contract tests. Updating them requires review.
 
