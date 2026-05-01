@@ -54,7 +54,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   COMPILER-30.A establishes module boundaries, the compiler library API, and fixture/
   golden harness. COMPILER-30.B/C moves the first parser/resolver/symbol/DSL/static-eval
   contracts into named modules while keeping artifact extraction compatibility in
-  `sloppyc.rs`; route/module/provider/config/schema/result/effect/capability/validation/
+  `sloppyc.rs`; COMPILER-30.D covers Minimal API route methods, nested literal route
+  groups, function-module route contributions, duplicate route validation, and module
+  source locations. Provider/config/schema/result/effect/capability/validation/
   Plan logic still needs later task slices. Cache reuse, broader async source shapes,
   dispatch/runtime behavior, and provider/capability enforcement must not be hidden inside
   compiler planning.
@@ -432,6 +434,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   code-frame diagnostics remain part of the source-map diagnostics completion track.
 - Full V8 native ESM loading, dynamic import, package/module distribution, and
   package-manager behavior remain intentionally deferred.
-- Function modules support the framework MVP shape only; controllers, decorators,
+- Function modules support the framework MVP route shape only: direct app-parameter routes
+  and nested literal route groups from source-local imports. Controllers, decorators,
   framework configuration, request binding, validation, Results completion, and example
   hardening remain tracked by the framework follow-up issues.

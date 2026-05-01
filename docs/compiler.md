@@ -166,10 +166,13 @@ COMPILER-30 target phases are broader and explicit:
 The compiler extracts:
 
 - one app object from `Sloppy.create()` or `Sloppy.createBuilder()` plus `builder.build()`;
-- literal `app.mapGet`, `app.mapPost`, `app.mapPut`, `app.mapPatch`, and
-  `app.mapDelete` routes;
-- simple `const group = app.mapGroup(prefix)` followed by grouped route calls for the same
-  supported method set;
+- literal Minimal API `app.get`, `app.post`, `app.put`, `app.patch`, and `app.delete`
+  routes, with `mapGet/mapPost/mapPut/mapPatch/mapDelete` retained for compatibility;
+- simple `const group = app.group(prefix)` / `app.mapGroup(prefix)` declarations followed
+  by grouped route calls for the same supported method set;
+- nested literal route groups derived from the app or another known group;
+- function modules passed to `app.useModule(...)` from named relative exports, including
+  direct module-app routes and routes on nested groups created inside the module;
 - optional `.withName("Route.Name")` route names;
 - sync handlers and direct async handlers whose body is an inline function/arrow
   expression returning `Results.text(...)`, `Results.json(...)`, `Results.ok(...)`, or
@@ -188,12 +191,13 @@ Unsupported input fails with diagnostics. The compiler accepts only
 `import { Sloppy, Results } from "sloppy";` plus optional unaliased `data` as public import
 syntax and rejects arbitrary bare imports such as `"express"`, `"fs"`, and `"node:fs"` with
 `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`. The compiler does not implement Node package
-resolution, npm resolution, import maps, dynamic imports, relative source module graphs, or
-package-manager behavior. It also rejects dynamic route strings, computed method names,
+resolution, npm resolution, import maps, dynamic imports, arbitrary module graphs, or
+package-manager behavior. It resolves only source-local relative function modules in the
+documented subset. It also rejects dynamic route strings, computed method names,
 multiple app objects, missing default export, unsupported handler shapes, handlers with
 more than one parameter, destructured/default/rest handler parameters, handlers that close
-over source-file bindings, TypeScript input or TypeScript-only handler syntax, broad module
-graphs, top-level control flow, HEAD/OPTIONS route declarations, async handler bodies that
+over source-file bindings, TypeScript-only handler syntax, broad module
+graphs beyond the function-module subset, top-level control flow, HEAD/OPTIONS route declarations, async handler bodies that
 do more than directly return a supported `Results.*` descriptor, unsupported provider
 metadata, duplicate capability tokens, and secret-bearing provider/capability fields.
 
@@ -612,6 +616,8 @@ Node resolution, `node_modules`, `package.json`, or package-manager behavior.
 
 Function modules are supported as named relative exports passed to `app.useModule(...)`.
 Inside a function module, the compiler recognizes `app.provider("sqlite:<name>")`,
-`app.group(...)`, and literal `group.get/post/put/patch/delete(...)` registrations.
-Contributed routes, provider metadata, capability metadata, module attribution, and module
-source files remain Plan/source-map visible.
+`app.group(...)`, direct `app.get/post/put/patch/delete(...)`, and literal
+`group.get/post/put/patch/delete(...)` registrations on groups derived from the app
+parameter. Nested literal module groups compose before route validation. Contributed
+routes, provider metadata, capability metadata, module attribution, and module source
+files remain Plan/source-map visible.

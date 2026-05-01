@@ -76,8 +76,8 @@ broad module graph bundling, watch mode, or hot reload is implemented.
 | Builder form `Sloppy.createBuilder()` plus `builder.build()` | Supported | Extracts the built app when `build()` is called on a known builder variable. | None. | `builder-mapget` golden fixture. | Alpha compiler. |
 | Multiple apps | Rejected with diagnostic | Rejected even if only one app is exported. | `SLOPPYC_E_MULTIPLE_APPS`. | `multiple-apps` diagnostic fixture. | Deferred until native app graph policy exists. |
 | Missing default export | Rejected with diagnostic | Rejected because runtime needs one app artifact contract. | `SLOPPYC_E_MISSING_APP`. | `missing-app` diagnostic fixture. | Alpha compiler requires default export. |
-| `app.mapGet("/literal", handler)` | Supported | Emits one GET route and one stable handler ID in source order. | None. | `hello-mapget` golden fixture. | Alpha compiler. |
-| `app.mapPost`, `app.mapPut`, `app.mapPatch`, and `app.mapDelete` | Supported metadata extraction | Emits method metadata and handler IDs in source order. Current dev runtime still serves GET only. | None for supported methods. | `http-methods` golden fixture and Plan `valid-route-methods`. | ENGINE-02 compiler metadata; ENGINE-04 runtime dispatch later. |
+| `app.get("/literal", handler)` and `app.mapGet("/literal", handler)` | Supported | Emits one GET route and one stable handler ID in source order. | None. | `hello-mapget` golden fixture plus COMPILER-30.D Minimal API unit coverage. | Alpha compiler. |
+| `app.post/put/patch/delete` and `app.mapPost/mapPut/mapPatch/mapDelete` | Supported metadata extraction | Emits method metadata and handler IDs in source order. Current dev runtime still serves GET only. | None for supported methods. | `http-methods` golden fixture, Plan `valid-route-methods`, and COMPILER-30.D Minimal API unit coverage. | ENGINE-02 compiler metadata; runtime dispatch beyond GET remains separate. |
 | `app.mapGet("/literal", () => Results.text(...))` | Supported | Emits generated handler source and route metadata. | None. | `hello-mapget` golden fixture. | Alpha compiler. |
 | `Results.text(...)` | Supported | Accepted with inline JSON-safe arguments. | Unsupported values produce handler diagnostics. | `hello-mapget` and `function-handler` golden fixtures. | Alpha compiler. |
 | `Results.json(...)` | Supported | Accepted with inline JSON-safe object/array/literal values and simple context reads. | Unsupported values produce handler diagnostics. | `results-json` and `grouped-route` golden fixtures. | Alpha compiler. |
@@ -95,8 +95,9 @@ broad module graph bundling, watch mode, or hot reload is implemented.
 | Loops registering routes | Rejected with diagnostic | Rejected; no best-effort unrolling. | `SLOPPYC_E_UNSUPPORTED_LOOP_ROUTE_REGISTRATION`. | `loop-route-registration` diagnostic fixture. | Deferred until a deliberate static expansion story exists. |
 | Conditionals registering routes | Rejected with diagnostic | Rejected; static plan must not depend on runtime branch state. | `SLOPPYC_E_UNSUPPORTED_CONDITIONAL_ROUTE_REGISTRATION`. | `conditional-route-registration` diagnostic fixture. | Deferred/dynamic mode only. |
 | HEAD/OPTIONS route declarations such as `mapHead` | Rejected with diagnostic | Rejected because ENGINE-01 reserves OPTIONS for framework-owned behavior and defers HEAD policy. | `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`. | `unsupported-http-method` diagnostic fixture. | Future explicit HTTP policy only. |
-| `app.mapGroup("/prefix")` plus grouped literal route calls | Supported narrow subset | Emits joined route path and optional route name for supported route methods. | None. | `grouped-route` golden fixture. | Alpha compiler. |
-| Nested groups, middleware, filters | Deferred | Not extracted. | Unsupported top-level/route-shape diagnostics. | Matrix-documented; add fixtures when first scoped. | Future app-host hardening. |
+| `app.group("/prefix")` / `app.mapGroup("/prefix")` plus grouped literal route calls | Supported narrow subset | Emits joined route path and optional route name for supported route methods. Nested group variables compose literal prefixes deterministically. | None. | `grouped-route` golden fixture plus COMPILER-30.D nested group unit coverage. | COMPILER-30.D route graph extraction. |
+| Function modules passed to `app.useModule(...)` | Supported narrow subset | A named relative export may receive the app, register literal routes directly on the app parameter or on nested groups created from it, and contribute module-attributed routes. | Missing imports/exports or unsupported module shapes produce module diagnostics. | `function-module`, `function-module-same-file`, and COMPILER-30.D module route unit coverage. | COMPILER-30.D route/module extraction only; provider/config/schema/effects expand later. |
+| Middleware and filters | Deferred | Not extracted. | Unsupported top-level/route-shape diagnostics. | Matrix-documented; add fixtures when first scoped. | Future app-host hardening. |
 | `builder.capabilities.addDatabase("token", { provider: "sqlite", access })` | Supported metadata extraction | Emits one Plan `dataProviders` entry and one database `capabilities` entry. No native provider is opened. | Unsupported token/provider/access/shape diagnostics as applicable. | `provider-capability` golden fixture. | ENGINE-02 metadata; ENGINE-05/06 runtime enforcement. |
 | Secret-bearing provider/capability fields | Rejected with diagnostic | Rejected before artifact emission. | `SLOPPYC_E_SECRET_PLAN_METADATA`. | `unsupported-secret-capability` diagnostic fixture. | Permanent policy. |
 | Services/modules/broad provider extraction | Deferred | Bootstrap-only APIs beyond the minimal database capability metadata are not compiler plan input yet. | Unsupported top-level/route-shape diagnostics if used in compiler input. | Matrix-documented; no success fixtures until implemented. | Later framework/module tasks. |
@@ -172,6 +173,13 @@ evaluation. The existing artifact extractor now routes source-type checks, relat
 resolution, route-method matching, member-chain matching, and string-argument recognition
 through those focused modules while preserving current artifact compatibility.
 
+COMPILER-30.D completes the current route/group/function-module extraction slice: Minimal
+API `get/post/put/patch/delete` methods, nested literal route groups, direct and grouped
+function-module route contributions, duplicate method/path validation, and module route
+source locations are compiler-owned. This does not add middleware/filter/controller
+execution, arbitrary TypeScript inference, package resolution, or runtime HTTP dispatch
+beyond the existing artifact path.
+
 ## ENGINE-14 Module Syntax
 
 Supported source imports are intentionally small:
@@ -195,5 +203,6 @@ COMPILER-30.B/C makes the accepted import set explicit:
 
 Function modules may export one named function that receives the app, obtains providers
 through `app.provider("sqlite:<name>")`, creates route groups with `app.group(...)`, and
-registers literal routes on that group. Controllers, decorators, package modules, TS path
-aliases, and full TypeScript typechecking remain deferred.
+registers literal routes either on the app parameter or on groups derived from it. Nested
+literal module groups compose deterministically. Controllers, decorators, package modules,
+TS path aliases, and full TypeScript typechecking remain deferred.

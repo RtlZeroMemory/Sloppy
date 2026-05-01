@@ -325,9 +325,14 @@ resolution. `parser.rs` owns entry/module source-type diagnostics, `resolver.rs`
 source-local relative and Slop-owned import classification, `module_graph.rs` owns
 deterministic source graph bookkeeping, `symbols.rs` owns Slop binding primitives,
 `slop_dsl.rs` owns explicit Slop DSL recognizers, and `static_eval.rs` owns supported
-literal/alias string evaluation. Route graph extraction, metadata extraction, effects,
-capability inference, schema/result inference, and Plan completeness remain future
-COMPILER-30 tasks.
+literal/alias string evaluation.
+
+COMPILER-30.D moves route/group/function-module extraction from compatibility-only status
+to the supported inference path: Minimal API route methods, nested literal group prefixes,
+function modules imported from source-local files, direct module-app routes, module-group
+routes, duplicate method/path validation, and Plan/source-map-visible route locations are
+covered. Provider/config/schema/result metadata, effects, capability inference, and Plan
+completeness remain future COMPILER-30 tasks.
 
 The fixture harness keeps current behavior stable while preparing for inference:
 

@@ -106,6 +106,7 @@ struct Route {
     pattern: String,
     name: Option<String>,
     span: Span,
+    source_path: PathBuf,
     source_name: String,
     source: String,
     module: Option<String>,
@@ -415,36 +416,56 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
     })?;
 
     let mut extracted = extract(input, &source).map_err(|diagnostic| {
+        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
         Box::new(CompileError {
             code: 1,
             diagnostic,
-            source: Some(source.clone()),
+            source: diagnostic_source,
         })
     })?;
     let configuration = ConfigurationModel::load(input, options).map_err(|diagnostic| {
+        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
         Box::new(CompileError {
             code: 1,
             diagnostic,
-            source: Some(source.clone()),
+            source: diagnostic_source,
         })
     })?;
     configuration
         .apply_to_app(&mut extracted)
         .map_err(|diagnostic| {
+            let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
             Box::new(CompileError {
                 code: 1,
                 diagnostic,
-                source: Some(source.clone()),
+                source: diagnostic_source,
             })
         })?;
     write_artifacts(out_dir, &extracted).map_err(|diagnostic| {
+        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
         Box::new(CompileError {
             code: 1,
             diagnostic,
-            source: Some(source),
+            source: diagnostic_source,
         })
     })?;
     Ok(())
+}
+
+fn diagnostic_render_source(
+    input: &Path,
+    entry_source: &str,
+    diagnostic: &Diagnostic,
+) -> Option<String> {
+    let Some(path) = diagnostic.path.as_deref() else {
+        return Some(entry_source.to_string());
+    };
+    if path == input {
+        return Some(entry_source.to_string());
+    }
+    fs::read_to_string(path)
+        .ok()
+        .or_else(|| Some(entry_source.to_string()))
 }
 
 fn read_compile_output(out_dir: &Path) -> Result<CompileOutput, Box<CompileError>> {
@@ -1052,8 +1073,8 @@ fn extract_entry(
                 "SLOPPYC_E_DUPLICATE_ROUTE",
                 "duplicate route method and pattern are not supported",
             )
-            .with_path(path)
-            .with_span(route.handler.span));
+            .with_path(&route.source_path)
+            .with_span(route.span));
         }
         if let Some(name) = &route.name {
             if !route_names.insert(name.clone()) {
@@ -1061,8 +1082,8 @@ fn extract_entry(
                     "SLOPPYC_E_DUPLICATE_ROUTE_NAME",
                     "duplicate route name",
                 )
-                .with_path(path)
-                .with_span(route.handler.span));
+                .with_path(&route.source_path)
+                .with_span(route.span));
             }
         }
     }
@@ -1107,7 +1128,7 @@ fn extract_import(
             .with_span(import.source.span)
             .with_hint("Use a relative .js/.mjs/.ts module inside the source root.")
         })?;
-        if !resolved.starts_with(&graph.entry_dir) {
+        if !resolver::stays_within_source_root(&resolved, &graph.entry_dir) {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_RELATIVE_IMPORT",
                 "relative imports must stay within the source root",
@@ -1223,18 +1244,20 @@ fn extract_variable_declaration(
                 .with_path(path)
                 .with_span(init.span()));
             }
-        } else if let Some((app_name, prefix)) = app_group_call(init) {
-            if !state.app_vars.contains(app_name) {
+        } else if let Some((receiver, prefix)) = app_group_call(init) {
+            let full_prefix = if state.app_vars.contains(receiver) {
+                prefix.to_string()
+            } else if let Some(parent_prefix) = state.group_vars.get(receiver) {
+                join_route_patterns(parent_prefix, prefix)
+            } else {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_ROUTE_GROUP",
-                    "route groups must be created from the extracted app object",
+                    "route groups must be created from the extracted app object or another extracted route group",
                 )
                 .with_path(path)
                 .with_span(init.span()));
-            }
-            state
-                .group_vars
-                .insert(name.to_string(), prefix.to_string());
+            };
+            state.group_vars.insert(name.to_string(), full_prefix);
         } else if let Some(provider) = sqlite_provider_call(init) {
             state
                 .provider_bindings
@@ -1323,6 +1346,7 @@ fn extract_expression_statement(
         pattern: full_pattern,
         name,
         span: statement.span,
+        source_path: path.to_path_buf(),
         source_name: source_name.to_string(),
         source: source.to_string(),
         module: None,
@@ -1357,7 +1381,7 @@ fn unsupported_route_call_diagnostic(
 
     let (receiver, property) = static_member_name(&call.callee)?;
     if route_method_from_property(property).is_none() {
-        if property.starts_with("map")
+        if unsupported_route_method_property(property)
             && (state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver))
         {
             return Some(
@@ -1407,6 +1431,10 @@ fn unsupported_route_call_diagnostic(
     }
 
     None
+}
+
+fn unsupported_route_method_property(property: &str) -> bool {
+    property.starts_with("map") || matches!(property, "head" | "options")
 }
 
 fn validate_supported_initializer(
@@ -2058,9 +2086,19 @@ fn extract_module_function_routes(
                     if let Some(token) = app_provider_call(init, app_name) {
                         providers.insert(name.to_string(), token);
                     } else if let Some((receiver, prefix)) = app_group_call(init) {
-                        if receiver == app_name {
-                            groups.insert(name.to_string(), prefix.to_string());
-                        }
+                        let full_prefix = if receiver == app_name {
+                            prefix.to_string()
+                        } else if let Some(parent_prefix) = groups.get(receiver) {
+                            join_route_patterns(parent_prefix, prefix)
+                        } else {
+                            return Err(Diagnostic::new(
+                                "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
+                                "function module route groups must be created from the module app parameter or another module route group",
+                            )
+                            .with_path(path)
+                            .with_span(init.span()));
+                        };
+                        groups.insert(name.to_string(), full_prefix);
                     }
                 }
             }
@@ -2082,14 +2120,28 @@ fn extract_module_function_routes(
                     .with_path(path)
                     .with_span(statement.span));
                 };
-                let Some(prefix) = groups.get(receiver) else {
+                let full_pattern = if receiver == app_name {
+                    pattern.to_string()
+                } else if let Some(prefix) = groups.get(receiver) {
+                    join_route_patterns(prefix, pattern)
+                } else {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
-                        "module route must be registered on a group created from the app parameter",
+                        "module route must be registered on the module app parameter or a group created from it",
                     )
                     .with_path(path)
                     .with_span(statement.span));
                 };
+                if !route_pattern_supported(&full_pattern) {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN",
+                        "route pattern is outside the Plan v1 alpha route syntax",
+                    )
+                    .with_path(path)
+                    .with_span(statement.span)
+                    .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
+                }
+
                 handler.source = wrap_module_handler_with_providers(
                     &handler.source,
                     &providers,
@@ -2097,9 +2149,10 @@ fn extract_module_function_routes(
                 );
                 routes.push(Route {
                     method,
-                    pattern: join_route_patterns(prefix, pattern),
+                    pattern: full_pattern,
                     name,
                     span: statement.span,
+                    source_path: path.to_path_buf(),
                     source_name: source_name.to_string(),
                     source: source.to_string(),
                     module: Some(module_name.to_string()),
@@ -3497,12 +3550,34 @@ impl AstSpan for Expression<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::OsString, fs};
+    use std::{
+        ffi::OsString,
+        fs,
+        path::{Path, PathBuf},
+    };
 
     use super::{
         canonical_config_key, command_from_args, extract, route_pattern_supported, CliCommand,
         CompileOptions,
     };
+
+    fn fixture_temp_dir(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("sloppyc-{name}-{}", std::process::id()));
+        if root.exists() {
+            fs::remove_dir_all(&root).expect("stale test directory should be removable");
+        }
+        fs::create_dir_all(&root).expect("test directory should be created");
+        root
+    }
+
+    fn extract_temp_input(
+        root: &Path,
+        source: &str,
+    ) -> Result<super::ExtractedApp, super::Diagnostic> {
+        let input = root.join("input.js");
+        fs::write(&input, source).expect("fixture input should be writable");
+        extract(&input, source)
+    }
 
     #[test]
     fn no_argument_prints_help() {
@@ -3774,6 +3849,311 @@ export default app;
         let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
         assert_eq!(app.routes.len(), 1);
         assert_eq!(app.routes[0].pattern, "/");
+    }
+
+    #[test]
+    fn extracts_minimal_api_methods() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/get", () => Results.text("get"));
+app.post("/post", () => Results.text("post"));
+app.put("/put", () => Results.text("put"));
+app.patch("/patch", () => Results.text("patch"));
+app.delete("/delete", () => Results.text("delete"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+        let routes = app
+            .routes
+            .iter()
+            .map(|route| (route.method, route.pattern.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            routes,
+            [
+                ("GET", "/get"),
+                ("POST", "/post"),
+                ("PUT", "/put"),
+                ("PATCH", "/patch"),
+                ("DELETE", "/delete"),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_direct_http_methods_explicitly() {
+        for method in ["head", "options"] {
+            let source = format!(
+                r#"import {{ Sloppy, Results }} from "sloppy";
+const app = Sloppy.create();
+app.{method}("/", () => Results.text("unsupported"));
+export default app;
+"#
+            );
+            let diagnostic = extract(std::path::Path::new("app.js"), &source)
+                .expect_err("unsupported direct HTTP method should fail");
+            assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HTTP_METHOD");
+        }
+    }
+
+    #[test]
+    fn extracts_nested_route_groups() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const api = app.group("/api");
+const users = api.group("/users");
+users.get("/{id:int}", () => Results.json({ ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.routes[0].method, "GET");
+        assert_eq!(app.routes[0].pattern, "/api/users/{id:int}");
+    }
+
+    #[test]
+    fn extracts_direct_and_nested_function_module_routes() {
+        let root = fixture_temp_dir("function-module-routes");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("users.js"),
+            r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/module-health", () => Results.text("ok"));
+    const api = app.group("/api");
+    const users = api.group("/users");
+    users.post("/", () => Results.json({ ok: true }));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        let routes = app
+            .routes
+            .iter()
+            .map(|route| {
+                (
+                    route.method,
+                    route.pattern.as_str(),
+                    route.module.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            routes,
+            [
+                ("GET", "/health", None),
+                ("GET", "/module-health", Some("usersModule")),
+                ("POST", "/api/users", Some("usersModule")),
+            ]
+        );
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        assert!(plan.contains("\"module\": \"usersModule\""));
+        assert!(plan.contains("\"path\": \"users.js\""));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn rejects_invalid_composed_function_module_route_pattern() {
+        let root = fixture_temp_dir("invalid-module-route-pattern");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("users.js"),
+            r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    const api = app.group("/api");
+    api.get("/users/", () => Results.text("bad"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+        let diagnostic =
+            extract_temp_input(&root, source).expect_err("invalid module route should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN");
+        assert!(diagnostic
+            .path
+            .as_deref()
+            .is_some_and(|path| path.ends_with("modules/users.js")));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn rejects_duplicate_method_and_path_routes() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/dupe", () => Results.text("one"));
+app.get("/dupe", () => Results.text("two"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("duplicate routes should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE");
+    }
+
+    #[test]
+    fn duplicate_module_routes_report_module_source() {
+        let root = fixture_temp_dir("duplicate-module-routes");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        let module_path = modules.join("users.js");
+        fs::write(
+            &module_path,
+            r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/dupe", () => Results.text("module"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let input = root.join("input.js");
+        fs::write(
+            &input,
+            r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/dupe", () => Results.text("entry"));
+export default app;
+"#,
+        )
+        .expect("input fixture should be writable");
+        let out_dir = root.join("out");
+
+        let failure = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("duplicate route should fail");
+        assert_eq!(failure.diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE");
+        let canonical_module_path =
+            fs::canonicalize(&module_path).expect("module path should canonicalize");
+        assert_eq!(
+            failure.diagnostic.path.as_deref(),
+            Some(canonical_module_path.as_path())
+        );
+        let rendered = failure.diagnostic.render(failure.source.as_deref());
+        assert!(rendered.contains("users.js:4:5"), "{rendered}");
+        assert!(
+            rendered.contains(r#"4 |     app.get("/dupe", () => Results.text("module"));"#),
+            "{rendered}"
+        );
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn duplicate_module_route_names_report_module_source() {
+        let root = fixture_temp_dir("duplicate-module-route-names");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        let module_path = modules.join("users.js");
+        fs::write(
+            &module_path,
+            r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    app.get("/module", () => Results.text("module")).withName("Users.Get");
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let input = root.join("input.js");
+        fs::write(
+            &input,
+            r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/entry", () => Results.text("entry")).withName("Users.Get");
+export default app;
+"#,
+        )
+        .expect("input fixture should be writable");
+        let out_dir = root.join("out");
+
+        let failure = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("duplicate route name should fail");
+        assert_eq!(failure.diagnostic.code, "SLOPPYC_E_DUPLICATE_ROUTE_NAME");
+        let canonical_module_path =
+            fs::canonicalize(&module_path).expect("module path should canonicalize");
+        assert_eq!(
+            failure.diagnostic.path.as_deref(),
+            Some(canonical_module_path.as_path())
+        );
+        let rendered = failure.diagnostic.render(failure.source.as_deref());
+        assert!(rendered.contains("users.js:4:5"), "{rendered}");
+        assert!(
+            rendered.contains(
+                r#"4 |     app.get("/module", () => Results.text("module")).withName("Users.Get");"#
+            ),
+            "{rendered}"
+        );
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn rejects_missing_module_function_binding() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("missing module function should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE");
+    }
+
+    #[test]
+    fn rejects_wrong_module_export_shape() {
+        let root = fixture_temp_dir("wrong-module-shape");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("users.js"),
+            r#"export const usersModule = () => {};
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic =
+            extract_temp_input(&root, source).expect_err("wrong module shape should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE");
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
     }
 
     #[test]
