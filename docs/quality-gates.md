@@ -26,6 +26,11 @@ rejection. HTTP-25.D/E extends that lane with bounded chunked request decoding a
 internal/native chunked response writer correctness. It does not prove V8 transport
 execution, public streaming helpers, SSE/WebSockets/file streaming, production graceful
 drain, benchmark/performance behavior, TLS, HTTP/2/3, or WebSockets.
+HTTP-25.F adds named default non-V8 conformance aliases for keep-alive, idle timeout, max
+requests, lifecycle reset, chunked requests, streaming responses, backpressure, and
+shutdown/cancel behavior, plus `smoke.transport.keep_alive_streaming_bounded` for repeated
+bounded transport operations. This is stress/smoke evidence only; it does not register
+benchmark evidence or production-edge HTTP evidence.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
@@ -67,10 +72,15 @@ package outside-checkout, live-provider optional, stress/smoke, and benchmark ha
 evidence. Skipped optional gates are not pass claims.
 ENGINE-19.BC adds first-class CTest registrations for the implemented V8, HTTP, and async
 evidence lanes: `conformance.http.default_dispatch`, `conformance.transport.localhost_mvp`,
+HTTP-25.F's `conformance.transport.keep_alive*`,
+`conformance.transport.lifecycle_reset`, `conformance.transport.chunked_request`,
+`conformance.transport.streaming_response`, `conformance.transport.backpressure`,
+`conformance.transport.shutdown_cancel`, `smoke.transport.keep_alive_streaming_bounded`,
 `conformance.async.*`, and V8-gated `conformance.v8.*`. These entries run existing
 validated executables under matrix-aligned names. Default gate success now includes the
 HTTP-25.A/B/C sequential keep-alive smoke plus HTTP-25.D/E bounded chunked request decoding
-and internal/native chunked response writer checks only; it still does not prove V8
+and internal/native chunked response writer checks plus HTTP-25.F bounded stress smoke; it
+still does not prove V8
 execution, package, live-provider, benchmark, public streaming helpers, SSE/WebSockets/file
 streaming, or production-edge HTTP behavior.
 ENGINE-19.D adds first-class CTest registrations for the implemented SQLite and capability

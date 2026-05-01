@@ -108,7 +108,8 @@ Kept open intentionally:
 Created for the owner-approved post-Core next wave:
 
 - #432/#435-#440 FRAMEWORK-01 framework/app-layer source-of-truth and ergonomics;
-- #433/#441-#446 HTTP-25 HTTP/1.1 keep-alive and streaming;
+- #433/#441-#446 HTTP-25 HTTP/1.1 keep-alive, chunked request decoding, internal
+  streaming response writing, and bounded stress/conformance evidence;
 - #434/#447/#448 HARDEN-01 post-Core foundation hardening, with #431 and #26 reused for
   SQLite preflight and platform scanner proof.
 
@@ -123,7 +124,7 @@ short:
 3. Strong Plan typed graph through reused #318/#355-#359.
 4. Framework config, binding, validation, Results, and examples through #432/#435-#440.
 5. Plan-driven doctor/OpenAPI after Plan metadata is real.
-6. HTTP stress/conformance through #446 after the HTTP-25.A/B/C/D/E keep-alive, chunked,
+6. HTTP-25.F/#446 bounded stress/conformance evidence for the HTTP-25 keep-alive, chunked,
    and internal streaming writer slices.
 7. Provider expansion later after SQLite/provider-executor integration is proven.
 

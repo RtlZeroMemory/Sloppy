@@ -39,7 +39,8 @@ This document does not implement:
 
 HTTP-25.A/B/C update: the libuv localhost transport now supports bounded sequential
 HTTP/1.1 keep-alive. HTTP-25.D/E adds bounded chunked request decoding and an internal
-chunked response writer. Eligible successful HTTP/1.1 responses write managed
+chunked response writer. HTTP-25.F adds bounded conformance/stress evidence over those
+implemented transport behaviors without adding new protocol features. Eligible successful HTTP/1.1 responses write managed
 `Connection: keep-alive`, reset request-owned state after the response write callback, and
 return the same connection to idle/read-wait for one next request. `Connection: close`,
 HTTP/1.0, disabled keep-alive config, shutdown, unsafe error responses, and max-request

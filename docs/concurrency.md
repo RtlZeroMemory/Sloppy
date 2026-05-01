@@ -31,9 +31,12 @@ keep-alive connections are bounded by an idle timer, per-connection request coun
 bounded, and shutdown closes idle keep-alive connections before they can accept new work.
 HTTP-25.D/E keeps that model: chunked request bodies are decoded into bounded full-body
 storage before dispatch, and internal/native chunked streaming responses advance one
-transport write at a time under a pending-byte cap. There is still no pipelining,
-concurrent request execution on one connection, request streaming API, public JS streaming
-response helper, SSE/WebSockets, file streaming, or production graceful-drain claim.
+transport write at a time under a pending-byte cap. HTTP-25.F adds bounded repeated
+operation evidence for keep-alive, chunked requests, streaming responses, backpressure, and
+shutdown/cancel cleanup, but it is still stress/smoke evidence rather than a performance or
+production-drain claim. There is still no pipelining, concurrent request execution on one
+connection, request streaming API, public JS streaming response helper, SSE/WebSockets,
+file streaming, or production graceful-drain claim.
 
 TASK 09.A implements the first `SlLoop` skeleton as a caller-backed, fixed-capacity native
 completion queue. It is deterministic and single-threaded: callbacks run synchronously on
