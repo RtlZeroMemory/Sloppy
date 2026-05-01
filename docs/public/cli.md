@@ -24,6 +24,8 @@ tool-owned output directory, validates `app.plan.json`, `app.js`, and `app.js.ma
 enters the same runtime path as `sloppy run --artifacts <dir>`. Runtime execution is still
 dev-only and requires a V8-enabled build. Default non-V8 builds may prove the compiler
 handoff and artifact validation, but they must not be reported as V8 execution success.
+The compiler handoff passes argv through the platform process runner; source paths and
+`sloppy.json` values are not interpolated through a shell command string.
 
 `sloppy run` with no source reads `sloppy.json` from the current directory. The supported
 project-run config shape is:

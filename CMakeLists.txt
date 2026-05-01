@@ -315,6 +315,7 @@ set(
     src/engine/engine.c
     src/platform/libuv/async_backend_libuv.c
     src/platform/libuv/http_transport_libuv.c
+    src/platform/libuv/process.c
     src/platform/libuv/thread.c)
 
 if(WIN32)
@@ -1079,6 +1080,22 @@ if(SLOPPY_ENABLE_TESTS)
                     "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy" -P
                     "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
             set_tests_properties(sloppy.run.project_config_emits_artifacts_non_v8
+                                 PROPERTIES LABELS "source-input")
+
+            add_test(
+                NAME sloppy.run.project_config_shell_metacharacters_non_v8
+                COMMAND
+                    "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                    "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                    "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}"
+                    "-DSLOPPY_CASE=config-metacharacters-non-v8"
+                    "-DSLOPPY_CONFIG_ENTRY={\"entry\":\"app.js\",\"outDir\":\".sloppy/$(not-a-command)\",\"environment\":\"Development\"}"
+                    "-DSLOPPY_CONFIG_SOURCE=examples/compiler-hello/app.js"
+                    "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/"
+                    "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build"
+                    "-DSLOPPY_EXPECTED_ARTIFACT_DIR=.sloppy/$(not-a-command)" -P
+                    "${PROJECT_SOURCE_DIR}/tests/cmake/check_source_input_run.cmake")
+            set_tests_properties(sloppy.run.project_config_shell_metacharacters_non_v8
                                  PROPERTIES LABELS "source-input")
         endif()
 

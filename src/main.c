@@ -22,6 +22,7 @@
 #include "sloppy/http_transport.h"
 #include "sloppy/plan.h"
 #include "sloppy/platform.h"
+#include "sloppy/platform_process.h"
 #include "sloppy/route.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -54,7 +55,6 @@
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
 #define SL_RUN_CONFIG_MAX_BYTES 8192U
 #define SL_RUN_PATH_MAX_BYTES 1024U
-#define SL_RUN_COMMAND_MAX_BYTES 4096U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
 #define SL_RUN_DEFAULT_SOURCE_OUT_DIR ".sloppy/cache/dev/source-input"
@@ -2327,35 +2327,6 @@ static int sl_run_parse_project_config(SlRunSourceConfig* out)
     return result;
 }
 
-static bool sl_run_append_shell_quoted(SlStringBuilder* builder, const char* text)
-{
-    size_t index = 0U;
-    SlStatus status;
-
-    if (builder == NULL || text == NULL || text[0] == '\0') {
-        return false;
-    }
-
-    status = sl_string_builder_append_char(builder, '"');
-    if (!sl_status_is_ok(status)) {
-        return false;
-    }
-
-    while (text[index] != '\0') {
-        if (text[index] == '"' || text[index] == '\r' || text[index] == '\n') {
-            return false;
-        }
-        status = sl_string_builder_append_char(builder, text[index]);
-        if (!sl_status_is_ok(status)) {
-            return false;
-        }
-        index += 1U;
-    }
-
-    status = sl_string_builder_append_char(builder, '"');
-    return sl_status_is_ok(status);
-}
-
 static const char* sl_run_getenv(const char* name)
 {
     const char* value = NULL;
@@ -2373,56 +2344,34 @@ static const char* sl_run_getenv(const char* name)
     return value;
 }
 
-static bool sl_run_append_compiler_command_prefix(SlStringBuilder* builder)
+static const char* sl_run_resolve_compiler_path(void)
 {
     const char* explicit_path = sl_run_getenv("SLOPPY_SLOPPYC");
     const char* built_path = SLOPPY_COMPILER_BUILD_PATH;
-    SlStatus status;
-
-    if (builder == NULL) {
-        return false;
-    }
 
     if (explicit_path != NULL && explicit_path[0] != '\0') {
         if (!sl_run_file_exists(explicit_path)) {
             sl_cli_write_error_with_value("sloppy run: compiler unavailable: ", explicit_path,
                                           "\n");
-            return false;
+            return NULL;
         }
-#ifdef _WIN32
-        status = sl_string_builder_append_cstr(builder, "call ");
-        if (!sl_status_is_ok(status)) {
-            return false;
-        }
-#endif
-        return sl_run_append_shell_quoted(builder, explicit_path);
+        return explicit_path;
     }
 
     if (built_path[0] != '\0' && sl_run_file_exists(built_path)) {
-#ifdef _WIN32
-        status = sl_string_builder_append_cstr(builder, "call ");
-        if (!sl_status_is_ok(status)) {
-            return false;
-        }
-#endif
-        return sl_run_append_shell_quoted(builder, built_path);
+        return built_path;
     }
 
-#ifdef _WIN32
-    status = sl_string_builder_append_cstr(builder, "call ");
-    if (!sl_status_is_ok(status)) {
-        return false;
-    }
-#endif
-    return sl_run_append_shell_quoted(builder, "sloppyc");
+    return "sloppyc";
 }
 
 static int sl_run_compile_source(const char* source_path, const char* out_dir)
 {
-    char command_buffer[SL_RUN_COMMAND_MAX_BYTES];
-    SlStringBuilder builder = {0};
-    SlStr command = {0};
-    int result = 0;
+    const char* compiler_path = NULL;
+    char* compiler_argv[6];
+    SlPlatformProcessArgs process_args = {0};
+    SlStatus status;
+    int exit_code = 1;
 
     if (source_path == NULL || out_dir == NULL || source_path[0] == '\0' || out_dir[0] == '\0') {
         sl_cli_write_cstr(stderr, "sloppy run: source-input handoff is missing source or outDir\n");
@@ -2434,22 +2383,26 @@ static int sl_run_compile_source(const char* source_path, const char* out_dir)
         return 1;
     }
 
-    if (!sl_status_is_ok(
-            sl_string_builder_init_fixed(&builder, command_buffer, sizeof(command_buffer))) ||
-        !sl_run_append_compiler_command_prefix(&builder) ||
-        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, " build ")) ||
-        !sl_run_append_shell_quoted(&builder, source_path) ||
-        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, " --out ")) ||
-        !sl_run_append_shell_quoted(&builder, out_dir) ||
-        !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &command)))
-    {
-        sl_cli_write_cstr(stderr,
-                          "sloppy run: failed to construct source-input compiler command\n");
+    compiler_path = sl_run_resolve_compiler_path();
+    if (compiler_path == NULL) {
         return 1;
     }
 
-    result = system(command.ptr);
-    if (result != 0) {
+    compiler_argv[0] = (char*)compiler_path;
+    compiler_argv[1] = "build";
+    compiler_argv[2] = (char*)source_path;
+    compiler_argv[3] = "--out";
+    compiler_argv[4] = (char*)out_dir;
+    compiler_argv[5] = NULL;
+
+    process_args.file = compiler_path;
+    process_args.argv = compiler_argv;
+    status = sl_platform_process_run(&process_args, &exit_code);
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value("sloppy run: compiler unavailable: ", compiler_path, "\n");
+        return 1;
+    }
+    if (exit_code != 0) {
         sl_cli_write_cstr(
             stderr, "sloppy run: compiler handoff failed at the source-input command boundary\n");
         return 1;

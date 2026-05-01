@@ -60,8 +60,10 @@ still an ENGINE-08 task.
 ENGINE-02.E adds the direct run handoff on top of this same compiler pipeline:
 `sloppy run <source>` invokes `sloppyc build`, writes generated artifacts, then enters the
 same runtime loader used by `sloppy run --artifacts <dir>`. The runtime does not discover
-apps from source and no second compiler exists in C. The first slice is rebuild-always and
-fail-closed; cache key requirements remain documented until reuse is implemented.
+apps from source and no second compiler exists in C. The CLI hands the compiler path and
+arguments to the platform process runner directly rather than through a shell command
+string. The first slice is rebuild-always and fail-closed; cache key requirements remain
+documented until reuse is implemented.
 
 ## Future Phase
 
