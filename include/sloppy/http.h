@@ -96,14 +96,6 @@ SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
                                     const SlHttpParseOptions* options,
                                     SlHttpRequestHead* out_request, SlDiag* out_diag);
 
-/*
- * Minimal libuv dependency smoke.
- *
- * Initializes and closes a local uv_loop_t to prove the dependency links. This does not
- * create sockets, timers, a backend bridge, or SlLoop integration.
- */
-SlStatus sl_http_libuv_smoke(void);
-
 #ifdef __cplusplus
 }
 #endif

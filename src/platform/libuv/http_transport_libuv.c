@@ -1909,6 +1909,36 @@ SlStatus sl_http_transport_server_poll(SlHttpTransportServer* server, SlDiag* ou
     return sl_status_ok();
 }
 
+SlStatus sl_http_transport_server_run(SlHttpTransportServer* server, SlDiag* out_diag)
+{
+    int rc = 0;
+    size_t previous_accept_failures = 0U;
+
+    sl_http_transport_clear_diag(out_diag);
+    if (server == NULL || server->platform == NULL || !server->platform->loop_initialized) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (server->state != SL_HTTP_TRANSPORT_SERVER_STATE_LISTENING &&
+        server->state != SL_HTTP_TRANSPORT_SERVER_STATE_STOPPING)
+    {
+        return sl_http_transport_invalid_state(out_diag);
+    }
+
+    previous_accept_failures = server->accept_failures;
+    rc = uv_run(&server->platform->loop, UV_RUN_DEFAULT);
+    if (rc != 0 || server->accept_failures != previous_accept_failures) {
+        return sl_http_transport_diag(
+            out_diag, SL_DIAG_HTTP_ACCEPT_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP transport run failed",
+                                      sizeof("HTTP transport run failed") - 1U),
+            sl_http_transport_literal("libuv details stay inside the platform transport boundary",
+                                      sizeof("libuv details stay inside the platform transport "
+                                             "boundary") -
+                                          1U));
+    }
+    return sl_status_ok();
+}
+
 SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connection, SlDiag* out_diag)
 {
     sl_http_transport_clear_diag(out_diag);
