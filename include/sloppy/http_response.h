@@ -62,6 +62,10 @@ SlHttpResponse sl_http_response_text(uint16_t status, SlStr body);
 SlHttpResponse sl_http_response_json(uint16_t status, SlBytes body);
 SlHttpResponse sl_http_response_empty(uint16_t status);
 SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body);
+/*
+ * Internal/native streaming descriptor. Transport dispatch callbacks must store `chunks`
+ * and every non-empty chunk byte view in the dispatch arena passed to the callback.
+ */
 SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
                                        const SlHttpResponseStreamChunk* chunks, size_t chunk_count);
 

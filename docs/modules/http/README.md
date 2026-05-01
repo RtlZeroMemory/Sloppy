@@ -166,8 +166,10 @@ Implemented now:
 - HTTP-25.D/E chunked/streaming lifecycle: `Transfer-Encoding: chunked` requests are
   decoded before dispatch into the same bounded body bytes used by `ctx.request.text()` and
   `ctx.request.json()`. Chunk trailers are rejected. Internal/native streaming responses
-  write `Transfer-Encoding: chunked`, one bounded frame at a time, followed by a final zero
-  chunk; keep-alive resumes only after that final chunk completes.
+  require stream chunk metadata and payload views to point into request-lifetime storage,
+  copy those views before async writes begin, write `Transfer-Encoding: chunked`, one
+  bounded frame at a time, followed by a final zero chunk; keep-alive resumes only after
+  that final chunk completes.
 
 Future scope:
 

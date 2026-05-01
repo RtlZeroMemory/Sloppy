@@ -86,7 +86,51 @@ static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* ar
         return sl_status_from_code(hook->status_code);
     }
 
+    if (hook->response.kind == SL_HTTP_RESPONSE_STREAM && hook->response.stream_chunk_count != 0U) {
+        void* chunk_storage = nullptr;
+        SlHttpResponse response = hook->response;
+        SlHttpResponseStreamChunk* chunks = nullptr;
+        size_t chunk_bytes = sizeof(SlHttpResponseStreamChunk) * response.stream_chunk_count;
+        SlStatus status =
+            sl_arena_alloc(arena, chunk_bytes, alignof(SlHttpResponseStreamChunk), &chunk_storage);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        chunks = static_cast<SlHttpResponseStreamChunk*>(chunk_storage);
+        for (size_t index = 0U; index < response.stream_chunk_count; index += 1U) {
+            SlOwnedBytes copy = {};
+            status = sl_bytes_copy_to_arena(arena, response.stream_chunks[index].bytes, &copy);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            chunks[index].bytes = sl_owned_bytes_as_view(copy);
+        }
+        response.stream_chunks = chunks;
+        *out_response = response;
+        return sl_status_ok();
+    }
+
     *out_response = hook->response;
+    return sl_status_ok();
+}
+
+static SlStatus stack_stream_dispatch_hook(SlHttpTransportConnection* connection, SlArena* arena,
+                                           const SlHttpRequestLifecycle* request,
+                                           SlHttpResponse* out_response, SlDiag* out_diag,
+                                           void* user)
+{
+    unsigned char chunk_storage[5] = {'s', 't', 'a', 'c', 'k'};
+    SlHttpResponseStreamChunk chunks[1] = {};
+    DispatchHook* hook = static_cast<DispatchHook*>(user);
+
+    (void)arena;
+    (void)out_diag;
+    if (hook == nullptr || connection == nullptr || request == nullptr || out_response == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    hook->count += 1U;
+    chunks[0].bytes = sl_bytes_from_parts(chunk_storage, sizeof(chunk_storage));
+    *out_response = sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 1U);
     return sl_status_ok();
 }
 
@@ -1195,6 +1239,41 @@ static int test_streaming_response_writes_chunked_frames(void)
     return 0;
 }
 
+static int test_streaming_response_rejects_non_arena_chunks(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    config = small_config(nullptr);
+    config.dispatch = stack_stream_dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_http_transport_connection_feed_test(
+                &server.connections[0], bytes_from_cstr("GET /stream HTTP/1.1\r\n\r\n"), &diag),
+            SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        dispatch.count != 1U ||
+        server.connections[0].last_diag.code != SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED)
+    {
+        stop_one_connection(&server, &client);
+        return 813;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
 static int test_streaming_response_backpressure_rejection(void)
 {
     unsigned char storage[65536];
@@ -1952,6 +2031,10 @@ int main(void)
         return result;
     }
     result = test_streaming_response_writes_chunked_frames();
+    if (result != 0) {
+        return result;
+    }
+    result = test_streaming_response_rejects_non_arena_chunks();
     if (result != 0) {
         return result;
     }

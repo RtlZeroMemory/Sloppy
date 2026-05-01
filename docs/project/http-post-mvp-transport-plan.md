@@ -49,8 +49,9 @@ and the first internal chunked streaming response writer; stress/conformance rem
   chunk followed by an empty trailer section.
 - The first response streaming writer is an internal/native descriptor, not a public
   `Results.stream` helper. It emits HTTP/1.1 chunked response framing, writes each frame
-  through sequenced transport writes, keeps request/response storage alive until completion,
-  and writes the final zero chunk.
+  through sequenced transport writes, requires stream chunk metadata and payload views to
+  point into the request arena, copies those views before async writes begin, and writes
+  the final zero chunk.
 - Streaming response backpressure is bounded by `max_pending_write_bytes` per connection.
   A chunk that exceeds the cap fails deterministically with an HTTP response backpressure
   diagnostic; late writes after close/cancel/shutdown fail through the existing write/
