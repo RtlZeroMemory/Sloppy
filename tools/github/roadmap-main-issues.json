@@ -20,7 +20,7 @@
       "goal": "Prove the already-landed EPIC-21 through EPIC-24 pieces work as one minimal end-to-end alpha workflow without recreating those implementation tasks.",
       "sourceDocs": [
         "docs/project/roadmap-main.md",
-        "docs/project/main-main1-scope.md",
+        "docs/project/post-core-mvp-next-roadmap.md",
         "docs/compiler.md",
         "docs/public/cli.md",
         "docs/public/getting-started.md"
@@ -70,8 +70,8 @@
       "summary": "Prepare the tracker for MAIN.1 by reviewing stale parent EPICs, stale generated data, and public-doc deferral recommendations.",
       "goal": "Approve an issue cleanup plan before mutating GitHub or creating any fresh MAIN/MAIN.1 issues.",
       "sourceDocs": [
-        "docs/project/current-issue-state-audit.md",
-        "docs/project/main-main1-issue-cleanup-plan.md",
+        "docs/project/post-core-mvp-issue-reconciliation.md",
+        "docs/project/post-core-mvp-issue-reconciliation.md",
         "docs/project/issue-workflow.md"
       ],
       "nonGoals": [

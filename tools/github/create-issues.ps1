@@ -93,9 +93,9 @@ function Get-IssueBody {
         $lines.Add("") | Out-Null
     }
 
-    $sourceDocs = if ($null -ne $Item.sourceDocs) { @($Item.sourceDocs) } else { @("AGENTS.md", "CONTRIBUTING.md", "docs/project/next-roadmap.md", "docs/project/post-0.7-issue-audit.md", "docs/project/issue-workflow.md", "docs/project/pr-workflow.md", "docs/roadmap.md", "docs/quality-gates.md") }
+    $sourceDocs = if ($null -ne $Item.sourceDocs) { @($Item.sourceDocs) } else { @("AGENTS.md", "CONTRIBUTING.md", "docs/project/post-core-mvp-next-roadmap.md", "docs/project/post-core-mvp-issue-reconciliation.md", "docs/project/issue-workflow.md", "docs/project/pr-workflow.md", "docs/roadmap.md", "docs/quality-gates.md") }
     $goal = if (-not [string]::IsNullOrWhiteSpace([string]$Item.goal)) { @($Item.goal) } else { @($Item.summary) }
-    $scope = if ($null -ne $Item.scope) { @($Item.scope) } elseif ($null -ne $Item.suggestedTasks) { @($Item.suggestedTasks) } else { @("Deliver the bounded issue slice described by the title and parent EPIC.", "Keep implementation aligned with docs/project/next-roadmap.md.") }
+    $scope = if ($null -ne $Item.scope) { @($Item.scope) } elseif ($null -ne $Item.suggestedTasks) { @($Item.suggestedTasks) } else { @("Deliver the bounded issue slice described by the title and parent EPIC.", "Keep implementation aligned with docs/project/post-core-mvp-next-roadmap.md.") }
     $nonGoals = if ($null -ne $Item.nonGoals) { @($Item.nonGoals) } else { @("No unrelated runtime/compiler/provider/package-manager work.", "No future-phase behavior outside this issue.", "No generated build artifacts.") }
     $requirements = if ($null -ne $Item.implementationRequirements) { @($Item.implementationRequirements) } else { @("Implement only this bounded slice.", "Update docs/ADRs when behavior, architecture, public API, diagnostics, or workflow changes.", "Add tests that verify documented intent, not accidental current behavior.", "Report default, optional provider, and V8-gated validation separately where relevant.") }
     $files = if ($null -ne $Item.filesLikelyTouched) { @($Item.filesLikelyTouched) } else { @("docs/", "tools/", "compiler/ when compiler-scoped", "src/ and include/ only when the issue explicitly scopes runtime work", "tests/") }

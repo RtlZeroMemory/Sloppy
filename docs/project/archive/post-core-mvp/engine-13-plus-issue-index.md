@@ -3,7 +3,7 @@
 Status: created GitHub issue index for the remaining Slop Engine foundation EPICs.
 
 This index records the live GitHub issues created from
-`docs/project/engine-13-plus-architecture.md`. It is a planning and navigation document,
+`docs/project/archive/post-core-mvp/engine-13-plus-architecture.md`. It is a planning and navigation document,
 not an implementation claim.
 
 ## EPICs And Tasks

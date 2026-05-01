@@ -151,11 +151,11 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
 SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* out_diag);
 /* Runs one nonblocking platform event-loop tick for deterministic tests/runtime integration. */
 SlStatus sl_http_transport_server_poll(SlHttpTransportServer* server, SlDiag* out_diag);
-/* Stops accepting, closes placeholder accepted connections, and releases listener handles. */
+/* Stops accepting, closes accepted connections, and releases listener handles. */
 SlStatus sl_http_transport_server_stop(SlHttpTransportServer* server, SlDiag* out_diag);
 /* Disposes backend state after stopping as needed. Arena-owned storage is not freed. */
 SlStatus sl_http_transport_server_dispose(SlHttpTransportServer* server, SlDiag* out_diag);
-/* Closes an accepted placeholder connection exactly once. */
+/* Closes an accepted connection exactly once. */
 SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connection,
                                             SlDiag* out_diag);
 /*

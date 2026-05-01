@@ -10,10 +10,10 @@ alpha policy.
 
 - `AGENTS.md`
 - `CONTRIBUTING.md`
-- `docs/project/main-main1-scope.md`
+- `docs/project/post-core-mvp-next-roadmap.md`
 - `docs/project/roadmap-main-1-hardening.md`
-- `docs/project/main-main1-system-audit.md`
-- `docs/project/barebones-and-advanced-feature-inventory.md`
+- `docs/project/post-core-mvp-code-reality-audit.md`
+- `docs/project/post-core-mvp-code-reality-audit.md`
 - `docs/compiler.md`
 - `docs/app-plan.md`
 - `docs/execution-model.md`

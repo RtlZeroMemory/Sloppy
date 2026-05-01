@@ -4,7 +4,7 @@ AI-slop branding, zero-slop architecture.
 
 Sloppy is an experimental TypeScript backend application runtime/app-host. It has a C
 runtime kernel, an isolated C++ V8 bridge, a source-controlled JavaScript bootstrap stdlib,
-and a Rust compiler/build tool placeholder named `sloppyc`.
+and a Rust compiler/build tool named `sloppyc` for the currently supported source subset.
 
 Sloppy is not production ready. The repo is still pre-alpha foundation work. It is also not
 a Node, Bun, Deno, or Express compatibility project. The intended product shape is a
@@ -23,21 +23,21 @@ must not include OS-specific headers.
 - Portable C core primitives: status, source locations, strings, bytes, checked math,
   assertions, `SlArena`, diagnostics, plan parsing, scope cleanup, loop/async/worker-pool
   skeletons, route parsing, HTTP request-head parsing, and synthetic dispatch helpers.
-- Optional V8 bridge smoke when a valid V8 SDK is configured; default builds do not require
-  or validate V8.
-- Minimal handwritten `app.plan.json` plus `app.js` execution smoke in V8-enabled builds.
-- Narrow compiler artifact path: `sloppyc build` can emit deterministic artifacts for the
-  current supported source shape, and `sloppy run --artifacts` can execute selected
-  V8-gated conformance fixtures.
+- Optional V8 runtime execution when a valid V8 SDK is configured; default builds do not
+  require or validate V8.
+- Narrow compiler artifact path: `sloppyc build` emits deterministic `app.plan.json`,
+  `app.js`, and source-map artifacts for the current supported source shape, and
+  `sloppy run --artifacts` executes selected V8-gated conformance fixtures.
 - Bootstrap ESM stdlib with `Sloppy`, `Results`, `schema`, `data`, builder/app skeletons,
   route groups, modules, config/logging/services, fake data providers, and examples.
-- Dev-only HTTP response/context path for current compiler artifacts: route/query/request
-  context, result descriptor conversion, and response writing for the narrow supported
-  path.
+- Dev-only HTTP path for current compiler artifacts: route/query/request context, result
+  descriptor conversion, response writing, and libuv-backed localhost transport for the
+  one-request-per-connection MVP.
 - Native SQLite, PostgreSQL, and SQL Server provider boundaries with C tests. PostgreSQL and
   SQL Server live tests are opt-in through environment variables.
-- V8-gated SQLite JavaScript bridge through resource IDs. SQLite capability enforcement is
-  still a remaining foundation blocker.
+- V8-gated SQLite JavaScript bridge through resource IDs with capability checks before
+  open/use. SQLite still needs async/offload conversion through the provider executor
+  before scalable provider execution can be claimed.
 - Metadata-only CLI introspection: `sloppy routes`, `sloppy doctor`, `sloppy audit`, and
   `sloppy openapi`.
 - Benchmark harness for current foundations. Smoke/list checks are not performance claims.
@@ -48,15 +48,15 @@ must not include OS-specific headers.
   compiler MVP shape.
 - No `app.plan.json` emission from the full public API surface.
 - No source-input `sloppy run`; the dev-only run path currently loads prebuilt artifacts.
-- No production HTTP server or full framework HTTP runtime. Request body parsing, headers in
-  handler context, multipart/file upload, middleware, and production hardening remain
-  unimplemented.
+- No production HTTP server or full framework HTTP runtime. Keep-alive, pipelining,
+  chunked/streaming bodies, multipart/file upload, middleware, TLS, and production
+  hardening remain unimplemented.
 - No final V8 ESM module graph or async Promise/microtask handler support.
 - No JavaScript-to-native PostgreSQL or SQL Server bridge. SQLite is the only current
-  V8-gated JS/native bridge, and it still needs capability-policy enforcement.
+  V8-gated JS/native bridge.
 - No package-manager behavior and no Node compatibility goal.
-- No OS sandbox. Native capability metadata/check hooks exist, but bridge enforcement is not
-  complete until real SQLite access calls the policy hook.
+- No OS sandbox. Native capability metadata/check hooks exist and SQLite bridge calls are
+  capability-checked, but filesystem/network permissions are metadata/check skeletons only.
 - No public alpha distribution, installers, signing/notarization, package-manager
   integration, or auto-update. Experimental local ZIP/TAR package tooling exists only to
   validate the current artifact layout.
@@ -93,33 +93,29 @@ HTTP response/request-context MVP, classic bootstrap runtime handoff, experiment
 packaging, and default non-V8 hosted CI. MAIN and MAIN.1 then hardened the narrow path
 through PRs #240-#255.
 
-The next strategic phase is Slop Engine foundation completion, not public alpha docs and
-not benchmark marketing. The foundation blockers are compiler breadth for supported apps,
-real V8 Promise/microtask handling, full framework HTTP API runtime, SQLite end-to-end with
-capability enforcement, lifecycle/resource cleanup, conformance examples, and packaged
-runtime evidence. PostgreSQL and SQL Server JS bridges are deferred until SQLite and the
-engine foundation are solid.
+The post-core reset is Slop Engine foundation completion, not public alpha docs and not
+benchmark marketing. The current blockers are framework/app-layer ergonomics, source-input
+run, stronger Plan strategy, HTTP keep-alive/streaming decisions, SQLite provider-executor
+integration, lifecycle/resource cleanup, and continued conformance evidence. PostgreSQL and
+SQL Server JS bridges are deferred until SQLite and the engine foundation are solid.
 
-The current planning docs split the next work into:
+Current planning starts from:
 
-- [ROADMAP MAIN](docs/project/roadmap-main.md): final verification of the minimal
-  `sloppyc build` plus `sloppy run --artifacts` alpha path, without recreating completed
-  EPIC-21 through EPIC-26 work.
-- [ROADMAP MAIN.1](docs/project/roadmap-main-1-hardening.md): hardening skeleton/MVP
-  systems to alpha-production quality. This is now historical input to the ENGINE roadmap.
+- [Post-core next roadmap](docs/project/post-core-mvp-next-roadmap.md): compact proposal for
+  the next development wave.
 - [Slop Engine final shape](docs/project/slop-engine-final-shape.md): intended engine and
   framework foundation before higher-level framework perks.
-- [Slop Engine layered roadmap](docs/project/slop-engine-layered-roadmap.md): Layer 0
-  cleanup through Layer 10 public alpha readiness gate.
+- [Slop Engine layered roadmap](docs/project/slop-engine-layered-roadmap.md): historical
+  layer plan retained as compact source context.
 
 Public alpha docs remain blocked until the Slop Engine foundation examples and evidence
 gates pass or are explicitly deferred with honest exclusions. Benchmarks remain non-claim
 evidence only.
 
 See [docs/roadmap.md](docs/roadmap.md),
-[docs/project/current-issue-state-audit.md](docs/project/current-issue-state-audit.md),
-[docs/project/strategic-current-state-audit.md](docs/project/strategic-current-state-audit.md),
-and [docs/project/main-main1-scope.md](docs/project/main-main1-scope.md).
+[docs/project/post-core-mvp-issue-reconciliation.md](docs/project/post-core-mvp-issue-reconciliation.md),
+[docs/project/archive/post-core-mvp/strategic-current-state-audit.md](docs/project/archive/post-core-mvp/strategic-current-state-audit.md),
+and [docs/project/post-core-mvp-next-roadmap.md](docs/project/post-core-mvp-next-roadmap.md).
 
 ## Core Specs
 

@@ -202,7 +202,7 @@ duplicate tasks.
 
 Prerequisites:
 
-- `docs/project/current-issue-state-audit.md`;
+- `docs/project/post-core-mvp-issue-reconciliation.md`;
 - human approval to mutate issues.
 
 Task breakdown:
@@ -221,8 +221,8 @@ Non-goals:
 
 Files likely touched:
 
-- `docs/project/current-issue-state-audit.md`;
-- `docs/project/main-main1-issue-cleanup-plan.md`;
+- `docs/project/post-core-mvp-issue-reconciliation.md`;
+- `docs/project/post-core-mvp-issue-reconciliation.md`;
 - `tools/github/roadmap-main-issues.json`.
 
 Tests required:
@@ -241,7 +241,7 @@ Suggested PR grouping: docs-only cleanup plan PR first, mutation PR/task later.
 
 Existing issues/PRs to avoid duplicating:
 
-- all closed child tasks listed in `docs/project/current-issue-state-audit.md`.
+- all closed child tasks listed in `docs/project/post-core-mvp-issue-reconciliation.md`.
 
 ## MAIN Exit
 

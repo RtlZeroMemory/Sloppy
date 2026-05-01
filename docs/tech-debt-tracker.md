@@ -14,6 +14,18 @@ ENGINE-01 locks the framework contract in
 `docs/project/engine-framework-contract.md`; future implementation debt should be tracked
 against that contract rather than reopening ambiguous "minimum alpha" scope.
 
+- Post-core primitive adoption follow-up:
+  `docs/project/post-core-mvp-memory-string-audit.md` records provider-specific cleanup
+  outside this consolidation PR. PostgreSQL still has local C-string/manual copy helpers
+  and `snprintf`-based parameter formatting. SQL Server still has local redaction/copy
+  helpers and streamed text append logic that should move toward shared builders/copy
+  helpers. SQLite V8 parameter conversion should preflight JS array length before
+  reserving native vectors.
+- Post-core boundary follow-up:
+  `docs/project/post-core-mvp-boundary-audit.md` records remaining libuv boundary debt.
+  The new reusable transport API hides libuv, but the legacy `sl_http_libuv_smoke` helper
+  and dev-only CLI socket path still expose/use libuv outside the final platform boundary
+  shape. Retire or hide them in a narrow follow-up instead of doing a broad rewrite here.
 - Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02 and
   ENGINE-03: source-input handoff/cache, module/service/schema extraction, broader async
   source shapes, non-GET dispatch, and provider/capability enforcement.
@@ -232,7 +244,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   comparable paths exist. This is deferred behind Slop Engine foundation completion.
 - GitHub issue cleanup follow-through: #26 still needs scanner fixture/self-test proof or
   implementation, and #295 needs owner review before closure or narrowing. The 2026-04-30
-  cleanup record is `docs/project/github-issue-cleanup-result.md`.
+  cleanup record is `docs/project/post-core-mvp-issue-reconciliation.md`.
 
 ## Deferred By Design
 
@@ -332,8 +344,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Applied the 2026-04-30 GitHub issue hygiene pass after ENGINE-23 roadmap creation:
   closed completed ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12, ENGINE-21,
   ENGINE-22, and old #32 with evidence comments; documented kept-open and human-review
-  issues in `docs/project/github-issue-hygiene-audit.md` and
-  `docs/project/github-issue-cleanup-result.md`.
+  issues in `docs/project/post-core-mvp-issue-reconciliation.md` and
+  `docs/project/post-core-mvp-issue-reconciliation.md`.
 - Added the ENGINE-01 framework contract source of truth for JS app API, Results, request
   context, async/microtasks, cancellation/deadlines, HTTP, SQLite, capabilities, and
   deferred behavior.

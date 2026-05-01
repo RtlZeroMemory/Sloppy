@@ -31,7 +31,7 @@ ENGINE-13.F adds bounded default non-V8 stress and conformance smoke over the im
 parser, lifecycle, body-policy, overload, shutdown, dispatch, and diagnostic behavior.
 ENGINE-24.A/B adds the first reusable transport listener foundation: Slop-owned server
 config/state, libuv-isolated TCP bind/listen/accept, bounded accepted-connection
-placeholders, overflow close behavior, and cleanup-once stop/dispose. ENGINE-24.C starts
+storage, overflow close behavior, and cleanup-once stop/dispose. ENGINE-24.C starts
 the accepted-connection read loop and accumulates real TCP chunks into one bounded parsed
 request-ready state using the existing ENGINE-13 parser and body policy. ENGINE-24.D
 consumes request-ready state through a narrow dispatch callback, serializes

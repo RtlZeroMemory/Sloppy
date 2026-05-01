@@ -9,7 +9,7 @@ provider validation optional, gated, and clearly reported.
 
 - `AGENTS.md`
 - `CONTRIBUTING.md`
-- `docs/project/next-roadmap.md`
+- `docs/project/post-core-mvp-next-roadmap.md`
 - `docs/roadmap.md`
 - `docs/architecture.md`
 - `docs/platform-abstraction.md`

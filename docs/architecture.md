@@ -39,20 +39,19 @@ The current foundation/runtime-contract work still does not implement:
 
 ## Current Phase
 
-The repository is in foundation/spec/tooling phase. The placeholder `sloppy` and `sloppyc`
-CLIs exist only to prove toolchain wiring. They are not runtime or compiler implementations.
-TASK 07.A adds optional V8 SDK detection and normal builds do not require V8. TASK 07.B
-adds the engine-neutral `SlEngine` C ABI and a noop engine implementation. TASK 07.C adds a
-V8-enabled smoke bridge that can initialize V8, evaluate a classic JavaScript source string,
-call a named global zero-argument function, and copy a string result back to C. It does not
-execute Sloppy Plan handlers, load modules, run HTTP, or provide the public JS API.
-TASK 09.A adds the first `SlLoop` completion queue skeleton. It is caller-backed,
-fixed-capacity, and synchronous, with no libuv, OS event loop, threads, HTTP, promise
-settlement, or V8 microtask integration.
-TASK 09.B adds the first native `SlAsync` promise settlement model skeleton over `SlLoop`.
-It is caller-owned, manual/fake native settlement only, with no V8 Promise integration,
-microtask handling, request-scope retention, HTTP lifecycle, worker pool, cross-thread
-posting, cancellation/deadline/backpressure, or libuv integration.
+The repository is in post-Core-MVP foundation work. `sloppyc build` is a real supported-
+subset compiler path that emits Plan, bundle, and source-map artifacts for the current
+one-file app shape. `sloppy run --artifacts` is a dev/runtime host for those artifacts when
+the required runtime lane is configured; direct source-input `sloppy run app.js` remains
+deferred.
+
+The C runtime now includes core primitives, Plan parsing, diagnostics, HTTP backend
+semantics, libuv-backed localhost transport for the one-request-per-connection MVP,
+capability checks, provider executor infrastructure, and native provider boundaries.
+Optional V8 builds execute registered handlers, bounded direct Promise/microtask
+settlement, request-context/result conversion, and the SQLite bridge. Default gates still
+do not prove V8, live providers, public alpha readiness, production HTTP, or benchmark
+claims.
 ENGINE-03 adds the first V8 async handler runtime cut. In V8-enabled builds, handler calls
 drain V8 microtasks explicitly on the owning engine thread, fulfilled Promises are
 converted through the existing result conversion path, rejected Promises produce
@@ -167,10 +166,10 @@ reported separately.
 
 ## Future Phase
 
-The next implementation batch should connect the remaining productionization pieces around
-the smallest compiler-to-runtime path: package/runtime hardening, cross-platform CI,
-capability enforcement, source-input handoff, and public alpha docs. See
-`docs/project/next-roadmap.md`.
+The next implementation batch should connect framework/app-layer ergonomics, source-input
+run, request binding/validation/config, Strong Plan doctor/OpenAPI work, HTTP
+keep-alive/streaming, and later provider expansion. See
+`docs/project/post-core-mvp-next-roadmap.md`.
 
 ## System Shape
 
@@ -457,8 +456,9 @@ Architecture foundation is accepted when:
 
 - docs and ADRs describe runtime/compiler/platform/tooling boundaries;
 - core code has no OS-specific includes outside `src/platform/*`;
-- CMake builds the placeholder runtime with warnings-as-errors;
-- CTest covers both placeholder CLIs;
+- CMake builds the runtime with warnings-as-errors;
+- CTest covers runtime, compiler, conformance, CLI, and package-smoke evidence lanes where
+  configured;
 - Rust gates pass for `sloppyc`;
 - no generated artifacts are tracked;
 - future implementation tasks can identify target files, tests, and constraints.

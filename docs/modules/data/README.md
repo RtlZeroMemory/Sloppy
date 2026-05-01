@@ -17,9 +17,7 @@ cleanup-only behavior, and capability-gated dispatch before enqueue/execution. C
 SQLite bridge calls are still synchronous until ENGINE-17 converts them to the executor.
 ENGINE-23.G/H adds provider-executor diagnostics/counters, bounded stress smoke, and
 `docs/project/provider-runtime-integration-guide.md` for future SQLite/PostgreSQL/SQL
-Server bridge work. Current SQLite bridge calls are still synchronous until ENGINE-17
-converts them to the executor; PostgreSQL and SQL Server JavaScript bridges remain
-deferred.
+Server bridge work. PostgreSQL and SQL Server JavaScript bridges remain deferred.
 ENGINE-17.E adds `examples/users-api-sqlite/` plus V8-gated localhost transport evidence
 for a small source-built SQLite users API. It proves the current synchronous SQLite bridge
 can serve GET/POST JSON handlers over real TCP through `sloppy run --artifacts`; it does
