@@ -1381,7 +1381,7 @@ fn unsupported_route_call_diagnostic(
 
     let (receiver, property) = static_member_name(&call.callee)?;
     if route_method_from_property(property).is_none() {
-        if property.starts_with("map")
+        if unsupported_route_method_property(property)
             && (state.app_vars.contains(receiver) || state.group_vars.contains_key(receiver))
         {
             return Some(
@@ -1431,6 +1431,10 @@ fn unsupported_route_call_diagnostic(
     }
 
     None
+}
+
+fn unsupported_route_method_property(property: &str) -> bool {
+    property.starts_with("map") || matches!(property, "head" | "options")
 }
 
 fn validate_supported_initializer(
@@ -2128,6 +2132,16 @@ fn extract_module_function_routes(
                     .with_path(path)
                     .with_span(statement.span));
                 };
+                if !route_pattern_supported(&full_pattern) {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN",
+                        "route pattern is outside the Plan v1 alpha route syntax",
+                    )
+                    .with_path(path)
+                    .with_span(statement.span)
+                    .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
+                }
+
                 handler.source = wrap_module_handler_with_providers(
                     &handler.source,
                     &providers,
@@ -3867,6 +3881,22 @@ export default app;
     }
 
     #[test]
+    fn rejects_unsupported_direct_http_methods_explicitly() {
+        for method in ["head", "options"] {
+            let source = format!(
+                r#"import {{ Sloppy, Results }} from "sloppy";
+const app = Sloppy.create();
+app.{method}("/", () => Results.text("unsupported"));
+export default app;
+"#
+            );
+            let diagnostic = extract(std::path::Path::new("app.js"), &source)
+                .expect_err("unsupported direct HTTP method should fail");
+            assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HTTP_METHOD");
+        }
+    }
+
+    #[test]
     fn extracts_nested_route_groups() {
         let source = r#"import { Sloppy, Results } from "sloppy";
 const app = Sloppy.create();
@@ -3938,6 +3968,39 @@ export default app;
         .expect("plan should emit");
         assert!(plan.contains("\"module\": \"usersModule\""));
         assert!(plan.contains("\"path\": \"users.js\""));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn rejects_invalid_composed_function_module_route_pattern() {
+        let root = fixture_temp_dir("invalid-module-route-pattern");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("users.js"),
+            r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    const api = app.group("/api");
+    api.get("/users/", () => Results.text("bad"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.js";
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+        let diagnostic =
+            extract_temp_input(&root, source).expect_err("invalid module route should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN");
+        assert!(diagnostic
+            .path
+            .as_deref()
+            .is_some_and(|path| path.ends_with("modules/users.js")));
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }
