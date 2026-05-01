@@ -1023,21 +1023,23 @@ static int test_chunked_request_decoding_rejections(void)
         const char* request;
         SlStatusCode status_code;
         SlDiagCode diag_code;
+        bool missing_final_chunk_on_close;
     } cases[] = {
         {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nz\r\nx\r\n0\r\n\r\n",
-         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_CHUNK_SIZE_INVALID},
+         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_CHUNK_SIZE_INVALID, false},
         {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nx\n0\r\n\r\n",
-         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_CHUNK_DELIMITER_INVALID},
+         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_CHUNK_DELIMITER_INVALID, false},
         {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n21\r\n"
          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n0\r\n\r\n",
-         SL_STATUS_CAPACITY_EXCEEDED, SL_DIAG_HTTP_BODY_LIMIT},
-        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n20\r\n", SL_STATUS_OK, SL_DIAG_NONE},
+         SL_STATUS_CAPACITY_EXCEEDED, SL_DIAG_HTTP_BODY_LIMIT, false},
+        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n20\r\n", SL_STATUS_OK, SL_DIAG_NONE,
+         true},
         {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\n\r\n0\r\n\r\n",
-         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_HTTP_REQUEST},
+         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_HTTP_REQUEST, false},
         {"POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n", SL_STATUS_UNSUPPORTED,
-         SL_DIAG_HTTP_UNSUPPORTED_BODY},
+         SL_DIAG_HTTP_UNSUPPORTED_BODY, false},
         {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX: y\r\n\r\n",
-         SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_TRAILERS_UNSUPPORTED},
+         SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_TRAILERS_UNSUPPORTED, false},
     };
 
     for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
@@ -1052,7 +1054,7 @@ static int test_chunked_request_decoding_rejections(void)
         {
             return 440 + (int)index;
         }
-        if (index == 3U) {
+        if (cases[index].missing_final_chunk_on_close) {
             if (expect_status(
                     sl_http_transport_connection_feed_test(
                         &server.connections[0], bytes_from_cstr(cases[index].request), &diag),
@@ -2393,6 +2395,47 @@ static int test_bounded_keep_alive_chunked_streaming_stress_smoke(void)
         {
             return 270 + (int)index;
         }
+    }
+
+    {
+        unsigned char shutdown_storage[65536];
+        SlArena shutdown_arena = {};
+        SlHttpTransportServer shutdown_server = {};
+        SlHttpTransportConfig shutdown_config = {};
+        ClientConnect shutdown_client = {};
+
+        shutdown_config = keep_alive_config(nullptr);
+        shutdown_config.dispatch = sequence_dispatch_hook;
+        shutdown_config.dispatch_user = &dispatch;
+        dispatch = {};
+        if (expect_status(
+                sl_arena_init(&shutdown_arena, shutdown_storage, sizeof(shutdown_storage)),
+                SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_init(&shutdown_server, &shutdown_arena,
+                                                        &shutdown_config, &diag),
+                          SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_server_listen(&shutdown_server, &diag), SL_STATUS_OK) !=
+                0 ||
+            connect_client(sl_http_transport_server_bound_port(&shutdown_server),
+                           &shutdown_client) != 0 ||
+            start_client_read(&shutdown_client) != 0 ||
+            expect_status(sl_http_transport_server_poll(&shutdown_server, &diag), SL_STATUS_OK) !=
+                0 ||
+            write_client_bytes(&shutdown_client, "GET /shutdown HTTP/1.1\r\nHost: local\r\n\r\n") !=
+                0 ||
+            poll_until_connection_state(&shutdown_server, &shutdown_client,
+                                        SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE,
+                                        sizeof(keep_alive_response) - 1U) != 0 ||
+            expect_status(sl_http_transport_server_stop(&shutdown_server, &diag), SL_STATUS_OK) !=
+                0 ||
+            shutdown_server.shutdown_idle_closes != 1U ||
+            shutdown_server.backend.active_requests != 0U ||
+            sl_http_transport_server_active_connections(&shutdown_server) != 0U)
+        {
+            stop_one_connection(&shutdown_server, &shutdown_client);
+            return 280;
+        }
+        stop_one_connection(&shutdown_server, &shutdown_client);
     }
 
     return 0;
