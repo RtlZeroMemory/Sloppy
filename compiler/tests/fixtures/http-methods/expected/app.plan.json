@@ -11,6 +11,7 @@
     "asyncHandlers": false,
     "capabilities": false,
     "dataProviders": false,
+    "metadataInference": true,
     "sourceMaps": true
   },
   "handlers": [
@@ -76,6 +77,11 @@
       "method": "GET",
       "name": "Users.List",
       "pattern": "/users",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 5,
@@ -87,6 +93,11 @@
       "method": "POST",
       "name": "Users.Create",
       "pattern": "/users",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 6,
@@ -94,10 +105,22 @@
       }
     },
     {
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "id",
+          "schema": null
+        }
+      ],
       "handlerId": 3,
       "method": "PUT",
       "name": "Users.Update",
       "pattern": "/users/{id:int}",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 7,
@@ -105,10 +128,22 @@
       }
     },
     {
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "id",
+          "schema": null
+        }
+      ],
       "handlerId": 4,
       "method": "PATCH",
       "name": "Users.Patch",
       "pattern": "/users/{id:int}",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 8,
@@ -120,6 +155,11 @@
       "method": "DELETE",
       "name": "Users.Delete",
       "pattern": "/users/{id:int}",
+      "response": {
+        "helper": "noContent",
+        "kind": "none",
+        "status": 204
+      },
       "source": {
         "column": 1,
         "line": 9,

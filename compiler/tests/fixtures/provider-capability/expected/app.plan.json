@@ -26,6 +26,7 @@
     "asyncHandlers": false,
     "capabilities": true,
     "dataProviders": true,
+    "metadataInference": true,
     "sourceMaps": true
   },
   "handlers": [
@@ -47,6 +48,11 @@
       "method": "GET",
       "name": null,
       "pattern": "/users",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 12,

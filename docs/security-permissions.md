@@ -80,6 +80,11 @@ provider work. Application config may contain secrets later, but this slice does
 secrets manager, user secrets, remote providers, or raw environment access from JS.
 Secret-looking config values are redacted in diagnostics and Plan metadata.
 
+COMPILER-30.E keeps this metadata-only: supported config reads, schema declarations,
+request bindings, and `Results.*` response facts are Plan-visible for later audit and
+completeness work, but this slice does not enforce provider/capability effects or runtime
+request validation.
+
 A capability is a named authority token. Code receives a capability through services or
 explicit context, not through global APIs.
 

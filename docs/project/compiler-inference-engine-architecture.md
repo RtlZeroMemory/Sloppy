@@ -144,12 +144,12 @@ Route, group, and module extraction emits a source-ordered graph:
 
 Provider/config/schema/results extraction emits metadata:
 
-- provider registrations and imported provider descriptors;
-- provider tokens and capability tokens;
-- config keys used, bound, or required;
-- schema declaration summaries;
+- supported SQLite provider registrations and imported provider descriptors;
+- provider tokens, capability tokens, and static `app.provider("sqlite:name")` lookups;
+- config keys read through supported `app.config.get*` helpers;
+- schema declaration summaries for the supported schema DSL;
 - request body/query/route/header binding metadata;
-- response kind/schema where inferable from `Results.*`;
+- preliminary response kind/status/helper metadata where inferable from `Results.*`;
 - partial metadata markers where behavior can run but optional tooling metadata is
   incomplete.
 
@@ -331,8 +331,11 @@ COMPILER-30.D moves route/group/function-module extraction from compatibility-on
 to the supported inference path: Minimal API route methods, nested literal group prefixes,
 function modules imported from source-local files, direct module-app routes, module-group
 routes, duplicate method/path validation, and Plan/source-map-visible route locations are
-covered. Provider/config/schema/result metadata, effects, capability inference, and Plan
-completeness remain future COMPILER-30 tasks.
+covered. COMPILER-30.E adds metadata-only extraction for supported SQLite provider
+registrations/lookups, config reads, schema declarations, request bindings, and preliminary
+`Results.*` response facts. Function effects, capability inference through helpers and
+repositories, completeness states, and strong Plan validation remain future COMPILER-30
+tasks.
 
 The fixture harness keeps current behavior stable while preparing for inference:
 

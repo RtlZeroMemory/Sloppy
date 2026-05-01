@@ -1,0 +1,167 @@
+{
+  "bundle": {
+    "hash": "sha256:e067141f987b5ef0cea9286d1ee17c938ec16e437a5488c3cc4799699a97af45",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.main",
+      "token": "data.main"
+    }
+  ],
+  "compilerVersion": "sloppyc-0.8.0-engine-02",
+  "configReads": [
+    {
+      "hasDefault": true,
+      "key": "Sloppy:Server:Host",
+      "source": {
+        "column": 14,
+        "line": 12,
+        "path": "input.js"
+      },
+      "type": "string"
+    }
+  ],
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "database": ":memory:",
+      "provider": "sqlite",
+      "service": null,
+      "token": "data.main"
+    }
+  ],
+  "features": {
+    "asyncHandlers": false,
+    "capabilities": true,
+    "dataProviders": true,
+    "metadataInference": true,
+    "sourceMaps": true
+  },
+  "handlers": [
+    {
+      "async": false,
+      "displayName": "Users.Create",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 29,
+        "line": 14,
+        "path": "input.js"
+      }
+    },
+    {
+      "async": false,
+      "displayName": "GET /health",
+      "exportName": "__sloppy_handler_2",
+      "id": 2,
+      "source": {
+        "column": 20,
+        "line": 21,
+        "path": "input.js"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "id",
+          "schema": null
+        },
+        {
+          "kind": "query",
+          "name": "q",
+          "schema": null
+        },
+        {
+          "kind": "header",
+          "name": "userAgent",
+          "schema": null
+        },
+        {
+          "kind": "body.json",
+          "name": null,
+          "schema": "UserCreate"
+        }
+      ],
+      "handlerId": 1,
+      "method": "POST",
+      "name": "Users.Create",
+      "pattern": "/users/{id:int}",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
+      "source": {
+        "column": 1,
+        "line": 14,
+        "path": "input.js"
+      }
+    },
+    {
+      "handlerId": 2,
+      "method": "GET",
+      "name": null,
+      "pattern": "/health",
+      "response": {
+        "helper": "text",
+        "kind": "text",
+        "status": 200
+      },
+      "source": {
+        "column": 1,
+        "line": 21,
+        "path": "input.js"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "schemas": [
+    {
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "email": {
+            "format": "email",
+            "kind": "string",
+            "optional": true
+          },
+          "name": {
+            "kind": "string",
+            "min": 1.0
+          },
+          "tags": {
+            "items": {
+              "kind": "string"
+            },
+            "kind": "array",
+            "optional": true
+          }
+        }
+      },
+      "name": "UserCreate",
+      "source": {
+        "column": 20,
+        "line": 4,
+        "path": "input.js"
+      }
+    }
+  ],
+  "sourceMap": {
+    "hash": "sha256:22ff38f493ec99cc4c97443358b1441a42060293fb940179b10c8e2d3232bb9a",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

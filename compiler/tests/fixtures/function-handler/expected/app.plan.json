@@ -11,6 +11,7 @@
     "asyncHandlers": false,
     "capabilities": false,
     "dataProviders": false,
+    "metadataInference": true,
     "sourceMaps": true
   },
   "handlers": [
@@ -32,6 +33,11 @@
       "method": "GET",
       "name": null,
       "pattern": "/function",
+      "response": {
+        "helper": "text",
+        "kind": "text",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 5,

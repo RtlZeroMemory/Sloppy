@@ -1,0 +1,12 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;gCAa4B;AAC5B;AACA;AACA;AACA;AAAiC;;gCAGd",
+  "names": [],
+  "sources": [
+    "input.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results, schema } from \"sloppy\";\nimport { sqlite } from \"sloppy/providers/sqlite\";\n\nconst UserCreate = schema.object({\n  name: schema.string().min(1),\n  email: schema.string().email().optional(),\n  tags: schema.array(schema.string()).optional()\n});\n\nconst app = Sloppy.create();\napp.use(sqlite(\"main\", { database: \":memory:\" }));\nconst host = app.config.getString(\"Sloppy:Server:Host\", \"127.0.0.1\");\n\napp.post(\"/users/{id:int}\", (ctx) => Results.json({\n  id: ctx.route.id,\n  search: ctx.query.q,\n  agent: ctx.header.userAgent,\n  body: ctx.body.json(UserCreate)\n})).withName(\"Users.Create\");\n\napp.get(\"/health\", () => Results.text(\"ok\"));\n\nexport default app;\n"
+  ],
+  "version": 3
+}
