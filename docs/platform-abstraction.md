@@ -41,6 +41,7 @@ The repository has:
 - `src/platform/common/`, `win32/`, `posix/`, `linux/`, and `macos/` README files;
 - `tools/windows/check-platform-boundaries.ps1`;
 - `tools/unix/check-platform-boundaries.sh`;
+- scanner self-tests that create temporary positive and allowed-boundary fixtures;
 - lint integration for the scanner.
 - default CI gates on Windows, Linux, and macOS for non-V8 builds.
 
@@ -254,10 +255,20 @@ Expected behavior:
 - fail when a forbidden header appears in `include/` or core `src/`;
 - allow forbidden headers under platform implementation directories;
 - print offending file and header;
+- run a self-test with temporary fixtures before the repository scan;
 - run from `tools/windows/dev.ps1 lint`;
 - fail in CI.
 
-Future scanner tests should include positive and negative fixtures.
+The self-test proves two fixture classes:
+
+- positive cases where forbidden headers under `include/` or core `src/` fail and name the
+  offending file/header;
+- allowed-boundary cases where matching headers under their platform implementation
+  directories do not fail.
+
+The scanner is intentionally lexical and conservative. It proves the documented forbidden
+header boundary; it is not a C parser and does not claim to detect every possible direct OS
+symbol reference without a forbidden include.
 
 ## Testing
 
@@ -347,12 +358,13 @@ Tasks:
 - scan tracked C/C++ source and header files;
 - allow platform implementation directories;
 - fail in CI;
-- add fixtures or self-test later.
+- keep scanner self-tests in the normal lint path.
 
 Acceptance:
 
 - introducing `<windows.h>` in core fails lint;
 - platform README examples do not trigger false positives.
+- allowed platform implementation fixtures pass the scanner self-test.
 
 ### Memory/Page API
 
@@ -424,6 +436,7 @@ Platform abstraction foundation is accepted when:
 
 - docs define forbidden headers and allowed directories;
 - scanner runs from lint and CI;
+- scanner self-tests prove positive and allowed-boundary fixture behavior;
 - tool layout separates Windows and future Unix scripts;
 - `include/sloppy/platform.h` remains detection-only;
 - Phase 1 stories know where OS-backed APIs belong.

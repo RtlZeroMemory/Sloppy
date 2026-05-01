@@ -268,9 +268,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - MAIN1-14 benchmark methodology hardening: release-only measured runs, local artifact
   policy, hardware/build metadata, trend policy, and no external comparisons until
   comparable paths exist. This is deferred behind Slop Engine foundation completion.
-- GitHub issue cleanup follow-through: #26 still needs scanner fixture/self-test proof or
-  implementation, and #295 needs owner review before closure or narrowing. The 2026-04-30
-  cleanup record is `docs/project/post-core-mvp-issue-reconciliation.md`.
+- GitHub issue cleanup follow-through: #295 still needs owner review before closure or
+  narrowing. The 2026-04-30 cleanup record is
+  `docs/project/post-core-mvp-issue-reconciliation.md`; #26 now has scanner fixture/
+  self-test proof in the platform-boundary scanners.
 
 ## Deferred By Design
 
@@ -346,7 +347,6 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Reconcile stale GitHub issue labels on closed issues if label hygiene becomes useful for
   reporting.
-- Review #26 for platform scanner fixture/self-test completion.
 - Review #295 for async diagnostic JSON scope after the narrow ENGINE-07 contribution.
 - Remove duplicate or contradictory "Current Phase" paragraphs as docs continue to evolve.
 
@@ -381,6 +381,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   cancellation snapshots, and bounded request-scope cleanup.
 - Added JS/TS and Rust standards docs plus zero-dependency language standards scanners.
 - Wired JS/TS and Rust standards scanners into `tools/windows/dev.ps1 lint`.
+- Added platform-boundary scanner self-tests for forbidden include detection and
+  per-platform allowlisting.
 - Added the EPIC-21 `sloppyc` extraction MVP for one-file literal `mapGet` apps, builder
   form, simple route groups, deterministic artifacts, and compiler diagnostics.
 - Added the EPIC-22 dev-only `sloppy run --artifacts` MVP with V8-required startup,

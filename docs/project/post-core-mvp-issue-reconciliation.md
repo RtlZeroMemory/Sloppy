@@ -34,9 +34,11 @@ audit.
 - #265, #295: diagnostics/async diagnostic work not completed by ENGINE-19 alone.
 - #268, #300, #301: public alpha readiness and non-claims review remain blocked.
 
-## Kept Open Blocked / Human Review
+## Reconciled By HARDEN-01 Follow-Up
 
-- #26 remains open because scanner fixtures/self-tests are not clearly proven complete.
+- #26 now has a bounded scanner fixture/self-test proof path: the platform-boundary
+  scanners run temporary positive and allowed-boundary fixtures before scanning repository
+  paths.
 
 ## Open PRs Not Assumed Merged
 
