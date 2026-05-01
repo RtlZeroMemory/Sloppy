@@ -130,6 +130,9 @@ short:
    resolver, DSL, route/provider/schema/effect/capability, and completeness behavior.
 4. Strong Plan typed graph through reused #318/#355-#359 once compiler metadata exists.
 5. Framework config, binding, validation, Results, and examples through #432/#435-#440.
+   #440 adds hardened source-input examples and tooling evidence for the implemented
+   subset; broader runtime validation, DI, controllers/decorators, and public alpha docs
+   remain deferred.
 6. Plan-driven OpenAPI is available for the supported metadata subset; future work must
    keep unknown metadata explicit and must not turn optimization candidate reports into
    native JSON, route partitioning, or multi-isolate implementation without new scope.

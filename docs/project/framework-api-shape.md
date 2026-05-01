@@ -339,11 +339,21 @@ engine, environment, and feature/options. `sloppy build`, richer TypeScript inpu
 mode, package manager behavior, full TS typechecker, and `node_modules` resolution are
 deferred.
 
-Multi-file framework MVP inputs remain a target, not a claim from ENGINE-02.E. The current
-compiler still supports the documented single-file source subset, bare `"sloppy"` stdlib
-import, and SQLite provider metadata shape. Relative imports, explicit provider import
-modules, and function modules remain future compiler/module work and must fail clearly
-until implemented.
+Multi-file framework MVP inputs are supported for the current function-module subset:
+relative imports under the source root, explicit provider import modules, and named
+function modules passed directly to `app.useModule(...)`. The subset remains intentionally
+small: no package-manager resolution, dynamic imports, controllers/decorators, arbitrary
+module side effects, or broad TypeScript inference.
+
+Hardened examples now cover the supported shapes:
+
+- `examples/hello-minimal`: `sloppy run`, `sloppy.json`, route binding, and Results.
+- `examples/users-api-sqlite`: config-driven SQLite, inferred capabilities, module routes,
+  and V8-gated runtime evidence.
+- `examples/configured-api`: `appsettings*.json` and Plan-visible typed config reads.
+- `examples/modules-api`: multi-file function modules and route groups.
+- `examples/validation-errors`: schema-backed body binding metadata and OpenAPI problem
+  response shape.
 
 ## Modularity Rule
 

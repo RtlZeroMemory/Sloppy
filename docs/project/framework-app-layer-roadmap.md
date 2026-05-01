@@ -70,6 +70,16 @@ Deferred items remain reload-on-change, user secrets, custom/remote config provi
 broad CLI config framework, full DI, request binding, validation, OpenAPI/doctor config
 consumption, and PostgreSQL/SQL Server JS provider bridges.
 
+## FRAMEWORK-01.F Status
+
+Issue #440 adds the first hardened example set for the implemented developer loop:
+`examples/hello-minimal`, `examples/users-api-sqlite`, `examples/configured-api`,
+`examples/modules-api`, and `examples/validation-errors`. These examples compile through
+source input, document their V8 requirements, and have CTest coverage for artifact
+emission plus routes/doctor/audit/OpenAPI tooling where relevant. The users API remains
+the executable SQLite/transport proof; validation schema examples are Plan/OpenAPI
+metadata evidence until runtime semantic schema validation lands.
+
 ## Non-Goals
 
 - No Node compatibility.

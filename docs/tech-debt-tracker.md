@@ -136,12 +136,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   binding, validation, and PostgreSQL/SQL Server JS provider config bridges remain
   deferred. Strong Plan #355-#359 should promote emitted config metadata into the typed
   graph before tooling claims deeper config awareness.
-- Framework API shape migration: the current proven stdlib/compiler examples still use
-  `mapGet`/builder/data shorthand shapes in several places. The locked post-Core target in
-  `docs/project/framework-api-shape.md` is Minimal API `app.get/post/...`, function
-  modules, explicit provider imports, generated capabilities, and Plan-visible config.
-  Future implementation PRs must migrate code/tests/examples deliberately instead of
-  mixing target examples with executable claims.
+- Framework API shape migration: FRAMEWORK-01.F adds hardened Minimal API, config,
+  module, validation-metadata, and SQLite examples for the implemented source-input path.
+  Remaining debt is runtime semantic validation, broader service/DI lifetimes, public
+  alpha docs, and migration of older bootstrap-only `examples/hello`,
+  `examples/ergonomics`, and related static API-shape fixtures when their target runtime
+  behavior exists.
 - Conformance compatibility suite: ENGINE-19 owns compiler to Plan to runtime to V8 to
   HTTP evidence, async/body/header/SQLite/capability/lifecycle/package cases, and default
   versus optional gate reporting.
@@ -192,8 +192,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - App-host lifecycle/resource completion beyond ENGINE-07: provider ownership policy,
   graceful drain/force-cancel shutdown behavior for real native async work, bounded
   resource budgets, leak checks where possible, and richer cleanup-failure diagnostics.
-- Conformance/examples/packaging evidence: realistic examples and packaged runtime smoke
-  outside the checkout before public alpha docs.
+- Conformance/examples/packaging evidence: FRAMEWORK-01.F adds realistic source-input
+  examples and tooling checks, but example-specific package smoke and public-alpha-ready
+  hosted packaging docs remain open.
 
 ## Must Fix Before Public Alpha
 
@@ -292,8 +293,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   drain behavior beyond the current idempotent close, thread-safety contract, and richer
   diagnostics.
 - SQLite file database capability policy.
-- Docs examples executable path: replace static checks with Sloppy-run examples as soon as
-  the runtime path exists.
+- Docs examples executable path: keep replacing static bootstrap-only examples with
+  `sloppy run` examples as each public shape becomes executable. FRAMEWORK-01.F covers the
+  current source-input subset; bootstrap builder/DI/controller-style examples remain
+  static until their runtime support lands.
 - V8 bridge layering watchlist: HTTP/framework-specific bridge code belongs in dedicated
   sibling modules such as `src/engine/v8/http_bridge.cc`; provider bridges must add
   `src/engine/v8/intrinsics_<provider>.cc` modules and register through `intrinsics.cc`.

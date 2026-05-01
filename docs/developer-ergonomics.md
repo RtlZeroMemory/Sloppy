@@ -192,6 +192,21 @@ now be run through the direct source-input shortcut or the explicit V8-required 
 asset before the generated app artifact, then dispatches through
 `__sloppy_register_handler` registrations.
 
+FRAMEWORK-01.F adds the hardened current example set:
+
+- `examples/hello-minimal/` for `sloppy run`, `sloppy.json`, route binding, and Results.
+- `examples/users-api-sqlite/` for config-driven SQLite, inferred/generated capabilities,
+  module routes, and V8-gated transport evidence.
+- `examples/configured-api/` for `appsettings.json`, environment overlay, and config reads.
+- `examples/modules-api/` for relative function modules and route groups.
+- `examples/validation-errors/` for schema-backed body metadata and OpenAPI validation
+  problem shape.
+
+The examples are intentionally honest: V8 execution is marked where required, schema
+metadata does not claim runtime semantic validation, and no example introduces Node/npm,
+package-manager behavior, public alpha promises, benchmark claims, or production HTTP
+claims.
+
 ## Builder/App Shape
 
 Structured apps use the builder:

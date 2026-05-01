@@ -5,6 +5,7 @@ import { usersModule } from "./modules/users.js";
 const app = Sloppy.create();
 
 app.use(sqlite("main"));
+app.get("/health", () => Results.text("ok"));
 app.useModule(usersModule);
 
 export default app;

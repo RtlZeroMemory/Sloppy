@@ -269,6 +269,11 @@ Benchmarks are currently exposed through `tools/windows/bench.ps1` and the nativ
 
 Related internal docs: `docs/developer-ergonomics.md`, `docs/app-plan.md`,
 `docs/compiler.md`, `docs/modules/plan/README.md`.
+
+Representative examples for these commands live under `examples/hello-minimal`,
+`examples/users-api-sqlite`, `examples/configured-api`, `examples/modules-api`, and
+`examples/validation-errors`. Their READMEs state which commands require V8 and which
+outputs are Plan metadata only.
 ## Source Input Modules
 
 `sloppy run <source>` remains a shortcut over compile-to-artifacts followed by the existing
