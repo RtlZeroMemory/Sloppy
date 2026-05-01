@@ -122,12 +122,13 @@ struct Handler {
     source_text: String,
     bindings: Vec<RequestBinding>,
     response: Option<ResponseMetadata>,
+    effects: Vec<EffectMetadata>,
 }
 
 #[derive(Debug, Clone)]
 struct DatabaseCapability {
     token: String,
-    provider: &'static str,
+    provider: String,
     config_name: Option<String>,
     access: String,
     database: Option<String>,
@@ -155,6 +156,7 @@ struct ExtractedApp {
     uses_data_runtime: bool,
     source_files: Vec<SourceFile>,
     routes: Vec<Route>,
+    helper_sources: Vec<String>,
     capabilities: Vec<DatabaseCapability>,
     configuration: Option<ConfigurationPlan>,
     schemas: Vec<SchemaMetadata>,
@@ -173,6 +175,29 @@ struct ResponseMetadata {
     helper: String,
     status: u16,
     kind: String,
+}
+
+#[derive(Debug, Clone)]
+struct EffectMetadata {
+    provider: String,
+    capability_kind: String,
+    provider_kind: String,
+    access: &'static str,
+    operation: String,
+    reason: String,
+}
+
+#[derive(Debug, Clone, Default)]
+struct FunctionEffectSummary {
+    effects: Vec<EffectMetadata>,
+    provider_bindings: BTreeMap<String, ProviderBinding>,
+}
+
+#[derive(Debug, Clone)]
+struct ProviderBinding {
+    token: String,
+    capability_kind: String,
+    provider: String,
 }
 
 #[derive(Debug, Clone)]
@@ -253,7 +278,9 @@ struct AppState {
     app_vars: BTreeSet<String>,
     builder_vars: BTreeSet<String>,
     group_vars: BTreeMap<String, String>,
-    provider_bindings: BTreeMap<String, String>,
+    provider_bindings: BTreeMap<String, ProviderBinding>,
+    helper_sources: BTreeMap<String, String>,
+    helper_effects: BTreeMap<String, FunctionEffectSummary>,
     app_provider_uses: BTreeSet<String>,
     imported_modules: Vec<ImportedModule>,
     used_modules: Vec<(String, Span)>,
@@ -281,6 +308,8 @@ impl AppState {
             builder_vars: BTreeSet::new(),
             group_vars: BTreeMap::new(),
             provider_bindings: BTreeMap::new(),
+            helper_sources: BTreeMap::new(),
+            helper_effects: BTreeMap::new(),
             app_provider_uses: BTreeSet::new(),
             imported_modules: Vec::new(),
             used_modules: Vec::new(),
@@ -752,12 +781,9 @@ impl ConfigurationModel {
     fn apply_to_app(&self, app: &mut ExtractedApp) -> Result<(), Diagnostic> {
         let mut provider_plans = Vec::new();
         for capability in &mut app.capabilities {
-            if capability.provider != "sqlite" {
-                continue;
-            }
             let provider_name = provider_config_name(capability);
-            let prefix = format!("Sloppy:Providers:sqlite:{provider_name}");
-            if capability.database.is_none() {
+            let prefix = format!("Sloppy:Providers:{}:{provider_name}", capability.provider);
+            if capability.provider == "sqlite" && capability.database.is_none() {
                 let database_key = format!("{prefix}:database");
                 if let Some(database) = self.get_string(&database_key)? {
                     let source = self
@@ -770,17 +796,21 @@ impl ConfigurationModel {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_CONFIG_MISSING_PROVIDER",
                         format!(
-                            "sqlite provider '{provider_name}' is missing required config value {database_key}"
+                            "{} provider '{provider_name}' is missing required config value {database_key}",
+                            capability.provider
                         ),
                     )
                     .with_hint(
-                        "Add Sloppy:Providers:sqlite:<name>:database to appsettings.json or pass inline sqlite options.",
+                        format!(
+                            "Add Sloppy:Providers:{}:<name>:database to appsettings.json or pass inline provider options.",
+                            capability.provider
+                        ),
                     ));
                 }
             }
             if let Some(source) = capability.config_source.clone() {
                 provider_plans.push(ConfigurationProviderPlan {
-                    provider: "sqlite".to_string(),
+                    provider: capability.provider.clone(),
                     name: provider_name,
                     prefix,
                     source,
@@ -869,6 +899,9 @@ fn canonical_config_segment(segment: &str) -> String {
         "RUNTIME" => "Runtime".to_string(),
         "PROVIDERS" => "Providers".to_string(),
         "SQLITE" => "sqlite".to_string(),
+        "POSTGRES" => "postgres".to_string(),
+        "POSTGRESQL" => "postgres".to_string(),
+        "SQLSERVER" => "sqlserver".to_string(),
         "HOST" => "Host".to_string(),
         "PORT" => "Port".to_string(),
         "MAXCONNECTIONS" => "MaxConnections".to_string(),
@@ -892,7 +925,7 @@ fn provider_config_name(capability: &DatabaseCapability) -> String {
 }
 
 fn provider_name_from_token(token: &str) -> String {
-    token.strip_prefix("sqlite:").unwrap_or(token).to_string()
+    token.strip_prefix("data.").unwrap_or(token).to_string()
 }
 
 fn json_type_name(value: &Value) -> &'static str {
@@ -1002,6 +1035,9 @@ fn extract_entry(
             }
             Statement::VariableDeclaration(declaration) => {
                 extract_variable_declaration(path, source, &source_name, &mut state, declaration)?
+            }
+            Statement::FunctionDeclaration(function) => {
+                extract_function_declaration(path, source, &mut state, function)?
             }
             Statement::ExpressionStatement(statement) => {
                 extract_expression_statement(path, source, &source_name, &mut state, statement)?
@@ -1142,6 +1178,8 @@ fn extract_entry(
         }
     }
 
+    apply_inferred_capability_access(&mut state.capabilities, &state.routes);
+
     let mut capability_tokens = BTreeSet::new();
     for capability in &state.capabilities {
         if !capability_tokens.insert(capability.token.clone()) {
@@ -1157,9 +1195,14 @@ fn extract_entry(
     Ok(ExtractedApp {
         uses_data_runtime: state.data_imported
             || state.sqlite_imported
-            || !state.app_provider_uses.is_empty(),
+            || !state.app_provider_uses.is_empty()
+            || state
+                .routes
+                .iter()
+                .any(|route| !route.handler.effects.is_empty()),
         source_files: graph.source_files.clone(),
         routes: state.routes,
+        helper_sources: state.helper_sources.into_values().collect(),
         capabilities: state.capabilities,
         configuration: None,
         schemas: state.schemas,
@@ -1336,11 +1379,29 @@ fn extract_variable_declaration(
             };
             state.group_vars.insert(name.to_string(), full_prefix);
         } else if let Some(provider) = sqlite_provider_call(init) {
-            state
-                .provider_bindings
-                .insert(name.to_string(), provider.token);
-        } else if let Some(token) = app_provider_lookup(init, state) {
-            state.provider_bindings.insert(name.to_string(), token);
+            state.provider_bindings.insert(
+                name.to_string(),
+                ProviderBinding {
+                    token: provider.token,
+                    capability_kind: "database".to_string(),
+                    provider: provider.provider,
+                },
+            );
+        } else if let Some(binding) = app_provider_lookup(init, state) {
+            state.provider_bindings.insert(name.to_string(), binding);
+        } else if helper_initializer(init).is_some() {
+            let Some(init_source) = source_slice(source, init.span()) else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HELPER",
+                    "helper source could not be extracted",
+                )
+                .with_path(path)
+                .with_span(init.span()));
+            };
+            let helper_source = format!("const {name} = {init_source};");
+            let summary = helper_effects_from_initializer(init, &state.provider_bindings);
+            state.helper_sources.insert(name.to_string(), helper_source);
+            state.helper_effects.insert(name.to_string(), summary);
         } else if state.schema_imported {
             if let Some(schema) = schema_declaration(path, source, source_name, name, init)? {
                 state.schemas.push(schema);
@@ -1364,6 +1425,43 @@ fn extract_variable_declaration(
         }
     }
     Ok(())
+}
+
+fn extract_function_declaration(
+    path: &Path,
+    source: &str,
+    state: &mut AppState,
+    function: &oxc_ast::ast::Function<'_>,
+) -> Result<(), Diagnostic> {
+    let Some(identifier) = &function.id else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HELPER",
+            "function helpers must have a name",
+        )
+        .with_path(path)
+        .with_span(function.span));
+    };
+    let Some(helper_source) = source_slice(source, function.span) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HELPER",
+            "helper source could not be extracted",
+        )
+        .with_path(path)
+        .with_span(function.span));
+    };
+    let name = identifier.name.as_str().to_string();
+    let summary =
+        function_effects_from_function(function, &state.provider_bindings, &BTreeMap::new());
+    state.helper_sources.insert(name.clone(), helper_source);
+    state.helper_effects.insert(name, summary);
+    Ok(())
+}
+
+fn helper_initializer(expression: &Expression<'_>) -> Option<()> {
+    match expression {
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => Some(()),
+        _ => None,
+    }
 }
 
 fn extract_expression_statement(
@@ -1401,8 +1499,12 @@ fn extract_expression_statement(
         route_expr,
         source,
         source_name,
-        state.data_imported,
+        state.data_imported
+            || !state.provider_bindings.is_empty()
+            || !state.helper_effects.is_empty(),
         &schema_names,
+        &state.provider_bindings,
+        &state.helper_effects,
     ) else {
         if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
         {
@@ -1441,6 +1543,18 @@ fn extract_expression_statement(
         .with_path(path)
         .with_span(statement.span)
         .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
+    }
+
+    let mut handler = handler;
+    if !handler.effects.is_empty() {
+        let providers = providers_used_by_effects(&state.provider_bindings, &handler.effects);
+        let helper_sources = state.helper_sources.values().cloned().collect::<Vec<_>>();
+        handler.source = wrap_handler_with_providers_and_helpers(
+            &handler.source,
+            &providers,
+            &helper_sources,
+            handler.is_async,
+        );
     }
 
     state.routes.push(Route {
@@ -1532,6 +1646,8 @@ fn unsupported_route_call_diagnostic(
                 "",
                 state.data_imported,
                 &schema_names(state),
+                &state.provider_bindings,
+                &state.helper_effects,
             )
         })
         .is_none()
@@ -1560,6 +1676,8 @@ fn validate_supported_initializer(
         source_name,
         state.data_imported,
         &schema_names(state),
+        &state.provider_bindings,
+        &state.helper_effects,
     ) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_SHAPE",
@@ -1720,14 +1838,14 @@ fn database_capability_call(
     reject_secret_option_fields(path, options)?;
 
     let provider = required_object_string_property(path, options, "provider")?;
-    if provider != "sqlite" {
+    if !database_provider_supported(provider) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_DATA_PROVIDER",
-            "compiler-emitted provider metadata currently supports sqlite only",
+            "compiler-emitted database provider metadata supports sqlite, postgres, and sqlserver",
         )
         .with_path(path)
         .with_span(options.span)
-        .with_hint("PostgreSQL and SQL Server JavaScript bridges remain deferred."));
+        .with_hint("Use a first-party database provider value or a future provider plugin task."));
     }
 
     let access = optional_object_string_property(path, options, "access")?
@@ -1763,13 +1881,17 @@ fn database_capability_call(
 
     Ok(Some(DatabaseCapability {
         token: token.to_string(),
-        provider: "sqlite",
+        provider: provider.to_string(),
         config_name: None,
         access,
         database,
         config_source: None,
         from_provider_use: false,
     }))
+}
+
+fn database_provider_supported(provider: &str) -> bool {
+    matches!(provider, "sqlite" | "postgres" | "sqlserver")
 }
 
 fn top_level_statement_diagnostic(
@@ -1882,7 +2004,7 @@ fn app_group_call<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a st
     Some((object, prefix))
 }
 
-fn app_provider_lookup(expression: &Expression<'_>, state: &AppState) -> Option<String> {
+fn app_provider_lookup(expression: &Expression<'_>, state: &AppState) -> Option<ProviderBinding> {
     let Expression::CallExpression(call) = expression else {
         return None;
     };
@@ -1891,9 +2013,7 @@ fn app_provider_lookup(expression: &Expression<'_>, state: &AppState) -> Option<
         return None;
     }
     let token = string_argument(call.arguments.first()?)?;
-    Some(normalize_sqlite_provider_token(
-        token.strip_prefix("sqlite:").unwrap_or(token),
-    ))
+    database_provider_binding_from_token(token)
 }
 
 fn config_read_metadata(
@@ -2232,7 +2352,7 @@ fn sqlite_provider_call_expression(call: &CallExpression<'_>) -> Option<Database
     let name = string_argument(call.arguments.first()?)?;
     Some(DatabaseCapability {
         token: normalize_sqlite_provider_token(name),
-        provider: "sqlite",
+        provider: "sqlite".to_string(),
         config_name: Some(name.to_string()),
         access: "readwrite".to_string(),
         database: None,
@@ -2309,11 +2429,27 @@ fn add_sqlite_provider_capability(state: &mut AppState, provider: DatabaseCapabi
 }
 
 fn normalize_sqlite_provider_token(name: &str) -> String {
-    if name.contains('.') {
+    normalize_database_provider_token(name)
+}
+
+fn normalize_database_provider_token(name: &str) -> String {
+    if name.starts_with("data.") {
         name.to_string()
     } else {
         format!("data.{name}")
     }
+}
+
+fn database_provider_binding_from_token(token: &str) -> Option<ProviderBinding> {
+    let (provider, name) = token.split_once(':')?;
+    if !database_provider_supported(provider) {
+        return None;
+    }
+    Some(ProviderBinding {
+        token: normalize_database_provider_token(name),
+        capability_kind: "database".to_string(),
+        provider: provider.to_string(),
+    })
 }
 
 fn resolve_relative_import(from_path: &Path, specifier: &str) -> Option<PathBuf> {
@@ -2511,7 +2647,7 @@ fn extract_module_function_routes(
     };
 
     let mut groups = BTreeMap::<String, String>::new();
-    let mut providers = BTreeMap::<String, String>::new();
+    let mut providers = BTreeMap::<String, ProviderBinding>::new();
     let mut routes = Vec::new();
 
     for statement in &body.statements {
@@ -2529,8 +2665,8 @@ fn extract_module_function_routes(
                     let Some(init) = &declarator.init else {
                         continue;
                     };
-                    if let Some(token) = app_provider_call(init, app_name) {
-                        providers.insert(name.to_string(), token);
+                    if let Some(binding) = app_provider_call(init, app_name) {
+                        providers.insert(name.to_string(), binding);
                     } else if let Some((receiver, prefix)) = app_group_call(init) {
                         let full_prefix = if receiver == app_name {
                             prefix.to_string()
@@ -2556,9 +2692,15 @@ fn extract_module_function_routes(
                     },
                     _ => (&statement.expression, None),
                 };
-                let Some((receiver, method, pattern, mut handler)) =
-                    route_call(route_expr, source, source_name, true, &BTreeSet::new())
-                else {
+                let Some((receiver, method, pattern, mut handler)) = route_call(
+                    route_expr,
+                    source,
+                    source_name,
+                    true,
+                    &BTreeSet::new(),
+                    &providers,
+                    &BTreeMap::new(),
+                ) else {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
                         "function modules support provider lookup, route groups, and literal routes only",
@@ -2618,7 +2760,7 @@ fn extract_module_function_routes(
     Ok(routes)
 }
 
-fn app_provider_call(expression: &Expression<'_>, app_name: &str) -> Option<String> {
+fn app_provider_call(expression: &Expression<'_>, app_name: &str) -> Option<ProviderBinding> {
     let Expression::CallExpression(call) = expression else {
         return None;
     };
@@ -2627,29 +2769,44 @@ fn app_provider_call(expression: &Expression<'_>, app_name: &str) -> Option<Stri
         return None;
     }
     let token = string_argument(call.arguments.first()?)?;
-    Some(normalize_sqlite_provider_token(
-        token.strip_prefix("sqlite:").unwrap_or(token),
-    ))
+    database_provider_binding_from_token(token)
 }
 
 fn wrap_module_handler_with_providers(
     handler_source: &str,
-    providers: &BTreeMap<String, String>,
+    providers: &BTreeMap<String, ProviderBinding>,
     is_async: bool,
 ) -> String {
-    if providers.is_empty() {
+    wrap_handler_with_providers_and_helpers(handler_source, providers, &[], is_async)
+}
+
+fn wrap_handler_with_providers_and_helpers(
+    handler_source: &str,
+    providers: &BTreeMap<String, ProviderBinding>,
+    helper_sources: &[String],
+    is_async: bool,
+) -> String {
+    if providers.is_empty() && helper_sources.is_empty() {
         return handler_source.to_string();
     }
     let provider_prefix = providers
         .iter()
-        .map(|(name, token)| {
+        .map(|(name, binding)| {
             format!(
-                "const {name} = data.sqlite({});",
-                serde_json::to_string(token).unwrap_or_else(|_| "\"main\"".to_string())
+                "const {name} = __sloppy_open_data_provider({}, {});",
+                serde_json::to_string(&binding.provider)
+                    .unwrap_or_else(|_| "\"sqlite\"".to_string()),
+                serde_json::to_string(&binding.token)
+                    .unwrap_or_else(|_| "\"data.main\"".to_string())
             )
         })
         .collect::<Vec<_>>()
         .join(" ");
+    let helper_prefix = if helper_sources.is_empty() {
+        String::new()
+    } else {
+        format!("{} ", helper_sources.join(" "))
+    };
     let close_calls = providers
         .keys()
         .map(|name| format!("{name}.close();"))
@@ -2657,13 +2814,28 @@ fn wrap_module_handler_with_providers(
         .join(" ");
     if is_async {
         return format!(
-            "async function(ctx) {{ {provider_prefix} try {{ return await ({handler_source})(ctx); }} finally {{ {close_calls} }} }}"
+            "async function(ctx) {{ {provider_prefix} {helper_prefix}try {{ return await ({handler_source})(ctx); }} finally {{ {close_calls} }} }}"
         );
     }
 
     format!(
-        "function(ctx) {{ {provider_prefix} try {{ return ({handler_source})(ctx); }} finally {{ {close_calls} }} }}"
+        "function(ctx) {{ {provider_prefix} {helper_prefix}try {{ return ({handler_source})(ctx); }} finally {{ {close_calls} }} }}"
     )
+}
+
+fn providers_used_by_effects(
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+    effects: &[EffectMetadata],
+) -> BTreeMap<String, ProviderBinding> {
+    let tokens = effects
+        .iter()
+        .map(|effect| effect.provider.as_str())
+        .collect::<BTreeSet<_>>();
+    provider_bindings
+        .iter()
+        .filter(|(_, binding)| tokens.contains(binding.token.as_str()))
+        .map(|(name, binding)| (name.clone(), binding.clone()))
+        .collect()
 }
 
 fn route_call<'a>(
@@ -2672,6 +2844,8 @@ fn route_call<'a>(
     source_name: &str,
     allow_data_handler_body: bool,
     schema_names: &BTreeSet<String>,
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
 ) -> Option<(&'a str, &'static str, &'a str, Handler)> {
     let Expression::CallExpression(call) = expression else {
         return None;
@@ -2690,6 +2864,8 @@ fn route_call<'a>(
         source_name,
         allow_data_handler_body,
         schema_names,
+        provider_bindings,
+        helper_effects,
     )?;
     Some((receiver, method, pattern, handler))
 }
@@ -2896,6 +3072,8 @@ fn handler_from_argument(
     source_name: &str,
     allow_data_handler_body: bool,
     schema_names: &BTreeSet<String>,
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
 ) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
@@ -2912,6 +3090,7 @@ fn handler_from_argument(
                     body_json_schema_argument_spans_arrow(function, &ctx_name, schema_names)
                 })
                 .unwrap_or_default();
+            let effects = function_effects_from_arrow(function, provider_bindings, helper_effects);
             Some(Handler {
                 source: sanitize_handler_schema_references(
                     handler_source,
@@ -2924,6 +3103,7 @@ fn handler_from_argument(
                 source_text: source.to_string(),
                 bindings: request_bindings_from_arrow(function, schema_names),
                 response: response_metadata_from_arrow(function),
+                effects: effects.effects,
             })
         }
         Argument::FunctionExpression(function) => {
@@ -2940,6 +3120,8 @@ fn handler_from_argument(
                     body_json_schema_argument_spans_function(function, &ctx_name, schema_names)
                 })
                 .unwrap_or_default();
+            let effects =
+                function_effects_from_function(function, provider_bindings, helper_effects);
             Some(Handler {
                 source: sanitize_handler_schema_references(
                     handler_source,
@@ -2952,6 +3134,7 @@ fn handler_from_argument(
                 source_text: source.to_string(),
                 bindings: request_bindings_from_function(function, schema_names),
                 response: response_metadata_from_function(function),
+                effects: effects.effects,
             })
         }
         _ => None,
@@ -3064,6 +3247,290 @@ fn handler_context_parameter_name(
         return None;
     };
     Some(identifier.name.as_str().to_string())
+}
+
+fn helper_effects_from_initializer(
+    expression: &Expression<'_>,
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+) -> FunctionEffectSummary {
+    match expression {
+        Expression::ArrowFunctionExpression(function) => {
+            function_effects_from_arrow(function, provider_bindings, &BTreeMap::new())
+        }
+        Expression::FunctionExpression(function) => {
+            function_effects_from_function(function, provider_bindings, &BTreeMap::new())
+        }
+        _ => FunctionEffectSummary::default(),
+    }
+}
+
+fn function_effects_from_arrow(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+) -> FunctionEffectSummary {
+    let mut summary = FunctionEffectSummary {
+        provider_bindings: provider_bindings.clone(),
+        ..FunctionEffectSummary::default()
+    };
+    for statement in &function.body.statements {
+        collect_statement_effects(statement, helper_effects, &mut summary);
+    }
+    dedupe_effects(&mut summary.effects);
+    summary
+}
+
+fn function_effects_from_function(
+    function: &oxc_ast::ast::Function<'_>,
+    provider_bindings: &BTreeMap<String, ProviderBinding>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+) -> FunctionEffectSummary {
+    let mut summary = FunctionEffectSummary {
+        provider_bindings: provider_bindings.clone(),
+        ..FunctionEffectSummary::default()
+    };
+    if let Some(body) = &function.body {
+        for statement in &body.statements {
+            collect_statement_effects(statement, helper_effects, &mut summary);
+        }
+    }
+    dedupe_effects(&mut summary.effects);
+    summary
+}
+
+fn collect_statement_effects(
+    statement: &Statement<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    match statement {
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                if let Some(name) = binding_identifier(&declarator.id) {
+                    if let Some(init) = &declarator.init {
+                        if let Some(binding) = data_provider_binding(init) {
+                            summary.provider_bindings.insert(name.to_string(), binding);
+                        } else {
+                            collect_expression_effects(init, helper_effects, summary);
+                        }
+                    }
+                }
+            }
+        }
+        Statement::ReturnStatement(statement) => {
+            if let Some(argument) = &statement.argument {
+                collect_expression_effects(argument, helper_effects, summary);
+            }
+        }
+        Statement::ExpressionStatement(statement) => {
+            collect_expression_effects(&statement.expression, helper_effects, summary);
+        }
+        Statement::BlockStatement(block) => {
+            for statement in &block.body {
+                collect_statement_effects(statement, helper_effects, summary);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_expression_effects(
+    expression: &Expression<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    match expression {
+        Expression::CallExpression(call) => {
+            collect_call_effects(call, helper_effects, summary);
+            for argument in &call.arguments {
+                collect_argument_effects(argument, helper_effects, summary);
+            }
+        }
+        Expression::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_effects(&property.value, helper_effects, summary);
+                }
+            }
+        }
+        Expression::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_effects(element, helper_effects, summary);
+            }
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            collect_expression_effects(&parenthesized.expression, helper_effects, summary);
+        }
+        Expression::StaticMemberExpression(member) => {
+            collect_expression_effects(&member.object, helper_effects, summary);
+        }
+        _ => {}
+    }
+}
+
+fn collect_argument_effects(
+    argument: &Argument<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    match argument {
+        Argument::CallExpression(call) => {
+            collect_call_effects(call, helper_effects, summary);
+            for argument in &call.arguments {
+                collect_argument_effects(argument, helper_effects, summary);
+            }
+        }
+        Argument::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_effects(&property.value, helper_effects, summary);
+                }
+            }
+        }
+        Argument::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_effects(element, helper_effects, summary);
+            }
+        }
+        Argument::ParenthesizedExpression(parenthesized) => {
+            collect_expression_effects(&parenthesized.expression, helper_effects, summary);
+        }
+        _ => {}
+    }
+}
+
+fn collect_array_element_effects(
+    element: &ArrayExpressionElement<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    match element {
+        ArrayExpressionElement::CallExpression(call) => {
+            collect_call_effects(call, helper_effects, summary);
+        }
+        ArrayExpressionElement::ObjectExpression(object) => {
+            for property in &object.properties {
+                if let ObjectPropertyKind::ObjectProperty(property) = property {
+                    collect_expression_effects(&property.value, helper_effects, summary);
+                }
+            }
+        }
+        ArrayExpressionElement::ArrayExpression(array) => {
+            for element in &array.elements {
+                collect_array_element_effects(element, helper_effects, summary);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_call_effects(
+    call: &CallExpression<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    if let Some((receiver, method)) = static_member_name(&call.callee) {
+        if let Some(binding) = summary.provider_bindings.get(receiver) {
+            if let Some(access) = provider_method_access(binding, method, call) {
+                summary.effects.push(EffectMetadata {
+                    provider: binding.token.clone(),
+                    capability_kind: binding.capability_kind.clone(),
+                    provider_kind: binding.provider.clone(),
+                    access,
+                    operation: method.to_string(),
+                    reason: format!("{receiver}.{method}"),
+                });
+            }
+        }
+    }
+
+    if let Expression::Identifier(identifier) = &call.callee {
+        let helper_name = identifier.name.as_str();
+        if let Some(helper) = helper_effects.get(helper_name) {
+            summary.effects.extend(helper.effects.iter().cloned());
+        }
+    }
+}
+
+fn data_provider_binding(expression: &Expression<'_>) -> Option<ProviderBinding> {
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    let (receiver, method) = static_member_name(&call.callee)?;
+    if receiver != "data" || !database_provider_supported(method) || call.arguments.len() != 1 {
+        return None;
+    }
+    let name = string_argument(call.arguments.first()?)?;
+    Some(ProviderBinding {
+        token: normalize_database_provider_token(name),
+        capability_kind: "database".to_string(),
+        provider: method.to_string(),
+    })
+}
+
+fn provider_method_access(
+    binding: &ProviderBinding,
+    method: &str,
+    call: &CallExpression<'_>,
+) -> Option<&'static str> {
+    if binding.capability_kind != "database" {
+        return None;
+    }
+    match method {
+        "query" | "queryOne" => Some("read"),
+        "exec" => Some(sql_access_from_call(call).unwrap_or("write")),
+        "transaction" => Some("readwrite"),
+        _ => None,
+    }
+}
+
+fn sql_access_from_call(call: &CallExpression<'_>) -> Option<&'static str> {
+    let sql = call.arguments.first().and_then(string_argument)?;
+    let trimmed = sql.trim_start().to_ascii_uppercase();
+    if trimmed.starts_with("SELECT") || trimmed.starts_with("WITH") {
+        Some("read")
+    } else {
+        Some("write")
+    }
+}
+
+fn dedupe_effects(effects: &mut Vec<EffectMetadata>) {
+    let mut seen = BTreeSet::new();
+    effects.retain(|effect| {
+        seen.insert(format!(
+            "{}:{}:{}",
+            effect.provider, effect.access, effect.operation
+        ))
+    });
+}
+
+fn apply_inferred_capability_access(capabilities: &mut [DatabaseCapability], routes: &[Route]) {
+    let mut inferred = BTreeMap::<String, &'static str>::new();
+    for route in routes {
+        for effect in &route.handler.effects {
+            inferred
+                .entry(effect.provider.clone())
+                .and_modify(|access| *access = merge_access(access, effect.access))
+                .or_insert(effect.access);
+        }
+    }
+
+    for capability in capabilities {
+        if capability.from_provider_use {
+            if let Some(access) = inferred.get(&capability.token) {
+                capability.access = (*access).to_string();
+            }
+        }
+    }
+}
+
+fn merge_access(left: &'static str, right: &'static str) -> &'static str {
+    match (left, right) {
+        ("read", "read") => "read",
+        ("write", "write") => "write",
+        ("readwrite", _) | (_, "readwrite") => "readwrite",
+        _ => "readwrite",
+    }
 }
 
 fn arrow_has_typescript_syntax(function: &oxc_ast::ast::ArrowFunctionExpression<'_>) -> bool {
@@ -4137,10 +4604,11 @@ fn emit_plan(
     let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
     let emits_app_metadata = !app.schemas.is_empty() || !app.config_reads.is_empty();
     let emits_metadata = emits_app_metadata
-        || app
-            .routes
-            .iter()
-            .any(|route| !route.handler.bindings.is_empty() || route.handler.response.is_some());
+        || app.routes.iter().any(|route| {
+            !route.handler.bindings.is_empty()
+                || route.handler.response.is_some()
+                || !route.handler.effects.is_empty()
+        });
     let handlers = app
         .routes
         .iter()
@@ -4185,7 +4653,8 @@ fn emit_plan(
             }
             let emits_route_metadata = emits_app_metadata
                 || !route.handler.bindings.is_empty()
-                || route.handler.response.is_some();
+                || route.handler.response.is_some()
+                || !route.handler.effects.is_empty();
             if !route.handler.bindings.is_empty() {
                 route_json["bindings"] = json!(route
                     .handler
@@ -4208,6 +4677,23 @@ fn emit_plan(
                         "kind": response.kind
                     });
                 }
+            }
+            if !route.handler.effects.is_empty() {
+                route_json["effects"] = json!(route
+                    .handler
+                    .effects
+                    .iter()
+                    .map(|effect| {
+                        json!({
+                            "provider": effect.provider,
+                            "capabilityKind": effect.capability_kind,
+                            "providerKind": effect.provider_kind,
+                            "access": effect.access,
+                            "operation": effect.operation,
+                            "reason": effect.reason
+                        })
+                    })
+                    .collect::<Vec<_>>());
             }
             route_json
         })
@@ -4367,6 +4853,10 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::new();
     let mut mappings = Vec::new();
     let mut generated_line = 0usize;
+    let needs_provider_open_helper = app
+        .routes
+        .iter()
+        .any(|route| route.handler.source.contains("__sloppy_open_data_provider"));
 
     push_generated_line(
         &mut output,
@@ -4390,6 +4880,24 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &mut generated_line,
             "const { Results, data } = __sloppyRuntime;",
         );
+        if needs_provider_open_helper {
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "function __sloppy_open_data_provider(kind, token) {",
+            );
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "  if (kind === \"sqlite\") { return data.sqlite(token); }",
+            );
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "  throw new Error(`sloppy: ${kind} provider bridge unavailable`);",
+            );
+            push_generated_line(&mut output, &mut generated_line, "}");
+        }
     } else {
         push_generated_line(
             &mut output,
@@ -4398,6 +4906,13 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         );
     }
     push_generated_line(&mut output, &mut generated_line, "");
+
+    for helper_source in &app.helper_sources {
+        push_generated_line(&mut output, &mut generated_line, helper_source);
+    }
+    if !app.helper_sources.is_empty() {
+        push_generated_line(&mut output, &mut generated_line, "");
+    }
 
     for (index, route) in app.routes.iter().enumerate() {
         let id = index + 1;
@@ -4836,9 +5351,10 @@ mod tests {
             uses_data_runtime: true,
             source_files: Vec::new(),
             routes: Vec::new(),
+            helper_sources: Vec::new(),
             capabilities: vec![super::DatabaseCapability {
                 token: "data.main".to_string(),
-                provider: "sqlite",
+                provider: "sqlite".to_string(),
                 config_name: Some("main".to_string()),
                 access: "readwrite".to_string(),
                 database: None,
@@ -5683,6 +6199,134 @@ export default app;
     }
 
     #[test]
+    fn infers_direct_provider_read_effect_without_manual_uses() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(db.query("select id, name from users", [])));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("direct provider read should infer effects");
+        assert_eq!(app.capabilities[0].access, "read");
+        assert_eq!(app.routes[0].handler.effects.len(), 1);
+        assert_eq!(app.routes[0].handler.effects[0].provider, "data.main");
+        assert_eq!(app.routes[0].handler.effects[0].capability_kind, "database");
+        assert_eq!(app.routes[0].handler.effects[0].provider_kind, "sqlite");
+        assert_eq!(app.routes[0].handler.effects[0].access, "read");
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(plan["capabilities"][0]["access"], "read");
+        assert_eq!(
+            plan["routes"][0]["effects"][0]["capabilityKind"],
+            "database"
+        );
+        assert_eq!(plan["routes"][0]["effects"][0]["providerKind"], "sqlite");
+        assert_eq!(plan["routes"][0]["effects"][0]["operation"], "query");
+    }
+
+    #[test]
+    fn infers_provider_write_and_readwrite_effects() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.post("/users", () => {
+  db.exec("insert into users (name) values (?)", ["Ada"]);
+  return Results.json(db.queryOne("select id, name from users where name = ?", ["Ada"]));
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("mixed provider usage should infer readwrite");
+        assert_eq!(app.capabilities[0].access, "readwrite");
+        assert_eq!(app.routes[0].handler.effects.len(), 2);
+        assert!(app.routes[0]
+            .handler
+            .effects
+            .iter()
+            .any(|effect| effect.access == "write"));
+        assert!(app.routes[0]
+            .handler
+            .effects
+            .iter()
+            .any(|effect| effect.access == "read"));
+    }
+
+    #[test]
+    fn provider_effect_model_is_database_provider_generic() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.analytics", { provider: "postgres", access: "readwrite" });
+builder.capabilities.addDatabase("data.reporting", { provider: "sqlserver", access: "read" });
+const app = builder.build();
+const analytics = app.provider("postgres:analytics");
+app.get("/analytics", () => Results.json(analytics.query("select id from events", [])));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("database provider metadata should not be sqlite-only");
+        assert_eq!(app.capabilities.len(), 2);
+        assert_eq!(app.capabilities[0].provider, "postgres");
+        assert_eq!(app.capabilities[1].provider, "sqlserver");
+        assert_eq!(app.routes[0].handler.effects.len(), 1);
+        assert_eq!(app.routes[0].handler.effects[0].capability_kind, "database");
+        assert_eq!(app.routes[0].handler.effects[0].provider_kind, "postgres");
+        assert_eq!(app.routes[0].handler.effects[0].provider, "data.analytics");
+        assert_eq!(app.routes[0].handler.effects[0].access, "read");
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("__sloppy_open_data_provider(\"postgres\", \"data.analytics\")"));
+    }
+
+    #[test]
+    fn infers_same_file_helper_effects_without_manual_uses() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+function listUsers() {
+  return db.query("select id, name from users", []);
+}
+app.get("/users", () => Results.json(listUsers()));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("same-file helper should infer provider effects");
+        assert_eq!(app.capabilities[0].access, "read");
+        assert_eq!(app.routes[0].handler.effects.len(), 1);
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("function listUsers()"));
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+        assert!(!app.routes[0].handler.source.contains("uses"));
+    }
+
+    #[test]
     fn database_capability_accepts_matching_path_alias() {
         let source = r#"import { Sloppy, Results } from "sloppy";
 const builder = Sloppy.createBuilder();
@@ -5778,7 +6422,9 @@ export default app;
 
         let emitted_js = super::emit_app_js(&app);
         assert!(emitted_js.source.contains("const { Results, data }"));
-        assert!(emitted_js.source.contains("data.sqlite(\"data.main\")"));
+        assert!(emitted_js
+            .source
+            .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
 
         let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
         assert!(emitted_source_map.contains("\"users.js\""));
@@ -5888,6 +6534,7 @@ export default app;
             "async-handler",
             "provider-capability",
             "metadata-extraction",
+            "effects-capability",
             "source-map",
         ] {
             let fixture = root

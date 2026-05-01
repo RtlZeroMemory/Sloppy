@@ -85,6 +85,14 @@ request bindings, and `Results.*` response facts are Plan-visible for later audi
 completeness work, but this slice does not enforce provider/capability effects or runtime
 request validation.
 
+COMPILER-30.F/G starts the inferred capability path for provider calls in the compiler.
+Static database provider handles and same-file helpers can now produce route `effects[]`
+metadata with capability kind, provider kind, token, operation, and access. SQLite,
+PostgreSQL, and SQL Server metadata are representable; only SQLite has an executable
+generated runtime opener today. This remains Plan-visible inference and request-scoped
+provider handle generation where supported; it does not add OS sandboxing, new provider
+bridges, non-database provider adapters, or a broad manual policy system.
+
 A capability is a named authority token. Code receives a capability through services or
 explicit context, not through global APIs.
 

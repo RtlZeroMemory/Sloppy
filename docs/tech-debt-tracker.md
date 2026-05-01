@@ -440,3 +440,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   and nested literal route groups from source-local imports. Controllers, decorators,
   framework configuration, request binding, validation, Results completion, and example
   hardening remain tracked by the framework follow-up issues.
+
+## COMPILER-30.F/G Follow-ups
+
+- Route effect inference currently covers direct first-party database provider handles and
+  same-file helpers that close over those handles. Imported helper summaries,
+  repository/factory objects, object-literal services, simple class services,
+  non-database provider adapters, recursion diagnostics, and unknown-call completeness are
+  still tracked by the remaining COMPILER-30 sequence.

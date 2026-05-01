@@ -120,8 +120,12 @@ const testDb = app.use(sqlite("test", { database: ":memory:" }));
 The compiler emits the resolved SQLite database into `dataProviders[]` so the existing V8
 SQLite bridge continues to open through Plan metadata. COMPILER-30.E also source-locates
 supported SQLite provider registrations and `app.provider("sqlite:name")` handle lookups
-for later effect/capability inference. Normal app authors do not write manual capabilities
-for this provider path; capability generation remains compiler/Plan owned.
+for effect/capability inference. COMPILER-30.F/G generalizes the compiler effect model so
+database providers carry capability kind, provider kind, token, operation, and inferred
+access. SQLite, PostgreSQL, and SQL Server can be represented in provider/capability
+metadata, while only SQLite has an executable generated runtime opener today. Normal app
+authors do not write manual capabilities for statically resolvable provider paths;
+capability generation remains compiler/Plan owned.
 
 ENGINE-23.A/B adds the first provider execution runtime foundation: operation descriptors
 own queued inputs, per-provider-instance executors enforce bounded admission, accepted
