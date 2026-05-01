@@ -319,12 +319,15 @@ The compiler must not remain one giant god file. Target modules under `compiler/
 Module APIs should be explicit and testable. Avoid broad `utils` dumping grounds. Shared
 helpers need a named domain owner.
 
-COMPILER-30.A establishes this layout and the public library boundary without changing the
-current compiler-supported source subset. `main.rs` delegates to the library API,
-`diagnostic.rs` and `source.rs` own the first shared compiler data types/helpers, and the
-remaining module files are intentionally narrow placeholders for later tasks. Full import
-resolution, symbol binding, DSL recognition, effect summaries, capability inference,
-schema/result inference, and Plan completeness remain future COMPILER-30 tasks.
+COMPILER-30.B/C adds the first implementation behind the parser/resolver/symbol/DSL/static
+evaluation boundaries without widening into arbitrary TypeScript or package-manager
+resolution. `parser.rs` owns entry/module source-type diagnostics, `resolver.rs` owns
+source-local relative and Slop-owned import classification, `module_graph.rs` owns
+deterministic source graph bookkeeping, `symbols.rs` owns Slop binding primitives,
+`slop_dsl.rs` owns explicit Slop DSL recognizers, and `static_eval.rs` owns supported
+literal/alias string evaluation. Route graph extraction, metadata extraction, effects,
+capability inference, schema/result inference, and Plan completeness remain future
+COMPILER-30 tasks.
 
 The fixture harness keeps current behavior stable while preparing for inference:
 

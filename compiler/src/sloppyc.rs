@@ -12,12 +12,14 @@ use oxc_ast::ast::{
     Statement,
 };
 use oxc_parser::Parser;
-use oxc_span::{SourceType, Span};
+use oxc_span::Span;
 use serde_json::json;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::diagnostic::Diagnostic;
+use crate::parser::{source_type_for_path, ParseContext};
+use crate::resolver;
 use crate::source::{line_column, source_map_source_name};
 
 const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
@@ -902,13 +904,7 @@ fn extract_entry(
     source: &str,
     graph: &mut ModuleGraph,
 ) -> Result<ExtractedApp, Diagnostic> {
-    let source_type = SourceType::from_path(path).map_err(|_| {
-        Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_INPUT",
-            "compiler input must use a JavaScript file extension",
-        )
-        .with_path(path)
-    })?;
+    let source_type = source_type_for_path(path, ParseContext::Entry)?;
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type).parse();
 
@@ -1847,21 +1843,7 @@ fn normalize_sqlite_provider_token(name: &str) -> String {
 }
 
 fn resolve_relative_import(from_path: &Path, specifier: &str) -> Option<PathBuf> {
-    let base = from_path.parent().unwrap_or_else(|| Path::new(""));
-    let candidate = base.join(specifier);
-    let candidates = if candidate.extension().is_some() {
-        vec![candidate]
-    } else {
-        vec![
-            candidate.with_extension("js"),
-            candidate.with_extension("mjs"),
-            candidate.with_extension("ts"),
-        ]
-    };
-    candidates
-        .into_iter()
-        .find(|candidate| candidate.is_file())
-        .and_then(|candidate| fs::canonicalize(candidate).ok())
+    resolver::resolve_relative_import(from_path, specifier)
 }
 
 fn extract_relative_module(
@@ -1890,13 +1872,7 @@ fn extract_relative_module(
         .with_path(&imported.path)
     })?;
     let source_name = graph.record_source(&imported.path, &source);
-    let source_type = SourceType::from_path(&imported.path).map_err(|_| {
-        Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_INPUT",
-            "module input must use a supported JavaScript or TypeScript file extension",
-        )
-        .with_path(&imported.path)
-    })?;
+    let source_type = source_type_for_path(&imported.path, ParseContext::Module)?;
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, &source, source_type).parse();
     if let Some(error) = parsed.errors.into_iter().next() {
@@ -2213,14 +2189,7 @@ fn route_call<'a>(
 }
 
 fn route_method_from_property(property: &str) -> Option<&'static str> {
-    match property {
-        "mapGet" | "get" => Some("GET"),
-        "mapPost" | "post" => Some("POST"),
-        "mapPut" | "put" => Some("PUT"),
-        "mapPatch" | "patch" => Some("PATCH"),
-        "mapDelete" | "delete" => Some("DELETE"),
-        _ => None,
-    }
+    crate::slop_dsl::route_method_from_property(property)
 }
 
 fn with_name_call<'a>(
@@ -2257,51 +2226,19 @@ fn with_name_call<'a>(
 }
 
 fn static_member_name<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a str)> {
-    let Expression::StaticMemberExpression(member) = expression else {
-        return None;
-    };
-    let object = match &member.object {
-        Expression::Identifier(identifier) => identifier.name.as_str(),
-        _ => return None,
-    };
-    Some((object, member.property.name.as_str()))
+    crate::slop_dsl::static_member_name(expression)
 }
 
 fn static_member_chain<'a>(expression: &'a Expression<'a>) -> Option<Vec<&'a str>> {
-    let mut parts = Vec::new();
-    let mut current = expression;
-
-    loop {
-        match current {
-            Expression::Identifier(identifier) => {
-                parts.push(identifier.name.as_str());
-                parts.reverse();
-                return Some(parts);
-            }
-            Expression::StaticMemberExpression(member) => {
-                parts.push(member.property.name.as_str());
-                current = &member.object;
-            }
-            _ => return None,
-        }
-    }
+    crate::slop_dsl::static_member_chain(expression)
 }
 
 fn computed_member_receiver<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
-    let Expression::ComputedMemberExpression(member) = expression else {
-        return None;
-    };
-    match &member.object {
-        Expression::Identifier(identifier) => Some(identifier.name.as_str()),
-        _ => None,
-    }
+    crate::slop_dsl::computed_member_receiver(expression)
 }
 
 fn string_argument<'a>(argument: &'a Argument<'a>) -> Option<&'a str> {
-    match argument {
-        Argument::StringLiteral(literal) => Some(literal.value.as_str()),
-        _ => None,
-    }
+    crate::slop_dsl::string_argument(argument)
 }
 
 fn object_argument<'a>(

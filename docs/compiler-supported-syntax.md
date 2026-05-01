@@ -57,10 +57,11 @@ runs those artifacts exactly as `sloppy run --artifacts` would.
 slice.
 
 The source-input handoff follows the compiler's existing source support. JavaScript input
-is supported when it matches the documented subset. TypeScript extensions are accepted at
-the CLI boundary only so `sloppyc` can return the documented unsupported-TypeScript
-diagnostic. No full TypeScript typechecking, npm/package-manager behavior, `node_modules`
-resolution, broad module graph bundling, watch mode, or hot reload is implemented.
+is supported when it matches the documented subset. `.ts` inputs are parsed only for the
+supported Slop-owned subset and for source-located unsupported-TypeScript diagnostics;
+`.tsx`, `.jsx`, `.cjs`, `.mts`, and `.cts` remain outside the supported compiler subset.
+No full TypeScript typechecking, npm/package-manager behavior, `node_modules` resolution,
+broad module graph bundling, watch mode, or hot reload is implemented.
 
 ## Matrix
 
@@ -100,7 +101,7 @@ resolution, broad module graph bundling, watch mode, or hot reload is implemente
 | Secret-bearing provider/capability fields | Rejected with diagnostic | Rejected before artifact emission. | `SLOPPYC_E_SECRET_PLAN_METADATA`. | `unsupported-secret-capability` diagnostic fixture. | Permanent policy. |
 | Services/modules/broad provider extraction | Deferred | Bootstrap-only APIs beyond the minimal database capability metadata are not compiler plan input yet. | Unsupported top-level/route-shape diagnostics if used in compiler input. | Matrix-documented; no success fixtures until implemented. | Later framework/module tasks. |
 | Decorators | Not supported by the current compiler subset | Not accepted as compiler-extractable API shape. | Parse or unsupported syntax diagnostic. | Matrix-documented. | No alpha target. |
-| TypeScript input or TS-only handler syntax | Rejected with diagnostic | `.ts/.tsx/.mts/.cts` inputs are rejected; handler type annotations are rejected. | `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT` or `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER`. | `unsupported-typescript-handler` diagnostic fixture. | Official TypeScript checking/lowering later. |
+| TypeScript input or TS-only handler syntax | Partially parsed for diagnostics | `.ts` input is accepted at the parser boundary for the supported subset, but TypeScript-only handler syntax is rejected; `.tsx/.mts/.cts` remain rejected as unsupported source extensions. | `SLOPPYC_E_UNSUPPORTED_INPUT` for unsupported extensions or `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER` for TS-only handler syntax. | `unsupported-typescript-handler` diagnostic fixture plus parser module extension tests. | Official TypeScript checking/lowering later. |
 
 ## COMPILER-30 Target Subset
 
@@ -164,10 +165,13 @@ codes, source path, and line/column when the parser exposes a span. The text ren
 intentionally small; JSON diagnostics, multi-location source frames, and richer fix metadata
 belong to later diagnostics work.
 
-COMPILER-30.A preserves this supported syntax matrix while splitting compiler internals
-behind a library API and module boundaries. The fixture harness can test success artifacts,
-rejected inputs, source-map goldens, diagnostics, multi-file fixtures, and future inference
-metadata without expanding the accepted source subset.
+COMPILER-30.B/C adds the first real code behind those boundaries: parser/source-type
+entrypoints, supported import classification/resolution, source module graph bookkeeping,
+symbol-table primitives, Slop DSL helper recognition, and static string literal/alias
+evaluation. The existing artifact extractor now routes source-type checks, relative import
+resolution, route-method matching, member-chain matching, and string-argument recognition
+through those focused modules while preserving current artifact compatibility.
+
 ## ENGINE-14 Module Syntax
 
 Supported source imports are intentionally small:
@@ -180,6 +184,14 @@ The compiler resolves relative imports before runtime startup and rewrites the s
 graph into the classic generated artifact. Unsupported bare imports, Node/npm specifiers,
 remote imports, dynamic `import(...)`, missing relative imports, circular relative imports,
 missing named exports, and unsupported module shapes fail at compile time with diagnostics.
+
+COMPILER-30.B/C makes the accepted import set explicit:
+
+- relative imports are resolved only as fixture/source-local `.js`, `.mjs`, or `.ts` files;
+- `"sloppy"` is the only supported stdlib bare import;
+- `"sloppy/providers/sqlite"` is the only supported provider bare import;
+- unknown bare, Node/npm, remote, and dynamic imports remain rejected with source-located
+  diagnostics.
 
 Function modules may export one named function that receives the app, obtains providers
 through `app.provider("sqlite:<name>")`, creates route groups with `app.group(...)`, and
