@@ -37,6 +37,8 @@ The compact source records for this reset are:
 - `docs/project/framework-api-shape.md`;
 - `docs/project/source-input-run-dev-loop-plan.md`;
 - `docs/project/strong-plan-strategic-layer-plan.md`;
+- `docs/project/compiler-inference-engine-architecture.md`;
+- `docs/project/compiler-inference-issue-index.md`;
 - `docs/project/http-post-mvp-transport-plan.md`;
 - `docs/project/post-core-immediate-hardening-plan.md`.
 
@@ -95,6 +97,8 @@ Kept open intentionally:
 
 - #259/#302 compiler/source-input handoff, with ENGINE-02.E covering the current
   rebuild-always JavaScript shortcut and leaving TypeScript/module/cache reuse follow-ups;
+- #460/#461-#470 COMPILER-30 compiler inference engine, owning deep static inference for
+  the supported Slop app subset and feeding Strong Plan consumers;
 - #312/#325-#329 module/bootstrap runtime completion;
 - #313/#330-#334 source maps and diagnostics;
 - #314/#335-#339 app/resource lifetime runtime;
@@ -121,12 +125,14 @@ short:
 1. HARDEN-01 small boundary/safety cleanup if selected.
 2. Source-input follow-ups through reused #259/#302 and #316/#345-#349: TypeScript/module
    completion, cache reuse, and watch/dev-loop decisions.
-3. Strong Plan typed graph through reused #318/#355-#359.
-4. Framework config, binding, validation, Results, and examples through #432/#435-#440.
-5. Plan-driven doctor/OpenAPI after Plan metadata is real.
-6. HTTP-25.F/#446 bounded stress/conformance evidence for the HTTP-25 keep-alive, chunked,
+3. COMPILER-30 compiler inference through #460/#461-#470, starting with #461 module
+   architecture/test harness.
+4. Strong Plan typed graph through reused #318/#355-#359 once compiler metadata exists.
+5. Framework config, binding, validation, Results, and examples through #432/#435-#440.
+6. Plan-driven doctor/OpenAPI after Plan metadata is real.
+7. HTTP-25.F/#446 bounded stress/conformance evidence for the HTTP-25 keep-alive, chunked,
    and internal streaming writer slices.
-7. Provider expansion later after SQLite/provider-executor integration is proven.
+8. Provider expansion later after SQLite/provider-executor integration is proven.
 
 ## Deferred By Design
 

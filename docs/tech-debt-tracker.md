@@ -46,8 +46,14 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   HTTP-25.F adds bounded stress/conformance evidence. Remaining HTTP transport debt is
   future owner-approved production hardening or public streaming API work.
 - Compiler/runtime completion for realistic supported Sloppy apps beyond ENGINE-02 and
-  ENGINE-03: source-input handoff/cache, module/service/schema extraction, broader async
-  source shapes, non-GET dispatch, and provider/capability enforcement.
+  ENGINE-03: COMPILER-30 (#460/#461-#470) now owns compiler inference for the supported
+  Slop app subset: routes, route groups, function modules, providers, config keys, request
+  binding, schemas, Results, effect summaries, capabilities, source locations, diagnostics,
+  and Plan completeness. Normal repository/service patterns should not require manual
+  `uses` metadata when effects are statically resolvable. Runtime work remains separate:
+  cache reuse, broader async source
+  shapes, dispatch/runtime behavior, and provider/capability enforcement must not be
+  hidden inside compiler planning.
 - Full scalable async runtime beyond ENGINE-03: ENGINE-12.AB adds the first bounded
   `SlAsyncLoop` backend abstraction, libuv backend, and owner-thread V8 continuation
   scheduler. ENGINE-12.CD adds the deterministic provider-executor/cancellation/
@@ -141,7 +147,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   inside conformance PRs.
 - Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
   artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
-  optimization hooks, versioning, and internal tooling leverage.
+  optimization hooks, versioning, and internal tooling leverage. It consumes COMPILER-30
+  output rather than reimplementing compiler inference.
 - Memory and string runtime follow-through: ENGINE-21.A/B/C/D/E/F now provide the primitive
   layer for app/request/temp/static lifetime rules, allocation policy, string/byte views,
   arena-owned copies, byte and string builders, formatting utilities, bounded app/static

@@ -102,6 +102,52 @@ resolution, broad module graph bundling, watch mode, or hot reload is implemente
 | Decorators | Not supported by the current compiler subset | Not accepted as compiler-extractable API shape. | Parse or unsupported syntax diagnostic. | Matrix-documented. | No alpha target. |
 | TypeScript input or TS-only handler syntax | Rejected with diagnostic | `.ts/.tsx/.mts/.cts` inputs are rejected; handler type annotations are rejected. | `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_INPUT` or `SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_HANDLER`. | `unsupported-typescript-handler` diagnostic fixture. | Official TypeScript checking/lowering later. |
 
+## COMPILER-30 Target Subset
+
+COMPILER-30 (#460) expands the compiler-owned supported subset in bounded tasks. The target
+is deep static inference for supported Slop app patterns, not arbitrary TypeScript.
+
+Target supported shapes:
+
+- static route paths;
+- Minimal API `app.get/post/put/patch/delete(...)`, with current `map*` compatibility where
+  required by existing artifacts;
+- route groups;
+- function modules;
+- relative imports;
+- Slop stdlib imports;
+- Slop provider imports;
+- provider registrations and provider handles;
+- schema declarations;
+- config key reads and `bind`;
+- request binding helpers for route/query/header/body;
+- explicit `Results.*`;
+- direct provider calls;
+- local helper functions;
+- imported relative helper functions;
+- repository/factory functions where effects are statically resolvable;
+- object-literal methods where effects are statically resolvable;
+- simple class instances where effects are statically resolvable;
+- effect summaries for supported calls.
+
+Target rejected or metadata-required shapes:
+
+- dynamic route paths;
+- unknown bare imports;
+- npm/node_modules imports;
+- dynamic imports;
+- unknown runtime route generation;
+- unresolvable provider usage where capability truth is required.
+
+The compiler should fail invalid runtime contracts, mark optional metadata partial when the
+app can still run, and allow runtime-only behavior only when the developer explicitly opts
+in with required provider/capability metadata.
+
+Route-level `uses: [...]` and manual capability metadata are fallback escape hatches, not
+the normal workflow. The compiler must infer provider/capability effects through normal
+Minimal API, function-module, repository, factory, object-method, and simple service/class
+patterns when they are statically resolvable.
+
 ENGINE-03 only graduates the direct async handler shape whose Promise settles during the V8
 owner-thread microtask drain. `SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY` remains the
 correct compiler response for `await`, multi-statement async bodies, and non-direct returns

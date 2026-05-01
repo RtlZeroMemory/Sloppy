@@ -3,6 +3,10 @@
 Status: planning source of truth. Reuse #318/#355-#359; do not create duplicate PLAN
 issues.
 
+COMPILER-30 (#460) now owns compiler inference implementation. Strong Plan work consumes
+COMPILER-30 output; it should not duplicate source parsing, Slop DSL recognition, effect
+summary, or capability inference logic.
+
 ## Strategic Role
 
 Plan is Slop's strategic differentiator: the engine should understand the app shape before
@@ -51,11 +55,12 @@ helpful diagnostic or require explicit metadata; no silent unsound inference.
 ## Issue Plan
 
 - #318 owns the Strong Plan strategic layer EPIC.
-- #355 covers typed Plan graph model.
-- #356 covers route/body/provider/capability/response metadata.
-- #357 covers Plan validation and startup diagnostics.
-- #358 covers doctor/audit/OpenAPI hooks.
-- #359 covers future fast-path candidate registry without implementation.
+- #355 covers typed Plan graph model and depends on COMPILER-30 graph output.
+- #356 covers static validation/compatibility and consumes COMPILER-30 completeness.
+- #357 covers doctor/audit strategy and consumes COMPILER-30 explainability.
+- #358 covers OpenAPI/optimization hooks and consumes body/response/schema/provider
+  metadata from COMPILER-30.
+- #359 covers Plan versioning/evolution and coordinates with COMPILER-30.I (#469).
 
 ## Non-Goals
 

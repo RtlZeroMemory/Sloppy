@@ -75,6 +75,13 @@ provider bindings such as `Sloppy:Providers:sqlite:main`. Sensitive-looking valu
 redacted. The native Plan v1 parser intentionally ignores this metadata for now; broader
 typed Plan graph expansion remains a Strong Plan follow-up under #355-#359.
 
+COMPILER-30 (#460) defines the compiler-owned inference path that should feed the next
+Plan metadata expansion. The compiler, not the runtime, owns inference for routes, route
+groups, function modules, providers, config keys, request binding, schemas, results,
+function effects, capabilities, source locations, diagnostics, and completeness. Strong
+Plan issues #355-#359 consume that output for typed graph representation, validation,
+doctor/audit, OpenAPI/optimization hooks, and versioning.
+
 ## Public API Shape
 
 The plan is not normally user-authored. It is a public compatibility contract for `sloppyc`,
@@ -204,6 +211,11 @@ module names, dependencies, deterministic order, capability tokens, service toke
 strings, and custom metadata for tests and examples. The native Plan v1 parser still does
 not parse a `modules` section, and the compiler still does not emit one.
 
+COMPILER-30 target module metadata comes from the supported compiler module graph:
+relative imports, function modules, contributed routes, providers, config/schema/result
+metadata, and source locations. Runtime package loading, npm modules, controllers, and
+decorators remain out of scope.
+
 ### routes
 
 Native route table input:
@@ -248,6 +260,10 @@ and `{name:int}`. Query strings are parsed from request targets by EPIC-23 reque
 code, not route patterns. Catch-all parameters, optional segments, regex constraints,
 route groups, method matching beyond GET dev dispatch, route precedence, OpenAPI metadata,
 and validation metadata remain future work.
+
+COMPILER-30 route metadata should also report completeness. Dynamic route paths are invalid
+in the compiler-owned static path unless a future explicit runtime-only escape hatch
+provides all required provider/capability metadata.
 
 ### handlers
 

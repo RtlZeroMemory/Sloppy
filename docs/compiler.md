@@ -81,6 +81,21 @@ The compiler grows from this pipeline in later slices:
 5. V8 bootstrap module loading handoff;
 6. official TypeScript checking integration.
 
+COMPILER-30 (#460) is the next compiler-owned roadmap for that growth. Its source docs are
+`docs/project/compiler-inference-engine-architecture.md` and
+`docs/project/compiler-inference-issue-index.md`. COMPILER-30 frames the target as deep
+static inference for the supported Slop app subset, not arbitrary TypeScript inference.
+It owns module graph, symbol binding, Slop DSL recognition, route/group/module extraction,
+provider/config/schema/result extraction, function effect summaries, callgraph inference,
+capability inference, Plan completeness, source locations, diagnostics, and compiler
+goldens. ENGINE-20 / Strong Plan remains the consumer layer for typed Plan use, doctor,
+audit, OpenAPI, optimization hooks, and versioning policy.
+
+Manual route-level `uses` metadata is a fallback escape hatch, not the normal workflow.
+COMPILER-30 should infer provider/capability effects through direct calls, local helpers,
+relative imported helpers, closure-captured provider handles, repository/factory functions,
+object-literal methods, and simple class/service instances when statically resolvable.
+
 ## Public API Shape
 
 Current compiler command:
@@ -129,6 +144,22 @@ Current phases:
 6. emit `app.plan.json`, `app.js`, and `app.js.map`;
 7. hash the emitted app and source-map artifacts into the plan;
 8. produce structured compiler diagnostics for unsupported syntax.
+
+COMPILER-30 target phases are broader and explicit:
+
+1. lex/parse source;
+2. resolve supported imports;
+3. build module graph;
+4. bind symbols;
+5. identify Slop DSL roots;
+6. evaluate supported constants;
+7. extract routes/groups/modules/providers/config/schema/results;
+8. build function callgraph;
+9. compute effect summaries;
+10. infer provider/capability/config/body/response metadata;
+11. compute Plan completeness;
+12. validate graph;
+13. emit Plan, bundle, source maps, diagnostics, and goldens.
 
 ## App Graph Extraction
 
@@ -285,6 +316,14 @@ compiler/tests/fixtures/
 
 Keep the implementation direct until more than one real compiler slice needs additional
 module boundaries.
+
+COMPILER-30 changes that threshold. The compiler should be split into focused modules such
+as `diagnostic.rs`, `source.rs`, `syntax.rs` or `ast.rs`, `parser.rs`,
+`module_graph.rs`, `resolver.rs`, `symbols.rs`, `slop_dsl.rs`, `static_eval.rs`,
+`graph.rs`, `effects.rs`, `capability_inference.rs`, `schema_inference.rs`,
+`result_inference.rs`, `plan_emit.rs`, `bundle_emit.rs`, `source_map.rs`,
+`validation.rs`, and fixture helpers where needed. Avoid a broad `utils` dumping ground;
+each module should have an explicit responsibility and tests.
 
 ## Data Structures And Schemas
 

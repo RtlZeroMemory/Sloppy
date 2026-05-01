@@ -291,6 +291,20 @@ If route, provider, capability, body, config, or response behavior is not Plan-v
 is not part of the optimized/safe Slop framework path. Dynamic patterns should fail with
 helpful diagnostics or require explicit metadata.
 
+COMPILER-30 (#460) is the compiler-owned implementation roadmap for this DSL recognition
+and inference. It should infer everything reasonable inside supported Slop app patterns,
+including routes, groups, function modules, providers, config keys, request binding,
+schemas, Results metadata, function effects, capabilities, source locations, diagnostics,
+and Plan completeness. It must reject or require metadata for dynamic route paths, unknown
+bare imports, npm/node_modules imports, dynamic imports, unknown runtime route generation,
+and unresolvable provider usage where capability truth is required. This remains a
+supported-subset compiler contract, not arbitrary TypeScript inference.
+
+Manual route-level `uses` metadata and manual capability metadata are fallback escape
+hatches only. Normal Minimal API, function-module, repository, factory, object-literal
+method, and simple service/class patterns should get compiler-inferred effects and
+capabilities when statically resolvable.
+
 ## Source Input and Multi-File Target
 
 Source-input run is implemented for the current JavaScript compiler subset:
