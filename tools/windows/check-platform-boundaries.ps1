@@ -66,7 +66,7 @@ function Get-PlatformBoundaryFiles {
     }
 
     return @(Get-ChildItem -Path $paths -Recurse -File |
-        Where-Object { $_.Extension -in @(".c", ".h", ".cc", ".cpp", ".hpp") })
+        Where-Object { $_.Extension -in @(".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx") })
 }
 
 function Invoke-PlatformBoundaryScan {
