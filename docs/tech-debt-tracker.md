@@ -16,13 +16,26 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Post-core primitive adoption follow-up:
   `docs/project/post-core-mvp-memory-string-audit.md` records provider-specific cleanup
-  outside this consolidation PR.
-  <a id="postgresql-provider-copy-helpers"></a>PostgreSQL still has local
-  C-string/manual copy helpers and `snprintf`-based parameter formatting.
-  <a id="sqlserver-odbc-redaction"></a>SQL Server still has local redaction/copy
-  helpers and streamed text append logic that should move toward shared builders/copy
-  helpers. <a id="sqlite-v8-param-preflight"></a>SQLite V8 parameter conversion should
-  preflight JS array length before reserving native vectors; tracked by #431.
+  outside the completed consolidation/audit work.
+  <a id="postgresql-provider-copy-helpers"></a>PostgreSQL cleanup should move
+  `src/data/postgres.c` local copy helpers `sl_pg_copy_str`, `sl_pg_copy_cstr`,
+  `sl_pg_safe_config_hint`, `sl_pg_copy_columns`, and pool connection-string copies toward
+  shared arena copy/C-string boundary helpers. `sl_pg_param_text` integer/float formatting
+  still uses `snprintf` into local fixed buffers; add a shared bounded numeric formatting
+  helper before rewriting that path. Leave direct libpq C-string adapters in provider
+  boundary code until the shared helper exists.
+  <a id="sqlserver-odbc-redaction"></a>SQL Server cleanup should move
+  `src/data/sqlserver.c` local copy helpers `sl_sqlsrv_copy_str`, `sl_sqlsrv_copy_cstr`,
+  `sl_sqlsrv_safe_config_hint`, doctor-result copies in `sl_sqlsrv_set_doctor`, pool
+  connection-string copies, and streamed text accumulation in `sl_sqlsrv_append_chunk` /
+  `sl_sqlsrv_copy_streamed_text` toward shared arena copy, C-string boundary, and bounded
+  string-builder primitives. Keep ODBC handle adapters, `SQLGetData` streaming boundaries,
+  and provider-specific connection-string parsing/redaction local unless a shared redaction
+  primitive is explicitly scoped.
+  <a id="sqlite-v8-param-preflight"></a>SQLite V8 parameter conversion now preflights JS
+  array length before reserving native vectors; #431 is handled by the bridge cap and
+  V8-gated regression coverage. Future SQLite work should only revisit the cap if the
+  documented provider limit changes.
   <a id="tests-strcpy-boundary"></a>Test-only C-string boundary helpers should either
   use shared checked helpers or document why a local boundary helper is acceptable.
 - Post-core boundary follow-up:

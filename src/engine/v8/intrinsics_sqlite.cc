@@ -41,6 +41,8 @@ struct SqliteV8ConnectionResource
     SlSqliteAccess access = SL_SQLITE_ACCESS_READWRITE;
 };
 
+constexpr uint32_t sqlite_v8_max_parameter_count = 32766U;
+
 SlStatus sqlite_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
     SlV8Engine* backend =
@@ -541,6 +543,11 @@ bool sqlite_v8_convert_params(v8::Isolate* isolate, v8::Local<v8::Context> conte
 
     array = value.As<v8::Array>();
     length = array->Length();
+    if (length > sqlite_v8_max_parameter_count) {
+        sqlite_v8_throw_type_error(isolate,
+                                   "sqlite parameter array exceeds supported parameter count");
+        return false;
+    }
     out->reserve(length);
 
     for (uint32_t index = 0U; index < length; index += 1U) {

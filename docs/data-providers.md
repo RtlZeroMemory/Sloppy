@@ -491,7 +491,9 @@ SQLite JS bridge behavior:
 - parameters are positional arrays containing only `null`, string, number, or boolean
   values. Boolean parameters bind as SQLite integers `0` or `1`. String parameters are
   copied into the bridge operation arena before the native provider call so future async/
-  offload work cannot depend on V8 transient storage;
+  offload work cannot depend on V8 transient storage. JavaScript parameter arrays are
+  capped at 32,766 elements before the bridge reserves native parameter storage; larger
+  arrays fail with a stable redacted parameter-count diagnostic before provider work;
 - wrapper double close is deterministic and idempotent; query/exec/queryOne/transaction
   after close fails before entering native code;
 - stale, closed, invalid, and wrong-kind resource IDs fail through the core resource-table

@@ -190,6 +190,9 @@ Current behavior:
 - `__sloppy.data.sqlite` exists only in the V8 runtime context and is installed by the
   SQLite provider intrinsic module. It exposes internal open/exec/query/queryOne/close
   callbacks used by the stdlib wrapper, not a public raw native API;
+- SQLite bridge parameter conversion rejects JavaScript parameter arrays above 32,766
+  elements before any native parameter vector reserve/allocation. The failure is a stable
+  redacted parameter-count error and does not include SQL parameter values;
 - SQLite bridge opens can resolve `data.sqlite("main")` through Plan provider token
   `data.main`; every open/read/write call checks the native database capability hook before
   provider work. Missing Plan/capability hook inputs, missing providers, wrong provider
