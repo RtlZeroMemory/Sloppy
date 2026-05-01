@@ -10,8 +10,8 @@ framework wave. They should stay bounded and must not become feature implementat
 | Item | Issue | Scope |
 | --- | --- | --- |
 | HTTP transport boundary cleanup | #447 | Hide/retire public `sl_http_libuv_smoke` or move it behind a test/internal boundary; move or wrap `src/main.c` direct libuv dev-run path behind the reusable transport boundary if still true. |
-| SQLite V8 parameter preflight | #431 | Preflight JS array length before native vector reserve in the SQLite V8 bridge. |
-| Provider primitive cleanup plan | #448 | Inventory PostgreSQL/SQL Server provider string/buffer cleanup candidates and convert only small safe helpers when scoped. |
+| SQLite V8 parameter preflight | #431 | Preflight JS array length before native vector reserve in the SQLite V8 bridge; reject arrays above the bridge cap deterministically. |
+| Provider primitive cleanup plan | #448 | Inventory PostgreSQL/SQL Server provider string/buffer cleanup candidates, record precise helper moves, and leave implementation to scoped follow-up PRs. |
 | Platform scanner fixture/self-test proof | #26 | Prove the platform scanner with fixtures/self-tests instead of relying on reviewer memory. |
 
 ## Boundaries
@@ -21,4 +21,3 @@ framework wave. They should stay bounded and must not become feature implementat
 - No provider expansion or PostgreSQL/SQL Server JS bridge work.
 - No public alpha docs.
 - No benchmark/performance claims.
-

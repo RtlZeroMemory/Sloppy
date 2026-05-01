@@ -2107,6 +2107,76 @@ static int test_sqlite_intrinsic_invalid_arguments_fail(void)
     return 0;
 }
 
+static int test_sqlite_intrinsic_rejects_huge_parameter_array_before_reserve(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 156;
+    }
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
+        return 157;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 158;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("sqlite-huge-params.js"),
+                          sl_str_from_cstr(
+                              "globalThis.sqliteHugeParams = function () {"
+                              "  const db = __sloppy.data.sqlite.open({ provider: 'data.main' });"
+                              "  try {"
+                              "    const params = new Array(32767);"
+                              "    __sloppy.data.sqlite.exec(db, 'select ?', params);"
+                              "  } finally {"
+                              "    __sloppy.data.sqlite.close(db);"
+                              "  }"
+                              "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 159;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteHugeParams"), &result,
+                                               &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1591;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(diag.message,
+                            sl_str_from_cstr("sqlite parameter array exceeds supported "
+                                             "parameter count")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1592;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_sqlite_intrinsic_missing_provider_fails(void)
 {
     unsigned char engine_storage[16384];
@@ -2780,6 +2850,11 @@ int main(void)
     }
 
     result = test_sqlite_intrinsic_invalid_arguments_fail();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_rejects_huge_parameter_array_before_reserve();
     if (result != 0) {
         return result;
     }
