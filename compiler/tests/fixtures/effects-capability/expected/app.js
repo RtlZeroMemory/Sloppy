@@ -12,7 +12,7 @@ function listUsers() {
   return db.query("select id, name from users", []);
 }
 
-globalThis.__sloppy_handler_1 = function(ctx) { const db = __sloppy_open_data_provider("sqlite", "data.main"); function listUsers() {
+globalThis.__sloppy_handler_1 = function(ctx) { const __sloppy_opened_providers = []; let db; try { db = __sloppy_open_data_provider("sqlite", "data.main"); __sloppy_opened_providers.push(db); function listUsers() {
   return db.query("select id, name from users", []);
-} try { return (() => Results.json(listUsers()))(ctx); } finally { db.close(); } };
+} return (() => Results.json(listUsers()))(ctx); } finally { while (__sloppy_opened_providers.length > 0) { const __sloppy_provider = __sloppy_opened_providers.pop(); try { __sloppy_provider.close(); } catch (_) {} } } };
 globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);

@@ -7,9 +7,9 @@ use std::{
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, ArrayExpressionElement, BindingPattern, CallExpression, Declaration, Expression,
-    ExpressionStatement, ForStatementInit, ImportDeclarationSpecifier, ObjectPropertyKind,
-    PropertyKey, PropertyKind, Statement,
+    Argument, ArrayExpressionElement, BindingPattern, CallExpression, ChainElement, Declaration,
+    Expression, ExpressionStatement, ForStatementInit, ImportDeclarationSpecifier,
+    ObjectPropertyKind, PropertyKey, PropertyKind, Statement,
 };
 use oxc_parser::Parser;
 use oxc_span::Span;
@@ -192,6 +192,7 @@ struct FunctionEffectSummary {
     effects: Vec<EffectMetadata>,
     provider_bindings: BTreeMap<String, ProviderBinding>,
     helper_calls: BTreeSet<String>,
+    unknown_provider_usage: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1040,13 +1041,17 @@ fn extract_entry(
             Statement::FunctionDeclaration(function) => {
                 extract_function_declaration(path, source, &mut state, function)?
             }
-            Statement::ExpressionStatement(statement) => {
-                extract_expression_statement(path, source, &source_name, &mut state, statement)?
-            }
+            Statement::ExpressionStatement(_) => {}
             Statement::ExportDefaultDeclaration(export) => {
                 state.default_export = export_default_identifier(&export.declaration);
             }
             _ => return Err(top_level_statement_diagnostic(path, source, statement)),
+        }
+    }
+
+    for statement in &parsed.program.body {
+        if let Statement::ExpressionStatement(statement) = statement {
+            extract_expression_statement(path, source, &source_name, &mut state, statement)?;
         }
     }
 
@@ -1503,9 +1508,7 @@ fn extract_expression_statement(
         route_expr,
         source,
         source_name,
-        state.data_imported
-            || !state.provider_bindings.is_empty()
-            || !state.helper_effects.is_empty(),
+        state.data_imported,
         &schema_names,
         &state.provider_bindings,
         &state.helper_effects,
@@ -2829,7 +2832,7 @@ fn extract_module_function_routes(
                     route_expr,
                     source,
                     source_name,
-                    true,
+                    false,
                     &BTreeSet::new(),
                     &providers,
                     &BTreeMap::new(),
@@ -2946,11 +2949,16 @@ fn wrap_handler_with_providers_and_helpers(
     if providers.is_empty() && helper_sources.is_empty() {
         return handler_source.to_string();
     }
+    let provider_names = providers
+        .keys()
+        .map(|name| format!("let {name};"))
+        .collect::<Vec<_>>()
+        .join(" ");
     let provider_prefix = providers
         .iter()
         .map(|(name, binding)| {
             format!(
-                "const {name} = __sloppy_open_data_provider({}, {});",
+                "{name} = __sloppy_open_data_provider({}, {}); __sloppy_opened_providers.push({name});",
                 serde_json::to_string(&binding.provider)
                     .unwrap_or_else(|_| "\"sqlite\"".to_string()),
                 serde_json::to_string(&binding.token)
@@ -2964,19 +2972,16 @@ fn wrap_handler_with_providers_and_helpers(
     } else {
         format!("{} ", helper_sources.join(" "))
     };
-    let close_calls = providers
-        .keys()
-        .map(|name| format!("{name}.close();"))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let close_loop =
+        "while (__sloppy_opened_providers.length > 0) { const __sloppy_provider = __sloppy_opened_providers.pop(); try { __sloppy_provider.close(); } catch (_) {} }";
     if is_async {
         return format!(
-            "async function(ctx) {{ {provider_prefix} {helper_prefix}try {{ return await ({handler_source})(ctx); }} finally {{ {close_calls} }} }}"
+            "async function(ctx) {{ const __sloppy_opened_providers = []; {provider_names} try {{ {provider_prefix} {helper_prefix}return await ({handler_source})(ctx); }} finally {{ {close_loop} }} }}"
         );
     }
 
     format!(
-        "function(ctx) {{ {provider_prefix} {helper_prefix}try {{ return ({handler_source})(ctx); }} finally {{ {close_calls} }} }}"
+        "function(ctx) {{ const __sloppy_opened_providers = []; {provider_names} try {{ {provider_prefix} {helper_prefix}return ({handler_source})(ctx); }} finally {{ {close_loop} }} }}"
     )
 }
 
@@ -3234,9 +3239,12 @@ fn handler_from_argument(
 ) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
+            let effects = function_effects_from_arrow(function, provider_bindings, helper_effects);
             if handler_parameters_are_unsupported(&function.params)
                 || arrow_has_typescript_syntax(function)
+                || effects.unknown_provider_usage
                 || (!allow_data_handler_body
+                    && effects.effects.is_empty()
                     && !handler_body_is_supported_arrow(function, schema_names))
             {
                 return None;
@@ -3247,7 +3255,6 @@ fn handler_from_argument(
                     body_json_schema_argument_spans_arrow(function, &ctx_name, schema_names)
                 })
                 .unwrap_or_default();
-            let effects = function_effects_from_arrow(function, provider_bindings, helper_effects);
             Some(Handler {
                 source: sanitize_handler_schema_references(
                     handler_source,
@@ -3264,9 +3271,13 @@ fn handler_from_argument(
             })
         }
         Argument::FunctionExpression(function) => {
+            let effects =
+                function_effects_from_function(function, provider_bindings, helper_effects);
             if handler_parameters_are_unsupported(&function.params)
                 || function_has_typescript_syntax(function)
+                || effects.unknown_provider_usage
                 || (!allow_data_handler_body
+                    && effects.effects.is_empty()
                     && !handler_body_is_supported_function(function, schema_names))
             {
                 return None;
@@ -3277,8 +3288,6 @@ fn handler_from_argument(
                     body_json_schema_argument_spans_function(function, &ctx_name, schema_names)
                 })
                 .unwrap_or_default();
-            let effects =
-                function_effects_from_function(function, provider_bindings, helper_effects);
             Some(Handler {
                 source: sanitize_handler_schema_references(
                     handler_source,
@@ -3593,6 +3602,23 @@ fn collect_expression_effects(
                 collect_argument_effects(argument, helper_effects, summary);
             }
         }
+        Expression::ConditionalExpression(conditional) => {
+            collect_expression_effects(&conditional.test, helper_effects, summary);
+            collect_expression_effects(&conditional.consequent, helper_effects, summary);
+            collect_expression_effects(&conditional.alternate, helper_effects, summary);
+        }
+        Expression::LogicalExpression(logical) => {
+            collect_expression_effects(&logical.left, helper_effects, summary);
+            collect_expression_effects(&logical.right, helper_effects, summary);
+        }
+        Expression::SequenceExpression(sequence) => {
+            for expression in &sequence.expressions {
+                collect_expression_effects(expression, helper_effects, summary);
+            }
+        }
+        Expression::ChainExpression(chain) => {
+            collect_chain_effects(&chain.expression, helper_effects, summary);
+        }
         Expression::ObjectExpression(object) => {
             for property in &object.properties {
                 if let ObjectPropertyKind::ObjectProperty(property) = property {
@@ -3612,7 +3638,50 @@ fn collect_expression_effects(
             collect_expression_effects(&await_expression.argument, helper_effects, summary);
         }
         Expression::StaticMemberExpression(member) => {
+            if let Expression::Identifier(identifier) = &member.object {
+                if summary
+                    .provider_bindings
+                    .contains_key(identifier.name.as_str())
+                {
+                    summary.unknown_provider_usage = true;
+                    return;
+                }
+            }
             collect_expression_effects(&member.object, helper_effects, summary);
+        }
+        Expression::Identifier(identifier) => {
+            if summary
+                .provider_bindings
+                .contains_key(identifier.name.as_str())
+            {
+                summary.unknown_provider_usage = true;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_chain_effects(
+    expression: &ChainElement<'_>,
+    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    summary: &mut FunctionEffectSummary,
+) {
+    match expression {
+        ChainElement::CallExpression(call) => {
+            collect_call_effects(call, helper_effects, summary);
+            for argument in &call.arguments {
+                collect_argument_effects(argument, helper_effects, summary);
+            }
+        }
+        ChainElement::StaticMemberExpression(member) => {
+            collect_expression_effects(&member.object, helper_effects, summary);
+        }
+        ChainElement::ComputedMemberExpression(member) => {
+            collect_expression_effects(&member.object, helper_effects, summary);
+            collect_expression_effects(&member.expression, helper_effects, summary);
+        }
+        ChainElement::TSNonNullExpression(expression) => {
+            collect_expression_effects(&expression.expression, helper_effects, summary);
         }
         _ => {}
     }
@@ -3629,6 +3698,23 @@ fn collect_argument_effects(
             for argument in &call.arguments {
                 collect_argument_effects(argument, helper_effects, summary);
             }
+        }
+        Argument::ConditionalExpression(conditional) => {
+            collect_expression_effects(&conditional.test, helper_effects, summary);
+            collect_expression_effects(&conditional.consequent, helper_effects, summary);
+            collect_expression_effects(&conditional.alternate, helper_effects, summary);
+        }
+        Argument::LogicalExpression(logical) => {
+            collect_expression_effects(&logical.left, helper_effects, summary);
+            collect_expression_effects(&logical.right, helper_effects, summary);
+        }
+        Argument::SequenceExpression(sequence) => {
+            for expression in &sequence.expressions {
+                collect_expression_effects(expression, helper_effects, summary);
+            }
+        }
+        Argument::ChainExpression(chain) => {
+            collect_chain_effects(&chain.expression, helper_effects, summary);
         }
         Argument::ObjectExpression(object) => {
             for property in &object.properties {
@@ -3693,6 +3779,8 @@ fn collect_call_effects(
                     operation: method.to_string(),
                     reason: format!("{receiver}.{method}"),
                 });
+            } else if method != "close" {
+                summary.unknown_provider_usage = true;
             }
         }
     }
@@ -3702,6 +3790,7 @@ fn collect_call_effects(
         summary.helper_calls.insert(helper_name.to_string());
         if let Some(helper) = helper_effects.get(helper_name) {
             summary.effects.extend(helper.effects.iter().cloned());
+            summary.unknown_provider_usage |= helper.unknown_provider_usage;
             for (name, binding) in &helper.provider_bindings {
                 summary
                     .provider_bindings
@@ -3737,6 +3826,10 @@ fn resolve_helper_effect_callgraph(helper_effects: &mut BTreeMap<String, Functio
                     {
                         changed = true;
                     }
+                }
+                if callee.unknown_provider_usage && !summary.unknown_provider_usage {
+                    summary.unknown_provider_usage = true;
+                    changed = true;
                 }
             }
         }
@@ -5210,7 +5303,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     push_generated_line(&mut output, &mut generated_line, "");
 
     for helper_source in &app.helper_sources {
-        push_generated_line(&mut output, &mut generated_line, helper_source);
+        push_generated_source(&mut output, &mut generated_line, helper_source);
     }
     if !app.helper_sources.is_empty() {
         push_generated_line(&mut output, &mut generated_line, "");
@@ -5277,6 +5370,12 @@ fn push_generated_line(output: &mut String, generated_line: &mut usize, line: &s
     output.push_str(line);
     output.push('\n');
     *generated_line += 1;
+}
+
+fn push_generated_source(output: &mut String, generated_line: &mut usize, source: &str) {
+    output.push_str(source);
+    output.push('\n');
+    *generated_line += source.split('\n').count();
 }
 
 fn handler_source_mappings(
@@ -6693,6 +6792,75 @@ export default app;
             .handler
             .source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+    }
+
+    #[test]
+    fn preindexes_later_function_helpers_before_route_extraction() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(listUsers()));
+function listUsers() {
+  return db.query("select id from users", []);
+}
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("later helper declaration should be indexed before routes");
+        assert_eq!(app.routes[0].handler.effects.len(), 1);
+        assert!(app.routes[0]
+            .handler
+            .source
+            .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+    }
+
+    #[test]
+    fn rejects_unrelated_closed_over_values_when_provider_exists_elsewhere() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+const config = { message: "hello" };
+app.get("/message", () => Results.text(config.message));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("unrelated closed-over state should not be accepted");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+    }
+
+    #[test]
+    fn rejects_unknown_provider_handle_usage() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", () => Results.json(db.prepare("select id from users")));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("unknown provider method should fail closed");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE");
+    }
+
+    #[test]
+    fn infers_provider_effects_inside_expression_wrappers() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/users", (ctx) => Results.json(ctx.query.all ? db.query("select id from users", []) : []));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("conditional provider calls should infer effects");
+        assert_eq!(app.routes[0].handler.effects.len(), 1);
+        assert_eq!(app.routes[0].handler.effects[0].access, "read");
     }
 
     #[test]
