@@ -1,6 +1,7 @@
 {
   "findings": [
     { "severity": "warn", "code": "SLOPPY_AUDIT_ROUTE_COMPLETENESS", "message": "route Plan completeness is not complete", "path": "routes" },
-    { "severity": "warn", "code": "SLOPPY_AUDIT_BODY_SCHEMA_MISSING", "message": "JSON body binding has no schema metadata", "path": "validation" }
+    { "severity": "warn", "code": "SLOPPY_AUDIT_BODY_SCHEMA_MISSING", "message": "JSON body binding has no schema metadata", "path": "validation" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_OPT_NATIVE_JSON_CANDIDATE", "message": "route response metadata is available for future native JSON analysis", "path": "optimization" }
   ]
 }

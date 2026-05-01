@@ -56,6 +56,7 @@ large fixture/golden pass for realistic supported apps, partial completeness, mu
 database metadata, and invalid provider/effect shapes. Non-database provider adapters,
 imported/repository/service inference, and broad TypeScript checking remain open.
 
-ENGINE-20.C adds the first post-COMPILER-30 Strong Plan consumer evidence for developers:
-routes, capabilities, doctor, and audit consume compiler-emitted Plan metadata. OpenAPI
-generation and optimization candidate hooks remain separate ENGINE-20.D work.
+ENGINE-20.C/D add the first post-COMPILER-30 Strong Plan consumer evidence for developers:
+routes, capabilities, doctor, audit, and OpenAPI consume compiler-emitted Plan metadata.
+OpenAPI remains a supported subset with explicit partial markers, and optimization
+candidate hooks are reports only.

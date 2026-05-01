@@ -901,6 +901,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_users_json tests/golden/cli/openapi-users.json openapi --plan
+        compiler/tests/fixtures/realistic-users-api/expected/app.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_partial_json tests/golden/cli/openapi-partial.json openapi --plan
+        compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json)
 
     add_test(NAME sloppy.cli.help_includes_run COMMAND "$<TARGET_FILE:sloppy>" --help)
     set_tests_properties(sloppy.cli.help_includes_run PROPERTIES PASS_REGULAR_EXPRESSION "sloppy run")

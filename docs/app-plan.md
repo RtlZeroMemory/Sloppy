@@ -307,9 +307,11 @@ The native runtime parser accepts these unknown optional metadata fields while r
 non-empty top-level `requiredFeatures`. ENGINE-20.C CLI consumers now read
 `routes[].bindings`, `routes[].response`, `routes[].effects`, `routes[].completeness`, and
 top-level `completeness` for routes, capabilities, doctor, and audit output. Emitting or
-displaying this metadata does not mean runtime request validation, richer OpenAPI
-generation, native JSON optimization, or broader provider/capability enforcement has been
-implemented.
+displaying this metadata does not mean runtime request validation, native JSON
+optimization, route partitioning, multi-isolate execution, or broader provider/capability
+enforcement has been implemented. `sloppy openapi` consumes the metadata for the supported
+OpenAPI subset and marks unknown body/response shape with explicit partial extensions
+instead of inventing schemas.
 
 Dynamic route paths are invalid in the compiler-owned static path unless a future explicit
 runtime-only escape hatch provides all required provider/capability metadata.

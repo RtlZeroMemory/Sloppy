@@ -4,7 +4,8 @@ Status: Metadata introspection, dev-only artifact run, and direct source-input h
 implemented for the current supported compiler subset.
 
 Purpose: document Sloppy CLI commands for dev-only artifact execution, metadata
-inspection, local readiness checks, audit findings, and OpenAPI skeleton generation.
+inspection, local readiness checks, audit findings, Plan-derived OpenAPI output, and
+future optimization candidate reports.
 
 Implemented commands:
 
@@ -225,6 +226,8 @@ both text and JSON output.
 - route completeness that is not complete;
 - body JSON bindings that lack schema metadata;
 - unknown response metadata on Strong Plan routes;
+- future optimization candidate notes derived from response schema, body schema, and
+  provider/effect metadata;
 - modules with missing dependencies;
 - direct two-module dependency cycles;
 - incomplete data provider token/provider/service metadata.
@@ -236,18 +239,27 @@ added with fixtures and source-doc updates.
 
 ## openapi
 
-`sloppy openapi` currently emits a minimal OpenAPI 3.0.3 route skeleton from validated route
-metadata. It sets default `info.title` and `info.version`, marks
-`x-sloppy-openapi-policy.status` as `route-skeleton`, writes paths and methods, uses route
-names as `operationId`, converts `{id}` and `{id:int}` path parameters, and describes the
-default response as schema-deferred.
+`sloppy openapi` emits an OpenAPI 3.0.3 document from validated Plan metadata for the
+currently supported framework subset. It sets default `info.title` and `info.version`,
+marks `x-slop-openapi-policy.status` as `plan-supported-subset`, writes deterministic
+paths/methods, uses route names as `operationId`, converts route/query/header parameters
+when Plan-visible, emits request bodies for schema-backed `ctx.body.json(...)` bindings,
+emits known response statuses/helpers from `Results.*` metadata, and includes a validation
+problem response component.
 
-It does not generate fake schemas, request bodies, validation metadata, examples, security
-schemes, database/provider schemas, or OpenAPI validation. `--output <path>` writes the JSON
-to a file; otherwise the command writes stdout.
+The document includes Slop extensions:
 
-Richer Plan-driven OpenAPI generation is tracked separately by #358. This command must not
-be described as full OpenAPI coverage until that scoped implementation lands.
+- `x-slop-source` for source path/line/column when Plan-visible;
+- `x-slop-completeness` for complete/partial/runtime-only/invalid route state;
+- `x-slop-capabilities` for provider/effect metadata;
+- `x-slop-optimization-candidates` for report-only future native JSON, body validation,
+  provider-aware route, and static dispatch candidates.
+
+Partial routes still appear. Unknown body or response metadata is marked with
+`x-slop-partial`; the command must not invent schemas. It does not implement OpenAPI
+validation, security schemes, native JSON fast paths, route partitioning, multi-isolate
+execution, runtime optimization, or public-alpha OpenAPI promises. `--output <path>` writes
+the JSON to a file; otherwise the command writes stdout.
 
 Benchmarks are currently exposed through `tools/windows/bench.ps1` and the native
 `sloppy_bench` CMake target, not through the public `sloppy` CLI.

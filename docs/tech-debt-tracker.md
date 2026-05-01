@@ -159,11 +159,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   inside conformance PRs.
 - Strong Plan strategic layer: ENGINE-20 owns typed route/handler/capability/provider/
   artifact graphs, static validation, compatibility, doctor/audit, future OpenAPI and
-  optimization hooks, versioning, and internal tooling leverage. ENGINE-20.C now consumes
-  COMPILER-30 output for `sloppy routes`, `sloppy capabilities`, `sloppy doctor`, and
-  `sloppy audit`; remaining debt is ENGINE-20.D OpenAPI/optimization hooks and later
-  typed graph/versioning work. It consumes compiler output rather than reimplementing
-  compiler inference.
+  optimization hooks, versioning, and internal tooling leverage. ENGINE-20.C/D now consume
+  COMPILER-30 output for `sloppy routes`, `sloppy capabilities`, `sloppy doctor`,
+  `sloppy audit`, Plan-derived OpenAPI subset output, and report-only optimization
+  candidate hooks. Remaining debt is later typed graph/versioning work, OpenAPI
+  validation/security schemes, and owner-approved runtime optimization. It consumes
+  compiler output rather than reimplementing compiler inference.
 - Memory and string runtime follow-through: ENGINE-21.A/B/C/D/E/F now provide the primitive
   layer for app/request/temp/static lifetime rules, allocation policy, string/byte views,
   arena-owned copies, byte and string builders, formatting utilities, bounded app/static

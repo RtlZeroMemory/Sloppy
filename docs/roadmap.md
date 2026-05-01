@@ -130,7 +130,9 @@ short:
    resolver, DSL, route/provider/schema/effect/capability, and completeness behavior.
 4. Strong Plan typed graph through reused #318/#355-#359 once compiler metadata exists.
 5. Framework config, binding, validation, Results, and examples through #432/#435-#440.
-6. Plan-driven OpenAPI after Plan metadata is real; doctor/audit/capabilities now have the first static Plan consumption slice.
+6. Plan-driven OpenAPI is available for the supported metadata subset; future work must
+   keep unknown metadata explicit and must not turn optimization candidate reports into
+   native JSON, route partitioning, or multi-isolate implementation without new scope.
 7. HTTP-25.F/#446 bounded stress/conformance evidence for the HTTP-25 keep-alive, chunked,
    and internal streaming writer slices.
 8. Provider expansion later after SQLite/provider-executor integration is proven.

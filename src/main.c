@@ -42,6 +42,8 @@
 #define SL_CLI_MAX_CAPABILITIES 64U
 #define SL_CLI_MAX_ROUTE_BINDINGS 16U
 #define SL_CLI_MAX_ROUTE_EFFECTS 16U
+#define SL_CLI_MAX_SCHEMAS 32U
+#define SL_CLI_MAX_SCHEMA_PROPERTIES 32U
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
@@ -149,6 +151,25 @@ typedef struct SlCliDoctorCheck
     SlCliSpan message;
 } SlCliDoctorCheck;
 
+typedef struct SlCliSchemaProperty
+{
+    SlCliSpan name;
+    SlCliSpan kind;
+    SlCliSpan format;
+    SlCliSpan item_kind;
+    bool optional;
+} SlCliSchemaProperty;
+
+typedef struct SlCliSchema
+{
+    SlCliSpan name;
+    SlCliSpan source_path;
+    uint64_t source_line;
+    uint64_t source_column;
+    SlCliSchemaProperty properties[SL_CLI_MAX_SCHEMA_PROPERTIES];
+    size_t property_count;
+} SlCliSchema;
+
 typedef struct SlCliMetadata
 {
     SlCliRoute routes[SL_CLI_MAX_ROUTES];
@@ -161,6 +182,8 @@ typedef struct SlCliMetadata
     size_t provider_count;
     SlCliCapability capabilities[SL_CLI_MAX_CAPABILITIES];
     size_t capability_count;
+    SlCliSchema schemas[SL_CLI_MAX_SCHEMAS];
+    size_t schema_count;
     SlCliDoctorCheck doctor_checks[SL_CLI_MAX_DOCTOR_CHECKS];
     size_t doctor_check_count;
     SlCliSpan completeness;
@@ -768,6 +791,23 @@ static void sl_cli_json_escape_lower(FILE* file, SlCliSpan span)
     (void)fputc('"', file);
 }
 
+static void sl_cli_write_u64(FILE* file, uint64_t value)
+{
+    char digits[32];
+    size_t count = 0U;
+
+    do {
+        digits[count] = (char)('0' + (value % 10U));
+        value /= 10U;
+        count += 1U;
+    } while (value > 0U && count < sizeof(digits));
+
+    while (count > 0U) {
+        count -= 1U;
+        (void)fputc(digits[count], file);
+    }
+}
+
 static int sl_cli_parse_handlers(yyjson_val* root, SlCliMetadata* metadata)
 {
     yyjson_val* handlers = yyjson_obj_get(root, "handlers");
@@ -1043,6 +1083,93 @@ static int sl_cli_parse_capabilities(yyjson_val* root, SlCliMetadata* metadata)
     return 0;
 }
 
+static void sl_cli_parse_schema_property(yyjson_val* property_value, SlCliSpan name,
+                                         SlCliSchema* schema)
+{
+    SlCliSchemaProperty property = {0};
+    yyjson_val* optional = NULL;
+    yyjson_val* items = NULL;
+
+    if (!yyjson_is_obj(property_value) || schema->property_count >= SL_CLI_MAX_SCHEMA_PROPERTIES) {
+        return;
+    }
+    property.name = name;
+    property.kind = sl_cli_json_span(property_value, "kind");
+    property.format = sl_cli_json_span(property_value, "format");
+    optional = yyjson_obj_get(property_value, "optional");
+    property.optional = optional != NULL && yyjson_is_bool(optional) && yyjson_get_bool(optional);
+    items = yyjson_obj_get(property_value, "items");
+    if (items != NULL && yyjson_is_obj(items)) {
+        property.item_kind = sl_cli_json_span(items, "kind");
+    }
+    schema->properties[schema->property_count] = property;
+    schema->property_count += 1U;
+}
+
+static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema* schema)
+{
+    yyjson_val* definition = yyjson_obj_get(schema_value, "definition");
+    yyjson_val* properties = NULL;
+    yyjson_obj_iter iter;
+    yyjson_val* key = NULL;
+
+    if (definition == NULL || !yyjson_is_obj(definition)) {
+        return;
+    }
+    properties = yyjson_obj_get(definition, "properties");
+    if (properties == NULL || !yyjson_is_obj(properties)) {
+        return;
+    }
+    iter = yyjson_obj_iter_with(properties);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        const char* property_name = yyjson_get_str(key);
+        yyjson_val* property_value = NULL;
+
+        if (property_name == NULL) {
+            continue;
+        }
+        property_value = yyjson_obj_get(properties, property_name);
+        sl_cli_parse_schema_property(property_value,
+                                     (SlCliSpan){property_name, yyjson_get_len(key)}, schema);
+    }
+}
+
+static int sl_cli_parse_schemas(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* schemas = yyjson_obj_get(root, "schemas");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (schemas == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(schemas)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: schemas must be an array\n");
+        return 1;
+    }
+
+    yyjson_arr_iter_init(schemas, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliSchema schema = {0};
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed schema in metadata\n");
+            return 1;
+        }
+        if (metadata->schema_count >= SL_CLI_MAX_SCHEMAS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many schemas in metadata\n");
+            return 1;
+        }
+        schema.name = sl_cli_json_span(value, "name");
+        sl_cli_parse_source(value, &schema.source_path, &schema.source_line, &schema.source_column);
+        sl_cli_parse_schema_properties(value, &schema);
+        metadata->schemas[metadata->schema_count] = schema;
+        metadata->schema_count += 1U;
+    }
+
+    return 0;
+}
+
 static int sl_cli_parse_doctor_checks(yyjson_val* root, SlCliMetadata* metadata)
 {
     yyjson_val* checks = yyjson_obj_get(root, "doctorChecks");
@@ -1145,6 +1272,7 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
         sl_cli_parse_modules(root, out_metadata) != 0 ||
         sl_cli_parse_providers(root, out_metadata) != 0 ||
         sl_cli_parse_capabilities(root, out_metadata) != 0 ||
+        sl_cli_parse_schemas(root, out_metadata) != 0 ||
         sl_cli_parse_doctor_checks(root, out_metadata) != 0)
     {
         return 1;
@@ -3469,6 +3597,32 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
             }
         }
     }
+    {
+        bool emitted_response_candidate = false;
+        bool emitted_provider_candidate = false;
+
+        for (size_t index = 0U; index < metadata->route_count; index += 1U) {
+            const SlCliRoute* route = &metadata->routes[index];
+            if (!emitted_response_candidate && sl_cli_span_equal_cstr(route->response_kind, "json"))
+            {
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("optimization.native-json-candidate"),
+                    sl_cli_span_cstr("ok"),
+                    sl_cli_span_cstr("route has response metadata for future native JSON analysis"),
+                    emitted);
+                emitted_response_candidate = true;
+            }
+            if (!emitted_provider_candidate && route->effect_count > 0U) {
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("optimization.provider-route-candidate"),
+                    sl_cli_span_cstr("ok"),
+                    sl_cli_span_cstr(
+                        "route has provider/effect metadata for future route analysis"),
+                    emitted);
+                emitted_provider_candidate = true;
+            }
+        }
+    }
 }
 
 static void sl_cli_doctor_emit_environment(const SlCliOptions* options, SlArena* arena,
@@ -3662,6 +3816,18 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
         {
             sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_RESPONSE_UNKNOWN",
                               "route response metadata is unknown", "response", findings, errors);
+        }
+        if (sl_cli_span_equal_cstr(metadata->routes[outer].response_kind, "json")) {
+            sl_cli_audit_emit(
+                options, "note", "SLOPPY_AUDIT_OPT_NATIVE_JSON_CANDIDATE",
+                "route response metadata is available for future native JSON analysis",
+                "optimization", findings, errors);
+        }
+        if (metadata->routes[outer].effect_count > 0U) {
+            sl_cli_audit_emit(
+                options, "note", "SLOPPY_AUDIT_OPT_PROVIDER_ROUTE_CANDIDATE",
+                "route provider/effect metadata is available for future route analysis",
+                "optimization", findings, errors);
         }
     }
 }
@@ -3919,47 +4085,88 @@ static bool sl_cli_openapi_path(char* buffer, size_t capacity, SlCliSpan pattern
     return true;
 }
 
-static void sl_cli_openapi_parameters(FILE* file, SlCliSpan pattern)
+static SlCliSpan sl_cli_openapi_type_for_kind(SlCliSpan kind)
+{
+    if (sl_cli_span_equal_cstr(kind, "int") || sl_cli_span_equal_cstr(kind, "integer")) {
+        return sl_cli_span_cstr("integer");
+    }
+    if (sl_cli_span_equal_cstr(kind, "number")) {
+        return sl_cli_span_cstr("number");
+    }
+    if (sl_cli_span_equal_cstr(kind, "boolean") || sl_cli_span_equal_cstr(kind, "bool")) {
+        return sl_cli_span_cstr("boolean");
+    }
+    if (sl_cli_span_equal_cstr(kind, "array")) {
+        return sl_cli_span_cstr("array");
+    }
+    if (sl_cli_span_equal_cstr(kind, "object")) {
+        return sl_cli_span_cstr("object");
+    }
+    return sl_cli_span_cstr("string");
+}
+
+static void sl_cli_openapi_emit_parameter(FILE* file, SlCliSpan name, SlCliSpan location,
+                                          SlCliSpan type, bool required, bool* first)
+{
+    if (!*first) {
+        sl_cli_write_cstr(file, ",");
+    }
+    sl_cli_write_cstr(file, "\n          { \"name\": ");
+    sl_cli_json_escape(file, name);
+    sl_cli_write_cstr(file, ", \"in\": ");
+    sl_cli_json_escape(file, location);
+    sl_cli_write_cstr(file, ", \"required\": ");
+    sl_cli_write_cstr(file, required ? "true" : "false");
+    sl_cli_write_cstr(file, ", \"schema\": { \"type\": ");
+    sl_cli_json_escape(file, sl_cli_openapi_type_for_kind(type));
+    sl_cli_write_cstr(file, " } }");
+    *first = false;
+}
+
+static void sl_cli_openapi_parameters(FILE* file, const SlCliRoute* route)
 {
     size_t index = 0U;
     bool first = true;
 
     sl_cli_write_cstr(file, "[");
-    while (index < pattern.length) {
-        if (pattern.ptr[index] == '{') {
+    while (index < route->pattern.length) {
+        if (route->pattern.ptr[index] == '{') {
             size_t name_start = index + 1U;
             size_t name_end = name_start;
             size_t type_start = 0U;
             size_t type_end = 0U;
             SlCliSpan type = {0};
 
-            while (name_end < pattern.length && pattern.ptr[name_end] != '}' &&
-                   pattern.ptr[name_end] != ':')
+            while (name_end < route->pattern.length && route->pattern.ptr[name_end] != '}' &&
+                   route->pattern.ptr[name_end] != ':')
             {
                 name_end += 1U;
             }
-            if (name_end < pattern.length && pattern.ptr[name_end] == ':') {
+            if (name_end < route->pattern.length && route->pattern.ptr[name_end] == ':') {
                 type_start = name_end + 1U;
                 type_end = type_start;
-                while (type_end < pattern.length && pattern.ptr[type_end] != '}') {
+                while (type_end < route->pattern.length && route->pattern.ptr[type_end] != '}') {
                     type_end += 1U;
                 }
-                type = (SlCliSpan){&pattern.ptr[type_start], type_end - type_start};
+                type = (SlCliSpan){&route->pattern.ptr[type_start], type_end - type_start};
             }
-            if (!first) {
-                sl_cli_write_cstr(file, ",");
-            }
-            sl_cli_write_cstr(file, "\n          { \"name\": ");
-            sl_cli_json_escape(file, (SlCliSpan){&pattern.ptr[name_start], name_end - name_start});
-            sl_cli_write_cstr(file,
-                              ", \"in\": \"path\", \"required\": true, \"schema\": { \"type\": ");
-            sl_cli_json_escape(file, sl_cli_span_equal_cstr(type, "int")
-                                         ? sl_cli_span_cstr("integer")
-                                         : sl_cli_span_cstr("string"));
-            sl_cli_write_cstr(file, " } }");
-            first = false;
+            sl_cli_openapi_emit_parameter(
+                file, (SlCliSpan){&route->pattern.ptr[name_start], name_end - name_start},
+                sl_cli_span_cstr("path"), type, true, &first);
         }
         index += 1U;
+    }
+    for (index = 0U; index < route->binding_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(route->binding_kinds[index], "query")) {
+            sl_cli_openapi_emit_parameter(file, route->binding_names[index],
+                                          sl_cli_span_cstr("query"), route->binding_schemas[index],
+                                          false, &first);
+        }
+        else if (sl_cli_span_equal_cstr(route->binding_kinds[index], "header")) {
+            sl_cli_openapi_emit_parameter(file, route->binding_names[index],
+                                          sl_cli_span_cstr("header"), route->binding_schemas[index],
+                                          false, &first);
+        }
     }
     if (!first) {
         sl_cli_write_cstr(file, "\n        ");
@@ -4001,19 +4208,129 @@ static bool sl_cli_openapi_path_seen(const SlCliSpan openapi_paths[SL_CLI_MAX_RO
     return false;
 }
 
+static void sl_cli_openapi_emit_capabilities(FILE* out, const SlCliRoute* route)
+{
+    size_t index = 0U;
+
+    sl_cli_write_cstr(out, "[");
+    for (index = 0U; index < route->effect_count; index += 1U) {
+        sl_cli_write_cstr(out, index == 0U ? "" : ", ");
+        sl_cli_write_cstr(out, "{ \"provider\": ");
+        sl_cli_json_escape(out, route->effect_providers[index]);
+        sl_cli_write_cstr(out, ", \"providerKind\": ");
+        sl_cli_json_escape(out, route->effect_provider_kinds[index]);
+        sl_cli_write_cstr(out, ", \"access\": ");
+        sl_cli_json_escape(out, route->effect_accesses[index]);
+        sl_cli_write_cstr(out, ", \"operation\": ");
+        sl_cli_json_escape(out, route->effect_operations[index]);
+        sl_cli_write_cstr(out, " }");
+    }
+    sl_cli_write_cstr(out, "]");
+}
+
+static void sl_cli_openapi_emit_request_body(FILE* out, const SlCliRoute* route)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < route->binding_count; index += 1U) {
+        if (!sl_cli_span_equal_cstr(route->binding_kinds[index], "body.json")) {
+            continue;
+        }
+        sl_cli_write_cstr(out, ",\n        \"requestBody\": {\n"
+                               "          \"required\": true,\n"
+                               "          \"content\": { \"application/json\": { \"schema\": ");
+        if (!sl_cli_span_empty(route->binding_schemas[index])) {
+            sl_cli_write_cstr(out, "{ \"$ref\": \"#/components/schemas/");
+            sl_cli_write_span(out, route->binding_schemas[index]);
+            sl_cli_write_cstr(out, "\" }");
+        }
+        else {
+            sl_cli_write_cstr(out, "{ \"x-slop-partial\": \"request body schema unknown\" }");
+        }
+        sl_cli_write_cstr(out, " } }\n        }");
+        return;
+    }
+}
+
+static void sl_cli_openapi_emit_responses(FILE* out, const SlCliRoute* route)
+{
+    uint64_t status = route->response_status == 0U ? 200U : route->response_status;
+
+    sl_cli_write_cstr(out, ",\n        \"responses\": {\n          \"");
+    sl_cli_write_u64(out, status);
+    sl_cli_write_cstr(out, "\": { \"description\": ");
+    if (sl_cli_span_empty(route->response_kind)) {
+        sl_cli_json_escape(out, sl_cli_span_cstr("response metadata unknown"));
+        sl_cli_write_cstr(out, ", \"x-slop-partial\": \"response metadata unknown\" }");
+    }
+    else {
+        sl_cli_json_escape(out, route->response_helper);
+        if (sl_cli_span_equal_cstr(route->response_kind, "json")) {
+            sl_cli_write_cstr(
+                out, ", \"content\": { \"application/json\": { \"schema\": { \"type\": \"object\", "
+                     "\"x-slop-partial\": \"response schema shape not declared\" } } }");
+        }
+        sl_cli_write_cstr(out, " }");
+    }
+    sl_cli_write_cstr(out, ",\n"
+                           "          \"400\": { \"$ref\": "
+                           "\"#/components/responses/SlopValidationProblem\" }\n"
+                           "        }");
+}
+
+static void sl_cli_openapi_emit_candidates(FILE* out, const SlCliRoute* route)
+{
+    bool first = true;
+
+    sl_cli_write_cstr(out, "[");
+    if (sl_cli_span_equal_cstr(route->response_kind, "json")) {
+        sl_cli_write_cstr(out, "\"native-json-serialization\"");
+        first = false;
+    }
+    for (size_t index = 0U; index < route->binding_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(route->binding_kinds[index], "body.json") &&
+            !sl_cli_span_empty(route->binding_schemas[index]))
+        {
+            sl_cli_write_cstr(out, first ? "" : ", ");
+            sl_cli_write_cstr(out, "\"native-body-validation\"");
+            first = false;
+        }
+    }
+    if (route->effect_count > 0U) {
+        sl_cli_write_cstr(out, first ? "" : ", ");
+        sl_cli_write_cstr(out, "\"provider-aware-route\"");
+        first = false;
+    }
+    if (sl_cli_span_equal_cstr(route->completeness, "complete")) {
+        sl_cli_write_cstr(out, first ? "" : ", ");
+        sl_cli_write_cstr(out, "\"static-route-dispatch\"");
+    }
+    sl_cli_write_cstr(out, "]");
+}
+
 static void sl_cli_openapi_emit_operation(FILE* out, const SlCliRoute* route)
 {
     sl_cli_json_escape_lower(out, route->method);
     sl_cli_write_cstr(out, ": {\n        \"operationId\": ");
     sl_cli_json_escape(out, route->name);
-    sl_cli_write_cstr(out, ",\n        \"x-sloppy-route-skeleton\": true");
+    sl_cli_write_cstr(out, ",\n        \"x-slop-source\": { \"path\": ");
+    sl_cli_json_escape(out, route->source_path);
+    sl_cli_write_cstr(out, ", \"line\": ");
+    sl_cli_write_u64(out, route->source_line);
+    sl_cli_write_cstr(out, ", \"column\": ");
+    sl_cli_write_u64(out, route->source_column);
+    sl_cli_write_cstr(out, " }");
+    sl_cli_write_cstr(out, ",\n        \"x-slop-completeness\": ");
+    sl_cli_json_escape(out, route->completeness);
+    sl_cli_write_cstr(out, ",\n        \"x-slop-capabilities\": ");
+    sl_cli_openapi_emit_capabilities(out, route);
+    sl_cli_write_cstr(out, ",\n        \"x-slop-optimization-candidates\": ");
+    sl_cli_openapi_emit_candidates(out, route);
     sl_cli_write_cstr(out, ",\n        \"parameters\": ");
-    sl_cli_openapi_parameters(out, route->pattern);
-    sl_cli_write_cstr(out, ",\n"
-                           "        \"responses\": {\n"
-                           "          \"200\": { \"description\": \"response schema deferred\" }\n"
-                           "        }\n"
-                           "      }");
+    sl_cli_openapi_parameters(out, route);
+    sl_cli_openapi_emit_request_body(out, route);
+    sl_cli_openapi_emit_responses(out, route);
+    sl_cli_write_cstr(out, "\n      }");
 }
 
 static void sl_cli_openapi_emit_path(FILE* out, const SlCliMetadata* metadata,
@@ -4040,6 +4357,93 @@ static void sl_cli_openapi_emit_path(FILE* out, const SlCliMetadata* metadata,
     sl_cli_write_cstr(out, "\n    }");
 }
 
+static void sl_cli_openapi_emit_property_schema(FILE* out, const SlCliSchemaProperty* property)
+{
+    sl_cli_write_cstr(out, "{ \"type\": ");
+    sl_cli_json_escape(out, sl_cli_openapi_type_for_kind(property->kind));
+    if (!sl_cli_span_empty(property->format)) {
+        sl_cli_write_cstr(out, ", \"format\": ");
+        sl_cli_json_escape(out, property->format);
+    }
+    if (sl_cli_span_equal_cstr(property->kind, "array")) {
+        sl_cli_write_cstr(out, ", \"items\": { \"type\": ");
+        sl_cli_json_escape(out, sl_cli_openapi_type_for_kind(property->item_kind));
+        sl_cli_write_cstr(out, " }");
+    }
+    sl_cli_write_cstr(out, " }");
+}
+
+static void sl_cli_openapi_emit_schema(FILE* out, const SlCliSchema* schema, bool comma)
+{
+    size_t index = 0U;
+    bool first_required = true;
+
+    sl_cli_write_cstr(out, comma ? ",\n      " : "\n      ");
+    sl_cli_json_escape(out, schema->name);
+    sl_cli_write_cstr(
+        out, ": {\n        \"type\": \"object\",\n        \"x-slop-source\": { \"path\": ");
+    sl_cli_json_escape(out, schema->source_path);
+    sl_cli_write_cstr(out, ", \"line\": ");
+    sl_cli_write_u64(out, schema->source_line);
+    sl_cli_write_cstr(out, ", \"column\": ");
+    sl_cli_write_u64(out, schema->source_column);
+    sl_cli_write_cstr(out, " },\n        \"properties\": {");
+    for (index = 0U; index < schema->property_count; index += 1U) {
+        sl_cli_write_cstr(out, index == 0U ? "\n          " : ",\n          ");
+        sl_cli_json_escape(out, schema->properties[index].name);
+        sl_cli_write_cstr(out, ": ");
+        sl_cli_openapi_emit_property_schema(out, &schema->properties[index]);
+    }
+    if (schema->property_count > 0U) {
+        sl_cli_write_cstr(out, "\n        ");
+    }
+    sl_cli_write_cstr(out, "}");
+    for (index = 0U; index < schema->property_count; index += 1U) {
+        if (schema->properties[index].optional) {
+            continue;
+        }
+        if (first_required) {
+            sl_cli_write_cstr(out, ",\n        \"required\": [");
+        }
+        else {
+            sl_cli_write_cstr(out, ", ");
+        }
+        sl_cli_json_escape(out, schema->properties[index].name);
+        first_required = false;
+    }
+    if (!first_required) {
+        sl_cli_write_cstr(out, "]");
+    }
+    sl_cli_write_cstr(out, "\n      }");
+}
+
+static void sl_cli_openapi_emit_components(FILE* out, const SlCliMetadata* metadata)
+{
+    size_t index = 0U;
+
+    sl_cli_write_cstr(out, ",\n  \"components\": {\n"
+                           "    \"responses\": {\n"
+                           "      \"SlopValidationProblem\": {\n"
+                           "        \"description\": \"Slop validation problem response\",\n"
+                           "        \"content\": { \"application/problem+json\": { \"schema\": { "
+                           "\"$ref\": \"#/components/schemas/SlopValidationProblem\" } } }\n"
+                           "      }\n"
+                           "    },\n"
+                           "    \"schemas\": {\n"
+                           "      \"SlopValidationProblem\": {\n"
+                           "        \"type\": \"object\",\n"
+                           "        \"properties\": {\n"
+                           "          \"status\": { \"type\": \"integer\" },\n"
+                           "          \"title\": { \"type\": \"string\" },\n"
+                           "          \"detail\": { \"type\": \"string\" }\n"
+                           "        }\n"
+                           "      }");
+    for (index = 0U; index < metadata->schema_count; index += 1U) {
+        sl_cli_openapi_emit_schema(out, &metadata->schemas[index], true);
+    }
+    sl_cli_write_cstr(out, "\n    }\n  }");
+}
+
 static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadata,
                                          const SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES])
 {
@@ -4052,11 +4456,10 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
                            "    \"title\": \"Sloppy API\",\n"
                            "    \"version\": \"0.0.0\"\n"
                            "  },\n"
-                           "  \"x-sloppy-openapi-policy\": {\n"
-                           "    \"status\": \"route-skeleton\",\n"
-                           "    \"schemas\": \"omitted-deferred\",\n"
-                           "    \"requestBodies\": \"omitted-deferred\",\n"
-                           "    \"securitySchemes\": \"omitted-deferred\"\n"
+                           "  \"x-slop-openapi-policy\": {\n"
+                           "    \"status\": \"plan-supported-subset\",\n"
+                           "    \"unknownMetadata\": \"explicit-partial-markers\",\n"
+                           "    \"optimizations\": \"reported-only\"\n"
                            "  },\n"
                            "  \"paths\": {");
     for (index = 0U; index < metadata->route_count; index += 1U) {
@@ -4069,7 +4472,9 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
         first_path = false;
         sl_cli_openapi_emit_path(out, metadata, openapi_paths, index);
     }
-    sl_cli_write_cstr(out, "\n  }\n}\n");
+    sl_cli_write_cstr(out, "\n  }");
+    sl_cli_openapi_emit_components(out, metadata);
+    sl_cli_write_cstr(out, "\n}\n");
 }
 
 static int sl_cli_command_openapi(const SlCliOptions* options)
