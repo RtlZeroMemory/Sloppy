@@ -21,7 +21,9 @@ export function usersModule(app) {
 
     users.post("/", (ctx) => {
         const body = ctx.request.json();
-        if (typeof body.name !== "string" || body.name.length === 0 || typeof body.email !== "string" || body.email.length === 0) {
+        if (body === null || Array.isArray(body) || typeof body !== "object" ||
+            typeof body.name !== "string" || body.name.length === 0 ||
+            typeof body.email !== "string" || body.email.length === 0) {
             return Results.badRequest({ error: "invalid_user" });
         }
 

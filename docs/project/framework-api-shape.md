@@ -334,8 +334,11 @@ SQLite JS bridge registration, and no SQLite package dependency claim.
 - No multi-isolate implementation.
 ## ENGINE-14 Implementation Note
 
-The framework MVP function-module shape is now supported in the compiler-owned subset:
-`app.use(sqlite(...))`, `app.useModule(usersModule)`, `app.group(...)`, and literal
-`group.get/post/put/patch/delete(...)` registrations compile into the existing Plan and
-classic artifact path. Controllers, decorators, configuration, request binding, validation,
-and broader framework examples remain separate framework tasks.
+The framework MVP function-module shape is supported at source level by the compiler-owned
+subset: `app.use(sqlite(...))`, `app.useModule(usersModule)`, `app.group(...)`, and literal
+`group.get/post/put/patch/delete(...)` registrations are resolved, analyzed, and lowered into
+the existing Plan and classic artifact path. This does not mean the bootstrap stdlib exposes a
+general runtime implementation of those APIs yet; the current classic bootstrap still executes the
+compiler-generated artifact helpers such as `mapGet`/`mapPost` plus provider metadata. Controllers,
+decorators, configuration, request binding, validation, and broader framework examples remain
+separate framework tasks.

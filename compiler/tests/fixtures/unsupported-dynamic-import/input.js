@@ -2,7 +2,7 @@ import { Sloppy, Results } from "sloppy";
 
 const app = Sloppy.create();
 
-const users = import("./users.js");
+const users = import /* unsupported */ ("./users.js");
 app.get("/", () => Results.text("ok"));
 
 export default app;

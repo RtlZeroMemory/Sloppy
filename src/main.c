@@ -1163,27 +1163,79 @@ static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size
         "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ");
 }
 
-static bool sl_run_bytes_contains_cstr(SlBytes bytes, const char* needle)
+static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expected)
 {
-    size_t needle_length = 0U;
-    size_t index = 0U;
+    const char* text = NULL;
+    size_t expected_length = 0U;
+    size_t text_length = 0U;
 
-    if (bytes.ptr == NULL || needle == NULL) {
+    if (value == NULL || expected == NULL || !yyjson_is_str(value)) {
         return false;
     }
 
-    needle_length = strlen(needle);
-    if (needle_length == 0U || bytes.length < needle_length) {
+    text = yyjson_get_str(value);
+    text_length = yyjson_get_len(value);
+    expected_length = strlen(expected);
+
+    return text != NULL && text_length == expected_length &&
+           memcmp(text, expected, expected_length) == 0;
+}
+
+static bool sl_run_manifest_array_contains_asset(yyjson_val* array, const char* required_asset)
+{
+    yyjson_arr_iter iter;
+    yyjson_val* value = NULL;
+
+    if (array == NULL || required_asset == NULL || !yyjson_is_arr(array)) {
         return false;
     }
 
-    for (index = 0U; index <= bytes.length - needle_length; index += 1U) {
-        if (memcmp(bytes.ptr + index, needle, needle_length) == 0) {
+    yyjson_arr_iter_init(array, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (sl_run_json_string_equals_cstr(value, required_asset)) {
+            return true;
+        }
+        if (yyjson_is_obj(value) &&
+            sl_run_json_string_equals_cstr(yyjson_obj_get(value, "path"), required_asset))
+        {
             return true;
         }
     }
 
     return false;
+}
+
+static bool sl_run_manifest_is_compatible(SlBytes manifest, const char* required_stdlib_version,
+                                          const char* required_asset)
+{
+    yyjson_read_err error = {0};
+    yyjson_doc* doc = NULL;
+    yyjson_val* root = NULL;
+    bool compatible = false;
+
+    if (manifest.ptr == NULL || manifest.length == 0U || required_stdlib_version == NULL ||
+        required_asset == NULL)
+    {
+        return false;
+    }
+
+    doc = yyjson_read_opts((char*)manifest.ptr, manifest.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        return false;
+    }
+
+    root = yyjson_doc_get_root(doc);
+    if (yyjson_is_obj(root) &&
+        sl_run_json_string_equals_cstr(yyjson_obj_get(root, "stdlibVersion"),
+                                       required_stdlib_version) &&
+        (sl_run_manifest_array_contains_asset(yyjson_obj_get(root, "modules"), required_asset) ||
+         sl_run_manifest_array_contains_asset(yyjson_obj_get(root, "assets"), required_asset)))
+    {
+        compatible = true;
+    }
+
+    yyjson_doc_free(doc);
+    return compatible;
 }
 
 typedef struct SlRunSha256
@@ -1651,9 +1703,7 @@ static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
         return 1;
     }
 
-    if (!sl_run_bytes_contains_cstr(manifest, "\"stdlibVersion\": \"0.1.0\"") ||
-        !sl_run_bytes_contains_cstr(manifest, "\"sloppy/internal/runtime-classic.js\""))
-    {
+    if (!sl_run_manifest_is_compatible(manifest, "0.1.0", "sloppy/internal/runtime-classic.js")) {
         sl_cli_write_cstr(
             stderr, "sloppy run: bootstrap stdlib manifest is incompatible with this runtime\n");
         return 1;

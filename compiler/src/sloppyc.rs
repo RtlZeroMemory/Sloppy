@@ -340,8 +340,14 @@ fn build(input: &Path, out_dir: &Path) -> Result<(), Box<BuildFailure>> {
 struct ModuleGraph {
     entry_dir: PathBuf,
     visiting: BTreeSet<PathBuf>,
-    visited: BTreeSet<PathBuf>,
+    modules: BTreeMap<PathBuf, CachedModule>,
     source_files: Vec<SourceFile>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedModule {
+    exports: BTreeMap<String, Vec<Route>>,
+    duplicate_exports: BTreeSet<String>,
 }
 
 impl ModuleGraph {
@@ -353,7 +359,7 @@ impl ModuleGraph {
         Self {
             entry_dir: fs::canonicalize(&entry_dir).unwrap_or(entry_dir),
             visiting: BTreeSet::new(),
-            visited: BTreeSet::new(),
+            modules: BTreeMap::new(),
             source_files: Vec::new(),
         }
     }
@@ -399,13 +405,10 @@ fn extract_entry(
 
     let source_name = graph.record_source(path, source);
     let mut state = AppState::new();
-    if let Some(offset) = source.find("import(") {
-        state.dynamic_import = Some(Span::new(
-            u32::try_from(offset).unwrap_or(u32::MAX),
-            u32::try_from(offset + "import".len()).unwrap_or(u32::MAX),
-        ));
-    }
     for statement in &parsed.program.body {
+        if state.dynamic_import.is_none() {
+            state.dynamic_import = statement_dynamic_import_span(statement);
+        }
         match statement {
             Statement::ImportDeclaration(import) => {
                 extract_import(path, graph, &mut state, import)?
@@ -914,6 +917,74 @@ fn validate_supported_initializer(
     Ok(())
 }
 
+fn statement_dynamic_import_span(statement: &Statement<'_>) -> Option<Span> {
+    match statement {
+        Statement::VariableDeclaration(declaration) => {
+            declaration.declarations.iter().find_map(|declarator| {
+                declarator
+                    .init
+                    .as_ref()
+                    .and_then(expression_dynamic_import_span)
+            })
+        }
+        Statement::ExpressionStatement(statement) => {
+            expression_dynamic_import_span(&statement.expression)
+        }
+        Statement::ReturnStatement(statement) => statement
+            .argument
+            .as_ref()
+            .and_then(expression_dynamic_import_span),
+        Statement::BlockStatement(block) => {
+            block.body.iter().find_map(statement_dynamic_import_span)
+        }
+        _ => None,
+    }
+}
+
+fn expression_dynamic_import_span(expression: &Expression<'_>) -> Option<Span> {
+    match expression {
+        Expression::ImportExpression(node) => Some(node.span),
+        Expression::AwaitExpression(node) => expression_dynamic_import_span(&node.argument),
+        Expression::CallExpression(call) => expression_dynamic_import_span(&call.callee)
+            .or_else(|| call.arguments.iter().find_map(argument_dynamic_import_span)),
+        Expression::ParenthesizedExpression(node) => {
+            expression_dynamic_import_span(&node.expression)
+        }
+        Expression::ArrowFunctionExpression(function) => function
+            .body
+            .statements
+            .iter()
+            .find_map(statement_dynamic_import_span),
+        Expression::FunctionExpression(function) => function.body.as_ref().and_then(|body| {
+            body.statements
+                .iter()
+                .find_map(statement_dynamic_import_span)
+        }),
+        _ => None,
+    }
+}
+
+fn argument_dynamic_import_span(argument: &Argument<'_>) -> Option<Span> {
+    match argument {
+        Argument::ImportExpression(node) => Some(node.span),
+        Argument::AwaitExpression(node) => expression_dynamic_import_span(&node.argument),
+        Argument::CallExpression(call) => expression_dynamic_import_span(&call.callee)
+            .or_else(|| call.arguments.iter().find_map(argument_dynamic_import_span)),
+        Argument::ArrowFunctionExpression(function) => function
+            .body
+            .statements
+            .iter()
+            .find_map(statement_dynamic_import_span),
+        Argument::FunctionExpression(function) => function.body.as_ref().and_then(|body| {
+            body.statements
+                .iter()
+                .find_map(statement_dynamic_import_span)
+        }),
+        Argument::ParenthesizedExpression(node) => expression_dynamic_import_span(&node.expression),
+        _ => None,
+    }
+}
+
 fn database_capability_call(
     path: &Path,
     expression: &Expression<'_>,
@@ -1271,8 +1342,8 @@ fn extract_relative_module(
         .with_span(imported.span)
         .with_hint("Keep function modules acyclic for the framework MVP."));
     }
-    if graph.visited.contains(&imported.path) {
-        return Ok(Vec::new());
+    if let Some(module) = graph.modules.get(&imported.path) {
+        return cached_module_routes(module, imported);
     }
     graph.visiting.insert(imported.path.clone());
 
@@ -1301,8 +1372,8 @@ fn extract_relative_module(
         .with_path(&imported.path));
     }
 
-    let mut function_count = 0usize;
-    let mut routes = Vec::new();
+    let mut exports = BTreeMap::<String, Vec<Route>>::new();
+    let mut duplicate_exports = BTreeSet::<String>::new();
     for statement in &parsed.program.body {
         match statement {
             Statement::ImportDeclaration(import) => {
@@ -1358,21 +1429,22 @@ fn extract_relative_module(
                     .with_path(&imported.path)
                     .with_span(function.span));
                 };
-                if identifier.name.as_str() == imported.export_name {
-                    function_count += 1;
-                    routes.extend(extract_module_function_routes(
-                        &imported.path,
-                        &source,
-                        &source_name,
-                        imported.export_name.as_str(),
-                        function,
-                    )?);
+                let export_name = identifier.name.as_str();
+                let routes = extract_module_function_routes(
+                    &imported.path,
+                    &source,
+                    &source_name,
+                    export_name,
+                    function,
+                )?;
+                if exports.insert(export_name.to_string(), routes).is_some() {
+                    duplicate_exports.insert(export_name.to_string());
                 }
             }
             _ => {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
-                    "function module files support imports and one named function export",
+                    "function module files support imports and named function exports",
                 )
                 .with_path(&imported.path)
                 .with_span(statement.span()));
@@ -1381,9 +1453,28 @@ fn extract_relative_module(
     }
 
     graph.visiting.remove(&imported.path);
-    graph.visited.insert(imported.path.clone());
+    let module = CachedModule {
+        exports,
+        duplicate_exports,
+    };
+    let routes = cached_module_routes(&module, imported)?;
+    graph.modules.insert(imported.path.clone(), module);
+    Ok(routes)
+}
 
-    if function_count == 0 {
+fn cached_module_routes(
+    module: &CachedModule,
+    imported: &ImportedModule,
+) -> Result<Vec<Route>, Diagnostic> {
+    if module.duplicate_exports.contains(&imported.export_name) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_DUPLICATE_EXPORT",
+            format!("module exports \"{}\" more than once", imported.export_name),
+        )
+        .with_path(&imported.path)
+        .with_span(imported.span));
+    }
+    let Some(routes) = module.exports.get(&imported.export_name) else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_EXPORT",
             format!(
@@ -1393,16 +1484,8 @@ fn extract_relative_module(
         )
         .with_path(&imported.path)
         .with_span(imported.span));
-    }
-    if function_count > 1 {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_DUPLICATE_EXPORT",
-            format!("module exports \"{}\" more than once", imported.export_name),
-        )
-        .with_path(&imported.path)
-        .with_span(imported.span));
-    }
-    Ok(routes)
+    };
+    Ok(routes.clone())
 }
 
 fn extract_module_function_routes(
@@ -3231,6 +3314,34 @@ export default app;
         .expect("plan should emit");
         assert!(plan.contains("\"module\": \"usersModule\""));
         assert!(plan.contains("\"path\": \"users.js\""));
+    }
+
+    #[test]
+    fn extracts_multiple_function_modules_from_same_file() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let input = root.join("tests/fixtures/function-module-same-file/input.js");
+        let source = fs::read_to_string(&input).expect("fixture input should exist");
+        let app = extract(&input, &source).expect("same-file function modules should extract");
+
+        assert_eq!(app.routes.len(), 2);
+        assert_eq!(app.routes[0].pattern, "/health");
+        assert_eq!(app.routes[0].module.as_deref(), Some("healthModule"));
+        assert_eq!(app.routes[1].pattern, "/users");
+        assert_eq!(app.routes[1].module.as_deref(), Some("usersModule"));
+    }
+
+    #[test]
+    fn import_call_text_in_comments_and_strings_is_not_dynamic_import() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+// import("./commented.js") documents unsupported syntax.
+const app = Sloppy.create();
+const note = "dynamic import text: import(\"./string.js\")";
+app.mapGet("/", () => Results.text("Hello"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("comments and strings should not trigger dynamic import diagnostics");
+        assert_eq!(app.routes.len(), 1);
     }
 
     #[test]
