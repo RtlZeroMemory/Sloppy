@@ -73,8 +73,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   close, and cleanup-once terminal paths. ENGINE-24.F/#417 is now bounded localhost TCP
   smoke/conformance evidence only. ENGINE-24.G/#418 records the explicit MVP
   close-after-response decision and defers HTTP/1.1 keep-alive, pipelining, chunked
-  request decoding, and streaming response writing. Remaining HTTP transport debt is #433
-  HTTP-25 keep-alive/streaming, production graceful-drain policy,
+  request decoding, and streaming response writing. Remaining HTTP transport debt is #433 HTTP-25
+  keep-alive/streaming, production graceful-drain policy,
   production hardening, and middleware policy if ever scoped. This is separate from
   ENGINE-12 because HTTP has parser, connection, body, and shutdown policy that sits above
   generic async completions.
@@ -161,8 +161,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   source diagnostics, cleanup policy, and rebuild policy.
 - HTTP production response pipeline beyond ENGINE-13.A/B/C/D/E/F and
   ENGINE-24.A/B/C/D/E/F/G plus the ENGINE-17.E users API proof: redirect helpers,
-  streaming/files, cookies, content negotiation, future ENGINE-25 keep-alive/streaming
-  implementation, graceful drain behavior beyond immediate-cancel/drain-lite transport
+  streaming/files, cookies, content negotiation, #433 HTTP-25 keep-alive/streaming,
+  graceful drain behavior beyond immediate-cancel/drain-lite transport
   shutdown, broader V8 transport conformance, and production error pages.
 - Request context model beyond ENGINE-04: typed/coerced route/query/body binding,
   services/config/log injection, and real request-scoped lifetime boundaries.

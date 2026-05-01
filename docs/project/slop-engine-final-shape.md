@@ -125,16 +125,16 @@ import { Sloppy, Results, data } from "sloppy";
 
 const app = Sloppy.create();
 
-app.mapGet("/users", async ctx => {
+app.get("/users", async ctx => {
   ctx.signal.throwIfAborted();
   return Results.json(await ctx.services.users.list());
 });
 
-app.mapGet("/users/{id:int}", async ctx => {
+app.get("/users/{id:int}", async ctx => {
   return Results.json(await ctx.services.users.get(ctx.route.id));
 });
 
-app.mapPost("/users", async ctx => {
+app.post("/users", async ctx => {
   const body = await ctx.request.json();
   return Results.created(`/users/${body.id}`, body);
 });
