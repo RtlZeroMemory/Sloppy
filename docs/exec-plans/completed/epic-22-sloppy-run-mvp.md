@@ -8,7 +8,7 @@ runtime-contract path, and return tiny text/JSON-compatible HTTP responses.
 
 ## Source Docs
 
-Primary source of truth: `docs/project/next-roadmap.md`. No EPIC-22 GitHub issues were
+Primary source of truth: `docs/project/post-core-mvp-next-roadmap.md`. No EPIC-22 GitHub issues were
 found before implementation.
 
 Additional source docs read: `AGENTS.md`, `CONTRIBUTING.md`, `docs/roadmap.md`,
@@ -59,7 +59,7 @@ configure/build/test gate was run before final full validation.
 
 ## Decision Log
 
-- EPIC-22 GitHub issues were not found, so implementation follows `docs/project/next-roadmap.md`.
+- EPIC-22 GitHub issues were not found, so implementation follows `docs/project/post-core-mvp-next-roadmap.md`.
 - Source input handoff is deferred because the native `sloppy` CLI does not yet have a
   clean compiler library/subprocess contract.
 - `--once` is implemented to keep CI deterministic and avoid socket timing flakiness.

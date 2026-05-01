@@ -412,12 +412,11 @@ SlStatus sl_v8_write_microtask_limit_diag(SlEngine* engine, SlDiag* out_diag)
     return sl_v8_write_diag_string(
         engine->arena, out_diag, SL_DIAG_ENGINE_PROMISE_PENDING, SL_STATUS_DEADLINE_EXCEEDED,
         message, sl_str_empty(),
-        sl_v8_literal(
-            "Break recursive Promise microtask chains with a real async boundary; "
-            "timers and native async completion queues are future ENGINE-12 work.",
-            sizeof("Break recursive Promise microtask chains with a real async boundary; "
-                   "timers and native async completion queues are future ENGINE-12 work.") -
-                1U));
+        sl_v8_literal("Break recursive Promise microtask chains with a real async boundary; "
+                      "timers and arbitrary native async sources remain deferred.",
+                      sizeof("Break recursive Promise microtask chains with a real async boundary; "
+                             "timers and arbitrary native async sources remain deferred.") -
+                          1U));
 }
 
 SlStatus sl_v8_drain_microtasks(SlEngine* engine, v8::Isolate* isolate,

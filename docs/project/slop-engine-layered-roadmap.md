@@ -282,9 +282,9 @@ SQLite, or provider bridge work depends on provider/offload semantics.
 
 Strategic sources:
 
-- `docs/project/provider-execution-current-state-audit.md`;
+- `docs/project/archive/post-core-mvp/provider-execution-current-state-audit.md`;
 - `docs/project/provider-execution-runtime-architecture.md`;
-- `docs/project/engine-23-provider-execution-issue-index.md`.
+- `docs/project/archive/post-core-mvp/engine-23-provider-execution-issue-index.md`.
 
 EPICs: ENGINE-23.
 
@@ -341,7 +341,7 @@ Purpose: finish the rest of Sloppy's engine foundation after ENGINE-12 without t
 project into Node/npm compatibility, a production internet-edge server, ORM/migration
 stack, public alpha launch, or benchmark marketing project.
 
-Strategic source: `docs/project/engine-13-plus-architecture.md`.
+Strategic source: `docs/project/archive/post-core-mvp/engine-13-plus-architecture.md`.
 
 EPICs: ENGINE-13 through ENGINE-20, plus ENGINE-21 and ENGINE-22 for memory/string
 foundation and adoption. ENGINE-23 is the provider-runtime prerequisite that sits between
@@ -395,7 +395,7 @@ Tasks by EPIC:
 Prerequisites: ENGINE-01 contract, ENGINE-02/03 implementation evidence, ENGINE-12 when
 native async completion behavior is required, ENGINE-23 when provider/offload execution is
 required, and the current issue index in
-`docs/project/engine-13-plus-issue-index.md`.
+`docs/project/archive/post-core-mvp/engine-13-plus-issue-index.md`.
 
 Dependencies: HTTP, V8, core lifecycle/resource, data/SQLite, compiler, Plan, diagnostics,
 CLI, tests/conformance, package tooling, memory/string primitives, and quality gates.
@@ -425,10 +425,9 @@ of local helpers.
 
 Strategic sources:
 
-- `docs/project/memory-string-current-state-audit.md`;
-- `docs/project/memory-string-foundation-architecture.md`;
-- `docs/project/memory-string-adoption-map.md`.
-- `docs/project/engine-21-22-issue-index.md`.
+- `docs/project/post-core-mvp-memory-string-audit.md`;
+- `docs/project/archive/post-core-mvp/memory-string-foundation-architecture.md`;
+- `docs/memory.md`.
 
 EPICs: ENGINE-21 and ENGINE-22.
 

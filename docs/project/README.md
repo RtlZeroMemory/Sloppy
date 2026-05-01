@@ -37,11 +37,17 @@ Only apply after validation passes and the dry-run output looks right:
 
 Do not include `.git/`, `build/`, `compiler/target/`, or other generated artifacts in review archives. Use `tools/windows/create-review-zip.ps1` or `git archive` for source-only bundles.
 
-## Post-0.7 Planning
+## Current Source-Of-Truth Reset
 
-- `docs/project/post-0.7-issue-audit.md` records the recommended cleanup for stale/open
-  EPIC-00 through EPIC-20 GitHub issues after the initial roadmap batch.
-- `docs/project/next-roadmap.md` defines the proposed EPIC-21 through EPIC-28 roadmap.
-- `tools/github/next-roadmap-issues.json` is staged data only. Current GitHub creation
-  scripts do not support an alternate input file, so do not mutate GitHub from it by
-  default.
+- `docs/project/post-core-mvp-code-reality-audit.md` records the compact code/test reality
+  check after the Core MVP proof phase.
+- `docs/project/post-core-mvp-docs-inventory.md` records which temporary docs were kept,
+  archived, or deleted during the compaction.
+- `docs/project/post-core-mvp-issue-reconciliation.md` records live GitHub issue/PR
+  reconciliation decisions after ENGINE-19 and ENGINE-24.
+- `docs/project/post-core-mvp-memory-string-audit.md` records remaining primitive adoption
+  gaps without reopening broad runtime rewrites.
+- `docs/project/post-core-mvp-boundary-audit.md` records V8/libuv/provider/HTTP boundary
+  findings.
+- `docs/project/post-core-mvp-next-roadmap.md` proposes the next wave. It is proposal-only;
+  create new GitHub EPICs only after owner approval.

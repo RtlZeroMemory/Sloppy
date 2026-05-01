@@ -101,10 +101,9 @@ ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
   implemented through ENGINE-22.E. Remaining diagnostics/source-frame expansion, broader
   CLI output, and conformance/benchmark guards continue as later ENGINE-22 tasks.
 
-The current source audit is `docs/project/memory-string-current-state-audit.md`. The
-intended primitive architecture is
-`docs/project/memory-string-foundation-architecture.md`. The adoption map is
-`docs/project/memory-string-adoption-map.md`.
+The current source audit and adoption map are
+`docs/project/post-core-mvp-memory-string-audit.md`. The archived primitive architecture
+record is `docs/project/archive/post-core-mvp/memory-string-foundation-architecture.md`.
 
 ## Future Work
 

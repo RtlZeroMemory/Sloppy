@@ -73,8 +73,8 @@ ENGINE-13 through ENGINE-20 complete the rest of the engine foundation after the
 provider runtime layers: proper HTTP runtime backend, module/bootstrap completion, source
 maps and diagnostics, app/resource lifetime, SQLite data runtime completion, CLI/dev loop,
 conformance compatibility, and the strong Plan strategic layer. The source document is
-`docs/project/engine-13-plus-architecture.md`; the created issue map is
-`docs/project/engine-13-plus-issue-index.md`.
+`docs/project/archive/post-core-mvp/engine-13-plus-architecture.md`; the created issue map is
+`docs/project/archive/post-core-mvp/engine-13-plus-issue-index.md`.
 
 ENGINE-21 and ENGINE-22 make memory/string handling explicit foundation work rather than
 miscellaneous helper cleanup. ENGINE-21 defines app/request/temp/static/V8/SQLite/
@@ -83,7 +83,7 @@ builders, formatting helpers, bounded app/static string interning and symbol tab
 V8/SQLite conversion policy. ENGINE-22 adopts those primitives in hot paths: HTTP
 parse/write/body, V8 conversions, SQLite rows/parameters, diagnostics/source frames/JSON,
 Plan/artifact loading, stable metadata lookup, CLI output, and allocation-aware
-conformance. The issue map is `docs/project/engine-21-22-issue-index.md`. Public alpha docs
+conformance. The issue map is `docs/project/post-core-mvp-memory-string-audit.md`. Public alpha docs
 remain blocked until this layer is complete or explicitly scoped down with honest
 exclusions.
 

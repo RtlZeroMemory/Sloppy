@@ -39,12 +39,13 @@ This document does not define the JavaScript, TypeScript, or Rust style guides.
 
 ## Current Phase
 
-Only placeholder C code exists. These rules apply to Phase 1 and later runtime work.
+Core runtime, HTTP, provider, diagnostics, memory, Plan, and platform modules now contain
+real foundation code. These rules are review and CI requirements for every C runtime
+change.
 
 ## Future Phase
 
-As modules are implemented, these rules become review and CI requirements for every C
-runtime change. The rules may become stricter, but feature code should not weaken them.
+As modules grow, the rules may become stricter, but feature code should not weaken them.
 
 ## Language Baseline
 

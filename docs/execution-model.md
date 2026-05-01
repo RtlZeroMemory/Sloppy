@@ -182,10 +182,8 @@ make the dev server production-ready, and does not add TLS, HTTP/2/3, WebSockets
 files, compression, V8/provider/compiler work, or production benchmark evidence.
 ENGINE-24.A/B adds the first HTTP transport listener foundation below the current request
 execution pipeline. A `SlHttpTransportServer` can initialize, bind/listen on localhost,
-accept TCP sockets into bounded placeholder connections, reject overflow by closing the
-accepted socket, stop, and dispose. Accepted connections stop at `ACCEPTED`; request byte
-handling arrives in later slices, localhost conformance remains #417, and keep-alive
-policy remains #418.
+accept TCP sockets into bounded accepted connections, reject overflow by closing the
+accepted socket, stop, and dispose.
 ENGINE-24.C advances that transport state through the read/request-accumulation boundary.
 Accepted connections start reading, append TCP chunks into bounded per-connection storage,
 parse exactly one Content-Length request through existing ENGINE-13 parser/body rules, and

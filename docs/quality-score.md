@@ -1,144 +1,34 @@
 # Quality Score
 
+Status: 2026-05-01 post-core reset.
+
 Status key:
 
 - Green: implemented and enforced by default checks.
 - Yellow: implemented or specified with meaningful gaps.
 - Red: not ready for public alpha use.
 
-This score separates "implemented" from "validated". Default gates are not V8-enabled
-gates, and default provider tests are not live database tests. Cross-platform default CI
-proves the non-V8 path across hosted Windows, Linux, and macOS runners; it still does not
-prove optional SDK/service paths.
+Default gates prove the non-V8 path unless a V8-enabled lane is explicitly run. Optional
+V8, package, live-provider, stress, and benchmark evidence must be reported separately.
 
-MAIN evidence is tracked separately in `docs/project/main-evidence.md`. Default gates prove
-default build/test health, static/lint gates, Rust compiler-tool gates, and non-V8
-diagnostic behavior. Only a V8-enabled build plus the documented run-once smoke proves the
-executable hello path through V8.
+| Area | Status | Implemented / Proven | Remaining Gap |
+| --- | --- | --- | --- |
+| Native C safety | Yellow | Core primitives, arenas, builders, diagnostics, plan parser, HTTP/backend/transport paths, provider boundaries, and standards scanners. | Sanitizer/fuzz gates, scanner fixtures, provider primitive cleanup, request-scope leak checks. |
+| Memory/string foundations | Yellow | `SlStr`/`SlBytes`, arena copies, builders, intern tables, HTTP/Plan/V8/SQLite adoption for current paths. | PostgreSQL/SQL Server provider cleanup, SQLite V8 allocation preflight, remaining CLI/conformance cleanup. |
+| Diagnostics | Yellow | Stable codes, text/JSON/source-frame rendering, redaction helpers, provider/runtime diagnostics, source-map artifacts. | Runtime consumption of compiler source maps, richer CLI format plumbing, structured fixes. |
+| Platform boundaries | Yellow | Platform dirs, Windows/POSIX scanners, platform time, hosted non-V8 CI. | Scanner self-tests and richer OS API categories. |
+| V8 integration | Yellow | Optional V8 execution, handlers, bounded direct Promise settlement, SQLite bridge, owner-thread checks. | SDK packaging/CI, ESM module loading, timers/fetch/native async sources, runtime source-map remapping. |
+| HTTP foundation | Yellow | Bounded parser/body/response/dispatch, backend lifecycle, libuv localhost transport, one-request-per-connection MVP. | Keep-alive, chunked/streaming bodies, production graceful drain, TLS/HTTP2/3/WebSockets, middleware. |
+| Compiler extraction | Yellow | Supported one-file source subset emits deterministic artifacts and diagnostics. | Source-input run, broad TS checking, package/module/service/schema extraction, broader async source shapes. |
+| App/framework ergonomics | Yellow | Bootstrap builder/app/config/logging/services/modules/schema/data/result helpers and current compiler/runtime path. | Request binding/validation/config completion, generated capabilities, service lifetimes, executable public examples. |
+| Data providers | Yellow | Native SQLite/PostgreSQL/SQL Server providers, V8 SQLite bridge, capability checks, provider executor infrastructure. | SQLite bridge not yet executor-backed; PostgreSQL/SQL Server JS bridges, pooling/cancellation/live conformance deferred. |
+| Security/capabilities | Yellow | Plan/provider/capability metadata, registry checks, provider-executor admission, SQLite bridge enforcement. | No OS sandbox; filesystem/network capabilities are skeletons. |
+| Conformance/package evidence | Yellow | ENGINE-19 evidence matrix, V8/HTTP/async/SQLite/capability/package lanes, local package smoke. | Public alpha readiness, hosted V8/package/live-provider gates, release hardening. |
+| Docs freshness | Yellow | Canonical docs plus post-core compact audits. | Automated link checker and semantic stale-doc checks. |
+| Public alpha | Red | Core proof exists. | Source-input decision, executable examples, canonical public docs, package/platform story, no fake production/perf claims. |
 
-2026-04-29 strategic update: Slop Engine foundation is the next phase. Public alpha
-readiness remains red until the engine layers in
-`docs/project/slop-engine-layered-roadmap.md` are completed or explicitly deferred.
-ENGINE-01 locks the implementation-facing contract in
-`docs/project/engine-framework-contract.md`. The locked contract covers compiler support
-for realistic apps, V8 Promise/microtask handling, framework HTTP API
-runtime, SQLite capability-wired end-to-end execution, app/request lifecycle cleanup,
-diagnostics/source maps, cancellation/backpressure/resource-limit infrastructure,
-conformance examples, and packaged runtime evidence. PostgreSQL and SQL Server JS bridges
-and benchmark claims are not immediate readiness blockers.
-ENGINE-13 through ENGINE-20 now split the remaining foundation into explicit proper HTTP
-backend, bootstrap/module loading, diagnostics/source maps, app/resource lifetime,
-SQLite, CLI/dev loop, conformance, and strong Plan layers. ENGINE-21 and ENGINE-22 add the
-cross-cutting memory/string primitive, bounded string interning, and adoption layers needed
-for safe hot paths. ENGINE-23 is now the provider execution/offload runtime prerequisite
-between ENGINE-12 and SQLite/provider completion. These are prerequisites for public alpha
-unless explicitly scoped down with honest exclusions.
+## Interpretation
 
-2026-04-30 issue-hygiene update: completed/superseded tracker noise was reconciled in
-`docs/project/github-issue-hygiene-audit.md` and
-`docs/project/github-issue-cleanup-result.md`. The active tracker remains the ENGINE
-roadmap; public alpha docs, benchmark marketing, PostgreSQL/SQL Server JS bridges, and
-package/release claims remain blocked or deferred until their evidence gates exist.
-
-| Area | Status | Implemented | Validated by default gates | Gated / not validated by default | To move to Green |
-| --- | --- | --- | --- | --- | --- |
-| Native C safety | Yellow | Core primitives, checked math, arena, resource table, diagnostics, plan parser, HTTP parser, providers, boundary-oriented tests, and local sanitizer options. | CTest, warnings, format, lint, C standards scanner, platform scanner. | Sanitizers are not required in CI, fuzz targets are not implemented, and allocator misuse checks, request-scope leak checks, and deeper cleanup integration are incomplete. | Add stable sanitizer/fuzz gates, allocator checks, request-scope resource leak checks, and scanner fixtures. |
-| Memory/string foundations | Yellow | Borrowed `SlStr`/`SlBytes`, arena-owned string/byte copies, deterministic hash/equality helpers, checked math, caller-backed `SlArena`, bounded `SlByteBuilder`/`SlStringBuilder`, bounded app/static `SlInternTable`, arena rollback patterns, diagnostic arena builders, private V8 string interop helpers, SQLite text/blob copy helpers, arena-owned Plan/HTTP/SQLite outputs, HTTP parser/response/route adoption for the current dev hot paths, Plan/artifact loader adoption for the current `sloppy run --artifacts` path, stable parsed-Plan metadata interning, provider-neutral V8 bridge string adoption, SQLite result/parameter ownership adoption, non-SQLite ENGINE-22.F cleanup for capability denial hints and OpenAPI path skeleton normalization, and JS-safe resource IDs. | Core C tests, builder/intern tests, diagnostics tests, Plan parser/intern tests, artifact loader failure tests, HTTP parser/response/route ownership tests, SQLite provider ownership tests, capability low-capacity denial-hint regression coverage, CLI OpenAPI golden coverage, C standards scanner warnings for raw allocation, and V8-gated string/SQLite conversion coverage when SDK evidence is available. | No standalone heap/operation-owned `SlBuf`, no real async/offload provider ownership implementation, remaining CLI/conformance cleanup, or final HTTP/backend cleanup; no allocator misuse hard failure, and sanitizer/fuzz hooks remain optional/future. | Complete remaining ENGINE-22 adoption across CLI/conformance and final HTTP/backend cleanup, then preserve SQLite ownership when async/offload provider work lands. |
-| Diagnostics | Yellow | Stable C diagnostic codes, bounded-builder text rendering, bounded-builder JSON diagnostic rendering, bounded-builder single-line source frames, compiler source-frame fixture output, lifecycle diagnostic JSON, ENGINE-02 handler-line source-map artifacts, V8 generated-source exception spans, and representative redaction helpers/tests. | `core.diagnostics.foundation`, `core.app_host.hardening`, diagnostics golden snapshots, compiler diagnostic/source-map fixtures, provider redaction tests, CLI doctor redaction goldens, and V8-gated exception/source checks when SDK is available. | CLI-wide diagnostic-format selection, richer related compiler spans, localization, structured fixes, and TypeScript source-map remapping remain deferred because runtime diagnostics do not consume compiler maps yet. | Add CLI format plumbing when command error paths share the renderer, then add source-map parsing/remapping in the V8 diagnostic path. |
-| Platform boundaries | Yellow | `src/platform/*` structure, platform docs, Windows/POSIX scanners, platform time abstraction, and default Windows/Linux/macOS CI. | Lint checks common forbidden OS headers outside platform directories; POSIX CI runs shell scanners. | Scanner self-tests, sanitizer/fuzz platform jobs, and richer platform API categories are missing. | Add scanner fixtures, sanitizer/fuzz jobs, and documented platform API categories. |
-| Docs freshness | Yellow | Source docs, public docs, module docs, ADRs, quality score, and tech-debt tracker exist. | Lightweight docs freshness structure check. | Semantic stale-doc detection and link checking are not implemented. | Add link checker and targeted semantic checks for examples/API claims. |
-| Language standards | Green | C/C++, JS/TS, and Rust standards docs exist with operational skill summaries and review checklists. | `dev.ps1 lint` runs C standards, JS/TS standards, Rust standards, platform, docs freshness, and artifact hygiene checks. | The JS/TS scanner is structural rather than parser-based; deeper Rust lint config is intentionally minimal. | Add parser-based JS linting and stronger Rust lint configuration only after the compiler/tooling scope justifies them. |
-| Tests as intent | Yellow | Testing strategy requires docs-as-intent; many modules have tests tied to docs. | CTest/cargo gates plus golden fixtures. | Some structural/example checks are static because runtime execution is not available. | Keep tests tied to source docs and replace static checks with runtime checks when features exist. |
-| V8 integration | Yellow | SDK detection, isolated ABI, classic-script smoke, exception mapping, bootstrap runtime asset loading, handler registration intrinsic, HTTP bridge split outside `engine_v8.cc`, provider-intrinsic aggregation outside `engine_v8.cc`, registered handler table validation, handwritten/compiler artifact execution paths, owner-thread checks, lifecycle diagnostics, ENGINE-03 microtask-only Promise settlement/rejection/pending diagnostics, ENGINE-12.AB native-completion Promise settlement through the owner-thread scheduler, ENGINE-12.CD native provider-executor policy that keeps provider threads out of V8, and ENGINE-23.C serialized provider workers that complete through the Slop async backend without entering V8. | Default gates validate non-V8/noop engine paths, static bootstrap assets, deterministic async backend/provider-executor tests, serialized worker FIFO/cleanup tests, and libuv backend posting/cleanup tests. V8-gated tests validate owner-thread native continuation settlement when SDK evidence is available. | V8 tests require `SLOPPY_ENABLE_V8=ON` and a valid SDK; true ESM loading, SDK distribution, public timers/fetch/native async sources, full SQLite async/offload conversion, HTTP-specific async lifecycle, scalable async stress evidence, and runtime source-map remapping are not solved. | Add packaged SDK strategy, V8-enabled CI or release gate, true ESM/module cache, ENGINE-17 SQLite runtime completion on the provider executor model, ENGINE-13 HTTP async lifecycle, source-map remapping, and keep future framework/provider bridges outside `engine_v8.cc`. |
-| HTTP foundation | Yellow | Route parser/matcher, complete-buffer HTTP/1 request parser with target/header/body limits, libuv init smoke, native route table with literal-before-parameter precedence, GET/POST/PUT/PATCH/DELETE dispatch from Plan metadata, dev-only `sloppy run` socket/`--once`, builder-backed native response writer, query parser, JSON/text body policy, request headers/body context, custom response headers, cancellation/backpressure pre-entry checks, deterministic error response mapping, ENGINE-22.A memory/string ownership adoption for current parser/body/response/route hot paths, ENGINE-13.A/B/C backend/listener state, connection/request lifecycle, timeout hooks, and bounded active connection/request admission, ENGINE-13.D/E bounded backend body reader, body cancellation/timeout/shutdown terminal paths, shutdown rejection for new request work, active request shutdown cancellation hooks, stable shutdown diagnostics, ENGINE-13.F bounded default non-V8 stress/conformance smoke, ENGINE-24.A/B Slop-owned transport listener config/state with libuv-isolated bind/listen/accept and bounded accepted-connection placeholders, ENGINE-24.C accepted-connection read loop plus bounded request-ready accumulation for one Content-Length request, ENGINE-24.D request-ready dispatch/write/close-after-response with existing response serialization, ENGINE-24.E transport disconnect cancellation, header/body/request/write timeout hooks, deterministic 408 timeout response where safe, shutdown rejection, active connection close, cleanup-once terminal paths, ENGINE-24.F real localhost TCP smoke/conformance over the implemented MVP transport behavior, ENGINE-24.G documentation that the MVP intentionally remains close-after-response with keep-alive/HTTP/1.1 streaming deferred, and ENGINE-17.E V8-gated SQLite users API proof over real localhost TCP through `sloppy run --artifacts`. | Default C tests, route table/dispatch tests, response/query/request-target/header/body limit tests, backend lifecycle/admission/timeout tests, backend body-reader/cancellation/shutdown tests, bounded repeated parser/lifecycle/body-policy/overload/shutdown stress smoke, transport config/listen/accept/capacity/read-loop/request-accumulation/dispatch/write/close-after-response/cancellation/timeout/shutdown cleanup tests, localhost TCP transport tests for raw client bytes, GET/POST success, 404/405, malformed/body-limit/unsupported-media/unsupported-transfer failures, one-request-per-connection, close-after-response, response `Content-Length`/`Connection: close`, and cleanup coherence, default non-V8 conformance-style dispatch diagnostics, non-NUL/binary ownership edge tests, default `sloppy run` failure-mode tests, bootstrap/compiler tests, and static example checks. | Users API proof is V8-gated and not default evidence; no JS-visible streaming body reader, production graceful drain, keep-alive, pipelining, chunked/streaming body support, middleware, TLS, HTTP/2/3, WebSockets, static files, compression, multipart, production hardening, benchmark/performance evidence, or production-edge HTTP evidence. | Scope the proposed future ENGINE-25 keep-alive/streaming epic before making stronger HTTP/1.1 transport claims. |
-| Public API ergonomics | Yellow | Bootstrap ESM stdlib supports builder/app, `Results.*`, GET/POST/PUT/PATCH/DELETE route declarations, route groups, schema, modules, services, config, logging, data facade. The compiler accepts the supported bare `"sloppy"` import source shape, rewrites it to the classic bootstrap runtime handoff, emits ENGINE-02 method/async/provider/source-map metadata, and produces artifacts that `sloppy run --artifacts` can execute for GET/POST/PUT/PATCH/DELETE route/query/request context plus direct async handlers when V8 is enabled. | Static checks, optional Node ESM tests, compiler golden tests, response/context tests, default non-V8 run failure tests, and V8-gated runtime tests when SDK is available. | True V8 ESM stdlib loading, `app.run`, source-input run handoff, `await`/multi-statement async compiler shapes, broad module/service compiler input shapes, and public examples through source-input execution are deferred. | Add source-input run handoff and executable public examples through the real ESM bootstrap module shape once V8 module loading grows past the classic runtime asset. |
-| Compiler extraction | Yellow | Oxc-backed one-file extractor for `Sloppy.create`, builder build, literal GET/POST/PUT/PATCH/DELETE route metadata, simple route groups, route names, async handler metadata, supported bounded `Results.*` helper returns, minimal SQLite provider/capability metadata, handler ID assignment, `"sloppy"` import rewrite, supported syntax matrix, specific unsupported dynamic/computed/import/handler/secret diagnostics, deterministic `app.plan.json`, `app.js`, real handler-line source map, deterministic artifact hashes, and native-validated route metadata consumed by `sloppy run`. | Cargo tests, compiler golden fixtures, full rendered diagnostics fixtures, rejected-build no-artifact coverage, conformance compile/reject tests, Rust standards scanner, clippy, and V8-gated run smoke when SDK is available. | No full TypeScript checking, Node/npm package resolution, bundling, modules/services/schemas, provider bridge execution, broader async source shapes, or source-input `sloppy run` handoff. | Add source-input handoff, module/service/schema extraction, runtime async/provider consumption, and official type checking. |
-| App host | Yellow | JavaScript-only builder/freeze/config/logging/services skeleton, native startup validation for the parsed Plan-backed artifact path, explicit app lifecycle startup/shutdown cleanup, request-scope cleanup boundaries, and resource-table-backed cleanup helpers. | Bootstrap tests validate in-memory behavior; `core.app_host.hardening` covers startup validation, app shutdown, request cleanup/resource closing, and lifecycle diagnostic JSON without V8. | No native module graph, DI container, service activation, provider bridge ownership policy, graceful async server drain, disposal hooks beyond the scoped cleanup primitive, or public `run/listen` lifecycle. | Emit real module/service metadata, add service lifetimes/disposal, wire provider handles through request/app scope by ownership policy, add graceful drain/force-cancel shutdown once native async exists, and keep V8 validation reported separately. |
-| Modules | Yellow | JavaScript-only `Sloppy.module`, dependency ordering, phases, attribution, debug metadata. | Bootstrap module tests. | No compiler extraction, package loading, native module graph, middleware/filter phases, or real plan emission. | Emit/validate module plan metadata and load it through runtime startup. |
-| Data providers | Yellow | Native SQLite, PostgreSQL, and SQL Server provider boundaries plus bootstrap data API/fake provider, core JS-safe resource IDs, capability-enforced V8-gated SQLite JS-to-native bridge with finalized open/close/exec/query/queryOne/callback-transaction wrapper shape, explicit database/path/access option policy, resource-level read/write/readwrite rechecks before SQLite work, stable SQLite result/error mapping, deferred public prepared handles, ENGINE-17.E source-built users API proof over localhost TCP, ENGINE-23.A/B per-provider-instance descriptor/admission foundation with operation kinds, capability metadata, bounded admission, copied inputs, cancellation/timeout/shutdown terminal states, ENGINE-23.C serialized blocking execution with one worker/one active operation per provider instance, ENGINE-23.D blocking pool execution with bounded per-instance workers, queue, in-flight count, deterministic overflow, ENGINE-23.E/F generic native-provider terminal-state plus capability-gated dispatch semantics through provider-supplied policy hooks, and ENGINE-23.G/H diagnostics/stress evidence plus integration guidance. | SQLite native in-memory tests; SQLite result/error mapping tests for null/integer/float/text/blob, empty sets, queryOne, duplicate columns, constraints, and redaction; SQLite JS wrapper mocked-bridge tests including option validation, transaction commit/rollback/nested/use-after-close, and absent prepared handles; V8-gated SQLite bridge/capability/users API tests when SDK is available; PostgreSQL/SQL Server default non-live tests; redaction, option, tiny pool/resource lifecycle tests; `core.provider_executor` default native tests including pre-cancelled/deadline rejection, queued cancellation before execution, active cancellation/timeout/shutdown late completion, capability denial before enqueue, redacted admission diagnostics/counters, non-database provider policy-hook admission, serialized worker FIFO/failure/overflow/shutdown/dispose, blocking-pool worker caps/queue caps/overflow/shutdown/provider failure, bounded many-operation stress smoke, and libuv completion posting. | PostgreSQL and SQL Server live tests are separate opt-in CTest gates that skip when env vars are absent; PostgreSQL/SQL Server JS-to-native bridges, SQLite async/offload conversion through ENGINE-23, request-scope provider ownership, production pooling, provider-specific native interruption, and live provider stress evidence are missing. | Route the current synchronous SQLite bridge through provider executors in a later scoped slice, then scope PostgreSQL/SQL Server bridge work separately. |
-| CLI | Yellow | Metadata-only `routes`, `doctor`, `audit`, and route-skeleton `openapi` commands over validated Plan artifacts where supported. Doctor reports V8/live-provider/package caveats with shared diagnostic redaction; audit reports bounded alpha metadata findings; `sloppy run` startup diagnostics can render through the shared diagnostic text renderer; OpenAPI path skeleton normalization uses the shared bounded string builder. | Golden process tests over fixtures and compiler-generated artifact plans, plus missing/invalid metadata failure tests. | Commands do not compile, run handlers, start HTTP, enter V8, run live provider checks, or generate real OpenAPI schemas/security schemes. CLI-wide JSON/text output still has local writers. | Add opt-in live diagnostics and real schema/security output only after compiler/runtime metadata exists; continue CLI writer cleanup without changing the metadata-only contract. |
-| Benchmarks | Yellow | `sloppy_bench`, route/parser/handler/synthetic dispatch scenarios, JSON/text output, wrapper. | List/smoke CTest checks. | No performance regression gate; no real HTTP/V8/JSON/live DB/external comparisons. | Add release benchmark methodology, trend tracking, real paths, and only then external comparisons. |
-| Cross-platform readiness | Yellow | Cross-platform layout, platform boundary policy, Linux clang/gcc CI, macOS clang CI, Windows clang-cl CI, POSIX standards scanners, and local Unix package smoke tooling exist. | Required default CI proves non-V8 configure/build/test, Cargo gates, artifact hygiene, and boundary scans on Windows, Linux, and macOS. | V8 CI is manual/gated, live provider services are opt-in, package smoke is not required on Linux/macOS hosted runners, and sanitizer/fuzz matrices are absent. | Add V8 SDK caching/prebuilt setup, optional live provider service jobs, hosted Linux/macOS package smoke, and stable sanitizer/fuzz gates before stronger public-alpha claims. |
-| Distribution readiness | Yellow | Experimental local package layout, Windows ZIP tooling, Unix TAR script, manifest, checksums, stdlib inclusion, V8 SDK exclusion policy, Windows outside-checkout ZIP smoke, Unix outside-checkout TAR smoke, packaged `sloppyc build` smoke, and optional V8 runtime-file validation exist. | Windows package creation and package smoke can validate `sloppy --version`, `sloppy --help`, `sloppyc --version`, `sloppyc --help`, packaged `sloppyc build`, stdlib assets, required package files, manifest fields, excluded directories, V8 SDK exclusion, and SHA256SUMS locally. Unix smoke can validate the same package-layout contract locally when run on Linux/macOS. Default non-V8 package smoke reports packaged `sloppy run --artifacts` as skipped/not configured when V8 is unavailable. | Package smoke is not release readiness and does not prove live provider availability, SQL Server driver installation, V8 execution, or JS-to-native provider bridges unless a separate V8 package execution lane ran. Linux/macOS packaging is not CI-validated yet; V8 package execution smoke, dynamic V8 runtime file lists, libpq/runtime DLL strategy, signing/notarization, installers, package-manager distribution, reproducibility hardening, and public release automation remain deferred. | Add hosted package smoke, V8 package execution validation, provider runtime dependency strategy, signing/notarization, and package-manager work only when scoped. |
-| Security / capability model | Yellow | Capability metadata, native Plan capability/provider validation, immutable runtime registry, database policy check hooks, generic provider-executor capability-gated admission through required provider-supplied hooks, denied diagnostics, V8 SQLite bridge enforcement, and filesystem/network skeleton checks exist. | Plan parser fixtures, `core.capability.registry`, `core.provider_executor` capability-denial tests, metadata/audit fixture checks, and V8 SQLite denied-open/use tests. | No OS sandbox, no filesystem/network API, no permission prompts, and PostgreSQL/SQL Server have no JS provider bridge yet. | Keep OS sandboxing as later research and require future provider bridges to enter through the capability-gated provider executor path. |
-| End-to-end conformance | Yellow | MAIN1-13 conformance layout ties public compiler examples and selected checked-in artifact fixtures to the real compile/run boundary, and ENGINE-02/04/06 add compile/reject/runtime coverage for method, async, provider/capability, source-map, HTTP body/header policy, and unsupported metadata cases. ENGINE-13.F adds default non-V8 HTTP conformance-style smoke for the implemented backend/parser/dispatch state model, ENGINE-24.F adds real localhost TCP smoke for the reusable transport MVP, and ENGINE-17.E adds a V8-gated source-built SQLite users API localhost proof. | Default CTest conformance compiles hello/request-context/ENGINE-02/users-api fixtures twice for deterministic artifact output and rejects unsupported dynamic routes/imports/async bodies/secret metadata without emitting artifacts. Default HTTP unit smoke covers implemented GET/POST/PUT/PATCH/DELETE dispatch preflight, route miss, method mismatch, malformed query/JSON, unsupported media, parser limits, body limits, overload, shutdown, stable diagnostics, raw localhost TCP request/response bytes, close-after-response, one-request-per-connection, and unsupported transfer/pipelining policy. V8-gated conformance/integration runs hello, request context, async handler, invalid result descriptor, HTTP method/body/header dispatch, SQLite bridge/capability fixtures, and the users API localhost transport proof when SDK evidence is available. | Default gates do not prove V8 execution, benchmark evidence, keep-alive/pipelining/streaming support, production-edge HTTP behavior, async/offload SQLite, or PostgreSQL/SQL Server JS bridges. | Add conformance for future source-input handoff, broader async handler source shapes, and future provider bridge capability enforcement only when those bridges are implemented. |
-
-ENGINE-19.A adds `docs/project/engine-19-conformance-matrix.md` as the naming and evidence
-lane policy for future conformance work. It is a docs/check foundation, not new runtime
-coverage: default non-V8, V8-gated, localhost transport, SQLite/capability, package
-outside-checkout, live-provider optional, stress/smoke, and benchmark harness evidence must
-remain distinct in status reports and PR bodies.
-ENGINE-19.BC turns the current V8, HTTP, and async suites into matrix-visible CTest
-entries. It does not add runtime behavior, but it makes default non-V8 synthetic HTTP,
-localhost transport MVP, default native async/backend, and V8-gated runtime/HTTP/async
-evidence directly selectable and reportable.
-ENGINE-19.D does the same for SQLite and capability evidence. It registers default native
-SQLite provider and capability-policy/provider-admission suites, and marks the existing
-V8-gated SQLite bridge, denied-capability, and users API localhost transport cases with
-SQLite/capability labels. This is executable conformance coverage, not async SQLite
-offload, PostgreSQL/SQL Server bridge, live-provider, package, benchmark, public alpha, or
-production-edge HTTP evidence.
-ENGINE-19.E hardens package outside-checkout smoke so extracted local packages start the
-packaged tools, verify required files and stdlib assets, build a tiny supported app with
-packaged `sloppyc`, and report packaged artifact execution separately from default
-non-V8 package layout evidence.
-
-## Current Summary
-
-The repo has a surprisingly broad foundation now, and it has the first dev-only executable
-artifact path plus default hosted CI across Windows, Linux, and macOS. Public-alpha
-readiness is still red because the path is intentionally narrow: V8 validation is gated,
-source-input `sloppy run` is deferred, response/request handling is still dev-only,
-capability metadata now has native Plan/provider validation, an immutable runtime registry,
-and database policy check hooks, but full scalable async runtime work (#306-#310),
-JS-native bridge wiring, OS sandboxing, optional SDK/service validation, and release
-packaging remain separate or experimental.
-
-ROADMAP MAIN and ROADMAP MAIN.1 are now historical input to the strategic ENGINE roadmap.
-Public alpha docs should not move ahead of the ENGINE roadmap unless a document explicitly
-says the relevant workflow is still deferred and not part of the alpha claim.
-ENGINE-13 through ENGINE-20 are the current open issue-backed completion map for the
-remaining core foundation; ENGINE-23 now has native executor diagnostics/stress evidence
-and provider integration guidance, while ENGINE-21 and ENGINE-22 are closed with
-implementation evidence. Default gates must still be reported separately from V8-gated,
-package, live-provider, stress, and benchmark evidence. The issue cleanup record should be used to
-avoid reopening old MAIN, MAIN1, ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12,
-ENGINE-21, or ENGINE-22 work that is already closed with evidence.
-
-## Gate Interpretation
-
-Passing the default Windows gates means:
-
-- portable C foundations, non-V8 tests, static/bootstrap checks, CLI fixture tests, and
-  provider default tests passed;
-- MAIN1-13 default conformance compiled supported public examples and rejected selected
-  unsupported compiler inputs without requiring V8;
-- `sloppy run` startup/failure-mode tests passed without proving V8 execution;
-- V8-enabled tests did not necessarily run;
-- default SQLite/capability conformance ran only native provider and policy/admission
-  checks, not the V8 SQLite bridge or users API transport unless a V8-enabled lane also
-  ran;
-- PostgreSQL and SQL Server live tests did not necessarily run;
-- package smoke did not necessarily run and is not public release readiness or V8 execution
-  evidence;
-- when package smoke does run on a default non-V8 package, packaged compile/layout evidence
-  is still separate from V8 package execution;
-- benchmark smoke ran only as harness correctness, not as performance evidence.
-
-ENGINE-19 reports should use the matrix wording from
-`docs/project/engine-19-conformance-matrix.md` and must list skipped optional lanes as
-skipped/not configured.
-
-Passing the default cross-platform CI additionally means:
-
-- non-V8 CMake configure/build/CTest passed on Windows clang-cl, Linux clang, Linux gcc,
-  and macOS clang;
-- Cargo build/fmt/clippy/test passed on those hosted runners;
-- POSIX C/platform standards scans passed on Linux/macOS;
-- provider live tests were either explicitly enabled by environment or reported as
-  skipped. It does not mean live PostgreSQL, live SQL Server, package smoke, V8 package
-  smoke, sanitizer gates, fuzz gates, or V8 validation ran.
-
-Do not convert default-gate success into claims about V8, live databases, package release
-readiness, HTTP throughput, public performance, public package usability, or production
-readiness.
+Passing default Windows/Linux/macOS CI does not prove V8 execution, live database access,
+package execution, public alpha readiness, production HTTP behavior, or benchmark claims.
+Those claims require their named gates and PR evidence.

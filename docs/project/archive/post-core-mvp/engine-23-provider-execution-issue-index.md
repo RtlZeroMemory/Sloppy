@@ -4,7 +4,7 @@ Status: created GitHub issue index.
 
 Source architecture:
 
-- `docs/project/provider-execution-current-state-audit.md`;
+- `docs/project/archive/post-core-mvp/provider-execution-current-state-audit.md`;
 - `docs/project/provider-execution-runtime-architecture.md`.
 
 ## Issues

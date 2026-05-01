@@ -10,11 +10,10 @@ starting ENGINE-22 subsystem adoption.
 - AGENTS.md
 - CONTRIBUTING.md
 - docs/memory.md
-- docs/project/memory-string-current-state-audit.md
-- docs/project/memory-string-foundation-architecture.md
-- docs/project/memory-string-adoption-map.md
+- docs/project/post-core-mvp-memory-string-audit.md
+- docs/project/archive/post-core-mvp/memory-string-foundation-architecture.md
 - docs/project/slop-engine-layered-roadmap.md
-- docs/project/engine-13-plus-architecture.md
+- docs/project/archive/post-core-mvp/engine-13-plus-architecture.md
 - docs/quality-gates.md
 - docs/testing-strategy.md
 - docs/c-standards.md
