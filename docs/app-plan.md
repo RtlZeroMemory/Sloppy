@@ -216,6 +216,11 @@ relative imports, function modules, contributed routes, providers, config/schema
 metadata, and source locations. Runtime package loading, npm modules, controllers, and
 decorators remain out of scope.
 
+COMPILER-30.B/C establishes the compiler-side source graph foundations that later Plan
+metadata will consume. The current emitted Plan shape remains compatibility-preserving:
+relative imports and Slop-owned imports are resolved for compilation, but no new top-level
+`modules` or source-graph Plan section is emitted in this slice.
+
 ### routes
 
 Native route table input:

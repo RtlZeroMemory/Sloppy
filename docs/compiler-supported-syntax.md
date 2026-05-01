@@ -164,10 +164,13 @@ codes, source path, and line/column when the parser exposes a span. The text ren
 intentionally small; JSON diagnostics, multi-location source frames, and richer fix metadata
 belong to later diagnostics work.
 
-COMPILER-30.A preserves this supported syntax matrix while splitting compiler internals
-behind a library API and module boundaries. The fixture harness can test success artifacts,
-rejected inputs, source-map goldens, diagnostics, multi-file fixtures, and future inference
-metadata without expanding the accepted source subset.
+COMPILER-30.B/C adds the first real code behind those boundaries: parser/source-type
+entrypoints, supported import classification/resolution, source module graph bookkeeping,
+symbol-table primitives, Slop DSL helper recognition, and static string literal/alias
+evaluation. The existing artifact extractor now routes source-type checks, relative import
+resolution, route-method matching, member-chain matching, and string-argument recognition
+through those focused modules while preserving current artifact compatibility.
+
 ## ENGINE-14 Module Syntax
 
 Supported source imports are intentionally small:
@@ -180,6 +183,14 @@ The compiler resolves relative imports before runtime startup and rewrites the s
 graph into the classic generated artifact. Unsupported bare imports, Node/npm specifiers,
 remote imports, dynamic `import(...)`, missing relative imports, circular relative imports,
 missing named exports, and unsupported module shapes fail at compile time with diagnostics.
+
+COMPILER-30.B/C makes the accepted import set explicit:
+
+- relative imports are resolved only as fixture/source-local `.js`, `.mjs`, or `.ts` files;
+- `"sloppy"` is the only supported stdlib bare import;
+- `"sloppy/providers/sqlite"` is the only supported provider bare import;
+- unknown bare, Node/npm, remote, and dynamic imports remain rejected with source-located
+  diagnostics.
 
 Function modules may export one named function that receives the app, obtains providers
 through `app.provider("sqlite:<name>")`, creates route groups with `app.group(...)`, and

@@ -305,7 +305,7 @@ examples.
 
 ## Internal Architecture
 
-Current Rust layout after COMPILER-30.A:
+Current Rust layout after COMPILER-30.B/C:
 
 ```text
 compiler/src/
@@ -335,11 +335,23 @@ compiler/tests/compiler_fixture_harness.rs
 ```
 
 `main.rs` is the thin CLI entrypoint. `lib.rs` exposes the compiler library API used by
-tests and future tooling. `sloppyc.rs` still owns most behavior while COMPILER-30.A keeps
-emitted artifacts stable; the named modules establish the boundaries for subsequent parser,
-resolver, symbol, DSL, effect, capability, schema, result, validation, Plan, bundle, source
-map, and fixture work. Those modules are architecture boundaries, not claims that full
-inference exists yet.
+tests and future tooling. `sloppyc.rs` still owns artifact extraction and emission, but
+COMPILER-30.B/C moves the first parser/resolver/symbol/DSL/static-eval contracts behind
+focused module APIs:
+
+- `parser.rs` owns source-type acceptance diagnostics for entry and imported modules;
+- `resolver.rs` classifies supported Slop imports and resolves source-local relative
+  imports without Node/npm behavior;
+- `module_graph.rs` owns deterministic source module graph bookkeeping primitives;
+- `symbols.rs` owns Slop symbol binding primitives for app/group/provider/schema/helper
+  identifiers;
+- `slop_dsl.rs` owns route-method, member-chain, string-argument, provider, Results, and
+  context-helper recognition primitives;
+- `static_eval.rs` owns supported static string literal, const-alias, and concatenation
+  evaluation.
+
+Route graph extraction, provider/config/schema/results metadata extraction, effects,
+capabilities, completeness, and Strong Plan emission remain later COMPILER-30 tasks.
 
 The current library entrypoints are:
 

@@ -52,9 +52,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   and Plan completeness. Normal repository/service patterns should not require manual
   `uses` metadata when effects are statically resolvable. Runtime work remains separate:
   COMPILER-30.A establishes module boundaries, the compiler library API, and fixture/
-  golden harness; cache reuse, broader async source shapes, dispatch/runtime behavior,
-  and provider/capability enforcement must not be
-  hidden inside compiler planning.
+  golden harness. COMPILER-30.B/C moves the first parser/resolver/symbol/DSL/static-eval
+  contracts into named modules while keeping artifact extraction compatibility in
+  `sloppyc.rs`; route/module/provider/config/schema/result/effect/capability/validation/
+  Plan logic still needs later task slices. Cache reuse, broader async source shapes,
+  dispatch/runtime behavior, and provider/capability enforcement must not be hidden inside
+  compiler planning.
 - Full scalable async runtime beyond ENGINE-03: ENGINE-12.AB adds the first bounded
   `SlAsyncLoop` backend abstraction, libuv backend, and owner-thread V8 continuation
   scheduler. ENGINE-12.CD adds the deterministic provider-executor/cancellation/
