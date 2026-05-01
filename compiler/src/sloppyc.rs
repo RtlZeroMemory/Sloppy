@@ -195,11 +195,11 @@ struct ConfigReadMetadata {
 }
 
 fn schema_names(state: &AppState) -> BTreeSet<String> {
-    state
-        .schemas
-        .iter()
-        .map(|schema| schema.name.clone())
-        .collect()
+    if state.schema_imported {
+        state.schema_names.clone()
+    } else {
+        BTreeSet::new()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -260,6 +260,7 @@ struct AppState {
     routes: Vec<Route>,
     capabilities: Vec<DatabaseCapability>,
     schemas: Vec<SchemaMetadata>,
+    schema_names: BTreeSet<String>,
     config_reads: Vec<ConfigReadMetadata>,
     default_export: Option<String>,
 }
@@ -286,6 +287,7 @@ impl AppState {
             routes: Vec::new(),
             capabilities: Vec::new(),
             schemas: Vec::new(),
+            schema_names: BTreeSet::new(),
             config_reads: Vec::new(),
             default_export: None,
         }
@@ -989,6 +991,7 @@ fn extract_entry(
 
     let source_name = graph.record_source(path, source);
     let mut state = AppState::new();
+    state.schema_names = collect_schema_declaration_names(&parsed.program.body);
     for statement in &parsed.program.body {
         if state.dynamic_import.is_none() {
             state.dynamic_import = statement_dynamic_import_span(statement);
@@ -1162,6 +1165,26 @@ fn extract_entry(
         schemas: state.schemas,
         config_reads: state.config_reads,
     })
+}
+
+fn collect_schema_declaration_names(statements: &[Statement<'_>]) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for statement in statements {
+        let Statement::VariableDeclaration(declaration) = statement else {
+            continue;
+        };
+        for declarator in &declaration.declarations {
+            let Some(init) = &declarator.init else {
+                continue;
+            };
+            if expression_mentions_schema(init) {
+                if let Some(name) = binding_identifier(&declarator.id) {
+                    names.insert(name.to_string());
+                }
+            }
+        }
+    }
+    names
 }
 
 fn extract_import(
@@ -3090,7 +3113,7 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
         "badRequest" => (400, "problem"),
         "notFound" => (404, "problem"),
         "problem" => (500, "problem"),
-        "status" => (status_result_code(call).unwrap_or(200), "json"),
+        "status" => (status_result_code(call)?, "json"),
         _ => return None,
     };
     Some(ResponseMetadata {
@@ -4056,7 +4079,7 @@ fn emit_plan(
         || app
             .routes
             .iter()
-            .any(|route| !route.handler.bindings.is_empty());
+            .any(|route| !route.handler.bindings.is_empty() || route.handler.response.is_some());
     let handlers = app
         .routes
         .iter()
@@ -4099,7 +4122,9 @@ fn emit_plan(
             if let Some(module) = &route.module {
                 route_json["module"] = json!(module);
             }
-            let emits_route_metadata = emits_app_metadata || !route.handler.bindings.is_empty();
+            let emits_route_metadata = emits_app_metadata
+                || !route.handler.bindings.is_empty()
+                || route.handler.response.is_some();
             if !route.handler.bindings.is_empty() {
                 route_json["bindings"] = json!(route
                     .handler
@@ -5349,6 +5374,56 @@ export default app;
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert_eq!(plan["features"]["metadataInference"], true);
         assert_eq!(plan["routes"][0]["response"]["helper"], "json");
+    }
+
+    #[test]
+    fn extracts_body_schema_declared_after_route() {
+        let source = r#"import { Sloppy, Results, schema } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (ctx) => Results.json({ body: ctx.body.json(UserCreate) }));
+const UserCreate = schema.object({ name: schema.string() });
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("schema name prepass should make route order independent");
+        assert_eq!(
+            app.routes[0].handler.bindings[0].schema.as_deref(),
+            Some("UserCreate")
+        );
+    }
+
+    #[test]
+    fn emits_response_metadata_for_response_only_routes() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("response-only fixture should extract");
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(plan["features"]["metadataInference"], true);
+        assert_eq!(plan["routes"][0]["response"]["helper"], "text");
+    }
+
+    #[test]
+    fn dynamic_status_result_does_not_emit_response_metadata() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/status", (ctx) => Results.status(ctx.route.code, { ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("dynamic status route should extract");
+        assert!(app.routes[0].handler.response.is_none());
     }
 
     #[test]

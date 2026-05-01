@@ -77,6 +77,11 @@
       "method": "GET",
       "name": "Users.List",
       "pattern": "/users",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 5,
@@ -88,6 +93,11 @@
       "method": "POST",
       "name": "Users.Create",
       "pattern": "/users",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
       "source": {
         "column": 1,
         "line": 6,
@@ -145,6 +155,11 @@
       "method": "DELETE",
       "name": "Users.Delete",
       "pattern": "/users/{id:int}",
+      "response": {
+        "helper": "noContent",
+        "kind": "none",
+        "status": 204
+      },
       "source": {
         "column": 1,
         "line": 9,
