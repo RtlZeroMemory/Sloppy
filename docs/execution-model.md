@@ -254,10 +254,12 @@ handler -> capability-gated SQLite bridge -> JSON response -> TCP write. The cur
 SQLite bridge in that path is synchronous and single-thread-owned; async/offload provider
 conversion remains deferred.
 
-`sloppy run app.js`, `app.run`, and `app.listen` are deferred until a real source-input
-handoff exists. The execution model should still support the app-host API without making
-users think about generated handler functions, bridge intrinsics, or plan files once that
-handoff is deliberately implemented.
+`sloppy run app.js` now exists as a compiler/CLI shortcut: it invokes `sloppyc build`,
+validates generated artifacts, then runs the same path as `sloppy run --artifacts`.
+`sloppy run` without a source reads the minimal current-directory `sloppy.json` project-run
+config. `app.run` and `app.listen` remain deferred. The execution model should still
+support the app-host API without making users think about generated handler functions,
+bridge intrinsics, or plan files once later app-host work lands.
 
 ## Core Pipeline
 
@@ -368,28 +370,30 @@ Exact filenames are deferred until implementation stories begin.
 
 ## Dev Mode Flow
 
-Current EPIC-22/23/24 `sloppy run` flow:
+Current `sloppy run` flow:
 
-1. accept an artifact directory through `--artifacts <dir>` or positional `<artifact-dir>`;
-2. load `<dir>/app.plan.json` through the native Plan parser;
-3. validate parsed Plan route/provider/capability metadata where those sections are present;
-4. build a native dev route table from Plan GET/POST/PUT/PATCH/DELETE route patterns, ordered by
+1. accept an artifact directory through `--artifacts <dir>` or positional `<artifact-dir>`,
+   or accept source input through `<source.js>` / current-directory `sloppy.json`;
+2. for source input, invoke `sloppyc build` and write artifacts to
+   `.sloppy/cache/dev/source-input` or the configured `outDir`;
+3. load `<dir>/app.plan.json` through the native Plan parser;
+4. validate parsed Plan route/provider/capability metadata where those sections are present;
+5. build a native dev route table from Plan GET/POST/PUT/PATCH/DELETE route patterns, ordered by
    literal-before-parameter precedence and stable source order when equal;
-5. read `bundle.path` and `sourceMap.path` and verify their `sha256:` hashes;
-6. create a V8 engine, load the configured bootstrap stdlib root, and evaluate
+6. read `bundle.path` and `sourceMap.path` and verify their `sha256:` hashes;
+7. create a V8 engine, load the configured bootstrap stdlib root, and evaluate
    `internal/runtime-classic.js`;
-7. evaluate the artifact `app.js` and validate all plan handler IDs were registered;
-8. either dispatch one synthetic `--once METHOD TARGET` request or start a local
+8. evaluate the artifact `app.js` and validate all plan handler IDs were registered;
+9. either dispatch one synthetic `--once METHOD TARGET` request or start a local
    `127.0.0.1:5173` dev server by default;
-9. parse bounded request messages, reject unsupported body framing/content types and
+10. parse bounded request messages, reject unsupported body framing/content types and
    malformed JSON before handler entry, route GET/POST/PUT/PATCH/DELETE paths, call handlers
    by numeric ID with route/query/header/body context, convert supported descriptors, write a
    native HTTP response, and close the connection.
 
 Deferred dev-mode work:
 
-- source input handoff to `sloppyc`;
-- cache keys and rebuild validation;
+- cache reuse and stale-cache validation beyond the current rebuild-always handoff;
 - source spans for startup diagnostics;
 - file watching and restart/hot reload.
 

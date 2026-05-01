@@ -24,7 +24,7 @@ The current compiler pipeline does not:
 - extract services, modules, middleware, validation schemas, or arbitrary provider
   module graphs;
 - lower database query templates or open native providers;
-- implement source-input handoff for `sloppy run` or `app.run`;
+- implement `app.run`;
 - implement Node/npm package resolution, arbitrary import graphs, or runtime module loading;
 - expose Rust/C FFI.
 
@@ -56,6 +56,12 @@ Compiler diagnostics render a single-line source frame when the extractor alread
 source span and source text. That renderer is separate from the generated source-map
 artifact; the map now records handler-source mappings, while runtime exception remapping is
 still an ENGINE-08 task.
+
+ENGINE-02.E adds the direct run handoff on top of this same compiler pipeline:
+`sloppy run <source>` invokes `sloppyc build`, writes generated artifacts, then enters the
+same runtime loader used by `sloppy run --artifacts <dir>`. The runtime does not discover
+apps from source and no second compiler exists in C. The first slice is rebuild-always and
+fail-closed; cache key requirements remain documented until reuse is implemented.
 
 ## Future Phase
 
@@ -212,8 +218,10 @@ Future commands:
 
 See also `docs/execution-model.md`. Dev and production paths must use the same artifact
 architecture: `app.js`, `app.js.map`, and `app.plan.json`. The EPIC-22 `sloppy run` MVP
-loads those artifacts from `--artifacts <dir>`; source-input build handoff, caching, and
-watching remain future work, and runtime code must not invent a separate discovery model.
+loads those artifacts from `--artifacts <dir>`. ENGINE-02.E source-input run invokes
+`sloppyc build` first, validates the emitted artifacts through the existing runtime loader,
+and keeps watching/hot reload plus cache reuse as future work. Runtime code must not invent
+a separate discovery model.
 
 The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is staged for
 runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler recognizes only the
@@ -438,6 +446,12 @@ Acceptance:
 
 - source, compiler, Oxc, target platform, target engine, and stdlib inputs affect key;
 - stale cache is rejected by plan/bundle consistency checks.
+
+ENGINE-02.E deliberately does not claim cache reuse. `sloppy run <source>` rebuilds into a
+deterministic development output directory, and `sloppy run` with `sloppy.json` rebuilds
+into `outDir`. Cache reuse remains blocked on a complete key that includes source/import
+hashes, compiler/runtime/stdlib identity, target engine/platform, environment, and relevant
+feature/options.
 
 ## Error And Diagnostic Behavior
 

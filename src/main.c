@@ -29,6 +29,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <yyjson.h>
 
@@ -51,10 +52,19 @@
 #define SL_RUN_RESPONSE_MAX_BYTES 16384U
 #define SL_RUN_TRANSPORT_ARENA_BYTES 524288U
 #define SL_RUN_PLAN_INTERN_BASE_FIELDS 7U
+#define SL_RUN_CONFIG_MAX_BYTES 8192U
+#define SL_RUN_PATH_MAX_BYTES 1024U
+#define SL_RUN_COMMAND_MAX_BYTES 4096U
 #define SL_RUN_DEFAULT_HOST "127.0.0.1"
 #define SL_RUN_DEFAULT_PORT 5173U
+#define SL_RUN_DEFAULT_SOURCE_OUT_DIR ".sloppy/cache/dev/source-input"
+#define SL_RUN_DEFAULT_CONFIG_OUT_DIR ".sloppy"
+#define SL_RUN_CONFIG_FILE "sloppy.json"
 #ifndef SLOPPY_BOOTSTRAP_BUILD_DIR
 #define SLOPPY_BOOTSTRAP_BUILD_DIR ""
+#endif
+#ifndef SLOPPY_COMPILER_BUILD_PATH
+#define SLOPPY_COMPILER_BUILD_PATH ""
 #endif
 
 typedef enum SlCliFormat
@@ -226,7 +236,7 @@ static void sl_cli_print_help(void)
     (void)printf("Usage:\n");
     (void)printf("  sloppy --help\n");
     (void)printf("  sloppy --version\n");
-    (void)printf("  sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]\n");
+    (void)printf("  sloppy run [source.js|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
     (void)printf("             [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
     (void)printf("  sloppy routes --plan <path> [--format text|json]\n");
     (void)printf("  sloppy doctor [--plan <path>] [--format text|json]\n");
@@ -241,10 +251,13 @@ static void sl_cli_print_command_help(const char* command)
         return;
     }
     if (strcmp(command, "run") == 0) {
-        (void)printf("Usage: sloppy run <artifact-dir>|--artifacts <dir> [--stdlib <dir>]\n");
+        (void)printf(
+            "Usage: sloppy run [source.js|source.ts|--artifacts <dir>] [--stdlib <dir>]\n");
         (void)printf("                  [--host 127.0.0.1] [--port 5173] [--once METHOD TARGET]\n");
         (void)printf("\n");
-        (void)printf("Dev-only MVP. Requires a V8-enabled build and .sloppy-style artifacts.\n");
+        (void)printf("Source input compiles through sloppyc, validates artifacts, then runs the "
+                     "artifact path.\n");
+        (void)printf("Dev-only MVP. Runtime execution requires a V8-enabled build.\n");
         return;
     }
     if (strcmp(command, "doctor") == 0) {
@@ -2128,30 +2141,400 @@ static int sl_run_shutdown_app(SlRunApp* app)
     return 0;
 }
 
+typedef struct SlRunSourceConfig
+{
+    char entry[SL_RUN_PATH_MAX_BYTES];
+    char out_dir[SL_RUN_PATH_MAX_BYTES];
+    char environment[128];
+} SlRunSourceConfig;
+
+static bool sl_run_source_input_extension_supported(const char* path)
+{
+    SlCliSpan input = sl_cli_span_cstr(path);
+
+    return sl_run_span_ends_with(input, ".js") || sl_run_span_ends_with(input, ".mjs") ||
+           sl_run_span_ends_with(input, ".ts") || sl_run_span_ends_with(input, ".mts");
+}
+
+static bool sl_run_file_exists(const char* path)
+{
+    FILE* file = NULL;
+
+    if (path == NULL || path[0] == '\0') {
+        return false;
+    }
+
+#ifdef _MSC_VER
+    if (fopen_s(&file, path, "rb") != 0) {
+        file = NULL;
+    }
+#else
+    file = fopen(path, "rb");
+#endif
+
+    if (file == NULL) {
+        return false;
+    }
+    (void)fclose(file);
+    return true;
+}
+
+static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value)
+{
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+    SlStr text = {0};
+    size_t index = 0U;
+    SlStatus status;
+
+    if (buffer == NULL || capacity == 0U || value == NULL || !yyjson_is_str(value)) {
+        return false;
+    }
+
+    status = sl_string_builder_init_fixed(&builder, buffer, capacity);
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
+
+    text = sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value));
+    for (index = 0U; index < text.length; index += 1U) {
+        status = sl_string_builder_append_char(&builder, text.ptr[index]);
+        if (!sl_status_is_ok(status)) {
+            return false;
+        }
+    }
+
+    status = sl_string_builder_view_with_nul(&builder, &view);
+    return sl_status_is_ok(status) && view.ptr == buffer && view.length == text.length;
+}
+
+static int sl_run_reject_unknown_project_config_fields(yyjson_val* root)
+{
+    yyjson_obj_iter iter;
+    yyjson_val* key = NULL;
+
+    iter = yyjson_obj_iter_with(root);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        const char* field = yyjson_get_str(key);
+        if (field == NULL || (strcmp(field, "entry") != 0 && strcmp(field, "outDir") != 0 &&
+                              strcmp(field, "environment") != 0))
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: invalid sloppy.json: unsupported field; supported "
+                              "fields are entry, outDir, and environment\n");
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int sl_run_read_required_config_string(yyjson_val* root, const char* field, char* buffer,
+                                              size_t capacity, const char* missing_message,
+                                              const char* invalid_message)
+{
+    yyjson_val* value = yyjson_obj_get(root, field);
+
+    if (value == NULL || !yyjson_is_str(value) || yyjson_get_len(value) == 0U) {
+        sl_cli_write_cstr(stderr, missing_message);
+        return 1;
+    }
+
+    if (!sl_run_copy_json_string(buffer, capacity, value)) {
+        sl_cli_write_cstr(stderr, invalid_message);
+        return 1;
+    }
+    return 0;
+}
+
+static int sl_run_read_optional_config_string(yyjson_val* root, const char* field, char* buffer,
+                                              size_t capacity, const char* default_value,
+                                              const char* invalid_message)
+{
+    yyjson_val* value = yyjson_obj_get(root, field);
+
+    if (value == NULL) {
+        SlStringBuilder builder = {0};
+        SlStr view = {0};
+        if (!sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&builder, default_value)) ||
+            !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)))
+        {
+            sl_cli_write_cstr(stderr, invalid_message);
+            return 1;
+        }
+        return 0;
+    }
+
+    if (!yyjson_is_str(value) || yyjson_get_len(value) == 0U ||
+        !sl_run_copy_json_string(buffer, capacity, value))
+    {
+        sl_cli_write_cstr(stderr, invalid_message);
+        return 1;
+    }
+    return 0;
+}
+
+static int sl_run_parse_project_config(SlRunSourceConfig* out)
+{
+    unsigned char json_storage[SL_RUN_CONFIG_MAX_BYTES];
+    SlBytes json = {0};
+    yyjson_doc* doc = NULL;
+    yyjson_read_err error = {0};
+    yyjson_val* root = NULL;
+    int result = 1;
+
+    if (out == NULL) {
+        return 1;
+    }
+    *out = (SlRunSourceConfig){0};
+
+    if (sl_read_file_with_messages(SL_RUN_CONFIG_FILE, json_storage, sizeof(json_storage), &json,
+                                   "sloppy run: project config not found: ",
+                                   "sloppy run: project config is empty or too large: ") != 0)
+    {
+        return 1;
+    }
+
+    doc = yyjson_read_opts((char*)json.ptr, json.length, 0U, NULL, &error);
+    if (doc == NULL) {
+        sl_cli_write_cstr(stderr, "sloppy run: invalid sloppy.json: malformed JSON\n");
+        return 1;
+    }
+
+    root = yyjson_doc_get_root(doc);
+    if (root == NULL || !yyjson_is_obj(root)) {
+        yyjson_doc_free(doc);
+        sl_cli_write_cstr(stderr, "sloppy run: invalid sloppy.json: root must be an object\n");
+        return 1;
+    }
+
+    if (sl_run_reject_unknown_project_config_fields(root) == 0 &&
+        sl_run_read_required_config_string(
+            root, "entry", out->entry, sizeof(out->entry),
+            "sloppy run: missing entry in sloppy.json\n",
+            "sloppy run: invalid sloppy.json: entry is too long\n") == 0 &&
+        sl_run_read_optional_config_string(
+            root, "outDir", out->out_dir, sizeof(out->out_dir), SL_RUN_DEFAULT_CONFIG_OUT_DIR,
+            "sloppy run: invalid sloppy.json: outDir must be a string\n") == 0 &&
+        sl_run_read_optional_config_string(
+            root, "environment", out->environment, sizeof(out->environment), "Development",
+            "sloppy run: invalid sloppy.json: environment must be a string\n") == 0)
+    {
+        result = 0;
+    }
+
+    yyjson_doc_free(doc);
+    return result;
+}
+
+static bool sl_run_append_shell_quoted(SlStringBuilder* builder, const char* text)
+{
+    size_t index = 0U;
+    SlStatus status;
+
+    if (builder == NULL || text == NULL || text[0] == '\0') {
+        return false;
+    }
+
+    status = sl_string_builder_append_char(builder, '"');
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
+
+    while (text[index] != '\0') {
+        if (text[index] == '"' || text[index] == '\r' || text[index] == '\n') {
+            return false;
+        }
+        status = sl_string_builder_append_char(builder, text[index]);
+        if (!sl_status_is_ok(status)) {
+            return false;
+        }
+        index += 1U;
+    }
+
+    status = sl_string_builder_append_char(builder, '"');
+    return sl_status_is_ok(status);
+}
+
+static const char* sl_run_getenv(const char* name)
+{
+    const char* value = NULL;
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+#ifdef _MSC_VER
+#pragma warning(suppress : 4996)
+#endif
+    value = getenv(name);
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+    return value;
+}
+
+static bool sl_run_append_compiler_command_prefix(SlStringBuilder* builder)
+{
+    const char* explicit_path = sl_run_getenv("SLOPPY_SLOPPYC");
+    const char* built_path = SLOPPY_COMPILER_BUILD_PATH;
+    SlStatus status;
+
+    if (builder == NULL) {
+        return false;
+    }
+
+    if (explicit_path != NULL && explicit_path[0] != '\0') {
+        if (!sl_run_file_exists(explicit_path)) {
+            sl_cli_write_error_with_value("sloppy run: compiler unavailable: ", explicit_path,
+                                          "\n");
+            return false;
+        }
+#ifdef _WIN32
+        status = sl_string_builder_append_cstr(builder, "call ");
+        if (!sl_status_is_ok(status)) {
+            return false;
+        }
+#endif
+        return sl_run_append_shell_quoted(builder, explicit_path);
+    }
+
+    if (built_path[0] != '\0' && sl_run_file_exists(built_path)) {
+#ifdef _WIN32
+        status = sl_string_builder_append_cstr(builder, "call ");
+        if (!sl_status_is_ok(status)) {
+            return false;
+        }
+#endif
+        return sl_run_append_shell_quoted(builder, built_path);
+    }
+
+#ifdef _WIN32
+    status = sl_string_builder_append_cstr(builder, "call ");
+    if (!sl_status_is_ok(status)) {
+        return false;
+    }
+#endif
+    return sl_run_append_shell_quoted(builder, "sloppyc");
+}
+
+static int sl_run_compile_source(const char* source_path, const char* out_dir)
+{
+    char command_buffer[SL_RUN_COMMAND_MAX_BYTES];
+    SlStringBuilder builder = {0};
+    SlStr command = {0};
+    int result = 0;
+
+    if (source_path == NULL || out_dir == NULL || source_path[0] == '\0' || out_dir[0] == '\0') {
+        sl_cli_write_cstr(stderr, "sloppy run: source-input handoff is missing source or outDir\n");
+        return 1;
+    }
+
+    if (!sl_run_file_exists(source_path)) {
+        sl_cli_write_error_with_value("sloppy run: missing source file: ", source_path, "\n");
+        return 1;
+    }
+
+    if (!sl_status_is_ok(
+            sl_string_builder_init_fixed(&builder, command_buffer, sizeof(command_buffer))) ||
+        !sl_run_append_compiler_command_prefix(&builder) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, " build ")) ||
+        !sl_run_append_shell_quoted(&builder, source_path) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, " --out ")) ||
+        !sl_run_append_shell_quoted(&builder, out_dir) ||
+        !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &command)))
+    {
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: failed to construct source-input compiler command\n");
+        return 1;
+    }
+
+    result = system(command.ptr);
+    if (result != 0) {
+        sl_cli_write_cstr(
+            stderr, "sloppy run: compiler handoff failed at the source-input command boundary\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_run_prepare_source_input(const SlCliOptions* options, char* artifacts_path,
+                                       size_t artifacts_path_capacity)
+{
+    SlRunSourceConfig config = {0};
+    const char* source_path = NULL;
+    const char* out_dir = NULL;
+
+    if (options == NULL || artifacts_path == NULL || artifacts_path_capacity == 0U) {
+        return 1;
+    }
+
+    if (options->input_path != NULL) {
+        source_path = options->input_path;
+        out_dir = SL_RUN_DEFAULT_SOURCE_OUT_DIR;
+    }
+    else {
+        if (sl_run_parse_project_config(&config) != 0) {
+            return 1;
+        }
+        source_path = config.entry;
+        out_dir = config.out_dir;
+    }
+
+    if (!sl_run_source_input_extension_supported(source_path)) {
+        sl_cli_write_error_with_value("sloppy run: unsupported source input: ", source_path, "\n");
+        return 1;
+    }
+
+    if (sl_run_compile_source(source_path, out_dir) != 0) {
+        return 1;
+    }
+
+    {
+        SlStringBuilder builder = {0};
+        SlStr view = {0};
+        if (!sl_status_is_ok(
+                sl_string_builder_init_fixed(&builder, artifacts_path, artifacts_path_capacity)) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&builder, out_dir)) ||
+            !sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)))
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: source-input artifact directory path is too long\n");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static int sl_cli_command_run(const SlCliOptions* options)
 {
     SlRunApp app = {0};
     const char* artifacts_path = options->artifacts_path;
     const char* stdlib_path = options->stdlib_path;
+    char source_artifacts_path[SL_RUN_PATH_MAX_BYTES];
     int result = 0;
 
     if (artifacts_path == NULL) {
-        artifacts_path = options->input_path;
+        if (options->input_path == NULL ||
+            sl_run_source_input_extension_supported(options->input_path))
+        {
+            if (sl_run_prepare_source_input(options, source_artifacts_path,
+                                            sizeof(source_artifacts_path)) != 0)
+            {
+                return 1;
+            }
+            artifacts_path = source_artifacts_path;
+        }
+        else {
+            artifacts_path = options->input_path;
+        }
     }
 
     if (artifacts_path == NULL) {
-        sl_cli_write_cstr(stderr, "sloppy run: expected <artifact-dir> or --artifacts <dir>\n");
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: expected source input, sloppy.json, or --artifacts <dir>\n");
         return 1;
-    }
-
-    if (options->artifacts_path == NULL && options->input_path != NULL) {
-        SlCliSpan input = sl_cli_span_cstr(options->input_path);
-        if (sl_run_span_ends_with(input, ".js") || sl_run_span_ends_with(input, ".mjs")) {
-            sl_cli_write_cstr(stderr,
-                              "sloppy run: source input handoff to sloppyc is deferred; use "
-                              "--artifacts <dir>\n");
-            return 1;
-        }
     }
 
     if (stdlib_path == NULL) {

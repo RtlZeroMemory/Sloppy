@@ -56,6 +56,13 @@ SQLite-backed JSON responses plus denied-capability and invalid-JSON failures. T
 workflow evidence, not benchmark, keep-alive, streaming, production-edge HTTP, public
 alpha, PostgreSQL, or SQL Server evidence.
 
+ENGINE-02.E adds source-input process coverage. Default non-V8 tests prove
+`sloppy run <source>` and `sloppy run` with `sloppy.json` invoke `sloppyc`, emit
+`app.plan.json`/`app.js`/`app.js.map`, validate artifacts, and then fail honestly at the
+V8-required runtime boundary. V8-gated conformance adds executable source-input hello and
+users-api-sqlite run-once cases. Source-input success in the default lane must not be
+reported as V8 execution success.
+
 ## Test Categories
 
 - C unit tests;

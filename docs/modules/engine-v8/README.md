@@ -36,6 +36,9 @@ ENGINE-19.BC registers the existing V8 runtime, owner-thread, native async sched
 HTTP dispatch integration executables under `conformance.v8.*` CTest names. These tests
 remain V8-gated and skipped/not configured when the SDK is unavailable; default non-V8
 gates do not prove this lane.
+ENGINE-02.E source-input run does not add a V8 source loader. `sloppy run <source.js>` and
+`sloppy run` with `sloppy.json` compile through `sloppyc`, validate generated artifacts,
+and only then reach this same V8 artifact execution path.
 
 ## Purpose
 

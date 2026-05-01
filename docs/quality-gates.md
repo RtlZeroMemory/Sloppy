@@ -259,6 +259,9 @@ Optional/gated jobs:
 - Package smoke is not part of the default required CI matrix. A PR that reports package
   evidence must list the package command and outside-checkout smoke result separately from
   default CI.
+- Source-input run tests are split by gate: default non-V8 tests may compile source input
+  and validate generated artifacts, but V8 execution remains a separate V8-enabled gate.
+  Reports must distinguish source-input compiler handoff from V8 runtime success.
 - Linux/macOS package smoke has local tooling but is not required in hosted CI until a
   scoped package-smoke job is added.
 - Benchmark list/smoke checks are harness checks. Measured Release benchmark runs, when

@@ -1,37 +1,38 @@
 # Source-Input Run and Dev Loop Plan
 
-Status: planning source of truth. Reuse #259/#302 and #316/#345-#349; do not create a
-duplicate DEVLOOP EPIC unless the owner explicitly asks.
+Status: ENGINE-02.E implementation source of truth. Reuse #259/#302 and #316/#345-#349;
+do not create a duplicate DEVLOOP EPIC unless the owner explicitly asks.
 
 ## Current Workflow
 
-The current supported workflow is explicit and artifact-based:
+The explicit artifact workflow remains supported:
 
 ```powershell
 sloppyc build <source> --out <artifacts>
 sloppy run --artifacts <artifacts>
 ```
 
-This remains honest because `src/main.c` still rejects direct source input and instructs
-users to use `--artifacts`.
+Direct source input now compiles first and then runs that same artifact path.
 
 ## Desired Workflow
 
-The desired post-Core workflow is a direct source-input command such as:
+The direct source-input command is:
 
 ```powershell
-sloppy run app.ts
+sloppy run app.js
 sloppy run
 ```
 
-The command should perform an explicit compiler handoff, produce or reuse artifacts, and
-then run the same artifact path that is already proven.
+The command performs an explicit compiler handoff, produces artifacts, validates the Plan,
+bundle, and source map, then runs the same artifact path that is already proven. `.ts` is
+still rejected by the current compiler; the CLI hands it to `sloppyc` so the compiler
+diagnostic remains authoritative.
 
 The default no-argument form uses `sloppy.json` when present:
 
 ```json
 {
-  "entry": "app.ts",
+  "entry": "app.js",
   "outDir": ".sloppy",
   "environment": "Development"
 }
@@ -39,18 +40,21 @@ The default no-argument form uses `sloppy.json` when present:
 
 ## Build/Cache/Artifact Policy
 
-- Cache artifacts under a deterministic tool-owned directory.
-- Include source path, compiler version, relevant flags, and runtime mode in cache keys.
-- Detect stale artifacts before execution.
+- Positional source input writes to `.sloppy/cache/dev/source-input` and rebuilds every run
+  in ENGINE-02.E.
+- `sloppy.json` writes to `outDir`, defaulting to `.sloppy`, and rebuilds every run in
+  ENGINE-02.E.
+- Complete cache reuse remains deferred. Future cache keys must include source and
+  supported import hashes, compiler/runtime/stdlib identity, target platform/engine,
+  environment, and relevant feature/options.
+- Fail closed when cache validation is uncertain.
 - Keep generated artifacts out of source control.
 - Preserve `sloppy run --artifacts` as the explicit debugging and conformance path.
-- Prefer `.sloppy/cache/dev` or a configured artifact cache for source-input development
-  artifacts.
-- Source-input run should land before major example hardening or public-ish docs work.
+- Users can safely delete `.sloppy/` and `.sloppy/cache/`; they are generated outputs.
 
 ## Diagnostics and Source Maps
 
-- Compiler diagnostics must report source-input paths, not cache internals.
+- Compiler diagnostics must report source-input command-boundary failures clearly.
 - Runtime diagnostics should consume source maps once the existing diagnostics issues land.
 - Artifact-path diagnostics and source-input diagnostics must be reported as separate
   evidence lanes until both are proven.

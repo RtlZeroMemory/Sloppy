@@ -19,13 +19,13 @@ V8, package, live-provider, stress, and benchmark evidence must be reported sepa
 | Platform boundaries | Yellow | Platform dirs, Windows/POSIX scanners, platform time, hosted non-V8 CI. | Scanner self-tests and richer OS API categories. |
 | V8 integration | Yellow | Optional V8 execution, handlers, bounded direct Promise settlement, SQLite bridge, owner-thread checks. | SDK packaging/CI, ESM module loading, timers/fetch/native async sources, runtime source-map remapping. |
 | HTTP foundation | Yellow | Bounded parser/body/response/dispatch, backend lifecycle, libuv localhost transport, one-request-per-connection MVP. | Keep-alive, chunked/streaming bodies, production graceful drain, TLS/HTTP2/3/WebSockets, middleware. |
-| Compiler extraction | Yellow | Supported one-file source subset emits deterministic artifacts and diagnostics. | Source-input run, broad TS checking, package/module/service/schema extraction, broader async source shapes. |
+| Compiler extraction | Yellow | Supported one-file source subset emits deterministic artifacts and diagnostics; source-input run compiles through `sloppyc` and reuses artifact validation. | Broad TS checking, package/module/service/schema extraction, cache reuse, broader async source shapes. |
 | App/framework ergonomics | Yellow | Bootstrap builder/app/config/logging/services/modules/schema/data/result helpers and current compiler/runtime path. | Request binding/validation/config completion, generated capabilities, service lifetimes, executable public examples. |
 | Data providers | Yellow | Native SQLite/PostgreSQL/SQL Server providers, V8 SQLite bridge, capability checks, provider executor infrastructure. | SQLite bridge not yet executor-backed; PostgreSQL/SQL Server JS bridges, pooling/cancellation/live conformance deferred. |
 | Security/capabilities | Yellow | Plan/provider/capability metadata, registry checks, provider-executor admission, SQLite bridge enforcement. | No OS sandbox; filesystem/network capabilities are skeletons. |
 | Conformance/package evidence | Yellow | ENGINE-19 evidence matrix, V8/HTTP/async/SQLite/capability/package lanes, local package smoke. | Public alpha readiness, hosted V8/package/live-provider gates, release hardening. |
 | Docs freshness | Yellow | Canonical docs plus post-core compact audits. | Automated link checker and semantic stale-doc checks. |
-| Public alpha | Red | Core proof exists. | Source-input decision, executable examples, canonical public docs, package/platform story, no fake production/perf claims. |
+| Public alpha | Red | Core proof and current source-input shortcut exist. | Executable examples beyond the current compiler subset, canonical public docs, package/platform story, no fake production/perf claims. |
 
 ## Interpretation
 

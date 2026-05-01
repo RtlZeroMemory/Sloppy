@@ -15,7 +15,7 @@ truth is `docs/project/post-core-next-wave-issue-map.md`.
 | Provider execution/offload | partial | Native executor exists; current SQLite bridge is not yet routed through it. |
 | Capability enforcement | complete/proven for integrated paths | SQLite bridge and provider executor enforce before provider work; filesystem/network remain skeletons. |
 | Conformance/package evidence | complete/proven for current lanes | ENGINE-19 evidence lanes and package smoke exist; optional V8/package/live lanes must stay separate. |
-| Source-input run | missing | Explicit two-step artifact workflow remains current. |
+| Source-input run | partial/proven | `sloppy run <source.js>` and `sloppy run` with `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; TypeScript/module graphs/cache reuse remain deferred. |
 | Public alpha | blocked | Needs canonical docs, executable examples, source-input decision, ergonomics, and package/platform story. |
 
 ## 2. Next Tracks

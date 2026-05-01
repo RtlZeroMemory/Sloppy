@@ -53,6 +53,14 @@ and source-frame rendering. The renderers still preflight output size determinis
 return `SL_STATUS_CAPACITY_EXCEEDED` on bounded builder exhaustion instead of allocating
 recursively through diagnostic paths.
 
+ENGINE-02.E adds source-input run diagnostics at the CLI/compiler handoff boundary.
+`sloppy run <source>` distinguishes missing source files, invalid `sloppy.json`, missing
+`entry`, compiler unavailable, compiler failure, unsupported compiler source shapes,
+artifact validation failures, V8 unavailable, runtime startup failures, and handler
+failures. Compiler diagnostics remain owned by `sloppyc`; after artifacts are emitted, the
+runtime continues to use the existing Plan/bundle/source-map validation and diagnostic
+rendering path.
+
 ENGINE-12.AB does not add new public diagnostic codes. Async backend failures use existing
 machine-checkable statuses: `SL_STATUS_CAPACITY_EXCEEDED` for bounded queue overflow,
 `SL_STATUS_INVALID_STATE` for disposed loops or detectable wrong-thread dispatch, and

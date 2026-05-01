@@ -1,0 +1,84 @@
+if(NOT DEFINED PROJECT_SOURCE_DIR)
+    message(FATAL_ERROR "PROJECT_SOURCE_DIR is required")
+endif()
+if(NOT DEFINED CMAKE_BINARY_DIR)
+    message(FATAL_ERROR "CMAKE_BINARY_DIR is required")
+endif()
+if(NOT DEFINED SLOPPY_CLI)
+    message(FATAL_ERROR "SLOPPY_CLI is required")
+endif()
+if(NOT DEFINED SLOPPYC_EXECUTABLE)
+    message(FATAL_ERROR "SLOPPYC_EXECUTABLE is required")
+endif()
+if(NOT DEFINED SLOPPY_CASE)
+    message(FATAL_ERROR "SLOPPY_CASE is required")
+endif()
+if(NOT DEFINED SLOPPY_EXPECTED_ERROR)
+    set(SLOPPY_EXPECTED_ERROR "")
+endif()
+if(NOT DEFINED SLOPPY_EXPECTED_OUTPUT)
+    set(SLOPPY_EXPECTED_OUTPUT "")
+endif()
+
+set(work_dir "${CMAKE_BINARY_DIR}/source-input-run/${SLOPPY_CASE}")
+file(REMOVE_RECURSE "${work_dir}")
+file(MAKE_DIRECTORY "${work_dir}")
+
+set(run_args run)
+if(DEFINED SLOPPY_SOURCE)
+    list(APPEND run_args "${PROJECT_SOURCE_DIR}/${SLOPPY_SOURCE}")
+endif()
+if(DEFINED SLOPPY_CONFIG_ENTRY)
+    file(WRITE "${work_dir}/sloppy.json" "${SLOPPY_CONFIG_ENTRY}")
+endif()
+if(DEFINED SLOPPY_CONFIG_SOURCE)
+    file(COPY_FILE "${PROJECT_SOURCE_DIR}/${SLOPPY_CONFIG_SOURCE}" "${work_dir}/app.js")
+endif()
+if(DEFINED SLOPPY_ONCE_METHOD)
+    list(APPEND run_args --once "${SLOPPY_ONCE_METHOD}" "${SLOPPY_ONCE_TARGET}")
+endif()
+
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}"
+            ${run_args}
+    WORKING_DIRECTORY "${work_dir}"
+    TIMEOUT 180
+    RESULT_VARIABLE result
+    OUTPUT_VARIABLE stdout
+    ERROR_VARIABLE stderr)
+
+if(SLOPPY_EXPECTED_ERROR)
+    if(result EQUAL 0)
+        message(FATAL_ERROR "source-input run unexpectedly succeeded\nstdout:\n${stdout}\nstderr:\n${stderr}")
+    endif()
+    if(NOT stderr MATCHES "${SLOPPY_EXPECTED_ERROR}")
+        message(
+            FATAL_ERROR
+                "source-input run did not report expected error '${SLOPPY_EXPECTED_ERROR}'\nstdout:\n${stdout}\nstderr:\n${stderr}")
+    endif()
+else()
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "source-input run failed\nstdout:\n${stdout}\nstderr:\n${stderr}")
+    endif()
+    if(SLOPPY_EXPECTED_OUTPUT)
+        string(REGEX MATCH "${SLOPPY_EXPECTED_OUTPUT}" output_match "${stdout}")
+        if(NOT output_match)
+            message(
+                FATAL_ERROR
+                    "source-input run output did not match '${SLOPPY_EXPECTED_OUTPUT}'\nstdout:\n${stdout}\nstderr:\n${stderr}")
+        endif()
+    endif()
+endif()
+
+if(DEFINED SLOPPY_EXPECTED_ARTIFACT_DIR)
+    set(artifact_dir "${work_dir}/${SLOPPY_EXPECTED_ARTIFACT_DIR}")
+    foreach(artifact IN ITEMS app.plan.json app.js app.js.map)
+        if(NOT EXISTS "${artifact_dir}/${artifact}")
+            message(FATAL_ERROR "source-input run did not emit ${artifact} under ${artifact_dir}")
+        endif()
+    endforeach()
+    file(READ "${artifact_dir}/app.plan.json" plan_json)
+    if(NOT plan_json MATCHES "\"sourceMap\"")
+        message(FATAL_ERROR "source-input app.plan.json does not reference sourceMap")
+    endif()
+endif()

@@ -8,7 +8,7 @@ stdlib/compiler/runtime already implement every shape below.
 
 | Area | Current proven path | Locked target |
 | --- | --- | --- |
-| Run workflow | `sloppyc build` then `sloppy run --artifacts` | `sloppy run app.ts` or `sloppy run` through `sloppy.json`, after #302. |
+| Run workflow | `sloppy run app.js`, `sloppy run` through `sloppy.json`, and explicit `sloppy run --artifacts` | Later TypeScript lowering keeps the same compiler/artifact/runtime path. |
 | Route API | Current compiler recognizes `app.mapGet/mapPost/...` | Minimal API `app.get/post/put/patch/delete(...)` first. |
 | Modules | Bootstrap module skeleton and single-file compiler subset | Function modules plus relative imports for real apps. |
 | Providers | `data.sqlite("main")` bridge proof | Explicit provider import: `import { sqlite } from "sloppy/providers/sqlite"`. |
@@ -279,10 +279,10 @@ helpful diagnostics or require explicit metadata.
 
 ## Source Input and Multi-File Target
 
-Source-input run is high priority:
+Source-input run is implemented for the current JavaScript compiler subset:
 
 ```powershell
-sloppy run app.ts
+sloppy run app.js
 sloppy run
 ```
 
@@ -290,16 +290,25 @@ sloppy run
 
 ```json
 {
-  "entry": "app.ts",
+  "entry": "app.js",
   "outDir": ".sloppy",
   "environment": "Development"
 }
 ```
 
-Internal flow: compile to `.sloppy/cache/dev` or a configured artifact cache, validate the
-Plan, then run artifacts. `sloppy build`, `sloppy run`, `sloppy run app.ts`,
-`sloppy routes`, and `sloppy doctor` are the target commands. Watch mode, package manager,
-full TS typechecker, and `node_modules` resolution are deferred.
+Internal flow: compile to `.sloppy/cache/dev/source-input` for positional source input or
+to configured `outDir` for `sloppy.json`, validate the Plan/bundle/source map, then run
+artifacts. This first source-input slice rebuilds every time; cache reuse is deferred until
+the key includes source/import hashes, compiler/runtime/stdlib identity, target platform/
+engine, environment, and feature/options. `sloppy build`, richer TypeScript input, watch
+mode, package manager behavior, full TS typechecker, and `node_modules` resolution are
+deferred.
+
+Multi-file framework MVP inputs remain a target, not a claim from ENGINE-02.E. The current
+compiler still supports the documented single-file source subset, bare `"sloppy"` stdlib
+import, and SQLite provider metadata shape. Relative imports, explicit provider import
+modules, and function modules remain future compiler/module work and must fail clearly
+until implemented.
 
 ## Modularity Rule
 

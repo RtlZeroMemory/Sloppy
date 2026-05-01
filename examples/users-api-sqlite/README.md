@@ -1,7 +1,8 @@
 # SQLite Users API Example
 
 Status: V8-gated ENGINE-17.E runtime proof fixture registered as
-`conformance.users_api_sqlite.localhost_transport`.
+`conformance.users_api_sqlite.localhost_transport`. ENGINE-02.E also registers a
+V8-gated source-input run-once proof for this source.
 
 This example is a deliberately small users API backed by SQLite:
 
@@ -14,6 +15,17 @@ The example uses the public `data.sqlite("main")` JavaScript API and Plan-emitte
 `users-api-sqlite-runtime.db`; tests remove it before and after the localhost transport
 proof. Each handler creates the table if needed and seeds Ada Lovelace and Grace Hopper
 only when their deterministic IDs are absent.
+
+With a V8-enabled build, the direct source-input shortcut compiles and then runs the same
+artifact path:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy.exe run examples/users-api-sqlite/app.js --once GET /users
+```
+
+Generated positional-source artifacts go under `.sloppy/cache/dev/source-input`. The
+explicit `sloppyc build ... --out <dir>` plus `sloppy run --artifacts <dir>` path remains
+the debuggable artifact workflow.
 
 This is not an ORM, migration framework, production HTTP edge, benchmark, public alpha
 claim, PostgreSQL bridge claim, or SQL Server bridge claim. SQLite bridge calls are still
