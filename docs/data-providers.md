@@ -102,6 +102,26 @@ must match the provider boundary being called. These hooks deny before provider 
 called by a bridge or native host boundary. The existing direct native provider APIs remain
 low-level provider primitives and do not carry capability context in their signatures.
 
+FRAMEWORK-01.B makes provider configuration convention-bound. Application configuration
+under `Sloppy:Providers:<kind>:<name>` supplies provider defaults, and inline provider
+options override those defaults:
+
+```ts
+import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+
+const app = Sloppy.create();
+const db = app.use(sqlite("main"));
+const testDb = app.use(sqlite("test", { database: ":memory:" }));
+```
+
+`app.use(sqlite("main"))` binds `Sloppy:Providers:sqlite:main`. SQLite requires
+`database`; missing config fails during compiler/source-input handoff before provider work.
+The compiler emits the resolved SQLite database into `dataProviders[]` so the existing V8
+SQLite bridge continues to open through Plan metadata. Normal app authors do not write
+manual capabilities for this provider path; capability generation remains compiler/Plan
+owned.
+
 ENGINE-23.A/B adds the first provider execution runtime foundation: operation descriptors
 own queued inputs, per-provider-instance executors enforce bounded admission, accepted
 operations transfer cleanup ownership to the executor, overflow leaves caller ownership

@@ -106,6 +106,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - CLI/dev loop runtime: ENGINE-18 owns `sloppyc`/`sloppy run` UX, source-input run
   decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, watch/dev
   decision, and command diagnostics.
+- Framework configuration follow-up: FRAMEWORK-01.B implements the first config model, but
+  reload-on-change, user secrets, custom/remote providers, broad arbitrary CLI config
+  binding, native typed Plan graph consumption, doctor/OpenAPI config reporting, request
+  binding, validation, and PostgreSQL/SQL Server JS provider config bridges remain
+  deferred. Strong Plan #355-#359 should promote emitted config metadata into the typed
+  graph before tooling claims deeper config awareness.
 - Framework API shape migration: the current proven stdlib/compiler examples still use
   `mapGet`/builder/data shorthand shapes in several places. The locked post-Core target in
   `docs/project/framework-api-shape.md` is Minimal API `app.get/post/...`, function

@@ -60,6 +60,16 @@ boundaries documented in `docs/project/engine-framework-contract.md`.
 - #439 covers Results/response model completion.
 - #440 covers examples hardening after the runtime path is honest.
 
+## FRAMEWORK-01.B Status
+
+Issue #436 now has the first implementation: built-in defaults, `appsettings.json`,
+`appsettings.{Environment}.json`, environment selection from `sloppy.json`/CLI, canonical
+Sloppy environment variables, bounded CLI overrides, typed config getters, `bind`,
+convention-bound SQLite provider config, and redacted compiler-emitted Plan metadata.
+Deferred items remain reload-on-change, user secrets, custom/remote config providers, a
+broad CLI config framework, full DI, request binding, validation, OpenAPI/doctor config
+consumption, and PostgreSQL/SQL Server JS provider bridges.
+
 ## Non-Goals
 
 - No Node compatibility.

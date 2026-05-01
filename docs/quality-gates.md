@@ -68,6 +68,11 @@ V8-gated `conformance.sqlite.bridge`, `conformance.sqlite.denied_capability`, an
 still does not prove V8 execution, PostgreSQL/SQL Server JavaScript bridges,
 live-provider behavior, package smoke, async SQLite offload, benchmark claims, public alpha
 readiness, or production-edge HTTP behavior.
+FRAMEWORK-01.B adds config-specific gate expectations: compiler tests cover precedence and
+provider binding, bootstrap JS tests cover typed access and `bind`, source-input CTest
+coverage verifies config-driven SQLite Plan output in the non-V8 lane, and docs/goldens
+must show configuration metadata without claiming reload, secrets, custom providers,
+Node/npm compatibility, or public alpha readiness.
 
 ## Future Phase
 

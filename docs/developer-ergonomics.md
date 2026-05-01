@@ -230,6 +230,74 @@ Implementation notes:
   validation and plan emission;
 - errors detected before `run()` should be startup diagnostics, not request-time surprises.
 
+## Application Configuration
+
+FRAMEWORK-01.B introduces the first Slop-owned configuration model. It is convention-first,
+layered, typed, provider-aware, and visible in compiler-emitted Plan metadata. It is not a
+Node/npm/package-manager system and does not expose `process.env` compatibility.
+
+Configuration source precedence is:
+
+1. built-in defaults;
+2. `appsettings.json`;
+3. `appsettings.{Environment}.json`;
+4. canonical Sloppy environment variables;
+5. selected CLI overrides;
+6. explicit runtime/test overrides only where a harness already owns them.
+
+`sloppy.json` is project/run configuration. It may choose `entry`, `outDir`, and
+`environment` for the source-input dev loop. `appsettings*.json` is application
+configuration. The selected environment overlays `appsettings.json` with
+`appsettings.{Environment}.json`; `sloppy run --environment Development` overrides the
+environment from `sloppy.json` for the compiler handoff. `--artifacts <dir>` remains an
+explicit/debuggable artifact path and does not require source-input config.
+
+Logical keys use colon separators and are looked up case-insensitively:
+
+```text
+Sloppy:Server:Host
+Sloppy:Server:Port
+Sloppy:Server:MaxConnections
+Sloppy:Server:MaxRequestBodyBytes
+Sloppy:Server:RequestTimeoutMs
+Sloppy:Runtime:V8MicrotaskDrainLimit
+Sloppy:Providers:sqlite:main:database
+Sloppy:Providers:sqlite:main:queueCapacity
+```
+
+Missing optional `appsettings*.json` files are allowed. Malformed JSON, invalid type
+conversion, missing required provider configuration, and invalid CLI/env overrides fail
+with diagnostics. When keys look like secrets, passwords, tokens, API keys, or connection
+strings, diagnostics and Plan metadata redact values.
+
+Canonical environment variables are uppercase and use `SLOPPY_` plus `__` separators, for
+example:
+
+```powershell
+$env:SLOPPY_SLOPPY__SERVER__PORT = "5173"
+$env:SLOPPY_SLOPPY__PROVIDERS__SQLITE__MAIN__DATABASE = ".\app.db"
+```
+
+The currently supported CLI overrides are bounded: `--environment`, `--host`, and
+`--port`. They override JSON and environment variables for the compiler-visible
+configuration model. Broad arbitrary `--config:*` CLI binding is deferred.
+
+JavaScript config access is typed:
+
+```ts
+const port = app.config.getInt("Sloppy:Server:Port", 5173);
+const host = app.config.getString("Sloppy:Server:Host", "127.0.0.1");
+const enabled = app.config.getBool("Feature:X", false);
+const limit = app.config.getNumber("Feature:Limit", 1.5);
+const options = app.config.bind("sqlite:main", SqliteOptions);
+```
+
+`getString`, `getInt`, `getNumber`, and `getBool` return defaults when supplied. Without a
+default, a missing key is required and fails clearly. Invalid conversions fail clearly.
+`bind(prefix)` returns a plain object for the subtree under `prefix`; provider shorthand
+such as `sqlite:main` maps to `Sloppy:Providers:sqlite:main`. When a schema/constructor is
+supplied, Sloppy passes the bound object into that schema.
+
 ## Route Groups
 
 Route groups are the normal scaling path for related endpoints:

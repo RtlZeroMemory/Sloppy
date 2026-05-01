@@ -16,6 +16,9 @@ Post-Core framework/API shape is locked in
 the next framework target is Minimal API `app.get/post/...`, function modules first,
 layered Plan-visible config, explicit provider imports, inferred provider capabilities,
 explicit `ctx` binding helpers, and explicit `Results.*` descriptors.
+FRAMEWORK-01.B implements the first typed config surface in the stdlib: case-insensitive
+logical keys, nested `addObject`, `getString/getInt/getNumber/getBool`, `bind`, and
+provider shorthand binding such as `sqlite:main`.
 
 ## Purpose
 
@@ -41,8 +44,9 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
 - `schema.string()`, `schema.number()`, `schema.boolean()`, and `schema.object(...)`
   create inspectable bootstrap validation skeletons with standalone `validate(...)`;
 - `Sloppy.createBuilder()` creates a JavaScript bootstrap builder;
-- `builder.config.addObject(...)` stores object-backed config values, with later object
-  providers overriding earlier keys;
+- `builder.config.addObject(...)` stores flat or nested object-backed config values, with
+  later object providers overriding earlier keys;
+- `builder.config` and `app.config` expose typed getters plus `bind(prefix, schema)`;
 - `builder.logging.setMinimumLevel(...)` and `builder.logging.addMemorySink()` configure a
   deterministic memory logger with no timestamps;
 - `builder.capabilities.addDatabase(...)` registers database capability metadata;
@@ -63,6 +67,9 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
 - `data.sqlite` exposes SQLite provider metadata and an `open(options)` entry point that
     works only in V8-enabled contexts with the SQLite bridge installed;
 - `Sloppy.create()` remains supported as a default builder plus `build()`;
+- `app.use(sqlite("main"))` accepts a provider descriptor, binds
+  `Sloppy:Providers:sqlite:main`, and lets inline provider options override config
+  defaults in the bootstrap facade;
 - `app.mapGet(pattern, handler)` stores an in-memory GET route registration;
 - `app.mapGet(pattern, metadata, handler)` stores route metadata such as validation
   schemas without executing validation;

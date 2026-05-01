@@ -61,6 +61,14 @@ failures. Compiler diagnostics remain owned by `sloppyc`; after artifacts are em
 runtime continues to use the existing Plan/bundle/source-map validation and diagnostic
 rendering path.
 
+FRAMEWORK-01.B adds compiler/source-input configuration diagnostics. Missing
+`appsettings*.json` files are optional and do not warn. Malformed base or
+environment-specific JSON, invalid environment variable values, invalid CLI overrides,
+missing required typed values, invalid typed conversions, and missing SQLite provider
+database configuration fail clearly with source layer context when available. Diagnostics
+and emitted Plan metadata redact values for keys that look like secrets, passwords,
+tokens, API keys, or connection strings.
+
 ENGINE-12.AB does not add new public diagnostic codes. Async backend failures use existing
 machine-checkable statuses: `SL_STATUS_CAPACITY_EXCEEDED` for bounded queue overflow,
 `SL_STATUS_INVALID_STATE` for disposed loops or detectable wrong-thread dispatch, and

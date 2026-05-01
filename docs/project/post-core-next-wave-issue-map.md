@@ -45,7 +45,7 @@ Issue bodies updated with this lock: #302, #318, #355-#359, #432, and #435-#440.
 | --- | --- | --- | --- |
 | #432 | EPIC FRAMEWORK-01: Framework/App Layer Source of Truth and Developer Ergonomics | New framework EPIC | No current kept-open issue owned the full post-Core framework/app-layer wave. |
 | #435 | TASK FRAMEWORK-01.A: Framework Layer Architecture and Public Surface Contract | Child of #432 | Locks public surface before implementation. |
-| #436 | TASK FRAMEWORK-01.B: Configuration Model and Environment/CLI Binding | Child of #432 | Needed for app ergonomics and source-input/dev-loop alignment. |
+| #436 | TASK FRAMEWORK-01.B: Configuration Model and Environment/CLI Binding | Child of #432 | Implemented first config model: appsettings/env/CLI binding, typed access, `bind`, config-driven SQLite provider metadata, and redacted Plan metadata. |
 | #437 | TASK FRAMEWORK-01.C: Request Binding for Route, Query, Header, and Body | Child of #432 | Needed before honest app-layer request ergonomics. |
 | #438 | TASK FRAMEWORK-01.D: Validation and Safe Error Response Policy | Child of #432 | Needed for safe framework diagnostics and error responses. |
 | #439 | TASK FRAMEWORK-01.E: Results/Response Model Completion | Child of #432 | Needed before framework response API claims. |

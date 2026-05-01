@@ -40,7 +40,11 @@ This document does not implement:
 `sloppyc` now has the ENGINE-02 compiler/Plan pipeline. It can compile a supported
 single-file Sloppy app into deterministic `app.plan.json`, `app.js`, and real handler-line
 `app.js.map` artifacts. The execution model beyond artifact emission is still staged. The
-engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call shapes.
+FRAMEWORK-01.B compiler path resolves application configuration before artifact emission
+so provider metadata and redacted config metadata become part of the Plan-visible contract.
+Source-input `sloppy run` passes environment and selected CLI overrides into that compiler
+handoff; explicit `--artifacts` continues to execute already-emitted artifacts.
+The engine-neutral `SlEngine` C ABI exists with create/destroy/info and handler-call shapes.
 The noop backend is always available. A V8-enabled build can run the TASK 07.C smoke path:
 evaluate a borrowed classic JavaScript source string and call a named global zero-argument
 function returning a copied string. TASK 07.D maps basic V8 compile/eval/call exceptions

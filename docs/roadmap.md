@@ -76,6 +76,7 @@ Durable architecture sources remain:
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
 | Source-input run | Partial/proven for compiler-owned module subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; supported relative function modules and Sloppy provider imports are compiler-owned. Cache reuse, watch/hot reload, Node/npm, and full TypeScript remain deferred. |
+| Framework configuration | Partial/proven for first slice | Built-in defaults, appsettings overlays, environment selection, canonical env vars, selected CLI overrides, typed access, `bind`, config-driven SQLite provider metadata, and redacted Plan metadata exist. Reload, user secrets, custom/remote providers, broad CLI config, and doctor/OpenAPI consumption remain deferred. |
 | Public alpha | Blocked | Needs canonical docs, executable examples, broader ergonomics, package/platform story, and no fake claims. |
 
 ## Active Issue Map

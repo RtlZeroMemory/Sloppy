@@ -40,10 +40,11 @@ The current foundation/runtime-contract work still does not implement:
 ## Current Phase
 
 The repository is in post-Core-MVP foundation work. `sloppyc build` is a real supported-
-subset compiler path that emits Plan, bundle, and source-map artifacts for the current
-one-file app shape. `sloppy run --artifacts` is a dev/runtime host for those artifacts when
-the required runtime lane is configured; direct source-input `sloppy run app.js` remains
-deferred.
+subset compiler path that emits Plan, bundle, source-map, and first configuration metadata
+for the current app shape. `sloppy run --artifacts` is a dev/runtime host for those
+artifacts when the required runtime lane is configured; direct source-input
+`sloppy run app.js` compiles through `sloppyc`, including environment/appsettings context,
+then reuses the same artifact path.
 
 The C runtime now includes core primitives, Plan parsing, diagnostics, HTTP backend
 semantics, libuv-backed localhost transport for the one-request-per-connection MVP,
