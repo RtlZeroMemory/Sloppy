@@ -56,7 +56,8 @@ export default app;
 // users.ts
 export function usersModule(app: SloppyApp) {
   const db = app.provider("sqlite:main");
-  const users = app.group("/users");
+  const api = app.group("/api");
+  const users = api.group("/users");
 
   users.get("/", async () => Results.json(await db.query("select * from users")));
 }
@@ -68,6 +69,8 @@ Locked decisions:
 - Relative multi-file imports, Slop stdlib imports, provider imports, and function modules
   are required for framework MVP.
 - Module registration compiles into the same Plan route/provider/capability graph.
+- COMPILER-30.D supports direct module-app routes and nested literal module route groups;
+  controllers, decorators, filters, and middleware are still later shapes.
 - npm resolution, `package.json` semantics, TS path aliases, dynamic import, and broad
   module systems remain deferred.
 

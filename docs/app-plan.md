@@ -251,8 +251,11 @@ fixtures/artifacts. MAIN1-11 hardens the route, doctor, and OpenAPI commands so 
 metadata is validated by the native Plan v1 parser before output is produced.
 EPIC-21 compiler output uses the same plan-compatible metadata idea for extracted routes:
 each route entry records `method`, `pattern`, `handlerId`, `name`, and compiler-owned
-source metadata. Handler IDs start at `1` and are assigned in source order after route
-group prefix composition.
+source metadata. COMPILER-30.D extends that route source to Minimal API calls, nested
+literal route groups, and function-module contributions. Function-module route entries
+also include the module function name in `routes[].module`; the route `source.path` points
+at the contributing source file. Handler IDs start at `1` and are assigned in source order
+after route group prefix composition and module contribution expansion.
 EPIC-22 `sloppy run` consumes those route entries for dev-only GET dispatch and validates
 that each referenced handler ID exists in the parsed minimal Plan handler table before
 serving requests. EPIC-23 uses the same route entries to materialize route params into the
@@ -262,9 +265,10 @@ precedence, HTTP runtime behavior, middleware, or non-GET request dispatch.
 
 Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{name:str}`,
 and `{name:int}`. Query strings are parsed from request targets by EPIC-23 request context
-code, not route patterns. Catch-all parameters, optional segments, regex constraints,
-route groups, method matching beyond GET dev dispatch, route precedence, OpenAPI metadata,
-and validation metadata remain future work.
+code, not route patterns. Literal route group prefixes compose before validation.
+Catch-all parameters, optional segments, regex constraints, method matching beyond GET dev
+dispatch, route precedence, OpenAPI metadata, middleware/filter metadata, and validation
+metadata remain future work.
 
 COMPILER-30 route metadata should also report completeness. Dynamic route paths are invalid
 in the compiler-owned static path unless a future explicit runtime-only escape hatch
