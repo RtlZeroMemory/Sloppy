@@ -15,6 +15,7 @@ sloppy run --artifacts <dir> [--stdlib <dir>]
            [--environment Development] [--host 127.0.0.1] [--port 5173]
            [--once METHOD TARGET]
 sloppy routes --plan <path> [--format text|json]
+sloppy capabilities --plan <path> [--format text|json]
 sloppy doctor [--plan <path>] [--format text|json]
 sloppy audit --plan <path> [--format text|json]
 sloppy openapi --plan <path> [--output <path>]
@@ -164,9 +165,13 @@ responses depending on whether the failure happens during startup or request dis
 `--plan <path>` reads a JSON file with the current minimal Sloppy Plan v1 fields plus
 optional interim CLI metadata sections:
 
-- `routes`: route method, pattern, numeric `handlerId`, name, and module;
+- `routes`: route method, pattern, numeric `handlerId`, name, module, source location,
+  request binding metadata, response metadata, completeness, and inferred effects when the
+  compiler emitted them;
 - `modules`: module name and dependency names;
 - `dataProviders`: provider token, provider name, and matching service token;
+- `capabilities`: declared/generated capability token, kind, access, and provider
+  reference;
 - `doctorChecks`: deterministic check records used by tests or safe metadata producers.
 
 The native Plan parser owns the minimal Plan v1 schema plus alpha route/provider/capability
@@ -177,12 +182,20 @@ those sections.
 ## routes
 
 `sloppy routes` validates the plan, then prints route metadata in deterministic
-method/pattern order. Text output includes source order, method, pattern, handler ID, and
-name. JSON output returns a `routes` array with method, pattern, `handlerId`, name, module,
-and `sourceOrder`.
+method/pattern order. Text output includes source order, method, pattern, handler ID,
+completeness, module, source location, request bindings, response metadata, and name. JSON
+output returns the same route facts in a stable `routes` array.
 
 Empty route tables are valid and print only the text header or an empty JSON array.
 Malformed metadata and missing paths fail with stderr diagnostics.
+
+## capabilities
+
+`sloppy capabilities` validates the plan, then reports route effects emitted by the
+compiler. Normal provider usage is shown as `generated` inference with the route
+method/path, provider token, provider kind, capability kind, access, inference reason,
+operation, and source location. The command does not infer new permissions and does not
+present runtime-only guesses as facts.
 
 ## doctor
 
@@ -191,7 +204,9 @@ bootstrap runtime asset, reports whether this binary was compiled with the V8 br
 states that live provider checks are not configured by default, and warns that local CLI
 checks are not package release readiness. When `--plan` is supplied, the command validates
 the file through the native Plan v1 parser and reports route/provider/capability metadata
-presence before including deterministic `doctorChecks` from the metadata file.
+presence, Plan completeness, partial/runtime-only/invalid route metadata, missing response
+metadata, and body JSON bindings that lack schema metadata before including deterministic
+`doctorChecks` from the metadata file.
 
 Live provider checks are not run by default. Provider availability that requires external
 servers, credentials, or machine-local drivers must stay opt-in in later CLI work.
@@ -207,16 +222,21 @@ both text and JSON output.
 - duplicate route names;
 - duplicate route method and pattern pairs;
 - routes that reference missing handler IDs;
+- route completeness that is not complete;
+- body JSON bindings that lack schema metadata;
+- unknown response metadata on Strong Plan routes;
 - modules with missing dependencies;
 - direct two-module dependency cycles;
 - incomplete data provider token/provider/service metadata.
 
-This is not a large rule engine. Future audit rules should be added with fixtures and
-source-doc updates.
+Text and JSON output use stable finding codes. ERROR findings return a nonzero process
+exit code so the command can be used in CI/static review; warnings and notes do not fail
+the command by themselves. This is not a large rule engine. Future audit rules should be
+added with fixtures and source-doc updates.
 
 ## openapi
 
-`sloppy openapi` emits a minimal OpenAPI 3.0.3 route skeleton from validated route
+`sloppy openapi` currently emits a minimal OpenAPI 3.0.3 route skeleton from validated route
 metadata. It sets default `info.title` and `info.version`, marks
 `x-sloppy-openapi-policy.status` as `route-skeleton`, writes paths and methods, uses route
 names as `operationId`, converts `{id}` and `{id:int}` path parameters, and describes the
@@ -225,6 +245,9 @@ default response as schema-deferred.
 It does not generate fake schemas, request bodies, validation metadata, examples, security
 schemes, database/provider schemas, or OpenAPI validation. `--output <path>` writes the JSON
 to a file; otherwise the command writes stdout.
+
+Richer Plan-driven OpenAPI generation is tracked separately by #358. This command must not
+be described as full OpenAPI coverage until that scoped implementation lands.
 
 Benchmarks are currently exposed through `tools/windows/bench.ps1` and the native
 `sloppy_bench` CMake target, not through the public `sloppy` CLI.

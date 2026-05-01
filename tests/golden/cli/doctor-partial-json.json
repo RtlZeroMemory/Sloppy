@@ -1,0 +1,15 @@
+{
+  "checks": [
+    { "id": "bootstrap.assets", "status": "ok", "message": "bootstrap runtime asset found" },
+    { "id": "engine.v8", "status": "warn", "message": "V8 bridge disabled in this build; V8 runtime tests not run" },
+    { "id": "providers.live", "status": "warn", "message": "live provider checks are not configured by default and no live DB was contacted" },
+    { "id": "package.runtime", "status": "warn", "message": "local CLI checks do not prove package release readiness" },
+    { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
+    { "id": "app.plan.routes", "status": "ok", "message": "route metadata present" },
+    { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
+    { "id": "app.plan.capabilities", "status": "warn", "message": "capability metadata not present" },
+    { "id": "app.plan.completeness", "status": "warn", "message": "Plan completeness is partial, runtime-only, or invalid" },
+    { "id": "route.completeness", "status": "warn", "message": "route has partial/runtime-only/invalid Plan metadata" },
+    { "id": "route.validation", "status": "warn", "message": "JSON body binding has no schema metadata" }
+  ]
+}

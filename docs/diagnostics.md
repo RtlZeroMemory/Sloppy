@@ -347,6 +347,11 @@ paths, not a full data-loss-prevention engine.
 CLI doctor text and JSON output use this same helper for connection-string-like check
 messages. The helper preserves secret-key names and masks secret values with deterministic
 `<redacted>` tokens so text and JSON process goldens cover the same redaction behavior.
+Plan-driven routes, capabilities, doctor, and audit output must also remain deterministic:
+finding/check codes are stable, source locations are emitted when the Plan provides them,
+and ERROR audit findings return a nonzero process exit. These commands must not include raw
+native pointers, provider handles, request bodies, SQL parameter values, or unredacted
+configuration secrets.
 
 ## Machine-Readable Output
 

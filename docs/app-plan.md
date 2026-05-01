@@ -94,9 +94,10 @@ The plan is not normally user-authored. It is a public compatibility contract fo
 `sloppy`, diagnostics tools, and future package tooling. Users may inspect artifact
 metadata through `sloppy routes`, `sloppy doctor`, `sloppy audit`, and `sloppy openapi`, and
 may execute EPIC-21 artifacts through `sloppy run --artifacts` in V8-enabled dev builds.
-Routes, doctor, and OpenAPI introspection validate the file with the native Plan v1 parser
-before reporting metadata; audit remains a bounded metadata checker that can inspect
-deliberately invalid problem fixtures without running user code.
+Routes, capabilities, doctor, and OpenAPI introspection validate the file with the native
+Plan v1 parser before reporting metadata. Audit remains a bounded metadata checker that can
+inspect deliberately invalid problem fixtures without running user code, but it returns
+nonzero when it emits ERROR findings.
 
 ## Versioning Rules
 
@@ -303,10 +304,12 @@ now present for the supported COMPILER-30.H/I subset.
 
 The COMPILER-30.E/H/I metadata is emitted for static tooling and Strong Plan consumers.
 The native runtime parser accepts these unknown optional metadata fields while rejecting
-non-empty top-level `requiredFeatures`. Emitting `schemas[]`, `configReads[]`,
+non-empty top-level `requiredFeatures`. ENGINE-20.C CLI consumers now read
 `routes[].bindings`, `routes[].response`, `routes[].effects`, `routes[].completeness`, and
-top-level `strongPlan` does not mean runtime request validation, OpenAPI generation, or
-broader provider/capability enforcement has been implemented.
+top-level `completeness` for routes, capabilities, doctor, and audit output. Emitting or
+displaying this metadata does not mean runtime request validation, richer OpenAPI
+generation, native JSON optimization, or broader provider/capability enforcement has been
+implemented.
 
 Dynamic route paths are invalid in the compiler-owned static path unless a future explicit
 runtime-only escape hatch provides all required provider/capability metadata.

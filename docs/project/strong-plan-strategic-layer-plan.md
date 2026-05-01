@@ -68,6 +68,19 @@ helpful diagnostic or require explicit metadata; no silent unsound inference.
   metadata from COMPILER-30.
 - #359 covers Plan versioning/evolution and coordinates with COMPILER-30.I (#469).
 
+## ENGINE-20.C Consumer Status
+
+#357 adds the first Plan-driven developer tooling over COMPILER-30 output. `sloppy routes`
+reports route source locations, request bindings, response metadata, and completeness from
+the Plan. `sloppy capabilities` reports compiler-generated provider effects as inferred
+route capabilities. `sloppy doctor` and `sloppy audit` surface partial/runtime-only/invalid
+completeness, missing response metadata, missing body schemas, provider/capability issues,
+and deterministic audit finding codes without executing handlers or guessing from runtime
+state. Audit returns nonzero for ERROR findings.
+
+OpenAPI remains #358. ENGINE-20.C deliberately does not implement the richer OpenAPI
+generator, optimization hooks, native JSON fast paths, or runtime optimizations.
+
 ## Non-Goals
 
 - Do not implement multi-isolate execution now.

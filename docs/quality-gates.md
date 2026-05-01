@@ -165,6 +165,10 @@ COMPILER-30.H/I compiler changes must also prove strong Plan metadata and compat
 refreshed Plan goldens, complete/partial/runtime-only/invalid completeness unit tests,
 missing-provider diagnostics, and native Plan parser coverage that accepts unknown optional
 fields while rejecting unknown required features.
+Plan-driven CLI consumer changes must keep process goldens deterministic for text and JSON
+output, include audit nonzero coverage when ERROR findings are emitted, and keep OpenAPI,
+runtime execution, V8, and live-provider evidence separate unless those lanes are
+explicitly run.
 
 Language standards scanners:
 

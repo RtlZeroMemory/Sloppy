@@ -1126,6 +1126,13 @@ to live providers or enumerate machine-local SQL Server drivers by default. Futu
 doctor checks should reuse the native PostgreSQL and SQL Server helper APIs behind explicit
 opt-in flags or environment gates.
 
+ENGINE-20.C adds Plan-driven provider visibility without adding provider bridges or live
+checks. `sloppy capabilities` reports compiler-emitted provider effects as
+generated/inferred route capabilities, and doctor/audit can flag partial Plan metadata,
+missing body schemas, unknown response metadata, and provider/capability mismatches. This
+is static Plan consumption only; it is not a PostgreSQL or SQL Server JavaScript bridge and
+does not make live-provider reachability claims.
+
 ### Phase G: Data Provider Plan Integration
 
 Tasks:

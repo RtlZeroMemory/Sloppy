@@ -830,6 +830,17 @@ if(SLOPPY_ENABLE_TESTS)
         set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endfunction()
 
+    function(sloppy_add_cli_nonzero_golden_test test_name expected_file)
+        add_test(
+            NAME ${test_name}
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_EXPECTED=${PROJECT_SOURCE_DIR}/${expected_file}"
+                "-DSLOPPY_EXPECT_NONZERO=1" "-DSLOPPY_CLI_ARGS=${ARGN}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_output.cmake")
+        set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    endfunction()
+
     sloppy_add_cli_golden_test(
         sloppy.cli.routes_text tests/golden/cli/routes-text.txt routes --plan
         tests/fixtures/cli/route-metadata.plan.json --format text)
@@ -842,11 +853,23 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.routes_compiler_json tests/golden/cli/routes-compiler-json.json routes --plan
         compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.capabilities_users_text tests/golden/cli/capabilities-users-text.txt
+        capabilities --plan compiler/tests/fixtures/realistic-users-api/expected/app.plan.json
+        --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.capabilities_users_json tests/golden/cli/capabilities-users-json.json
+        capabilities --plan compiler/tests/fixtures/realistic-users-api/expected/app.plan.json
+        --format json)
     set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text.txt)
     set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json.json)
+    set(SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN tests/golden/cli/doctor-partial-text.txt)
+    set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json.json)
     if(SLOPPY_ENABLE_V8)
         set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text-v8.txt)
         set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json-v8.json)
+        set(SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN tests/golden/cli/doctor-partial-text-v8.txt)
+        set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json-v8.json)
     endif()
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_text ${SLOPPY_DOCTOR_TEXT_GOLDEN} doctor --plan
@@ -855,11 +878,20 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy.cli.doctor_json ${SLOPPY_DOCTOR_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/doctor.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_partial_text ${SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN} doctor --plan
+        compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_partial_json ${SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN} doctor --plan
+        compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format json)
+    sloppy_add_cli_nonzero_golden_test(
         sloppy.cli.audit_text tests/golden/cli/audit-text.txt audit --plan
         tests/fixtures/cli/audit-problems.plan.json --format text)
-    sloppy_add_cli_golden_test(
+    sloppy_add_cli_nonzero_golden_test(
         sloppy.cli.audit_json tests/golden/cli/audit-json.json audit --plan
         tests/fixtures/cli/audit-problems.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_partial_json tests/golden/cli/audit-partial-json.json audit --plan
+        compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_clean_text tests/golden/cli/audit-clean-text.txt audit --plan
         tests/fixtures/cli/route-metadata.plan.json --format text)
