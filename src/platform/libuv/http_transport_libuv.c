@@ -745,12 +745,6 @@ static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection
     if (connection == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE) {
-        SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
-        if (server != NULL && server->state == SL_HTTP_TRANSPORT_SERVER_STATE_STOPPING) {
-            server->shutdown_idle_closes += 1U;
-        }
-    }
     if (connection->request_started &&
         connection->request.state == SL_HTTP_REQUEST_STATE_DISPATCHING)
     {

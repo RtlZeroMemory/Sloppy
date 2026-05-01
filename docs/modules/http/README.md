@@ -56,11 +56,13 @@ request decoding (#444), streaming response writing (#445), and keep-alive/strea
 stress evidence (#446) remain separate work. This is not V8 transport conformance,
 benchmark evidence, production graceful-drain evidence, or production-edge HTTP evidence.
 ENGINE-17.E adds a V8-gated users API proof over `sloppy run --artifacts` and real
-localhost TCP requests for SQLite-backed GET/POST JSON handlers. It proves the current
-sequential keep-alive capable localhost path can carry a small app through compiler artifacts,
-request parsing/body policy, V8 handler execution, SQLite calls, response serialization,
-and TCP response bytes. It does not add keep-alive, streaming, TLS, HTTP/2/3, WebSockets,
-middleware, benchmark evidence, or production-edge HTTP readiness.
+localhost TCP requests for SQLite-backed GET/POST JSON handlers. That proof was
+evidence-only and did not introduce keep-alive. HTTP-25.A/B/C later makes the localhost
+transport sequentially keep-alive capable, so the same path can now carry a small app
+through compiler artifacts, request parsing/body policy, V8 handler execution, SQLite
+calls, response serialization, and TCP response bytes across bounded sequential requests.
+It does not add streaming, TLS, HTTP/2/3, WebSockets, middleware, benchmark evidence, or
+production-edge HTTP readiness.
 ENGINE-19.BC registers the implemented HTTP evidence under explicit conformance names.
 `conformance.http.default_dispatch` runs the synthetic default non-V8 dispatch suite,
 `conformance.transport.localhost_mvp` runs the loopback TCP transport MVP suite, and

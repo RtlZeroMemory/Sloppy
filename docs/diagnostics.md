@@ -38,7 +38,7 @@ The foundation phase does not implement:
 HTTP-25.A/B/C update: HTTP transport diagnostics/counters now distinguish keep-alive close
 causes for client `Connection: close`, server-forced close, idle timeout, max requests
 reached, unsupported pipelining, and shutdown closing idle keep-alive connections. These
-diagnostics are stable Slop codes/counters and do not expose libuv handles, socket
+diagnostics are stable Sloppy codes/counters and do not expose libuv handles, socket
 pointers, raw native pointers, or secret-bearing values.
 
 MAIN1-06 completes the bounded alpha diagnostic renderer surface:
@@ -209,6 +209,9 @@ Implemented foundation codes:
 - `SLOPPY_E_HTTP_REQUEST_TIMEOUT`;
 - `SLOPPY_E_HTTP_OVERLOAD`;
 - `SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED`;
+- `SLOPPY_E_HTTP_KEEP_ALIVE_IDLE_TIMEOUT`;
+- `SLOPPY_E_HTTP_MAX_REQUESTS_REACHED`;
+- `SLOPPY_E_HTTP_PIPELINING_UNSUPPORTED`;
 - `SLOPPY_E_HTTP_SHUTDOWN`;
 - `SLOPPY_E_HTTP_TRANSPORT_CONFIG`;
 - `SLOPPY_E_HTTP_BIND_FAILED`;
