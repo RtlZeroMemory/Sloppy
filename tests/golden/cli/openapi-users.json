@@ -1,0 +1,101 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "x-slop-openapi-policy": {
+    "status": "plan-supported-subset",
+    "unknownMetadata": "explicit-partial-markers",
+    "optimizations": "reported-only"
+  },
+  "paths": {
+    "/api/users": {
+      "get": {
+        "operationId": "Users.List",
+        "x-slop-source": { "path": "input.js", "line": 26, "column": 1 },
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [{ "provider": "data.main", "providerKind": "sqlite", "access": "read", "operation": "query" }],
+        "x-slop-optimization-candidates": ["native-json-serialization", "provider-aware-route", "static-route-dispatch"],
+        "parameters": [
+          { "name": "q", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "json", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } }
+        }
+      },
+      "post": {
+        "operationId": "Users.Create",
+        "x-slop-source": { "path": "input.js", "line": 31, "column": 1 },
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [{ "provider": "data.main", "providerKind": "sqlite", "access": "write", "operation": "exec" }, { "provider": "data.main", "providerKind": "sqlite", "access": "read", "operation": "queryOne" }],
+        "x-slop-optimization-candidates": ["native-json-serialization", "native-body-validation", "provider-aware-route", "static-route-dispatch"],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserCreate" } } }
+        },
+        "responses": {
+          "201": { "description": "created", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } },
+          "400": { "$ref": "#/components/responses/SlopValidationProblem" }
+        }
+      }
+    },
+    "/api/users/{id}": {
+      "get": {
+        "operationId": "Users.Get",
+        "x-slop-source": { "path": "input.js", "line": 35, "column": 1 },
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [{ "provider": "data.main", "providerKind": "sqlite", "access": "read", "operation": "queryOne" }],
+        "x-slop-optimization-candidates": ["native-json-serialization", "provider-aware-route", "static-route-dispatch"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "json", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } },
+          "400": { "$ref": "#/components/responses/SlopValidationProblem" }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "x-slop-source": { "path": "input.js", "line": 40, "column": 1 },
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "text" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      },
+      "UserCreate": {
+        "type": "object",
+        "x-slop-source": { "path": "input.js", "line": 4, "column": 20 },
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "name": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["name"]
+      }
+    }
+  }
+}

@@ -653,7 +653,7 @@ up.
 | `sloppy capabilities` | Explain inferred route/provider authority | generated provider effects, access, reasons, source locations | `routes[].effects`, `capabilities`, `dataProviders` |
 | `sloppy doctor` | Check environment, providers, and Plan completeness | missing drivers, invalid config, SDK issues, partial/runtime-only routes | `target`, `dataProviders`, `capabilities`, `routes`, `completeness` |
 | `sloppy audit` | Explain static review findings | stable finding codes and CI-style errors/warnings | `capabilities`, `routes`, `modules`, `completeness` |
-| `sloppy openapi` | Generate API description | OpenAPI document | `routes`, `schemas`, `metadata` |
+| `sloppy openapi` | Generate API description | supported OpenAPI subset plus Slop extensions | `routes`, `schemas`, `bindings`, `responses`, `effects` |
 | `sloppy db migrate` | Future migration runner | migration plan/status | `dataProviders`, provider metadata |
 | `sloppy db status` | Database health/config status | connection/provider status | `dataProviders`, `healthChecks` |
 | `sloppy new api` | Create project skeleton | app scaffold | templates, not plan-dependent |
@@ -672,11 +672,14 @@ Implemented EPIC-19/ENGINE-20.C command scope:
 - `sloppy audit` runs a small fixed metadata rule set for duplicate routes, missing
   handlers, module dependency problems, incomplete provider metadata, partial Strong Plan
   metadata, and skeleton capability caveats. ERROR findings return a nonzero process exit;
-- `sloppy openapi` emits a minimal OpenAPI 3.0.3 skeleton with path parameters and
-  placeholder `200` responses.
+- `sloppy openapi` emits a Plan-derived OpenAPI 3.0.3 subset with route/query/header
+  parameters, schema-backed JSON request bodies, known response statuses, Slop
+  completeness/capability extensions, validation problem components, explicit partial
+  markers for unknown metadata, and report-only optimization candidates.
 
 These commands deliberately avoid handler execution, HTTP server startup, V8 app loading,
-app compilation/extraction, package-manager behavior, and live DB checks by default.
+app compilation/extraction, package-manager behavior, live DB checks, native JSON
+optimization, route partitioning, and multi-isolate execution by default.
 
 ## Low-Level Style Vs Sloppy Style
 

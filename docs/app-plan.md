@@ -298,18 +298,21 @@ Implemented path pattern syntax is limited to `/`, static segments, `{name}`, `{
 and `{name:int}`. Query strings are parsed from request targets by EPIC-23 request context
 code, not route patterns. Literal route group prefixes compose before validation.
 Catch-all parameters, optional segments, regex constraints, method matching beyond GET dev
-dispatch, route precedence, OpenAPI output, middleware/filter metadata, runtime validation,
-and runtime validation remain future work. Compiler-emitted route and plan completeness are
-now present for the supported COMPILER-30.H/I subset.
+dispatch, route precedence, middleware/filter metadata, and runtime validation remain future
+work. Compiler-emitted route and plan completeness are now present for the supported
+COMPILER-30.H/I subset, and `sloppy openapi` emits the supported Plan-derived OpenAPI
+subset while keeping unsupported metadata explicit.
 
 The COMPILER-30.E/H/I metadata is emitted for static tooling and Strong Plan consumers.
 The native runtime parser accepts these unknown optional metadata fields while rejecting
 non-empty top-level `requiredFeatures`. ENGINE-20.C CLI consumers now read
 `routes[].bindings`, `routes[].response`, `routes[].effects`, `routes[].completeness`, and
 top-level `completeness` for routes, capabilities, doctor, and audit output. Emitting or
-displaying this metadata does not mean runtime request validation, richer OpenAPI
-generation, native JSON optimization, or broader provider/capability enforcement has been
-implemented.
+displaying this metadata does not mean runtime request validation, native JSON
+optimization, route partitioning, multi-isolate execution, or broader provider/capability
+enforcement has been implemented. `sloppy openapi` consumes the metadata for the supported
+OpenAPI subset and marks unknown body/response shape with explicit partial extensions
+instead of inventing schemas.
 
 Dynamic route paths are invalid in the compiler-owned static path unless a future explicit
 runtime-only escape hatch provides all required provider/capability metadata.

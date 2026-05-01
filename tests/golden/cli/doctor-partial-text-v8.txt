@@ -11,3 +11,4 @@ Sloppy Doctor
 [warn] app.plan.completeness: Plan completeness is partial, runtime-only, or invalid
 [warn] route.completeness: route has partial/runtime-only/invalid Plan metadata
 [warn] route.validation: JSON body binding has no schema metadata
+[ok] optimization.native-json-candidate: route has response metadata for future native JSON analysis

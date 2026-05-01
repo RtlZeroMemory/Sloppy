@@ -352,6 +352,9 @@ finding/check codes are stable, source locations are emitted when the Plan provi
 and ERROR audit findings return a nonzero process exit. These commands must not include raw
 native pointers, provider handles, request bodies, SQL parameter values, or unredacted
 configuration secrets.
+OpenAPI output follows the same rule: unknown schemas remain `x-slop-partial`, source and
+Plan node metadata are emitted only when present, and optimization candidates are reported
+as future hooks rather than runtime behavior.
 
 ## Machine-Readable Output
 

@@ -4,42 +4,66 @@
     "title": "Sloppy API",
     "version": "0.0.0"
   },
-  "x-sloppy-openapi-policy": {
-    "status": "route-skeleton",
-    "schemas": "omitted-deferred",
-    "requestBodies": "omitted-deferred",
-    "securitySchemes": "omitted-deferred"
+  "x-slop-openapi-policy": {
+    "status": "plan-supported-subset",
+    "unknownMetadata": "explicit-partial-markers",
+    "optimizations": "reported-only"
   },
   "paths": {
     "/": {
       "get": {
         "operationId": "Hello.Index",
-        "x-sloppy-route-skeleton": true,
+        "x-slop-completeness": "",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
         "parameters": [],
         "responses": {
-          "200": { "description": "response schema deferred" }
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
         }
       }
     },
     "/users/{id}": {
       "get": {
         "operationId": "Users.Get",
-        "x-sloppy-route-skeleton": true,
+        "x-slop-completeness": "",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
         "parameters": [
           { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
         ],
         "responses": {
-          "200": { "description": "response schema deferred" }
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
+          "400": { "$ref": "#/components/responses/SlopValidationProblem" }
         }
       }
     },
     "/users/create": {
       "get": {
         "operationId": "Users.Create",
-        "x-sloppy-route-skeleton": true,
+        "x-slop-completeness": "",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
         "parameters": [],
         "responses": {
-          "200": { "description": "response schema deferred" }
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
         }
       }
     }

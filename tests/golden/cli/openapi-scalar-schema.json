@@ -1,0 +1,52 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "x-slop-openapi-policy": {
+    "status": "plan-supported-subset",
+    "unknownMetadata": "explicit-partial-markers",
+    "optimizations": "reported-only"
+  },
+  "paths": {
+    "/search": {
+      "post": {
+        "operationId": "Search.Create",
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["native-json-serialization", "native-body-validation", "static-route-dispatch"],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchTerm" } } }
+        },
+        "responses": {
+          "200": { "description": "json", "content": { "application/json": { "schema": { "x-slop-partial": "response schema shape not declared" } } } },
+          "400": { "$ref": "#/components/responses/SlopValidationProblem" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      },
+      "SearchTerm": {
+        "type": "string"
+      }
+    }
+  }
+}

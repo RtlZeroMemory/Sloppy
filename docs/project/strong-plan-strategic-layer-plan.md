@@ -78,8 +78,18 @@ completeness, missing response metadata, missing body schemas, provider/capabili
 and deterministic audit finding codes without executing handlers or guessing from runtime
 state. Audit returns nonzero for ERROR findings.
 
-OpenAPI remains #358. ENGINE-20.C deliberately does not implement the richer OpenAPI
-generator, optimization hooks, native JSON fast paths, or runtime optimizations.
+## ENGINE-20.D Consumer Status
+
+#358 consumes the same COMPILER-30 metadata for Plan-derived OpenAPI and report-only
+optimization hooks. `sloppy openapi` now emits paths, operations, route/query/header
+parameters, schema-backed JSON request bodies, known response statuses/helpers, validation
+problem components, source/completeness extensions, provider/capability extensions, and
+explicit partial markers for unknown metadata. Doctor and audit expose future optimization
+candidates as evidence, not implementation.
+
+This does not add native JSON fast paths, route partitioning, multi-isolate execution,
+runtime optimization, OpenAPI validation, security schemes, public-alpha docs, benchmark
+claims, or new compiler inference.
 
 ## Non-Goals
 

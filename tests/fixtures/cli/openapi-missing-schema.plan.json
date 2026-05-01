@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-openapi-missing-schema-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-openapi-missing-schema-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Search.Create"
+    }
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "pattern": "/search",
+      "handlerId": 1,
+      "name": "Search.Create",
+      "bindings": [
+        {
+          "kind": "body.json",
+          "name": null,
+          "schema": "MissingSchema"
+        }
+      ],
+      "completeness": {
+        "status": "partial",
+        "reasons": ["request body schema is unresolved"]
+      },
+      "response": {
+        "kind": "json",
+        "helper": "json",
+        "status": 200
+      }
+    }
+  ]
+}

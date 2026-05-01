@@ -365,7 +365,8 @@ SQLite JS bridge registration, and no SQLite package dependency claim.
 - No ORM/migrations.
 - No decorators or controllers in framework MVP.
 - No full DI container.
-- No native JSON fast path.
+- No native JSON fast path. OpenAPI/doctor/audit may report native JSON or body validation
+  candidates from Plan metadata, but those reports do not implement runtime optimization.
 - No multi-isolate implementation.
 ## ENGINE-14 Implementation Note
 
