@@ -85,7 +85,7 @@ function Invoke-PlatformBoundaryScan {
                 continue
             }
 
-            $header = $Matches[1]
+            $header = ($Matches[1] -replace "\\", "/").Trim()
             if ($header -notin $forbiddenHeaders) {
                 continue
             }
@@ -116,16 +116,19 @@ function Invoke-PlatformBoundarySelfTest {
     try {
         New-SelfTestFile -Path (Join-Path $fixtureRoot "include/core_windows_forbidden.h") -Header "windows.h"
         New-SelfTestFile -Path (Join-Path $fixtureRoot "src/core/posix_forbidden.c") -Header "unistd.h"
+        New-SelfTestFile -Path (Join-Path $fixtureRoot "src/core/backslash_forbidden.c") -Header "sys\epoll.h"
         New-SelfTestFile -Path (Join-Path $fixtureRoot "src/platform/win32/allowed_windows.c") -Header "windows.h"
         New-SelfTestFile -Path (Join-Path $fixtureRoot "src/platform/win32/allowed_winsock.c") -Header "winsock2.h"
         New-SelfTestFile -Path (Join-Path $fixtureRoot "src/platform/posix/allowed_posix.c") -Header "unistd.h"
         New-SelfTestFile -Path (Join-Path $fixtureRoot "src/platform/linux/allowed_epoll.c") -Header "sys/epoll.h"
+        New-SelfTestFile -Path (Join-Path $fixtureRoot "src/platform/linux/allowed_backslash_epoll.c") -Header "sys\epoll.h"
         New-SelfTestFile -Path (Join-Path $fixtureRoot "src/platform/macos/allowed_event.c") -Header "sys/event.h"
 
         $violations = Invoke-PlatformBoundaryScan -RootPath $fixtureRoot
         $expected = @(
             "include/core_windows_forbidden.h:1: forbidden platform header <windows.h>",
-            "src/core/posix_forbidden.c:1: forbidden platform header <unistd.h>"
+            "src/core/posix_forbidden.c:1: forbidden platform header <unistd.h>",
+            "src/core/backslash_forbidden.c:1: forbidden platform header <sys/epoll.h>"
         )
 
         foreach ($expectedViolation in $expected) {
