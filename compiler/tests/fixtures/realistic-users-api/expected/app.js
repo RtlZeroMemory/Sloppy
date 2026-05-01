@@ -8,14 +8,6 @@ function __sloppy_open_data_provider(kind, token) {
   throw new Error(`sloppy: ${kind} provider bridge unavailable`);
 }
 
-function createUser(body) {
-  db.exec("insert into users (name, email) values (?, ?)", [body.name, body.email]);
-  return db.queryOne("select id, name, email from users where id = last_insert_rowid()", []);
-}
-function listUsers() {
-  return db.query("select id, name, email from users", []);
-}
-
 globalThis.__sloppy_handler_1 = function(ctx) { const __sloppy_opened_providers = []; let db; try { db = __sloppy_open_data_provider("sqlite", "data.main"); __sloppy_opened_providers.push(db); function createUser(body) {
   db.exec("insert into users (name, email) values (?, ?)", [body.name, body.email]);
   return db.queryOne("select id, name, email from users where id = last_insert_rowid()", []);

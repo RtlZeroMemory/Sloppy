@@ -1221,6 +1221,13 @@ fn extract_entry(
         }
     }
 
+    let helper_sources = state
+        .helper_sources
+        .iter()
+        .filter(|(name, _)| helper_source_is_safe_for_top_level(state.helper_effects.get(*name)))
+        .map(|(_, source)| source.clone())
+        .collect();
+
     Ok(ExtractedApp {
         uses_data_runtime: state.data_imported
             || state.sqlite_imported
@@ -1232,12 +1239,23 @@ fn extract_entry(
         source_files: graph.source_files.clone(),
         routes: state.routes,
         modules: state.modules.into_values().collect(),
-        helper_sources: state.helper_sources.into_values().collect(),
+        helper_sources,
         capabilities: state.capabilities,
         configuration: None,
         schemas: state.schemas,
         config_reads: state.config_reads,
     })
+}
+
+fn helper_source_is_safe_for_top_level(summary: Option<&FunctionEffectSummary>) -> bool {
+    match summary {
+        Some(summary) => {
+            summary.effects.is_empty()
+                && summary.provider_bindings.is_empty()
+                && !summary.unknown_provider_usage
+        }
+        None => true,
+    }
 }
 
 fn collect_schema_declaration_names(statements: &[Statement<'_>]) -> BTreeSet<String> {
