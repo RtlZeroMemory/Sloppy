@@ -163,6 +163,11 @@ Rejected input must fail before success artifacts are emitted. Diagnostics inclu
 codes, source path, and line/column when the parser exposes a span. The text renderer stays
 intentionally small; JSON diagnostics, multi-location source frames, and richer fix metadata
 belong to later diagnostics work.
+
+COMPILER-30.A preserves this supported syntax matrix while splitting compiler internals
+behind a library API and module boundaries. The fixture harness can test success artifacts,
+rejected inputs, source-map goldens, diagnostics, multi-file fixtures, and future inference
+metadata without expanding the accepted source subset.
 ## ENGINE-14 Module Syntax
 
 Supported source imports are intentionally small:

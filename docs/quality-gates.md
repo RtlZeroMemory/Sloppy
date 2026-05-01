@@ -157,6 +157,11 @@ cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings
 cargo test --manifest-path compiler/Cargo.toml
 ```
 
+For compiler-module changes, the Rust gates must cover both the CLI and the library API.
+COMPILER-30.A adds fixture harness coverage for current artifacts, diagnostics, source-map
+goldens, and staged generated-artifact hygiene. Passing those tests preserves current
+compiler behavior; it does not prove future route/provider/capability inference.
+
 Language standards scanners:
 
 ```powershell
