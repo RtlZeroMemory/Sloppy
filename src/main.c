@@ -1926,9 +1926,11 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
         status = sl_http_response_write(&result, (unsigned char*)response, response_capacity,
                                         &response_bytes);
         if (!sl_status_is_ok(status) || response_bytes.length > (size_t)INT32_MAX) {
-            return -1;
+            status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         }
-        return (int)response_bytes.length;
+        else {
+            return (int)response_bytes.length;
+        }
     }
 
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED &&
