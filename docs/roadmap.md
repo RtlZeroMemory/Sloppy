@@ -81,7 +81,7 @@ Durable architecture sources remain:
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
 | Source-input run | Partial/proven for compiler-owned module subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; supported relative function modules and Sloppy provider imports are compiler-owned. Cache reuse, watch/hot reload, Node/npm, and full TypeScript remain deferred. |
-| Framework configuration | Partial/proven for first slice | Built-in defaults, appsettings overlays, environment selection, canonical env vars, selected CLI overrides, typed access, `bind`, config-driven SQLite provider metadata, and redacted Plan metadata exist. Reload, user secrets, custom/remote providers, broad CLI config, and doctor/OpenAPI consumption remain deferred. |
+| Framework configuration | Partial/proven for first slice | Built-in defaults, appsettings overlays, environment selection, canonical env vars, selected CLI overrides, typed access, `bind`, config-driven SQLite provider metadata, redacted Plan metadata, and first Plan-driven doctor/audit consumption exist. Reload, user secrets, custom/remote providers, broad CLI config, and OpenAPI config consumption remain deferred. |
 | Public alpha | Blocked | Needs canonical docs, executable examples, broader ergonomics, package/platform story, and no fake claims. |
 
 ## Active Issue Map
@@ -130,7 +130,7 @@ short:
    resolver, DSL, route/provider/schema/effect/capability, and completeness behavior.
 4. Strong Plan typed graph through reused #318/#355-#359 once compiler metadata exists.
 5. Framework config, binding, validation, Results, and examples through #432/#435-#440.
-6. Plan-driven doctor/OpenAPI after Plan metadata is real.
+6. Plan-driven OpenAPI after Plan metadata is real; doctor/audit/capabilities now have the first static Plan consumption slice.
 7. HTTP-25.F/#446 bounded stress/conformance evidence for the HTTP-25 keep-alive, chunked,
    and internal streaming writer slices.
 8. Provider expansion later after SQLite/provider-executor integration is proven.

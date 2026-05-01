@@ -162,6 +162,11 @@ plan completeness, source files, function modules, provider-kind-aware effects, 
 Plan compatibility fixtures for unknown optional fields versus unknown required features.
 Tests should keep completeness cases explicit: complete route, partial response/body
 metadata, invalid missing provider, and refreshed deterministic Plan goldens.
+ENGINE-20.C adds CLI golden coverage for consuming that metadata: route source/binding/
+response/completeness output, generated capability output for SQLite effects, doctor
+partial metadata checks, audit JSON warnings, and audit nonzero behavior for ERROR
+findings. These tests are static Plan/tooling coverage and do not prove handler execution,
+V8, live providers, or OpenAPI generation.
 
 Runtime execution:
 

@@ -116,8 +116,8 @@ Inference rules:
 - Transactions and mixed read/write paths imply readwrite.
 - If the compiler cannot infer safely, it must fail with a helpful diagnostic or require
   explicit metadata.
-- Every inferred capability must be inspectable through future Plan, doctor, routes, and
-  capabilities surfaces.
+- Every inferred capability must be Plan-visible and inspectable through Plan-driven
+  routes, capabilities, doctor, and audit surfaces.
 - Capability metadata should include source location when available.
 
 ## Configuration

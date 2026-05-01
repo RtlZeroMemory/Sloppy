@@ -40,6 +40,8 @@
 #define SL_CLI_MAX_DEPS 16U
 #define SL_CLI_MAX_PROVIDERS 32U
 #define SL_CLI_MAX_CAPABILITIES 64U
+#define SL_CLI_MAX_ROUTE_BINDINGS 16U
+#define SL_CLI_MAX_ROUTE_EFFECTS 16U
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
@@ -89,6 +91,24 @@ typedef struct SlCliRoute
     SlCliSpan name;
     SlCliSpan module;
     SlCliSpan capability;
+    SlCliSpan completeness;
+    SlCliSpan source_path;
+    uint64_t source_line;
+    uint64_t source_column;
+    SlCliSpan response_kind;
+    SlCliSpan response_helper;
+    uint64_t response_status;
+    SlCliSpan binding_kinds[SL_CLI_MAX_ROUTE_BINDINGS];
+    SlCliSpan binding_names[SL_CLI_MAX_ROUTE_BINDINGS];
+    SlCliSpan binding_schemas[SL_CLI_MAX_ROUTE_BINDINGS];
+    size_t binding_count;
+    SlCliSpan effect_providers[SL_CLI_MAX_ROUTE_EFFECTS];
+    SlCliSpan effect_provider_kinds[SL_CLI_MAX_ROUTE_EFFECTS];
+    SlCliSpan effect_capability_kinds[SL_CLI_MAX_ROUTE_EFFECTS];
+    SlCliSpan effect_accesses[SL_CLI_MAX_ROUTE_EFFECTS];
+    SlCliSpan effect_operations[SL_CLI_MAX_ROUTE_EFFECTS];
+    SlCliSpan effect_reasons[SL_CLI_MAX_ROUTE_EFFECTS];
+    size_t effect_count;
     size_t source_order;
 } SlCliRoute;
 
@@ -143,6 +163,7 @@ typedef struct SlCliMetadata
     size_t capability_count;
     SlCliDoctorCheck doctor_checks[SL_CLI_MAX_DOCTOR_CHECKS];
     size_t doctor_check_count;
+    SlCliSpan completeness;
 } SlCliMetadata;
 
 typedef struct SlCliOptions
@@ -230,6 +251,40 @@ static SlHandlerId sl_cli_json_handler_id(yyjson_val* object)
     return (SlHandlerId)id;
 }
 
+static uint64_t sl_cli_json_uint_or_zero(yyjson_val* object, const char* name)
+{
+    yyjson_val* value = yyjson_obj_get(object, name);
+    return value != NULL && yyjson_is_uint(value) ? yyjson_get_uint(value) : 0U;
+}
+
+static void sl_cli_parse_source(yyjson_val* object, SlCliSpan* path, uint64_t* line,
+                                uint64_t* column)
+{
+    yyjson_val* source = yyjson_obj_get(object, "source");
+
+    if (path != NULL) {
+        *path = (SlCliSpan){0};
+    }
+    if (line != NULL) {
+        *line = 0U;
+    }
+    if (column != NULL) {
+        *column = 0U;
+    }
+    if (source == NULL || !yyjson_is_obj(source)) {
+        return;
+    }
+    if (path != NULL) {
+        *path = sl_cli_json_span(source, "path");
+    }
+    if (line != NULL) {
+        *line = sl_cli_json_uint_or_zero(source, "line");
+    }
+    if (column != NULL) {
+        *column = sl_cli_json_uint_or_zero(source, "column");
+    }
+}
+
 static void sl_cli_print_version(void)
 {
     (void)printf("Sloppy %s\n", SL_VERSION_STRING);
@@ -246,6 +301,7 @@ static void sl_cli_print_help(void)
     (void)printf("             [--environment Development] [--host 127.0.0.1] [--port 5173]\n");
     (void)printf("             [--once METHOD TARGET]\n");
     (void)printf("  sloppy routes --plan <path> [--format text|json]\n");
+    (void)printf("  sloppy capabilities --plan <path> [--format text|json]\n");
     (void)printf("  sloppy doctor [--plan <path>] [--format text|json]\n");
     (void)printf("  sloppy audit --plan <path> [--format text|json]\n");
     (void)printf("  sloppy openapi --plan <path> [--output <path>]\n");
@@ -255,6 +311,10 @@ static void sl_cli_print_command_help(const char* command)
 {
     if (strcmp(command, "routes") == 0) {
         (void)printf("Usage: sloppy routes --plan <path> [--format text|json]\n");
+        return;
+    }
+    if (strcmp(command, "capabilities") == 0) {
+        (void)printf("Usage: sloppy capabilities --plan <path> [--format text|json]\n");
         return;
     }
     if (strcmp(command, "run") == 0) {
@@ -743,6 +803,70 @@ static int sl_cli_parse_handlers(yyjson_val* root, SlCliMetadata* metadata)
     return 0;
 }
 
+static void sl_cli_parse_route_bindings(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* bindings = yyjson_obj_get(value, "bindings");
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (bindings == NULL || !yyjson_is_arr(bindings)) {
+        return;
+    }
+
+    yyjson_arr_iter_init(bindings, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (yyjson_is_obj(entry) && route->binding_count < SL_CLI_MAX_ROUTE_BINDINGS) {
+            route->binding_kinds[route->binding_count] = sl_cli_json_span(entry, "kind");
+            route->binding_names[route->binding_count] = sl_cli_json_span(entry, "name");
+            route->binding_schemas[route->binding_count] = sl_cli_json_span(entry, "schema");
+            route->binding_count += 1U;
+        }
+    }
+}
+
+static void sl_cli_parse_route_effects(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* effects = yyjson_obj_get(value, "effects");
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (effects == NULL || !yyjson_is_arr(effects)) {
+        return;
+    }
+
+    yyjson_arr_iter_init(effects, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (yyjson_is_obj(entry) && route->effect_count < SL_CLI_MAX_ROUTE_EFFECTS) {
+            route->effect_providers[route->effect_count] = sl_cli_json_span(entry, "provider");
+            route->effect_provider_kinds[route->effect_count] =
+                sl_cli_json_span(entry, "providerKind");
+            route->effect_capability_kinds[route->effect_count] =
+                sl_cli_json_span(entry, "capabilityKind");
+            route->effect_accesses[route->effect_count] = sl_cli_json_span(entry, "access");
+            route->effect_operations[route->effect_count] = sl_cli_json_span(entry, "operation");
+            route->effect_reasons[route->effect_count] = sl_cli_json_span(entry, "reason");
+            route->effect_count += 1U;
+        }
+    }
+}
+
+static void sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* completeness = yyjson_obj_get(value, "completeness");
+    yyjson_val* response = yyjson_obj_get(value, "response");
+
+    if (completeness != NULL && yyjson_is_obj(completeness)) {
+        route->completeness = sl_cli_json_span(completeness, "status");
+    }
+    if (response != NULL && yyjson_is_obj(response)) {
+        route->response_kind = sl_cli_json_span(response, "kind");
+        route->response_helper = sl_cli_json_span(response, "helper");
+        route->response_status = sl_cli_json_uint_or_zero(response, "status");
+    }
+    sl_cli_parse_route_bindings(value, route);
+    sl_cli_parse_route_effects(value, route);
+}
+
 static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
 {
     yyjson_val* routes = yyjson_obj_get(root, "routes");
@@ -776,7 +900,9 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
         route.name = sl_cli_json_span(value, "name");
         route.module = sl_cli_json_span(value, "module");
         route.capability = sl_cli_json_span(value, "capability");
+        sl_cli_parse_route_strong_metadata(value, &route);
         route.handler_id = sl_cli_json_handler_id(value);
+        sl_cli_parse_source(value, &route.source_path, &route.source_line, &route.source_column);
         route.source_order = metadata->route_count;
 
         if (sl_cli_span_empty(route.method) || sl_cli_span_empty(route.pattern) ||
@@ -1008,6 +1134,12 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
     }
 
     *out_metadata = (SlCliMetadata){0};
+    {
+        yyjson_val* completeness = yyjson_obj_get(root, "completeness");
+        if (completeness != NULL && yyjson_is_obj(completeness)) {
+            out_metadata->completeness = sl_cli_json_span(completeness, "status");
+        }
+    }
     if (sl_cli_parse_handlers(root, out_metadata) != 0 ||
         sl_cli_parse_routes(root, out_metadata) != 0 ||
         sl_cli_parse_modules(root, out_metadata) != 0 ||
@@ -2959,6 +3091,100 @@ static void sl_cli_sort_routes(SlCliMetadata* metadata)
     }
 }
 
+static void sl_cli_routes_emit_json_bindings(const SlCliRoute* route)
+{
+    size_t binding = 0U;
+
+    (void)printf(", \"bindings\": [");
+    for (binding = 0U; binding < route->binding_count; binding += 1U) {
+        (void)printf("%s{ \"kind\": ", binding == 0U ? "" : ", ");
+        sl_cli_json_escape(stdout, route->binding_kinds[binding]);
+        (void)printf(", \"name\": ");
+        sl_cli_json_escape(stdout, route->binding_names[binding]);
+        (void)printf(", \"schema\": ");
+        sl_cli_json_escape(stdout, route->binding_schemas[binding]);
+        (void)printf(" }");
+    }
+    (void)printf("]");
+}
+
+static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
+{
+    (void)printf("%s\n    { \"method\": ", index == 0U ? "" : ",");
+    sl_cli_json_escape(stdout, route->method);
+    (void)printf(", \"pattern\": ");
+    sl_cli_json_escape(stdout, route->pattern);
+    (void)printf(", \"handlerId\": %u, \"name\": ", route->handler_id);
+    sl_cli_json_escape(stdout, route->name);
+    (void)printf(", \"module\": ");
+    sl_cli_json_escape(stdout, route->module);
+    (void)printf(", \"sourceOrder\": %zu", route->source_order);
+    (void)printf(", \"source\": { \"path\": ");
+    sl_cli_json_escape(stdout, route->source_path);
+    (void)printf(", \"line\": %llu, \"column\": %llu }", (unsigned long long)route->source_line,
+                 (unsigned long long)route->source_column);
+    (void)printf(", \"completeness\": ");
+    sl_cli_json_escape(stdout, route->completeness);
+    sl_cli_routes_emit_json_bindings(route);
+    (void)printf(", \"response\": { \"kind\": ");
+    sl_cli_json_escape(stdout, route->response_kind);
+    (void)printf(", \"helper\": ");
+    sl_cli_json_escape(stdout, route->response_helper);
+    (void)printf(", \"status\": %llu }", (unsigned long long)route->response_status);
+    (void)printf(" }");
+}
+
+static void sl_cli_routes_emit_text_bindings(const SlCliRoute* route)
+{
+    size_t binding = 0U;
+
+    if (route->binding_count == 0U) {
+        (void)printf("-");
+        return;
+    }
+    for (binding = 0U; binding < route->binding_count; binding += 1U) {
+        (void)printf("%s%.*s", binding == 0U ? "" : ",", (int)route->binding_kinds[binding].length,
+                     route->binding_kinds[binding].ptr);
+        if (!sl_cli_span_empty(route->binding_names[binding])) {
+            (void)printf(":%.*s", (int)route->binding_names[binding].length,
+                         route->binding_names[binding].ptr);
+        }
+        if (!sl_cli_span_empty(route->binding_schemas[binding])) {
+            (void)printf("(%.*s)", (int)route->binding_schemas[binding].length,
+                         route->binding_schemas[binding].ptr);
+        }
+    }
+}
+
+static void sl_cli_routes_emit_text_response(const SlCliRoute* route)
+{
+    if (!sl_cli_span_empty(route->response_kind)) {
+        (void)printf("%llu/%.*s/%.*s", (unsigned long long)route->response_status,
+                     (int)route->response_kind.length, route->response_kind.ptr,
+                     (int)route->response_helper.length, route->response_helper.ptr);
+        return;
+    }
+    (void)printf("unknown");
+}
+
+static void sl_cli_routes_emit_text_route(const SlCliRoute* route)
+{
+    (void)printf("%-5zu  %-6.*s  %-19.*s  %-7u  %-8.*s  %-6.*s  ", route->source_order,
+                 (int)route->method.length, route->method.ptr, (int)route->pattern.length,
+                 route->pattern.ptr, route->handler_id, (int)route->completeness.length,
+                 route->completeness.ptr, (int)route->module.length, route->module.ptr);
+    if (!sl_cli_span_empty(route->source_path)) {
+        (void)printf("%.*s:%llu:%llu", (int)route->source_path.length, route->source_path.ptr,
+                     (unsigned long long)route->source_line,
+                     (unsigned long long)route->source_column);
+    }
+    (void)printf("  ");
+    sl_cli_routes_emit_text_bindings(route);
+    (void)printf("  ");
+    sl_cli_routes_emit_text_response(route);
+    (void)printf("  %.*s\n", (int)route->name.length, route->name.ptr);
+}
+
 static int sl_cli_command_routes(const SlCliOptions* options)
 {
     unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
@@ -2991,32 +3217,131 @@ static int sl_cli_command_routes(const SlCliOptions* options)
     if (options->format == SL_CLI_FORMAT_JSON) {
         (void)printf("{\n  \"routes\": [");
         for (index = 0U; index < metadata.route_count; index += 1U) {
-            SlCliRoute* route = &metadata.routes[index];
-            (void)printf("%s\n    { \"method\": ", index == 0U ? "" : ",");
-            sl_cli_json_escape(stdout, route->method);
-            (void)printf(", \"pattern\": ");
-            sl_cli_json_escape(stdout, route->pattern);
-            (void)printf(", \"handlerId\": %u, \"name\": ", route->handler_id);
-            sl_cli_json_escape(stdout, route->name);
-            (void)printf(", \"module\": ");
-            sl_cli_json_escape(stdout, route->module);
-            (void)printf(", \"sourceOrder\": %zu", route->source_order);
-            (void)printf(" }");
+            sl_cli_routes_emit_json_route(&metadata.routes[index], index);
         }
         (void)printf("\n  ]\n}\n");
     }
     else {
-        (void)printf("ORDER  METHOD  PATTERN              HANDLER  NAME\n");
+        (void)printf("ORDER  METHOD  PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
+                     "BINDINGS  RESPONSE  NAME\n");
         if (metadata.route_count == 0U) {
             (void)printf("No routes.\n");
         }
         for (index = 0U; index < metadata.route_count; index += 1U) {
-            SlCliRoute* route = &metadata.routes[index];
-            (void)printf("%-5zu  %-6.*s  %-19.*s  %-7u  %.*s\n", route->source_order,
-                         (int)route->method.length, route->method.ptr, (int)route->pattern.length,
-                         route->pattern.ptr, route->handler_id, (int)route->name.length,
-                         route->name.ptr);
+            sl_cli_routes_emit_text_route(&metadata.routes[index]);
         }
+    }
+
+    yyjson_doc_free(doc);
+    return 0;
+}
+
+static void sl_cli_capabilities_emit_json_effect(const SlCliRoute* route, size_t effect_index,
+                                                 size_t finding_count)
+{
+    (void)printf("%s\n    { \"route\": { \"method\": ", finding_count == 0U ? "" : ",");
+    sl_cli_json_escape(stdout, route->method);
+    (void)printf(", \"pattern\": ");
+    sl_cli_json_escape(stdout, route->pattern);
+    (void)printf(" }, \"provider\": ");
+    sl_cli_json_escape(stdout, route->effect_providers[effect_index]);
+    (void)printf(", \"providerKind\": ");
+    sl_cli_json_escape(stdout, route->effect_provider_kinds[effect_index]);
+    (void)printf(", \"capabilityKind\": ");
+    sl_cli_json_escape(stdout, route->effect_capability_kinds[effect_index]);
+    (void)printf(", \"access\": ");
+    sl_cli_json_escape(stdout, route->effect_accesses[effect_index]);
+    (void)printf(", \"inference\": \"generated\", \"reason\": ");
+    sl_cli_json_escape(stdout, route->effect_reasons[effect_index]);
+    (void)printf(", \"operation\": ");
+    sl_cli_json_escape(stdout, route->effect_operations[effect_index]);
+    (void)printf(", \"source\": { \"path\": ");
+    sl_cli_json_escape(stdout, route->source_path);
+    (void)printf(", \"line\": %llu, \"column\": %llu } }", (unsigned long long)route->source_line,
+                 (unsigned long long)route->source_column);
+}
+
+static void sl_cli_capabilities_emit_text_effect(const SlCliRoute* route, size_t effect_index)
+{
+    (void)printf(
+        "%.*s %.*s  %.*s  %.*s  %.*s  generated:%.*s  ", (int)route->method.length,
+        route->method.ptr, (int)route->pattern.length, route->pattern.ptr,
+        (int)route->effect_providers[effect_index].length,
+        route->effect_providers[effect_index].ptr,
+        (int)route->effect_provider_kinds[effect_index].length,
+        route->effect_provider_kinds[effect_index].ptr,
+        (int)route->effect_accesses[effect_index].length, route->effect_accesses[effect_index].ptr,
+        (int)route->effect_reasons[effect_index].length, route->effect_reasons[effect_index].ptr);
+    if (!sl_cli_span_empty(route->source_path)) {
+        (void)printf("%.*s:%llu:%llu", (int)route->source_path.length, route->source_path.ptr,
+                     (unsigned long long)route->source_line,
+                     (unsigned long long)route->source_column);
+    }
+    (void)printf("\n");
+}
+
+static void sl_cli_capabilities_emit_route_effects(const SlCliOptions* options,
+                                                   const SlCliRoute* route, size_t* finding_count)
+{
+    size_t effect_index = 0U;
+
+    for (effect_index = 0U; effect_index < route->effect_count; effect_index += 1U) {
+        if (options->format == SL_CLI_FORMAT_JSON) {
+            sl_cli_capabilities_emit_json_effect(route, effect_index, *finding_count);
+        }
+        else {
+            sl_cli_capabilities_emit_text_effect(route, effect_index);
+        }
+        *finding_count += 1U;
+    }
+}
+
+static int sl_cli_command_capabilities(const SlCliOptions* options)
+{
+    unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
+    unsigned char plan_arena_storage[SL_CLI_ARENA_BYTES];
+    SlArena plan_arena;
+    yyjson_doc* doc = NULL;
+    SlCliMetadata metadata = {0};
+    size_t route_index = 0U;
+    size_t finding_count = 0U;
+
+    if (options->plan_path == NULL) {
+        sl_cli_write_cstr(stderr, "sloppy capabilities: --plan <path> is required\n");
+        return 1;
+    }
+    if (!sl_status_is_ok(
+            sl_arena_init(&plan_arena, plan_arena_storage, sizeof(plan_arena_storage))))
+    {
+        sl_cli_write_cstr(stderr,
+                          "sloppy capabilities: failed to initialize plan validation arena\n");
+        return 1;
+    }
+    if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc,
+                             &metadata) != 0)
+    {
+        if (doc != NULL) {
+            yyjson_doc_free(doc);
+        }
+        return 1;
+    }
+    sl_cli_sort_routes(&metadata);
+
+    if (options->format == SL_CLI_FORMAT_JSON) {
+        (void)printf("{\n  \"capabilities\": [");
+    }
+    else {
+        (void)printf("ROUTE  PROVIDER  KIND  ACCESS  REASON  SOURCE\n");
+    }
+    for (route_index = 0U; route_index < metadata.route_count; route_index += 1U) {
+        sl_cli_capabilities_emit_route_effects(options, &metadata.routes[route_index],
+                                               &finding_count);
+    }
+    if (finding_count == 0U && options->format == SL_CLI_FORMAT_TEXT) {
+        (void)printf("No inferred route capabilities.\n");
+    }
+    if (options->format == SL_CLI_FORMAT_JSON) {
+        (void)printf("\n  ]\n}\n");
     }
 
     yyjson_doc_free(doc);
@@ -3103,6 +3428,47 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         metadata->capability_count > 0U ? sl_cli_span_cstr("capability metadata present")
                                         : sl_cli_span_cstr("capability metadata not present"),
         emitted);
+    if (!sl_cli_span_empty(metadata->completeness)) {
+        SlCliSpan status = sl_cli_span_cstr("warn");
+        SlCliSpan message =
+            sl_cli_span_cstr("Plan completeness is partial, runtime-only, or invalid");
+
+        if (sl_cli_span_equal_cstr(metadata->completeness, "complete")) {
+            status = sl_cli_span_cstr("ok");
+            message = sl_cli_span_cstr("Plan completeness is complete");
+        }
+        else if (sl_cli_span_equal_cstr(metadata->completeness, "invalid")) {
+            status = sl_cli_span_cstr("error");
+        }
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.plan.completeness"), status,
+                           message, emitted);
+    }
+    for (size_t index = 0U; index < metadata->route_count; index += 1U) {
+        const SlCliRoute* route = &metadata->routes[index];
+        if (!sl_cli_span_empty(route->completeness) &&
+            !sl_cli_span_equal_cstr(route->completeness, "complete"))
+        {
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("route.completeness"),
+                sl_cli_span_equal_cstr(route->completeness, "invalid") ? sl_cli_span_cstr("error")
+                                                                       : sl_cli_span_cstr("warn"),
+                sl_cli_span_cstr("route has partial/runtime-only/invalid Plan metadata"), emitted);
+        }
+        if (sl_cli_span_empty(route->response_kind)) {
+            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.response"),
+                               sl_cli_span_cstr("warn"),
+                               sl_cli_span_cstr("route response metadata is unknown"), emitted);
+        }
+        for (size_t binding = 0U; binding < route->binding_count; binding += 1U) {
+            if (sl_cli_span_equal_cstr(route->binding_kinds[binding], "body.json") &&
+                sl_cli_span_empty(route->binding_schemas[binding]))
+            {
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("route.validation"), sl_cli_span_cstr("warn"),
+                    sl_cli_span_cstr("JSON body binding has no schema metadata"), emitted);
+            }
+        }
+    }
 }
 
 static void sl_cli_doctor_emit_environment(const SlCliOptions* options, SlArena* arena,
@@ -3221,7 +3587,8 @@ static void sl_cli_audit_json(SlCliSpan severity, const char* code, const char* 
 }
 
 static void sl_cli_audit_emit(const SlCliOptions* options, const char* severity, const char* code,
-                              const char* message, const char* path, size_t* findings)
+                              const char* message, const char* path, size_t* findings,
+                              size_t* errors)
 {
     if (options->format == SL_CLI_FORMAT_JSON) {
         sl_cli_audit_json(sl_cli_span_cstr(severity), code, message, path, *findings > 0U);
@@ -3230,10 +3597,13 @@ static void sl_cli_audit_emit(const SlCliOptions* options, const char* severity,
         sl_cli_audit_text(sl_cli_span_cstr(severity), code, message, path);
     }
     *findings += 1U;
+    if (errors != NULL && strcmp(severity, "error") == 0) {
+        *errors += 1U;
+    }
 }
 
 static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata* metadata,
-                                size_t* findings)
+                                size_t* findings, size_t* errors)
 {
     size_t outer = 0U;
     size_t inner = 0U;
@@ -3241,33 +3611,63 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
     for (outer = 0U; outer < metadata->route_count; outer += 1U) {
         if (sl_cli_find_handler(metadata, metadata->routes[outer].handler_id) == NULL) {
             sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_MISSING_HANDLER",
-                              "route references a missing handler id", "routes", findings);
+                              "route references a missing handler id", "routes", findings, errors);
         }
         if (!sl_cli_span_empty(metadata->routes[outer].capability) &&
             sl_cli_find_capability(metadata, metadata->routes[outer].capability) == NULL)
         {
             sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_ROUTE_CAPABILITY_MISSING",
-                              "route references an undeclared capability", "routes", findings);
+                              "route references an undeclared capability", "routes", findings,
+                              errors);
         }
         for (inner = outer + 1U; inner < metadata->route_count; inner += 1U) {
             if (!sl_cli_span_empty(metadata->routes[outer].name) &&
                 sl_cli_span_equal(metadata->routes[outer].name, metadata->routes[inner].name))
             {
                 sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_DUPLICATE_ROUTE_NAME",
-                                  "duplicate route name", "routes", findings);
+                                  "duplicate route name", "routes", findings, errors);
             }
             if (sl_cli_span_equal(metadata->routes[outer].method, metadata->routes[inner].method) &&
                 sl_cli_span_equal(metadata->routes[outer].pattern, metadata->routes[inner].pattern))
             {
                 sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_DUPLICATE_ROUTE",
-                                  "duplicate route method and pattern", "routes", findings);
+                                  "duplicate route method and pattern", "routes", findings, errors);
             }
+        }
+        if (!sl_cli_span_empty(metadata->routes[outer].completeness) &&
+            !sl_cli_span_equal_cstr(metadata->routes[outer].completeness, "complete"))
+        {
+            sl_cli_audit_emit(
+                options,
+                sl_cli_span_equal_cstr(metadata->routes[outer].completeness, "invalid") ? "error"
+                                                                                        : "warn",
+                "SLOPPY_AUDIT_ROUTE_COMPLETENESS", "route Plan completeness is not complete",
+                "routes", findings, errors);
+        }
+        if (metadata->routes[outer].binding_count > 0U) {
+            size_t binding = 0U;
+            for (binding = 0U; binding < metadata->routes[outer].binding_count; binding += 1U) {
+                if (sl_cli_span_equal_cstr(metadata->routes[outer].binding_kinds[binding],
+                                           "body.json") &&
+                    sl_cli_span_empty(metadata->routes[outer].binding_schemas[binding]))
+                {
+                    sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_BODY_SCHEMA_MISSING",
+                                      "JSON body binding has no schema metadata", "validation",
+                                      findings, errors);
+                }
+            }
+        }
+        if (!sl_cli_span_empty(metadata->routes[outer].completeness) &&
+            sl_cli_span_empty(metadata->routes[outer].response_kind))
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_RESPONSE_UNKNOWN",
+                              "route response metadata is unknown", "response", findings, errors);
         }
     }
 }
 
 static void sl_cli_audit_modules(const SlCliOptions* options, const SlCliMetadata* metadata,
-                                 size_t* findings)
+                                 size_t* findings, size_t* errors)
 {
     size_t outer = 0U;
     size_t inner = 0U;
@@ -3278,7 +3678,7 @@ static void sl_cli_audit_modules(const SlCliOptions* options, const SlCliMetadat
                 sl_cli_find_module(metadata, metadata->modules[outer].dependencies[inner]);
             if (dep == NULL) {
                 sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_MISSING_MODULE_DEPENDENCY",
-                                  "module dependency is missing", "modules", findings);
+                                  "module dependency is missing", "modules", findings, errors);
             }
             else {
                 size_t dep_index = 0U;
@@ -3287,7 +3687,8 @@ static void sl_cli_audit_modules(const SlCliOptions* options, const SlCliMetadat
                                           metadata->modules[outer].name))
                     {
                         sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_MODULE_CYCLE",
-                                          "module dependency cycle detected", "modules", findings);
+                                          "module dependency cycle detected", "modules", findings,
+                                          errors);
                     }
                 }
             }
@@ -3296,7 +3697,7 @@ static void sl_cli_audit_modules(const SlCliOptions* options, const SlCliMetadat
 }
 
 static void sl_cli_audit_providers(const SlCliOptions* options, const SlCliMetadata* metadata,
-                                   size_t* findings)
+                                   size_t* findings, size_t* errors)
 {
     size_t index = 0U;
 
@@ -3307,7 +3708,7 @@ static void sl_cli_audit_providers(const SlCliOptions* options, const SlCliMetad
         {
             sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_PROVIDER_INCOMPLETE",
                               "provider metadata is missing token, provider, or service",
-                              "dataProviders", findings);
+                              "dataProviders", findings, errors);
         }
         if (!sl_cli_span_empty(metadata->providers[index].capability)) {
             const SlCliCapability* capability =
@@ -3315,12 +3716,12 @@ static void sl_cli_audit_providers(const SlCliOptions* options, const SlCliMetad
             if (capability == NULL) {
                 sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_PROVIDER_CAPABILITY_MISSING",
                                   "data provider references an undeclared capability",
-                                  "dataProviders", findings);
+                                  "dataProviders", findings, errors);
             }
             else if (!sl_cli_span_equal_cstr(capability->kind, "database")) {
                 sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_PROVIDER_CAPABILITY_KIND",
                                   "data provider capability is not a database capability",
-                                  "dataProviders", findings);
+                                  "dataProviders", findings, errors);
             }
             else {
                 if (!sl_cli_span_empty(capability->provider) &&
@@ -3328,7 +3729,7 @@ static void sl_cli_audit_providers(const SlCliOptions* options, const SlCliMetad
                 {
                     sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_PROVIDER_MISMATCH",
                                       "capability provider reference does not match data provider",
-                                      "capabilities", findings);
+                                      "capabilities", findings, errors);
                 }
                 if (!sl_cli_span_empty(metadata->providers[index].required_access) &&
                     !sl_cli_capability_allows(capability->access,
@@ -3336,7 +3737,7 @@ static void sl_cli_audit_providers(const SlCliOptions* options, const SlCliMetad
                 {
                     sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_INSUFFICIENT",
                                       "capability access is insufficient for provider operation",
-                                      "capabilities", findings);
+                                      "capabilities", findings, errors);
                 }
             }
         }
@@ -3344,7 +3745,7 @@ static void sl_cli_audit_providers(const SlCliOptions* options, const SlCliMetad
 }
 
 static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMetadata* metadata,
-                                      size_t* findings)
+                                      size_t* findings, size_t* errors)
 {
     size_t outer = 0U;
     size_t inner = 0U;
@@ -3358,7 +3759,7 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
         {
             sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_INCOMPLETE",
                               "capability metadata is missing token, kind, or access",
-                              "capabilities", findings);
+                              "capabilities", findings, errors);
         }
         for (inner = outer + 1U; inner < metadata->capability_count; inner += 1U) {
             if (!sl_cli_span_empty(metadata->capabilities[outer].token) &&
@@ -3366,20 +3767,20 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
                                   metadata->capabilities[inner].token))
             {
                 sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_DUPLICATE_CAPABILITY",
-                                  "duplicate capability token", "capabilities", findings);
+                                  "duplicate capability token", "capabilities", findings, errors);
             }
         }
         if (sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "database")) {
             if (sl_cli_span_empty(metadata->capabilities[outer].provider)) {
                 sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_REQUIRED",
                                   "database capability is missing required provider reference",
-                                  "capabilities", findings);
+                                  "capabilities", findings, errors);
             }
             else if (sl_cli_find_provider(metadata, metadata->capabilities[outer].provider) == NULL)
             {
                 sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_MISSING",
                                   "database capability references an undeclared provider",
-                                  "capabilities", findings);
+                                  "capabilities", findings, errors);
             }
         }
         else if ((sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "filesystem") ||
@@ -3388,7 +3789,7 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
         {
             sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_CAPABILITY_PROVIDER_FORBIDDEN",
                               "filesystem/network capabilities must not declare providers",
-                              "capabilities", findings);
+                              "capabilities", findings, errors);
         }
         if (sl_cli_span_equal_cstr(metadata->capabilities[outer].kind, "filesystem")) {
             has_filesystem = true;
@@ -3401,13 +3802,13 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FILESYSTEM_SKELETON",
                           "filesystem capabilities are metadata/check-only; no filesystem API or "
                           "OS sandbox is implemented",
-                          "capabilities", findings);
+                          "capabilities", findings, errors);
     }
     if (has_network) {
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_NETWORK_SKELETON",
                           "network capabilities are metadata/check-only; no network API or OS "
                           "sandbox is implemented",
-                          "capabilities", findings);
+                          "capabilities", findings, errors);
     }
 }
 
@@ -3417,6 +3818,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     yyjson_doc* doc = NULL;
     SlCliMetadata metadata = {0};
     size_t findings = 0U;
+    size_t errors = 0U;
 
     if (options->plan_path == NULL) {
         sl_cli_write_cstr(stderr, "sloppy audit: --plan <path> is required\n");
@@ -3436,10 +3838,16 @@ static int sl_cli_command_audit(const SlCliOptions* options)
         (void)printf("Sloppy Audit\n\n");
     }
 
-    sl_cli_audit_routes(options, &metadata, &findings);
-    sl_cli_audit_modules(options, &metadata, &findings);
-    sl_cli_audit_providers(options, &metadata, &findings);
-    sl_cli_audit_capabilities(options, &metadata, &findings);
+    if (!sl_cli_span_empty(metadata.completeness) &&
+        sl_cli_span_equal_cstr(metadata.completeness, "invalid"))
+    {
+        sl_cli_audit_emit(options, "error", "SLOPPY_AUDIT_PLAN_INVALID",
+                          "Plan completeness is invalid", "completeness", &findings, &errors);
+    }
+    sl_cli_audit_routes(options, &metadata, &findings, &errors);
+    sl_cli_audit_modules(options, &metadata, &findings, &errors);
+    sl_cli_audit_providers(options, &metadata, &findings, &errors);
+    sl_cli_audit_capabilities(options, &metadata, &findings, &errors);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {
         (void)printf("No findings.\n");
@@ -3449,7 +3857,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     }
 
     yyjson_doc_free(doc);
-    return 0;
+    return errors > 0U ? 1 : 0;
 }
 
 static bool sl_cli_openapi_path(char* buffer, size_t capacity, SlCliSpan pattern,
@@ -3752,6 +4160,9 @@ int main(int argc, char** argv)
 
     if (strcmp(options.command, "routes") == 0) {
         return sl_cli_command_routes(&options);
+    }
+    if (strcmp(options.command, "capabilities") == 0) {
+        return sl_cli_command_capabilities(&options);
     }
     if (strcmp(options.command, "run") == 0) {
         return sl_cli_command_run(&options);

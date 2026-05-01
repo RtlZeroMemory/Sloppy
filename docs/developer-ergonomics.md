@@ -649,9 +649,10 @@ up.
 
 | Command | Purpose | Planned output | Plan sections |
 | --- | --- | --- | --- |
-| `sloppy routes` | Inspect route graph | methods, paths, names, handlers, middleware | `routes`, `handlers`, `middleware`, `filters` |
-| `sloppy doctor` | Check environment and providers | missing drivers, invalid config, SDK issues | `target`, `dataProviders`, `bundle` |
-| `sloppy audit` | Explain permissions/capabilities | capability grants and reachable routes | `capabilities`, `permissions`, `routes`, `modules` |
+| `sloppy routes` | Inspect route graph | methods, paths, handlers, source locations, request bindings, response metadata, completeness | `routes`, `handlers` |
+| `sloppy capabilities` | Explain inferred route/provider authority | generated provider effects, access, reasons, source locations | `routes[].effects`, `capabilities`, `dataProviders` |
+| `sloppy doctor` | Check environment, providers, and Plan completeness | missing drivers, invalid config, SDK issues, partial/runtime-only routes | `target`, `dataProviders`, `capabilities`, `routes`, `completeness` |
+| `sloppy audit` | Explain static review findings | stable finding codes and CI-style errors/warnings | `capabilities`, `routes`, `modules`, `completeness` |
 | `sloppy openapi` | Generate API description | OpenAPI document | `routes`, `schemas`, `metadata` |
 | `sloppy db migrate` | Future migration runner | migration plan/status | `dataProviders`, provider metadata |
 | `sloppy db status` | Database health/config status | connection/provider status | `dataProviders`, `healthChecks` |
@@ -660,13 +661,17 @@ up.
 | `sloppy build` | Emit artifacts | `.sloppy/` output | all artifact sections |
 | `sloppy run` | Build/cache/run | runtime startup diagnostics | all artifact sections |
 
-Implemented EPIC-19 command scope:
+Implemented EPIC-19/ENGINE-20.C command scope:
 
-- `sloppy routes` prints method, pattern, handler ID, route name, and module from metadata;
+- `sloppy routes` prints method, pattern, handler ID, route name, module, source location,
+  request bindings, response metadata, and completeness from Plan metadata;
+- `sloppy capabilities` prints compiler-generated provider effects as inferred route
+  capabilities, including provider kind, access, reason, and source location;
 - `sloppy doctor` prints safe deterministic checks and redacts connection-string-like
-  secrets;
+  secrets, including Plan completeness and partial metadata checks;
 - `sloppy audit` runs a small fixed metadata rule set for duplicate routes, missing
-  handlers, module dependency problems, and incomplete provider metadata;
+  handlers, module dependency problems, incomplete provider metadata, partial Strong Plan
+  metadata, and skeleton capability caveats. ERROR findings return a nonzero process exit;
 - `sloppy openapi` emits a minimal OpenAPI 3.0.3 skeleton with path parameters and
   placeholder `200` responses.
 

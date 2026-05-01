@@ -13,7 +13,11 @@ execute_process(
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr)
 
-if(NOT result EQUAL 0)
+if(DEFINED SLOPPY_EXPECT_NONZERO)
+    if(result EQUAL 0)
+        message(FATAL_ERROR "CLI command unexpectedly succeeded\nstdout:\n${stdout}\nstderr:\n${stderr}")
+    endif()
+elseif(NOT result EQUAL 0)
     message(FATAL_ERROR "CLI command failed with ${result}\nstdout:\n${stdout}\nstderr:\n${stderr}")
 endif()
 
