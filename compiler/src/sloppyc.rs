@@ -2104,15 +2104,19 @@ fn argument_schema_definition(argument: &Argument<'_>) -> Option<Value> {
 
 fn expression_mentions_schema(expression: &Expression<'_>) -> bool {
     match expression {
-        Expression::CallExpression(call) => {
-            static_member_name(&call.callee).is_some_and(|(object, _)| object == "schema")
-                || match &call.callee {
-                    Expression::StaticMemberExpression(member) => {
-                        expression_mentions_schema(&member.object)
-                    }
-                    _ => false,
-                }
+        Expression::CallExpression(call) => call_mentions_schema(call),
+        Expression::ObjectExpression(object) => object
+            .properties
+            .iter()
+            .any(object_property_mentions_schema),
+        Expression::ArrayExpression(array) => {
+            array.elements.iter().any(array_element_mentions_schema)
         }
+        Expression::ComputedMemberExpression(member) => {
+            expression_mentions_schema(&member.object)
+                || expression_mentions_schema(&member.expression)
+        }
+        Expression::StaticMemberExpression(member) => expression_mentions_schema(&member.object),
         Expression::ParenthesizedExpression(node) => expression_mentions_schema(&node.expression),
         Expression::ConditionalExpression(node) => {
             expression_mentions_schema(&node.test)
@@ -2134,6 +2138,60 @@ fn expression_mentions_schema(expression: &Expression<'_>) -> bool {
         Expression::TSTypeAssertion(node) => expression_mentions_schema(&node.expression),
         Expression::TSNonNullExpression(node) => expression_mentions_schema(&node.expression),
         Expression::TSInstantiationExpression(node) => expression_mentions_schema(&node.expression),
+        _ => false,
+    }
+}
+
+fn call_mentions_schema(call: &CallExpression<'_>) -> bool {
+    static_member_name(&call.callee).is_some_and(|(object, _)| object == "schema")
+        || match &call.callee {
+            Expression::StaticMemberExpression(member) => {
+                expression_mentions_schema(&member.object)
+            }
+            _ => false,
+        }
+        || call.arguments.iter().any(argument_mentions_schema)
+}
+
+fn argument_mentions_schema(argument: &Argument<'_>) -> bool {
+    match argument {
+        Argument::CallExpression(call) => call_mentions_schema(call),
+        Argument::ObjectExpression(object) => object
+            .properties
+            .iter()
+            .any(object_property_mentions_schema),
+        Argument::ArrayExpression(array) => {
+            array.elements.iter().any(array_element_mentions_schema)
+        }
+        Argument::ComputedMemberExpression(member) => {
+            expression_mentions_schema(&member.object)
+                || expression_mentions_schema(&member.expression)
+        }
+        Argument::ParenthesizedExpression(parenthesized) => {
+            expression_mentions_schema(&parenthesized.expression)
+        }
+        Argument::StaticMemberExpression(member) => expression_mentions_schema(&member.object),
+        _ => false,
+    }
+}
+
+fn object_property_mentions_schema(property: &ObjectPropertyKind<'_>) -> bool {
+    match property {
+        ObjectPropertyKind::ObjectProperty(property) => expression_mentions_schema(&property.value),
+        _ => false,
+    }
+}
+
+fn array_element_mentions_schema(element: &ArrayExpressionElement<'_>) -> bool {
+    match element {
+        ArrayExpressionElement::CallExpression(call) => call_mentions_schema(call),
+        ArrayExpressionElement::ObjectExpression(object) => object
+            .properties
+            .iter()
+            .any(object_property_mentions_schema),
+        ArrayExpressionElement::ArrayExpression(array) => {
+            array.elements.iter().any(array_element_mentions_schema)
+        }
         _ => false,
     }
 }
@@ -3565,6 +3623,9 @@ fn body_json_schema_argument_span(
 ) -> Option<Span> {
     let chain = static_member_chain(&call.callee)?;
     if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "body" && chain[2] == "json" {
+        if call.arguments.len() != 1 {
+            return None;
+        }
         let Argument::Identifier(identifier) = call.arguments.first()? else {
             return None;
         };
@@ -5501,6 +5562,36 @@ export default app;
         let diagnostic = extract(std::path::Path::new("app.js"), conditional_schema)
             .expect_err("conditional schema should fail");
         assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+        let wrapped_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = wrap(schema.string());
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), wrapped_schema)
+            .expect_err("schema hidden in call arguments should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+        let object_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = { value: schema.string() };
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), object_schema)
+            .expect_err("schema hidden in object values should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
+
+        let array_schema = r#"import { Sloppy, Results, schema } from "sloppy";
+const UserCreate = [schema.string()][0];
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), array_schema)
+            .expect_err("schema hidden in array elements should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_SCHEMA");
     }
 
     #[test]
@@ -5565,6 +5656,30 @@ export default app;
             .contains("data.sqlite(\"main\")"));
         assert!(app.routes[0].handler.source.contains("ctx.request.json()"));
         assert_eq!(app.capabilities.len(), 1);
+    }
+
+    #[test]
+    fn data_backed_body_json_with_extra_arguments_is_not_sanitized() {
+        let source = r#"import { Sloppy, Results, data, schema } from "sloppy";
+const UserCreate = schema.object({ name: schema.string() });
+const opts = {};
+const builder = Sloppy.createBuilder();
+builder.capabilities.addDatabase("data.main", {
+  provider: "sqlite",
+  access: "readwrite",
+  database: "users-api-sqlite-runtime.db",
+});
+const app = builder.build();
+app.mapPost("/users", (ctx) => Results.json({ body: ctx.body.json(UserCreate, opts) }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("data-backed handler body should be preserved for runtime execution");
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("ctx.body.json(UserCreate, opts)"));
+        assert!(!emitted_js.source.contains("ctx.body.json(undefined, opts)"));
     }
 
     #[test]
