@@ -28,6 +28,7 @@ extern "C" {
 #define SL_HTTP_TRANSPORT_DEFAULT_WRITE_TIMEOUT_MS 30000U
 #define SL_HTTP_TRANSPORT_DEFAULT_KEEP_ALIVE_IDLE_TIMEOUT_MS 5000U
 #define SL_HTTP_TRANSPORT_DEFAULT_MAX_REQUESTS_PER_CONNECTION 100U
+#define SL_HTTP_TRANSPORT_DEFAULT_MAX_PENDING_WRITE_BYTES 65536U
 
 typedef struct SlHttpPlatformConnection SlHttpPlatformConnection;
 typedef struct SlHttpTransportConnection SlHttpTransportConnection;
@@ -81,6 +82,7 @@ typedef struct SlHttpTransportConfig
     size_t request_arena_bytes;
     size_t read_chunk_bytes;
     size_t max_response_bytes;
+    size_t max_pending_write_bytes;
     /*
      * Timeout hooks in milliseconds. Zero uses the bounded transport defaults. Timers are
      * enforced by the platform transport loop and transition the connection/request to a
@@ -128,6 +130,10 @@ struct SlHttpTransportConnection
     bool write_completed;
     bool close_after_write;
     bool keep_alive_after_write;
+    bool streaming_response;
+    SlHttpResponse active_response;
+    size_t stream_chunk_index;
+    bool stream_final_written;
     SlDiag last_diag;
     bool slot_claimed;
 };

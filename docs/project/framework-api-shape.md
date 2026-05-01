@@ -246,10 +246,12 @@ non-streaming responses come first. Streaming/file responses are future HTTP/fra
 Result descriptors must validate safely in native conversion. Response schemas may be
 declared later through route options and Plan metadata.
 
-HTTP keep-alive is transport-owned, not a framework result API. HTTP-25.A/B/C may reuse one
-connection for sequential requests, but handlers still produce one buffered response at a
-time and no framework shape exposes pipelining, concurrent per-connection requests,
-chunked decoding, or streaming response writers.
+HTTP keep-alive and chunked transfer framing are transport-owned, not framework result
+APIs. HTTP-25.A/B/C may reuse one connection for sequential requests, and HTTP-25.D/E may
+decode chunked request bodies into bounded full-body storage or write an internal/native
+chunked response descriptor. Handlers still do not get a request streaming API, and no
+public framework shape exposes pipelining, concurrent per-connection requests,
+`Results.stream`, SSE/WebSockets, or file streaming.
 
 ## Services and DI
 

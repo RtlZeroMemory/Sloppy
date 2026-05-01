@@ -88,9 +88,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   close-after-response decision and defers HTTP/1.1 keep-alive, pipelining, chunked
   request decoding, and streaming response writing. HTTP-25.A/B/C adds bounded sequential
   keep-alive with no pipelining, idle timeout, max requests, lifecycle reset, and shutdown
-  close policy. Remaining HTTP transport debt is #444 chunked request decoding, #445
-  streaming response writing, #446 keep-alive/streaming stress and conformance, production
-  graceful-drain policy, production hardening, and middleware policy if ever scoped. This
+  close policy. HTTP-25.D/E adds bounded chunked request decoding and the first
+  internal/native chunked response writer. Remaining HTTP transport debt is #446
+  keep-alive/streaming stress and conformance, public request/response streaming APIs if
+  owner-approved, production graceful-drain policy, production hardening, and middleware policy if ever scoped. This
   is separate from ENGINE-12 because HTTP has parser, connection, body, and shutdown policy
   that sits above generic async completions.
 - Module/bootstrap completion: ENGINE-14 owns stdlib/bootstrap asset loading, app module
@@ -290,10 +291,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   middleware/result filters.
 - #433 `HTTP-25: HTTP/1.1 Keep-Alive and Streaming`: HTTP-25.A/B/C implements the bounded
   sequential keep-alive connection loop, idle timeout, max requests per connection,
-  lifecycle reset, close policy, and default localhost conformance. Deferred HTTP-25 work
-  remains #444 chunked request decoding, #445 chunked/streaming response writer, socket
-  backpressure, and #446 keep-alive/streaming stress/conformance. No pipelining,
-  concurrent requests on one connection, or production-edge HTTP claim is implied.
+  lifecycle reset, close policy, and default localhost conformance. HTTP-25.D/E adds
+  bounded chunked request decoding, rejected trailers, an internal/native chunked response
+  writer, and pending-write cap diagnostics. Deferred HTTP-25 work remains #446
+  keep-alive/streaming stress/conformance plus any future owner-approved public streaming
+  API, SSE/WebSocket/file streaming, or production hardening. No pipelining, concurrent
+  requests on one connection, or production-edge HTTP claim is implied.
 - Full route table/trie optimization, catch-all routes, optional segments, regex
   constraints, nested route groups, and ambiguity diagnostics beyond MAIN1-04's
   literal-before-parameter precedence policy.

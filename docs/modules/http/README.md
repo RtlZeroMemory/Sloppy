@@ -51,17 +51,20 @@ ENGINE-24 MVP. HTTP-25.A/B/C upgrades that path to bounded sequential HTTP/1.1
 keep-alive: HTTP/1.1 reuses connections by default, `Connection: close` forces close,
 HTTP/1.0 closes by policy, idle timeout and max requests bound reuse, and request-owned
 lifecycle state is reset after each completed response before the next request can
-dispatch. Pipelining remains unsupported and is rejected/closed deterministically. Chunked
-request decoding (#444), streaming response writing (#445), and keep-alive/streaming
-stress evidence (#446) remain separate work. This is not V8 transport conformance,
-benchmark evidence, production graceful-drain evidence, or production-edge HTTP evidence.
+dispatch. Pipelining remains unsupported and is rejected/closed deterministically.
+HTTP-25.D/E adds bounded `Transfer-Encoding: chunked` request decoding into the existing
+full-body request storage and the first internal/native chunked streaming response writer.
+Request streaming APIs, public `Results.stream`, SSE/WebSockets/file streaming, and #446
+keep-alive/streaming stress evidence remain separate work. This is not V8 transport
+conformance, benchmark evidence, production graceful-drain evidence, or production-edge
+HTTP evidence.
 ENGINE-17.E adds a V8-gated users API proof over `sloppy run --artifacts` and real
 localhost TCP requests for SQLite-backed GET/POST JSON handlers. That proof was
 evidence-only and did not introduce keep-alive. HTTP-25.A/B/C later makes the localhost
 transport sequentially keep-alive capable, so the same path can now carry a small app
 through compiler artifacts, request parsing/body policy, V8 handler execution, SQLite
 calls, response serialization, and TCP response bytes across bounded sequential requests.
-It does not add streaming, TLS, HTTP/2/3, WebSockets, middleware, benchmark evidence, or
+It does not add public response streaming APIs, TLS, HTTP/2/3, WebSockets, middleware, benchmark evidence, or
 production-edge HTTP readiness.
 ENGINE-19.BC registers the implemented HTTP evidence under explicit conformance names.
 `conformance.http.default_dispatch` runs the synthetic default non-V8 dispatch suite,
@@ -71,14 +74,16 @@ dispatch through real V8 handlers. These registrations are evidence organization
 HTTP behavior.
 There is still no production HTTP server, TLS, HTTP/2, HTTP/3, WebSockets, streaming parser
 API, middleware, cookies/sessions, static file server, compression, multipart upload,
-streaming responses, public TypeScript `app.run`, or broad response framework.
+public streaming response helpers, public TypeScript `app.run`, or broad response framework.
 
 Framework request/response ergonomics are locked in
 `docs/project/framework-api-shape.md`: explicit `ctx.route`, `ctx.query`, `ctx.header`, and
 `ctx.body.json(schema)` helpers first; safe validation problem responses; explicit
 `Results.*` descriptors first; buffered/non-streaming responses before files or streams.
-The current HTTP transport remains sequential-only and buffered; it does not implement
-pipelining, chunked request decoding, or streaming responses.
+The current HTTP transport remains sequential-only. It supports bounded full-body chunked
+request decoding and an internal/native chunked streaming response descriptor, but it does
+not expose request streaming, public JS response streaming helpers, pipelining, SSE,
+WebSockets, file streaming, or production HTTP behavior.
 
 ## Purpose
 
@@ -158,14 +163,19 @@ Implemented now:
   sequential request. `Connection: close`, HTTP/1.0, disabled keep-alive config, shutdown,
   unsafe error responses, and max-request exhaustion close after write. Idle timeout closes
   cleanly once. Pipelining and concurrent requests on one connection are not supported.
+- HTTP-25.D/E chunked/streaming lifecycle: `Transfer-Encoding: chunked` requests are
+  decoded before dispatch into the same bounded body bytes used by `ctx.request.text()` and
+  `ctx.request.json()`. Chunk trailers are rejected. Internal/native streaming responses
+  write `Transfer-Encoding: chunked`, one bounded frame at a time, followed by a final zero
+  chunk; keep-alive resumes only after that final chunk completes.
 
 Future scope:
 
 - streaming HTTP parser state;
 - production-edge HTTP proof beyond ENGINE-13.F's bounded smoke;
 - production server hardening if explicitly scoped later;
-- #444 chunked request decoding;
-- #445 chunked/streaming response writing;
+- public request streaming API;
+- public JavaScript `Results.stream` helper;
 - #446 keep-alive/streaming stress and conformance beyond the current smoke;
 - route table/trie or other optimized dispatch structure;
 - production HTTP response conversion and writing beyond the current dev MVP.
@@ -599,7 +609,7 @@ Implemented CTest coverage:
 - transport read-loop start on accepted connection, complete GET in one chunk, split
   request head, body in the same chunk as the head, body split across chunks, empty body,
   head-too-large rejection, malformed-head rejection, parser header-limit flow-through,
-  body-too-large rejection, Transfer-Encoding/chunked rejection, unsupported media
+  body-too-large rejection, unsupported transfer encodings, malformed chunked bodies, unsupported media
   rejection, pipelined request-byte rejection, request-ready internal hook observation,
   no-hook ready-request cleanup, cleanup after read/partial-body failure, and cleanup after
   ready request;
@@ -613,8 +623,8 @@ Implemented CTest coverage:
   success, sequential two-request keep-alive reuse, `Connection: close`, disabled
   keep-alive config, HTTP/1.0 close policy, idle timeout, max requests, 404 route miss, 405
   method mismatch, POST text body success, malformed input, body-too-large, unsupported
-  media type, unsupported `Transfer-Encoding`/chunked framing, response
-  `Content-Length`/managed `Connection` bytes, and cleanup/counter coherence; the same
+  media type, unsupported transfer encodings, chunked request decoding, chunked streaming
+  response framing, response `Content-Length`/managed `Connection` bytes, and cleanup/counter coherence; the same
   transport target also covers unsupported pipelining through the deterministic feed path;
 - synthetic dispatch missing plan handler failure before engine entry;
 - route parameter match through dispatch and context materialization;
@@ -645,8 +655,8 @@ Future tests:
 - broader HTTP server/socket integration tests;
 - future keep-alive stress/conformance tests for higher-volume sequential reuse, socket
   backpressure, and richer shutdown drain timing;
-- future chunked/streaming tests for decoding, response writer backpressure, body stream
-  lifetime, and cancellation;
+- #446 future keep-alive/streaming stress tests for higher-volume reuse, richer write
+  backpressure timing, and shutdown/client-disconnect stress beyond the current smoke;
 - fuzz target for route patterns;
 - broader response writer behavior beyond the current dev-only MVP.
 

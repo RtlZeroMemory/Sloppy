@@ -389,6 +389,17 @@ static bool sl_http_dispatch_find_header(const SlHttpRequestHead* request, SlStr
     return false;
 }
 
+static bool sl_http_dispatch_request_transfer_encoding_chunked(const SlHttpRequestHead* request)
+{
+    SlStr value = {0};
+
+    if (!sl_http_dispatch_find_header(request, sl_str_from_cstr("Transfer-Encoding"), &value)) {
+        return false;
+    }
+    return sl_http_dispatch_str_iequal(sl_http_dispatch_trim_ascii_space(value),
+                                       sl_str_from_cstr("chunked"));
+}
+
 static bool sl_http_dispatch_media_type_json(SlStr media_type)
 {
     return sl_http_dispatch_str_iequal(media_type, sl_str_from_cstr("application/json")) ||
@@ -431,7 +442,9 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (sl_http_dispatch_request_declares_transfer_encoding(request)) {
+    if (sl_http_dispatch_request_declares_transfer_encoding(request) &&
+        !sl_http_dispatch_request_transfer_encoding_chunked(request))
+    {
         return sl_http_dispatch_unsupported_body(arena, out_diag);
     }
 
@@ -441,9 +454,10 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     if (request->body.ptr == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (!sl_http_dispatch_find_header(request, sl_str_from_cstr("Content-Length"),
-                                      &content_length) ||
-        sl_str_is_empty(sl_http_dispatch_trim_ascii_space(content_length)))
+    if (!sl_http_dispatch_request_transfer_encoding_chunked(request) &&
+        (!sl_http_dispatch_find_header(request, sl_str_from_cstr("Content-Length"),
+                                       &content_length) ||
+         sl_str_is_empty(sl_http_dispatch_trim_ascii_space(content_length))))
     {
         return sl_http_dispatch_unsupported_body(arena, out_diag);
     }

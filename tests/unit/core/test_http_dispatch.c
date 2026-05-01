@@ -411,7 +411,7 @@ static int test_transfer_encoding_body_is_rejected_before_handler_call(void)
     }
 
     headers[0].name = sl_str_from_cstr("Transfer-Encoding");
-    headers[0].value = sl_str_from_cstr("chunked");
+    headers[0].value = sl_str_from_cstr("gzip");
     request.method = SL_HTTP_METHOD_GET;
     request.path = sl_str_from_cstr("/hello");
     request.headers = headers;

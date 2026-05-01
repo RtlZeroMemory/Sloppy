@@ -22,8 +22,10 @@ HTTP-25.A/B/C update: `core.http.transport` and
 `conformance.transport.localhost_mvp` now cover bounded sequential keep-alive behavior in
 the default non-V8 lane. Passing those tests proves local HTTP/1.1 sequential reuse, idle
 timeout, max requests, close policy, lifecycle reset, and deterministic pipelining
-rejection only. It does not prove V8 transport execution, streaming, chunked decoding,
-production graceful drain, benchmark/performance behavior, TLS, HTTP/2/3, or WebSockets.
+rejection. HTTP-25.D/E extends that lane with bounded chunked request decoding and
+internal/native chunked response writer correctness. It does not prove V8 transport
+execution, public streaming helpers, SSE/WebSockets/file streaming, production graceful
+drain, benchmark/performance behavior, TLS, HTTP/2/3, or WebSockets.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
@@ -49,9 +51,10 @@ ENGINE-24.F localhost transport smoke is default non-V8 correctness evidence ove
 libuv-backed loopback TCP transport MVP. HTTP-25.A/B/C extends that default localhost lane
 with bounded sequential HTTP/1.1 keep-alive, `Connection: close`, HTTP/1.0 close policy,
 idle timeout, max requests, request lifecycle reset, and deterministic pipelining
-rejection. It is still separate from V8 transport execution, benchmark/performance
-evidence, chunked decoding, streaming support, live-provider evidence, and production-edge
-HTTP readiness.
+rejection. HTTP-25.D/E adds chunked request decoding, internal chunked response streaming,
+final zero chunk emission, and pending-write cap coverage. It is still separate from V8
+transport execution, benchmark/performance evidence, public streaming helpers,
+SSE/WebSockets/file streaming, live-provider evidence, and production-edge HTTP readiness.
 ENGINE-17.E users API localhost proof is V8-gated evidence. It builds the source fixture
 with `sloppyc`, starts `sloppy run --artifacts`, sends real localhost TCP HTTP requests,
 and verifies SQLite/capability/result/body behavior. Passing it does not prove default

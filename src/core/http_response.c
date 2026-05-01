@@ -69,6 +69,19 @@ SlHttpResponse sl_http_response_problem(uint16_t status, SlBytes body)
     return response;
 }
 
+SlHttpResponse sl_http_response_stream(uint16_t status, SlStr content_type,
+                                       const SlHttpResponseStreamChunk* chunks, size_t chunk_count)
+{
+    SlHttpResponse response = {0};
+
+    response.status = status;
+    response.kind = SL_HTTP_RESPONSE_STREAM;
+    response.content_type = content_type;
+    response.stream_chunks = chunks;
+    response.stream_chunk_count = chunk_count;
+    return response;
+}
+
 static const char* sl_http_response_reason(uint16_t status)
 {
     switch (status) {
@@ -193,6 +206,7 @@ static bool sl_http_response_header_managed(SlStr name)
 {
     return sl_http_response_str_iequal(name, sl_str_from_cstr("Connection")) ||
            sl_http_response_str_iequal(name, sl_str_from_cstr("Content-Type")) ||
+           sl_http_response_str_iequal(name, sl_str_from_cstr("Transfer-Encoding")) ||
            sl_http_response_str_iequal(name, sl_str_from_cstr("Content-Length"));
 }
 
@@ -419,6 +433,10 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
     }
     if (options != NULL) {
         connection_policy = options->connection;
+    }
+
+    if (response->kind == SL_HTTP_RESPONSE_STREAM) {
+        return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
 
     body = response->status == 204U ? sl_bytes_empty() : response->body;

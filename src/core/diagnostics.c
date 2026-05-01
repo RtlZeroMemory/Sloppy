@@ -71,6 +71,24 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_PIPELINING_UNSUPPORTED:
         return sl_diag_literal("SLOPPY_E_HTTP_PIPELINING_UNSUPPORTED",
                                sizeof("SLOPPY_E_HTTP_PIPELINING_UNSUPPORTED") - 1U);
+    case SL_DIAG_HTTP_CHUNK_SIZE_INVALID:
+        return sl_diag_literal("SLOPPY_E_HTTP_CHUNK_SIZE_INVALID",
+                               sizeof("SLOPPY_E_HTTP_CHUNK_SIZE_INVALID") - 1U);
+    case SL_DIAG_HTTP_CHUNK_SIZE_OVERFLOW:
+        return sl_diag_literal("SLOPPY_E_HTTP_CHUNK_SIZE_OVERFLOW",
+                               sizeof("SLOPPY_E_HTTP_CHUNK_SIZE_OVERFLOW") - 1U);
+    case SL_DIAG_HTTP_CHUNK_DELIMITER_INVALID:
+        return sl_diag_literal("SLOPPY_E_HTTP_CHUNK_DELIMITER_INVALID",
+                               sizeof("SLOPPY_E_HTTP_CHUNK_DELIMITER_INVALID") - 1U);
+    case SL_DIAG_HTTP_CHUNK_FINAL_MISSING:
+        return sl_diag_literal("SLOPPY_E_HTTP_CHUNK_FINAL_MISSING",
+                               sizeof("SLOPPY_E_HTTP_CHUNK_FINAL_MISSING") - 1U);
+    case SL_DIAG_HTTP_TRAILERS_UNSUPPORTED:
+        return sl_diag_literal("SLOPPY_E_HTTP_TRAILERS_UNSUPPORTED",
+                               sizeof("SLOPPY_E_HTTP_TRAILERS_UNSUPPORTED") - 1U);
+    case SL_DIAG_HTTP_RESPONSE_BACKPRESSURE:
+        return sl_diag_literal("SLOPPY_E_HTTP_RESPONSE_BACKPRESSURE",
+                               sizeof("SLOPPY_E_HTTP_RESPONSE_BACKPRESSURE") - 1U);
     case SL_DIAG_HTTP_SHUTDOWN:
         return sl_diag_literal("SLOPPY_E_HTTP_SHUTDOWN", sizeof("SLOPPY_E_HTTP_SHUTDOWN") - 1U);
     case SL_DIAG_HTTP_TRANSPORT_CONFIG:
@@ -129,6 +147,12 @@ static bool sl_diag_is_http_code(SlDiagCode code)
     case SL_DIAG_HTTP_KEEP_ALIVE_IDLE_TIMEOUT:
     case SL_DIAG_HTTP_MAX_REQUESTS_REACHED:
     case SL_DIAG_HTTP_PIPELINING_UNSUPPORTED:
+    case SL_DIAG_HTTP_CHUNK_SIZE_INVALID:
+    case SL_DIAG_HTTP_CHUNK_SIZE_OVERFLOW:
+    case SL_DIAG_HTTP_CHUNK_DELIMITER_INVALID:
+    case SL_DIAG_HTTP_CHUNK_FINAL_MISSING:
+    case SL_DIAG_HTTP_TRAILERS_UNSUPPORTED:
+    case SL_DIAG_HTTP_RESPONSE_BACKPRESSURE:
     case SL_DIAG_HTTP_SHUTDOWN:
     case SL_DIAG_HTTP_TRANSPORT_CONFIG:
     case SL_DIAG_HTTP_BIND_FAILED:

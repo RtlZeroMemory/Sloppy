@@ -74,7 +74,10 @@ HTTP-25.A/B/C update: default localhost transport tests now include sequential H
 keep-alive reuse, `Connection: close`, keep-alive disabled config, HTTP/1.0 close policy,
 idle timeout, max requests, request lifecycle reset, shutdown cleanup, and deterministic
 pipelining rejection. These are correctness smoke/conformance checks, not benchmark,
-production-edge, chunked, streaming, TLS, HTTP/2/3, or WebSocket evidence.
+production-edge, TLS, HTTP/2/3, SSE, WebSocket, file streaming, or public JS
+streaming-helper evidence. HTTP-25.D/E adds default transport coverage for bounded chunked
+request decoding, malformed chunk diagnostics, internal chunked streaming response
+framing, final zero chunk emission, and pending-write backpressure rejection.
 
 - C unit tests;
 - Rust/`sloppyc` tests;
@@ -191,10 +194,10 @@ Runtime execution:
   localhost transport evidence. Default SQLite/capability success must not be reported as
   V8 bridge, PostgreSQL/SQL Server bridge, live-provider, async SQLite offload, package,
   benchmark, public alpha, or production-edge HTTP evidence;
-- future streaming tests must be reported as a separate HTTP/1.1 upgrade evidence set.
-  They must cover chunked request decoding, chunked/streaming response writing, socket
-  backpressure, and cancellation of partially consumed body streams. Future
-  keep-alive/streaming stress remains separate from the default HTTP-25.A/B/C smoke;
+- HTTP-25.D/E streaming tests are transport correctness smoke for bounded chunked request
+  decoding and internal/native chunked response writes. Future #446 keep-alive/streaming
+  stress remains separate from this default smoke and should cover higher-volume reuse,
+  richer socket backpressure timing, and shutdown/client-disconnect stress;
 - native async settlement skeleton before V8 Promise integration;
 - inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;
