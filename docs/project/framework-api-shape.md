@@ -173,6 +173,8 @@ providers, and remote config.
 Slop config exposes Slop-owned keys such as `Sloppy:Server:Host`,
 `Sloppy:Server:Port`, `Sloppy:Server:MaxConnections`,
 `Sloppy:Server:MaxRequestBodyBytes`, `Sloppy:Server:RequestTimeoutMs`,
+`Sloppy:Server:KeepAliveEnabled`, `Sloppy:Server:KeepAliveIdleTimeoutMs`,
+`Sloppy:Server:MaxRequestsPerConnection`,
 `Sloppy:Runtime:V8MicrotaskDrainLimit`, and
 `Sloppy:Providers:sqlite:main:*`. It does not expose raw libuv handles, raw SQLite
 pointers, or general V8 internals.
@@ -243,6 +245,11 @@ Implicit object-to-JSON may be considered later, but is not primary now. Buffere
 non-streaming responses come first. Streaming/file responses are future HTTP/framework work.
 Result descriptors must validate safely in native conversion. Response schemas may be
 declared later through route options and Plan metadata.
+
+HTTP keep-alive is transport-owned, not a framework result API. HTTP-25.A/B/C may reuse one
+connection for sequential requests, but handlers still produce one buffered response at a
+time and no framework shape exposes pipelining, concurrent per-connection requests,
+chunked decoding, or streaming response writers.
 
 ## Services and DI
 

@@ -70,6 +70,12 @@ metadata, redaction, and non-V8/V8 evidence boundaries separate.
 
 ## Test Categories
 
+HTTP-25.A/B/C update: default localhost transport tests now include sequential HTTP/1.1
+keep-alive reuse, `Connection: close`, keep-alive disabled config, HTTP/1.0 close policy,
+idle timeout, max requests, request lifecycle reset, shutdown cleanup, and deterministic
+pipelining rejection. These are correctness smoke/conformance checks, not benchmark,
+production-edge, chunked, streaming, TLS, HTTP/2/3, or WebSocket evidence.
+
 - C unit tests;
 - Rust/`sloppyc` tests;
 - compiler golden tests;
@@ -161,10 +167,12 @@ Runtime execution:
   numbers, external-runtime comparisons, or production-edge HTTP claims;
 - HTTP transport localhost smoke/conformance tests may use loopback TCP only. They should
   bind `127.0.0.1` with an ephemeral test port, send explicit HTTP/1.1 bytes through a raw
-  client helper, assert complete response bytes, assert `Connection: close`/`Content-Length`
-  policy for the implemented one-request-per-connection MVP, and verify cleanup/counter
-  coherence. They are correctness smoke, not benchmark, keep-alive, pipelining, streaming,
-  V8, live-provider, or production-edge evidence;
+  client helper, assert complete response bytes, assert `Connection: keep-alive` or
+  `Connection: close` policy plus `Content-Length`, and verify cleanup/counter coherence.
+  HTTP-25.A/B/C coverage is sequential only: no second dispatch before the first response
+  write completes, no concurrent requests on one connection, and deterministic close for
+  pipelining attempts. They are correctness smoke, not benchmark, streaming, V8,
+  live-provider, or production-edge evidence;
 - V8-gated users API transport tests may combine compiler artifacts, `sloppy run`,
   localhost TCP, request body handling, V8 handler execution, and SQLite bridge calls.
   They must still report the V8 SDK prerequisite explicitly and must not describe the
@@ -183,13 +191,10 @@ Runtime execution:
   localhost transport evidence. Default SQLite/capability success must not be reported as
   V8 bridge, PostgreSQL/SQL Server bridge, live-provider, async SQLite offload, package,
   benchmark, public alpha, or production-edge HTTP evidence;
-- future keep-alive and streaming tests must be reported as a separate HTTP/1.1 upgrade
-  evidence set. They must cover sequential requests per connection, read-loop resume only
-  after response write completion, idle timeout, max requests per connection, shutdown
-  drain/force-close behavior, request-arena and parser/body lifecycle reset between
-  requests, client close while idle or between requests, chunked request decoding,
-  chunked/streaming response writing, socket backpressure, and cancellation of partially
-  consumed body streams;
+- future streaming tests must be reported as a separate HTTP/1.1 upgrade evidence set.
+  They must cover chunked request decoding, chunked/streaming response writing, socket
+  backpressure, and cancellation of partially consumed body streams. Future
+  keep-alive/streaming stress remains separate from the default HTTP-25.A/B/C smoke;
 - native async settlement skeleton before V8 Promise integration;
 - inline worker-pool completion skeleton before real worker threads;
 - handler ID dispatch;

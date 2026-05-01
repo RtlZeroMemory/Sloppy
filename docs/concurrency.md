@@ -24,6 +24,14 @@ differences from ASP.NET Core, Node, Bun, and Deno.
 
 ## Current Implementation
 
+HTTP-25.A/B/C update: keep-alive in the current transport is sequential only. One
+connection may carry multiple HTTP/1.1 requests, but a second request is not dispatched
+until the first response write completes and request-owned state is reset. Idle
+keep-alive connections are bounded by an idle timer, per-connection request count is
+bounded, and shutdown closes idle keep-alive connections before they can accept new work.
+There is still no pipelining, concurrent request execution on one connection, streaming
+response body, or production graceful-drain claim.
+
 TASK 09.A implements the first `SlLoop` skeleton as a caller-backed, fixed-capacity native
 completion queue. It is deterministic and single-threaded: callbacks run synchronously on
 the caller thread through `sl_loop_run_once` or `sl_loop_drain`. It creates no threads,

@@ -18,6 +18,13 @@ testing philosophy in `docs/testing-strategy.md`.
 
 ## Current Phase
 
+HTTP-25.A/B/C update: `core.http.transport` and
+`conformance.transport.localhost_mvp` now cover bounded sequential keep-alive behavior in
+the default non-V8 lane. Passing those tests proves local HTTP/1.1 sequential reuse, idle
+timeout, max requests, close policy, lifecycle reset, and deterministic pipelining
+rejection only. It does not prove V8 transport execution, streaming, chunked decoding,
+production graceful drain, benchmark/performance behavior, TLS, HTTP/2/3, or WebSockets.
+
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
 standards scanning, Rust standards scanning, and a lightweight docs freshness structure
@@ -39,11 +46,12 @@ core backend/parser/dispatch state model. It is reported separately from V8-gate
 does not introduce throughput, latency, external-runtime comparison, or production-edge HTTP
 claims.
 ENGINE-24.F localhost transport smoke is default non-V8 correctness evidence over the
-libuv-backed loopback TCP transport MVP. It proves bounded local request/response bytes,
-one-request-per-connection, close-after-response, Content-Length-only bodies, deterministic
-failure responses, and cleanup coherence. It is still separate from V8 transport execution,
-benchmark/performance evidence, keep-alive/pipelining/streaming support, live-provider
-evidence, and production-edge HTTP readiness.
+libuv-backed loopback TCP transport MVP. HTTP-25.A/B/C extends that default localhost lane
+with bounded sequential HTTP/1.1 keep-alive, `Connection: close`, HTTP/1.0 close policy,
+idle timeout, max requests, request lifecycle reset, and deterministic pipelining
+rejection. It is still separate from V8 transport execution, benchmark/performance
+evidence, chunked decoding, streaming support, live-provider evidence, and production-edge
+HTTP readiness.
 ENGINE-17.E users API localhost proof is V8-gated evidence. It builds the source fixture
 with `sloppyc`, starts `sloppy run --artifacts`, sends real localhost TCP HTTP requests,
 and verifies SQLite/capability/result/body behavior. Passing it does not prove default
@@ -57,9 +65,10 @@ evidence. Skipped optional gates are not pass claims.
 ENGINE-19.BC adds first-class CTest registrations for the implemented V8, HTTP, and async
 evidence lanes: `conformance.http.default_dispatch`, `conformance.transport.localhost_mvp`,
 `conformance.async.*`, and V8-gated `conformance.v8.*`. These entries run existing
-validated executables under matrix-aligned names. Default gate success still does not prove
-V8 execution; V8-gated success still does not prove default, package, live-provider,
-benchmark, keep-alive, streaming, or production-edge HTTP behavior.
+validated executables under matrix-aligned names. Default gate success now includes the
+HTTP-25.A/B/C sequential keep-alive smoke only; it still does not prove V8 execution,
+package, live-provider, benchmark, chunked decoding, streaming, or production-edge HTTP
+behavior.
 ENGINE-19.D adds first-class CTest registrations for the implemented SQLite and capability
 evidence lanes: `conformance.sqlite.native_provider`,
 `conformance.capability.native_registry`, `conformance.capability.provider_executor`,

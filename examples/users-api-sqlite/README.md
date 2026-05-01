@@ -31,6 +31,8 @@ explicit `sloppyc build ... --out <dir>` plus `sloppy run --artifacts <dir>` pat
 the debuggable artifact workflow.
 
 This is not an ORM, migration framework, production HTTP edge, benchmark, public alpha
-claim, PostgreSQL bridge claim, or SQL Server bridge claim. SQLite bridge calls are still
-synchronous in the current V8 bridge; provider executor/offload conversion remains a
-separate provider-runtime task.
+claim, HTTP keep-alive stress claim, PostgreSQL bridge claim, or SQL Server bridge claim.
+The localhost transport is keep-alive-capable after HTTP-25.A/B/C, but this users API
+fixture remains V8-gated workflow evidence rather than streaming, chunked, pipelining, or
+production-edge HTTP evidence. SQLite bridge calls are still synchronous in the current V8
+bridge; provider executor/offload conversion remains a separate provider-runtime task.

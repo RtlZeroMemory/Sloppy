@@ -9,6 +9,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,6 +60,8 @@ typedef struct SlHttpHeader
 typedef struct SlHttpRequestHead
 {
     SlHttpMethod method;
+    uint8_t version_major;
+    uint8_t version_minor;
     SlStr path;
     SlStr raw_target;
     SlHttpHeader* headers;

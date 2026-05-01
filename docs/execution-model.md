@@ -37,6 +37,14 @@ This document does not implement:
 
 ## Current Phase
 
+HTTP-25.A/B/C update: the libuv localhost transport now supports bounded sequential
+HTTP/1.1 keep-alive. Eligible successful HTTP/1.1 responses write managed
+`Connection: keep-alive`, reset request-owned state after the response write callback, and
+return the same connection to idle/read-wait for one next request. `Connection: close`,
+HTTP/1.0, disabled keep-alive config, shutdown, unsafe error responses, and max-request
+exhaustion write `Connection: close` and close after write. Pipelined bytes are rejected
+deterministically; chunked request decoding and streaming responses remain #444/#445.
+
 `sloppyc` now has the ENGINE-02 compiler/Plan pipeline. It can compile a supported
 single-file Sloppy app into deterministic `app.plan.json`, `app.js`, and real handler-line
 `app.js.map` artifacts. The execution model beyond artifact emission is still staged. The
@@ -496,14 +504,17 @@ bind/listen and accepted connection admission. ENGINE-24.C wires the read/accumu
 piece and parks the request. ENGINE-24.D wires dispatch/write/close-after-response through
 a narrow internal dispatch callback and the existing response writer. ENGINE-24.E wires
 transport disconnect, timeout, and shutdown terminal paths. V8 transport conformance,
-provider proof, keep-alive, streaming, and production graceful drain remain deferred.
+provider proof, streaming, and production graceful drain remain deferred.
 
-The current CLI socket loop still writes `Connection: close`; keep-alive policy remains
-honestly disabled/deferred even though the backend state model can return a completed
-connection to `OPEN`. ENGINE-24.G preserves that policy for the reusable transport MVP and
-recommends a future `ENGINE-25: HTTP/1.1 Keep-Alive and Streaming` epic for the connection
-loop, idle timeout, max-requests cap, sequential request reset, chunked decoding,
-streaming response writer, and keep-alive stress/conformance.
+HTTP-25.A/B/C upgrades the CLI socket loop from close-after-response to bounded
+sequential HTTP/1.1 keep-alive. A connection may return to idle/read-wait only after the
+previous response write completes, request-owned state is reset, shutdown has not begun,
+the configured max-request count has not been reached, and the request/response lifecycle
+is safe to reuse. The loop still forces close for HTTP/1.0, explicit `Connection: close`,
+disabled keep-alive config, shutdown, unsafe error/body/parse failures, unsupported
+pipelining, and max-request exhaustion. Chunked request decoding, streaming response
+writers, keep-alive stress/conformance, and production graceful drain remain future
+HTTP-25 follow-ups.
 
 The current shutdown policy is bounded and honest: shutdown stops acceptance and rejects
 new request work, then the backend reaches stopped when active connection/request counters

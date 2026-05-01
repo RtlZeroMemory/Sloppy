@@ -43,6 +43,24 @@ static int expect_response_bytes(SlHttpResponse response, SlBytes expected)
     return expect_true(sl_bytes_equal(bytes, expected));
 }
 
+static int expect_response_with_options(SlHttpResponse response,
+                                        const SlHttpResponseWriteOptions* options,
+                                        const char* expected)
+{
+    unsigned char buffer[1024];
+    SlBytes bytes = {0};
+
+    if (expect_status(
+            sl_http_response_write_with_options(&response, options, buffer, sizeof(buffer), &bytes),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+
+    return expect_true(bytes.length == strlen(expected) &&
+                       memcmp(bytes.ptr, expected, bytes.length) == 0);
+}
+
 static int test_text_200_exact_bytes(void)
 {
     return expect_response(sl_http_response_text(200U, sl_str_from_cstr("hello")),
@@ -57,6 +75,17 @@ static int test_json_200_exact_bytes(void)
                                                         sizeof("{\"ok\":true}") - 1U)),
         "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json; "
         "charset=utf-8\r\nContent-Length: 11\r\n\r\n{\"ok\":true}");
+}
+
+static int test_keep_alive_connection_policy_exact_bytes(void)
+{
+    SlHttpResponseWriteOptions options = {0};
+
+    options.connection = SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE;
+    return expect_response_with_options(
+        sl_http_response_text(200U, sl_str_from_cstr("hello")), &options,
+        "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 5\r\n\r\nhello");
 }
 
 static int test_binary_body_exact_bytes(void)
@@ -232,6 +261,11 @@ int main(void)
     }
 
     result = run_test("test_json_200_exact_bytes", test_json_200_exact_bytes);
+    if (result != 0) {
+        return result;
+    }
+    result = run_test("test_keep_alive_connection_policy_exact_bytes",
+                      test_keep_alive_connection_policy_exact_bytes);
     if (result != 0) {
         return result;
     }

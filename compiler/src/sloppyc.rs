@@ -493,6 +493,9 @@ impl ConfigurationModel {
             ("Sloppy:Server:Port", json!(5173)),
             ("Sloppy:Server:MaxConnections", json!(4)),
             ("Sloppy:Server:MaxRequestBodyBytes", json!(8192)),
+            ("Sloppy:Server:KeepAliveEnabled", json!(true)),
+            ("Sloppy:Server:KeepAliveIdleTimeoutMs", json!(5000)),
+            ("Sloppy:Server:MaxRequestsPerConnection", json!(100)),
             ("Sloppy:Server:RequestTimeoutMs", json!(30000)),
             ("Sloppy:Runtime:V8MicrotaskDrainLimit", json!(64)),
         ] {
@@ -763,6 +766,9 @@ fn canonical_config_segment(segment: &str) -> String {
         "PORT" => "Port".to_string(),
         "MAXCONNECTIONS" => "MaxConnections".to_string(),
         "MAXREQUESTBODYBYTES" => "MaxRequestBodyBytes".to_string(),
+        "KEEPALIVEENABLED" => "KeepAliveEnabled".to_string(),
+        "KEEPALIVEIDLETIMEOUTMS" => "KeepAliveIdleTimeoutMs".to_string(),
+        "MAXREQUESTSPERCONNECTION" => "MaxRequestsPerConnection".to_string(),
         "REQUESTTIMEOUTMS" => "RequestTimeoutMs".to_string(),
         "V8MICROTASKDRAINLIMIT" => "V8MicrotaskDrainLimit".to_string(),
         "DATABASE" => "database".to_string(),
@@ -3591,7 +3597,10 @@ impl AstSpan for Expression<'_> {
 mod tests {
     use std::{ffi::OsString, fs};
 
-    use super::{command_from_args, extract, route_pattern_supported, BuildOptions, CliCommand};
+    use super::{
+        canonical_config_key, command_from_args, extract, route_pattern_supported, BuildOptions,
+        CliCommand,
+    };
 
     #[test]
     fn no_argument_prints_help() {
@@ -3638,6 +3647,22 @@ mod tests {
                     port: Some(5173),
                 },
             }
+        );
+    }
+
+    #[test]
+    fn keep_alive_environment_override_keys_are_canonicalized() {
+        assert_eq!(
+            canonical_config_key("SLOPPY:SERVER:KEEPALIVEENABLED"),
+            "Sloppy:Server:KeepAliveEnabled"
+        );
+        assert_eq!(
+            canonical_config_key("SLOPPY:SERVER:KEEPALIVEIDLETIMEOUTMS"),
+            "Sloppy:Server:KeepAliveIdleTimeoutMs"
+        );
+        assert_eq!(
+            canonical_config_key("SLOPPY:SERVER:MAXREQUESTSPERCONNECTION"),
+            "Sloppy:Server:MaxRequestsPerConnection"
         );
     }
 

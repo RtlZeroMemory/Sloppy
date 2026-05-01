@@ -22,6 +22,18 @@
         "value": "127.0.0.1"
       },
       {
+        "key": "Sloppy:Server:KeepAliveEnabled",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": true
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveIdleTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5000
+      },
+      {
         "key": "Sloppy:Server:MaxConnections",
         "sensitive": false,
         "source": "built-in defaults",
@@ -32,6 +44,12 @@
         "sensitive": false,
         "source": "built-in defaults",
         "value": 8192
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestsPerConnection",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 100
       },
       {
         "key": "Sloppy:Server:Port",

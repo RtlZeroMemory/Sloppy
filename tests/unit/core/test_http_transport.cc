@@ -279,8 +279,19 @@ static SlHttpTransportConfig small_config(ReadyHook* hook)
     config.parse.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
     config.parse.max_total_header_bytes = 256U;
     config.parse.max_body_length = 32U;
+    config.keep_alive_disabled = true;
     config.on_request_ready = hook == nullptr ? nullptr : ready_hook;
     config.on_request_ready_user = hook;
+    return config;
+}
+
+static SlHttpTransportConfig keep_alive_config(ReadyHook* hook)
+{
+    SlHttpTransportConfig config = small_config(hook);
+
+    config.keep_alive_disabled = false;
+    config.keep_alive_idle_timeout_ms = 1000U;
+    config.max_requests_per_connection = 4U;
     return config;
 }
 
@@ -904,7 +915,7 @@ static int test_body_policy_and_pipelining_rejections(void)
                           bytes_from_cstr("GET /one HTTP/1.1\r\n\r\nGET /two HTTP/1.1\r\n\r\n"),
                           &diag),
                       SL_STATUS_UNSUPPORTED) != 0 ||
-        diag.code != SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED)
+        diag.code != SL_DIAG_HTTP_PIPELINING_UNSUPPORTED)
     {
         stop_one_connection(&server, &client);
         return 63;
@@ -1013,6 +1024,220 @@ static int test_dispatch_success_writes_response_and_closes(void)
     {
         stop_one_connection(&server, &client);
         return 81;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int poll_until_connection_state(SlHttpTransportServer* server, ClientConnect* client,
+                                       SlHttpTransportConnectionState state, size_t min_read)
+{
+    SlDiag diag = {};
+
+    for (size_t index = 0U; index < 512U; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(server, &diag), SL_STATUS_OK) != 0) {
+            return 1;
+        }
+        (void)uv_run(&client->loop, UV_RUN_NOWAIT);
+        if (server->connections[0].state == state && client->read_length >= min_read) {
+            return 0;
+        }
+        uv_sleep(1U);
+    }
+    return 2;
+}
+
+static int test_keep_alive_two_sequential_requests_reuse_connection(void)
+{
+    static const char first_response[] =
+        "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 6\r\n\r\nhello\n";
+    static const char second_response[] =
+        "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 7\r\n\r\nsecond\n";
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    config = keep_alive_config(nullptr);
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("hello\n"));
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 820;
+    }
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 821;
+    }
+    if (expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0) {
+        return 822;
+    }
+    if (connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 823;
+    }
+    if (write_client_bytes(&client, "GET /first HTTP/1.1\r\nHost: local\r\n\r\n") != 0) {
+        stop_one_connection(&server, &client);
+        return 824;
+    }
+    if (poll_until_connection_state(&server, &client,
+                                    SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE,
+                                    sizeof(first_response) - 1U) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 825;
+    }
+    if (dispatch.count != 1U || server.backend.active_requests != 0U ||
+        server.backend.active_connections != 1U)
+    {
+        stop_one_connection(&server, &client);
+        return 826;
+    }
+
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("second\n"));
+    if (write_client_bytes(&client, "GET /second HTTP/1.1\r\nHost: local\r\n\r\n") != 0 ||
+        poll_until_connection_state(
+            &server, &client, SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE,
+            (sizeof(first_response) - 1U) + (sizeof(second_response) - 1U)) != 0 ||
+        dispatch.count != 2U || server.connections[0].core.request_count != 2U ||
+        server.connections[0].request_started || server.backend.active_requests != 0U ||
+        server.backend.active_connections != 1U)
+    {
+        stop_one_connection(&server, &client);
+        return 83;
+    }
+
+    if (expect_bytes_equal(sl_bytes_from_parts(client.read_buffer, client.read_length),
+                           "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Type: "
+                           "text/plain; charset=utf-8\r\nContent-Length: 6\r\n\r\nhello\n"
+                           "HTTP/1.1 200 OK\r\nConnection: keep-alive\r\nContent-Type: "
+                           "text/plain; charset=utf-8\r\nContent-Length: 7\r\n\r\nsecond\n") != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 84;
+    }
+
+    if (server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE) {
+        stop_one_connection(&server, &client);
+        return 89;
+    }
+    if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0) {
+        close_client(&client);
+        return 85;
+    }
+    if (server.shutdown_idle_closes != 1U) {
+        close_client(&client);
+        return 86;
+    }
+    if (sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U)
+    {
+        close_client(&client);
+        return 87;
+    }
+    if (expect_status(sl_http_transport_server_dispose(&server, &diag), SL_STATUS_OK) != 0) {
+        close_client(&client);
+        return 88;
+    }
+
+    close_client(&client);
+    return 0;
+}
+
+static int test_keep_alive_close_disabled_http10_and_max_requests(void)
+{
+    static const char close_response[] =
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain; "
+        "charset=utf-8\r\nContent-Length: 3\r\n\r\nok\n";
+
+    for (size_t index = 0U; index < 4U; index += 1U) {
+        SlHttpTransportConfig config = keep_alive_config(nullptr);
+        DispatchHook dispatch = {};
+        SlHttpTransportServer server = {};
+        SlBytes response = {};
+
+        dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("ok\n"));
+        config.dispatch = dispatch_hook;
+        config.dispatch_user = &dispatch;
+        if (index == 0U) {
+            config.keep_alive_disabled = true;
+        }
+        if (index == 3U) {
+            config.max_requests_per_connection = 1U;
+        }
+
+        const char* request = index == 1U   ? "GET /close HTTP/1.1\r\nHost: local\r\nConnection: "
+                                              "close\r\n\r\n"
+                              : index == 2U ? "GET /old HTTP/1.0\r\nHost: local\r\n\r\n"
+                                            : "GET /ok HTTP/1.1\r\nHost: local\r\n\r\n";
+        if (run_localhost_request(&config, request, &response, &server, &dispatch) != 0 ||
+            expect_bytes_equal(response, close_response) != 0)
+        {
+            return 85 + (int)index;
+        }
+        if (index == 1U && server.client_close_requests != 1U) {
+            return 90;
+        }
+        if (index == 3U && server.max_requests_reached != 1U) {
+            return 91;
+        }
+    }
+    return 0;
+}
+
+static int test_keep_alive_idle_timeout_closes_once(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+
+    config = keep_alive_config(nullptr);
+    config.keep_alive_idle_timeout_ms = 1U;
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("ok\n"));
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        write_client_bytes(&client, "GET /idle HTTP/1.1\r\nHost: local\r\n\r\n") != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 92;
+    }
+
+    for (size_t poll = 0U; poll < 512U && server.backend.active_connections != 0U; poll += 1U) {
+        if (expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0) {
+            stop_one_connection(&server, &client);
+            return 93;
+        }
+        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        uv_sleep(1U);
+    }
+    if (server.idle_timeouts != 1U || server.backend.active_connections != 0U ||
+        server.backend.active_requests != 0U)
+    {
+        stop_one_connection(&server, &client);
+        return 94;
     }
 
     stop_one_connection(&server, &client);
@@ -1503,6 +1728,18 @@ int main(void)
         return result;
     }
     result = test_dispatch_success_writes_response_and_closes();
+    if (result != 0) {
+        return result;
+    }
+    result = test_keep_alive_two_sequential_requests_reuse_connection();
+    if (result != 0) {
+        return result;
+    }
+    result = test_keep_alive_close_disabled_http10_and_max_requests();
+    if (result != 0) {
+        return result;
+    }
+    result = test_keep_alive_idle_timeout_closes_once();
     if (result != 0) {
         return result;
     }
