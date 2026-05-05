@@ -613,6 +613,20 @@ unknown, unavailable, V8-disabled, provider, transport, and dependency-missing f
 failures. `runtime_feature_inactive_sqlite_intrinsic.snap` pins the stdlib missing-intrinsic
 message for `provider.sqlite`.
 
+CORE-TIME-01.A/B adds stable Time diagnostics before native timers land:
+
+- `SLOPPY_E_TIME_TIMEOUT` for timeout/deadline expiry;
+- `SLOPPY_E_TIME_CANCELLED` for caller/app/request cancellation;
+- `SLOPPY_E_TIME_TIMER_DISPOSED` for disposed timer, interval, job, or fake-clock handles;
+- `SLOPPY_E_TIME_INVALID_DELAY` for non-finite, negative, or overflow-prone delay values;
+- `SLOPPY_E_TIME_DEADLINE_EXPIRED` for already-expired deadlines where scheduling is required;
+- `SLOPPY_E_TIME_INTERVAL_OVERFLOW` for bounded tick/job queue overflow;
+- `SLOPPY_E_TIME_SCHEDULE_SKIPPED` for no-overlap scheduled runs skipped by policy;
+- `SLOPPY_E_TIME_FAKE_CLOCK_MISUSE` for disposed or misused fake clocks.
+
+Missing or inactive `stdlib.time` uses the runtime-feature diagnostics above. The initial
+renderer goldens cover timeout, cancellation, disposed timer, and invalid delay shapes.
+
 App/request lifecycle diagnostics:
 
 - startup storage/init failure uses `SLOPPY_E_LIFECYCLE_START_FAILED`;
@@ -856,6 +870,8 @@ Diagnostics foundation is accepted when:
 - CORE-FS-01.I/J covers filesystem capability visibility through
   `SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE`, `stdlib.fs.capabilities`, and
   `stdlib.fs.watch` doctor/audit goldens;
+- CORE-TIME-01.A/B covers the initial Time diagnostic code registry and representative
+  JSON goldens for timeout, cancellation, disposed timer, and invalid delay;
 - diagnostics can be attached to `SlStatus`-returning operations without replacing
   `SlStatus`;
 - output redacts secrets;

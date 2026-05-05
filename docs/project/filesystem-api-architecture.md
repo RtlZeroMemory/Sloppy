@@ -184,6 +184,11 @@ coalescing behavior, or recursive watch support. Directory modify detection is b
 entry kind/size changes visible through the current stat/list contract; richer mtime and
 rename fidelity belongs with the later diagnostics/conformance hardening slice.
 
+CORE-TIME-01.H is the scoped follow-up for accepting `signal`, `deadline`, and any selected
+timeout option shape on filesystem operations. That integration must not route runtime
+artifact loading through app filesystem policy and must not broaden filesystem behavior
+beyond Time concept alignment.
+
 Blocking file work is submitted through the Slop-owned executor/offload path. Worker
 callbacks operate on owned request data and settle JavaScript promises back on the V8
 owner thread.

@@ -45,6 +45,18 @@ sl_feature_descriptor_make(SlRuntimeFeatureId id, SlRuntimeFeatureKind kind, SlS
     return descriptor;
 }
 
+static SlRuntimeFeatureDescriptor sl_feature_time_descriptor(SlRuntimeFeatureId id)
+{
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.time", sizeof("stdlib.time") - 1U),
+        sl_feature_literal("time stdlib", sizeof("time stdlib") - 1U),
+        sl_feature_literal("sloppy/time", sizeof("sloppy/time") - 1U),
+        sl_feature_literal("__sloppy.time", sizeof("__sloppy.time") - 1U),
+        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true, true,
+        true);
+}
+
 static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
                                         const SlRuntimeFeatureAvailability* availability)
@@ -119,6 +131,8 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
             sl_feature_literal("data stdlib", sizeof("data stdlib") - 1U),
             sl_feature_literal("sloppy/data", sizeof("sloppy/data") - 1U), sl_str_empty(),
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true);
+    case SL_RUNTIME_FEATURE_STDLIB_TIME:
+        return sl_feature_time_descriptor(id);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_STDLIB,
@@ -219,6 +233,11 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.data"), SL_FEATURE_STR("data stdlib"),
          SL_FEATURE_STR("sloppy/data"), SL_FEATURE_EMPTY,
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true},
+        {SL_RUNTIME_FEATURE_STDLIB_TIME, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.time"), SL_FEATURE_STR("time stdlib"),
+         SL_FEATURE_STR("sloppy/time"), SL_FEATURE_STR("__sloppy.time"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
+         true, true},
         {SL_RUNTIME_FEATURE_STDLIB_FS, SL_RUNTIME_FEATURE_KIND_STDLIB, SL_FEATURE_STR("stdlib.fs"),
          SL_FEATURE_STR("filesystem stdlib"), SL_FEATURE_STR("sloppy/fs"),
          SL_FEATURE_STR("__sloppy.fs"),

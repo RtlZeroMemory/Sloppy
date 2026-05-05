@@ -12,6 +12,7 @@ stdlib/sloppy/
   index.js
   data.js
   fs.js
+  time.js
   results.js
   schema.js
   app.js
@@ -32,6 +33,8 @@ The current modules implement the first app-host foundation and developer ergono
 facade. `index.js` re-exports frozen `Sloppy`, `data`, `sql`, filesystem API namespaces,
 `Results`, and `schema`
 objects. The implemented `Results.*` helpers return plain frozen descriptor objects.
+`time.js` currently publishes the CORE-TIME-01.A/B API names and stable error classes while
+failing closed until the native timer/V8 bridge slice lands.
 `schema` exposes a small validation skeleton for string, number, boolean, and object
 shapes.
 `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` expose the CORE-FS-01.G filesystem

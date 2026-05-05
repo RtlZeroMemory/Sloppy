@@ -12,6 +12,7 @@ use std::{
 pub enum ImportKind {
     Relative(PathBuf),
     SlopStdlib,
+    SlopTime,
     SlopFilesystem,
     SqliteProvider,
     UnresolvedRelative(String),
@@ -28,6 +29,9 @@ pub fn classify_import(from_path: &Path, specifier: &str) -> ImportKind {
     }
     if specifier == "sloppy" {
         return ImportKind::SlopStdlib;
+    }
+    if specifier == "sloppy/time" {
+        return ImportKind::SlopTime;
     }
     if specifier == "sloppy/fs" {
         return ImportKind::SlopFilesystem;
@@ -84,6 +88,10 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/providers/sqlite"),
             ImportKind::SqliteProvider
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/time"),
+            ImportKind::SlopTime
         );
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/fs"),

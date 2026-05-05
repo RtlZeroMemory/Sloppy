@@ -6,6 +6,7 @@
     "sloppy/index.js",
     "sloppy/data.js",
     "sloppy/fs.js",
+    "sloppy/time.js",
     "sloppy/providers/sqlite.js",
     "sloppy/results.js",
     "sloppy/schema.js",

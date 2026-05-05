@@ -231,6 +231,53 @@ static bool sl_diag_is_lifecycle_code(SlDiagCode code)
     }
 }
 
+static SlStr sl_diag_time_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_TIME_TIMEOUT:
+        return sl_diag_literal("SLOPPY_E_TIME_TIMEOUT", sizeof("SLOPPY_E_TIME_TIMEOUT") - 1U);
+    case SL_DIAG_TIME_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_TIME_CANCELLED", sizeof("SLOPPY_E_TIME_CANCELLED") - 1U);
+    case SL_DIAG_TIME_TIMER_DISPOSED:
+        return sl_diag_literal("SLOPPY_E_TIME_TIMER_DISPOSED",
+                               sizeof("SLOPPY_E_TIME_TIMER_DISPOSED") - 1U);
+    case SL_DIAG_TIME_INVALID_DELAY:
+        return sl_diag_literal("SLOPPY_E_TIME_INVALID_DELAY",
+                               sizeof("SLOPPY_E_TIME_INVALID_DELAY") - 1U);
+    case SL_DIAG_TIME_DEADLINE_EXPIRED:
+        return sl_diag_literal("SLOPPY_E_TIME_DEADLINE_EXPIRED",
+                               sizeof("SLOPPY_E_TIME_DEADLINE_EXPIRED") - 1U);
+    case SL_DIAG_TIME_INTERVAL_OVERFLOW:
+        return sl_diag_literal("SLOPPY_E_TIME_INTERVAL_OVERFLOW",
+                               sizeof("SLOPPY_E_TIME_INTERVAL_OVERFLOW") - 1U);
+    case SL_DIAG_TIME_SCHEDULE_SKIPPED:
+        return sl_diag_literal("SLOPPY_E_TIME_SCHEDULE_SKIPPED",
+                               sizeof("SLOPPY_E_TIME_SCHEDULE_SKIPPED") - 1U);
+    case SL_DIAG_TIME_FAKE_CLOCK_MISUSE:
+        return sl_diag_literal("SLOPPY_E_TIME_FAKE_CLOCK_MISUSE",
+                               sizeof("SLOPPY_E_TIME_FAKE_CLOCK_MISUSE") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static bool sl_diag_is_time_code(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_TIME_TIMEOUT:
+    case SL_DIAG_TIME_CANCELLED:
+    case SL_DIAG_TIME_TIMER_DISPOSED:
+    case SL_DIAG_TIME_INVALID_DELAY:
+    case SL_DIAG_TIME_DEADLINE_EXPIRED:
+    case SL_DIAG_TIME_INTERVAL_OVERFLOW:
+    case SL_DIAG_TIME_SCHEDULE_SKIPPED:
+    case SL_DIAG_TIME_FAKE_CLOCK_MISUSE:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool sl_diag_str_is_valid(SlStr str)
 {
     return str.length == 0U || str.ptr != NULL;
@@ -624,6 +671,9 @@ SlStr sl_diag_code_name(SlDiagCode code)
     }
     if (sl_diag_is_lifecycle_code(code)) {
         return sl_diag_lifecycle_code_name(code);
+    }
+    if (sl_diag_is_time_code(code)) {
+        return sl_diag_time_code_name(code);
     }
 
     switch (code) {

@@ -177,6 +177,7 @@ struct ExtractedApp {
     configuration: Option<ConfigurationPlan>,
     schemas: Vec<SchemaMetadata>,
     config_reads: Vec<ConfigReadMetadata>,
+    uses_time_runtime: bool,
     uses_fs_runtime: bool,
 }
 
@@ -300,6 +301,7 @@ struct AppState {
     results_imported: bool,
     data_imported: bool,
     schema_imported: bool,
+    time_imported: bool,
     fs_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
@@ -331,6 +333,7 @@ impl AppState {
             results_imported: false,
             data_imported: false,
             schema_imported: false,
+            time_imported: false,
             fs_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
@@ -1263,6 +1266,7 @@ fn extract_entry(
         configuration: None,
         schemas: state.schemas,
         config_reads: state.config_reads,
+        uses_time_runtime: state.time_imported,
         uses_fs_runtime: state.fs_imported,
     })
 }
@@ -1386,6 +1390,56 @@ fn extract_import(
                     if matches!(
                         imported,
                         "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
+                    ) {
+                        state.unsupported_import_alias = true;
+                    }
+                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
+                }
+            }
+        } else {
+            state.unsupported_import_specifier =
+                Some((import_source.to_string(), import.source.span));
+        }
+        return Ok(());
+    }
+
+    if import_source == "sloppy/time" {
+        if let Some(specifiers) = &import.specifiers {
+            if specifiers.is_empty() {
+                state.unsupported_import_specifier =
+                    Some((import_source.to_string(), import.source.span));
+                return Ok(());
+            }
+            for specifier in specifiers {
+                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                    state.unsupported_import_specifier =
+                        Some((import_source.to_string(), import.source.span));
+                    return Ok(());
+                };
+                let imported = specifier.imported.name().as_str();
+                let local = specifier.local.name.as_str();
+                if matches!(
+                    imported,
+                    "Time"
+                        | "Deadline"
+                        | "CancellationController"
+                        | "TimeoutError"
+                        | "CancelledError"
+                        | "InvalidDeadlineError"
+                        | "TimerDisposedError"
+                ) && imported == local
+                {
+                    state.time_imported = true;
+                } else {
+                    if matches!(
+                        imported,
+                        "Time"
+                            | "Deadline"
+                            | "CancellationController"
+                            | "TimeoutError"
+                            | "CancelledError"
+                            | "InvalidDeadlineError"
+                            | "TimerDisposedError"
                     ) {
                         state.unsupported_import_alias = true;
                     }
@@ -5528,10 +5582,19 @@ fn emit_plan(
             "sourceMaps": true
         }
     });
+    let mut required_features = Vec::new();
+    if app.uses_time_runtime {
+        required_features.push("stdlib.time");
+        value["strongPlan"]["evidence"]["time"] = json!(true);
+        value["features"]["time"] = json!(true);
+    }
     if app.uses_fs_runtime {
-        value["requiredFeatures"] = json!(["stdlib.fs"]);
+        required_features.push("stdlib.fs");
         value["strongPlan"]["evidence"]["filesystem"] = json!(true);
         value["features"]["fileSystem"] = json!(true);
+    }
+    if !required_features.is_empty() {
+        value["requiredFeatures"] = json!(required_features);
     }
     if let Some(configuration) = configuration {
         value["configuration"] = configuration;
@@ -5591,66 +5654,49 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         "  throw new Error(\"Sloppy bootstrap runtime was not loaded\");",
     );
     push_generated_line(&mut output, &mut generated_line, "}");
-    if app.uses_data_runtime && app.uses_fs_runtime {
+    let mut runtime_exports = vec!["Results"];
+    if app.uses_data_runtime {
+        runtime_exports.push("data");
+    }
+    if app.uses_time_runtime {
+        runtime_exports.extend([
+            "Time",
+            "Deadline",
+            "CancellationController",
+            "TimeoutError",
+            "CancelledError",
+            "InvalidDeadlineError",
+            "TimerDisposedError",
+        ]);
+    }
+    if app.uses_fs_runtime {
+        runtime_exports.extend(["File", "Directory", "Path", "FileHandle", "FileWatcher"]);
+    }
+    push_generated_line(
+        &mut output,
+        &mut generated_line,
+        &format!(
+            "const {{ {} }} = __sloppyRuntime;",
+            runtime_exports.join(", ")
+        ),
+    );
+    if app.uses_data_runtime && needs_provider_open_helper {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "const { Results, data, File, Directory, Path, FileHandle, FileWatcher } = __sloppyRuntime;",
+            "function __sloppy_open_data_provider(kind, token) {",
         );
-        if needs_provider_open_helper {
-            push_generated_line(
-                &mut output,
-                &mut generated_line,
-                "function __sloppy_open_data_provider(kind, token) {",
-            );
-            push_generated_line(
-                &mut output,
-                &mut generated_line,
-                "  if (kind === \"sqlite\") { return data.sqlite(token); }",
-            );
-            push_generated_line(
-                &mut output,
-                &mut generated_line,
-                "  throw new Error(`sloppy: ${kind} provider bridge unavailable`);",
-            );
-            push_generated_line(&mut output, &mut generated_line, "}");
-        }
-    } else if app.uses_data_runtime {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "const { Results, data } = __sloppyRuntime;",
+            "  if (kind === \"sqlite\") { return data.sqlite(token); }",
         );
-        if needs_provider_open_helper {
-            push_generated_line(
-                &mut output,
-                &mut generated_line,
-                "function __sloppy_open_data_provider(kind, token) {",
-            );
-            push_generated_line(
-                &mut output,
-                &mut generated_line,
-                "  if (kind === \"sqlite\") { return data.sqlite(token); }",
-            );
-            push_generated_line(
-                &mut output,
-                &mut generated_line,
-                "  throw new Error(`sloppy: ${kind} provider bridge unavailable`);",
-            );
-            push_generated_line(&mut output, &mut generated_line, "}");
-        }
-    } else if app.uses_fs_runtime {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "const { Results, File, Directory, Path, FileHandle, FileWatcher } = __sloppyRuntime;",
+            "  throw new Error(`sloppy: ${kind} provider bridge unavailable`);",
         );
-    } else {
-        push_generated_line(
-            &mut output,
-            &mut generated_line,
-            "const { Results } = __sloppyRuntime;",
-        );
+        push_generated_line(&mut output, &mut generated_line, "}");
     }
     push_generated_line(&mut output, &mut generated_line, "");
 
@@ -6271,6 +6317,7 @@ mod tests {
             configuration: None,
             schemas: Vec::new(),
             config_reads: Vec::new(),
+            uses_time_runtime: false,
             uses_fs_runtime: false,
         };
         config
@@ -7614,6 +7661,39 @@ export default app;
     }
 
     #[test]
+    fn sloppy_time_import_emits_plan_required_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { Time, Deadline, CancellationController } from "sloppy/time";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/time import should be recognized");
+        assert!(app.uses_time_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(
+            value["requiredFeatures"],
+            serde_json::json!(["stdlib.time"])
+        );
+        assert_eq!(value["features"]["time"], serde_json::json!(true));
+        assert_eq!(
+            value["strongPlan"]["evidence"]["time"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
     fn side_effect_sloppy_fs_import_is_rejected() {
         let source = r#"import { Sloppy, Results } from "sloppy";
 import "sloppy/fs";
@@ -7627,6 +7707,22 @@ export default app;
         assert!(diagnostic
             .message
             .contains("unsupported import specifier \"sloppy/fs\""));
+    }
+
+    #[test]
+    fn side_effect_sloppy_time_import_is_rejected() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import "sloppy/time";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("side-effect sloppy/time import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
+        assert!(diagnostic
+            .message
+            .contains("unsupported import specifier \"sloppy/time\""));
     }
 
     #[test]
