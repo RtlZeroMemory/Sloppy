@@ -513,6 +513,21 @@ static int test_http_code_names(void)
     {
         return 75;
     }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_UNKNOWN_RUNTIME_FEATURE),
+                         sl_str_from_cstr("SLOPPY_E_UNKNOWN_RUNTIME_FEATURE")) != 0)
+    {
+        return 76;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE),
+                         sl_str_from_cstr("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE")) != 0)
+    {
+        return 77;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING),
+                         sl_str_from_cstr("SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING")) != 0)
+    {
+        return 78;
+    }
 
     return 0;
 }
@@ -521,7 +536,7 @@ static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_LIFECYCLE_IDENTITY_UNAVAILABLE; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -529,9 +544,9 @@ static int test_stable_code_registry_complete(void)
         }
     }
 
-    if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_LIFECYCLE_IDENTITY_UNAVAILABLE + 1U)),
-            sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
+    if (expect_str_equal(sl_diag_code_name(
+                             (SlDiagCode)((size_t)SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING + 1U)),
+                         sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
     }

@@ -83,10 +83,10 @@ Plan issues #355-#359 consume that output for typed graph representation, valida
 doctor/audit, OpenAPI/optimization hooks, and versioning.
 COMPILER-30.H/I adds the first compiler-emitted strong metadata layer: `modules`,
 `sourceFiles`, route and plan `completeness`, provider-kind-aware `effects`, and
-`strongPlan` evidence/compatibility metadata. The native Plan v1 parser still stores only
-the implemented runtime struct fields, but it accepts these optional compiler metadata
-fields and rejects non-empty top-level `requiredFeatures` so future required features do
-not get silently ignored by older runtimes.
+`strongPlan` evidence/compatibility metadata. ENGINE-27.A/B adds native
+`requiredFeatures[]` storage and a runtime feature registry. The parser accepts non-empty
+required-feature arrays, while app-host/runtime startup fails closed when a required feature
+is unknown, unavailable, or missing an unavailable dependency.
 
 ## Public API Shape
 
@@ -106,8 +106,8 @@ nonzero when it emits ERROR findings.
 - Runtime may accept compatible minor additions only if unknown fields are explicitly
   allowed by that schema version.
 - Plan must declare runtime minimum version. Unknown optional fields are ignored in Plan
-  v1. Non-empty top-level `requiredFeatures` is rejected until a runtime explicitly owns
-  those required features.
+  v1. Top-level `requiredFeatures` is now parsed as required runtime-feature metadata and
+  validated by the ENGINE-27 runtime feature registry before runtime initialization.
 - Plan must declare target platform and target engine.
 - Compiler version is diagnostic metadata and cache input.
 - TASK 06.A supports only schema version `1` through `sl_plan_version_supported`.
@@ -130,6 +130,7 @@ The implemented native C shape in `include/sloppy/plan.h` is deliberately small:
   and `dataProviders[].capability`;
 - optional `capabilities[].token`, `capabilities[].kind`, `capabilities[].access`, and
   `capabilities[].provider`.
+- optional `requiredFeatures[]` / `SlPlan.required_features`;
 - optional compiler metadata `configuration.environment`, `configuration.keys[]`, and
   `configuration.providers[]`. This is emitted for tooling/diagnostics and is not yet part
   of the native `SlPlan` struct.
@@ -175,8 +176,10 @@ Handler rules implemented now:
 
 Unknown JSON fields are allowed and ignored in Plan v1 for forward compatibility. Known
 fields with the wrong JSON type fail validation. Top-level `requiredFeatures` is the
-exception: an empty array is accepted, but any entry is rejected because an older runtime
-must not ignore features that an artifact marks as required.
+exception to unknown-field ignore semantics: entries are parsed into `SlPlan` and then
+validated against the runtime feature registry. Unknown entries fail with
+`SLOPPY_E_UNKNOWN_RUNTIME_FEATURE`; known but unavailable entries fail with
+`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`.
 
 ## Schema Sections
 
@@ -310,8 +313,8 @@ COMPILER-30.H/I subset, and `sloppy openapi` emits the supported Plan-derived Op
 subset while keeping unsupported metadata explicit.
 
 The COMPILER-30.E/H/I metadata is emitted for static tooling and Strong Plan consumers.
-The native runtime parser accepts these unknown optional metadata fields while rejecting
-non-empty top-level `requiredFeatures`. ENGINE-20.C CLI consumers now read
+The native runtime parser accepts these unknown optional metadata fields while storing
+top-level `requiredFeatures[]` for ENGINE-27 feature activation. ENGINE-20.C CLI consumers now read
 `routes[].bindings`, `routes[].response`, `routes[].effects`, `routes[].completeness`, and
 top-level `completeness` for routes, capabilities, doctor, and audit output. Emitting or
 displaying this metadata does not mean runtime request validation, native JSON

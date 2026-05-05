@@ -46,8 +46,12 @@ Goal: Make runtime features Plan/import/use-driven instead of always-on bloat.
 
 Tasks:
 
-- ENGINE-27.A: Runtime Feature Registry.
-- ENGINE-27.B: Plan-Driven Feature Activation.
+- ENGINE-27.A: Runtime Feature Registry. Implemented in the first ENGINE-27 slice with
+  stable feature ids/descriptors for core, V8, HTTP, libuv transport, stdlib modules, and
+  current/deferred providers.
+- ENGINE-27.B: Plan-Driven Feature Activation. Implemented in the first ENGINE-27 slice
+  by deriving active features from Plan target/routes/providers plus explicit
+  `requiredFeatures[]` before runtime initialization.
 - ENGINE-27.C: Provider/Transport/Stdlib Feature Descriptors.
 - ENGINE-27.D: V8 Intrinsic Registration by Feature.
 - ENGINE-27.E: Missing Feature Diagnostics.

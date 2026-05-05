@@ -2020,6 +2020,11 @@ static SlStatus sl_run_plan_intern_capacity(const SlPlan* plan, size_t* out_capa
         return status;
     }
 
+    status = sl_checked_add_size(capacity, plan->required_feature_count, &capacity);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
     *out_capacity = capacity;
     return sl_status_ok();
 }
@@ -2071,6 +2076,31 @@ static int sl_run_validate_startup(SlRunApp* app)
     status = sl_app_host_validate_startup(&app->plan, &validation, &diag);
     if (!sl_status_is_ok(status)) {
         sl_run_print_diag("sloppy run: app graph startup validation failed: ", &app->engine_arena,
+                          &diag);
+        return 1;
+    }
+
+    return 0;
+}
+
+static int sl_run_validate_runtime_features(SlRunApp* app)
+{
+    SlAppHostStartupValidation validation = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (app == NULL) {
+        return 1;
+    }
+
+    validation.diag_arena = &app->plan_arena;
+    validation.require_runnable_route = true;
+    validation.max_runnable_routes = SL_RUN_MAX_ROUTES;
+    validation.validate_runtime_features = true;
+
+    status = sl_app_host_validate_startup(&app->plan, &validation, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_run_print_diag("sloppy run: runtime feature activation failed: ", &app->engine_arena,
                           &diag);
         return 1;
     }
@@ -2308,6 +2338,10 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
     }
     app->app_js_bytes = app_js;
     app->source_map_bytes = source_map;
+
+    if (sl_run_validate_runtime_features(app) != 0) {
+        return 1;
+    }
 
     return sl_run_load_engine(app, stdlib_path, app_js_path);
 }

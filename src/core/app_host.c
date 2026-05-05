@@ -476,9 +476,14 @@ SlStatus sl_app_host_validate_startup(const SlPlan* plan, const SlAppHostStartup
                                       SlDiag* out_diag)
 {
     SlStatus status;
+    SlRuntimeFeatureSet features = {0};
+    const SlRuntimeFeatureAvailability* availability = NULL;
 
     if (out_diag != NULL) {
         *out_diag = (SlDiag){0};
+    }
+    if (options != NULL && options->out_runtime_features != NULL) {
+        *options->out_runtime_features = (SlRuntimeFeatureSet){0};
     }
 
     status = sl_app_host_validate_plan_header(plan, options, out_diag);
@@ -491,7 +496,30 @@ SlStatus sl_app_host_validate_startup(const SlPlan* plan, const SlAppHostStartup
         return status;
     }
 
-    return sl_app_host_validate_metadata(plan, options, out_diag);
+    status = sl_app_host_validate_metadata(plan, options, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (options == NULL ||
+        (!options->validate_runtime_features && options->out_runtime_features == NULL))
+    {
+        return sl_status_ok();
+    }
+
+    if (options->override_runtime_feature_availability) {
+        availability = &options->runtime_feature_availability;
+    }
+    status = sl_runtime_feature_activate_plan(
+        plan, availability, options == NULL ? NULL : options->diag_arena, &features, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (options != NULL && options->out_runtime_features != NULL) {
+        *options->out_runtime_features = features;
+    }
+
+    return sl_status_ok();
 }
 
 static SlStatus sl_app_lifecycle_diag_code(SlDiag* out_diag, SlDiagCode code, SlStr message,

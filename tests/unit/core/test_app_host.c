@@ -119,6 +119,12 @@ static SlAppHostStartupValidation validation_options(SlArena* arena)
     options.diag_arena = arena;
     options.require_runnable_route = true;
     options.max_runnable_routes = 128U;
+    options.validate_runtime_features = true;
+    options.override_runtime_feature_availability = true;
+    options.runtime_feature_availability.v8 = true;
+    options.runtime_feature_availability.http = true;
+    options.runtime_feature_availability.transport_libuv = true;
+    options.runtime_feature_availability.provider_sqlite = true;
     return options;
 }
 
@@ -300,6 +306,83 @@ static int test_duplicate_service_token_fails_startup(void)
     }
     if (!sl_str_equal(diag.message, sl_str_from_cstr("duplicate app plan service token"))) {
         return 31;
+    }
+
+    return 0;
+}
+
+static int test_startup_reports_plan_driven_runtime_features(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanHandler handlers[1];
+    SlPlanRoute routes[1];
+    SlPlanDataProvider providers[1] = {{0}};
+    SlPlan plan = valid_plan(handlers, routes);
+    SlDiag diag = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlAppHostStartupValidation options;
+
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    options = validation_options(&diag_arena);
+    options.out_runtime_features = &features;
+    options.override_runtime_feature_availability = true;
+    options.runtime_feature_availability.v8 = true;
+    options.runtime_feature_availability.http = true;
+    options.runtime_feature_availability.transport_libuv = true;
+    options.runtime_feature_availability.provider_sqlite = true;
+
+    providers[0].token = sl_str_from_cstr("data.main");
+    providers[0].provider = sl_str_from_cstr("sqlite");
+    plan.data_providers = providers;
+    plan.data_provider_count = 1U;
+
+    if (expect_status(sl_app_host_validate_startup(&plan, &options, &diag), SL_STATUS_OK) != 0) {
+        return 35;
+    }
+    if (!sl_runtime_feature_set_contains(&features, SL_RUNTIME_FEATURE_PROVIDER_SQLITE) ||
+        features.activation_count != 7U || diag.code != SL_DIAG_NONE)
+    {
+        return 36;
+    }
+
+    return 0;
+}
+
+static int test_startup_fails_when_plan_requires_unavailable_feature(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanHandler handlers[1];
+    SlPlanRoute routes[1];
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("provider.postgres")}};
+    SlPlan plan = valid_plan(handlers, routes);
+    SlDiag diag = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlAppHostStartupValidation options;
+
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+    options = validation_options(&diag_arena);
+    options.out_runtime_features = &features;
+    options.override_runtime_feature_availability = true;
+    options.runtime_feature_availability.v8 = true;
+    options.runtime_feature_availability.http = true;
+    options.runtime_feature_availability.transport_libuv = true;
+    options.runtime_feature_availability.provider_sqlite = true;
+    options.runtime_feature_availability.provider_postgres = false;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+
+    if (expect_status(sl_app_host_validate_startup(&plan, &options, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 37;
+    }
+    if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
+        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("provider.postgres")) ||
+        features.activation_count != 0U)
+    {
+        return 38;
     }
 
     return 0;
@@ -1329,6 +1412,8 @@ int main(void)
         test_missing_route_handler_fails_startup,
         test_duplicate_route_policy_fails_startup,
         test_duplicate_service_token_fails_startup,
+        test_startup_reports_plan_driven_runtime_features,
+        test_startup_fails_when_plan_requires_unavailable_feature,
         test_request_scope_cleans_up_on_success,
         test_request_scope_execute_accepts_handler_terminalization,
         test_request_scope_execute_accepts_handler_complete,

@@ -351,9 +351,18 @@ static SlStatus sl_plan_parse_schema_version(SlPlanParseContext* ctx, yyjson_val
     return sl_status_ok();
 }
 
-static SlStatus sl_plan_parse_required_features(SlPlanParseContext* ctx, yyjson_val* root)
+static SlStatus sl_plan_parse_required_features(SlPlanParseContext* ctx, yyjson_val* root,
+                                                SlPlan* out)
 {
     yyjson_val* features = yyjson_obj_get(root, "requiredFeatures");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+    SlPlanRequiredFeature* parsed = NULL;
+    void* ptr = NULL;
+    size_t count = 0U;
+    size_t alloc_size = 0U;
+    size_t index = 0U;
+    SlStatus status;
 
     if (features == NULL) {
         return sl_status_ok();
@@ -366,19 +375,54 @@ static SlStatus sl_plan_parse_required_features(SlPlanParseContext* ctx, yyjson_
             sl_plan_parse_literal("requiredFeatures must be a JSON array",
                                   sizeof("requiredFeatures must be a JSON array") - 1U));
     }
-    if (yyjson_arr_size(features) == 0U) {
+    count = yyjson_arr_size(features);
+    if (count == 0U) {
         return sl_status_ok();
     }
 
-    return sl_plan_parse_field_diag(
-        ctx,
-        sl_plan_parse_literal("unsupported required app plan feature",
-                              sizeof("unsupported required app plan feature") - 1U),
-        sl_plan_parse_literal(
-            "this runtime accepts unknown optional fields but rejects unknown required features",
-            sizeof("this runtime accepts unknown optional fields but rejects unknown required "
-                   "features") -
-                1U));
+    status = sl_checked_mul_size(count, sizeof(SlPlanRequiredFeature), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(ctx->arena, alloc_size, _Alignof(SlPlanRequiredFeature), &ptr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    parsed = (SlPlanRequiredFeature*)ptr;
+    yyjson_arr_iter_init(features, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlStr feature = {0};
+        if (!yyjson_is_str(value)) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan field type",
+                                      sizeof("invalid app plan field type") - 1U),
+                sl_plan_parse_literal("requiredFeatures entries must be JSON strings",
+                                      sizeof("requiredFeatures entries must be JSON strings") -
+                                          1U));
+        }
+        feature = sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value));
+        if (sl_str_is_empty(feature)) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("missing required app plan feature",
+                                      sizeof("missing required app plan feature") - 1U),
+                sl_plan_parse_literal("requiredFeatures entries must be non-empty strings",
+                                      sizeof("requiredFeatures entries must be non-empty "
+                                             "strings") -
+                                          1U));
+        }
+        status = sl_plan_parse_copy_str(ctx->arena, feature, &parsed[index].id);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        index += 1U;
+    }
+
+    out->required_features = parsed;
+    out->required_feature_count = count;
+    return sl_status_ok();
 }
 
 static SlStatus sl_plan_parse_target(SlPlanParseContext* ctx, yyjson_val* root, SlPlanTarget* out)
@@ -1129,7 +1173,7 @@ static SlStatus sl_plan_parse_document(SlPlanParseContext* ctx, yyjson_val* root
         return status;
     }
 
-    status = sl_plan_parse_required_features(ctx, root);
+    status = sl_plan_parse_required_features(ctx, root, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }

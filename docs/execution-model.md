@@ -126,6 +126,13 @@ still runs cleanup plus scope release exactly once. Cancellation reasons also ma
 backpressure, and shutdown diagnostics consistent for provider and future runtime
 completion owners.
 
+ENGINE-27.A/B adds a Plan-driven runtime feature activation check before runtime
+initialization. The registry derives active features from `target.engine`, route metadata,
+provider metadata, and explicit `requiredFeatures[]`. It activates only the current
+required feature ids, reports V8-disabled builds as unavailable instead of pretending the
+lane ran, and fails closed for unknown/unavailable features or unavailable dependencies.
+This does not dynamically load feature code or change provider/HTTP behavior.
+
 TASK 10.A adds a pure-C route pattern parser and matcher foundation for later native route
 dispatch. It supports only a minimal path-pattern subset and one-pattern matching. It does
 not add HTTP parsing, request lifecycle, method matching, route table/trie dispatch,

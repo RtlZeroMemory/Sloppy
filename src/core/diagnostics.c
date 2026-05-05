@@ -719,6 +719,15 @@ SlStr sl_diag_code_name(SlDiagCode code)
                                sizeof("SLOPPY_E_RESOURCE_TABLE_EXHAUSTED") - 1U);
     case SL_DIAG_DUPLICATE_ROUTE:
         return sl_diag_literal("SLOPPY_E_DUPLICATE_ROUTE", sizeof("SLOPPY_E_DUPLICATE_ROUTE") - 1U);
+    case SL_DIAG_UNKNOWN_RUNTIME_FEATURE:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN_RUNTIME_FEATURE",
+                               sizeof("SLOPPY_E_UNKNOWN_RUNTIME_FEATURE") - 1U);
+    case SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE:
+        return sl_diag_literal("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE",
+                               sizeof("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE") - 1U);
+    case SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING:
+        return sl_diag_literal("SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING",
+                               sizeof("SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }
