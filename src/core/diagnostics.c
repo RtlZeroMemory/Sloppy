@@ -975,10 +975,11 @@ static bool sl_diag_source_matches(const SlDiag* diag, const SlDiagSource* sourc
     {
         return false;
     }
-    if (sl_str_is_empty(diag->primary_span.path) || sl_str_is_empty(source->path)) {
-        return true;
+    if (!sl_str_is_empty(diag->primary_span.path)) {
+        return !sl_str_is_empty(source->path) &&
+               sl_str_equal(diag->primary_span.path, source->path);
     }
-    return sl_str_equal(diag->primary_span.path, source->path);
+    return sl_str_is_empty(source->path);
 }
 
 static bool sl_diag_source_line(SlStr source, size_t line, SlStr* out)
@@ -1578,6 +1579,132 @@ static SlStatus sl_diag_builder_append_json_hints(SlStringBuilder* builder, cons
     return sl_status_ok();
 }
 
+static SlStatus sl_diag_json_source_frame_len(size_t* total, const SlDiag* diag, SlStr line)
+{
+    const size_t underline = diag->primary_span.length == 0U ? 1U : diag->primary_span.length;
+    SlStr hint = sl_diag_first_hint(diag);
+    SlStatus status;
+
+    status = sl_diag_add_len(total, sizeof(",\"sourceFrame\":{") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(
+        total, sizeof("\"file\":") - 1U + sl_diag_json_escaped_len(diag->primary_span.path) +
+                   sizeof(",\"line\":") - 1U + sl_diag_decimal_len(diag->primary_span.line) +
+                   sizeof(",\"column\":") - 1U + sl_diag_decimal_len(diag->primary_span.column) +
+                   sizeof(",\"span\":") - 1U + sl_diag_decimal_len(underline) +
+                   sizeof(",\"text\":") - 1U + sl_diag_json_escaped_len(line) +
+                   sizeof(",\"marker\":") - 1U + 2U + diag->primary_span.column - 1U + underline);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_is_empty(hint)) {
+        status = sl_diag_add_len(total, sizeof(",\"hint\":") - 1U + sl_diag_json_escaped_len(hint));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_diag_add_len(total, 1U);
+}
+
+static SlStatus sl_diag_builder_append_json_marker(SlStringBuilder* builder, size_t column,
+                                                   size_t underline)
+{
+    SlStatus status = sl_string_builder_append_char(builder, '"');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_repeat(builder, ' ', column - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_repeat(builder, '^', underline);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_string_builder_append_char(builder, '"');
+}
+
+static SlStatus sl_diag_builder_append_json_source_frame_fields(SlStringBuilder* builder,
+                                                                const SlDiag* diag, SlStr line,
+                                                                size_t underline)
+{
+    SlStatus status =
+        sl_diag_builder_append_literal(builder, "\"file\":", sizeof("\"file\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_escaped(builder, diag->primary_span.path);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, ",\"line\":", sizeof(",\"line\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_size(builder, diag->primary_span.line);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, ",\"column\":", sizeof(",\"column\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_size(builder, diag->primary_span.column);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, ",\"span\":", sizeof(",\"span\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_string_builder_append_size(builder, underline);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, ",\"text\":", sizeof(",\"text\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_diag_builder_append_json_escaped(builder, line);
+}
+
+static SlStatus sl_diag_builder_append_json_source_frame(SlStringBuilder* builder,
+                                                         const SlDiag* diag, SlStr line)
+{
+    const size_t underline = diag->primary_span.length == 0U ? 1U : diag->primary_span.length;
+    SlStr hint = sl_diag_first_hint(diag);
+    SlStatus status = sl_diag_builder_append_literal(builder, ",\"sourceFrame\":{",
+                                                     sizeof(",\"sourceFrame\":{") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_source_frame_fields(builder, diag, line, underline);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(builder, ",\"marker\":", sizeof(",\"marker\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_marker(builder, diag->primary_span.column, underline);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_is_empty(hint)) {
+        status = sl_diag_builder_append_literal(builder, ",\"hint\":", sizeof(",\"hint\":") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_builder_append_json_escaped(builder, hint);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_string_builder_append_char(builder, '}');
+}
+
 SlStatus sl_diag_render_json(SlArena* arena, const SlDiag* diag, SlStr* out)
 {
     SlStringBuilder builder;
@@ -1600,6 +1727,70 @@ SlStatus sl_diag_render_json(SlArena* arena, const SlDiag* diag, SlStr* out)
         return status;
     }
     status = sl_diag_builder_append_json_primary(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_related(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_hints(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_literal(&builder, "}\n", 2U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = sl_string_builder_view(&builder);
+    return sl_status_ok();
+}
+
+SlStatus sl_diag_render_json_with_source(SlArena* arena, const SlDiag* diag,
+                                         const SlDiagSource* source, SlStr* out)
+{
+    SlStringBuilder builder;
+    SlStatus status;
+    SlStr line = sl_str_empty();
+    size_t length = 0U;
+
+    if (arena == NULL || diag == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!sl_diag_source_matches(diag, source) ||
+        !sl_diag_source_line(source->text, diag->primary_span.line, &line))
+    {
+        return sl_diag_render_json(arena, diag, out);
+    }
+
+    status = sl_diag_json_render_len(&length, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    length -= 2U;
+    status = sl_diag_json_source_frame_len(&length, diag, line);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(&length, 2U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_diag_builder_init_for_render(arena, length, &builder);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_base(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_primary(&builder, diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_builder_append_json_source_frame(&builder, diag, line);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1642,31 +1833,71 @@ static bool sl_diag_secret_word_at(SlStr text, size_t index, const char* word)
     return true;
 }
 
-static bool sl_diag_secret_key_at(SlStr text, size_t index, size_t* out_separator)
+static bool sl_diag_secret_identifier_char(char value)
 {
-    static const char* keys[] = {"password", "pwd", "token", "secret", "api_key", "apikey"};
+    return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
+           (value >= '0' && value <= '9') || value == '_';
+}
+
+static bool sl_diag_secret_key_boundary_before(SlStr text, size_t index)
+{
+    if (index == 0U) {
+        return true;
+    }
+    return !sl_diag_secret_identifier_char(text.ptr[index - 1U]);
+}
+
+static bool sl_diag_secret_key_boundary_after(SlStr text, size_t index)
+{
+    if (index >= text.length) {
+        return true;
+    }
+    return !sl_diag_secret_identifier_char(text.ptr[index]);
+}
+
+static bool sl_diag_secret_key_at(SlStr text, size_t index, size_t* out_separator,
+                                  bool* out_is_connection_string)
+{
+    typedef struct SlDiagSecretKey
+    {
+        const char* word;
+        size_t length;
+    } SlDiagSecretKey;
+    static const SlDiagSecretKey keys[] = {
+        {"password", sizeof("password") - 1U},
+        {"pwd", sizeof("pwd") - 1U},
+        {"token", sizeof("token") - 1U},
+        {"secret", sizeof("secret") - 1U},
+        {"api_key", sizeof("api_key") - 1U},
+        {"apikey", sizeof("apikey") - 1U},
+        {"key", sizeof("key") - 1U},
+        {"connectionstring", sizeof("connectionstring") - 1U},
+        {"connection_string", sizeof("connection_string") - 1U},
+    };
     size_t key_index = 0U;
 
     for (key_index = 0U; key_index < sizeof(keys) / sizeof(keys[0]); key_index += 1U) {
-        size_t end = index;
-        if (!sl_diag_secret_word_at(text, index, keys[key_index])) {
+        size_t end = index + keys[key_index].length;
+        if (!sl_diag_secret_key_boundary_before(text, index) ||
+            !sl_diag_secret_word_at(text, index, keys[key_index].word) ||
+            !sl_diag_secret_key_boundary_after(text, index + keys[key_index].length))
+        {
             continue;
         }
-        while (end < text.length && text.ptr[end] != '=' && text.ptr[end] != ':') {
-            if ((text.ptr[end] == ' ' || text.ptr[end] == '\t') && end > index) {
-                end += 1U;
-                continue;
-            }
-            if (text.ptr[end] == ';' || text.ptr[end] == '&' || text.ptr[end] == '\n' ||
-                text.ptr[end] == '\r')
-            {
-                break;
-            }
+        if (end < text.length && (text.ptr[end] == '"' || text.ptr[end] == '\'')) {
+            end += 1U;
+        }
+        while (end < text.length && (text.ptr[end] == ' ' || text.ptr[end] == '\t')) {
             end += 1U;
         }
         if (end < text.length && (text.ptr[end] == '=' || text.ptr[end] == ':')) {
             if (out_separator != NULL) {
                 *out_separator = end;
+            }
+            if (out_is_connection_string != NULL) {
+                *out_is_connection_string =
+                    sl_diag_secret_word_at(text, index, "connectionstring") ||
+                    sl_diag_secret_word_at(text, index, "connection_string");
             }
             return true;
         }
@@ -1675,7 +1906,7 @@ static bool sl_diag_secret_key_at(SlStr text, size_t index, size_t* out_separato
 }
 
 static SlStatus sl_diag_builder_append_redacted_value(SlStringBuilder* builder, SlStr input,
-                                                      size_t* index)
+                                                      size_t* index, bool is_connection_string)
 {
     size_t cursor = *index;
     SlStatus status;
@@ -1712,11 +1943,26 @@ static SlStatus sl_diag_builder_append_redacted_value(SlStringBuilder* builder, 
         }
     }
     else {
-        while (cursor < input.length && input.ptr[cursor] != ';' && input.ptr[cursor] != '&' &&
-               input.ptr[cursor] != ' ' && input.ptr[cursor] != '\t' && input.ptr[cursor] != '\n' &&
-               input.ptr[cursor] != '\r')
-        {
-            cursor += 1U;
+        if (is_connection_string) {
+            while (cursor < input.length && input.ptr[cursor] != '\n' && input.ptr[cursor] != '\r')
+            {
+                if (input.ptr[cursor] == ';' &&
+                    (cursor + 1U == input.length || input.ptr[cursor + 1U] == ' ' ||
+                     input.ptr[cursor + 1U] == '\t' || input.ptr[cursor + 1U] == '\n' ||
+                     input.ptr[cursor + 1U] == '\r'))
+                {
+                    break;
+                }
+                cursor += 1U;
+            }
+        }
+        else {
+            while (cursor < input.length && input.ptr[cursor] != ';' && input.ptr[cursor] != '&' &&
+                   input.ptr[cursor] != ' ' && input.ptr[cursor] != '\t' &&
+                   input.ptr[cursor] != '\n' && input.ptr[cursor] != '\r')
+            {
+                cursor += 1U;
+            }
         }
     }
 
@@ -1768,15 +2014,17 @@ static SlStatus sl_diag_builder_append_redacted_text(SlStringBuilder* builder, S
         size_t separator = 0U;
         size_t uri_password_start = 0U;
         size_t uri_password_end = 0U;
+        bool is_connection_string = false;
 
-        if (sl_diag_secret_key_at(input, index, &separator)) {
+        if (sl_diag_secret_key_at(input, index, &separator, &is_connection_string)) {
             status = sl_string_builder_append_str(
                 builder, sl_str_from_parts(input.ptr + index, separator - index));
             if (!sl_status_is_ok(status)) {
                 return status;
             }
             index = separator;
-            status = sl_diag_builder_append_redacted_value(builder, input, &index);
+            status =
+                sl_diag_builder_append_redacted_value(builder, input, &index, is_connection_string);
             if (!sl_status_is_ok(status)) {
                 return status;
             }

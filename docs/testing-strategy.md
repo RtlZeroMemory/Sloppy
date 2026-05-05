@@ -128,7 +128,8 @@ Diagnostics:
 - related span;
 - fix hint;
 - golden text;
-- JSON output later.
+- deterministic JSON output;
+- deterministic JSON source-frame output when matching source text is supplied.
 - V8-gated source-map remapping tests must verify author-source primary spans, generated
   fallback when no map is attached, and malformed-map fallback without counting as default
   non-V8 evidence.
@@ -174,6 +175,10 @@ ENGINE-15.A expands source-map goldens to cover the `x_sloppy` metadata block, i
 multi-file function modules, schema/provider/capability source locations, inferred effect
 source context, source-file hashes, and source-input run map metadata. These tests prove
 compiler artifact stability only; V8/runtime remapping remains a separate lane.
+ENGINE-15.CD adds default-lane core diagnostic coverage for complete stable code registry
+mapping, expanded shared redaction keys, and deterministic JSON source-frame snapshots.
+V8 async rejection JSON remains V8-gated execution evidence and does not imply async stack
+source-map remapping.
 ENGINE-20.C/D add CLI golden coverage for consuming that metadata: route source/binding/
 response/completeness output, generated capability output for SQLite effects, doctor
 partial metadata checks, audit JSON warnings, audit nonzero behavior for ERROR findings,

@@ -203,9 +203,18 @@ SlStatus sl_diag_render_text_with_source(SlArena* arena, const SlDiag* diag,
 SlStatus sl_diag_render_json(SlArena* arena, const SlDiag* diag, SlStr* out);
 
 /*
+ * Renders deterministic diagnostic JSON and, when `source` matches the primary span, adds
+ * a machine-readable `sourceFrame` object with the source line, caret marker, and first
+ * hint. Falls back to `sl_diag_render_json` when source text is unavailable.
+ */
+SlStatus sl_diag_render_json_with_source(SlArena* arena, const SlDiag* diag,
+                                         const SlDiagSource* source, SlStr* out);
+
+/*
  * Copies `input` into `arena` while redacting common secret-bearing diagnostic text:
- * password/pwd/token/secret/API_KEY-style key values and URI userinfo passwords. This is a
- * small audit helper for diagnostic paths, not a full data-loss-prevention engine.
+ * password/pwd/token/secret/key/API_KEY/connection-string-style values and URI userinfo
+ * passwords. This is a small audit helper for diagnostic paths, not a full
+ * data-loss-prevention engine.
  */
 SlStatus sl_diag_redact_secrets(SlArena* arena, SlStr input, SlStr* out);
 

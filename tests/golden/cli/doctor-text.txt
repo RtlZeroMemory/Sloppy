@@ -10,4 +10,4 @@ Sloppy Doctor
 [warn] app.plan.capabilities: capability metadata not present
 [ok] sqlite.provider: sqlite provider metadata available
 [warn] postgres.live: live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set
-[error] sqlserver.driver: connectionString=Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found
+[error] sqlserver.driver: connectionString=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found

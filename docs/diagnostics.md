@@ -56,6 +56,7 @@ MAIN1-06 completes the bounded alpha diagnostic renderer surface:
 - deterministic plain-text renderer;
 - deterministic single-object JSON renderer;
 - deterministic single-line source-frame renderer when source text is supplied;
+- deterministic JSON source-frame renderer when source text is supplied;
 - minimal diagnostic redaction helper for common secret-bearing text;
 - golden/snapshot tests for plain text, JSON, source frames, and redaction.
 
@@ -124,6 +125,13 @@ values; unsupported parameter values use `SLOPPY_E_DATABASE_UNSUPPORTED_VALUE`; 
 SQLite prepare/step/finalize/constraint failures use `SLOPPY_E_SQLITE_PROVIDER`. SQLite
 provider diagnostics may include SQL text and SQLite error text, but never positional
 parameter values. Secret values must be passed as parameters, not embedded in SQL text.
+
+ENGINE-15.CD completes the shared C diagnostic renderer surface for machine-readable source
+frames and stable code completeness. `sl_diag_render_json_with_source` preserves the normal
+single-object JSON field order and inserts `sourceFrame` after `primary` when the caller
+supplies matching source text. Async/runtime/provider diagnostics can use the same stable
+codes and JSON renderer, but V8 async stack/source-map remapping remains V8-gated and
+separate from the default lane.
 
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic
@@ -253,7 +261,8 @@ Implemented foundation codes:
 - `SLOPPY_E_INTERNAL`.
 
 `SLOPPY_NONE` is available for no-diagnostic cases and `SLOPPY_E_UNKNOWN` is returned for
-unknown enum values.
+unknown enum values. `core.diagnostics.foundation` also verifies that every public enum
+value through the current last diagnostic code maps to a stable non-unknown string.
 
 Once released, changing a code requires an ADR or documented migration.
 
@@ -333,11 +342,12 @@ Diagnostics must not print secret values. Secret key names such as `DATABASE_URL
 fix configuration; the environment variable value must not appear.
 
 The bounded C helper `sl_diag_redact_secrets` masks common diagnostic-risk strings:
-`password`, `pwd`, `token`, `secret`, `api_key`/`apikey`, and URI userinfo passwords such
-as `postgres://user:password@host/db`. Provider-specific redaction remains the first line
-of defense for PostgreSQL and SQL Server connection strings because those providers know
-their connection-string grammar. The generic helper is a safety net for shared diagnostic
-paths, not a full data-loss-prevention engine.
+`password`, `pwd`, `token`, `secret`, `key`, `api_key`/`apikey`,
+`connectionString`/`connection_string`, and URI userinfo passwords such as
+`postgres://user:password@host/db`. Provider-specific redaction remains the first line of
+defense for PostgreSQL and SQL Server connection strings because those providers know their
+connection-string grammar. The generic helper is a safety net for shared diagnostic paths,
+not a full data-loss-prevention engine.
 
 CLI doctor text and JSON output use this same helper for connection-string-like check
 messages. The helper preserves secret-key names and masks secret values with deterministic
@@ -371,9 +381,11 @@ as future hooks rather than runtime behavior.
 ```
 
 Field order is stable: `code`, `severity`, `message`, optional `primary`, optional
-`related`, optional `hints`. The renderer performs JSON escaping itself, emits no
-timestamps or random IDs, and does not include raw pointers. Callers must redact
-secret-bearing messages before rendering; JSON output must never include unredacted
+`sourceFrame`, optional `related`, optional `hints`. The normal `sl_diag_render_json`
+renderer omits `sourceFrame`; `sl_diag_render_json_with_source` includes it only when a
+matching source text is supplied at render time. The renderer performs JSON escaping
+itself, emits no timestamps or random IDs, and does not include raw pointers. Callers must
+redact secret-bearing messages before rendering; JSON output must never include unredacted
 secrets. A CLI-wide diagnostic format flag remains deferred until native command error
 paths share the renderer consistently.
 
@@ -480,9 +492,9 @@ V8 diagnostics:
 TASK 07.D implements only the basic V8 exception mapping skeleton for the current classic
 script/global-function smoke API. The bridge captures message text, generated JavaScript
 source name when available, 1-based line/column when V8 provides them, and a bounded stack
-summary as a related note when practical. It does not perform source-map remapping, render
-code frames, add route/handler context, define a promise rejection policy, or capture rich
-async stacks.
+summary as a related note when practical. ENGINE-15.B adds bounded source-map remapping for
+V8 exception primary spans. V8 async diagnostics still do not attach source-map-remapped
+async stacks or source frames.
 
 Services diagnostics:
 
@@ -703,19 +715,22 @@ Diagnostic tests must include:
 - source span rendering;
 - related spans;
 - JSON output;
+- JSON source-frame output;
 - redaction behavior;
 - source map fallback behavior.
 
 `core.diagnostics.foundation` covers snapshot text, JSON escaping/output, source-frame
-output/fallback, stable code/severity mapping, related spans, hints, and representative
-secret redaction. Compiler golden diagnostics cover source frames where `sloppyc` already
-has source spans. Compiler source-map goldens cover deterministic `x_sloppy` metadata.
-V8-gated engine smoke tests cover source-map remapping, missing-map generated fallback, and
-malformed-map fallback without reporting V8 success from the default lane.
+output/fallback, JSON source-frame output, complete stable code registry mapping,
+stable code/severity mapping, related spans, hints, and representative secret redaction.
+Compiler golden diagnostics cover source frames where `sloppyc` already has source spans.
+Compiler source-map goldens cover deterministic `x_sloppy` metadata. V8-gated engine smoke
+tests cover source-map remapping, missing-map generated fallback, malformed-map fallback,
+and async rejection JSON rendering without reporting V8 success from the default lane.
 
 ## Quality Gates
 
-- every new diagnostic code has a snapshot or explicit test plan;
+- every new diagnostic code has a snapshot or explicit test plan and maps to a stable
+  string name;
 - snapshots must not contain machine-local paths unless normalized;
 - secret-like values are redacted in tests;
 - CI fails on snapshot drift unless the update is intentional.
@@ -729,9 +744,10 @@ malformed-map fallback without reporting V8 success from the default lane.
 4. Add snapshot harness. Done with CTest fixture comparisons.
 5. Add examples from this document as fixtures. Started with missing service and invalid
    plan version.
-6. Add JSON output only after plain text stabilizes. Done for single diagnostics.
+6. Add JSON output only after plain text stabilizes. Done for single diagnostics and
+   source-frame JSON when source is available.
 7. Add source map mapping after compiler artifacts exist. Done for V8 exception primary
-   spans in ENGINE-15.B; async stack/source frames and broader compiler span fidelity remain
+   spans in ENGINE-15.B; async stack remapping and broader compiler span fidelity remain
    later work.
 
 ## Acceptance Criteria
