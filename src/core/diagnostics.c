@@ -975,10 +975,11 @@ static bool sl_diag_source_matches(const SlDiag* diag, const SlDiagSource* sourc
     {
         return false;
     }
-    if (sl_str_is_empty(diag->primary_span.path) || sl_str_is_empty(source->path)) {
-        return true;
+    if (!sl_str_is_empty(diag->primary_span.path)) {
+        return !sl_str_is_empty(source->path) &&
+               sl_str_equal(diag->primary_span.path, source->path);
     }
-    return sl_str_equal(diag->primary_span.path, source->path);
+    return sl_str_is_empty(source->path);
 }
 
 static bool sl_diag_source_line(SlStr source, size_t line, SlStr* out)
@@ -1876,23 +1877,17 @@ static bool sl_diag_secret_key_at(SlStr text, size_t index, size_t* out_separato
     size_t key_index = 0U;
 
     for (key_index = 0U; key_index < sizeof(keys) / sizeof(keys[0]); key_index += 1U) {
-        size_t end = index;
+        size_t end = index + keys[key_index].length;
         if (!sl_diag_secret_key_boundary_before(text, index) ||
             !sl_diag_secret_word_at(text, index, keys[key_index].word) ||
             !sl_diag_secret_key_boundary_after(text, index + keys[key_index].length))
         {
             continue;
         }
-        while (end < text.length && text.ptr[end] != '=' && text.ptr[end] != ':') {
-            if ((text.ptr[end] == ' ' || text.ptr[end] == '\t') && end > index) {
-                end += 1U;
-                continue;
-            }
-            if (text.ptr[end] == ';' || text.ptr[end] == '&' || text.ptr[end] == '\n' ||
-                text.ptr[end] == '\r')
-            {
-                break;
-            }
+        if (end < text.length && (text.ptr[end] == '"' || text.ptr[end] == '\'')) {
+            end += 1U;
+        }
+        while (end < text.length && (text.ptr[end] == ' ' || text.ptr[end] == '\t')) {
             end += 1U;
         }
         if (end < text.length && (text.ptr[end] == '=' || text.ptr[end] == ':')) {

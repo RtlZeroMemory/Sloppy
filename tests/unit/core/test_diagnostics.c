@@ -862,11 +862,12 @@ static int test_source_frame_snapshot_and_fallback(void)
 
 static int test_json_source_frame_snapshot(void)
 {
-    unsigned char buffer[4096];
+    unsigned char buffer[8192];
     SlArena arena;
     SlDiagBuilder builder;
     SlDiag diag;
     SlDiagSource source;
+    SlStr fallback;
     SlStr rendered;
 
     if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
@@ -904,6 +905,15 @@ static int test_json_source_frame_snapshot(void)
     if (expect_snapshot(rendered, "tests/golden/diagnostics/json_source_frame.json") != 0) {
         return 100;
     }
+
+    source.path = sl_str_empty();
+    if (expect_status(sl_diag_render_json(&arena, &diag, &fallback), SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_render_json_with_source(&arena, &diag, &source, &rendered),
+                      SL_STATUS_OK) != 0 ||
+        expect_str_equal(rendered, fallback) != 0)
+    {
+        return 101;
+    }
     return 0;
 }
 
@@ -921,6 +931,7 @@ static int test_redaction_helper(void)
                           sl_str_from_cstr("password=secret PWD = {top;secret}; token:abc "
                                            "postgres://ada:secret@localhost/db API_KEY=xyz "
                                            "monkey=value donkey:abc key=plain "
+                                           "key exchange: keep key steps: visible "
                                            "connectionString=Server=.;Password=p;"),
                           &redacted),
                       SL_STATUS_OK) != 0)
@@ -931,6 +942,7 @@ static int test_redaction_helper(void)
             redacted, sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
                                        "token:<redacted> postgres://ada:<redacted>@localhost/db "
                                        "API_KEY=<redacted> monkey=value donkey:abc key=<redacted> "
+                                       "key exchange: keep key steps: visible "
                                        "connectionString=<redacted>;")) != 0)
     {
         return 102;
