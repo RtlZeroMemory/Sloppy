@@ -637,6 +637,34 @@ static int test_time_diagnostic_json_goldens(void)
     {
         return 103;
     }
+    if (expect_time_json_snapshot(SL_DIAG_TIME_DEADLINE_EXPIRED,
+                                  "deadline expired before scheduling",
+                                  "Expired deadlines fail before native timer admission.",
+                                  "tests/golden/diagnostics/time_deadline_expired.json") != 0)
+    {
+        return 104;
+    }
+    if (expect_time_json_snapshot(
+            SL_DIAG_TIME_INTERVAL_OVERFLOW, "interval tick queue overflowed",
+            "Bounded interval queues skip or fail instead of growing without limit.",
+            "tests/golden/diagnostics/time_interval_overflow.json") != 0)
+    {
+        return 105;
+    }
+    if (expect_time_json_snapshot(
+            SL_DIAG_TIME_SCHEDULE_SKIPPED, "scheduled run was skipped",
+            "No-overlap scheduled jobs report skipped runs deterministically.",
+            "tests/golden/diagnostics/time_schedule_skipped.json") != 0)
+    {
+        return 106;
+    }
+    if (expect_time_json_snapshot(
+            SL_DIAG_TIME_FAKE_CLOCK_MISUSE, "fake clock was misused or disposed",
+            "Fake clocks are explicit test-scoped providers, not global timer mutation.",
+            "tests/golden/diagnostics/time_fake_clock_misuse.json") != 0)
+    {
+        return 107;
+    }
     return 0;
 }
 

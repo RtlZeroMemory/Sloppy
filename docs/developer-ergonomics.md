@@ -84,7 +84,9 @@ and explicit fake clocks. The compiler now makes `sloppy/time` Plan-visible as
 adds async iterable intervals, interval-based scheduled jobs, `Time.systemClock`, and
 explicit test-scoped `Time.fakeClock`. CORE-TIME-01.H lets filesystem calls accept
 `signal`, `deadline`, and `timeoutMs` without claiming Node timer compatibility or
-preemptive native filesystem interruption.
+preemptive native filesystem interruption. CORE-TIME-01.I adds focused examples for
+delay/timeout, deadline/cancellation, intervals/scheduled jobs, fake clocks, and filesystem
+deadline integration.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.

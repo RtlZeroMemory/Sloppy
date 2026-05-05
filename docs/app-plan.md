@@ -99,8 +99,9 @@ deadline accounting. CORE-TIME-01.H aligns filesystem stdlib options with Time c
 it does not add new compiler-emitted Plan metadata beyond the existing `stdlib.fs` and
 `stdlib.time` feature activation. Runtime feature activation treats `stdlib.time` as a
 dependency of `stdlib.fs` so numeric filesystem timeouts work for apps that import only
-`sloppy/fs`. CORE-FS-01.C/D/H consumes the active feature to install the first core
-`__sloppy.fs` V8 bridge and stdlib `File` wrappers.
+`sloppy/fs`. CORE-TIME-01.I adds examples/conformance/golden evidence without changing
+the Plan schema or activation rules. CORE-FS-01.C/D/H consumes the active feature to
+install the first core `__sloppy.fs` V8 bridge and stdlib `File` wrappers.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
