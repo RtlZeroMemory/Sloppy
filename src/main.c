@@ -47,6 +47,8 @@
 #define SL_CLI_MAX_SCHEMA_PROPERTIES 32U
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
+#define SL_CLI_FILE_READ_SCRATCH_BYTES 65536U
+#define SL_CLI_FILE_READ_ARENA_BYTES (SL_CLI_FILE_MAX_BYTES + SL_CLI_FILE_READ_SCRATCH_BYTES)
 #define SL_CLI_ARENA_BYTES 65536U
 #define SL_RUN_FILE_MAX_BYTES 65536U
 #define SL_RUN_ARENA_BYTES 65536U
@@ -621,19 +623,23 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
 
 static int sl_read_file_with_messages(const char* path, unsigned char* buffer, size_t capacity,
                                       SlBytes* out, const char* not_found_prefix,
-                                      const char* size_prefix)
+                                      const char* size_prefix, const char* failed_read_prefix)
 {
+    unsigned char read_storage[SL_CLI_FILE_READ_ARENA_BYTES];
     SlArena arena = {0};
+    SlArena output_arena = {0};
     SlOwnedBytes bytes = {0};
+    SlOwnedBytes copied = {0};
     SlStatus status;
 
     if (path == NULL || buffer == NULL || out == NULL || not_found_prefix == NULL ||
-        size_prefix == NULL)
+        size_prefix == NULL || failed_read_prefix == NULL || capacity > SL_CLI_FILE_MAX_BYTES)
     {
         return 1;
     }
+    *out = sl_bytes_from_parts(NULL, 0U);
 
-    status = sl_arena_init(&arena, buffer, capacity);
+    status = sl_arena_init(&arena, read_storage, capacity + SL_CLI_FILE_READ_SCRATCH_BYTES);
     if (!sl_status_is_ok(status)) {
         return 1;
     }
@@ -648,7 +654,7 @@ static int sl_read_file_with_messages(const char* path, unsigned char* buffer, s
         return 1;
     }
     if (!sl_status_is_ok(status)) {
-        sl_cli_write_error_with_value(size_prefix, path, "\n");
+        sl_cli_write_error_with_value(failed_read_prefix, path, "\n");
         return 1;
     }
 
@@ -657,15 +663,23 @@ static int sl_read_file_with_messages(const char* path, unsigned char* buffer, s
         return 1;
     }
 
-    *out = sl_bytes_from_parts(bytes.ptr, bytes.length);
+    status = sl_arena_init(&output_arena, buffer, capacity);
+    if (!sl_status_is_ok(status)) {
+        return 1;
+    }
+    status = sl_bytes_copy_to_arena(&output_arena, sl_owned_bytes_as_view(bytes), &copied);
+    if (!sl_status_is_ok(status)) {
+        return 1;
+    }
+    *out = sl_owned_bytes_as_view(copied);
     return 0;
 }
 
 static int sl_cli_read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)
 {
     return sl_read_file_with_messages(
-        path, buffer, capacity, out,
-        "sloppy: metadata path not found: ", "sloppy: metadata file is empty or too large: ");
+        path, buffer, capacity, out, "sloppy: metadata path not found: ",
+        "sloppy: metadata file is empty or too large: ", "sloppy: metadata file read failed: ");
 }
 
 static bool sl_cli_write_span(FILE* file, SlCliSpan span)
@@ -1445,7 +1459,8 @@ static int sl_run_read_file(const char* path, unsigned char* buffer, size_t capa
 {
     return sl_read_file_with_messages(path, buffer, capacity, out,
                                       "sloppy run: artifact path not found: ",
-                                      "sloppy run: artifact file is empty or too large: ");
+                                      "sloppy run: artifact file is empty or too large: ",
+                                      "sloppy run: artifact file read failed: ");
 }
 
 static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size_t capacity,
@@ -1453,7 +1468,8 @@ static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size
 {
     return sl_read_file_with_messages(
         path, buffer, capacity, out,
-        "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ");
+        "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ",
+        "sloppy run: stdlib asset read failed: ");
 }
 
 static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expected)
@@ -2885,7 +2901,8 @@ static int sl_run_parse_project_config(SlRunSourceConfig* out)
 
     if (sl_read_file_with_messages(SL_RUN_CONFIG_FILE, json_storage, sizeof(json_storage), &json,
                                    "sloppy run: project config not found: ",
-                                   "sloppy run: project config is empty or too large: ") != 0)
+                                   "sloppy run: project config is empty or too large: ",
+                                   "sloppy run: project config read failed: ") != 0)
     {
         return 1;
     }

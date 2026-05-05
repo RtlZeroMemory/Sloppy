@@ -1401,6 +1401,7 @@ if(SLOPPY_ENABLE_TESTS)
             COMMAND
                 "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
                 "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--once;GET;/"
+                "-DSLOPPY_EXPECT_NO_STDLIB_FS=1"
                 "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
         set_tests_properties(sloppy.run.v8_disabled_is_clear
