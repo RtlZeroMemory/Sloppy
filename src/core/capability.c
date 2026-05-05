@@ -49,6 +49,24 @@ static SlCapabilityAccess sl_capability_access_from_plan(SlStr access)
     if (sl_str_equal(access, sl_str_from_cstr("connect-listen"))) {
         return SL_CAPABILITY_ACCESS_CONNECT_LISTEN;
     }
+    if (sl_str_equal(access, sl_str_from_cstr("append"))) {
+        return SL_CAPABILITY_ACCESS_APPEND;
+    }
+    if (sl_str_equal(access, sl_str_from_cstr("delete"))) {
+        return SL_CAPABILITY_ACCESS_DELETE;
+    }
+    if (sl_str_equal(access, sl_str_from_cstr("list"))) {
+        return SL_CAPABILITY_ACCESS_LIST;
+    }
+    if (sl_str_equal(access, sl_str_from_cstr("metadata"))) {
+        return SL_CAPABILITY_ACCESS_METADATA;
+    }
+    if (sl_str_equal(access, sl_str_from_cstr("watch"))) {
+        return SL_CAPABILITY_ACCESS_WATCH;
+    }
+    if (sl_str_equal(access, sl_str_from_cstr("lock"))) {
+        return SL_CAPABILITY_ACCESS_LOCK;
+    }
     return SL_CAPABILITY_ACCESS_UNKNOWN;
 }
 
@@ -170,6 +188,18 @@ static SlStr sl_capability_operation_name(SlCapabilityOperation operation)
         return sl_capability_literal("listen", sizeof("listen") - 1U);
     case SL_CAPABILITY_OPERATION_READWRITE:
         return sl_capability_literal("readwrite", sizeof("readwrite") - 1U);
+    case SL_CAPABILITY_OPERATION_APPEND:
+        return sl_capability_literal("append", sizeof("append") - 1U);
+    case SL_CAPABILITY_OPERATION_DELETE:
+        return sl_capability_literal("delete", sizeof("delete") - 1U);
+    case SL_CAPABILITY_OPERATION_LIST:
+        return sl_capability_literal("list", sizeof("list") - 1U);
+    case SL_CAPABILITY_OPERATION_METADATA:
+        return sl_capability_literal("metadata", sizeof("metadata") - 1U);
+    case SL_CAPABILITY_OPERATION_WATCH:
+        return sl_capability_literal("watch", sizeof("watch") - 1U);
+    case SL_CAPABILITY_OPERATION_LOCK:
+        return sl_capability_literal("lock", sizeof("lock") - 1U);
     default:
         return sl_capability_literal("unsupported", sizeof("unsupported") - 1U);
     }
@@ -193,6 +223,36 @@ static bool sl_capability_access_allows(SlCapabilityAccess actual, SlCapabilityO
     if (operation == SL_CAPABILITY_OPERATION_LISTEN) {
         return actual == SL_CAPABILITY_ACCESS_LISTEN ||
                actual == SL_CAPABILITY_ACCESS_CONNECT_LISTEN;
+    }
+    /*
+     * Filesystem compatibility invariants:
+     * - read grants list, metadata, and watch;
+     * - write grants append and delete;
+     * - readwrite grants every filesystem operation;
+     * - lock remains explicit unless readwrite is granted.
+     */
+    if (operation == SL_CAPABILITY_OPERATION_APPEND) {
+        return actual == SL_CAPABILITY_ACCESS_APPEND || actual == SL_CAPABILITY_ACCESS_WRITE ||
+               actual == SL_CAPABILITY_ACCESS_READWRITE;
+    }
+    if (operation == SL_CAPABILITY_OPERATION_DELETE) {
+        return actual == SL_CAPABILITY_ACCESS_DELETE || actual == SL_CAPABILITY_ACCESS_WRITE ||
+               actual == SL_CAPABILITY_ACCESS_READWRITE;
+    }
+    if (operation == SL_CAPABILITY_OPERATION_LIST) {
+        return actual == SL_CAPABILITY_ACCESS_LIST || actual == SL_CAPABILITY_ACCESS_READ ||
+               actual == SL_CAPABILITY_ACCESS_READWRITE;
+    }
+    if (operation == SL_CAPABILITY_OPERATION_METADATA) {
+        return actual == SL_CAPABILITY_ACCESS_METADATA || actual == SL_CAPABILITY_ACCESS_READ ||
+               actual == SL_CAPABILITY_ACCESS_READWRITE;
+    }
+    if (operation == SL_CAPABILITY_OPERATION_WATCH) {
+        return actual == SL_CAPABILITY_ACCESS_WATCH || actual == SL_CAPABILITY_ACCESS_READ ||
+               actual == SL_CAPABILITY_ACCESS_READWRITE;
+    }
+    if (operation == SL_CAPABILITY_OPERATION_LOCK) {
+        return actual == SL_CAPABILITY_ACCESS_LOCK || actual == SL_CAPABILITY_ACCESS_READWRITE;
     }
     return false;
 }

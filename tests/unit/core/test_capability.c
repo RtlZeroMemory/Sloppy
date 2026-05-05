@@ -300,6 +300,48 @@ static int test_wrong_kind_and_skeleton_checks(void)
     {
         return 32;
     }
+    if (expect_status(sl_capability_check_filesystem(&registry, &arena,
+                                                     sl_str_from_cstr("files.assets"),
+                                                     SL_CAPABILITY_OPERATION_APPEND, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 37;
+    }
+    if (expect_status(sl_capability_check_filesystem(&registry, &arena,
+                                                     sl_str_from_cstr("files.assets"),
+                                                     SL_CAPABILITY_OPERATION_DELETE, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 38;
+    }
+    if (expect_status(sl_capability_check_filesystem(&registry, &arena,
+                                                     sl_str_from_cstr("files.assets"),
+                                                     SL_CAPABILITY_OPERATION_LIST, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 39;
+    }
+    if (expect_status(sl_capability_check_filesystem(&registry, &arena,
+                                                     sl_str_from_cstr("files.assets"),
+                                                     SL_CAPABILITY_OPERATION_METADATA, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 40;
+    }
+    if (expect_status(sl_capability_check_filesystem(&registry, &arena,
+                                                     sl_str_from_cstr("files.assets"),
+                                                     SL_CAPABILITY_OPERATION_WATCH, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 41;
+    }
+    if (expect_status(sl_capability_check_filesystem(&registry, &arena,
+                                                     sl_str_from_cstr("files.assets"),
+                                                     SL_CAPABILITY_OPERATION_LOCK, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 42;
+    }
     if (expect_status(sl_capability_check_network(&registry, &arena, sl_str_from_cstr("net.admin"),
                                                   SL_CAPABILITY_OPERATION_LISTEN, &diag),
                       SL_STATUS_OK) != 0)

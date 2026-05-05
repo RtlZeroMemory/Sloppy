@@ -388,8 +388,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   smoke; remaining research is nonblocking libpq/socket integration and provider-specific
   native cancellation/interruption semantics.
 - Cross-platform SQL Server support versus Windows-first ODBC-only policy.
-- Filesystem/network capability semantics: path normalization, symlinks, config/env
-  access, and honest non-sandboxing language.
+- Filesystem implementation after CORE-FS-01.A/B: path/root resolver, native backends,
+  async/offload operations, FileHandle/streams/watch resources, doctor/audit goldens, and
+  examples remain in later CORE-FS slices. Network capability semantics still need path-like
+  normalization equivalents, config/env access policy, and honest non-sandboxing language.
 - Runtime dependency packaging story for dynamic V8, libpq, SQLite, ODBC, and future
   provider/runtime assets.
 

@@ -177,6 +177,7 @@ struct ExtractedApp {
     configuration: Option<ConfigurationPlan>,
     schemas: Vec<SchemaMetadata>,
     config_reads: Vec<ConfigReadMetadata>,
+    uses_fs_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -299,6 +300,7 @@ struct AppState {
     results_imported: bool,
     data_imported: bool,
     schema_imported: bool,
+    fs_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -329,6 +331,7 @@ impl AppState {
             results_imported: false,
             data_imported: false,
             schema_imported: false,
+            fs_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -1260,6 +1263,7 @@ fn extract_entry(
         configuration: None,
         schemas: state.schemas,
         config_reads: state.config_reads,
+        uses_fs_runtime: state.fs_imported,
     })
 }
 
@@ -1353,6 +1357,44 @@ fn extract_import(
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
             }
+        }
+        return Ok(());
+    }
+
+    if import_source == "sloppy/fs" {
+        if let Some(specifiers) = &import.specifiers {
+            if specifiers.is_empty() {
+                state.unsupported_import_specifier =
+                    Some((import_source.to_string(), import.source.span));
+                return Ok(());
+            }
+            for specifier in specifiers {
+                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                    state.unsupported_import_specifier =
+                        Some((import_source.to_string(), import.source.span));
+                    return Ok(());
+                };
+                let imported = specifier.imported.name().as_str();
+                let local = specifier.local.name.as_str();
+                if matches!(
+                    imported,
+                    "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
+                ) && imported == local
+                {
+                    state.fs_imported = true;
+                } else {
+                    if matches!(
+                        imported,
+                        "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
+                    ) {
+                        state.unsupported_import_alias = true;
+                    }
+                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
+                }
+            }
+        } else {
+            state.unsupported_import_specifier =
+                Some((import_source.to_string(), import.source.span));
         }
         return Ok(());
     }
@@ -5486,6 +5528,11 @@ fn emit_plan(
             "sourceMaps": true
         }
     });
+    if app.uses_fs_runtime {
+        value["requiredFeatures"] = json!(["stdlib.fs"]);
+        value["strongPlan"]["evidence"]["filesystem"] = json!(true);
+        value["features"]["fileSystem"] = json!(true);
+    }
     if let Some(configuration) = configuration {
         value["configuration"] = configuration;
     }
@@ -6194,6 +6241,7 @@ mod tests {
             configuration: None,
             schemas: Vec::new(),
             config_reads: Vec::new(),
+            uses_fs_runtime: false,
         };
         config
             .apply_to_app(&mut app)
@@ -7503,6 +7551,68 @@ export default app;
         )
         .expect("plan should emit");
         assert!(plan.contains("\"database\": \":memory:\""));
+    }
+
+    #[test]
+    fn sloppy_fs_import_emits_plan_required_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { File, Directory, Path } from "sloppy/fs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/fs import should be recognized");
+        assert!(app.uses_fs_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(value["requiredFeatures"], serde_json::json!(["stdlib.fs"]));
+        assert_eq!(value["features"]["fileSystem"], serde_json::json!(true));
+        assert_eq!(
+            value["strongPlan"]["evidence"]["filesystem"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn side_effect_sloppy_fs_import_is_rejected() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import "sloppy/fs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("side-effect sloppy/fs import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
+        assert!(diagnostic
+            .message
+            .contains("unsupported import specifier \"sloppy/fs\""));
+    }
+
+    #[test]
+    fn empty_named_sloppy_fs_import_is_rejected() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import {} from "sloppy/fs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("empty named sloppy/fs import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
+        assert!(diagnostic
+            .message
+            .contains("unsupported import specifier \"sloppy/fs\""));
     }
 
     #[test]

@@ -119,6 +119,15 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
             sl_feature_literal("data stdlib", sizeof("data stdlib") - 1U),
             sl_feature_literal("sloppy/data", sizeof("sloppy/data") - 1U), sl_str_empty(),
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true);
+    case SL_RUNTIME_FEATURE_STDLIB_FS:
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+            sl_feature_literal("stdlib.fs", sizeof("stdlib.fs") - 1U),
+            sl_feature_literal("filesystem stdlib", sizeof("filesystem stdlib") - 1U),
+            sl_feature_literal("sloppy/fs", sizeof("sloppy/fs") - 1U),
+            sl_feature_literal("__sloppy.fs", sizeof("__sloppy.fs") - 1U),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
+            true, true);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
@@ -210,6 +219,11 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.data"), SL_FEATURE_STR("data stdlib"),
          SL_FEATURE_STR("sloppy/data"), SL_FEATURE_EMPTY,
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true},
+        {SL_RUNTIME_FEATURE_STDLIB_FS, SL_RUNTIME_FEATURE_KIND_STDLIB, SL_FEATURE_STR("stdlib.fs"),
+         SL_FEATURE_STR("filesystem stdlib"), SL_FEATURE_STR("sloppy/fs"),
+         SL_FEATURE_STR("__sloppy.fs"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
+         true, true},
         {SL_RUNTIME_FEATURE_PROVIDER_SQLITE, SL_RUNTIME_FEATURE_KIND_PROVIDER,
          SL_FEATURE_STR("provider.sqlite"), SL_FEATURE_STR("SQLite provider"),
          SL_FEATURE_STR("sloppy/providers/sqlite"), SL_FEATURE_STR("__sloppy.data.sqlite"),

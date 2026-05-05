@@ -90,7 +90,8 @@ is unknown, unavailable, or missing an unavailable dependency.
 ENGINE-27.C/D extends feature descriptors with current stdlib import and V8-intrinsic
 metadata. Plan activation is still derived from supported Plan target/route/provider
 metadata plus explicit `requiredFeatures[]`; the runtime does not add package-manager
-semantics or arbitrary import resolution.
+semantics or arbitrary import resolution. CORE-FS-01.A/B adds the `stdlib.fs` descriptor
+and lets the compiler emit that required feature when source imports `sloppy/fs`.
 
 ## Public API Shape
 
@@ -147,7 +148,8 @@ MAIN1-10 capability rules:
 
 - supported capability kinds are `database`, `filesystem`, and `network`;
 - database access is `read`, `write`, or `readwrite`;
-- filesystem skeleton access is `read`, `write`, or `readwrite`;
+- filesystem access is `read`, `write`, `readwrite`, `append`, `delete`, `list`,
+  `metadata`, `watch`, or `lock`;
 - network skeleton access is `connect`, `listen`, or `connect-listen`;
 - database capabilities require `provider` and the value must reference
   `dataProviders[].token`;
@@ -157,8 +159,10 @@ MAIN1-10 capability rules:
 - obvious secret-bearing fields such as `connectionString`, password/PWD, secret, API key,
   and access-token values are rejected in provider/capability metadata.
 
-These are Sloppy runtime policy checks, not OS sandbox rules. Filesystem and network
-entries are metadata/check-only until scoped APIs exist.
+These are Sloppy runtime policy checks, not OS sandbox rules. CORE-FS-01.A/B defines the
+filesystem API and policy contract, but filesystem operations, bridge calls, and OS
+sandboxing remain later scoped work. Network entries remain metadata/check-only until
+scoped APIs exist.
 
 All native `SlStr` fields are borrowed views in the struct model. Manually constructed
 plans borrow caller-owned storage. `sl_plan_parse_json` copies JSON strings and handler
@@ -190,7 +194,8 @@ Plan/requested-by context where the current Plan shape can provide it.
 Current descriptor import mapping is intentionally narrow and mirrors what the compiler and
 stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/results` to
 `stdlib.results`, `sloppy/schema` to `stdlib.schema`, `sloppy/config` to `stdlib.config`,
-`sloppy/data` to `stdlib.data`, and `sloppy/providers/sqlite` to `provider.sqlite`.
+`sloppy/data` to `stdlib.data`, `sloppy/fs` to `stdlib.fs`, and
+`sloppy/providers/sqlite` to `provider.sqlite`.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
 Plan validation; they do not implement JavaScript bridges.
 
@@ -429,16 +434,18 @@ checks. Capability entries may carry:
 - `access`, required and validated for the kind;
 - required `provider` for database capabilities, which must reference
   `dataProviders[].token`;
-- no `provider` for filesystem or network skeleton capabilities.
+- no `provider` for filesystem or network capabilities.
 
 Database access values are `read`, `write`, or `readwrite`; filesystem access values are
-`read`, `write`, or `readwrite`; network access values are `connect`, `listen`, or
-`connect-listen`. Duplicate capability tokens are rejected.
+`read`, `write`, `readwrite`, `append`, `delete`, `list`, `metadata`, `watch`, or `lock`;
+network access values are `connect`, `listen`, or `connect-listen`. Duplicate capability
+tokens are rejected.
 
 Capabilities are loaded into the runtime registry and checked by token, kind, access mode,
-and database provider within the V8 SQLite bridge before provider calls. Filesystem and
-network entries are skeleton checks only; they do not create filesystem/network APIs or an
-OS sandbox.
+and database provider within the V8 SQLite bridge before provider calls. CORE-FS-01.A/B
+adds filesystem capability vocabulary and feature metadata; later CORE-FS-01 slices add
+filesystem operations and diagnostics. Network entries remain skeleton checks only and no
+capability entry creates an OS sandbox.
 
 ### permissions
 
