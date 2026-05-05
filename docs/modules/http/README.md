@@ -4,6 +4,15 @@
 
 Partially implemented.
 
+Post-ENGINE-16 consolidation: the HTTP module is mature for bounded localhost transport
+correctness, not production application-server behavior. HTTP-25 completes sequential
+keep-alive, bounded chunked request decoding, internal/native chunked response writing,
+and stress/conformance smoke for those paths. HTTP-26 is the next Roadmap-2 HTTP wave for
+route-level limits/timeouts from Plan/config, request ID/correlation context, access
+events, trusted proxy/forwarded headers policy, error response consistency, and policy
+conformance. Public streaming APIs, production drain, TLS/H2/H3/WebSockets, public alpha,
+and benchmark claims remain blocked.
+
 TASK 10.A adds a native route pattern parser and matcher foundation. TASK 10.B adds the
 first llhttp dependency integration skeleton and a complete-buffer HTTP/1 request-head
 parser. TASK 10.C adds a synthetic in-memory GET dispatch helper that maps a parsed request

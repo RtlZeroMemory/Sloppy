@@ -18,6 +18,13 @@ testing philosophy in `docs/testing-strategy.md`.
 
 ## Current Phase
 
+Post-ENGINE-16 Roadmap-2 gate policy: this phase is planning/consolidation before new
+runtime maturation implementation. Default gate success remains default non-V8 evidence.
+ENGINE-26 through ENGINE-30 work must report execution-model, feature-modularity,
+provider, HTTP policy, events/metrics, torture/stress, V8-gated, live-provider, package,
+and benchmark evidence separately. No Roadmap-2 task may turn skipped optional lanes into
+success, public alpha readiness, or benchmark/performance claims.
+
 HTTP-25.A/B/C update: `core.http.transport` and
 `conformance.transport.localhost_mvp` now cover bounded sequential keep-alive behavior in
 the default non-V8 lane. Passing those tests proves local HTTP/1.1 sequential reuse, idle

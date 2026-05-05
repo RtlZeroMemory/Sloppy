@@ -170,6 +170,11 @@ until those scopes close, so no-leak assertions cannot pass while a forced reque
 still active. `SlAppLifecycle` applies the same cleanup model to app-scoped resources and
 makes shutdown idempotent. No raw native pointer is exposed to JavaScript.
 
+Post-ENGINE-16 Roadmap-2 keeps app/resource lifecycle as a foundation to consume, not a
+public monitoring API. Provider, timer, callback, HTTP, and metrics owners must wire their
+own counters/events through ENGINE-29 after ENGINE-26/28 semantics settle. Torture tests
+come after those counters exist.
+
 Real service lifetimes, service disposal, async scope retention, and capability enforcement
 must be explicit and plan-visible before public app-host services can claim runtime
 lifetime semantics.

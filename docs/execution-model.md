@@ -37,6 +37,15 @@ This document does not implement:
 
 ## Current Phase
 
+Post-ENGINE-16 consolidation note: the supported execution path now has compiler-emitted
+Plan/bundle/source-map artifacts, optional V8 artifact execution, bounded HTTP transport
+features, current synchronous SQLite bridge behavior, ENGINE-15 source-map/diagnostic
+evidence, and ENGINE-16 app/request/resource lifecycle evidence. Engine Roadmap-2 is the
+next runtime maturation source: execution model hardening, runtime feature modularity,
+provider executor adoption, route-level HTTP policy/observability, runtime events/metrics,
+and later torture tests. Public alpha docs, benchmark claims, provider expansion, and
+production HTTP remain blocked until their own evidence exists.
+
 HTTP-25.A/B/C update: the libuv localhost transport now supports bounded sequential
 HTTP/1.1 keep-alive. HTTP-25.D/E adds bounded chunked request decoding and an internal
 chunked response writer. HTTP-25.F adds bounded conformance/stress evidence over those

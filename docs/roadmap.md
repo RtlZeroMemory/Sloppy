@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: 2026-05-01 post-core source-of-truth reset plus owner-approved next-wave
+Status: 2026-05-05 post-ENGINE-16 source-of-truth reset plus Engine Roadmap-2
 planning. This is an audit and planning document, not a release promise.
 
 ## Current Reality
@@ -23,16 +23,24 @@ Core MVP / Slop Engine proof has landed for the scoped development path:
   yet routed through it.
 - ENGINE-19 evidence lanes and package outside-checkout smoke exist; default, V8-gated,
   package, live-provider, stress, and benchmark evidence must remain separate.
+- ENGINE-15 completes the current source-map/diagnostic renderer wave, and ENGINE-16
+  completes the current native app/request/resource lifecycle wave. Roadmap-2 now focuses
+  on execution model hardening, runtime feature modularity, provider executor adoption,
+  route-level HTTP policy/observability, runtime events/metrics, and later torture tests.
 
 The compact source records for this reset are:
 
-- `docs/project/post-core-mvp-code-reality-audit.md`;
-- `docs/project/post-core-mvp-docs-inventory.md`;
-- `docs/project/post-core-mvp-issue-reconciliation.md`;
-- `docs/project/post-core-mvp-memory-string-audit.md`;
-- `docs/project/post-core-mvp-boundary-audit.md`;
-- `docs/project/post-core-mvp-next-roadmap.md`;
-- `docs/project/post-core-next-wave-issue-map.md`;
+- `docs/project/post-engine-16-execution-model-audit.md`;
+- `docs/project/post-engine-16-runtime-modularity-audit.md`;
+- `docs/project/post-engine-16-provider-runtime-audit.md`;
+- `docs/project/post-engine-16-http-runtime-audit.md`;
+- `docs/project/post-engine-16-lifecycle-memory-audit.md`;
+- `docs/project/post-engine-16-diagnostics-observability-audit.md`;
+- `docs/project/post-engine-16-docs-issue-reconciliation.md`;
+- `docs/project/engine-roadmap-2.md`;
+- `docs/project/engine-roadmap-2-issue-index.md`;
+- historical post-Core records under `docs/project/post-core-mvp-*.md` and
+  `docs/project/post-core-next-wave-issue-map.md`;
 - `docs/project/framework-app-layer-roadmap.md`;
 - `docs/project/framework-api-shape.md`;
 - `docs/project/source-input-run-dev-loop-plan.md`;
@@ -89,26 +97,28 @@ Durable architecture sources remain:
 Closed during this reset or immediately before it:
 
 - ENGINE-13 HTTP backend parent;
+- ENGINE-14 module/bootstrap runtime parent;
+- ENGINE-15 diagnostics/source-map parent;
+- ENGINE-16 app/resource lifetime parent;
 - ENGINE-17 SQLite runtime parent;
 - ENGINE-19 conformance/package evidence tasks;
-- ENGINE-24 HTTP transport parent.
+- ENGINE-24 HTTP transport parent;
+- HTTP-25 keep-alive/chunked/internal streaming parent;
+- HARDEN-01 post-Core foundation hardening parent;
+- COMPILER-30 compiler inference parent/tasks;
+- legacy ENGINE-08 and ENGINE-09 diagnostic/example parents now covered by completed
+  ENGINE-15/16 and framework/example evidence.
 
 Kept open intentionally:
 
 - #259/#302 compiler/source-input handoff, with ENGINE-02.E covering the current
   rebuild-always JavaScript shortcut and leaving TypeScript/module/cache reuse follow-ups;
-- #460/#461-#470 COMPILER-30 compiler inference engine, owning deep static inference for
-  the supported Slop app subset and feeding Strong Plan consumers;
-- #312/#325-#329 module/bootstrap runtime completion;
-- #314/#335-#339 app/resource lifetime runtime;
 - #316/#345-#349 CLI/dev loop runtime;
 - #318/#355-#359 Strong Plan strategic layer;
-- #265/#295 diagnostics/async diagnostic work;
-- #266/#296/#297 examples and docs reality work;
-- #268/#300/#301 public alpha readiness and non-claims review;
-- #26 platform scanner fixture/self-test proof.
+- #268/#300/#301 public alpha readiness and non-claims review.
 
-Created for the owner-approved post-Core next wave:
+Previously created for the owner-approved post-Core next wave, now completed or kept as
+historical evidence where closed:
 
 - #432/#435-#440 FRAMEWORK-01 framework/app-layer source-of-truth and ergonomics;
 - #433/#441-#446 HTTP-25 HTTP/1.1 keep-alive, chunked request decoding, internal
@@ -116,28 +126,31 @@ Created for the owner-approved post-Core next wave:
 - #434/#447/#448 HARDEN-01 post-Core foundation hardening, with #431 and #26 reused for
   SQLite preflight and platform scanner proof.
 
+Created for Engine Roadmap-2:
+
+- ENGINE-26 Execution Model Hardening;
+- ENGINE-27 Runtime Feature Modularity;
+- ENGINE-28 Provider Runtime Maturation;
+- HTTP-26 Route-Level HTTP Policy and Observability;
+- ENGINE-29 Runtime Events and Metrics;
+- ENGINE-30 Runtime Torture and Crash-Resistance Harness.
+
+The exact issue-number map lives in `docs/project/engine-roadmap-2-issue-index.md`.
+
 ## Next Recommended Tracks
 
-The owner-approved next-wave map is `docs/project/post-core-next-wave-issue-map.md`. In
-short:
+The next engine wave is `docs/project/engine-roadmap-2.md`. In order:
 
-1. HARDEN-01 small boundary/safety cleanup if selected.
-2. Source-input follow-ups through reused #259/#302 and #316/#345-#349: TypeScript/module
-   completion, cache reuse, and watch/dev-loop decisions.
-3. COMPILER-30 compiler inference through #460/#461-#470. #461/COMPILER-30.A establishes
-   the module architecture, library API, and fixture harness; later tasks own parser,
-   resolver, DSL, route/provider/schema/effect/capability, and completeness behavior.
-4. Strong Plan typed graph through reused #318/#355-#359 once compiler metadata exists.
-5. Framework config, binding, validation, Results, and examples through #432/#435-#440.
-   #440 adds hardened source-input examples and tooling evidence for the implemented
-   subset; broader runtime validation, DI, controllers/decorators, and public alpha docs
-   remain deferred.
-6. Plan-driven OpenAPI is available for the supported metadata subset; future work must
-   keep unknown metadata explicit and must not turn optimization candidate reports into
-   native JSON, route partitioning, or multi-isolate implementation without new scope.
-7. HTTP-25.F/#446 bounded stress/conformance evidence for the HTTP-25 keep-alive, chunked,
-   and internal streaming writer slices.
-8. Provider expansion later after SQLite/provider-executor integration is proven.
+1. ENGINE-26 execution model hardening.
+2. ENGINE-27 runtime feature modularity.
+3. ENGINE-28 provider runtime maturation, including SQLite executor-backed bridge work.
+4. HTTP-26 route-level HTTP policy and observability.
+5. ENGINE-29 runtime events and metrics.
+6. ENGINE-30 runtime torture and crash-resistance harness.
+
+Provider expansion remains after provider runtime maturation. Torture tests come after
+execution/modularity/provider/metrics foundations are mature. Public alpha and benchmark
+claims remain blocked.
 
 ## Deferred By Design
 

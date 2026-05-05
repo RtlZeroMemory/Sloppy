@@ -4,6 +4,13 @@
 
 Partially implemented through TASK 06.C and compiler-emitted MVP artifacts.
 
+Post-ENGINE-16 consolidation: Plan metadata is now strong enough to drive routes,
+capabilities, providers, source maps, completeness, doctor/audit/OpenAPI, and current
+app-host startup validation for the supported subset. It does not yet drive runtime
+feature activation. ENGINE-27 is the Roadmap-2 feature-modularity wave that should map
+Plan/import/use metadata to runtime feature descriptors, V8 intrinsic registration,
+missing-feature diagnostics, and package include-only-used policy.
+
 ## Purpose
 
 Define, and later load and validate, `app.plan.json`, the compiler/runtime contract.

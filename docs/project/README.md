@@ -39,6 +39,26 @@ Do not include `.git/`, `build/`, `compiler/target/`, or other generated artifac
 
 ## Current Source-Of-Truth Reset
 
+- `docs/project/engine-roadmap-2.md` is the current post-ENGINE-16 runtime maturation
+  roadmap before the next framework expansion.
+- `docs/project/engine-roadmap-2-issue-index.md` maps Roadmap-2 EPIC/TASK issues.
+- `docs/project/post-engine-16-execution-model-audit.md` records the execution domain,
+  async, threading, cancellation, and terminal-state audit.
+- `docs/project/post-engine-16-runtime-modularity-audit.md` records the runtime feature
+  composition and Plan/import/use-driven modularity audit.
+- `docs/project/post-engine-16-provider-runtime-audit.md` records provider executor,
+  SQLite bridge, PostgreSQL, and SQL Server runtime/offload findings.
+- `docs/project/post-engine-16-http-runtime-audit.md` records HTTP maturity after
+  HTTP-25 and the HTTP-26 direction.
+- `docs/project/post-engine-16-lifecycle-memory-audit.md` records app/resource lifecycle
+  and memory/string safety findings after ENGINE-16.
+- `docs/project/post-engine-16-diagnostics-observability-audit.md` records
+  diagnostics/source-map/observability findings after ENGINE-15.
+- `docs/project/post-engine-16-docs-issue-reconciliation.md` records the 2026-05-05 docs
+  and issue reconciliation.
+
+## Historical Post-Core Reset
+
 - `docs/project/post-core-mvp-code-reality-audit.md` records the compact code/test reality
   check after the Core MVP proof phase.
 - `docs/project/post-core-mvp-docs-inventory.md` records which temporary docs were kept,

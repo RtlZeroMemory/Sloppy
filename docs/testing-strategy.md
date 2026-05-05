@@ -43,6 +43,14 @@ lanes separate: default non-V8, V8-gated, localhost transport, SQLite/capability
 outside-checkout, live-provider optional, stress/smoke, and benchmark harness. Skipped
 optional gates are not pass claims.
 
+Post-ENGINE-16 Roadmap-2 testing must keep the same separation. ENGINE-26 concurrency
+tests prove execution-domain and terminal-state invariants, ENGINE-27 tests prove feature
+activation and missing-feature diagnostics, ENGINE-28 tests prove provider executor bridge
+semantics, HTTP-26 tests prove route-level policy/observability, ENGINE-29 tests prove
+event/counter reporting, and ENGINE-30 torture tests run only after those foundations are
+mature. Torture or stress output is correctness evidence unless a later benchmark
+methodology task explicitly scopes performance claims.
+
 ENGINE-19.BC registers the current V8, HTTP, and async behavior under explicit conformance
 names without adding runtime behavior. `conformance.http.default_dispatch` is default
 non-V8 synthetic dispatch evidence, `conformance.transport.localhost_mvp` is localhost

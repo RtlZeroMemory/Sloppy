@@ -35,6 +35,14 @@ adoption and refactoring remain deferred to ENGINE-22.
 
 ## Current Phase
 
+Post-ENGINE-16 consolidation note: the current lifecycle/memory source of truth is the
+ENGINE-16 native app/request/resource helper layer plus
+`docs/project/post-engine-16-lifecycle-memory-audit.md`. Request scopes have explicit
+terminal outcomes, late completions are stale cleanup-only work, and resource-table handles
+remain generation-counted IDs rather than native pointers. Provider/timer/callback counter
+integration, SQLite executor-backed bridge ownership, and runtime torture remain
+Roadmap-2 follow-ups.
+
 The core foundation now implements `SlStatus`, `SlSourceLoc`, borrowed `SlStr`, borrowed
 `SlBytes`, arena-owned string and byte copy helpers, deterministic string/byte hash helpers,
 checked `size_t` arithmetic, assertion macros, a caller-backed `SlArena`, bounded fixed or
