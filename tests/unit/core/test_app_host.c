@@ -367,6 +367,53 @@ static SlStatus request_handler_resource_cleanup(SlAppRequestScope* scope, void*
     return sl_status_from_code(data->status_code);
 }
 
+static SlStatus request_handler_closes_scope(SlAppRequestScope* scope, void* user, SlDiag* out_diag)
+{
+    RequestHandlerData* data = (RequestHandlerData*)user;
+
+    if (data == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    data->saw_active_scope = sl_app_request_scope_is_active(scope);
+    if (!sl_status_is_ok(sl_app_request_scope_add_cleanup(scope, record_cleanup,
+                                                          &data->first_cleanup, data->record)))
+    {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    if (!sl_status_is_ok(sl_app_request_scope_close(scope, out_diag))) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    return sl_status_from_code(data->status_code);
+}
+
+static SlStatus request_handler_completes_scope(SlAppRequestScope* scope, void* user,
+                                                SlDiag* out_diag)
+{
+    RequestHandlerData* data = (RequestHandlerData*)user;
+    SlStatus status;
+
+    if (data == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    data->saw_active_scope = sl_app_request_scope_is_active(scope);
+    if (!sl_status_is_ok(sl_app_request_scope_add_cleanup(scope, record_cleanup,
+                                                          &data->first_cleanup, data->record)))
+    {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+
+    status = sl_status_from_code(data->status_code);
+    if (!sl_status_is_ok(sl_app_request_scope_complete(
+            scope,
+            sl_status_is_ok(status) ? SL_APP_REQUEST_OUTCOME_SUCCESS
+                                    : SL_APP_REQUEST_OUTCOME_SYNC_ERROR,
+            status, sl_status_is_ok(status) ? SL_DIAG_NONE : SL_DIAG_APP_LIFECYCLE, out_diag)))
+    {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    return status;
+}
+
 static int test_request_scope_cleans_up_on_success(void)
 {
     SlScopeCleanup storage[4];
@@ -383,6 +430,44 @@ static int test_request_scope_cleans_up_on_success(void)
         record.order[0] != 2 || record.order[1] != 1)
     {
         return 41;
+    }
+
+    return 0;
+}
+
+static int test_request_scope_execute_accepts_handler_close(void)
+{
+    SlScopeCleanup storage[2];
+    CleanupRecord record = {{0}, 0U};
+    RequestHandlerData data = {&record, 7, 0, SL_STATUS_OK, 0U, 0U, false, false};
+
+    if (expect_status(
+            sl_app_request_scope_execute(storage, 2U, request_handler_closes_scope, &data, NULL),
+            SL_STATUS_OK) != 0)
+    {
+        return 44;
+    }
+    if (!data.saw_active_scope || record.count != 1U || record.order[0] != 7) {
+        return 45;
+    }
+
+    return 0;
+}
+
+static int test_request_scope_execute_accepts_handler_complete(void)
+{
+    SlScopeCleanup storage[2];
+    CleanupRecord record = {{0}, 0U};
+    RequestHandlerData data = {&record, 8, 0, SL_STATUS_CANCELLED, 0U, 0U, false, false};
+
+    if (expect_status(
+            sl_app_request_scope_execute(storage, 2U, request_handler_completes_scope, &data, NULL),
+            SL_STATUS_CANCELLED) != 0)
+    {
+        return 46;
+    }
+    if (!data.saw_active_scope || record.count != 1U || record.order[0] != 8) {
+        return 47;
     }
 
     return 0;
@@ -970,7 +1055,7 @@ static int test_typed_resource_cleanup_preserves_wrong_kind_resource(void)
     SlResourceTable table = {0};
     LifecycleCleanupRecord record = {{0}, 0U};
     LifecycleCleanupPayload payload = {&record, 88};
-    SlAppResourceCleanup cleanup = {0};
+    SlAppTypedResourceCleanup cleanup = {0};
     SlAppRequestScope request_scope = {0};
     SlResourceId id = sl_resource_id_invalid();
     SlDiag diag = {0};
@@ -984,10 +1069,10 @@ static int test_typed_resource_cleanup_preserves_wrong_kind_resource(void)
         return 116;
     }
 
-    cleanup.table = &table;
-    cleanup.id = id;
+    cleanup.resource.table = &table;
+    cleanup.resource.id = id;
     cleanup.kind = SL_RESOURCE_KIND_SQLITE_CONNECTION;
-    if (expect_status(sl_app_request_scope_add_resource_cleanup(&request_scope, &cleanup),
+    if (expect_status(sl_app_request_scope_add_typed_resource_cleanup(&request_scope, &cleanup),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_app_request_scope_complete(&request_scope, SL_APP_REQUEST_OUTCOME_SUCCESS,
                                                     sl_status_ok(), SL_DIAG_NONE, &diag),
@@ -996,7 +1081,7 @@ static int test_typed_resource_cleanup_preserves_wrong_kind_resource(void)
         return 117;
     }
     if (record.count != 0U || sl_resource_table_live_count(&table) != 1U ||
-        !sl_resource_id_is_valid(cleanup.id))
+        !sl_resource_id_is_valid(cleanup.resource.id))
     {
         return 118;
     }
@@ -1086,6 +1171,8 @@ int main(void)
         test_duplicate_route_policy_fails_startup,
         test_duplicate_service_token_fails_startup,
         test_request_scope_cleans_up_on_success,
+        test_request_scope_execute_accepts_handler_close,
+        test_request_scope_execute_accepts_handler_complete,
         test_request_scope_cleans_up_on_failure,
         test_request_scope_closes_resources_for_lifecycle_outcomes,
         test_app_lifecycle_shutdown_closes_resources_once,

@@ -55,13 +55,19 @@ typedef enum SlAppLifecycleState
  * The payload borrows `table` and stores one JS-safe resource ID. The table and payload must
  * outlive the scope cleanup that owns the registration. Cleanup closes the resource through
  * SlResourceTable and invalidates `id`; it never exposes or logs native pointers.
+ * Typed cleanup is a separate opt-in payload so legacy untyped cleanup payloads remain valid.
  */
 typedef struct SlAppResourceCleanup
 {
     SlResourceTable* table;
     SlResourceId id;
-    SlResourceKind kind;
 } SlAppResourceCleanup;
+
+typedef struct SlAppTypedResourceCleanup
+{
+    SlAppResourceCleanup resource;
+    SlResourceKind kind;
+} SlAppTypedResourceCleanup;
 
 typedef struct SlAppLifecycle
 {
@@ -88,6 +94,9 @@ SlStatus sl_app_lifecycle_add_cleanup(SlAppLifecycle* lifecycle, SlScopeCleanupF
                                       void* user, SlDiag* out_diag);
 SlStatus sl_app_lifecycle_add_resource_cleanup(SlAppLifecycle* lifecycle,
                                                SlAppResourceCleanup* resource, SlDiag* out_diag);
+SlStatus sl_app_lifecycle_add_typed_resource_cleanup(SlAppLifecycle* lifecycle,
+                                                     SlAppTypedResourceCleanup* resource,
+                                                     SlDiag* out_diag);
 SlStatus sl_app_lifecycle_fail_startup(SlAppLifecycle* lifecycle, SlDiag* out_diag);
 SlStatus sl_app_lifecycle_begin_shutdown(SlAppLifecycle* lifecycle, SlDiag* out_diag);
 SlStatus sl_app_lifecycle_finish_shutdown(SlAppLifecycle* lifecycle, SlDiag* out_diag);
@@ -145,6 +154,8 @@ SlStatus sl_app_request_scope_add_cleanup(SlAppRequestScope* request_scope, SlSc
                                           void* payload, void* user);
 SlStatus sl_app_request_scope_add_resource_cleanup(SlAppRequestScope* request_scope,
                                                    SlAppResourceCleanup* resource);
+SlStatus sl_app_request_scope_add_typed_resource_cleanup(SlAppRequestScope* request_scope,
+                                                         SlAppTypedResourceCleanup* resource);
 SlStatus sl_app_request_scope_complete(SlAppRequestScope* request_scope,
                                        SlAppRequestOutcome outcome, SlStatus status,
                                        SlDiagCode diag_code, SlDiag* out_diag);

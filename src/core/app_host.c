@@ -546,11 +546,6 @@ static bool sl_app_resource_cleanup_valid(const SlAppResourceCleanup* resource)
     return resource != NULL && resource->table != NULL && sl_resource_id_is_valid(resource->id);
 }
 
-static bool sl_app_resource_cleanup_has_kind(const SlAppResourceCleanup* resource)
-{
-    return resource != NULL && resource->kind != SL_RESOURCE_KIND_NONE;
-}
-
 static void sl_app_resource_cleanup_close(void* payload, void* user)
 {
     SlAppResourceCleanup* resource = (SlAppResourceCleanup*)payload;
@@ -561,11 +556,32 @@ static void sl_app_resource_cleanup_close(void* payload, void* user)
         return;
     }
 
-    status = sl_app_resource_cleanup_has_kind(resource)
-                 ? sl_resource_table_close_kind(resource->table, resource->id, resource->kind, NULL)
-                 : sl_resource_table_close(resource->table, resource->id, NULL);
+    status = sl_resource_table_close(resource->table, resource->id, NULL);
     if (sl_status_is_ok(status)) {
         resource->id = sl_resource_id_invalid();
+    }
+}
+
+static bool sl_app_typed_resource_cleanup_valid(const SlAppTypedResourceCleanup* resource)
+{
+    return resource != NULL && sl_app_resource_cleanup_valid(&resource->resource) &&
+           resource->kind != SL_RESOURCE_KIND_NONE;
+}
+
+static void sl_app_typed_resource_cleanup_close(void* payload, void* user)
+{
+    SlAppTypedResourceCleanup* resource = (SlAppTypedResourceCleanup*)payload;
+    SlStatus status;
+
+    (void)user;
+    if (!sl_app_typed_resource_cleanup_valid(resource)) {
+        return;
+    }
+
+    status = sl_resource_table_close_kind(resource->resource.table, resource->resource.id,
+                                          resource->kind, NULL);
+    if (sl_status_is_ok(status)) {
+        resource->resource.id = sl_resource_id_invalid();
     }
 }
 
@@ -680,6 +696,18 @@ SlStatus sl_app_lifecycle_add_resource_cleanup(SlAppLifecycle* lifecycle,
 
     return sl_app_lifecycle_add_cleanup(lifecycle, sl_app_resource_cleanup_close, resource, NULL,
                                         out_diag);
+}
+
+SlStatus sl_app_lifecycle_add_typed_resource_cleanup(SlAppLifecycle* lifecycle,
+                                                     SlAppTypedResourceCleanup* resource,
+                                                     SlDiag* out_diag)
+{
+    if (!sl_app_typed_resource_cleanup_valid(resource)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_app_lifecycle_add_cleanup(lifecycle, sl_app_typed_resource_cleanup_close, resource,
+                                        NULL, out_diag);
 }
 
 SlStatus sl_app_lifecycle_fail_startup(SlAppLifecycle* lifecycle, SlDiag* out_diag)
@@ -1055,6 +1083,17 @@ SlStatus sl_app_request_scope_add_resource_cleanup(SlAppRequestScope* request_sc
                                             NULL);
 }
 
+SlStatus sl_app_request_scope_add_typed_resource_cleanup(SlAppRequestScope* request_scope,
+                                                         SlAppTypedResourceCleanup* resource)
+{
+    if (!sl_app_typed_resource_cleanup_valid(resource)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_app_request_scope_add_cleanup(request_scope, sl_app_typed_resource_cleanup_close,
+                                            resource, NULL);
+}
+
 SlStatus sl_app_request_scope_close(SlAppRequestScope* request_scope, SlDiag* out_diag)
 {
     if (request_scope == NULL) {
@@ -1171,9 +1210,12 @@ SlStatus sl_app_request_scope_execute(SlScopeCleanup* storage, size_t cleanup_ca
     }
 
     handler_status = handler(&request_scope, user, out_diag);
-    close_status = sl_app_request_scope_complete(
-        &request_scope, sl_app_request_outcome_from_status(handler_status), handler_status,
-        sl_app_request_diag_from_status(handler_status), out_diag);
+    close_status =
+        sl_app_request_scope_is_terminal(&request_scope)
+            ? sl_app_request_scope_close(&request_scope, out_diag)
+            : sl_app_request_scope_complete(
+                  &request_scope, sl_app_request_outcome_from_status(handler_status),
+                  handler_status, sl_app_request_diag_from_status(handler_status), out_diag);
     if (!sl_status_is_ok(close_status)) {
         return close_status;
     }
@@ -1201,9 +1243,12 @@ SlStatus sl_app_request_scope_execute_for_app(SlAppLifecycle* lifecycle, uint64_
     }
 
     handler_status = handler(&request_scope, user, out_diag);
-    close_status = sl_app_request_scope_complete(
-        &request_scope, sl_app_request_outcome_from_status(handler_status), handler_status,
-        sl_app_request_diag_from_status(handler_status), out_diag);
+    close_status =
+        sl_app_request_scope_is_terminal(&request_scope)
+            ? sl_app_request_scope_close(&request_scope, out_diag)
+            : sl_app_request_scope_complete(
+                  &request_scope, sl_app_request_outcome_from_status(handler_status),
+                  handler_status, sl_app_request_diag_from_status(handler_status), out_diag);
     if (!sl_status_is_ok(close_status)) {
         return close_status;
     }

@@ -156,8 +156,8 @@ sync error, V8 exception, Promise rejection, validation/body parse failure, time
 cancel, client disconnect, response write failure, provider failure, provider pre-start
 cancel, shutdown, and backpressure. A late completion after the scope is terminal is
 rejected as stale lifecycle work and does not re-run cleanup. Typed resource cleanup can
-require an expected `SlResourceKind`; wrong-kind cleanup preserves the live resource and
-its ID instead of closing an unexpected handle.
+require an expected `SlResourceKind` through `SlAppTypedResourceCleanup`; wrong-kind
+cleanup preserves the live resource and its ID instead of closing an unexpected handle.
 `SlAppLifecycle` applies the same cleanup model to app-scoped resources and makes shutdown
 idempotent. No raw native pointer is exposed to JavaScript.
 

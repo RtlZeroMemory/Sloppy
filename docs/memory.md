@@ -307,9 +307,10 @@ Future JS/native bridges must use the resource table rather than inventing ad ho
 - Request-scoped native resources should be represented by `SlResourceId` entries and paired
   with a request-scope cleanup that closes the ID. The app-host lifecycle helpers provide
   caller-owned `SlAppResourceCleanup` payloads that close `SlResourceId` entries through
-  `SlScope` on request completion or app shutdown. When a cleanup payload declares an
-  expected resource kind, close validates that kind before cleanup and preserves the ID on
-  mismatch. Provider bridges still need to decide which concrete handles are
+  `SlScope` on request completion or app shutdown. Typed cleanup is an explicit
+  `SlAppTypedResourceCleanup` opt-in so existing untyped payloads keep their layout; typed
+  close validates the expected kind before cleanup and preserves the ID on mismatch.
+  Provider bridges still need to decide which concrete handles are
   request-scoped versus app-scoped before public APIs claim automatic provider lifetime
   behavior.
 - MAIN1-08 SQLite bridge work consumes `SlResourceId`/`SlResourceTable`; it must not
