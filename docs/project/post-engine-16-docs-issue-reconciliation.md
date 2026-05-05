@@ -78,6 +78,10 @@ These closures are high-confidence parent/task cleanup after merged evidence is 
 - `#433` EPIC HTTP-25: HTTP/1.1 Keep-Alive and Streaming.
 - `#434` EPIC HARDEN-01: Post-Core Foundation Hardening.
 - `#312` EPIC ENGINE-14: Module Loading and Runtime Bootstrap Completion.
+- `#346` TASK ENGINE-18.B: sloppy Run UX and Source-Input Run Decision.
+- `#347` TASK ENGINE-18.C: Doctor and Audit Real Artifact Checks.
+- `#348` TASK ENGINE-18.D: OpenAPI Route Skeleton Policy.
+- `#435` TASK FRAMEWORK-01.A: Framework Layer Architecture and Public Surface Contract.
 - `#265` EPIC ENGINE-08: Diagnostics and Source Mapping Completion.
 - `#295` TASK ENGINE-08.B: Async Diagnostic JSON Surfaces.
 - `#266` EPIC ENGINE-09: End-to-End Example Apps.
@@ -94,8 +98,8 @@ These remain valid future work and are not treated as completed by this audit:
 - `#316` EPIC ENGINE-18: CLI and Dev Loop Runtime.
 - `#318` EPIC ENGINE-20: Strong Plan Strategic Layer.
 - `#355`, `#356`, `#359`: remaining Strong Plan typed graph/static/versioning tasks.
-- `#345` through `#349`: remaining CLI/dev-loop tasks.
-- `#432` and remaining FRAMEWORK-01 tasks `#435`, `#437`, `#438`, `#439`.
+- `#345` and `#349`: remaining CLI/dev-loop artifact inspection and watch/dev-loop tasks.
+- `#432` and remaining FRAMEWORK-01 tasks `#437`, `#438`, `#439`.
 - `#268`, `#300`, `#301`: public alpha readiness and non-claims remain blocked.
 
 ## Issues Needing Human Review

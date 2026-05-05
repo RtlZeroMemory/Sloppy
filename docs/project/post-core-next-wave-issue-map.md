@@ -25,7 +25,7 @@ Issue bodies updated with this lock: #302, #318, #355-#359, #432, and #435-#440.
 | #314 | EPIC-26 App Host and Resource Lifetime Runtime | Keep/reuse | Framework dependency | Framework request/app scope and resource lifetime depend on this runtime layer. |
 | #335-#339 | ENGINE-16 app/resource lifetime tasks | Keep/reuse | Framework dependency tasks | Still cover startup/shutdown, request/app scopes, cancellation, leak hooks, and lifecycle diagnostics. |
 | #316 | EPIC-28 CLI and Dev Loop Runtime | Keep/reuse | DEVLOOP parent context | Broad CLI/dev-loop parent already exists. |
-| #345-#349 | ENGINE-18 CLI/dev-loop tasks | Keep/reuse | DEVLOOP sibling tasks | Artifact inspect, doctor/audit, OpenAPI skeleton, watch/dev decision, and CLI diagnostics remain valid. |
+| #345/#349 | Remaining ENGINE-18 CLI/dev-loop tasks | Keep/reuse | DEVLOOP sibling tasks | Artifact inspection, watch/dev decision, and command diagnostics remain valid after #346/#347/#348 completion. |
 | #318 | EPIC-30 Strong Plan Strategic Layer | Keep/reuse | PLAN parent | Already owns typed Plan strategic layer; no duplicate PLAN EPIC created. |
 | #355-#359 | ENGINE-20 Strong Plan tasks | Keep/reuse | PLAN task set | Already cover graph model, metadata, validation, doctor/audit, OpenAPI hooks, and fast-path registry. |
 | #265 | Diagnostics and Source Mapping Completion | Keep/reuse | Diagnostics umbrella | Still useful as a higher-level diagnostics roadmap reference. |
@@ -44,7 +44,7 @@ Issue bodies updated with this lock: #302, #318, #355-#359, #432, and #435-#440.
 | Issue | Title | Relationship | Reason |
 | --- | --- | --- | --- |
 | #432 | EPIC FRAMEWORK-01: Framework/App Layer Source of Truth and Developer Ergonomics | New framework EPIC | No current kept-open issue owned the full post-Core framework/app-layer wave. |
-| #435 | TASK FRAMEWORK-01.A: Framework Layer Architecture and Public Surface Contract | Child of #432 | Locks public surface before implementation. |
+| #435 | TASK FRAMEWORK-01.A: Framework Layer Architecture and Public Surface Contract | Completed child of #432 | Public surface/design lock completed before implementation. |
 | #436 | TASK FRAMEWORK-01.B: Configuration Model and Environment/CLI Binding | Child of #432 | Implemented first config model: appsettings/env/CLI binding, typed access, `bind`, config-driven SQLite provider metadata, and redacted Plan metadata. |
 | #437 | TASK FRAMEWORK-01.C: Request Binding for Route, Query, Header, and Body | Child of #432 | Needed before honest app-layer request ergonomics. |
 | #438 | TASK FRAMEWORK-01.D: Validation and Safe Error Response Policy | Child of #432 | Needed for safe framework diagnostics and error responses. |
@@ -65,7 +65,7 @@ Issue bodies updated with this lock: #302, #318, #355-#359, #432, and #435-#440.
 
 | Proposed item | Decision | Reason |
 | --- | --- | --- |
-| DEVLOOP-01 EPIC and source-input subtasks | Not created | #259/#302 and #316/#345-#349 already cover the source-input and CLI/dev-loop scopes. |
+| DEVLOOP-01 EPIC and source-input subtasks | Not created | #259/#302/#346 and #316/#345/#349 already cover the source-input and remaining CLI/dev-loop scopes. |
 | PLAN-01 EPIC and Strong Plan subtasks | Not created | #318/#355-#359 already cover the Strong Plan strategic layer. |
 | HARDEN-01.B SQLite V8 Parameter Preflight | Not created | #431 already covers the exact safety issue. |
 | HARDEN-01.D Platform Scanner Fixture/Self-Test Proof | Not created | #26 already covers the exact scanner fixture/self-test proof. |

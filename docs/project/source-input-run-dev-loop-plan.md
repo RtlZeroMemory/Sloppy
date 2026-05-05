@@ -1,7 +1,9 @@
 # Source-Input Run and Dev Loop Plan
 
-Status: ENGINE-02.E implementation source of truth. Reuse #259/#302 and #316/#345-#349;
-do not create a duplicate DEVLOOP EPIC unless the owner explicitly asks.
+Status: ENGINE-02.E implementation source of truth. Reuse #259 for parent compiler/source
+input context and #316 for parent CLI/dev-loop context. #302/#346 cover the current
+source-input handoff; #345/#349 remain open for artifact inspection and watch/dev-loop
+decisions. Do not create a duplicate DEVLOOP EPIC unless the owner explicitly asks.
 
 ## Current Workflow
 
@@ -70,9 +72,9 @@ artifact/debug path and does not require `sloppy.json` or appsettings files.
 
 ## Watch/Dev Loop Later
 
-Watch mode, rebuild policy, and hot-reload behavior are separate decisions under the
-existing CLI/dev-loop issue family (#316/#345-#349). The first source-input slice should
-prefer direct build-and-run behavior over a hidden watch loop.
+Watch mode, richer artifact inspection, and hot-reload behavior remain separate decisions
+under the existing CLI/dev-loop issue family (#316/#345/#349). The completed source-input
+slice intentionally prefers direct build-and-run behavior over a hidden watch loop.
 
 ## Package Outside-Checkout Relationship
 

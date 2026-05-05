@@ -153,9 +153,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   file database policy, ENGINE-23 serialized blocking offload, cancellation/deadline
   interruption beyond pre-call checks, request-scope automatic cleanup/leak reporting, and
   richer production conformance.
-- CLI/dev loop runtime: ENGINE-18 owns `sloppyc`/`sloppy run` UX, source-input run
-  decision, artifact inspection, doctor, audit, OpenAPI route skeleton policy, watch/dev
-  decision, and command diagnostics.
+- CLI/dev loop runtime: ENGINE-18 still owns artifact inspection, watch/dev decision, and
+  command diagnostics through #345/#349. The source-input run decision (#346),
+  doctor/audit checks (#347), and OpenAPI route skeleton policy (#348) are completed by
+  ENGINE-02.E and ENGINE-20.C/D evidence.
 - Framework configuration follow-up: FRAMEWORK-01.B implements the first config model, but
   reload-on-change, user secrets, custom/remote providers, broad arbitrary CLI config
   binding, native typed Plan graph consumption, doctor/OpenAPI config reporting, request
