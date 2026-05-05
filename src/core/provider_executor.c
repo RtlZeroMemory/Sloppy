@@ -170,7 +170,7 @@ sl_provider_operation_descriptor_attach_capability(SlProviderOperationDescriptor
                                                    SlStr token, SlCapabilityOperation operation)
 {
     if (descriptor == NULL || !sl_provider_str_valid(token) ||
-        operation < SL_CAPABILITY_OPERATION_READ || operation > SL_CAPABILITY_OPERATION_READWRITE)
+        operation < SL_CAPABILITY_OPERATION_READ || operation > SL_CAPABILITY_OPERATION_LOCK)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }

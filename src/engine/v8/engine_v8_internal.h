@@ -13,6 +13,8 @@
 #include "../engine_internal.h"
 
 #include "sloppy/features.h"
+#include "sloppy/async_backend.h"
+#include "sloppy/provider_executor.h"
 #include "sloppy/resource.h"
 
 #include <v8.h>
@@ -26,6 +28,7 @@ struct SlV8Engine
 {
     v8::ArrayBuffer::Allocator* allocator = nullptr;
     v8::Isolate* isolate = nullptr;
+    SlArena* arena = nullptr;
     v8::Global<v8::Context> context;
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
     std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
@@ -39,12 +42,20 @@ struct SlV8Engine
     SlRuntimeFeatureSet runtime_features = {};
     std::array<SlResourceEntry, 64U> resource_entries = {};
     SlResourceTable resources = {};
+    std::array<SlAsyncCompletion, 64U> async_completions = {};
+    SlAsyncLoop* async_loop = nullptr;
+    SlProviderInstanceExecutor fs_executor = {};
+    std::array<SlProviderExecutorSlot, 32U> fs_slots = {};
+    bool fs_executor_initialized = false;
 };
 
 bool sl_v8_runtime_feature_active(const SlV8Engine* backend, SlRuntimeFeatureId id);
 
 bool sl_v8_install_provider_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                        v8::Local<v8::Object> data);
+
+bool sl_v8_install_fs_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
+                                 v8::Local<v8::Object> sloppy);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);

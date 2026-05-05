@@ -654,11 +654,12 @@ provider instance id/name, and provider kind when safe. They must not include co
 strings, passwords, API keys, raw provider handles, SQL parameter values, or native
 pointers.
 
-CORE-FS-01.A/B reserves the filesystem diagnostic surface. Later CORE-FS-01 slices must add
-stable text and JSON goldens for inactive `stdlib.fs`, invalid path syntax, unknown roots,
-named-root traversal, absolute path development warnings and strict failures, file not
-found, permission denied, unsupported platform behavior, stale file/watch handles, watch
-overflow, lock contention, and atomic-write cleanup failures.
+CORE-FS-01.C/D/H adds deterministic core filesystem diagnostics for invalid path syntax,
+unknown roots, named-root traversal, development absolute-path warnings, strict absolute
+denials, file errors, and inactive `stdlib.fs` bridge access. Later CORE-FS-01 slices must
+add stable text and JSON goldens for doctor/audit output, permission-denied policy shapes,
+unsupported platform behavior, stale file/watch handles, watch overflow, lock contention,
+and atomic-write cleanup failures.
 
 ## Examples
 

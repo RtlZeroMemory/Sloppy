@@ -51,9 +51,10 @@ feature set into the V8 bridge so `__sloppy_register_handler` is installed for a
 `stdlib.framework/app` plans and `__sloppy.data.sqlite` is installed only when
 `provider.sqlite` is active. Direct low-level V8 smoke tests that omit a feature set keep
 legacy intrinsic installation as bridge coverage, not as app-host startup policy.
-CORE-FS-01.A/B adds the `stdlib.fs` feature descriptor and reserves `__sloppy.fs` as the
-future filesystem intrinsic namespace. This module does not register filesystem intrinsics
-until the CORE-FS-01 V8/stdlib implementation slice.
+CORE-FS-01.C/D/H registers the private `__sloppy.fs` intrinsic namespace only when the
+validated runtime feature set activates `stdlib.fs`. The namespace exposes the core
+filesystem operations used by `stdlib/sloppy/fs.js`; FileHandle, streams, watch, and
+advanced operations remain later CORE-FS slices.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
@@ -171,9 +172,12 @@ Framework and provider bridge code belongs in sibling V8 modules:
   cleanup callback, and native provider calls.
 - `async_scheduler.cc` owns owner-thread native continuation scheduling and Promise
   settlement from native completions.
-- Native provider, HTTP, timer, or other future completions must pass any terminal-state
-  guard before reaching `async_scheduler.cc`; provider/libuv/offload domains still never
-  enter V8 directly.
+- `intrinsics_fs.cc` owns filesystem argument validation, request ownership, offloaded
+  native filesystem calls, and owner-thread Promise settlement for active `stdlib.fs`
+  plans.
+- Native provider, filesystem, HTTP, timer, or other future completions must pass any
+  terminal-state guard before reaching owner-thread settlement; provider/libuv/offload
+  domains still never enter V8 directly.
 - Current SQLite bridge callbacks remain synchronous and owner-thread-bound. They are
   documented ENGINE-28 debt, not an allowed general pattern for blocking provider work.
 

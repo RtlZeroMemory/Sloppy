@@ -3,6 +3,7 @@ set(required_bootstrap_assets
     app.js
     bootstrap.manifest.json
     data.js
+    fs.js
     index.js
     providers/sqlite.js
     results.js

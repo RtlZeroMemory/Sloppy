@@ -62,10 +62,11 @@ omitted for Plans that do not activate that feature. ENGINE-27.E/F adds renderer
 missing-feature goldens for unknown, unavailable, V8-disabled, provider, transport, and
 dependency-missing runtime features plus a stdlib missing-intrinsic snapshot. These
 goldens do not claim V8 execution, package trimming, or live-provider readiness.
-CORE-FS-01.A/B extends this lane with default tests for the `stdlib.fs` descriptor,
-compiler-emitted `requiredFeatures[]` metadata from `sloppy/fs` imports, and filesystem
-capability vocabulary. Later CORE-FS slices must keep native, V8-gated, security golden,
-watch/stream, and example evidence separate.
+CORE-FS-01.C/D/H extends this lane with default tests for the native filesystem resolver
+and core operations, compiler-emitted `requiredFeatures[]` metadata from `sloppy/fs`
+imports, bootstrap packaging of `stdlib/sloppy/fs.js`, and V8-gated smoke coverage for
+the active `stdlib.fs` bridge. Later CORE-FS slices must keep security golden,
+watch/stream, advanced resource, and example evidence separate.
 
 ENGINE-19.BC registers the current V8, HTTP, and async behavior under explicit conformance
 names without adding runtime behavior. `conformance.http.default_dispatch` is default

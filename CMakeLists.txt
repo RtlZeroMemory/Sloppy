@@ -38,6 +38,7 @@ set(
     app.js
     bootstrap.manifest.json
     data.js
+    fs.js
     index.js
     providers/sqlite.js
     results.js
@@ -296,6 +297,7 @@ set(
     src/core/capability.c
     src/core/execution_domain.c
     src/core/features.c
+    src/core/fs.c
     src/core/app_host.c
     src/core/loop.c
     src/core/async.c
@@ -322,9 +324,9 @@ set(
     src/platform/libuv/thread.c)
 
 if(WIN32)
-    list(APPEND SLOPPY_CORE_SOURCES src/platform/win32/time.c)
+    list(APPEND SLOPPY_CORE_SOURCES src/platform/win32/time.c src/platform/win32/fs_win32.c)
 else()
-    list(APPEND SLOPPY_CORE_SOURCES src/platform/posix/time.c)
+    list(APPEND SLOPPY_CORE_SOURCES src/platform/posix/time.c src/platform/posix/fs_posix.c)
 endif()
 
 if(SLOPPY_ENABLE_V8)
@@ -336,6 +338,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/http_bridge.cc
         src/engine/v8/string_interop.cc
         src/engine/v8/intrinsics.cc
+        src/engine/v8/intrinsics_fs.cc
         src/engine/v8/intrinsics_sqlite.cc)
 endif()
 
@@ -629,6 +632,7 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_c_unit_test(core_runtime_features core.runtime_features
                            tests/unit/core/test_features.c)
     set_tests_properties(core.runtime_features PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
     sloppy_add_c_unit_test(
