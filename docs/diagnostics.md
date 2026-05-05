@@ -392,9 +392,12 @@ Runtime exception flow:
 4. bounded stack text may appear as related detail when available;
 5. runtime source-map consumption and original TypeScript spans remain deferred.
 
-V8 exception source-map remapping remains deferred to ENGINE-08. MAIN1-06 source frames do
-not parse source maps, and ENGINE-07 lifecycle/async diagnostics do not rewrite generated
-V8 stack locations to original TypeScript locations.
+ENGINE-15.A completes the compiler source-map side for the supported subset: generated
+maps include normal Source Map v3 handler mappings plus deterministic `x_sloppy` metadata
+for source files, routes, modules, schemas, providers, capabilities, and inferred effects.
+V8 exception source-map remapping remains deferred to ENGINE-15.B. MAIN1-06 source frames
+do not parse source maps, and ENGINE-07 lifecycle/async diagnostics do not rewrite
+generated V8 stack locations to original TypeScript locations.
 
 ## Subsystem Expectations
 
@@ -707,7 +710,8 @@ Diagnostic tests must include:
 `core.diagnostics.foundation` covers snapshot text, JSON escaping/output, source-frame
 output/fallback, stable code/severity mapping, related spans, hints, and representative
 secret redaction. Compiler golden diagnostics cover source frames where `sloppyc` already
-has source spans. Source-map remapping remains deferred.
+has source spans. Compiler source-map goldens cover deterministic `x_sloppy` metadata.
+Runtime source-map remapping remains deferred.
 
 ## Quality Gates
 

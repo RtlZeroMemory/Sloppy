@@ -137,6 +137,9 @@ struct DatabaseCapability {
     access: String,
     database: Option<String>,
     config_source: Option<String>,
+    source_name: String,
+    source: String,
+    span: Span,
     from_provider_use: bool,
 }
 
@@ -150,9 +153,17 @@ struct SourceMapMapping {
 }
 
 #[derive(Debug)]
+struct HandlerGeneratedStart {
+    handler_id: usize,
+    generated_line: usize,
+    generated_column: usize,
+}
+
+#[derive(Debug)]
 struct EmittedAppJs {
     source: String,
     mappings: Vec<SourceMapMapping>,
+    handler_generated_starts: Vec<HandlerGeneratedStart>,
 }
 
 #[derive(Debug)]
@@ -1426,7 +1437,7 @@ fn extract_variable_declaration(
                 .with_span(init.span()));
             };
             state.group_vars.insert(name.to_string(), full_prefix);
-        } else if let Some(provider) = sqlite_provider_call(init) {
+        } else if let Some(provider) = sqlite_provider_call(init, source, source_name) {
             state.provider_bindings.insert(
                 name.to_string(),
                 ProviderBinding {
@@ -1521,12 +1532,16 @@ fn extract_expression_statement(
     state: &mut AppState,
     statement: &ExpressionStatement<'_>,
 ) -> Result<(), Diagnostic> {
-    if let Some(capability) = database_capability_call(path, &statement.expression, state)? {
+    if let Some(capability) =
+        database_capability_call(path, source, source_name, &statement.expression, state)?
+    {
         add_manual_database_capability(state, capability);
         return Ok(());
     }
 
-    if let Some(provider) = app_use_provider_call(path, &statement.expression, state)? {
+    if let Some(provider) =
+        app_use_provider_call(path, source, source_name, &statement.expression, state)?
+    {
         add_sqlite_provider_capability(state, provider);
         return Ok(());
     }
@@ -1923,6 +1938,8 @@ fn argument_dynamic_import_span(argument: &Argument<'_>) -> Option<Span> {
 
 fn database_capability_call(
     path: &Path,
+    source: &str,
+    source_name: &str,
     expression: &Expression<'_>,
     state: &AppState,
 ) -> Result<Option<DatabaseCapability>, Diagnostic> {
@@ -2048,6 +2065,9 @@ fn database_capability_call(
         access,
         database,
         config_source: None,
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+        span: call.span,
         from_provider_use: false,
     }))
 }
@@ -2494,14 +2514,22 @@ fn numeric_argument_value(argument: &Argument<'_>) -> Option<f64> {
     }
 }
 
-fn sqlite_provider_call(expression: &Expression<'_>) -> Option<DatabaseCapability> {
+fn sqlite_provider_call(
+    expression: &Expression<'_>,
+    source: &str,
+    source_name: &str,
+) -> Option<DatabaseCapability> {
     let Expression::CallExpression(call) = expression else {
         return None;
     };
-    sqlite_provider_call_expression(call)
+    sqlite_provider_call_expression(call, source, source_name)
 }
 
-fn sqlite_provider_call_expression(call: &CallExpression<'_>) -> Option<DatabaseCapability> {
+fn sqlite_provider_call_expression(
+    call: &CallExpression<'_>,
+    source: &str,
+    source_name: &str,
+) -> Option<DatabaseCapability> {
     let Expression::Identifier(callee) = &call.callee else {
         return None;
     };
@@ -2520,12 +2548,17 @@ fn sqlite_provider_call_expression(call: &CallExpression<'_>) -> Option<Database
         access: "readwrite".to_string(),
         database: None,
         config_source: None,
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+        span: call.span,
         from_provider_use: true,
     })
 }
 
 fn app_use_provider_call(
     path: &Path,
+    source: &str,
+    source_name: &str,
     expression: &Expression<'_>,
     state: &AppState,
 ) -> Result<Option<DatabaseCapability>, Diagnostic> {
@@ -2541,7 +2574,8 @@ fn app_use_provider_call(
     let Some(Argument::CallExpression(provider_call)) = call.arguments.first() else {
         return Ok(None);
     };
-    let Some(mut provider) = sqlite_provider_call_expression(provider_call) else {
+    let Some(mut provider) = sqlite_provider_call_expression(provider_call, source, source_name)
+    else {
         return Ok(None);
     };
     if let Some(options_argument) = provider_call.arguments.get(1) {
@@ -4997,7 +5031,7 @@ fn write_artifacts(out_dir: &Path, app: &ExtractedApp) -> Result<(), Diagnostic>
     })?;
 
     let app_js = emit_app_js(app);
-    let source_map = emit_source_map(app, &app_js.mappings);
+    let source_map = emit_source_map(app, &app_js);
     let plan = emit_plan(app, &sha256_hex(&app_js.source), &sha256_hex(&source_map))?;
 
     write_artifact(out_dir, "app.js", &app_js.source)?;
@@ -5200,7 +5234,12 @@ fn emit_plan(
                             "providerKind": effect.provider_kind,
                             "access": effect.access,
                             "operation": effect.operation,
-                            "reason": effect.reason
+                            "reason": effect.reason,
+                            "source": source_location_json(
+                                &route.handler.source_name,
+                                &route.handler.source_text,
+                                route.handler.span
+                            )
                         })
                     })
                     .collect::<Vec<_>>());
@@ -5249,7 +5288,12 @@ fn emit_plan(
                 "providerKind": capability.provider,
                 "provider": capability.provider,
                 "capability": capability.token,
-                "service": null
+                "service": null,
+                "source": source_location_json(
+                    &capability.source_name,
+                    &capability.source,
+                    capability.span
+                )
             });
             if let Some(database) = &capability.database {
                 provider["database"] = json!(database);
@@ -5266,7 +5310,12 @@ fn emit_plan(
                 "token": capability.token,
                 "kind": capability.capability_kind,
                 "access": capability.access,
-                "provider": capability.token
+                "provider": capability.token,
+                "source": source_location_json(
+                    &capability.source_name,
+                    &capability.source,
+                    capability.span
+                )
             })
         })
         .collect::<Vec<_>>();
@@ -5412,9 +5461,19 @@ fn emit_plan(
         })
 }
 
+fn source_location_json(source_name: &str, source: &str, span: Span) -> Value {
+    let (line, column) = line_column(source, span.start);
+    json!({
+        "path": source_name,
+        "line": line,
+        "column": column
+    })
+}
+
 fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::new();
     let mut mappings = Vec::new();
+    let mut handler_generated_starts = Vec::new();
     let mut generated_line = 0usize;
     let needs_provider_open_helper = app
         .routes
@@ -5482,6 +5541,11 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         let prefix = format!("globalThis.__sloppy_handler_{id} = ");
         let handler_start_line = generated_line;
         let handler_start_column = prefix.len();
+        handler_generated_starts.push(HandlerGeneratedStart {
+            handler_id: id,
+            generated_line: handler_start_line,
+            generated_column: handler_start_column,
+        });
         mappings.extend(handler_source_mappings(
             &route.handler.source_text,
             route.handler.span,
@@ -5507,10 +5571,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     EmittedAppJs {
         source: output,
         mappings,
+        handler_generated_starts,
     }
 }
 
-fn emit_source_map(app: &ExtractedApp, mappings: &[SourceMapMapping]) -> String {
+fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
+    let mappings = &emitted_js.mappings;
     let sources = app
         .source_files
         .iter()
@@ -5521,17 +5587,159 @@ fn emit_source_map(app: &ExtractedApp, mappings: &[SourceMapMapping]) -> String 
         .iter()
         .map(|file| file.source.clone())
         .collect::<Vec<_>>();
+    let source_files = app
+        .source_files
+        .iter()
+        .map(|file| {
+            json!({
+                "path": file.name,
+                "hash": sha256_hex(&file.source)
+            })
+        })
+        .collect::<Vec<_>>();
+    let handlers = app
+        .routes
+        .iter()
+        .enumerate()
+        .map(|(index, route)| {
+            let id = index + 1;
+            let generated = emitted_js
+                .handler_generated_starts
+                .iter()
+                .find(|start| start.handler_id == id)
+                .map(|start| generated_location_json(start.generated_line, start.generated_column))
+                .unwrap_or_else(|| json!(null));
+            json!({
+                "id": id,
+                "generated": generated,
+                "source": source_location_json(
+                    &route.handler.source_name,
+                    &route.handler.source_text,
+                    route.handler.span
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let routes = app
+        .routes
+        .iter()
+        .enumerate()
+        .map(|(index, route)| {
+            json!({
+                "handlerId": index + 1,
+                "method": route.method,
+                "pattern": route.pattern,
+                "module": route.module,
+                "source": source_location_json(&route.source_name, &route.source, route.span)
+            })
+        })
+        .collect::<Vec<_>>();
+    let modules = app
+        .modules
+        .iter()
+        .map(|module| {
+            json!({
+                "name": module.name,
+                "source": {
+                    "path": module.source_name
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let schemas = app
+        .schemas
+        .iter()
+        .map(|schema| {
+            json!({
+                "name": schema.name,
+                "source": source_location_json(&schema.source_name, &schema.source, schema.span)
+            })
+        })
+        .collect::<Vec<_>>();
+    let providers = app
+        .capabilities
+        .iter()
+        .map(|capability| {
+            json!({
+                "token": capability.token,
+                "capabilityKind": capability.capability_kind,
+                "providerKind": capability.provider,
+                "source": source_location_json(
+                    &capability.source_name,
+                    &capability.source,
+                    capability.span
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let capabilities = app
+        .capabilities
+        .iter()
+        .map(|capability| {
+            json!({
+                "token": capability.token,
+                "kind": capability.capability_kind,
+                "access": capability.access,
+                "source": source_location_json(
+                    &capability.source_name,
+                    &capability.source,
+                    capability.span
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    let effects = app
+        .routes
+        .iter()
+        .enumerate()
+        .flat_map(|(index, route)| {
+            route.handler.effects.iter().map(move |effect| {
+                json!({
+                    "handlerId": index + 1,
+                    "provider": effect.provider,
+                    "capabilityKind": effect.capability_kind,
+                    "providerKind": effect.provider_kind,
+                    "access": effect.access,
+                    "operation": effect.operation,
+                    "reason": effect.reason,
+                    "source": source_location_json(
+                        &route.handler.source_name,
+                        &route.handler.source_text,
+                        route.handler.span
+                    )
+                })
+            })
+        })
+        .collect::<Vec<_>>();
     let value = json!({
         "version": 3,
         "file": "app.js",
         "sources": sources,
         "sourcesContent": sources_content,
         "names": [],
-        "mappings": encode_source_map_mappings(mappings)
+        "mappings": encode_source_map_mappings(mappings),
+        "x_sloppy": {
+            "version": 1,
+            "sourceFiles": source_files,
+            "handlers": handlers,
+            "routes": routes,
+            "modules": modules,
+            "schemas": schemas,
+            "providers": providers,
+            "capabilities": capabilities,
+            "effects": effects
+        }
     });
 
     let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
     format!("{json}\n")
+}
+
+fn generated_location_json(generated_line: usize, generated_column: usize) -> Value {
+    json!({
+        "line": generated_line + 1,
+        "column": generated_column + 1
+    })
 }
 
 fn push_generated_line(output: &mut String, generated_line: &mut usize, line: &str) {
@@ -5930,6 +6138,9 @@ mod tests {
                 access: "readwrite".to_string(),
                 database: None,
                 config_source: None,
+                source_name: "app.js".to_string(),
+                source: String::new(),
+                span: super::Span::new(0, 0),
                 from_provider_use: true,
             }],
             configuration: None,
@@ -6191,7 +6402,7 @@ export default app;
         );
 
         let emitted_js = super::emit_app_js(&app);
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -6231,7 +6442,7 @@ export default app;
         assert!(app.modules[0].source_name.ends_with("empty.js"));
 
         let emitted_js = super::emit_app_js(&app);
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -6511,7 +6722,7 @@ export default app;
         let emitted_js = super::emit_app_js(&app);
         assert!(emitted_js.source.contains("ctx.body.json(undefined)"));
         assert!(!emitted_js.source.contains("ctx.body.json(UserCreate)"));
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -6554,7 +6765,7 @@ export default app;
         let emitted_js = super::emit_app_js(&app);
         assert!(emitted_js.source.contains("request.body.json(undefined)"));
         assert!(!emitted_js.source.contains("request.body.json(UserCreate)"));
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -6592,7 +6803,7 @@ export default app;
         let app = extract(std::path::Path::new("app.js"), source)
             .expect("response-only fixture should extract");
         let emitted_js = super::emit_app_js(&app);
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -6620,7 +6831,7 @@ export default app;
             .expect("dynamic status route should extract");
         assert!(app.routes[0].handler.response.is_none());
         let emitted_js = super::emit_app_js(&app);
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -6645,7 +6856,7 @@ export default app;
         let app = extract(std::path::Path::new("app.js"), source)
             .expect("body json without schema should extract as partial metadata");
         let emitted_js = super::emit_app_js(&app);
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -6784,7 +6995,7 @@ export default app;
 
         let emitted_js = super::emit_app_js(&app);
         assert!(emitted_js.source.contains("const { Results, data }"));
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         assert!(emitted_source_map.contains("\"sourcesContent\""));
         let plan = super::emit_plan(
             &app,
@@ -6882,7 +7093,7 @@ export default app;
         assert!(emitted_js
             .source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -7208,7 +7419,7 @@ export default app;
         assert_eq!(app.capabilities[0].database.as_deref(), Some(":memory:"));
 
         let emitted_js = super::emit_app_js(&app);
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -7236,7 +7447,7 @@ export default app;
         assert_eq!(app.capabilities[0].database.as_deref(), Some(":memory:"));
 
         let emitted_js = super::emit_app_js(&app);
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,
             &super::sha256_hex(&emitted_js.source),
@@ -7289,7 +7500,7 @@ export default app;
             .source
             .contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
 
-        let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         assert!(emitted_source_map.contains("\"users.js\""));
         assert!(emitted_source_map.contains("\"input.js\""));
 
@@ -7403,6 +7614,7 @@ export default app;
             "partial-dynamic-status",
             "provider-metadata-multiple-databases",
             "function-module-empty",
+            "function-module",
             "source-map",
         ] {
             let fixture = root
@@ -7425,7 +7637,7 @@ export default app;
             .expect("expected app.js should exist");
             assert_eq!(emitted_js.source, expected_js, "{fixture_name} app.js");
 
-            let emitted_source_map = super::emit_source_map(&app, &emitted_js.mappings);
+            let emitted_source_map = super::emit_source_map(&app, &emitted_js);
             let emitted_js_hash = super::sha256_hex(&emitted_js.source);
             let emitted_map_hash = super::sha256_hex(&emitted_source_map);
             let emitted_plan = super::emit_plan(&app, &emitted_js_hash, &emitted_map_hash)

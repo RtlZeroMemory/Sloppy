@@ -243,20 +243,18 @@ TypeScript type compatibility from its extractor alone.
 
 ## Source Map Requirements
 
-ENGINE-02 emits a deterministic Source Map v3 artifact with `sources`, `sourcesContent`,
-and mappings from generated handler assignment lines back to the original handler source
-lines in the single input file. This is intentionally enough for ENGINE-08 to start from a
-real map instead of a placeholder. It is not yet a full TypeScript or module-graph
-remapping story, and the current runtime still reports generated V8 locations until the
-diagnostic consumer is implemented.
+ENGINE-15.A completes the compiler-owned map artifact for the currently supported source
+subset. `app.js.map` remains deterministic Source Map v3 output with `sources`,
+`sourcesContent`, and generated handler assignment mappings, and now also carries a
+Sloppy-owned `x_sloppy` metadata block. That block records source-file hashes, handler
+generated/source positions, route/module/schema/provider/capability/effect source
+locations where the compiler has them, and keeps multi-file function-module sources in the
+same artifact. `app.plan.json` continues to record deterministic `sha256:` hashes for both
+`app.js` and `app.js.map`.
 
-Future source-map work must support:
-
-- runtime exception diagnostics;
-- plan extraction diagnostics;
-- generated handler mapping across transformed/module output;
-- user-facing names and source spans;
-- golden tests for stable mapping behavior.
+This is compiler evidence only. Runtime/V8 diagnostics still report generated locations
+until ENGINE-15.B consumes the map, and this does not add TypeScript lowering, arbitrary
+bundler source maps, Node/npm resolution, or broader module graph support.
 
 ## Public CLI Shape
 
@@ -598,8 +596,9 @@ Compiler diagnostics must include:
 For current `sloppyc` fixture failures, diagnostics with source spans include a
 deterministic single-line source frame. Diagnostics without spans still render the stable
 path/summary fallback. Richer spans, related compiler locations, and V8/source-map
-exception remapping from generated artifacts remain future work; ENGINE-02 source maps
-carry real handler mappings, but runtime diagnostics do not consume them yet.
+exception remapping from generated artifacts remain future work; ENGINE-15.A source maps
+carry real handler mappings plus stable Sloppy metadata, but runtime diagnostics do not
+consume them yet.
 
 ## Testing Requirements
 

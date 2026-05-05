@@ -170,6 +170,9 @@ COMPILER-30.H/I compiler changes must also prove strong Plan metadata and compat
 refreshed Plan goldens, complete/partial/runtime-only/invalid completeness unit tests,
 missing-provider diagnostics, and native Plan parser coverage that accepts unknown optional
 fields while rejecting unknown required features.
+ENGINE-15.A compiler source-map changes must refresh deterministic `app.js.map` goldens,
+verify source-input run emits Sloppy source-map metadata, and report that default non-V8
+gates do not prove V8 exception remapping.
 Plan-driven CLI consumer changes must keep process goldens deterministic for text and JSON
 output, include audit nonzero coverage when ERROR findings are emitted, cover OpenAPI
 partial metadata and Slop extensions, and keep runtime execution, V8, live-provider,

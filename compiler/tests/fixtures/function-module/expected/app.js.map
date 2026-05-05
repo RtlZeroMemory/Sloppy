@@ -1,0 +1,126 @@
+{
+  "file": "app.js",
+  "mappings": ";;;;;;;;;;gCAQmB;;gCCFA;AAIkE",
+  "names": [],
+  "sources": [
+    "input.js",
+    "users.js"
+  ],
+  "sourcesContent": [
+    "import { Sloppy, Results } from \"sloppy\";\nimport { sqlite } from \"sloppy/providers/sqlite\";\nimport { usersModule } from \"./modules/users.js\";\n\nconst app = Sloppy.create();\n\napp.use(sqlite(\"main\", { database: \":memory:\" }));\napp.useModule(usersModule);\napp.get(\"/health\", () => Results.text(\"ok\"));\n\nexport default app;\n",
+    "import { Results } from \"sloppy\";\n\nexport function usersModule(app) {\n    const db = app.provider(\"sqlite:main\");\n    const users = app.group(\"/users\");\n\n    users.get(\"/\", async () => {\n        return Results.json(await db.query(\"select id, name, email from users\", []));\n    });\n}\n"
+  ],
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [
+      {
+        "access": "read",
+        "kind": "database",
+        "source": {
+          "column": 9,
+          "line": 7,
+          "path": "input.js"
+        },
+        "token": "data.main"
+      }
+    ],
+    "effects": [
+      {
+        "access": "read",
+        "capabilityKind": "database",
+        "handlerId": 2,
+        "operation": "query",
+        "provider": "data.main",
+        "providerKind": "sqlite",
+        "reason": "db.query",
+        "source": {
+          "column": 20,
+          "line": 7,
+          "path": "users.js"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 11
+        },
+        "id": 1,
+        "source": {
+          "column": 20,
+          "line": 9,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 13
+        },
+        "id": 2,
+        "source": {
+          "column": 20,
+          "line": 7,
+          "path": "users.js"
+        }
+      }
+    ],
+    "modules": [
+      {
+        "name": "usersModule",
+        "source": {
+          "path": "users.js"
+        }
+      }
+    ],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlite",
+        "source": {
+          "column": 9,
+          "line": 7,
+          "path": "input.js"
+        },
+        "token": "data.main"
+      }
+    ],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/health",
+        "source": {
+          "column": 1,
+          "line": 9,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 2,
+        "method": "GET",
+        "module": "usersModule",
+        "pattern": "/users",
+        "source": {
+          "column": 5,
+          "line": 7,
+          "path": "users.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:971a022bf8cb074333536fc06aaf0b94efa81274a1920461d7a6b43c89a138c2",
+        "path": "input.js"
+      },
+      {
+        "hash": "sha256:16070d6996c47009749e1c3984d6d97f0ee0bb97d7ae437f78e520668e03c796",
+        "path": "users.js"
+      }
+    ],
+    "version": 1
+  }
+}

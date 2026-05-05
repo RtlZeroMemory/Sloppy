@@ -117,9 +117,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Module/bootstrap completion: ENGINE-14 owns stdlib/bootstrap asset loading, app module
   loading, ESM/classic decision, module cache, import rewrite and intrinsic boundaries,
   source names, reload/dev-loop implications, and V8 startup diagnostics.
-- Source maps and diagnostics completion: ENGINE-15 owns compiler maps, generated
-  artifact mapping, V8 exception remapping, async diagnostic JSON/source frames, redaction,
-  stable codes, CLI diagnostic format, and diagnostic goldens.
+- Source maps and diagnostics completion: ENGINE-15.A now owns the compiler map artifact
+  for the supported subset, including multi-file source lists, generated handler mappings,
+  source-file hashes, and Sloppy metadata for routes, modules, schemas, providers,
+  capabilities, and effects. ENGINE-15 still owns V8 exception remapping, async diagnostic
+  JSON/source frames, redaction, stable codes, CLI diagnostic format, and diagnostic
+  goldens.
 - App/resource lifetime runtime: ENGINE-16 owns app startup/shutdown, request/app scopes,
   resource cleanup, cancellation propagation, leak-oriented hooks, and lifecycle
   diagnostics.
@@ -446,8 +449,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   behavior.
 ## ENGINE-14 Follow-ups
 
-- Source-map diagnostics are multi-file at artifact level, but richer runtime remapping and
-  code-frame diagnostics remain part of the source-map diagnostics completion track.
+- Source-map diagnostics are multi-file at compiler artifact level with stable Sloppy
+  metadata, but runtime remapping, V8 exception consumption, and richer code-frame
+  diagnostics remain part of the source-map diagnostics completion track.
 - Full V8 native ESM loading, dynamic import, package/module distribution, and
   package-manager behavior remain intentionally deferred.
 - Function modules support the framework MVP route shape only: direct app-parameter routes

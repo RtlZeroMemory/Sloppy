@@ -9,6 +9,11 @@
       "access": "read",
       "kind": "database",
       "provider": "data.main",
+      "source": {
+        "column": 9,
+        "line": 5,
+        "path": "input.js"
+      },
       "token": "data.main"
     }
   ],
@@ -92,6 +97,11 @@
       "provider": "sqlite",
       "providerKind": "sqlite",
       "service": null,
+      "source": {
+        "column": 9,
+        "line": 5,
+        "path": "input.js"
+      },
       "token": "data.main"
     }
   ],
@@ -130,7 +140,12 @@
           "operation": "query",
           "provider": "data.main",
           "providerKind": "sqlite",
-          "reason": "db.query"
+          "reason": "db.query",
+          "source": {
+            "column": 19,
+            "line": 12,
+            "path": "input.js"
+          }
         }
       ],
       "handlerId": 1,
@@ -158,7 +173,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:6381559771b977297f88e48555ce978216763c8da0f047586960b7e234df2304",
+    "hash": "sha256:e3251a2ab2309d0cbadb5d7da899b002b3a0bd7f356c806f10b13071882d4c38",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

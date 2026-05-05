@@ -8,5 +8,46 @@
   "sourcesContent": [
     "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.get(\"/status/{code:int}\", (ctx) => Results.status(ctx.route.code, {\n  ok: true\n}));\n\nexport default app;\n"
   ],
-  "version": 3
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 7
+        },
+        "id": 1,
+        "source": {
+          "column": 31,
+          "line": 5,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/status/{code:int}",
+        "source": {
+          "column": 1,
+          "line": 5,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:d6e1c891641306e3db6f8753b7549db5a728e6fdef6bfcae5bb51d54d46b880b",
+        "path": "input.js"
+      }
+    ],
+    "version": 1
+  }
 }

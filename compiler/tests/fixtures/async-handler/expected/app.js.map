@@ -8,5 +8,46 @@
   "sourcesContent": [
     "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.mapGet(\"/async\", async () => Results.json({ ok: true }));\n\nexport default app;\n"
   ],
-  "version": 3
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 7
+        },
+        "id": 1,
+        "source": {
+          "column": 22,
+          "line": 5,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/async",
+        "source": {
+          "column": 1,
+          "line": 5,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:02d3d102f1db80a320d06d3a1016271af1c635e22c150005891479e097bb1070",
+        "path": "input.js"
+      }
+    ],
+    "version": 1
+  }
 }

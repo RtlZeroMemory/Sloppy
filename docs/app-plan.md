@@ -210,6 +210,12 @@ Diagnostic mapping artifact:
 - source map ID;
 - hash.
 
+The compiler-emitted `app.js.map` is the authoritative source-map companion for the
+generated bundle. ENGINE-15.A keeps the Plan reference small and deterministic while the
+map carries the richer `x_sloppy` metadata for source files, handler generated/source
+positions, route/module/schema/provider/capability/effect source locations, and source
+file hashes.
+
 ### modules
 
 App module graph:
@@ -651,6 +657,9 @@ ENGINE-02 adds `handlers[].async`, compiler-owned `source` metadata under handle
 top-level `features`, minimal SQLite `dataProviders`/database `capabilities`, and a real
 handler-line source map. Unsupported source must fail before `app.plan.json`, `app.js`, or
 `app.js.map` success artifacts are written.
+ENGINE-15.A adds source locations to compiler-emitted provider/capability Plan entries and
+expands the generated source map with stable Sloppy metadata. The runtime still validates
+presence and hashes; runtime exception remapping remains a later diagnostics consumer.
 
 ## Error And Diagnostic Behavior
 

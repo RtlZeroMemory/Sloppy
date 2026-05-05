@@ -9,6 +9,11 @@
       "access": "readwrite",
       "kind": "database",
       "provider": "data.main",
+      "source": {
+        "column": 9,
+        "line": 11,
+        "path": "input.js"
+      },
       "token": "data.main"
     }
   ],
@@ -104,6 +109,11 @@
       "provider": "sqlite",
       "providerKind": "sqlite",
       "service": null,
+      "source": {
+        "column": 9,
+        "line": 11,
+        "path": "input.js"
+      },
       "token": "data.main"
     }
   ],
@@ -182,7 +192,12 @@
           "operation": "query",
           "provider": "data.main",
           "providerKind": "sqlite",
-          "reason": "db.query"
+          "reason": "db.query",
+          "source": {
+            "column": 16,
+            "line": 26,
+            "path": "input.js"
+          }
         }
       ],
       "handlerId": 1,
@@ -219,7 +234,12 @@
           "operation": "exec",
           "provider": "data.main",
           "providerKind": "sqlite",
-          "reason": "db.exec"
+          "reason": "db.exec",
+          "source": {
+            "column": 17,
+            "line": 31,
+            "path": "input.js"
+          }
         },
         {
           "access": "read",
@@ -227,7 +247,12 @@
           "operation": "queryOne",
           "provider": "data.main",
           "providerKind": "sqlite",
-          "reason": "db.queryOne"
+          "reason": "db.queryOne",
+          "source": {
+            "column": 17,
+            "line": 31,
+            "path": "input.js"
+          }
         }
       ],
       "handlerId": 2,
@@ -264,7 +289,12 @@
           "operation": "queryOne",
           "provider": "data.main",
           "providerKind": "sqlite",
-          "reason": "db.queryOne"
+          "reason": "db.queryOne",
+          "source": {
+            "column": 24,
+            "line": 35,
+            "path": "input.js"
+          }
         }
       ],
       "handlerId": 3,
@@ -343,7 +373,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:1a9629cf0d7be37a1041219a18d546765a954c80420b249cf59cf4c19090036e",
+    "hash": "sha256:153da80303cb82d680b08cffdd7a09aeca3954b83bd9e85cdf4c5d86bcfea0eb",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

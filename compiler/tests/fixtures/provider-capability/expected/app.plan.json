@@ -9,6 +9,11 @@
       "access": "readwrite",
       "kind": "database",
       "provider": "users.db",
+      "source": {
+        "column": 1,
+        "line": 4,
+        "path": "input.js"
+      },
       "token": "users.db"
     }
   ],
@@ -85,6 +90,11 @@
       "provider": "sqlite",
       "providerKind": "sqlite",
       "service": null,
+      "source": {
+        "column": 1,
+        "line": 4,
+        "path": "input.js"
+      },
       "token": "users.db"
     }
   ],
@@ -141,7 +151,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:1af5c229aded77279c6249641f447816606b86faa727f6055465d8d74295c7c5",
+    "hash": "sha256:f57cab82a7d137267f48ce3dc2221dadfd8712404d27a48af4b279e59f4f8ce6",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

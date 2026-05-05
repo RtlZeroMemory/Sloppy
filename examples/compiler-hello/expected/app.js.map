@@ -8,5 +8,46 @@
   "sourcesContent": [
     "import { Sloppy, Results } from \"sloppy\";\n\nconst app = Sloppy.create();\n\napp.mapGet(\"/\", () => Results.text(\"Hello from Sloppy\"));\n\nexport default app;\n"
   ],
-  "version": 3
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 7
+        },
+        "id": 1,
+        "source": {
+          "column": 17,
+          "line": 5,
+          "path": "app.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/",
+        "source": {
+          "column": 1,
+          "line": 5,
+          "path": "app.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:881ad698ba4ef863fb3fddc1166f26726ef5a0a86e1032510131e555d806d1e7",
+        "path": "app.js"
+      }
+    ],
+    "version": 1
+  }
 }
