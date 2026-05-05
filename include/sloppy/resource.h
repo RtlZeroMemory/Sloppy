@@ -58,6 +58,15 @@ typedef struct SlResourceTable
     bool initialized;
 } SlResourceTable;
 
+/*
+ * Point-in-time test/debug snapshot of a resource table.
+ *
+ * A NULL or uninitialized table snapshots as zero values for non-asserting diagnostics.
+ * For initialized tables, `live_count` is the sum of `live_by_kind[]`, slot zero
+ * (`SL_RESOURCE_KIND_NONE`) is always zero, and each other slot is indexed by the
+ * matching `SlResourceKind` value. Counts are current observations, not peaks, and are
+ * not atomic.
+ */
 typedef struct SlResourceTableSnapshot
 {
     size_t capacity;
@@ -132,7 +141,21 @@ bool sl_resource_table_contains(const SlResourceTable* table, SlResourceId id,
 bool sl_resource_table_is_alive(const SlResourceTable* table, SlResourceId id);
 size_t sl_resource_table_capacity(const SlResourceTable* table);
 size_t sl_resource_table_live_count(const SlResourceTable* table);
+
+/*
+ * Returns the current table counters for test/debug assertions.
+ *
+ * This helper is non-failing and deterministic for invalid inputs; use
+ * `sl_resource_table_assert_no_leaks` when invalid tables must fail the check.
+ */
 SlResourceTableSnapshot sl_resource_table_snapshot(const SlResourceTable* table);
+
+/*
+ * Fails unless the table is valid and has no live resources.
+ *
+ * Invalid tables never pass as empty. On failure, `out_diag` receives a stable diagnostic
+ * when provided; diagnostics expose only resource IDs/kinds, never native pointers.
+ */
 SlStatus sl_resource_table_assert_no_leaks(const SlResourceTable* table, SlDiag* out_diag);
 
 /*
