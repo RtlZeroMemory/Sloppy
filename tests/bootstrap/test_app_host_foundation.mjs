@@ -317,6 +317,12 @@ async function flushMicrotasks(count = 6) {
         );
         assert.equal(readCalls, 0);
 
+        assert.throws(
+            () => File.readText("data:/users.json", { timeoutMs: 0x100000000 }),
+            InvalidDeadlineError,
+        );
+        assert.equal(readCalls, 0);
+
         assert.equal(await File.readText("data:/users.json", { deadline: Deadline.never() }), "ok");
         assert.equal(await Directory.exists("data:/", { deadline: Deadline.never() }), true);
         assert.equal(readCalls, 2);

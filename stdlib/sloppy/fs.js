@@ -4,6 +4,8 @@ import {
     Time,
 } from "./time.js";
 
+const MAX_TIMEOUT_MS = 0xffffffff;
+
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return false;
@@ -183,8 +185,10 @@ function validateTimeoutMs(value, operation) {
     if (value === undefined) {
         return undefined;
     }
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-        throw new InvalidDeadlineError(`${operation} timeoutMs must be a finite non-negative number.`);
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > MAX_TIMEOUT_MS) {
+        throw new InvalidDeadlineError(
+            `${operation} timeoutMs must be a finite non-negative number no greater than ${MAX_TIMEOUT_MS}.`,
+        );
     }
     return Math.ceil(value);
 }
