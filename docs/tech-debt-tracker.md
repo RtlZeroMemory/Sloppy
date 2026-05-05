@@ -432,6 +432,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 ## Completed Cleanup
 
+- Added ENGINE-26.A/B execution-domain source-of-truth coverage:
+  `include/sloppy/execution_domain.h` defines fixed domain policy for V8 entry,
+  cross-thread ownership, blocking/offload classification, and owner-thread JS
+  continuation dispatch. `core.execution_domain` covers the default non-V8 policy table,
+  while V8-gated owner-thread tests cover initialized owner identity and wrong-thread
+  rejection.
 - Applied the 2026-04-30 GitHub issue hygiene pass after ENGINE-23 roadmap creation:
   closed completed ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12, ENGINE-21,
   ENGINE-22, and old #32 with evidence comments; documented kept-open and human-review

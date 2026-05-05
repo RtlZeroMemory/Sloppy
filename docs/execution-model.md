@@ -670,6 +670,11 @@ Current Promise lifecycle requirements:
 Native async completions now post through `SlAsyncLoop` and resume JavaScript only through
 the V8 owner-thread continuation scheduler under `src/engine/v8/`. Worker/provider/native
 threads may post completions, but only the owning V8 thread drains and settles the Promise.
+`include/sloppy/execution_domain.h` is the fixed ENGINE-26.A/B source for domain names and
+the yes/no policy used by tests: only `v8-owner-thread` may enter V8; provider workers,
+blocking offload, libuv callbacks, HTTP callbacks, and generic async completions must copy
+or retain cross-thread data and dispatch any JavaScript continuation back to the owner
+thread. This is a policy helper, not runtime feature modularity.
 ENGINE-12.AB does not add public timers, fetch, fs, process, Node APIs, production provider
 offload, or production scalability evidence. ENGINE-12.CD adds native cancellation/
 deadline, shutdown, backpressure, and provider-executor policy for a deterministic

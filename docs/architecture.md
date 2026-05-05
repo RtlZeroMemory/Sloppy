@@ -178,6 +178,12 @@ the provider executor before provider expansion, add route-level HTTP policy and
 observability, add runtime events/counters, and only then run torture/crash-resistance
 harnesses. See `docs/project/engine-roadmap-2.md`.
 
+ENGINE-26.A/B adds a fixed execution-domain source of truth in
+`include/sloppy/execution_domain.h`. It names runtime domains, marks the V8 owner thread as
+the only V8-entry domain, requires owned data for cross-thread domains, and requires
+non-owner domains to resume JavaScript through owner-thread scheduling. It is deliberately
+narrower than ENGINE-27 runtime feature modularity.
+
 ## System Shape
 
 Sloppy uses a compiler-planned, runtime-hosted, engine-executed model:

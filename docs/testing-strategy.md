@@ -281,6 +281,10 @@ Runtime execution:
 - V8-gated native continuation tests must prove native completions settle or reject
   Promises only through the owner-thread scheduler and that wrong-thread dispatch fails
   before entering V8;
+- `core.execution_domain` must prove the ENGINE-26 execution-domain policy in the default
+  lane: only the V8 owner thread may enter V8, non-owner domains require copied/owned
+  cross-thread data, and provider/offload domains must dispatch JavaScript continuation
+  back to the owner thread;
 - route-aware diagnostics.
 
 Plan schema fixtures:

@@ -1,7 +1,8 @@
 # Post-ENGINE-16 Execution Model Audit
 
-Status: 2026-05-05 planning/consolidation audit. This document inspects current code and
-tests after ENGINE-15 and ENGINE-16. It is not an implementation plan for this PR.
+Status: 2026-05-05 planning/consolidation audit, updated by ENGINE-26.A/B. This document
+inspects current code and tests after ENGINE-15 and ENGINE-16 and records the execution
+domain source-of-truth added for Roadmap-2.
 
 ## Source Inputs
 
@@ -25,14 +26,20 @@ tests after ENGINE-15 and ENGINE-16. It is not an implementation plan for this P
 | App/request lifecycle | App start/stop/drain/force shutdown; request-scope terminal outcome and cleanup-once behavior. | Production monitoring claims; hidden runtime-global state. | `SlAppLifecycle`, `SlAppRequestScope`, `SlScope`, resource cleanup payloads. | Request scopes can tie cleanup to app lifecycle; late completions are rejected as stale lifecycle work. |
 | Compiler/process tooling | `sloppyc` parser/extractor/goldens, process CLI commands, source-input compilation. | Runtime scheduling, V8 isolate ownership, native provider execution. | Rust-owned artifacts and diagnostics until file/artifact boundary. | Artifacts cross into C runtime as Plan, bundle, and source map bytes. |
 
+The canonical machine-readable domain table is `include/sloppy/execution_domain.h`, covered
+by `core.execution_domain`. It defines stable names, the single V8-entry domain, which
+domains require copied/owned cross-thread data, which domains may run classified blocking
+work, and which domains must route JavaScript continuation through the owner-thread
+scheduler.
+
 ## Findings
 
 | Area | Status | Evidence | Gap / risk |
 | --- | --- | --- | --- |
-| V8 owner-thread isolation | Complete for current V8 entrypoints | `engine_v8.cc` records owner thread and rejects eval/call/info on wrong thread; `tests/unit/engine/test_v8_owner_thread.cc` covers wrong-thread calls and destroy deferral. | There is not yet a final owner-thread scheduler source-of-truth for real provider/HTTP/timer continuations. |
+| V8 owner-thread isolation | Complete for current V8 entrypoints | `engine_v8.cc` records owner thread and rejects eval/call/info on wrong thread; `tests/unit/engine/test_v8_owner_thread.cc` covers initialized owner identity, wrong-thread calls, and destroy deferral. | Real provider/HTTP/timer continuations still need adoption in later Roadmap-2 work. |
 | Native async completion queue | Partial | `SlAsyncLoop` has libuv and test backends; libuv post is thread-safe and owner-loop dispatch checks owner thread. | Policy is split across headers/docs; shutdown/deadline/backpressure behavior is implemented for provider operations but not a universal runtime contract. |
-| V8 native continuation scheduler | Partial | `src/engine/v8/async_scheduler.cc` is the only code path that settles V8 Promise state from native completions. | It is proven with test continuations, not with real SQLite/provider/HTTP/timer completions. |
-| Provider workers and V8 separation | Partial / good boundary | `provider_executor.c` worker loop invokes provider `run` callbacks and posts completion; comments and API forbid worker V8 entry. | SQLite bridge still calls provider functions synchronously on the V8 callback path, so the intended worker boundary is not adopted by the real JS SQLite path. |
+| V8 native continuation scheduler | Partial | `src/engine/v8/async_scheduler.cc` is the only code path that settles V8 Promise state from native completions; `include/sloppy/execution_domain.h` marks all non-owner domains as requiring owner-thread dispatch before JS continuation. | It is proven with test continuations, not with real SQLite/provider/HTTP/timer completions. |
+| Provider workers and V8 separation | Partial / good boundary | `provider_executor.c` worker loop invokes provider `run` callbacks and posts completion; comments, API, and `core.execution_domain` classify provider workers as non-V8. | SQLite bridge still calls provider functions synchronously on the V8 callback path, so the intended worker boundary is not adopted by the real JS SQLite path. |
 | HTTP transport terminal checks | Complete for current transport | `http_transport_libuv.c` checks terminal connection state before timeout/write/idle callbacks; timeout/write paths close and treat late write as cleanup-only. | Route-level deadline policy, request IDs, access events, and production drain policy are missing. |
 | App/request lifecycle cleanup | Complete for native helper layer | `app_host.c` records terminal outcomes, rejects late completions, closes cleanup once, and exposes leak snapshots. | Timer/callback/provider-operation counters are reserved placeholders until the owners integrate. |
 | Cancellation/deadline propagation | Partial | `SlCancellationToken`, V8 pre/post checks, HTTP timeout transitions, and provider executor terminal mapping exist. | Deadlines are not a coherent cross-domain object yet; provider-specific native interruption remains future work. |
