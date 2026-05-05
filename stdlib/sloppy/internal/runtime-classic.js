@@ -913,9 +913,110 @@ Reason:
         }
     }
 
+    class SloppyTimeError extends Error {
+        constructor(name, message, options) {
+            super(message, options);
+            this.name = name;
+        }
+    }
+
+    class TimeoutError extends SloppyTimeError {
+        constructor(message = "Sloppy time operation exceeded its deadline.", options) {
+            super("TimeoutError", message, options);
+        }
+    }
+
+    class CancelledError extends SloppyTimeError {
+        constructor(message = "Sloppy time operation was cancelled.", options) {
+            super("CancelledError", message, options);
+        }
+    }
+
+    class InvalidDeadlineError extends SloppyTimeError {
+        constructor(message = "Sloppy deadline is invalid.", options) {
+            super("InvalidDeadlineError", message, options);
+        }
+    }
+
+    class TimerDisposedError extends SloppyTimeError {
+        constructor(message = "Sloppy timer resource was disposed.", options) {
+            super("TimerDisposedError", message, options);
+        }
+    }
+
+    function unavailableTimeFeature(operation) {
+        throw new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.time is inactive or unavailable
+
+Feature:
+  stdlib.time
+
+Operation:
+  ${operation}
+
+Reason:
+  CORE-TIME-01.A/B defines the sloppy/time contract. Native timer scheduling lands in the CORE-TIME-01.C/D/G implementation slice.`);
+    }
+
+    const Deadline = Object.freeze({
+        after() {
+            return unavailableTimeFeature("Deadline.after");
+        },
+
+        at() {
+            return unavailableTimeFeature("Deadline.at");
+        },
+
+        never() {
+            return unavailableTimeFeature("Deadline.never");
+        },
+    });
+
+    class CancellationController {
+        constructor() {
+            unavailableTimeFeature("CancellationController");
+        }
+    }
+
+    const Time = Object.freeze({
+        delay() {
+            return unavailableTimeFeature("Time.delay");
+        },
+
+        timeout() {
+            return unavailableTimeFeature("Time.timeout");
+        },
+
+        interval() {
+            return unavailableTimeFeature("Time.interval");
+        },
+
+        every() {
+            return unavailableTimeFeature("Time.every");
+        },
+
+        yield() {
+            return unavailableTimeFeature("Time.yield");
+        },
+
+        systemClock() {
+            return unavailableTimeFeature("Time.systemClock");
+        },
+
+        fakeClock() {
+            return unavailableTimeFeature("Time.fakeClock");
+        },
+    });
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         data,
+        Time,
+        Deadline,
+        CancellationController,
+        TimeoutError,
+        CancelledError,
+        InvalidDeadlineError,
+        TimerDisposedError,
         File,
         Directory,
         Path,

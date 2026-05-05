@@ -5,8 +5,9 @@ set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
+set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${fs_source}" "${time_source}" "${app_source}" "${index_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${fs_source}" "${time_source}" "${app_source}" "${index_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -19,6 +20,7 @@ file(READ "${fs_source}" fs_js)
 file(READ "${time_source}" time_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
+file(READ "${runtime_classic_source}" runtime_classic_js)
 
 function(require_substring haystack needle description)
     string(FIND "${haystack}" "${needle}" found_index)
@@ -135,6 +137,21 @@ foreach(required_pattern IN ITEMS
         "fakeClock()"
         "stdlib.time")
     require_substring("${time_js}" "${required_pattern}" "time.js is missing expected API contract pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "const Time = Object.freeze"
+        "const Deadline = Object.freeze"
+        "class CancellationController"
+        "Time,"
+        "Deadline,"
+        "CancellationController,"
+        "TimeoutError,"
+        "CancelledError,"
+        "InvalidDeadlineError,"
+        "TimerDisposedError,"
+        "SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.time")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected time runtime export pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS
