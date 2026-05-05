@@ -8,5 +8,83 @@
   "sourcesContent": [
     "import { Sloppy, Results } from \"sloppy\";\nimport { sqlite } from \"sloppy/providers/sqlite\";\n\nconst app = Sloppy.create();\napp.use(sqlite(\"main\", { database: \":memory:\" }));\nconst db = app.provider(\"sqlite:main\");\n\nfunction listUsers() {\n  return db.query(\"select id, name from users\", []);\n}\n\napp.get(\"/users\", () => Results.json(listUsers()));\n\nexport default app;\n"
   ],
-  "version": 3
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [
+      {
+        "access": "read",
+        "kind": "database",
+        "source": {
+          "column": 9,
+          "line": 5,
+          "path": "input.js"
+        },
+        "token": "data.main"
+      }
+    ],
+    "effects": [
+      {
+        "access": "read",
+        "capabilityKind": "database",
+        "handlerId": 1,
+        "operation": "query",
+        "provider": "data.main",
+        "providerKind": "sqlite",
+        "reason": "db.query",
+        "source": {
+          "column": 10,
+          "line": 9,
+          "path": "input.js"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 11
+        },
+        "id": 1,
+        "source": {
+          "column": 19,
+          "line": 12,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlite",
+        "source": {
+          "column": 9,
+          "line": 5,
+          "path": "input.js"
+        },
+        "token": "data.main"
+      }
+    ],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/users",
+        "source": {
+          "column": 1,
+          "line": 12,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:954ce8d8e0ec24fc5a52dadcdc473ebdf7fe9f82bc3b7c41a769d7c237ebdd5a",
+        "path": "input.js"
+      }
+    ],
+    "version": 1
+  }
 }

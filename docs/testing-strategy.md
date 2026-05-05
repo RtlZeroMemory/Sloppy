@@ -167,6 +167,10 @@ plan completeness, source files, function modules, provider-kind-aware effects, 
 Plan compatibility fixtures for unknown optional fields versus unknown required features.
 Tests should keep completeness cases explicit: complete route, partial response/body
 metadata, invalid missing provider, and refreshed deterministic Plan goldens.
+ENGINE-15.A expands source-map goldens to cover the `x_sloppy` metadata block, including
+multi-file function modules, schema/provider/capability source locations, inferred effect
+source context, source-file hashes, and source-input run map metadata. These tests prove
+compiler artifact stability only; V8/runtime remapping remains a separate lane.
 ENGINE-20.C/D add CLI golden coverage for consuming that metadata: route source/binding/
 response/completeness output, generated capability output for SQLite effects, doctor
 partial metadata checks, audit JSON warnings, audit nonzero behavior for ERROR findings,

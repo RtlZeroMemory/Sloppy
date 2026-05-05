@@ -10,5 +10,57 @@
     "import { Sloppy, Results } from \"sloppy\";\nimport { emptyModule } from \"./modules/empty.js\";\n\nconst app = Sloppy.create();\napp.useModule(emptyModule);\napp.get(\"/health\", () => Results.text(\"ok\"));\n\nexport default app;\n",
     "export function emptyModule(app) {\n}\n"
   ],
-  "version": 3
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 7
+        },
+        "id": 1,
+        "source": {
+          "column": 20,
+          "line": 6,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [
+      {
+        "name": "emptyModule",
+        "source": {
+          "path": "empty.js"
+        }
+      }
+    ],
+    "providers": [],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/health",
+        "source": {
+          "column": 1,
+          "line": 6,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:7ce50081393ae47f71bd23289a4f266863ea5058555900c3614ec823b77c5ae4",
+        "path": "input.js"
+      },
+      {
+        "hash": "sha256:7e39d82523805980621f09b1a8234b8f2a1f5afdd757956083e5950232e44933",
+        "path": "empty.js"
+      }
+    ],
+    "version": 1
+  }
 }

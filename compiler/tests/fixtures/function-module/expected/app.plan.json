@@ -1,10 +1,22 @@
 {
   "bundle": {
-    "hash": "sha256:c6652c1386f64f49d9f9c4ff4a76104777644aecbd6c4ece8a3091fc9c6f6b45",
+    "hash": "sha256:6b633dc915da252319f751bb8f8135cdb86f6e26f9bf33e40166bc0b74450d05",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
-  "capabilities": [],
+  "capabilities": [
+    {
+      "access": "read",
+      "kind": "database",
+      "provider": "data.main",
+      "source": {
+        "column": 9,
+        "line": 7,
+        "path": "input.js"
+      },
+      "token": "data.main"
+    }
+  ],
   "compilerVersion": "sloppyc-0.8.0-engine-02",
   "completeness": {
     "reasons": [],
@@ -68,13 +80,35 @@
         "value": 30000
       }
     ],
-    "providers": []
+    "providers": [
+      {
+        "name": "main",
+        "prefix": "Sloppy:Providers:sqlite:main",
+        "provider": "sqlite",
+        "source": "inline"
+      }
+    ]
   },
-  "dataProviders": [],
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "capabilityKind": "database",
+      "database": ":memory:",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "service": null,
+      "source": {
+        "column": 9,
+        "line": 7,
+        "path": "input.js"
+      },
+      "token": "data.main"
+    }
+  ],
   "features": {
-    "asyncHandlers": false,
-    "capabilities": false,
-    "dataProviders": false,
+    "asyncHandlers": true,
+    "capabilities": true,
+    "dataProviders": true,
     "metadataInference": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -82,17 +116,35 @@
   "handlers": [
     {
       "async": false,
-      "displayName": "GET /function",
+      "displayName": "GET /health",
       "exportName": "__sloppy_handler_1",
       "id": 1,
       "source": {
-        "column": 25,
-        "line": 5,
+        "column": 20,
+        "line": 9,
         "path": "input.js"
+      }
+    },
+    {
+      "async": true,
+      "displayName": "GET /users",
+      "exportName": "__sloppy_handler_2",
+      "id": 2,
+      "source": {
+        "column": 20,
+        "line": 7,
+        "path": "users.js"
       }
     }
   ],
-  "modules": [],
+  "modules": [
+    {
+      "name": "usersModule",
+      "source": {
+        "path": "users.js"
+      }
+    }
+  ],
   "routes": [
     {
       "completeness": {
@@ -102,7 +154,7 @@
       "handlerId": 1,
       "method": "GET",
       "name": null,
-      "pattern": "/function",
+      "pattern": "/health",
       "response": {
         "helper": "text",
         "kind": "text",
@@ -110,8 +162,44 @@
       },
       "source": {
         "column": 1,
-        "line": 5,
+        "line": 9,
         "path": "input.js"
+      }
+    },
+    {
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "effects": [
+        {
+          "access": "read",
+          "capabilityKind": "database",
+          "operation": "query",
+          "provider": "data.main",
+          "providerKind": "sqlite",
+          "reason": "db.query",
+          "source": {
+            "column": 35,
+            "line": 8,
+            "path": "users.js"
+          }
+        }
+      ],
+      "handlerId": 2,
+      "method": "GET",
+      "module": "usersModule",
+      "name": null,
+      "pattern": "/users",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "status": 200
+      },
+      "source": {
+        "column": 5,
+        "line": 7,
+        "path": "users.js"
       }
     }
   ],
@@ -119,12 +207,16 @@
   "schemaVersion": 1,
   "sourceFiles": [
     {
-      "hash": "sha256:61f61e8f42c1015693f0fd8b6c4d97447e7f694df15db6a2a4ef84f471276d2e",
+      "hash": "sha256:971a022bf8cb074333536fc06aaf0b94efa81274a1920461d7a6b43c89a138c2",
       "path": "input.js"
+    },
+    {
+      "hash": "sha256:16070d6996c47009749e1c3984d6d97f0ee0bb97d7ae437f78e520668e03c796",
+      "path": "users.js"
     }
   ],
   "sourceMap": {
-    "hash": "sha256:d5e051c1c56460d074d6852b40b2074d01afdddd71a470a816e73300dac037d5",
+    "hash": "sha256:6faf09be2abc16c68de3addd3dddff1893603685bea9e6908125f254965d475f",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
@@ -137,9 +229,9 @@
     },
     "evidence": {
       "bindings": false,
-      "capabilities": false,
-      "effects": false,
-      "providers": false,
+      "capabilities": true,
+      "effects": true,
+      "providers": true,
       "routes": true,
       "sourceGraph": true
     },

@@ -8,5 +8,88 @@
   "sourcesContent": [
     "import { Sloppy, Results } from \"sloppy\";\n\nconst builder = Sloppy.createBuilder();\nbuilder.capabilities.addDatabase(\"data.analytics\", {\n  provider: \"postgres\",\n  access: \"read\",\n  database: \"analytics\"\n});\nbuilder.capabilities.addDatabase(\"data.reporting\", {\n  provider: \"sqlserver\",\n  access: \"readwrite\",\n  database: \"reporting\"\n});\n\nconst app = builder.build();\nconst analytics = app.provider(\"postgres:analytics\");\nconst reporting = app.provider(\"sqlserver:reporting\");\n\napp.get(\"/metadata\", () => Results.json({\n  analytics: \"postgres\",\n  reporting: \"sqlserver\"\n}));\n\nexport default app;\n"
   ],
-  "version": 3
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [
+      {
+        "access": "read",
+        "kind": "database",
+        "source": {
+          "column": 1,
+          "line": 4,
+          "path": "input.js"
+        },
+        "token": "data.analytics"
+      },
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 1,
+          "line": 9,
+          "path": "input.js"
+        },
+        "token": "data.reporting"
+      }
+    ],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 7
+        },
+        "id": 1,
+        "source": {
+          "column": 22,
+          "line": 19,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "postgres",
+        "source": {
+          "column": 1,
+          "line": 4,
+          "path": "input.js"
+        },
+        "token": "data.analytics"
+      },
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlserver",
+        "source": {
+          "column": 1,
+          "line": 9,
+          "path": "input.js"
+        },
+        "token": "data.reporting"
+      }
+    ],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/metadata",
+        "source": {
+          "column": 1,
+          "line": 19,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [],
+    "sourceFiles": [
+      {
+        "hash": "sha256:21cf75921f19f4f33919cb81845706a39db3d83ec0e288c2605b8b3253a2fe7d",
+        "path": "input.js"
+      }
+    ],
+    "version": 1
+  }
 }

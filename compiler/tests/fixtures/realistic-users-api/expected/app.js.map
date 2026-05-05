@@ -8,5 +8,203 @@
   "sourcesContent": [
     "import { Sloppy, Results, schema } from \"sloppy\";\nimport { sqlite } from \"sloppy/providers/sqlite\";\n\nconst UserCreate = schema.object({\n  name: schema.string().min(1),\n  email: schema.string().email().optional(),\n  tags: schema.array(schema.string()).optional()\n});\n\nconst app = Sloppy.create();\napp.use(sqlite(\"main\", { database: \":memory:\" }));\nconst db = app.provider(\"sqlite:main\");\nconst api = app.group(\"/api\");\nconst users = api.group(\"/users\");\nconst host = app.config.getString(\"Sloppy:Server:Host\", \"127.0.0.1\");\n\nfunction listUsers() {\n  return db.query(\"select id, name, email from users\", []);\n}\n\nfunction createUser(body) {\n  db.exec(\"insert into users (name, email) values (?, ?)\", [body.name, body.email]);\n  return db.queryOne(\"select id, name, email from users where id = last_insert_rowid()\", []);\n}\n\nusers.get(\"/\", (ctx) => Results.json({\n  q: ctx.query.q,\n  users: listUsers()\n})).withName(\"Users.List\");\n\nusers.post(\"/\", (ctx) => Results.created(\"/api/users/1\", {\n  user: createUser(ctx.body.json(UserCreate))\n})).withName(\"Users.Create\");\n\nusers.get(\"/{id:int}\", (ctx) => Results.json({\n  id: ctx.route.id,\n  user: db.queryOne(\"select id, name, email from users where id = ?\", [ctx.route.id])\n})).withName(\"Users.Get\");\n\napp.get(\"/health\", () => Results.text(\"ok\"));\n\nexport default app;\n"
   ],
-  "version": 3
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 9,
+          "line": 11,
+          "path": "input.js"
+        },
+        "token": "data.main"
+      }
+    ],
+    "effects": [
+      {
+        "access": "read",
+        "capabilityKind": "database",
+        "handlerId": 1,
+        "operation": "query",
+        "provider": "data.main",
+        "providerKind": "sqlite",
+        "reason": "db.query",
+        "source": {
+          "column": 10,
+          "line": 18,
+          "path": "input.js"
+        }
+      },
+      {
+        "access": "write",
+        "capabilityKind": "database",
+        "handlerId": 2,
+        "operation": "exec",
+        "provider": "data.main",
+        "providerKind": "sqlite",
+        "reason": "db.exec",
+        "source": {
+          "column": 3,
+          "line": 22,
+          "path": "input.js"
+        }
+      },
+      {
+        "access": "read",
+        "capabilityKind": "database",
+        "handlerId": 2,
+        "operation": "queryOne",
+        "provider": "data.main",
+        "providerKind": "sqlite",
+        "reason": "db.queryOne",
+        "source": {
+          "column": 10,
+          "line": 23,
+          "path": "input.js"
+        }
+      },
+      {
+        "access": "read",
+        "capabilityKind": "database",
+        "handlerId": 3,
+        "operation": "queryOne",
+        "provider": "data.main",
+        "providerKind": "sqlite",
+        "reason": "db.queryOne",
+        "source": {
+          "column": 9,
+          "line": 37,
+          "path": "input.js"
+        }
+      }
+    ],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 11
+        },
+        "id": 1,
+        "source": {
+          "column": 16,
+          "line": 26,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 21
+        },
+        "id": 2,
+        "source": {
+          "column": 17,
+          "line": 31,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 30
+        },
+        "id": 3,
+        "source": {
+          "column": 24,
+          "line": 35,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 40
+        },
+        "id": 4,
+        "source": {
+          "column": 20,
+          "line": 40,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlite",
+        "source": {
+          "column": 9,
+          "line": 11,
+          "path": "input.js"
+        },
+        "token": "data.main"
+      }
+    ],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "GET",
+        "module": null,
+        "pattern": "/api/users",
+        "source": {
+          "column": 1,
+          "line": 26,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 2,
+        "method": "POST",
+        "module": null,
+        "pattern": "/api/users",
+        "source": {
+          "column": 1,
+          "line": 31,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 3,
+        "method": "GET",
+        "module": null,
+        "pattern": "/api/users/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 35,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 4,
+        "method": "GET",
+        "module": null,
+        "pattern": "/health",
+        "source": {
+          "column": 1,
+          "line": 40,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [
+      {
+        "name": "UserCreate",
+        "source": {
+          "column": 20,
+          "line": 4,
+          "path": "input.js"
+        }
+      }
+    ],
+    "sourceFiles": [
+      {
+        "hash": "sha256:1950e0e09c879720e34e92b6944adba600bea0f4235deb4027a669e8a054b76a",
+        "path": "input.js"
+      }
+    ],
+    "version": 1
+  }
 }

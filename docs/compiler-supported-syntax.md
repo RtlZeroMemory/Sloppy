@@ -168,7 +168,11 @@ until the compiler and runtime can execute those broader shapes honestly.
 
 Supported builds must emit byte-stable `app.plan.json`, `app.js`, and `app.js.map` without
 absolute local paths, timestamps, random IDs, or checkout-specific text. Handler IDs start
-at `1` and follow source order.
+at `1` and follow source order. ENGINE-15.A source maps include the authored source list,
+`sourcesContent`, generated handler mappings, and deterministic `x_sloppy` metadata for
+source-file hashes plus available route/module/schema/provider/capability/effect source
+locations. This metadata is for diagnostics consumers; it does not add arbitrary bundler
+map support or broaden the supported input syntax.
 
 Rejected input must fail before success artifacts are emitted. Diagnostics include stable
 codes, source path, and line/column when the parser exposes a span. The text renderer stays

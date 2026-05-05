@@ -8,5 +8,100 @@
   "sourcesContent": [
     "import { Sloppy, Results, schema } from \"sloppy\";\nimport { sqlite } from \"sloppy/providers/sqlite\";\n\nconst UserCreate = schema.object({\n  name: schema.string().min(1),\n  email: schema.string().email().optional(),\n  tags: schema.array(schema.string()).optional()\n});\n\nconst app = Sloppy.create();\napp.use(sqlite(\"main\", { database: \":memory:\" }));\nconst host = app.config.getString(\"Sloppy:Server:Host\", \"127.0.0.1\");\n\napp.post(\"/users/{id:int}\", (ctx) => Results.json({\n  id: ctx.route.id,\n  search: ctx.query.q,\n  agent: ctx.header.userAgent,\n  body: ctx.body.json(UserCreate)\n})).withName(\"Users.Create\");\n\napp.get(\"/health\", () => Results.text(\"ok\"));\n\nexport default app;\n"
   ],
-  "version": 3
+  "version": 3,
+  "x_sloppy": {
+    "capabilities": [
+      {
+        "access": "readwrite",
+        "kind": "database",
+        "source": {
+          "column": 9,
+          "line": 11,
+          "path": "input.js"
+        },
+        "token": "data.main"
+      }
+    ],
+    "effects": [],
+    "handlers": [
+      {
+        "generated": {
+          "column": 33,
+          "line": 7
+        },
+        "id": 1,
+        "source": {
+          "column": 29,
+          "line": 14,
+          "path": "input.js"
+        }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 14
+        },
+        "id": 2,
+        "source": {
+          "column": 20,
+          "line": 21,
+          "path": "input.js"
+        }
+      }
+    ],
+    "modules": [],
+    "providers": [
+      {
+        "capabilityKind": "database",
+        "providerKind": "sqlite",
+        "source": {
+          "column": 9,
+          "line": 11,
+          "path": "input.js"
+        },
+        "token": "data.main"
+      }
+    ],
+    "routes": [
+      {
+        "handlerId": 1,
+        "method": "POST",
+        "module": null,
+        "pattern": "/users/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 14,
+          "path": "input.js"
+        }
+      },
+      {
+        "handlerId": 2,
+        "method": "GET",
+        "module": null,
+        "pattern": "/health",
+        "source": {
+          "column": 1,
+          "line": 21,
+          "path": "input.js"
+        }
+      }
+    ],
+    "schemas": [
+      {
+        "name": "UserCreate",
+        "source": {
+          "column": 20,
+          "line": 4,
+          "path": "input.js"
+        }
+      }
+    ],
+    "sourceFiles": [
+      {
+        "hash": "sha256:a68981464c73284cc4ace58c96f6998b8c0becee15621a476e8734bd101ff95c",
+        "path": "input.js"
+      }
+    ],
+    "version": 1
+  }
 }

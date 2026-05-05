@@ -9,12 +9,22 @@
       "access": "read",
       "kind": "database",
       "provider": "data.analytics",
+      "source": {
+        "column": 1,
+        "line": 4,
+        "path": "input.js"
+      },
       "token": "data.analytics"
     },
     {
       "access": "readwrite",
       "kind": "database",
       "provider": "data.reporting",
+      "source": {
+        "column": 1,
+        "line": 9,
+        "path": "input.js"
+      },
       "token": "data.reporting"
     }
   ],
@@ -91,6 +101,11 @@
       "provider": "postgres",
       "providerKind": "postgres",
       "service": null,
+      "source": {
+        "column": 1,
+        "line": 4,
+        "path": "input.js"
+      },
       "token": "data.analytics"
     },
     {
@@ -100,6 +115,11 @@
       "provider": "sqlserver",
       "providerKind": "sqlserver",
       "service": null,
+      "source": {
+        "column": 1,
+        "line": 9,
+        "path": "input.js"
+      },
       "token": "data.reporting"
     }
   ],
@@ -156,7 +176,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:2e6eaea6cb42cbbb476f5cfc1a00beaa0841057a6073313b20fea1006fef71b3",
+    "hash": "sha256:8b30f8eef17d968740ed82650a7301779fc6767f2ede3fdd66af7cf607970d08",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
