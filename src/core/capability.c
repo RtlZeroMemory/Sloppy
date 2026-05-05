@@ -224,6 +224,13 @@ static bool sl_capability_access_allows(SlCapabilityAccess actual, SlCapabilityO
         return actual == SL_CAPABILITY_ACCESS_LISTEN ||
                actual == SL_CAPABILITY_ACCESS_CONNECT_LISTEN;
     }
+    /*
+     * Filesystem compatibility invariants:
+     * - read grants list, metadata, and watch;
+     * - write grants append and delete;
+     * - readwrite grants every filesystem operation;
+     * - lock remains explicit unless readwrite is granted.
+     */
     if (operation == SL_CAPABILITY_OPERATION_APPEND) {
         return actual == SL_CAPABILITY_ACCESS_APPEND || actual == SL_CAPABILITY_ACCESS_WRITE ||
                actual == SL_CAPABILITY_ACCESS_READWRITE;

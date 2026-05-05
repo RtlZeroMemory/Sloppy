@@ -225,16 +225,27 @@ static int expect_valid_capability_skeletons(const SlPlan* plan)
 
 static int expect_valid_filesystem_capability_accesses(const SlPlan* plan)
 {
-    if (plan->capability_count != 6U ||
-        !sl_str_equal(plan->capabilities[0].access, sl_str_from_cstr("append")) ||
-        !sl_str_equal(plan->capabilities[1].access, sl_str_from_cstr("delete")) ||
-        !sl_str_equal(plan->capabilities[2].access, sl_str_from_cstr("list")) ||
-        !sl_str_equal(plan->capabilities[3].access, sl_str_from_cstr("metadata")) ||
-        !sl_str_equal(plan->capabilities[4].access, sl_str_from_cstr("watch")) ||
-        !sl_str_equal(plan->capabilities[5].access, sl_str_from_cstr("lock")))
-    {
+    static const char* expected_tokens[] = {"files.append",   "files.delete", "files.list",
+                                            "files.metadata", "files.watch",  "files.lock"};
+    static const char* expected_accesses[] = {"append",   "delete", "list",
+                                              "metadata", "watch",  "lock"};
+    const size_t expected_count = sizeof(expected_accesses) / sizeof(expected_accesses[0]);
+
+    if (plan->capability_count != expected_count) {
         return 1;
     }
+
+    for (size_t index = 0U; index < expected_count; ++index) {
+        if (!sl_str_equal(plan->capabilities[index].kind, sl_str_from_cstr("filesystem")) ||
+            !sl_str_equal(plan->capabilities[index].token,
+                          sl_str_from_cstr(expected_tokens[index])) ||
+            !sl_str_equal(plan->capabilities[index].access,
+                          sl_str_from_cstr(expected_accesses[index])))
+        {
+            return 1;
+        }
+    }
+
     return 0;
 }
 
