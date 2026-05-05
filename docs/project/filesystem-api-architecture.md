@@ -1,11 +1,12 @@
 # Filesystem API Architecture
 
-Status: CORE-FS-01.A/B/C/D/E/F/H source of truth. This document defines the intended
+Status: CORE-FS-01.A/B/C/D/E/F/G/H source of truth. This document defines the intended
 first `sloppy/fs` platform API contract and policy model. CORE-FS-01.C/D/H adds
 the native path resolver, platform backend contract, offloaded core file operations,
 and initial V8/stdlib bridge. CORE-FS-01.E/F adds advanced operations, FileHandle,
-and minimal filesystem streams. Watch, diagnostics goldens, examples, and conformance
-land in later CORE-FS-01 slices.
+and minimal filesystem streams. CORE-FS-01.G adds resource-backed watch handles and
+bounded watch events. Diagnostics goldens, examples, and conformance land in later
+CORE-FS-01 slices.
 
 ## Goals
 
@@ -167,11 +168,26 @@ CORE-FS-01.E/F extends that surface with:
   `readChunks` / `readLines` helpers;
 - binary chunk handling that preserves embedded NUL bytes.
 
+CORE-FS-01.G extends the surface with:
+
+- native `SlFsWatchHandle` resources opened through `sl_fs_watch_open`;
+- `File.watch(path)` for file create/modify/delete observation;
+- `Directory.watch(path)` for non-recursive directory entry create/modify/delete events;
+- bounded per-watch event queues with deterministic overflow events;
+- resource-table-backed V8 `FileWatcher` IDs with stale-safe close;
+- async iterable JS watch events through `FileWatcher`;
+- explicit rejection of recursive watch requests until an OS-native recursive backend lands.
+
+The current backend is a portable polling watch built over Slop's existing platform
+stat/list filesystem boundary. It does not claim Node `fs.watch` semantics, OS-native
+coalescing behavior, or recursive watch support. Directory modify detection is based on
+entry kind/size changes visible through the current stat/list contract; richer mtime and
+rename fidelity belongs with the later diagnostics/conformance hardening slice.
+
 Blocking file work is submitted through the Slop-owned executor/offload path. Worker
 callbacks operate on owned request data and settle JavaScript promises back on the V8
 owner thread.
 
 ## Deferred To Later CORE-FS-01 Slices
 
-- File watch resources.
 - Diagnostic goldens, doctor/audit output, examples, and conformance.

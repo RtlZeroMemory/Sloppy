@@ -86,6 +86,28 @@ function validateOpenOptions(options) {
     return Object.freeze({ access, create });
 }
 
+function validateWatchOptions(options, directory) {
+    if (options === undefined) {
+        return Object.freeze({ recursive: false, queueCapacity: 16, snapshotCapacity: directory ? 128 : 1 });
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy filesystem watch options must be a plain object.");
+    }
+    const recursive = options.recursive ?? false;
+    const queueCapacity = options.queueCapacity ?? 16;
+    const snapshotCapacity = options.snapshotCapacity ?? (directory ? 128 : 1);
+    if (typeof recursive !== "boolean") {
+        throw new TypeError("Sloppy filesystem watch recursive option must be boolean.");
+    }
+    if (!Number.isInteger(queueCapacity) || queueCapacity < 1 || queueCapacity > 256) {
+        throw new TypeError("Sloppy filesystem watch queueCapacity must be 1..256.");
+    }
+    if (!Number.isInteger(snapshotCapacity) || snapshotCapacity < 1 || snapshotCapacity > 1024) {
+        throw new TypeError("Sloppy filesystem watch snapshotCapacity must be 1..1024.");
+    }
+    return Object.freeze({ recursive, queueCapacity, snapshotCapacity });
+}
+
 function stringifyJson(value, options) {
     if (options === undefined) {
         return JSON.stringify(value);
@@ -207,6 +229,12 @@ const File = Object.freeze({
         return new FileHandle(id);
     },
 
+    async watch(path, options) {
+        const checked = validateWatchOptions(options, false);
+        const id = await nativeFsBridge("watch").watch(validatePath(path, "watch"), false, checked);
+        return new FileWatcher(id);
+    },
+
     createSymlink(targetPath, linkPath, options) {
         const directory = options?.directory ?? false;
         if (typeof directory !== "boolean") {
@@ -296,6 +324,12 @@ const Directory = Object.freeze({
             validatePath(directory, "createTemp"),
             prefix,
         );
+    },
+
+    async watch(path, options) {
+        const checked = validateWatchOptions(options, true);
+        const id = await nativeFsBridge("watch").watch(validatePath(path, "watch"), true, checked);
+        return new FileWatcher(id);
     },
 });
 
@@ -411,6 +445,45 @@ class FileHandle {
         }
     }
 }
-const FileWatcher = Object.freeze({});
+
+class FileWatcher {
+    constructor(id) {
+        this._id = Object.freeze({ slot: id.slot, generation: id.generation });
+        this._closed = false;
+    }
+
+    async nextEvent(options) {
+        if (this._closed) {
+            return null;
+        }
+        if (options !== undefined && !isPlainObject(options)) {
+            throw new TypeError("Sloppy FileWatcher.nextEvent options must be a plain object.");
+        }
+        return nativeFsBridge("watchNext").watchNext(this._id);
+    }
+
+    async close() {
+        if (this._closed) {
+            return;
+        }
+        this._closed = true;
+        await nativeFsBridge("watchClose").watchClose(this._id);
+    }
+
+    [Symbol.asyncIterator]() {
+        return {
+            next: async () => {
+                while (!this._closed) {
+                    const event = await this.nextEvent();
+                    if (event !== null) {
+                        return { done: false, value: event };
+                    }
+                    await Promise.resolve();
+                }
+                return { done: true, value: undefined };
+            },
+        };
+    }
+}
 
 export { Directory, File, FileHandle, FileWatcher, Path };

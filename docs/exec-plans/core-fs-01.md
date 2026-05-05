@@ -22,6 +22,7 @@ Status: active sequential PR train.
 
 ## Current Slice
 
-CORE-FS-01.A/B is limited to source-of-truth docs and lightweight metadata wiring. It must
-not implement native filesystem operations, V8 bridge calls, streams, watch, package
-behavior, benchmark claims, or public alpha docs.
+CORE-FS-01.G is limited to file/directory watch resources, bounded event queues,
+feature-gated V8/stdlib watch entry points, deterministic cleanup, and honest platform
+semantics. It must not add Node `fs.watch` compatibility, recursive watch claims,
+diagnostic/doctor goldens, public alpha docs, benchmark claims, or unrelated runtime APIs.

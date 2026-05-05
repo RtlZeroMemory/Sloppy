@@ -218,6 +218,83 @@ static int test_directory_temp_atomic_lock_and_handle(void)
     return 0;
 }
 
+static int test_watch_directory_and_file_events(void)
+{
+    unsigned char storage[131072];
+    SlArena arena = {0};
+    SlStr dir = sl_str_from_cstr("./sloppy-fs-watch");
+    SlStr file = sl_str_from_cstr("./sloppy-fs-watch/item.txt");
+    SlStr missing_file = sl_str_from_cstr("./sloppy-fs-watch/missing.txt");
+    SlFsWatchOptions directory_options = {.directory = true, .queue_capacity = 4U};
+    SlFsWatchOptions file_options = {.directory = false, .queue_capacity = 4U};
+    SlFsWatchOptions recursive_options = {.directory = true, .recursive = true};
+    SlFsWatchHandle* directory_watch = NULL;
+    SlFsWatchHandle* file_watch = NULL;
+    SlFsWatchHandle* unused_watch = NULL;
+    SlFsWatchEvent event = {0};
+
+    (void)sl_fs_delete_directory(dir, true, NULL);
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_create_directory(dir, false, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_open(&arena, dir, &directory_options, &directory_watch, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_next(directory_watch, &arena, &event, NULL),
+                      SL_STATUS_DEADLINE_EXCEEDED) != 0)
+    {
+        return 30;
+    }
+
+    if (expect_status(
+            sl_fs_write_file(file, sl_bytes_from_parts((const unsigned char*)"a", 1U), false, NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_next(directory_watch, &arena, &event, NULL), SL_STATUS_OK) != 0 ||
+        event.kind != SL_FS_WATCH_EVENT_CREATED ||
+        !sl_str_equal(sl_owned_str_as_view(event.path), sl_str_from_cstr("item.txt")))
+    {
+        return 31;
+    }
+
+    if (expect_status(sl_fs_write_file(file, sl_bytes_from_parts((const unsigned char*)"abcd", 4U),
+                                       false, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_next(directory_watch, &arena, &event, NULL), SL_STATUS_OK) != 0 ||
+        event.kind != SL_FS_WATCH_EVENT_MODIFIED)
+    {
+        return 32;
+    }
+
+    if (expect_status(sl_fs_delete_file(file, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_next(directory_watch, &arena, &event, NULL), SL_STATUS_OK) != 0 ||
+        event.kind != SL_FS_WATCH_EVENT_DELETED ||
+        expect_status(sl_fs_watch_close(directory_watch, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_close(directory_watch, NULL), SL_STATUS_STALE_RESOURCE) != 0)
+    {
+        return 33;
+    }
+
+    if (expect_status(sl_fs_watch_open(&arena, missing_file, &file_options, &file_watch, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_write_file(missing_file,
+                                       sl_bytes_from_parts((const unsigned char*)"created", 7U),
+                                       false, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_watch_next(file_watch, &arena, &event, NULL), SL_STATUS_OK) != 0 ||
+        event.kind != SL_FS_WATCH_EVENT_CREATED ||
+        !sl_str_equal(sl_owned_str_as_view(event.path), missing_file) ||
+        expect_status(sl_fs_watch_close(file_watch, NULL), SL_STATUS_OK) != 0)
+    {
+        return 34;
+    }
+
+    if (expect_status(sl_fs_watch_open(&arena, dir, &recursive_options, &unused_watch, NULL),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        expect_status(sl_fs_delete_directory(dir, true, NULL), SL_STATUS_OK) != 0)
+    {
+        return 35;
+    }
+    return 0;
+}
+
 int main(void)
 {
     if (test_path_classification_and_policy() != 0) {
@@ -228,6 +305,9 @@ int main(void)
     }
     if (test_directory_temp_atomic_lock_and_handle() != 0) {
         return 3;
+    }
+    if (test_watch_directory_and_file_events() != 0) {
+        return 4;
     }
     return 0;
 }

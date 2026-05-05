@@ -1,6 +1,6 @@
 # CORE-FS-01 Issue Index
 
-Status: CORE-FS-01.A/B planning and source-of-truth index.
+Status: CORE-FS-01.G source-of-truth index.
 
 | Slice | Issues | PR intent |
 | --- | --- | --- |

@@ -561,6 +561,28 @@ Reason:
         return Object.freeze({ access, create });
     }
 
+    function validateFsWatchOptions(options, directory) {
+        if (options === undefined) {
+            return Object.freeze({ recursive: false, queueCapacity: 16, snapshotCapacity: directory ? 128 : 1 });
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy filesystem watch options must be a plain object.");
+        }
+        const recursive = options.recursive ?? false;
+        const queueCapacity = options.queueCapacity ?? 16;
+        const snapshotCapacity = options.snapshotCapacity ?? (directory ? 128 : 1);
+        if (typeof recursive !== "boolean") {
+            throw new TypeError("Sloppy filesystem watch recursive option must be boolean.");
+        }
+        if (!Number.isInteger(queueCapacity) || queueCapacity < 1 || queueCapacity > 256) {
+            throw new TypeError("Sloppy filesystem watch queueCapacity must be 1..256.");
+        }
+        if (!Number.isInteger(snapshotCapacity) || snapshotCapacity < 1 || snapshotCapacity > 1024) {
+            throw new TypeError("Sloppy filesystem watch snapshotCapacity must be 1..1024.");
+        }
+        return Object.freeze({ recursive, queueCapacity, snapshotCapacity });
+    }
+
     function stringifyFsJson(value, options) {
         if (options === undefined) {
             return JSON.stringify(value);
@@ -660,6 +682,14 @@ Reason:
                 checked.create,
             ));
         },
+        async watch(path, options) {
+            const checked = validateFsWatchOptions(options, false);
+            return new FileWatcher(await requireFsBridge("watch").watch(
+                validateFsPath(path, "watch"),
+                false,
+                checked,
+            ));
+        },
         createSymlink(targetPath, linkPath, options) {
             const directory = options?.directory ?? false;
             if (typeof directory !== "boolean") {
@@ -733,6 +763,14 @@ Reason:
                 throw new TypeError("Sloppy Directory.createTemp prefix must be a non-empty string.");
             }
             return requireFsBridge("tempDirectory").tempDirectory(validateFsPath(directory, "createTemp"), prefix);
+        },
+        async watch(path, options) {
+            const checked = validateFsWatchOptions(options, true);
+            return new FileWatcher(await requireFsBridge("watch").watch(
+                validateFsPath(path, "watch"),
+                true,
+                checked,
+            ));
         },
     });
 
@@ -835,7 +873,42 @@ Reason:
             }
         }
     }
-    const FileWatcher = Object.freeze({});
+    class FileWatcher {
+        constructor(id) {
+            this._id = Object.freeze({ slot: id.slot, generation: id.generation });
+            this._closed = false;
+        }
+        async nextEvent(options) {
+            if (this._closed) {
+                return null;
+            }
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy FileWatcher.nextEvent options must be a plain object.");
+            }
+            return requireFsBridge("watchNext").watchNext(this._id);
+        }
+        async close() {
+            if (this._closed) {
+                return;
+            }
+            this._closed = true;
+            await requireFsBridge("watchClose").watchClose(this._id);
+        }
+        [Symbol.asyncIterator]() {
+            return {
+                next: async () => {
+                    while (!this._closed) {
+                        const event = await this.nextEvent();
+                        if (event !== null) {
+                            return { done: false, value: event };
+                        }
+                        await Promise.resolve();
+                    }
+                    return { done: true, value: undefined };
+                },
+            };
+        }
+    }
 
     globalThis.__sloppy_runtime = Object.freeze({
         Results,

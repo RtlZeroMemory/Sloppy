@@ -45,9 +45,10 @@ the registry before provider work begins. ENGINE-05 wires the V8 SQLite bridge t
 existing database hook; it does not add a new policy engine. CORE-FS-01.C/D/H makes
 `stdlib.fs` Plan-visible and adds the first native filesystem operations plus the
 feature-gated JavaScript bridge. CORE-FS-01.E/F extends that bridge to Directory,
-FileHandle, temp, atomic, symlink, and native lock primitives. The runtime enforces the current
+FileHandle, temp, atomic, symlink, and native lock primitives. CORE-FS-01.G adds
+resource-backed watch handles under the existing `fs.watch` capability. The runtime enforces the current
 development/strict path policy for implemented filesystem operations, but filesystem
-doctor/audit goldens and watch resources are still later CORE-FS-01 slices. Network
+doctor/audit goldens are still a later CORE-FS-01 slice. Network
 capabilities remain metadata/check-only skeletons:
 they can be stored and checked by token/kind/access, but no network API, permission prompt,
 or OS sandbox exists.

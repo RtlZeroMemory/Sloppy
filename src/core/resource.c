@@ -172,6 +172,8 @@ SlStr sl_resource_kind_name(SlResourceKind kind)
         return sl_resource_literal("fs.file_handle", sizeof("fs.file_handle") - 1U);
     case SL_RESOURCE_KIND_FS_LOCK:
         return sl_resource_literal("fs.lock", sizeof("fs.lock") - 1U);
+    case SL_RESOURCE_KIND_FS_WATCH:
+        return sl_resource_literal("fs.watch", sizeof("fs.watch") - 1U);
     default:
         return sl_resource_literal("unknown", sizeof("unknown") - 1U);
     }

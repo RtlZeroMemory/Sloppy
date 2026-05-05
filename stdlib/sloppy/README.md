@@ -34,11 +34,12 @@ facade. `index.js` re-exports frozen `Sloppy`, `data`, `sql`, filesystem API nam
 objects. The implemented `Results.*` helpers return plain frozen descriptor objects.
 `schema` exposes a small validation skeleton for string, number, boolean, and object
 shapes.
-`File`, `Directory`, `Path`, and `FileHandle` expose the CORE-FS-01.E/F filesystem
+`File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` expose the CORE-FS-01.G filesystem
 surface when the V8 runtime installs the feature-gated `__sloppy.fs` bridge: async core
 file operations, directory create/list/delete/walk helpers, atomic writes, temp paths,
-symlink/readlink entry points, and chunked FileHandle reads/writes. `FileWatcher` remains
-reserved for CORE-FS-01.G and is still a placeholder.
+symlink/readlink entry points, chunked FileHandle reads/writes, and bounded non-recursive
+file/directory watch events. Watch is not a Node `fs.watch` compatibility layer and does
+not claim recursive or OS-native coalescing semantics.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the

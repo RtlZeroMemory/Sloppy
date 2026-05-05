@@ -55,7 +55,8 @@ CORE-FS-01.C/D/H registers the private `__sloppy.fs` intrinsic namespace only wh
 validated runtime feature set activates `stdlib.fs`. The namespace exposes the core
 filesystem operations used by `stdlib/sloppy/fs.js`. CORE-FS-01.E/F adds advanced
 directory/temp/symlink/atomic operations and resource-table-backed FileHandle stream
-helpers; watch remains a later CORE-FS slice. The bridge uses an optional borrowed
+helpers. CORE-FS-01.G adds resource-table-backed FileWatcher open/next/close intrinsics
+with bounded non-recursive events. The bridge uses an optional borrowed
 `SlEngineOptions.filesystem_policy` for path/root enforcement; when it is omitted, V8
 keeps the documented development fallback roots for low-level smoke/source-input tests
 until app-host config wiring supplies project policy.

@@ -52,6 +52,14 @@ typedef enum SlFsSeekOrigin
     SL_FS_SEEK_END = 2
 } SlFsSeekOrigin;
 
+typedef enum SlFsWatchEventKind
+{
+    SL_FS_WATCH_EVENT_CREATED = 0,
+    SL_FS_WATCH_EVENT_MODIFIED = 1,
+    SL_FS_WATCH_EVENT_DELETED = 2,
+    SL_FS_WATCH_EVENT_OVERFLOW = 3
+} SlFsWatchEventKind;
+
 typedef struct SlFsRoot
 {
     SlStr name;
@@ -100,8 +108,25 @@ typedef struct SlFsTempPath
     SlOwnedStr path;
 } SlFsTempPath;
 
+typedef struct SlFsWatchOptions
+{
+    bool directory;
+    bool recursive;
+    size_t queue_capacity;
+    size_t snapshot_capacity;
+} SlFsWatchOptions;
+
+typedef struct SlFsWatchEvent
+{
+    SlFsWatchEventKind kind;
+    SlOwnedStr path;
+    bool is_directory;
+    bool overflow;
+} SlFsWatchEvent;
+
 typedef struct SlFsFileHandle SlFsFileHandle;
 typedef struct SlFsFileLock SlFsFileLock;
+typedef struct SlFsWatchHandle SlFsWatchHandle;
 
 SlFsPolicy sl_fs_development_policy(SlStr app_root);
 SlFsPolicy sl_fs_strict_policy(SlStr app_root, const SlFsRoot* roots, size_t root_count,
@@ -142,6 +167,11 @@ SlStatus sl_fs_file_truncate(SlFsFileHandle* handle, uint64_t size, SlDiag* out_
 SlStatus sl_fs_file_flush(SlFsFileHandle* handle, SlDiag* out_diag);
 SlStatus sl_fs_file_sync(SlFsFileHandle* handle, SlDiag* out_diag);
 SlStatus sl_fs_file_close(SlFsFileHandle* handle, SlDiag* out_diag);
+SlStatus sl_fs_watch_open(SlArena* arena, SlStr path, const SlFsWatchOptions* options,
+                          SlFsWatchHandle** out_watch, SlDiag* out_diag);
+SlStatus sl_fs_watch_next(SlFsWatchHandle* watch, SlArena* arena, SlFsWatchEvent* out_event,
+                          SlDiag* out_diag);
+SlStatus sl_fs_watch_close(SlFsWatchHandle* watch, SlDiag* out_diag);
 
 #ifdef __cplusplus
 }

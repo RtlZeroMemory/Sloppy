@@ -67,8 +67,10 @@ and core operations, compiler-emitted `requiredFeatures[]` metadata from `sloppy
 imports, bootstrap packaging of `stdlib/sloppy/fs.js`, and V8-gated smoke coverage for
 the active `stdlib.fs` bridge. CORE-FS-01.E/F adds default native tests for directory,
 temp, atomic, lock, binary FileHandle behavior, plus V8-gated smoke coverage for
-directory and handle intrinsics. Later CORE-FS slices must keep security golden, watch,
-and example evidence separate.
+directory and handle intrinsics. CORE-FS-01.G adds default native watch coverage for
+create/modify/delete, stale close, no-event timeout, and unsupported recursive requests,
+plus V8-gated smoke coverage for watch open/next/close. Later CORE-FS slices must keep
+security golden and example evidence separate.
 
 ENGINE-19.BC registers the current V8, HTTP, and async behavior under explicit conformance
 names without adding runtime behavior. `conformance.http.default_dispatch` is default
