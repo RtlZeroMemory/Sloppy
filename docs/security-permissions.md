@@ -154,6 +154,15 @@ CORE-FS-01: the current core file operations apply the development/strict path m
 fallback roots for low-level bridge tests only, while richer app-host config plumbing and
 doctor/audit reporting remain future work.
 
+CORE-FS-02 clarifies that trusted runtime/bootstrap file access is outside the app
+filesystem grant model. Plan loading, bundle and source-map loading, bootstrap stdlib
+asset loading, source-input `sloppy.json`, compiler handoff artifact inspection, and
+diagnostic source-map bytes must not require app `stdlib.fs` activation or app filesystem
+capabilities. Strict filesystem policy applies to app-owned `sloppy/fs` operations, not to
+runtime-owned artifacts required before the Plan and feature set are known. Runtime reads
+may reuse low-level native filesystem helpers for path conversion and stable errors, but
+they must not enter the public V8 `__sloppy.fs` bridge.
+
 ## Permission Grants
 
 Permission grants are the runtime/configured allowance for a capability to exist.
@@ -371,6 +380,9 @@ filesystem tests. CORE-FS-01.I/J adds filesystem-specific doctor/audit goldens a
 source examples. These gates do not prove OS sandboxing, PostgreSQL/SQL Server JavaScript
 bridges, live providers, package readiness, or runtime behavior for source examples that
 remain outside the supported compiler subset.
+CORE-FS-02 adds a runtime-artifact boundary check showing the artifact loader reaches V8
+feature failure without an active app filesystem feature; that evidence is separate from
+app strict-policy denial tests.
 
 ## Quality Gates
 

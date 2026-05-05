@@ -1405,6 +1405,17 @@ if(SLOPPY_ENABLE_TESTS)
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
         set_tests_properties(sloppy.run.v8_disabled_is_clear
                              PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        add_test(
+            NAME sloppy.run.runtime_artifacts_without_fs_feature_non_v8
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_CLI_ARGS=run;--artifacts;tests/integration/execution/compiler_mvp;--once;GET;/"
+                "-DSLOPPY_EXPECTED_ERROR=requires V8-enabled build" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+        set_tests_properties(
+            sloppy.run.runtime_artifacts_without_fs_feature_non_v8
+            PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+                       LABELS "runtime-artifact;filesystem-boundary")
     else()
         if(CARGO_EXECUTABLE)
             function(sloppy_add_conformance_run_once_test test_name case_name source_path method target

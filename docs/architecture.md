@@ -168,7 +168,9 @@ metadata, materialize route/query/request context, start a tiny local libuv HTTP
 response writer. EPIC-24 adds the classic bootstrap runtime asset load, the compiler
 rewrite for the public `"sloppy"` import, the internal
 `__sloppy_register_handler(id, handler)` intrinsic, and registered-handler validation
-before dispatch. ENGINE-04 broadens the dev HTTP runtime to
+before dispatch. CORE-FS-02 routes the trusted Plan/bundle/source-map/stdlib/config reads
+through the low-level native filesystem backend while keeping them independent of app
+`stdlib.fs` activation and app filesystem capabilities. ENGINE-04 broadens the dev HTTP runtime to
 GET/POST/PUT/PATCH/DELETE route metadata, request headers, bounded JSON/text bodies,
 deterministic body/content-type failures, custom response headers, and safe error
 responses. Source input handoff, true ESM module loading, production server hardening,
@@ -395,11 +397,11 @@ Runtime lifecycle target:
 
 1. initialize platform layer;
 2. initialize core allocators and diagnostics;
-3. load and validate plan;
+3. load and validate plan through trusted runtime-owned file access;
 4. build native app graph;
 5. create an engine through the engine-neutral C ABI;
-6. load bootstrap stdlib;
-7. load app bundle;
+6. load bootstrap stdlib through trusted runtime-owned file access;
+7. load app bundle through trusted runtime-owned file access;
 8. verify handler table;
 9. enter event loop;
 10. drain work;

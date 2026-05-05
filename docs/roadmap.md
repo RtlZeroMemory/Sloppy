@@ -10,6 +10,8 @@ Core MVP / Slop Engine proof has landed for the scoped development path:
 - `sloppyc build` emits deterministic Plan, bundle, and source-map artifacts for the
   supported source subset.
 - `sloppy run --artifacts` executes selected V8-gated artifacts.
+- CORE-FS-02 separates trusted runtime artifact/config/stdlib file loading from the
+  app-facing `sloppy/fs` feature and capability policy.
 - V8 runtime execution covers registered handlers, bounded direct Promise/microtask
   settlement, request context, result conversion, and SQLite bridge calls.
 - HTTP backend semantics and libuv localhost transport exist for bounded sequential
@@ -85,7 +87,7 @@ Durable architecture sources remain:
 | HTTP backend | Complete/proven for MVP | Sequential keep-alive, bounded chunked request decoding, and internal chunked response writer only; no pipelining, public streaming APIs, SSE/WebSockets/file streaming, production HTTP, TLS, HTTP/2/3, middleware, or benchmark claims. |
 | Libuv localhost transport | Complete/proven for MVP | Bounded localhost transport with sequential HTTP/1.1 keep-alive, idle timeout, max requests, chunked request decoding, internal chunked response writer, and close policy. |
 | SQLite users API | Complete/proven for proof fixture | Current bridge is synchronous and not provider-executor-backed. |
-| Capability enforcement | Complete/proven for integrated paths | SQLite/provider-executor paths enforce before provider work; CORE-FS-01 implements filesystem feature/capability policy, import-driven Plan metadata, runtime path-policy enforcement for implemented FS operations, and doctor/audit goldens for filesystem metadata visibility; network remains metadata/check skeleton. |
+| Capability enforcement | Complete/proven for integrated paths | SQLite/provider-executor paths enforce before provider work; CORE-FS-01 implements filesystem feature/capability policy, import-driven Plan metadata, runtime path-policy enforcement for implemented FS operations, and doctor/audit goldens for filesystem metadata visibility; CORE-FS-02 keeps trusted runtime artifact reads independent of app filesystem grants; network remains metadata/check skeleton. |
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
 | Source-input run | Partial/proven for compiler-owned module subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; supported relative function modules and Sloppy provider imports are compiler-owned. Cache reuse, watch/hot reload, Node/npm, and full TypeScript remain deferred. |

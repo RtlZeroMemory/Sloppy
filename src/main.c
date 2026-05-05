@@ -15,6 +15,7 @@
 #include "sloppy/data_sqlserver.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/engine.h"
+#include "sloppy/fs.h"
 #include "sloppy/app_host.h"
 #include "sloppy/http.h"
 #include "sloppy/http_dispatch.h"
@@ -622,9 +623,9 @@ static int sl_read_file_with_messages(const char* path, unsigned char* buffer, s
                                       SlBytes* out, const char* not_found_prefix,
                                       const char* size_prefix)
 {
-    FILE* file = NULL;
-    long size = 0L;
-    size_t bytes_read = 0U;
+    SlArena arena = {0};
+    SlOwnedBytes bytes = {0};
+    SlStatus status;
 
     if (path == NULL || buffer == NULL || out == NULL || not_found_prefix == NULL ||
         size_prefix == NULL)
@@ -632,43 +633,31 @@ static int sl_read_file_with_messages(const char* path, unsigned char* buffer, s
         return 1;
     }
 
-#ifdef _MSC_VER
-    if (fopen_s(&file, path, "rb") != 0) {
-        file = NULL;
+    status = sl_arena_init(&arena, buffer, capacity);
+    if (!sl_status_is_ok(status)) {
+        return 1;
     }
-#else
-    file = fopen(path, "rb");
-#endif
 
-    if (file == NULL) {
+    /*
+     * Trusted runtime/tooling file reads use the Slop-owned native filesystem backend directly.
+     * They intentionally do not go through the public V8 `sloppy/fs` feature/capability path.
+     */
+    status = sl_fs_read_file(&arena, sl_str_from_cstr(path), &bytes, NULL);
+    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
         sl_cli_write_error_with_value(not_found_prefix, path, "\n");
         return 1;
     }
-
-    if (fseek(file, 0L, SEEK_END) != 0) {
-        (void)fclose(file);
-        return 1;
-    }
-
-    size = ftell(file);
-    if (size <= 0L || (size_t)size > capacity) {
-        (void)fclose(file);
+    if (!sl_status_is_ok(status)) {
         sl_cli_write_error_with_value(size_prefix, path, "\n");
         return 1;
     }
 
-    if (fseek(file, 0L, SEEK_SET) != 0) {
-        (void)fclose(file);
+    if (bytes.length == 0U || bytes.length > capacity) {
+        sl_cli_write_error_with_value(size_prefix, path, "\n");
         return 1;
     }
 
-    bytes_read = fread(buffer, 1U, (size_t)size, file);
-    (void)fclose(file);
-    if (bytes_read != (size_t)size) {
-        return 1;
-    }
-
-    *out = sl_bytes_from_parts(buffer, bytes_read);
+    *out = sl_bytes_from_parts(bytes.ptr, bytes.length);
     return 0;
 }
 
@@ -2770,25 +2759,14 @@ static bool sl_run_source_input_extension_supported(const char* path)
 
 static bool sl_run_file_exists(const char* path)
 {
-    FILE* file = NULL;
+    SlFsStat stat = {0};
 
     if (path == NULL || path[0] == '\0') {
         return false;
     }
 
-#ifdef _MSC_VER
-    if (fopen_s(&file, path, "rb") != 0) {
-        file = NULL;
-    }
-#else
-    file = fopen(path, "rb");
-#endif
-
-    if (file == NULL) {
-        return false;
-    }
-    (void)fclose(file);
-    return true;
+    return sl_status_is_ok(sl_fs_stat(sl_str_from_cstr(path), &stat, NULL)) && stat.exists &&
+           stat.kind == SL_FS_NODE_FILE;
 }
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value)
@@ -3561,23 +3539,13 @@ static void sl_cli_doctor_emit_json(SlArena* arena, SlCliSpan id, SlCliSpan stat
 
 static bool sl_cli_path_exists(const char* path)
 {
-    FILE* file = NULL;
+    SlFsStat stat = {0};
 
     if (path == NULL || path[0] == '\0') {
         return false;
     }
-#ifdef _MSC_VER
-    if (fopen_s(&file, path, "rb") != 0) {
-        file = NULL;
-    }
-#else
-    file = fopen(path, "rb");
-#endif
-    if (file == NULL) {
-        return false;
-    }
-    (void)fclose(file);
-    return true;
+    return sl_status_is_ok(sl_fs_stat(sl_str_from_cstr(path), &stat, NULL)) && stat.exists &&
+           stat.kind == SL_FS_NODE_FILE;
 }
 
 static void sl_cli_doctor_emit(const SlCliOptions* options, SlArena* arena, SlCliSpan id,

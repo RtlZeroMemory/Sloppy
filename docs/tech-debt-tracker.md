@@ -487,6 +487,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   resolution, database capability hook checks, resource-table-owned handles, batched row
   mapping, JSON handler fixture, denied-capability fixture, and fail-closed missing-hook
   behavior.
+- Added CORE-FS-02 internal runtime file-access integration: trusted Plan/bundle/source-map,
+  bootstrap stdlib, source-input config, compiler discovery, and bootstrap doctor reads are
+  classified separately from app `sloppy/fs` policy and use low-level native filesystem
+  helpers without requiring app `stdlib.fs` activation.
 ## ENGINE-14 Follow-ups
 
 - Source-map diagnostics are multi-file at compiler artifact level with stable Sloppy

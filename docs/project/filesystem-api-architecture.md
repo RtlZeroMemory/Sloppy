@@ -1,12 +1,13 @@
 # Filesystem API Architecture
 
-Status: CORE-FS-01.A/B/C/D/E/F/G/H/I/J source of truth. This document defines the intended
-first `sloppy/fs` platform API contract and policy model. CORE-FS-01.C/D/H adds
-the native path resolver, platform backend contract, offloaded core file operations,
-and initial V8/stdlib bridge. CORE-FS-01.E/F adds advanced operations, FileHandle,
-and minimal filesystem streams. CORE-FS-01.G adds resource-backed watch handles and
-bounded watch events. CORE-FS-01.I/J adds doctor/audit filesystem goldens and source
-examples for the implemented surface.
+Status: CORE-FS-01.A/B/C/D/E/F/G/H/I/J source of truth plus CORE-FS-02 internal file-access
+integration. This document defines the intended first `sloppy/fs` platform API contract
+and policy model. CORE-FS-01.C/D/H adds the native path resolver, platform backend
+contract, offloaded core file operations, and initial V8/stdlib bridge. CORE-FS-01.E/F
+adds advanced operations, FileHandle, and minimal filesystem streams. CORE-FS-01.G adds
+resource-backed watch handles and bounded watch events. CORE-FS-01.I/J adds doctor/audit
+filesystem goldens and source examples for the implemented surface. CORE-FS-02 classifies
+trusted runtime/bootstrap file reads separately from app-owned `sloppy/fs` access.
 
 ## Goals
 
@@ -136,6 +137,49 @@ capability categories, source locations, development warnings, and strict-mode f
 - Win32 UTF-16 conversion belongs in the Win32 backend.
 - POSIX path behavior belongs in POSIX backends.
 - libuv types remain private implementation details.
+
+## Internal Runtime File Access
+
+`sloppy/fs` is the user/application filesystem API. It is Plan-visible, `stdlib.fs`
+feature-gated, capability-aware, development/strict-policy-aware, and app-owned. Internal
+runtime file access is a different trust boundary. The runtime must be able to load and
+validate the Plan, bundle, source map, bootstrap stdlib assets, project config, diagnostic
+metadata, compiler artifacts, and test fixtures before the app feature set or filesystem
+capability policy can be known.
+
+CORE-FS-02 keeps that boundary explicit:
+
+- App-visible filesystem access: `stdlib/sloppy/fs.js`, `src/engine/v8/intrinsics_fs.cc`,
+  `include/sloppy/fs.h`, `src/core/fs.c`, and `src/platform/*/fs_*` implement the public
+  `sloppy/fs` path. This path is activated by `requiredFeatures: ["stdlib.fs"]` and is
+  subject to filesystem path/capability policy.
+- Runtime bootstrap/artifact access: `src/main.c` loads `app.plan.json`, `app.js`,
+  `app.js.map`, `stdlib/sloppy/internal/runtime-classic.js`,
+  `stdlib/sloppy/bootstrap.manifest.json`, source-input `sloppy.json`, compiler executable
+  discovery, and bootstrap asset doctor checks as trusted runtime-owned reads. These reads
+  reuse the low-level native `sl_fs_read_file` / `sl_fs_stat` backend helpers for Slop-owned
+  path conversion and diagnostics, but they do not call the public V8 `sloppy/fs` bridge,
+  do not require `stdlib.fs`, do not require app filesystem capabilities, and are not
+  blocked by app strict filesystem policy.
+- Compiler/tooling access: `compiler/src/*` uses Rust `std::fs` for source, module,
+  appsettings, artifact, and fixture work. That remains compiler-owned deterministic
+  tooling I/O rather than a dependency on the C runtime filesystem layer.
+- Diagnostic/source-frame access: shared diagnostic rendering consumes caller-supplied
+  source text, and V8 source-map remapping consumes the already-loaded `app.js.map`
+  artifact bytes. Missing or malformed artifact/source-map inputs keep stable diagnostics
+  and fall back without raw OS error leakage.
+- Test fixture access: C, CMake, Node, and Rust tests read checked-in fixtures directly
+  unless they are explicitly testing app-facing filesystem policy. Fixture I/O must not be
+  cited as proof that app `sloppy/fs` strict policy was exercised.
+- Package/build access: CMake, packaging scripts, bootstrap asset copy checks, and package
+  smoke tests inspect source/build/package files as build-system or package evidence. They
+  are separate from both app filesystem policy and runtime bootstrap authority.
+
+Runtime-owned artifact reads may share low-level filesystem helpers only where doing so
+does not create a cycle with feature activation. The current shared helpers live below the
+native C runtime/platform boundary and can be called before Plan runtime feature validation.
+The V8 `__sloppy.fs` namespace and JS `File`/`Directory` wrappers remain on the app-facing
+side of the boundary.
 
 ## Implemented Runtime Operations
 
