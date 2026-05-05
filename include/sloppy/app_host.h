@@ -161,6 +161,10 @@ SlStatus sl_app_request_scope_complete(SlAppRequestScope* request_scope,
                                        SlDiagCode diag_code, SlDiag* out_diag);
 SlStatus sl_app_request_scope_reject_late_completion(const SlAppRequestScope* request_scope,
                                                      SlAppRequestOutcome outcome, SlDiag* out_diag);
+/*
+ * Closes an already-terminal request scope. Callers must record the terminal outcome with
+ * `sl_app_request_scope_complete` first unless the app lifecycle has already forced shutdown.
+ */
 SlStatus sl_app_request_scope_close(SlAppRequestScope* request_scope, SlDiag* out_diag);
 bool sl_app_request_scope_is_active(const SlAppRequestScope* request_scope);
 bool sl_app_request_scope_is_terminal(const SlAppRequestScope* request_scope);

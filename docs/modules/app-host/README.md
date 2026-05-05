@@ -155,7 +155,9 @@ ENGINE-16.C adds explicit terminal request outcomes before cleanup runs, coverin
 sync error, V8 exception, Promise rejection, validation/body parse failure, timeout,
 cancel, client disconnect, response write failure, provider failure, provider pre-start
 cancel, shutdown, and backpressure. A late completion after the scope is terminal is
-rejected as stale lifecycle work and does not re-run cleanup. Typed resource cleanup can
+rejected as stale lifecycle work and does not re-run cleanup. Bare request-scope close
+requires a pre-recorded terminal outcome, except for the forced-shutdown cleanup case where
+the app lifecycle supplies a shutdown terminal reason. Typed resource cleanup can
 require an expected `SlResourceKind` through `SlAppTypedResourceCleanup`; wrong-kind
 cleanup preserves the live resource and its ID instead of closing an unexpected handle.
 `SlAppLifecycle` applies the same cleanup model to app-scoped resources and makes shutdown

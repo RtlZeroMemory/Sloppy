@@ -99,8 +99,10 @@ client disconnect, response write failure, provider failure, provider pre-start 
 shutdown, and backpressure. It also covers stale late-completion rejection and typed
 resource cleanup wrong-kind preservation through the typed cleanup opt-in. The execute
 helper also has regressions for handlers that explicitly close or complete their own scope
-before returning. These are deterministic native lifecycle tests, not runtime torture,
-benchmark, provider expansion, or public API evidence.
+before returning, for bare close rejection before terminal metadata is recorded, and for
+late-completion rejection preserving the original terminal metadata. These are
+deterministic native lifecycle tests, not runtime torture, benchmark, provider expansion,
+or public API evidence.
 
 - C unit tests;
 - Rust/`sloppyc` tests;

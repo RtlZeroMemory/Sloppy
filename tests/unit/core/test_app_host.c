@@ -367,7 +367,8 @@ static SlStatus request_handler_resource_cleanup(SlAppRequestScope* scope, void*
     return sl_status_from_code(data->status_code);
 }
 
-static SlStatus request_handler_closes_scope(SlAppRequestScope* scope, void* user, SlDiag* out_diag)
+static SlStatus request_handler_completes_scope_success(SlAppRequestScope* scope, void* user,
+                                                        SlDiag* out_diag)
 {
     RequestHandlerData* data = (RequestHandlerData*)user;
 
@@ -380,7 +381,10 @@ static SlStatus request_handler_closes_scope(SlAppRequestScope* scope, void* use
     {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
-    if (!sl_status_is_ok(sl_app_request_scope_close(scope, out_diag))) {
+    if (!sl_status_is_ok(sl_app_request_scope_complete(scope, SL_APP_REQUEST_OUTCOME_SUCCESS,
+                                                       sl_status_from_code(data->status_code),
+                                                       SL_DIAG_NONE, out_diag)))
+    {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     return sl_status_from_code(data->status_code);
@@ -435,15 +439,15 @@ static int test_request_scope_cleans_up_on_success(void)
     return 0;
 }
 
-static int test_request_scope_execute_accepts_handler_close(void)
+static int test_request_scope_execute_accepts_handler_terminalization(void)
 {
     SlScopeCleanup storage[2];
     CleanupRecord record = {{0}, 0U};
     RequestHandlerData data = {&record, 7, 0, SL_STATUS_OK, 0U, 0U, false, false};
 
-    if (expect_status(
-            sl_app_request_scope_execute(storage, 2U, request_handler_closes_scope, &data, NULL),
-            SL_STATUS_OK) != 0)
+    if (expect_status(sl_app_request_scope_execute(
+                          storage, 2U, request_handler_completes_scope_success, &data, NULL),
+                      SL_STATUS_OK) != 0)
     {
         return 44;
     }
@@ -760,7 +764,9 @@ static int test_graceful_shutdown_drains_active_request_scope(void)
     {
         return 96;
     }
-    if (expect_status(sl_app_request_scope_close(&request_scope, &diag), SL_STATUS_OK) != 0 ||
+    if (expect_status(sl_app_request_scope_complete(&request_scope, SL_APP_REQUEST_OUTCOME_SUCCESS,
+                                                    sl_status_ok(), SL_DIAG_NONE, &diag),
+                      SL_STATUS_OK) != 0 ||
         sl_app_lifecycle_active_request_count(&lifecycle) != 0U)
     {
         return 97;
@@ -841,7 +847,9 @@ static int test_app_scope_resource_survives_request_scope(void)
         expect_status(sl_app_request_scope_init_for_app(&request_scope, &lifecycle, 1U,
                                                         request_storage, 2U, &diag),
                       SL_STATUS_OK) != 0 ||
-        expect_status(sl_app_request_scope_close(&request_scope, &diag), SL_STATUS_OK) != 0)
+        expect_status(sl_app_request_scope_complete(&request_scope, SL_APP_REQUEST_OUTCOME_SUCCESS,
+                                                    sl_status_ok(), SL_DIAG_NONE, &diag),
+                      SL_STATUS_OK) != 0)
     {
         return 103;
     }
@@ -866,7 +874,9 @@ static int test_request_scope_rejects_access_after_close(void)
     SlDiag diag = {0};
 
     if (expect_status(sl_app_request_scope_init(&request_scope, storage, 1U), SL_STATUS_OK) != 0 ||
-        expect_status(sl_app_request_scope_close(&request_scope, &diag), SL_STATUS_OK) != 0)
+        expect_status(sl_app_request_scope_complete(&request_scope, SL_APP_REQUEST_OUTCOME_SUCCESS,
+                                                    sl_status_ok(), SL_DIAG_NONE, &diag),
+                      SL_STATUS_OK) != 0)
     {
         return 106;
     }
@@ -875,6 +885,36 @@ static int test_request_scope_rejects_access_after_close(void)
             SL_STATUS_INVALID_STATE) != 0)
     {
         return 107;
+    }
+
+    return 0;
+}
+
+static int test_request_scope_close_requires_terminal_outcome(void)
+{
+    SlScopeCleanup storage[1];
+    SlAppRequestScope request_scope = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_app_request_scope_init(&request_scope, storage, 1U), SL_STATUS_OK) != 0) {
+        return 170;
+    }
+    if (expect_status(sl_app_request_scope_close(&request_scope, &diag), SL_STATUS_INVALID_STATE) !=
+            0 ||
+        diag.code != SL_DIAG_APP_LIFECYCLE ||
+        !sl_str_equal(diag.message,
+                      sl_str_from_cstr("request scope terminal outcome was not recorded")))
+    {
+        return 171;
+    }
+    if (!sl_app_request_scope_is_active(&request_scope)) {
+        return 172;
+    }
+    if (expect_status(sl_app_request_scope_complete(&request_scope, SL_APP_REQUEST_OUTCOME_SUCCESS,
+                                                    sl_status_ok(), SL_DIAG_NONE, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 173;
     }
 
     return 0;
@@ -984,6 +1024,9 @@ static int run_request_terminal_outcome_case(SlAppRequestOutcome outcome, SlStat
                                                     sl_status_ok(), SL_DIAG_NONE, &diag),
                       SL_STATUS_STALE_RESOURCE) != 0 ||
         record.count != 1U || diag.code != SL_DIAG_APP_LIFECYCLE ||
+        sl_status_code(sl_app_request_scope_terminal_status(&request_scope)) != status_code ||
+        sl_app_request_scope_terminal_diag_code(&request_scope) != diag_code ||
+        sl_app_request_scope_terminal_reason(&request_scope) != expected_reason ||
         !sl_str_equal(diag.message, sl_str_from_cstr("request provider late completion dropped")))
     {
         return 3;
@@ -1041,7 +1084,7 @@ static int test_request_terminal_outcomes_cleanup_once(void)
             run_request_terminal_outcome_case(cases[index].outcome, cases[index].status_code,
                                               cases[index].diag_code, cases[index].reason);
         if (result != 0) {
-            return 112 + result;
+            return 120 + result;
         }
     }
 
@@ -1171,7 +1214,7 @@ int main(void)
         test_duplicate_route_policy_fails_startup,
         test_duplicate_service_token_fails_startup,
         test_request_scope_cleans_up_on_success,
-        test_request_scope_execute_accepts_handler_close,
+        test_request_scope_execute_accepts_handler_terminalization,
         test_request_scope_execute_accepts_handler_complete,
         test_request_scope_cleans_up_on_failure,
         test_request_scope_closes_resources_for_lifecycle_outcomes,
@@ -1183,6 +1226,7 @@ int main(void)
         test_forced_shutdown_closes_app_scope_with_active_request,
         test_app_scope_resource_survives_request_scope,
         test_request_scope_rejects_access_after_close,
+        test_request_scope_close_requires_terminal_outcome,
         test_request_owned_resource_closes_before_app_resource,
         test_request_terminal_outcomes_cleanup_once,
         test_typed_resource_cleanup_preserves_wrong_kind_resource,

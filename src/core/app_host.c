@@ -1103,10 +1103,21 @@ SlStatus sl_app_request_scope_close(SlAppRequestScope* request_scope, SlDiag* ou
         return sl_status_ok();
     }
     if (!request_scope->terminal) {
-        request_scope->terminal = true;
-        request_scope->terminal_status = sl_status_ok();
-        request_scope->terminal_diag_code = SL_DIAG_NONE;
-        request_scope->terminal_reason = SL_CANCELLATION_REASON_NONE;
+        if (request_scope->lifecycle != NULL &&
+            sl_app_lifecycle_is_shutdown(request_scope->lifecycle))
+        {
+            request_scope->terminal = true;
+            request_scope->terminal_status = sl_status_from_code(SL_STATUS_CANCELLED);
+            request_scope->terminal_diag_code = SL_DIAG_APP_LIFECYCLE;
+            request_scope->terminal_reason = SL_CANCELLATION_REASON_SHUTDOWN;
+        }
+        else {
+            return sl_app_request_scope_diag(
+                out_diag, SL_DIAG_APP_LIFECYCLE,
+                sl_app_host_literal("request scope terminal outcome was not recorded",
+                                    sizeof("request scope terminal outcome was not recorded") -
+                                        1U));
+        }
     }
 
     return sl_app_request_scope_close_internal(request_scope, out_diag);
