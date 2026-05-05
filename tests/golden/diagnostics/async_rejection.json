@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_ENGINE_PROMISE_REJECTION","severity":"error","message":"async handler rejected: <redacted>","primary":{"file":"app.js","line":9,"column":21,"span":7},"related":[{"message":"route GET /users handler Users.List","span":{"file":"app.js","line":4,"column":1}}],"hints":["rejection reason redacted; inspect handler logs for safe context"]}

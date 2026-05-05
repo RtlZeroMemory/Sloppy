@@ -181,6 +181,9 @@ ENGINE-15.CD diagnostic changes must keep default-lane renderer evidence determi
 stable code registry completeness, JSON source-frame snapshots, expanded redaction
 coverage, and clear separation from V8-only async execution evidence. V8 async diagnostic
 tests may prove JSON rendering for executed Promise paths only in the V8-enabled lane.
+ENGINE-15.E diagnostic golden changes must update the diagnostics golden inventory, keep
+text and JSON snapshots path-normalized and redacted, and explicitly report whether each
+snapshot belongs to the default renderer lane or a V8-gated/process lane.
 Plan-driven CLI consumer changes must keep process goldens deterministic for text and JSON
 output, include audit nonzero coverage when ERROR findings are emitted, cover OpenAPI
 partial metadata and Slop extensions, and keep runtime execution, V8, live-provider,
@@ -565,7 +568,7 @@ explicit future flags or environment gates.
   JSON parsing, diagnostics/source map parsing once richer source maps exist, and resource
   ID/table validation. Fuzz targets should be short-running, deterministic, and isolated
   from sockets, live providers, V8, package managers, or network access by default.
-- diagnostics snapshot tests;
+- diagnostics snapshot tests and the diagnostics golden inventory;
 - compiler golden tests;
 - benchmark trend checks;
 - packaging smoke tests;

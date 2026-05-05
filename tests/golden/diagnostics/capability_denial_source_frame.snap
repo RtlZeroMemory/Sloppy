@@ -1,0 +1,6 @@
+error SLOPPY_E_PERMISSION_DENIED: capability denied for data.main read
+
+  --> app.js:7:15 (len 8)
+   |
+ 7 |   const rows = db.query("select * from users");
+   |               ^^^^^^^^ declare data.main with read access

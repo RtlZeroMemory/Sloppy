@@ -179,6 +179,11 @@ ENGINE-15.CD adds default-lane core diagnostic coverage for complete stable code
 mapping, expanded shared redaction keys, and deterministic JSON source-frame snapshots.
 V8 async rejection JSON remains V8-gated execution evidence and does not imply async stack
 source-map remapping.
+ENGINE-15.E expands deterministic diagnostic goldens under `tests/golden/diagnostics/` for
+async JSON shape, capability denial source frames, malformed request-body JSON, and
+redacted provider failure output. These goldens exercise the default renderer contract only;
+V8 exception/remap, users API transport, live-provider, package, stress, and benchmark
+lanes stay separate.
 ENGINE-20.C/D add CLI golden coverage for consuming that metadata: route source/binding/
 response/completeness output, generated capability output for SQLite effects, doctor
 partial metadata checks, audit JSON warnings, audit nonzero behavior for ERROR findings,
@@ -323,6 +328,9 @@ Golden tests are required for:
 - public CLI output where stable.
 
 Golden updates must explain the changed intent.
+
+Diagnostic golden changes must also update `tests/golden/diagnostics/README.md` when they
+add or remove a category, and must state the evidence lane they prove.
 
 ## Negative Tests
 
