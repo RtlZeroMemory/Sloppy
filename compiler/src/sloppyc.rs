@@ -1350,8 +1350,8 @@ fn validate_module_sloppy_time_import(
         let local = specifier.local.name.as_str();
         if !sloppy_time_import_name_supported(imported) || imported != local {
             return Err(Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_IMPORT_NAME",
-                format!("unsupported sloppy/time import \"{imported}\""),
+                "SLOPPYC_E_UNSUPPORTED_IMPORT",
+                format!("unsupported sloppy import \"{imported}\""),
             )
             .with_path(path)
             .with_span(specifier.span));
@@ -6671,6 +6671,40 @@ export default app;
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.time"]));
         assert_eq!(plan["features"]["time"], serde_json::json!(true));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn function_module_invalid_sloppy_time_import_uses_import_diagnostic() {
+        let root = fixture_temp_dir("function-module-invalid-time-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("jobs.js"),
+            r#"import { Results } from "sloppy";
+import { Time as Clock } from "sloppy/time";
+
+export function jobsModule(app) {
+    app.get("/jobs", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { jobsModule } from "./modules/jobs.js";
+
+const app = Sloppy.create();
+app.useModule(jobsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract_temp_input(&root, source)
+            .expect_err("invalid sloppy/time import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+        assert!(diagnostic
+            .message
+            .contains("unsupported sloppy import \"Time\""));
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }

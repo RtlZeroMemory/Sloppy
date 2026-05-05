@@ -3,8 +3,10 @@
 Status: CORE-TIME-01.A/B source of truth. This document defines the intended first
 `sloppy/time` API contract, feature metadata, diagnostics, and implementation boundaries.
 The examples in this document are illustrative contract examples for the current API shape.
-Native timers, V8 promise settlement, intervals, fake clocks, FS integration, executable
-examples, and conformance land in later CORE-TIME-01 slices.
+Runtime/native implementation, including native timers, V8 promise settlement, intervals,
+fake clocks, FS integration, executable examples, and conformance, lands in later
+CORE-TIME-01 slices. The interval, scheduled-job, and fake-clock contract semantics are
+locked here.
 
 ## Goals
 
@@ -24,9 +26,12 @@ Applications import the API from `sloppy/time`:
 import { Time, Deadline, CancellationController } from "sloppy/time";
 ```
 
-The runtime feature descriptor is `stdlib.time`. The compiler emits that feature when it
-sees supported named imports from `sloppy/time`. The future V8 bridge namespace is
-`__sloppy.time` and is registered only when the active Plan enables `stdlib.time`.
+The runtime feature descriptor is `stdlib.time`. The compiler emits that feature only for
+non-type, non-namespace named imports from `sloppy/time`, such as
+`import { Time } from "sloppy/time"`. Namespace imports, default imports, side-effect
+imports, and TypeScript type-only imports do not activate the feature in the Plan. The
+future V8 bridge namespace is `__sloppy.time` and is registered only when the active Plan
+enables `stdlib.time`.
 
 ## API Shape
 
