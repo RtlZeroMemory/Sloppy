@@ -920,17 +920,18 @@ static int test_redaction_helper(void)
                           &arena,
                           sl_str_from_cstr("password=secret PWD = {top;secret}; token:abc "
                                            "postgres://ada:secret@localhost/db API_KEY=xyz "
-                                           "key=plain connectionString=Server=.;Password=p;"),
+                                           "monkey=value donkey:abc key=plain "
+                                           "connectionString=Server=.;Password=p;"),
                           &redacted),
                       SL_STATUS_OK) != 0)
     {
         return 101;
     }
-    if (expect_str_equal(redacted,
-                         sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
-                                          "token:<redacted> postgres://ada:<redacted>@localhost/db "
-                                          "API_KEY=<redacted> key=<redacted> "
-                                          "connectionString=<redacted>;")) != 0)
+    if (expect_str_equal(
+            redacted, sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
+                                       "token:<redacted> postgres://ada:<redacted>@localhost/db "
+                                       "API_KEY=<redacted> monkey=value donkey:abc key=<redacted> "
+                                       "connectionString=<redacted>;")) != 0)
     {
         return 102;
     }

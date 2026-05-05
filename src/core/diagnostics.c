@@ -1832,17 +1832,55 @@ static bool sl_diag_secret_word_at(SlStr text, size_t index, const char* word)
     return true;
 }
 
+static bool sl_diag_secret_identifier_char(char value)
+{
+    return (value >= 'A' && value <= 'Z') || (value >= 'a' && value <= 'z') ||
+           (value >= '0' && value <= '9') || value == '_';
+}
+
+static bool sl_diag_secret_key_boundary_before(SlStr text, size_t index)
+{
+    if (index == 0U) {
+        return true;
+    }
+    return !sl_diag_secret_identifier_char(text.ptr[index - 1U]);
+}
+
+static bool sl_diag_secret_key_boundary_after(SlStr text, size_t index)
+{
+    if (index >= text.length) {
+        return true;
+    }
+    return !sl_diag_secret_identifier_char(text.ptr[index]);
+}
+
 static bool sl_diag_secret_key_at(SlStr text, size_t index, size_t* out_separator,
                                   bool* out_is_connection_string)
 {
-    static const char* keys[] = {"password",         "pwd",    "token", "secret",
-                                 "api_key",          "apikey", "key",   "connectionstring",
-                                 "connection_string"};
+    typedef struct SlDiagSecretKey
+    {
+        const char* word;
+        size_t length;
+    } SlDiagSecretKey;
+    static const SlDiagSecretKey keys[] = {
+        {"password", sizeof("password") - 1U},
+        {"pwd", sizeof("pwd") - 1U},
+        {"token", sizeof("token") - 1U},
+        {"secret", sizeof("secret") - 1U},
+        {"api_key", sizeof("api_key") - 1U},
+        {"apikey", sizeof("apikey") - 1U},
+        {"key", sizeof("key") - 1U},
+        {"connectionstring", sizeof("connectionstring") - 1U},
+        {"connection_string", sizeof("connection_string") - 1U},
+    };
     size_t key_index = 0U;
 
     for (key_index = 0U; key_index < sizeof(keys) / sizeof(keys[0]); key_index += 1U) {
         size_t end = index;
-        if (!sl_diag_secret_word_at(text, index, keys[key_index])) {
+        if (!sl_diag_secret_key_boundary_before(text, index) ||
+            !sl_diag_secret_word_at(text, index, keys[key_index].word) ||
+            !sl_diag_secret_key_boundary_after(text, index + keys[key_index].length))
+        {
             continue;
         }
         while (end < text.length && text.ptr[end] != '=' && text.ptr[end] != ':') {
