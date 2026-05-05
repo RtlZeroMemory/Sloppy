@@ -113,6 +113,31 @@ static int test_blocking_and_js_dispatch_policy(void)
     return 0;
 }
 
+static SlExecutionDomain unsupported_domain_for_test(void)
+{
+    /* Intentionally exercises lookup behavior for future/invalid enum values. */
+    /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) */
+    return (SlExecutionDomain)999;
+}
+
+static int test_supported_domain_classification(void)
+{
+    if (!sl_execution_domain_is_supported(SL_EXECUTION_DOMAIN_V8_OWNER_THREAD) ||
+        !sl_execution_domain_is_supported(SL_EXECUTION_DOMAIN_LIBUV_EVENT_LOOP) ||
+        !sl_execution_domain_is_supported(SL_EXECUTION_DOMAIN_HTTP_RUNTIME_CALLBACK) ||
+        !sl_execution_domain_is_supported(SL_EXECUTION_DOMAIN_ASYNC_COMPLETION_QUEUE) ||
+        !sl_execution_domain_is_supported(SL_EXECUTION_DOMAIN_PROVIDER_EXECUTOR_WORKER) ||
+        !sl_execution_domain_is_supported(SL_EXECUTION_DOMAIN_BLOCKING_OFFLOAD_WORKER) ||
+        !sl_execution_domain_is_supported(SL_EXECUTION_DOMAIN_APP_REQUEST_LIFECYCLE) ||
+        sl_execution_domain_is_supported(SL_EXECUTION_DOMAIN_NONE) ||
+        sl_execution_domain_is_supported(unsupported_domain_for_test()))
+    {
+        return 40;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = test_domain_names_are_stable();
@@ -131,5 +156,10 @@ int main(void)
         return result;
     }
 
-    return test_blocking_and_js_dispatch_policy();
+    result = test_blocking_and_js_dispatch_policy();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_supported_domain_classification();
 }
