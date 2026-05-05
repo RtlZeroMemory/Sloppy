@@ -347,6 +347,43 @@ static int test_close_stale_reuse_and_double_close(void)
     return 0;
 }
 
+static int test_close_kind_rejects_wrong_kind_without_cleanup(void)
+{
+    SlResourceEntry storage[1];
+    SlResourceTable table = {0};
+    SlResourceId id = sl_resource_id_invalid();
+    CleanupRecord record = {{0}, {0}, 0U};
+    CleanupPayload payload = {&record, 55};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_resource_table_init(&table, storage, 1U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_TEST_RESOURCE, &payload,
+                                               record_cleanup, NULL, &id, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 38;
+    }
+
+    if (expect_status(
+            sl_resource_table_close_kind(&table, id, SL_RESOURCE_KIND_SQLITE_CONNECTION, &diag),
+            SL_STATUS_WRONG_RESOURCE_KIND) != 0 ||
+        diag.code != SL_DIAG_RESOURCE_WRONG_KIND || record.count != 0U ||
+        !sl_resource_table_is_alive(&table, id))
+    {
+        return 39;
+    }
+
+    if (expect_status(
+            sl_resource_table_close_kind(&table, id, SL_RESOURCE_KIND_TEST_RESOURCE, &diag),
+            SL_STATUS_OK) != 0 ||
+        record.count != 1U || sl_resource_table_live_count(&table) != 0U)
+    {
+        return 48;
+    }
+
+    return 0;
+}
+
 static int test_exhaustion_cleanup_and_dispose(void)
 {
     SlResourceEntry storage[2];
@@ -441,6 +478,11 @@ int main(void)
     }
 
     result = test_close_stale_reuse_and_double_close();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_close_kind_rejects_wrong_kind_without_cleanup();
     if (result != 0) {
         return result;
     }

@@ -93,6 +93,16 @@ ownership cases: start success, double start, stop before start, startup failure
 graceful drain, forced shutdown, app/request identity propagation, request-scope rejection
 after shutdown starts, request access after close, and app-scope resources surviving
 request-scope close until app shutdown.
+ENGINE-16.C extends the same target with terminal-outcome cleanup cases for success, sync
+error, V8 exception, Promise rejection, validation/body parse failure, timeout, cancel,
+client disconnect, response write failure, provider failure, provider pre-start cancel,
+shutdown, and backpressure. It also covers stale late-completion rejection and typed
+resource cleanup wrong-kind preservation through the typed cleanup opt-in. The execute
+helper also has regressions for handlers that explicitly close or complete their own scope
+before returning, for bare close rejection before terminal metadata is recorded, and for
+late-completion rejection preserving the original terminal metadata. These are
+deterministic native lifecycle tests, not runtime torture, benchmark, provider expansion,
+or public API evidence.
 
 - C unit tests;
 - Rust/`sloppyc` tests;

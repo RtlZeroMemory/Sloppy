@@ -547,6 +547,8 @@ Resource lifecycle diagnostics:
 - stale generation uses `SLOPPY_E_RESOURCE_STALE_ID`;
 - wrong expected kind uses `SLOPPY_E_RESOURCE_WRONG_KIND`;
 - closed current slot uses `SLOPPY_E_RESOURCE_CLOSED`;
+- typed close uses `SLOPPY_E_RESOURCE_WRONG_KIND` and does not run cleanup when the live
+  entry kind differs from the expected kind;
 - table exhaustion is reported by status as `SL_STATUS_CAPACITY_EXCEEDED` and may use
   `SLOPPY_E_RESOURCE_TABLE_EXHAUSTED` when a higher-level operation materializes a user
   diagnostic.
@@ -561,6 +563,9 @@ App/request lifecycle diagnostics:
 - double start, start after stopped/failed, request-scope creation after shutdown starts,
   finishing shutdown while active requests are still draining, and cleanup failure
   summaries also use `SLOPPY_E_APP_LIFECYCLE`;
+- late request completions after a terminal request scope use `SL_STATUS_STALE_RESOURCE`
+  with `SLOPPY_E_APP_LIFECYCLE` and a redacted hint telling callers not to touch closed
+  scope state;
 - app lifecycle JSON diagnostics use the normal deterministic `sl_diag_render_json` field
   order and include no timestamps, random IDs, raw native pointers, or provider handles;
 - lifecycle cleanup helpers close resources through `SlResourceTable` IDs rather than

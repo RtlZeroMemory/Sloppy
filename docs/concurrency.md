@@ -446,6 +446,13 @@ The request arena exists until response completion or cancellation cleanup. Scop
 live until the request finishes. DB transactions/resources tied to the request must
 close/rollback/dispose on cancellation or error. Data crossing async boundaries must not
 point into shorter-lived arenas. Debug builds should detect leaked request resources.
+ENGINE-16.C records explicit terminal request outcomes before closing the native request
+scope. The current helper covers success, synchronous error, V8 exception, Promise
+rejection, validation and body parse failure, timeout, cancellation, client disconnect,
+response write failure, provider failure, provider pre-start cancellation, shutdown, and
+backpressure. Late completions after any terminal outcome are rejected as stale lifecycle
+work and are cleanup-only; they must not re-enter V8, settle a second result, or touch
+closed request/app state.
 
 ## Native Async Operations
 
