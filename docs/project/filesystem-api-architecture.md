@@ -1,12 +1,12 @@
 # Filesystem API Architecture
 
-Status: CORE-FS-01.A/B/C/D/E/F/G/H source of truth. This document defines the intended
+Status: CORE-FS-01.A/B/C/D/E/F/G/H/I/J source of truth. This document defines the intended
 first `sloppy/fs` platform API contract and policy model. CORE-FS-01.C/D/H adds
 the native path resolver, platform backend contract, offloaded core file operations,
 and initial V8/stdlib bridge. CORE-FS-01.E/F adds advanced operations, FileHandle,
 and minimal filesystem streams. CORE-FS-01.G adds resource-backed watch handles and
-bounded watch events. Diagnostics goldens, examples, and conformance land in later
-CORE-FS-01 slices.
+bounded watch events. CORE-FS-01.I/J adds doctor/audit filesystem goldens and source
+examples for the implemented surface.
 
 ## Goals
 
@@ -188,6 +188,16 @@ Blocking file work is submitted through the Slop-owned executor/offload path. Wo
 callbacks operate on owned request data and settle JavaScript promises back on the V8
 owner thread.
 
-## Deferred To Later CORE-FS-01 Slices
+## CORE-FS-01.I/J Evidence
 
-- Diagnostic goldens, doctor/audit output, examples, and conformance.
+- Doctor emits `stdlib.fs.capabilities` and `stdlib.fs.watch` checks when filesystem
+  capability metadata is present.
+- Audit emits `SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE` to make filesystem policy visibility
+  explicit without claiming an OS sandbox.
+- `examples/fs-basic`, `examples/fs-roots-policy`, `examples/fs-streams`, and
+  `examples/fs-watch` document the first app-facing filesystem workflows.
+
+## Deferred Beyond CORE-FS-01
+
+- OS-native recursive watch backends.
+- Public alpha documentation and package/release claims.

@@ -388,8 +388,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   smoke; remaining research is nonblocking libpq/socket integration and provider-specific
   native cancellation/interruption semantics.
 - Cross-platform SQL Server support versus Windows-first ODBC-only policy.
-- Filesystem implementation after CORE-FS-01.G: OS-native recursive watch semantics,
-  doctor/audit goldens, and examples remain in later CORE-FS slices. Network capability semantics still need path-like
+- Filesystem implementation after CORE-FS-01.I/J: OS-native recursive watch semantics
+  remain deferred beyond the first filesystem API layer. Network capability semantics still need path-like
   normalization equivalents, config/env access policy, and honest non-sandboxing language.
 - Runtime dependency packaging story for dynamic V8, libpq, SQLite, ODBC, and future
   provider/runtime assets.

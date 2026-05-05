@@ -3592,6 +3592,34 @@ static void sl_cli_doctor_emit(const SlCliOptions* options, SlArena* arena, SlCl
     sl_cli_doctor_emit_text(arena, id, status, message);
 }
 
+static void sl_cli_doctor_emit_fs_capabilities(const SlCliOptions* options, SlArena* arena,
+                                               const SlCliMetadata* metadata, bool* emitted)
+{
+    bool has_filesystem_capability = false;
+    bool has_watch_capability = false;
+
+    for (size_t index = 0U; index < metadata->capability_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "filesystem")) {
+            has_filesystem_capability = true;
+            if (sl_cli_span_equal_cstr(metadata->capabilities[index].access, "watch")) {
+                has_watch_capability = true;
+            }
+        }
+    }
+    if (has_filesystem_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.fs.capabilities"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr(
+                "filesystem capability metadata is visible to sloppy/fs policy checks"),
+            emitted);
+    }
+    if (has_watch_capability) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.fs.watch"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("fs.watch capability metadata is present"), emitted);
+    }
+}
+
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
@@ -3613,6 +3641,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         metadata->capability_count > 0U ? sl_cli_span_cstr("capability metadata present")
                                         : sl_cli_span_cstr("capability metadata not present"),
         emitted);
+    sl_cli_doctor_emit_fs_capabilities(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
         SlCliSpan message =
@@ -4022,9 +4051,9 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
         }
     }
     if (has_filesystem) {
-        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FILESYSTEM_SKELETON",
-                          "filesystem capabilities are metadata/check-only; no filesystem API or "
-                          "OS sandbox is implemented",
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE",
+                          "filesystem capabilities are policy-visible for sloppy/fs; no OS "
+                          "sandbox is implemented",
                           "capabilities", findings, errors);
     }
     if (has_network) {

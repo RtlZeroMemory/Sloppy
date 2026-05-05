@@ -884,11 +884,15 @@ if(SLOPPY_ENABLE_TESTS)
     set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json.json)
     set(SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN tests/golden/cli/doctor-partial-text.txt)
     set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json.json)
+    set(SLOPPY_DOCTOR_FS_TEXT_GOLDEN tests/golden/cli/doctor-filesystem-text.txt)
+    set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json.json)
     if(SLOPPY_ENABLE_V8)
         set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text-v8.txt)
         set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json-v8.json)
         set(SLOPPY_DOCTOR_PARTIAL_TEXT_GOLDEN tests/golden/cli/doctor-partial-text-v8.txt)
         set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json-v8.json)
+        set(SLOPPY_DOCTOR_FS_TEXT_GOLDEN tests/golden/cli/doctor-filesystem-text-v8.txt)
+        set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json-v8.json)
     endif()
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_text ${SLOPPY_DOCTOR_TEXT_GOLDEN} doctor --plan
@@ -902,6 +906,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_partial_json ${SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN} doctor --plan
         compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_filesystem_text ${SLOPPY_DOCTOR_FS_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/filesystem-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_filesystem_json ${SLOPPY_DOCTOR_FS_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/filesystem-policy.plan.json --format json)
     sloppy_add_cli_nonzero_golden_test(
         sloppy.cli.audit_text tests/golden/cli/audit-text.txt audit --plan
         tests/fixtures/cli/audit-problems.plan.json --format text)
@@ -917,6 +927,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_clean_json tests/golden/cli/audit-clean-json.json audit --plan
         tests/fixtures/cli/route-metadata.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_filesystem_text tests/golden/cli/audit-filesystem-text.txt audit --plan
+        tests/fixtures/cli/filesystem-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_filesystem_json tests/golden/cli/audit-filesystem-json.json audit --plan
+        tests/fixtures/cli/filesystem-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)

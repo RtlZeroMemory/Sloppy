@@ -1,6 +1,6 @@
 # CORE-FS-01 Issue Index
 
-Status: CORE-FS-01.G source-of-truth index.
+Status: CORE-FS-01.I/J source-of-truth index.
 
 | Slice | Issues | PR intent |
 | --- | --- | --- |
@@ -34,4 +34,5 @@ Parent EPIC: #538 CORE-FS-01 FileSystem Runtime API.
 
 The parent EPIC can close only after #539-#548 are closed and the final PR records evidence
 for local gates, feature/capability behavior, diagnostics, examples, conformance, and the
-explicit non-goals above.
+explicit non-goals above. CORE-FS-01.I/J adds FS-specific doctor/audit goldens and the
+`examples/fs-*` source examples without claiming public alpha readiness.

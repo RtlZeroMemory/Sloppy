@@ -455,9 +455,9 @@ tokens are rejected.
 Capabilities are loaded into the runtime registry and checked by token, kind, access mode,
 and database provider within the V8 SQLite bridge before provider calls. CORE-FS-01.E/F
 adds core, advanced, and FileHandle filesystem operations behind feature-gated V8
-registration; CORE-FS-01.G adds watch resources behind `fs.watch`; later CORE-FS-01
-slices add doctor/audit goldens and examples. Network entries remain skeleton checks only
-and no capability entry creates an OS sandbox.
+registration; CORE-FS-01.G adds watch resources behind `fs.watch`; CORE-FS-01.I/J adds
+filesystem doctor/audit goldens and source examples that prove metadata visibility.
+Network entries remain skeleton checks only and no capability entry creates an OS sandbox.
 
 ### permissions
 

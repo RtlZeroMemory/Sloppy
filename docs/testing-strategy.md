@@ -332,6 +332,9 @@ Public API:
 
 - examples compile/run when feature exists;
 - docs examples become tests where practical.
+- CORE-FS-01.I/J adds deterministic CLI doctor/audit filesystem goldens plus source
+  examples for `fs-basic`, roots/policy, streams, and watch; these examples remain source
+  evidence until compiler extraction supports the full app-facing `sloppy/fs` surface.
 - bootstrap module examples are statically checked until compiler extraction, real plan
   emission, and runtime module loading exist.
 - bootstrap API-shape examples may be statically checked while compiler extraction, module

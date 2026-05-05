@@ -853,6 +853,9 @@ Diagnostics foundation is accepted when:
 - JSON formatter emits deterministic valid JSON;
 - source-frame formatter emits deterministic single-line frames when source is supplied;
 - missing service and invalid plan version examples are covered by snapshots;
+- CORE-FS-01.I/J covers filesystem capability visibility through
+  `SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE`, `stdlib.fs.capabilities`, and
+  `stdlib.fs.watch` doctor/audit goldens;
 - diagnostics can be attached to `SlStatus`-returning operations without replacing
   `SlStatus`;
 - output redacts secrets;

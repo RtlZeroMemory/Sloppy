@@ -73,8 +73,9 @@ bare imports such as `"express"`, `"fs"`, and `"node:fs"`.
 CORE-FS-01.A/B locks the first filesystem API contract around `sloppy/fs`. The intended
 developer shape is async and direct, for example `await File.readText("./data/users.json")`,
 while serious apps move to named roots such as `data:/users.json`. This slice makes the
-feature Plan-visible as `stdlib.fs`; native file operations and the JavaScript bridge land
-in later CORE-FS-01 implementation slices.
+feature Plan-visible as `stdlib.fs`; CORE-FS-01.C through CORE-FS-01.G implement the
+native/JavaScript bridge for core file, directory, handle, stream, and bounded watch
+helpers, while CORE-FS-01.I/J adds source examples and CLI metadata evidence.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.
