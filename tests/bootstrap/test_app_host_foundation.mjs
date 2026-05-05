@@ -21,6 +21,12 @@ function assertThrowsMessage(fn, expected) {
     });
 }
 
+async function flushMicrotasks(count = 6) {
+    for (let i = 0; i < count; i += 1) {
+        await Promise.resolve();
+    }
+}
+
 {
     const deadline = Deadline.after(50);
     assert.equal(deadline.kind, "after");
@@ -100,7 +106,100 @@ function assertThrowsMessage(fn, expected) {
         }
     }
 
-    assertThrowsMessage(() => Time.fakeClock(), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE/);
+    const clock = Time.fakeClock({ now: new Date("2026-01-01T00:00:00.000Z") });
+    assert.equal(clock.kind, "fake");
+    assert.equal(clock.now().toISOString(), "2026-01-01T00:00:00.000Z");
+
+    let delayed = false;
+    const delayPromise = Time.delay(1000, { clock }).then(() => {
+        delayed = true;
+    });
+    clock.advanceBy(999);
+    await flushMicrotasks();
+    assert.equal(delayed, false);
+    clock.advanceBy(1);
+    await delayPromise;
+    assert.equal(delayed, true);
+
+    const timeoutPromise = Time.timeout(new Promise(() => {}), { afterMs: 500, clock });
+    clock.advanceBy(500);
+    await assert.rejects(timeoutPromise, TimeoutError);
+
+    const immediateInterval = Time.interval(1000, { clock, immediate: true, maxTicks: 1 });
+    assert.equal((await immediateInterval.next()).value.index, 1);
+    assert.equal((await immediateInterval.next()).done, true);
+
+    const interval = Time.interval("1s", { clock, maxTicks: 2 });
+    const firstTick = interval.next();
+    clock.advanceBy(1000);
+    assert.equal((await firstTick).value.index, 1);
+    const secondTick = interval.next();
+    clock.advanceBy(1000);
+    assert.equal((await secondTick).value.index, 2);
+    assert.equal((await interval.next()).done, true);
+
+    let scheduledRuns = 0;
+    const job = Time.every(
+        "1s",
+        () => {
+            scheduledRuns += 1;
+        },
+        { clock },
+    );
+    clock.advanceBy(1000);
+    await flushMicrotasks();
+    assert.equal(scheduledRuns, 1);
+    job.pause();
+    clock.advanceBy(2000);
+    await flushMicrotasks();
+    assert.equal(scheduledRuns, 1);
+    job.resume();
+    clock.advanceBy(1000);
+    await flushMicrotasks();
+    assert.equal(scheduledRuns, 2);
+    await job.stop();
+    assert.equal(job.stopped, true);
+
+    let immediateJobRuns = 0;
+    const immediateJob = Time.every(
+        1000,
+        () => {
+            immediateJobRuns += 1;
+        },
+        { clock, immediate: true, maxRuns: 1 },
+    );
+    await flushMicrotasks();
+    assert.equal(immediateJobRuns, 1);
+    assert.equal(immediateJob.stopped, true);
+
+    let releaseJob = undefined;
+    let noOverlapRuns = 0;
+    const noOverlapJob = Time.every(
+        1000,
+        async () => {
+            noOverlapRuns += 1;
+            await new Promise((resolve) => {
+                releaseJob = resolve;
+            });
+        },
+        { clock },
+    );
+    clock.advanceBy(1000);
+    await flushMicrotasks();
+    assert.equal(noOverlapRuns, 1);
+    clock.advanceBy(3000);
+    await flushMicrotasks();
+    assert.equal(noOverlapRuns, 1);
+    assert.equal(noOverlapJob.skippedRuns, 3);
+    releaseJob();
+    await flushMicrotasks();
+    await noOverlapJob.stop();
+
+    const disposedClock = Time.fakeClock();
+    const disposedDelay = Time.delay(100, { clock: disposedClock });
+    disposedClock.dispose();
+    await assert.rejects(disposedDelay, TimerDisposedError);
+    assert.throws(() => disposedClock.advanceBy(1), TimerDisposedError);
 }
 
 {

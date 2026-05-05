@@ -130,11 +130,11 @@ foreach(required_pattern IN ITEMS
         "const Time = Object.freeze"
         "delay(ms, options"
         "timeout(operationOrPromise, options"
-        "interval()"
-        "every()"
+        "interval(ms, options"
+        "every(interval, handler"
         "yield(options"
         "systemClock()"
-        "fakeClock()"
+        "fakeClock(options"
         "nativeTime(\"Time.delay\")"
         "stdlib.time")
     require_substring("${time_js}" "${required_pattern}" "time.js is missing expected API contract pattern")

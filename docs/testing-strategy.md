@@ -201,8 +201,10 @@ Time/deadline/cancellation:
   behavior in the V8-gated lane;
 - deterministic JS stdlib validation for invalid delay and cancellation signal shape;
 - timeout and cancellation errors remain distinguishable;
-- interval, scheduled-job, fake-clock, FS integration, and final example/conformance
-  evidence stay in their later CORE-TIME-01 lanes.
+- interval async iteration, scheduled-job pause/resume/no-overlap skip behavior, and
+  fake-clock deterministic delay/timeout/cleanup behavior in bootstrap stdlib tests;
+- FS integration and final example/conformance evidence stay in their later
+  CORE-TIME-01 lanes.
 
 Platform:
 
