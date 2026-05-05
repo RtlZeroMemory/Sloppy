@@ -42,11 +42,20 @@ static int expect_snapshot(SlStr actual, const char* path)
         (void)fclose(file);
         return 2;
     }
+    if (length == sizeof(expected)) {
+        unsigned char extra = 0U;
+        const size_t extra_read = fread(&extra, 1U, 1U, file);
+        if (extra_read == 1U) {
+            (void)fclose(file);
+            return 4;
+        }
+        if (ferror(file) != 0) {
+            (void)fclose(file);
+            return 2;
+        }
+    }
     if (fclose(file) != 0) {
         return 3;
-    }
-    if (length == sizeof(expected)) {
-        return 4;
     }
 
     return expect_str_equal(actual, sl_str_from_parts(expected, length));
