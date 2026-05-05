@@ -93,7 +93,9 @@ metadata plus explicit `requiredFeatures[]`; the runtime does not add package-ma
 semantics or arbitrary import resolution. CORE-FS-01.A/B adds the `stdlib.fs` descriptor
 and lets the compiler emit that required feature when source imports `sloppy/fs`.
 CORE-FS-01.C/D/H consumes the active feature to install the first core `__sloppy.fs`
-V8 bridge and stdlib `File` wrappers.
+V8 bridge and stdlib `File` wrappers. CORE-FS-01.E/F extends the same feature-gated
+bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
+lock-file primitives under the filesystem backend contract.
 
 ## Public API Shape
 
@@ -162,11 +164,12 @@ MAIN1-10 capability rules:
   and access-token values are rejected in provider/capability metadata.
 
 These are Sloppy runtime policy checks, not OS sandbox rules. CORE-FS-01.C/D/H adds
-runtime policy checks for the core filesystem operations: project-relative and named-root
-paths are resolved through Slop-owned policy, named-root traversal is rejected, development
-absolute paths produce warnings, and strict-mode absolute paths are denied unless allowed.
-OS sandboxing remains out of scope. Network entries remain metadata/check-only until scoped
-APIs exist.
+runtime policy checks for the core filesystem operations, and CORE-FS-01.E/F applies the
+same checks to Directory, FileHandle, temp, atomic, symlink, and native lock operations:
+project-relative and named-root paths are resolved through Slop-owned policy, named-root
+traversal is rejected, development absolute paths produce warnings, and strict-mode
+absolute paths are denied unless allowed. OS sandboxing remains out of scope. Network
+entries remain metadata/check-only until scoped APIs exist.
 
 All native `SlStr` fields are borrowed views in the struct model. Manually constructed
 plans borrow caller-owned storage. `sl_plan_parse_json` copies JSON strings and handler
@@ -446,10 +449,11 @@ network access values are `connect`, `listen`, or `connect-listen`. Duplicate ca
 tokens are rejected.
 
 Capabilities are loaded into the runtime registry and checked by token, kind, access mode,
-and database provider within the V8 SQLite bridge before provider calls. CORE-FS-01.C/D/H
-adds core filesystem operations and feature-gated V8 registration; later CORE-FS-01 slices
-add advanced filesystem resources, doctor/audit goldens, and examples. Network entries
-remain skeleton checks only and no capability entry creates an OS sandbox.
+and database provider within the V8 SQLite bridge before provider calls. CORE-FS-01.E/F
+adds core, advanced, and FileHandle filesystem operations behind feature-gated V8
+registration; later CORE-FS-01 slices add watch resources, doctor/audit goldens, and
+examples. Network entries remain skeleton checks only and no capability entry creates an
+OS sandbox.
 
 ### permissions
 

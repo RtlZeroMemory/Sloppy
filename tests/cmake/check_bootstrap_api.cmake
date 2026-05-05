@@ -94,8 +94,8 @@ foreach(required_pattern IN ITEMS
         "readText(path)"
         "readBytes(path)"
         "readJson(path)"
-        "writeText(path, text)"
-        "writeBytes(path, bytes)"
+        "writeText(path, text, options)"
+        "writeBytes(path, bytes, options)"
         "writeJson(path, value, options)"
         "appendText(path, text)"
         "appendBytes(path, bytes)"
@@ -105,8 +105,11 @@ foreach(required_pattern IN ITEMS
         "move(fromPath, toPath, options)"
         "delete(path)"
         "const Directory = Object.freeze"
+        "class FileHandle"
+        "readChunks(options)"
+        "readLines(options)"
         "const Path = Object.freeze"
-        "FileHandle lands in CORE-FS-01.F")
+        "FileWatcher")
     require_substring("${fs_js}" "${required_pattern}" "fs.js is missing expected API shape pattern")
 endforeach()
 

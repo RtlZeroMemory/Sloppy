@@ -537,3 +537,186 @@ SlStatus sl_fs_exists(SlStr path, bool* out_exists, SlDiag* out_diag)
     *out_exists = stat.exists;
     return sl_status_ok();
 }
+
+SlStatus sl_fs_create_directory(SlStr path, bool recursive, SlDiag* out_diag)
+{
+    if (path.length == 0U || sl_fs_contains_nul(path)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_create_directory(path, recursive, out_diag);
+}
+
+SlStatus sl_fs_delete_directory(SlStr path, bool recursive, SlDiag* out_diag)
+{
+    if (path.length == 0U || sl_fs_contains_nul(path)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_delete_directory(path, recursive, out_diag);
+}
+
+SlStatus sl_fs_list_directory(SlArena* arena, SlStr path, SlFsDirectoryList* out, SlDiag* out_diag)
+{
+    if (out != NULL) {
+        *out = (SlFsDirectoryList){0};
+    }
+    if (arena == NULL || out == NULL || path.length == 0U || sl_fs_contains_nul(path)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_list_directory(arena, path, out, out_diag);
+}
+
+SlStatus sl_fs_create_symlink(SlStr target_path, SlStr link_path, bool directory, SlDiag* out_diag)
+{
+    if (target_path.length == 0U || link_path.length == 0U || sl_fs_contains_nul(target_path) ||
+        sl_fs_contains_nul(link_path))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_create_symlink(target_path, link_path, directory, out_diag);
+}
+
+SlStatus sl_fs_read_link(SlArena* arena, SlStr path, SlOwnedStr* out, SlDiag* out_diag)
+{
+    if (out != NULL) {
+        *out = (SlOwnedStr){0};
+    }
+    if (arena == NULL || out == NULL || path.length == 0U || sl_fs_contains_nul(path)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_read_link(arena, path, out, out_diag);
+}
+
+SlStatus sl_fs_create_temp_file(SlArena* arena, SlStr directory, SlStr prefix, SlFsTempPath* out,
+                                SlDiag* out_diag)
+{
+    if (out != NULL) {
+        *out = (SlFsTempPath){0};
+    }
+    if (arena == NULL || out == NULL || directory.length == 0U || sl_fs_contains_nul(directory) ||
+        sl_fs_contains_nul(prefix))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_create_temp_file(arena, directory, prefix, out, out_diag);
+}
+
+SlStatus sl_fs_create_temp_directory(SlArena* arena, SlStr directory, SlStr prefix,
+                                     SlFsTempPath* out, SlDiag* out_diag)
+{
+    if (out != NULL) {
+        *out = (SlFsTempPath){0};
+    }
+    if (arena == NULL || out == NULL || directory.length == 0U || sl_fs_contains_nul(directory) ||
+        sl_fs_contains_nul(prefix))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_create_temp_directory(arena, directory, prefix, out, out_diag);
+}
+
+SlStatus sl_fs_atomic_write_file(SlArena* arena, SlStr path, SlBytes bytes, SlDiag* out_diag)
+{
+    if (arena == NULL || path.length == 0U || sl_fs_contains_nul(path) ||
+        (bytes.length != 0U && bytes.ptr == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_atomic_write_file(arena, path, bytes, out_diag);
+}
+
+SlStatus sl_fs_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** out_lock, SlDiag* out_diag)
+{
+    if (out_lock != NULL) {
+        *out_lock = NULL;
+    }
+    if (arena == NULL || out_lock == NULL || path.length == 0U || sl_fs_contains_nul(path)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_acquire_lock(arena, path, out_lock, out_diag);
+}
+
+SlStatus sl_fs_release_lock(SlFsFileLock* lock, SlDiag* out_diag)
+{
+    if (lock == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_release_lock(lock, out_diag);
+}
+
+SlStatus sl_fs_open_file(SlArena* arena, SlStr path, SlFsFileAccess access, bool create,
+                         SlFsFileHandle** out_handle, SlDiag* out_diag)
+{
+    if (out_handle != NULL) {
+        *out_handle = NULL;
+    }
+    if (arena == NULL || out_handle == NULL || path.length == 0U || sl_fs_contains_nul(path) ||
+        access > SL_FS_FILE_ACCESS_APPEND)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_open_file(arena, path, access, create, out_handle, out_diag);
+}
+
+SlStatus sl_fs_file_read(SlFsFileHandle* handle, SlArena* arena, size_t max_bytes,
+                         SlOwnedBytes* out, SlDiag* out_diag)
+{
+    if (out != NULL) {
+        *out = (SlOwnedBytes){0};
+    }
+    if (handle == NULL || arena == NULL || out == NULL || max_bytes == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_file_read(handle, arena, max_bytes, out, out_diag);
+}
+
+SlStatus sl_fs_file_write(SlFsFileHandle* handle, SlBytes bytes, SlDiag* out_diag)
+{
+    if (handle == NULL || (bytes.length != 0U && bytes.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_file_write(handle, bytes, out_diag);
+}
+
+SlStatus sl_fs_file_seek(SlFsFileHandle* handle, int64_t offset, SlFsSeekOrigin origin,
+                         uint64_t* out_position, SlDiag* out_diag)
+{
+    if (out_position != NULL) {
+        *out_position = 0U;
+    }
+    if (handle == NULL || out_position == NULL || origin > SL_FS_SEEK_END) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_file_seek(handle, offset, origin, out_position, out_diag);
+}
+
+SlStatus sl_fs_file_truncate(SlFsFileHandle* handle, uint64_t size, SlDiag* out_diag)
+{
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_file_truncate(handle, size, out_diag);
+}
+
+SlStatus sl_fs_file_flush(SlFsFileHandle* handle, SlDiag* out_diag)
+{
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_file_flush(handle, out_diag);
+}
+
+SlStatus sl_fs_file_sync(SlFsFileHandle* handle, SlDiag* out_diag)
+{
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_file_sync(handle, out_diag);
+}
+
+SlStatus sl_fs_file_close(SlFsFileHandle* handle, SlDiag* out_diag)
+{
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_fs_platform_file_close(handle, out_diag);
+}

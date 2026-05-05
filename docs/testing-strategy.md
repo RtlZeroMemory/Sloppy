@@ -65,8 +65,10 @@ goldens do not claim V8 execution, package trimming, or live-provider readiness.
 CORE-FS-01.C/D/H extends this lane with default tests for the native filesystem resolver
 and core operations, compiler-emitted `requiredFeatures[]` metadata from `sloppy/fs`
 imports, bootstrap packaging of `stdlib/sloppy/fs.js`, and V8-gated smoke coverage for
-the active `stdlib.fs` bridge. Later CORE-FS slices must keep security golden,
-watch/stream, advanced resource, and example evidence separate.
+the active `stdlib.fs` bridge. CORE-FS-01.E/F adds default native tests for directory,
+temp, atomic, lock, binary FileHandle behavior, plus V8-gated smoke coverage for
+directory and handle intrinsics. Later CORE-FS slices must keep security golden, watch,
+and example evidence separate.
 
 ENGINE-19.BC registers the current V8, HTTP, and async behavior under explicit conformance
 names without adding runtime behavior. `conformance.http.default_dispatch` is default

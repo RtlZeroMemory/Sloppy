@@ -407,6 +407,10 @@ target_link_libraries(
             PostgreSQL::PostgreSQL
             unofficial::sqlite3::sqlite3)
 
+if(WIN32)
+    target_link_libraries(sloppy_core PRIVATE bcrypt)
+endif()
+
 if(SLOPPY_ENABLE_SQLSERVER)
     target_compile_definitions(sloppy_core PUBLIC SLOPPY_ENABLE_SQLSERVER_PROVIDER=1)
     target_link_libraries(sloppy_core PRIVATE ODBC::ODBC)
