@@ -1,8 +1,10 @@
 # Filesystem API Architecture
 
-Status: CORE-FS-01.A/B source of truth. This document defines the intended first
-`sloppy/fs` platform API contract and policy model. Native operations, V8 bindings,
-streams, watch, and conformance land in later CORE-FS-01 slices.
+Status: CORE-FS-01.A/B/C/D/H source of truth. This document defines the intended
+first `sloppy/fs` platform API contract and policy model. CORE-FS-01.C/D/H adds
+the native path resolver, platform backend contract, offloaded core file operations,
+and initial V8/stdlib bridge. Streams, watch, advanced operations, diagnostics
+goldens, examples, and conformance land in later CORE-FS-01 slices.
 
 ## Goals
 
@@ -22,9 +24,9 @@ Applications import the API from `sloppy/fs`:
 import { File, Directory, Path } from "sloppy/fs";
 ```
 
-The runtime feature descriptor for this import is `stdlib.fs`. The compiler may emit
-`requiredFeatures: ["stdlib.fs"]` when it sees the import. Later runtime slices consume
-that feature to register the V8/native filesystem bridge.
+The runtime feature descriptor for this import is `stdlib.fs`. The compiler emits
+`requiredFeatures: ["stdlib.fs"]` when it sees the import, and the V8 bridge registers
+the private `__sloppy.fs` core-operation namespace only when that feature is active.
 
 ## API Shape
 
@@ -133,11 +135,31 @@ capability categories, source locations, development warnings, and strict-mode f
 - POSIX path behavior belongs in POSIX backends.
 - libuv types remain private implementation details.
 
+## Implemented Core Operations
+
+CORE-FS-01.C/D/H implements the first runtime surface:
+
+- native API and resolver entry points in `include/sloppy/fs.h`;
+- project-relative, named-root, and absolute path classification;
+- project-relative and named-root traversal rejection;
+- development absolute-path warnings and strict-mode absolute-path denial;
+- Win32 and POSIX platform backends under `src/platform/*`;
+- core file operations: read/write/append bytes and text, exists, stat, copy, move,
+  and delete;
+- V8 `__sloppy.fs` intrinsics registered only for active `stdlib.fs` feature sets;
+- optional `SlEngineOptions.filesystem_policy` enforcement for V8 filesystem calls, with
+  a development fallback policy only for low-level smoke/source-input coverage until
+  app-host config plumbing lands;
+- `stdlib/sloppy/fs.js` wrappers for `File.readText`, `readBytes`, `readJson`,
+  `writeText`, `writeBytes`, `writeJson`, `appendText`, `appendBytes`, `exists`,
+  `stat`, `copy`, `move`, and `delete`.
+
+Blocking file work is submitted through the Slop-owned executor/offload path. Worker
+callbacks operate on owned request data and settle JavaScript promises back on the V8
+owner thread.
+
 ## Deferred To Later CORE-FS-01 Slices
 
-- C path/root resolver and platform backend contract.
-- Async/offload request execution and core file operations.
 - Directory, metadata, symlink, temp, atomic, and locking APIs.
 - FileHandle, stream, and watch resources.
-- V8/stdlib bridge implementation.
 - Diagnostic goldens, doctor/audit output, examples, and conformance.

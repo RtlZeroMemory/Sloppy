@@ -6,6 +6,7 @@
 #include "sloppy/capability.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/features.h"
+#include "sloppy/fs.h"
 #include "sloppy/http_context.h"
 #include "sloppy/http_response.h"
 #include "sloppy/plan.h"
@@ -54,6 +55,12 @@ typedef struct SlEngineOptions
      */
     const SlPlan* plan;
     const SlCapabilityRegistry* capabilities;
+    /*
+     * Optional borrowed filesystem policy used by the V8 `stdlib.fs` bridge. When omitted,
+     * V8 keeps the current development fallback policy for low-level smoke tests and
+     * source-input shortcuts that do not yet provide configured filesystem roots.
+     */
+    const SlFsPolicy* filesystem_policy;
     /*
      * Optional borrowed runtime feature activation set produced by Plan validation. When
      * supplied, V8 installs feature-owned intrinsics only when their runtime feature is

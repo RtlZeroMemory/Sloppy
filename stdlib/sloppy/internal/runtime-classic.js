@@ -490,8 +490,166 @@ Operation:
         sqlite,
     });
 
+    function requireFsBridge(operation) {
+        const bridge = globalThis.__sloppy?.fs;
+
+        if (bridge === undefined) {
+            throw new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.fs is inactive or unavailable
+
+Feature:
+  stdlib.fs
+
+Operation:
+  ${operation}
+
+Reason:
+  The active Sloppy Plan did not enable the __sloppy.fs V8 intrinsic namespace.`);
+        }
+
+        return bridge;
+    }
+
+    function validateFsPath(path, operation) {
+        if (typeof path !== "string" || path.length === 0) {
+            throw new TypeError(`Sloppy File.${operation} path must be a non-empty string.`);
+        }
+        return path;
+    }
+
+    function validateFsBytes(value, operation) {
+        if (!(value instanceof Uint8Array)) {
+            throw new TypeError(`Sloppy File.${operation} bytes must be a Uint8Array.`);
+        }
+        return value;
+    }
+
+    function validateFsOverwrite(options) {
+        if (options === undefined) {
+            return Object.freeze({ overwrite: false });
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy File copy/move options must be a plain object.");
+        }
+        if (options.overwrite !== undefined && typeof options.overwrite !== "boolean") {
+            throw new TypeError("Sloppy File overwrite option must be boolean.");
+        }
+        return Object.freeze({ overwrite: options.overwrite ?? false });
+    }
+
+    function stringifyFsJson(value, options) {
+        if (options === undefined) {
+            return JSON.stringify(value);
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy File.writeJson options must be a plain object.");
+        }
+        if (options.atomic === true) {
+            throw new Error("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: atomic filesystem writes land in CORE-FS-01.E.");
+        }
+        const indent = options.indent ?? undefined;
+        if (indent !== undefined && (!Number.isInteger(indent) || indent < 0 || indent > 10)) {
+            throw new TypeError("Sloppy File.writeJson indent must be an integer from 0 to 10.");
+        }
+        return JSON.stringify(value, null, indent);
+    }
+
+    const File = Object.freeze({
+        readText(path) {
+            return requireFsBridge("readText").readText(validateFsPath(path, "readText"));
+        },
+        readBytes(path) {
+            return requireFsBridge("readBytes").readBytes(validateFsPath(path, "readBytes"));
+        },
+        async readJson(path) {
+            return JSON.parse(await File.readText(path));
+        },
+        writeText(path, text) {
+            if (typeof text !== "string") {
+                throw new TypeError("Sloppy File.writeText text must be a string.");
+            }
+            return requireFsBridge("writeText").writeText(validateFsPath(path, "writeText"), text);
+        },
+        writeBytes(path, bytes) {
+            return requireFsBridge("writeBytes").writeBytes(
+                validateFsPath(path, "writeBytes"),
+                validateFsBytes(bytes, "writeBytes"),
+            );
+        },
+        writeJson(path, value, options) {
+            return File.writeText(path, stringifyFsJson(value, options));
+        },
+        appendText(path, text) {
+            if (typeof text !== "string") {
+                throw new TypeError("Sloppy File.appendText text must be a string.");
+            }
+            return requireFsBridge("appendText").appendText(validateFsPath(path, "appendText"), text);
+        },
+        appendBytes(path, bytes) {
+            return requireFsBridge("appendBytes").appendBytes(
+                validateFsPath(path, "appendBytes"),
+                validateFsBytes(bytes, "appendBytes"),
+            );
+        },
+        exists(path) {
+            return requireFsBridge("exists").exists(validateFsPath(path, "exists"));
+        },
+        stat(path) {
+            return requireFsBridge("stat").stat(validateFsPath(path, "stat"));
+        },
+        copy(fromPath, toPath, options) {
+            return requireFsBridge("copy").copy(
+                validateFsPath(fromPath, "copy"),
+                validateFsPath(toPath, "copy"),
+                validateFsOverwrite(options),
+            );
+        },
+        move(fromPath, toPath, options) {
+            return requireFsBridge("move").move(
+                validateFsPath(fromPath, "move"),
+                validateFsPath(toPath, "move"),
+                validateFsOverwrite(options),
+            );
+        },
+        delete(path) {
+            return requireFsBridge("delete").delete(validateFsPath(path, "delete"));
+        },
+        open() {
+            throw new Error("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: FileHandle lands in CORE-FS-01.F.");
+        },
+    });
+
+    const Directory = Object.freeze({
+        create() {
+            throw new Error("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: Directory APIs land in CORE-FS-01.E.");
+        },
+    });
+
+    const Path = Object.freeze({
+        classify(path) {
+            validateFsPath(path, "classify");
+            if (/^\.[\\/]/.test(path)) {
+                return "project-relative";
+            }
+            if (/^(?:[A-Za-z]:[\\/]|[\\/])/.test(path)) {
+                return "absolute";
+            }
+            if (/^[A-Za-z][A-Za-z0-9_.-]*:[\\/]/.test(path)) {
+                return "named-root";
+            }
+            return "invalid";
+        },
+    });
+
+    const FileHandle = Object.freeze({});
+    const FileWatcher = Object.freeze({});
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         data,
+        File,
+        Directory,
+        Path,
+        FileHandle,
+        FileWatcher,
     });
 })();

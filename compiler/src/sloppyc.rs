@@ -5591,7 +5591,31 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         "  throw new Error(\"Sloppy bootstrap runtime was not loaded\");",
     );
     push_generated_line(&mut output, &mut generated_line, "}");
-    if app.uses_data_runtime {
+    if app.uses_data_runtime && app.uses_fs_runtime {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "const { Results, data, File, Directory, Path, FileHandle, FileWatcher } = __sloppyRuntime;",
+        );
+        if needs_provider_open_helper {
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "function __sloppy_open_data_provider(kind, token) {",
+            );
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "  if (kind === \"sqlite\") { return data.sqlite(token); }",
+            );
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "  throw new Error(`sloppy: ${kind} provider bridge unavailable`);",
+            );
+            push_generated_line(&mut output, &mut generated_line, "}");
+        }
+    } else if app.uses_data_runtime {
         push_generated_line(
             &mut output,
             &mut generated_line,
@@ -5615,6 +5639,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             );
             push_generated_line(&mut output, &mut generated_line, "}");
         }
+    } else if app.uses_fs_runtime {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "const { Results, File, Directory, Path, FileHandle, FileWatcher } = __sloppyRuntime;",
+        );
     } else {
         push_generated_line(
             &mut output,

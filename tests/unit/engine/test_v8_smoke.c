@@ -1,5 +1,6 @@
 #include "sloppy/app_host.h"
 #include "sloppy/engine.h"
+#include "sloppy/fs.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -169,15 +170,22 @@ static int test_eval_and_call_global_function(void)
 {
     unsigned char engine_storage[8192];
     unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
     SlArena engine_arena = {0};
     SlArena result_arena = {0};
+    SlArena feature_arena = {0};
     SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.fs")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
 
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
-        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
     {
         return 1;
     }
@@ -215,6 +223,96 @@ static int test_eval_and_call_global_function(void)
     }
 
     sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_filesystem_intrinsic_promise_roundtrip(void)
+{
+    unsigned char engine_storage[65536];
+    unsigned char result_storage[4096];
+    unsigned char feature_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.fs")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStr path = sl_str_from_cstr("./sloppy-v8-fs-test.txt");
+    SlStr invalid_path = sl_str_from_cstr("./sloppy-v8-fs-invalid.bin");
+
+    (void)sl_fs_delete_file(path, NULL);
+    (void)sl_fs_delete_file(invalid_path, NULL);
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 1;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == NULL)
+    {
+        return 2;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-fs.js"),
+                sl_str_from_cstr(
+                    "globalThis.sloppy_fs_roundtrip = async function () {"
+                    " await globalThis.__sloppy.fs.writeText(\"./sloppy-v8-fs-test.txt\", "
+                    "\"fs-ok\");"
+                    " return await globalThis.__sloppy.fs.readText(\"./sloppy-v8-fs-test.txt\");"
+                    "};"
+                    "globalThis.sloppy_fs_invalid_utf8 = async function () {"
+                    " await globalThis.__sloppy.fs.writeBytes(\"./sloppy-v8-fs-invalid.bin\", "
+                    "new Uint8Array([255]));"
+                    " try { await globalThis.__sloppy.fs.readText("
+                    "\"./sloppy-v8-fs-invalid.bin\"); return \"missing rejection\"; }"
+                    " catch (err) { return String(err && err.message ? err.message : err); }"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 3;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_fs_roundtrip"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("fs-ok")))
+    {
+        sl_engine_destroy(engine);
+        (void)sl_fs_delete_file(path, NULL);
+        (void)sl_fs_delete_file(invalid_path, NULL);
+        return 4;
+    }
+
+    result = (SlEngineResult){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_fs_invalid_utf8"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("Invalid UTF-8 in file")))
+    {
+        sl_engine_destroy(engine);
+        (void)sl_fs_delete_file(path, NULL);
+        (void)sl_fs_delete_file(invalid_path, NULL);
+        return 5;
+    }
+
+    sl_engine_destroy(engine);
+    (void)sl_fs_delete_file(path, NULL);
+    (void)sl_fs_delete_file(invalid_path, NULL);
     return 0;
 }
 
@@ -3362,5 +3460,10 @@ int main(void)
         return result;
     }
 
-    return test_sqlite_intrinsic_provider_kind_mismatch_fails_before_open();
+    result = test_sqlite_intrinsic_provider_kind_mismatch_fails_before_open();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_filesystem_intrinsic_promise_roundtrip();
 }

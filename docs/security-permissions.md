@@ -42,12 +42,13 @@ MAIN1-02 adds native Plan v1 alpha parsing and validation for `dataProviders` an
 `capabilities` sections. MAIN1-10 turns that metadata into an immutable runtime capability
 registry and explicit provider-bridge check hooks. Those checks are real where callers pass
 the registry before provider work begins. ENGINE-05 wires the V8 SQLite bridge to the
-existing database hook; it does not add a new policy engine. CORE-FS-01.A/B defines the
-filesystem API and policy contract and makes `stdlib.fs` Plan-visible. Native filesystem
-operations, JavaScript bridge execution, and filesystem diagnostics are still later
-CORE-FS-01 slices. Network capabilities remain metadata/check-only skeletons: they can be
-stored and checked by token/kind/access, but no network API, permission prompt, or OS
-sandbox exists.
+existing database hook; it does not add a new policy engine. CORE-FS-01.C/D/H makes
+`stdlib.fs` Plan-visible and adds the first native filesystem operations plus the
+feature-gated JavaScript bridge. The runtime enforces the current development/strict path
+policy for core operations, but filesystem doctor/audit goldens and advanced resources are
+still later CORE-FS-01 slices. Network capabilities remain metadata/check-only skeletons:
+they can be stored and checked by token/kind/access, but no network API, permission prompt,
+or OS sandbox exists.
 
 ## Future Phase
 
@@ -142,9 +143,12 @@ Capability tokens must be non-empty strings, duplicates fail, and
 `app.capabilities.has/get/list` exposes frozen debug metadata with the declaring module when
 applicable. SQLite JavaScript execution now checks the database hook before native
 open/read/write and transaction work when the engine has Plan/capability metadata. If the
-hook inputs are absent, SQLite bridge calls fail closed. Public file database policy
-remains future work. Filesystem policy is owned by CORE-FS-01 and starts with the
-development/strict model in `docs/project/filesystem-api-architecture.md`.
+hook inputs are absent, SQLite bridge calls fail closed. Filesystem policy is owned by
+CORE-FS-01: the current core file operations apply the development/strict path model in
+`docs/project/filesystem-api-architecture.md`. The V8 bridge accepts an optional borrowed
+`SlEngineOptions.filesystem_policy`; omitted policy uses the documented development
+fallback roots for low-level bridge tests only, while richer app-host config plumbing and
+doctor/audit reporting remain future work.
 
 ## Permission Grants
 
@@ -356,9 +360,10 @@ Current ENGINE-19.D executable coverage is visible through
 `conformance.capability.native_registry`, `conformance.capability.provider_executor`,
 V8-gated `conformance.sqlite.denied_capability`, and V8-gated localhost
 `conformance.users_api_sqlite.localhost_transport`. These names prove the current Sloppy
-capability checks before provider work; they do not prove OS sandboxing, filesystem/network
-API enforcement, PostgreSQL/SQL Server JavaScript bridges, live providers, or package
-readiness.
+capability checks before provider work. CORE-FS-01.C/D/H adds native `core.filesystem`
+coverage and V8-gated filesystem smoke coverage for the core API path. These gates do not
+prove OS sandboxing, filesystem doctor/audit completeness, advanced FileHandle/watch
+resources, PostgreSQL/SQL Server JavaScript bridges, live providers, or package readiness.
 
 ## Quality Gates
 

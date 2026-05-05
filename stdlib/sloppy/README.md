@@ -11,6 +11,7 @@ Source layout:
 stdlib/sloppy/
   index.js
   data.js
+  fs.js
   results.js
   schema.js
   app.js
@@ -28,7 +29,8 @@ lib/sloppy/bootstrap/sloppy/
 ```
 
 The current modules implement the first app-host foundation and developer ergonomics
-facade. `index.js` re-exports frozen `Sloppy`, `data`, `sql`, `Results`, and `schema`
+facade. `index.js` re-exports frozen `Sloppy`, `data`, `sql`, filesystem API namespaces,
+`Results`, and `schema`
 objects. The implemented `Results.*` helpers return plain frozen descriptor objects.
 `schema` exposes a small validation skeleton for string, number, boolean, and object
 shapes.
