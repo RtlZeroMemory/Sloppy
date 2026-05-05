@@ -2432,6 +2432,7 @@ static SlStatus sl_run_dispatch_response_with_storage(SlRunApp* app,
     if (app->next_request_id == UINT64_MAX) {
         return sl_status_from_code(SL_STATUS_OVERFLOW);
     }
+    /* Request ID 0 is invalid; request scopes receive monotonic IDs or fail on overflow. */
     app->next_request_id += 1U;
     return sl_app_request_scope_execute_for_app(
         &app->lifecycle, app->next_request_id, request_cleanups,
