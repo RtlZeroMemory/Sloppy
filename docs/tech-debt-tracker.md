@@ -121,9 +121,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   for the supported subset, including multi-file source lists, generated handler mappings,
   source-file hashes, and Sloppy metadata for routes, modules, schemas, providers,
   capabilities, and effects. ENGINE-15.B now owns the first V8-gated exception primary-span
-  remapping path with honest missing/malformed-map fallback. ENGINE-15 still owns async
-  diagnostic JSON/source frames, redaction, stable codes, CLI diagnostic format, and
-  diagnostic goldens.
+  remapping path with honest missing/malformed-map fallback. ENGINE-15.CD owns default
+  async diagnostic JSON/source-frame rendering, redaction, and stable codes. ENGINE-15.E
+  owns the deterministic diagnostic golden inventory. CLI-wide diagnostic format plumbing
+  and richer async stack remapping remain follow-ups.
 - App/resource lifetime runtime: ENGINE-16 owns app startup/shutdown, request/app scopes,
   resource cleanup, cancellation propagation, leak-oriented hooks, and lifecycle
   diagnostics.
@@ -289,9 +290,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Provider primitive cleanup follow-up is mapped to #448; PostgreSQL/SQL Server JS bridge
   implementation remains deferred and is not part of immediate next-wave work.
 - Source map consumption beyond V8 exception primary spans. ENGINE-15.B consumes compiler
-  Source Map v3 mappings for V8 compile/eval/call exceptions, and ENGINE-15.CD adds the
-  shared JSON source-frame renderer when source text is supplied. Async stacks, arbitrary
-  bundler maps, and broader TypeScript remapping remain deferred.
+  Source Map v3 mappings for V8 compile/eval/call exceptions, ENGINE-15.CD adds the
+  shared JSON source-frame renderer when source text is supplied, and ENGINE-15.E pins
+  representative renderer goldens. Async stacks, arbitrary bundler maps, and broader
+  TypeScript remapping remain deferred.
 - Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
   drain behavior beyond the current idempotent close, thread-safety contract, and richer
   diagnostics.

@@ -950,6 +950,121 @@ static int test_redaction_helper(void)
     return 0;
 }
 
+static int test_diagnostic_golden_suite_expansion(void)
+{
+    unsigned char buffer[8192];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlDiagSource source;
+    SlStr rendered;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 103;
+    }
+
+    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR,
+                                           SL_DIAG_ENGINE_PROMISE_REJECTION,
+                                           sl_str_from_cstr("async handler rejected: <redacted>")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_set_primary_span(
+                          &builder, sl_source_span_make(sl_str_from_cstr("app.js"), 9U, 21U, 7U)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_add_related(
+                          &builder, sl_source_span_make(sl_str_from_cstr("app.js"), 4U, 1U, 0U),
+                          sl_str_from_cstr("route GET /users handler Users.List")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_diag_builder_add_hint(
+                &builder, sl_str_from_cstr("rejection reason redacted; inspect handler logs for "
+                                           "safe context")),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_render_json(&arena, &diag, &rendered), SL_STATUS_OK) != 0 ||
+        expect_snapshot(rendered, "tests/golden/diagnostics/async_rejection.json") != 0)
+    {
+        return 104;
+    }
+
+    sl_arena_reset(&arena);
+    if (expect_status(sl_diag_builder_init(
+                          &builder, &arena, SL_DIAG_SEVERITY_ERROR, SL_DIAG_PERMISSION_DENIED,
+                          sl_str_from_cstr("capability denied for data.main read")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_set_primary_span(
+                          &builder, sl_source_span_make(sl_str_from_cstr("app.js"), 7U, 15U, 8U)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_add_hint(
+                          &builder, sl_str_from_cstr("declare data.main with read access")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0)
+    {
+        return 105;
+    }
+    source.path = sl_str_from_cstr("app.js");
+    source.text = sl_str_from_cstr("import { data } from \"sloppy\";\n"
+                                   "\n"
+                                   "const app = Sloppy.create();\n"
+                                   "app.mapGet(\"/users\", handler);\n"
+                                   "\n"
+                                   "function handler() {\n"
+                                   "  const rows = db.query(\"select * from users\");\n"
+                                   "}\n");
+    if (expect_status(sl_diag_render_text_with_source(&arena, &diag, &source, &rendered),
+                      SL_STATUS_OK) != 0 ||
+        expect_snapshot(rendered, "tests/golden/diagnostics/capability_denial_source_frame.snap") !=
+            0)
+    {
+        return 106;
+    }
+
+    sl_arena_reset(&arena);
+    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR,
+                                           SL_DIAG_MALFORMED_JSON,
+                                           sl_str_from_cstr("request body is not valid JSON")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_diag_builder_set_primary_span(
+                &builder, sl_source_span_make(sl_str_from_cstr("<request-body>"), 1U, 9U, 1U)),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_add_hint(&builder, sl_str_from_cstr("expected a JSON value")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0)
+    {
+        return 107;
+    }
+    source.path = sl_str_from_cstr("<request-body>");
+    source.text = sl_str_from_cstr("{\"name\":");
+    if (expect_status(sl_diag_render_json_with_source(&arena, &diag, &source, &rendered),
+                      SL_STATUS_OK) != 0 ||
+        expect_snapshot(rendered, "tests/golden/diagnostics/malformed_json_body.json") != 0)
+    {
+        return 108;
+    }
+
+    sl_arena_reset(&arena);
+    if (expect_status(sl_diag_builder_init(
+                          &builder, &arena, SL_DIAG_SEVERITY_ERROR, SL_DIAG_SQLITE_PROVIDER_ERROR,
+                          sl_str_from_cstr("sqlite provider failed: sql parameters=<redacted> "
+                                           "connectionString=<redacted>")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_diag_builder_set_primary_span(
+                &builder, sl_source_span_make(sl_str_from_cstr("providers.js"), 3U, 7U, 12U)),
+            SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_diag_builder_add_hint(&builder, sl_str_from_cstr("provider metadata is redacted")),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_render_json(&arena, &diag, &rendered), SL_STATUS_OK) != 0 ||
+        expect_snapshot(rendered, "tests/golden/diagnostics/provider_failure_redacted.json") != 0)
+    {
+        return 109;
+    }
+
+    return 0;
+}
+
 static int test_snapshots(void)
 {
     int result = test_missing_service_snapshot();
@@ -1027,6 +1142,11 @@ int main(void)
     }
 
     result = test_redaction_helper();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_diagnostic_golden_suite_expansion();
     if (result != 0) {
         return result;
     }

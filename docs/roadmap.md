@@ -100,7 +100,6 @@ Kept open intentionally:
 - #460/#461-#470 COMPILER-30 compiler inference engine, owning deep static inference for
   the supported Slop app subset and feeding Strong Plan consumers;
 - #312/#325-#329 module/bootstrap runtime completion;
-- #313/#330-#334 source maps and diagnostics;
 - #314/#335-#339 app/resource lifetime runtime;
 - #316/#345-#349 CLI/dev loop runtime;
 - #318/#355-#359 Strong Plan strategic layer;

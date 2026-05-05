@@ -133,6 +133,12 @@ supplies matching source text. Async/runtime/provider diagnostics can use the sa
 codes and JSON renderer, but V8 async stack/source-map remapping remains V8-gated and
 separate from the default lane.
 
+ENGINE-15.E expands the default diagnostic golden suite with representative async JSON,
+capability denial source-frame, malformed request-body JSON, and redacted provider failure
+snapshots. These are renderer and diagnostic-contract goldens; V8 exception remapping,
+async execution, users API transport, package, live-provider, stress, and benchmark
+evidence remain separate lanes.
+
 This is not the final diagnostics system. The C renderers are stable enough for alpha
 tests and tools, but the native `sloppy` CLI does not yet expose a generic
 `--diagnostic-format json` flag for every error path.
@@ -721,7 +727,9 @@ Diagnostic tests must include:
 
 `core.diagnostics.foundation` covers snapshot text, JSON escaping/output, source-frame
 output/fallback, JSON source-frame output, complete stable code registry mapping,
-stable code/severity mapping, related spans, hints, and representative secret redaction.
+stable code/severity mapping, related spans, hints, representative secret redaction, and
+ENGINE-15.E renderer goldens for async, capability, request-body, and provider diagnostic
+shapes.
 Compiler golden diagnostics cover source frames where `sloppyc` already has source spans.
 Compiler source-map goldens cover deterministic `x_sloppy` metadata. V8-gated engine smoke
 tests cover source-map remapping, missing-map generated fallback, malformed-map fallback,

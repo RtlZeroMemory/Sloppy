@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_SQLITE_PROVIDER","severity":"error","message":"sqlite provider failed: sql parameters=<redacted> connectionString=<redacted>","primary":{"file":"providers.js","line":3,"column":7,"span":12},"hints":["provider metadata is redacted"]}

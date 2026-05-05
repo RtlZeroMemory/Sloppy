@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_MALFORMED_JSON","severity":"error","message":"request body is not valid JSON","primary":{"file":"<request-body>","line":1,"column":9,"span":1},"sourceFrame":{"file":"<request-body>","line":1,"column":9,"span":1,"text":"{\"name\":","marker":"        ^","hint":"expected a JSON value"},"hints":["expected a JSON value"]}
