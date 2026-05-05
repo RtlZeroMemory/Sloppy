@@ -1011,7 +1011,8 @@ The first execution milestone is accepted when:
 
 Framework MVP module loading is source-level ESM syntax with compiler-owned graph
 resolution and classic artifact execution. `sloppyc` resolves supported relative modules
-and Sloppy stdlib/provider imports, then emits the existing `app.js` artifact that the V8
+and Sloppy stdlib/provider imports, including Plan-visible `sloppy/time` feature
+activation, then emits the existing `app.js` artifact that the V8
 bootstrap runtime evaluates as a classic script. Full V8 native ESM loading, dynamic
 imports, Node/npm resolution, and package-manager behavior are not part of this execution
 model.

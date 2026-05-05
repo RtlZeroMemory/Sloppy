@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_TIME_CANCELLED","severity":"error","message":"time operation was cancelled","hints":["CancelledError preserves the explicit cancellation reason."]}

@@ -35,6 +35,7 @@ Implemented now:
 - native Plan v1 `requiredFeatures[]` storage for runtime feature activation;
 - runtime feature descriptor metadata for current stdlib imports, provider imports, and
   V8 intrinsic namespaces where implemented;
+- CORE-TIME-01.A/B `stdlib.time` feature metadata for the `sloppy/time` import;
 - CORE-FS-01.A/B `stdlib.fs` feature metadata for the `sloppy/fs` import;
 - arena-owned parsed plan storage;
 - basic diagnostics for invalid plan JSON and validation failures;

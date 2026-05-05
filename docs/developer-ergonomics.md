@@ -76,6 +76,11 @@ while serious apps move to named roots such as `data:/users.json`. This slice ma
 feature Plan-visible as `stdlib.fs`; CORE-FS-01.C through CORE-FS-01.G implement the
 native/JavaScript bridge for core file, directory, handle, stream, and bounded watch
 helpers, while CORE-FS-01.I/J adds source examples and CLI metadata evidence.
+CORE-TIME-01.A/B locks the `sloppy/time` contract around `Time`, `Deadline`,
+`CancellationController`, async delay/timeout, intervals, interval-based scheduled jobs,
+and explicit fake clocks. The compiler now makes `sloppy/time` Plan-visible as
+`stdlib.time`; native timers and V8 owner-thread settlement remain in later CORE-TIME
+slices.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.

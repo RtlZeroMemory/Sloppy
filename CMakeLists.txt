@@ -39,6 +39,7 @@ set(
     bootstrap.manifest.json
     data.js
     fs.js
+    time.js
     index.js
     providers/sqlite.js
     results.js
