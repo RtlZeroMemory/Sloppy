@@ -290,11 +290,21 @@ Implemented foundation codes:
 - `SLOPPY_E_LIFECYCLE_CLEANUP_FAILED`;
 - `SLOPPY_E_LIFECYCLE_LEAK_DETECTED`;
 - `SLOPPY_E_LIFECYCLE_IDENTITY_UNAVAILABLE`;
+- `SLOPPY_E_UNKNOWN_RUNTIME_FEATURE`, for Plan feature ids that are not in the runtime
+  registry;
+- `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`, for known features unavailable in the current
+  runtime lane;
+- `SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING`, for known feature dependencies unavailable
+  in the current runtime lane;
 - `SLOPPY_E_INTERNAL`.
 
 `SLOPPY_NONE` is available for no-diagnostic cases and `SLOPPY_E_UNKNOWN` is returned for
 unknown enum values. `core.diagnostics.foundation` also verifies that every public enum
 value through the current last diagnostic code maps to a stable non-unknown string.
+
+Runtime feature catalog entries carry only stable feature ids and Plan/requested-by context;
+they must not include native handles, pointers, secrets, provider connection strings, or
+package-manager state.
 
 Once released, changing a code requires an ADR or documented migration.
 

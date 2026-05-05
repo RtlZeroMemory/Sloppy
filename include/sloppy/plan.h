@@ -39,9 +39,9 @@ typedef uint32_t SlHandlerId;
  * bytes available.
  *
  * All SlStr fields below are borrowed views. They do not require NUL termination and remain
- * valid only for the caller-documented plan lifetime. The handler, route, provider, and
- * capability arrays are borrowed and caller-owned; SlPlan never allocates, copies, or frees
- * them.
+ * valid only for the caller-documented plan lifetime. The handler, route, provider,
+ * capability, and SlPlanRequiredFeature arrays exposed through SlPlan.required_features are
+ * borrowed and caller-owned; SlPlan never allocates, copies, or frees them.
  */
 typedef struct SlPlanTarget
 {

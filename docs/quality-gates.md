@@ -39,9 +39,9 @@ shutdown/cancel behavior, plus `smoke.transport.keep_alive_streaming_bounded` fo
 bounded transport operations. This is stress/smoke evidence only; it does not register
 benchmark evidence or production-edge HTTP evidence.
 ENGINE-27.A/B adds default-lane feature registry tests. Passing them proves deterministic
-Plan-driven feature activation and missing/unavailable feature diagnostics only; it does
-not prove V8 intrinsic gating, package trimming, provider expansion, or dynamic feature
-loading.
+Plan-driven feature activation and unknown/unavailable/missing-dependency runtime-feature
+diagnostics only; it does not prove V8 intrinsic gating, package trimming, provider
+expansion, or dynamic feature loading.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
