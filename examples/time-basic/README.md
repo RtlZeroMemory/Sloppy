@@ -7,7 +7,7 @@ delay and timeout shape; execution remains lane-specific like the other app-host
 import { Time } from "sloppy/time";
 
 await Time.delay(250);
-const summary = await Time.timeout(loadUserSummary(), { afterMs: 1000 });
+const summary = await Time.timeout((signal) => loadUserSummary({ signal }), { afterMs: 1000 });
 ```
 
 The Time API is async-first and Promise-friendly. It has no Node timer compatibility

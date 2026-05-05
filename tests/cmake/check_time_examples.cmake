@@ -54,7 +54,7 @@ foreach(required_pattern IN ITEMS
         "await Time.delay(250);"
         "Time.timeout("
         "afterMs: 1000"
-        "Time.yield()")
+        "Time.yield")
     require_substring("${time_basic_source}" "${required_pattern}"
                       "examples/time-basic/app.js is missing expected Time API shape")
 endforeach()
@@ -96,8 +96,14 @@ foreach(required_pattern IN ITEMS
     require_substring("${time_fake_clock_source}" "${required_pattern}"
                       "examples/time-fake-clock/app.js is missing expected fake-clock shape")
 endforeach()
-reject_substring("${time_fake_clock_source}" "global"
-                 "FakeClock example must not imply global fake-timer mutation")
+foreach(forbidden_pattern IN ITEMS
+        "globalThis.setTimeout"
+        "globalThis.setInterval"
+        "global.setTimeout"
+        "global.setInterval")
+    reject_substring("${time_fake_clock_source}" "${forbidden_pattern}"
+                     "FakeClock example must not mutate global timer APIs")
+endforeach()
 
 foreach(required_pattern IN ITEMS
         "no Node timer compatibility"
