@@ -32,6 +32,14 @@ typedef enum SlRuntimeFeatureId
     SL_RUNTIME_FEATURE_COUNT = 12
 } SlRuntimeFeatureId;
 
+#ifdef __cplusplus
+static_assert(SL_RUNTIME_FEATURE_COUNT <= (sizeof(uint32_t) * 8U),
+              "SlRuntimeFeatureSet.active_mask must cover all runtime features");
+#else
+_Static_assert(SL_RUNTIME_FEATURE_COUNT <= (sizeof(uint32_t) * 8U),
+               "SlRuntimeFeatureSet.active_mask must cover all runtime features");
+#endif
+
 typedef enum SlRuntimeFeatureKind
 {
     SL_RUNTIME_FEATURE_KIND_CORE = 0,

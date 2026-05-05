@@ -2690,15 +2690,13 @@ static int test_sqlite_intrinsic_inactive_feature_is_not_registered(void)
     if (expect_status(
             sl_engine_eval_source(
                 engine, sl_str_from_cstr("sqlite-inactive-feature.js"),
-                sl_str_from_cstr(
-                    "globalThis.sqliteInactive = function () {"
-                    "  if (globalThis.__sloppy && globalThis.__sloppy.data && "
-                    "globalThis.__sloppy.data.sqlite) {"
-                    "    throw new Error('sqlite intrinsic unexpectedly active');"
-                    "  }"
-                    "  throw new Error('SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature "
-                    "provider.sqlite is inactive or unavailable\\nFeature:\\n  provider.sqlite');"
-                    "};"),
+                sl_str_from_cstr("globalThis.sqliteInactive = function () {"
+                                 "  if (globalThis.__sloppy && globalThis.__sloppy.data && "
+                                 "globalThis.__sloppy.data.sqlite) {"
+                                 "    throw new Error('sqlite intrinsic unexpectedly active');"
+                                 "  }"
+                                 "  throw new Error('sqlite intrinsic inactive');"
+                                 "};"),
                 &diag),
             SL_STATUS_OK) != 0)
     {
@@ -2715,9 +2713,7 @@ static int test_sqlite_intrinsic_inactive_feature_is_not_registered(void)
     }
 
     if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
-        expect_str_contains(diag.message,
-                            sl_str_from_cstr("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE")) != 0 ||
-        expect_str_contains(diag.message, sl_str_from_cstr("provider.sqlite")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("sqlite intrinsic inactive")) != 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("unexpectedly active")) == 0)
     {
         sl_engine_destroy(engine);

@@ -812,6 +812,8 @@ bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> contex
     v8::Local<v8::Object> sloppy = v8::Object::New(isolate);
     v8::Local<v8::Object> data = v8::Object::New(isolate);
 
+    // Preserve legacy low-level bridge coverage when callers do not provide a validated
+    // feature set; app-host startup passes one for strict SL_RUNTIME_FEATURE_STDLIB_APP gating.
     if (!backend->has_runtime_features ||
         sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_APP))
     {

@@ -210,10 +210,12 @@ Current behavior:
 - `__sloppy_register_handler(id, handler)` exists only in the V8 runtime context and accepts
   a positive numeric handler ID plus a callable handler. Duplicate IDs, nonnumeric IDs, and
   non-callable handlers fail during app evaluation with deterministic V8 diagnostics;
-- `__sloppy.data.sqlite` exists only in the V8 runtime context and is installed by the
-  SQLite provider intrinsic module when `provider.sqlite` is active. It exposes internal
-  open/exec/query/queryOne/close callbacks used by the stdlib wrapper, not a public raw
-  native API;
+- `__sloppy.data.sqlite` exists only in the V8 runtime context and is normally installed by
+  the SQLite provider intrinsic module when `provider.sqlite` is active. Low-level bridge
+  callers that pass no runtime feature set may still receive `__sloppy.data.sqlite` for
+  legacy smoke coverage; app-host startup passes a feature set and uses strict
+  `provider.sqlite` gating. The namespace exposes internal open/exec/query/queryOne/close
+  callbacks used by the stdlib wrapper, not a public raw native API;
 - SQLite bridge parameter conversion rejects JavaScript parameter arrays above 32,766
   elements before any native parameter vector reserve/allocation. The failure is a stable
   redacted parameter-count error and does not include SQL parameter values;
