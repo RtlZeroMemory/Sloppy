@@ -24,10 +24,12 @@ typedef enum SlRuntimeFeatureId
     SL_RUNTIME_FEATURE_STDLIB_APP = 4,
     SL_RUNTIME_FEATURE_STDLIB_RESULTS = 5,
     SL_RUNTIME_FEATURE_STDLIB_SCHEMA = 6,
-    SL_RUNTIME_FEATURE_PROVIDER_SQLITE = 7,
-    SL_RUNTIME_FEATURE_PROVIDER_POSTGRES = 8,
-    SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER = 9,
-    SL_RUNTIME_FEATURE_COUNT = 10
+    SL_RUNTIME_FEATURE_STDLIB_CONFIG = 7,
+    SL_RUNTIME_FEATURE_STDLIB_DATA = 8,
+    SL_RUNTIME_FEATURE_PROVIDER_SQLITE = 9,
+    SL_RUNTIME_FEATURE_PROVIDER_POSTGRES = 10,
+    SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER = 11,
+    SL_RUNTIME_FEATURE_COUNT = 12
 } SlRuntimeFeatureId;
 
 typedef enum SlRuntimeFeatureKind
@@ -57,6 +59,8 @@ typedef struct SlRuntimeFeatureDescriptor
     SlRuntimeFeatureKind kind;
     SlStr stable_id;
     SlStr diagnostics_name;
+    SlStr stdlib_import;
+    SlStr v8_intrinsic_namespace;
     uint32_t dependencies;
     bool available;
     bool requires_v8_intrinsics;

@@ -132,6 +132,10 @@ provider metadata, and explicit `requiredFeatures[]`. It activates only the curr
 required feature ids, reports V8-disabled builds as unavailable instead of pretending the
 lane ran, and fails closed for unknown/unavailable features or unavailable dependencies.
 This does not dynamically load feature code or change provider/HTTP behavior.
+ENGINE-27.C/D passes that active set into the V8 engine options for app-host startup. The
+V8 bridge registers app and SQLite intrinsics only for active features, while direct engine
+smoke tests without a feature set remain a low-level compatibility path. This still does
+not add dynamic loading, package-manager behavior, or PostgreSQL/SQL Server JS bridges.
 
 TASK 10.A adds a pure-C route pattern parser and matcher foundation for later native route
 dispatch. It supports only a minimal path-pattern subset and one-pattern matching. It does

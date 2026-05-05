@@ -341,7 +341,8 @@ static int test_startup_reports_plan_driven_runtime_features(void)
         return 35;
     }
     if (!sl_runtime_feature_set_contains(&features, SL_RUNTIME_FEATURE_PROVIDER_SQLITE) ||
-        features.activation_count != 7U || diag.code != SL_DIAG_NONE)
+        !sl_runtime_feature_set_contains(&features, SL_RUNTIME_FEATURE_STDLIB_DATA) ||
+        features.activation_count != 8U || diag.code != SL_DIAG_NONE)
     {
         return 36;
     }

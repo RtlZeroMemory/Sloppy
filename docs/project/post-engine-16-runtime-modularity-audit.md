@@ -1,8 +1,10 @@
 # Post-ENGINE-16 Runtime Modularity Audit
 
-Status: 2026-05-05 implementation audit. ENGINE-27.A/B now records the first runtime
-feature registry and Plan-driven activation path; later ENGINE-27 slices still own
-feature-specific descriptors, V8 intrinsic gating, diagnostic goldens, and package policy.
+Status: 2026-05-05 implementation audit. ENGINE-27.A/B records the first runtime feature
+registry and Plan-driven activation path. ENGINE-27.C/D adds concrete provider,
+transport, and stdlib descriptor metadata and passes the active feature set into the V8
+bridge so feature-owned intrinsics are registered only when the active Plan requires them.
+Later ENGINE-27 slices still own diagnostic goldens and package policy.
 
 ## Source Inputs
 
@@ -16,13 +18,13 @@ feature-specific descriptors, V8 intrinsic gating, diagnostic goldens, and packa
 | Feature family | Current composition | Activation model | Risk |
 | --- | --- | --- | --- |
 | Core runtime | `sloppy_core` includes core primitives, Plan, diagnostics, resource/app-host, HTTP backend/transport, capability registry, provider executor, and data providers. | Always compiled into the core library when dependencies are available. | Core library is growing into a broad "everything included" unit. |
-| V8 bridge | `SLOPPY_ENABLE_V8` gates `src/engine/v8/*`. When enabled, the bridge installs handler registration plus provider intrinsics under `__sloppy`. | Configure-time V8 gate; provider intrinsic registration is not Plan/import/use driven. | Optional lane is honest, but enabled V8 builds register more feature surface than a specific Plan may need. |
-| HTTP transport | HTTP parser/backend/transport are core sources; libuv implementation is under `src/platform/libuv`. | Compiled as part of current runtime; used by CLI/source-input runtime paths. | Transport is not yet feature-described for package include-only-used policy. |
-| SQLite provider | Native provider and V8 SQLite intrinsic exist. | Native provider always compiled; JS bridge installed whenever V8 intrinsics are installed. Runtime capability check gates provider work. | Synchronous V8 bridge blocks owner thread and is not feature-activated only when Plan/import requires SQLite. |
+| V8 bridge | `SLOPPY_ENABLE_V8` gates `src/engine/v8/*`. When Plan activation passes an active feature set, the bridge installs handler registration for `stdlib.framework/app` and SQLite provider intrinsics only when their features are active. | Configure-time V8 gate plus Plan-driven intrinsic registration for app-host startup. Low-level engine smoke paths that omit a feature set retain legacy install behavior only as bridge tests. | Optional lane is honest; future slices still need formal missing-intrinsic diagnostics/goldens. |
+| HTTP transport | HTTP parser/backend/transport are core sources; libuv implementation is under `src/platform/libuv`. | Compiled as part of current runtime; Plan routes activate `http` and `transport.libuv` descriptors before runtime startup. | Package include-only-used policy is not yet implemented. |
+| SQLite provider | Native provider and V8 SQLite intrinsic exist. | Native provider is still compiled, but `provider.sqlite` now has a descriptor for `sloppy/providers/sqlite` and `__sloppy.data.sqlite`; app-host V8 startup registers the intrinsic only when Plan provider metadata activates SQLite. Runtime capability checks still gate provider work. | Synchronous V8 bridge blocks owner thread until ENGINE-28 routes it through the executor. |
 | PostgreSQL provider | Native libpq provider and tests exist. JS stdlib exposes metadata and honest bridge-unavailable errors. | Native provider compiled by current build; no V8 bridge. | Native dependencies can bloat non-using apps; future bridge must not bypass executor/capability model. |
 | SQL Server provider | Native ODBC provider is compiled where enabled; stdlib exposes metadata and honest bridge-unavailable errors. | Platform/config gate plus native tests; no V8 bridge. | Same bloat/dependency risk, especially across non-Windows jobs. |
-| Bootstrap stdlib | Source-controlled JS facade is staged/copied; compiler rewrites supported public imports into classic runtime artifacts. | Broad stdlib asset set is staged; compiler import support is intentionally narrow. | Packaging cannot yet include only used framework/provider modules. |
-| Plan metadata | Plan v1 carries routes, handlers, data providers, capabilities, required features, and metadata consumed by CLI tooling. | ENGINE-27.A/B derives active features from target/route/provider metadata and explicit `requiredFeatures[]` before runtime initialization. | Feature activation is now explicit, but package/link trimming and V8 intrinsic gating remain later slices. |
+| Bootstrap stdlib | Source-controlled JS facade is staged/copied; compiler rewrites supported public imports into classic runtime artifacts. | Broad stdlib asset set is staged, but descriptors now record current stdlib import ownership for app, results, schema, config, data, and provider modules. | Packaging cannot yet include only used framework/provider modules. |
+| Plan metadata | Plan v1 carries routes, handlers, data providers, capabilities, required features, and metadata consumed by CLI tooling. | ENGINE-27.A/B derives active features from target/route/provider metadata and explicit `requiredFeatures[]` before runtime initialization; ENGINE-27.C/D threads that active set into V8 creation. | Feature activation and intrinsic gating are now explicit, but package/link trimming remains later work. |
 
 ## Feature Boundaries Observed
 
@@ -42,10 +44,10 @@ feature-specific descriptors, V8 intrinsic gating, diagnostic goldens, and packa
 
 | Risk | Evidence | Roadmap-2 answer |
 | --- | --- | --- |
-| Provider code and dependencies are linked even when unused. | `CMakeLists.txt` includes `src/data/sqlite.c`, `src/data/postgres.c`, and `src/data/sqlserver.c` in core sources. | ENGINE-27.A/C/F should define feature descriptors and package include policy. |
-| V8 intrinsic surface is installed as a group. | `sl_v8_install_intrinsics` installs `__sloppy` and calls provider intrinsic aggregation. | ENGINE-27.D should make intrinsic registration feature-gated. |
-| Plan metadata is validated but not used to initialize only required runtime features. | ENGINE-27.A/B now validates Plan-driven feature activation before runtime initialization. | Remaining work is descriptor breadth, V8 intrinsic registration gating, and package include policy. |
-| Stdlib assets are staged broadly. | Bootstrap stdlib is copied as a whole and compiler rewrites only supported imports today. | ENGINE-27.C/F should connect stdlib module descriptors and packaging policy. |
+| Provider code and dependencies are linked even when unused. | `CMakeLists.txt` includes `src/data/sqlite.c`, `src/data/postgres.c`, and `src/data/sqlserver.c` in core sources. | ENGINE-27.C records descriptors; ENGINE-27.F still owns package include policy. |
+| V8 intrinsic surface is installed as a group. | App-host startup passes `SlRuntimeFeatureSet` through `SlEngineOptions`; `src/engine/v8/intrinsics.cc` skips SQLite registration unless `provider.sqlite` is active. | ENGINE-27.E should formalize inactive-intrinsic diagnostics/goldens. |
+| Plan metadata is validated but not used to initialize only required runtime features. | ENGINE-27.A/B validates Plan-driven feature activation before runtime initialization; ENGINE-27.C/D uses the set for V8 intrinsic registration. | Remaining work is package include policy and broader future feature consumers. |
+| Stdlib assets are staged broadly. | Bootstrap stdlib is copied as a whole and compiler rewrites only supported imports today; descriptors now map current stdlib/provider imports to runtime features. | ENGINE-27.F should define packaging policy without claiming trimming yet. |
 | Missing-feature diagnostics are ad hoc by layer. | Non-V8, non-SQLite bridge, and unsupported import errors are honest but not from one registry. | ENGINE-27.E should define stable missing-feature diagnostics. |
 
 ## Recommended Future Model

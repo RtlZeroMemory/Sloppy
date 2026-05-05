@@ -5,6 +5,7 @@
 #include "sloppy/bytes.h"
 #include "sloppy/capability.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/features.h"
 #include "sloppy/http_context.h"
 #include "sloppy/http_response.h"
 #include "sloppy/plan.h"
@@ -53,6 +54,13 @@ typedef struct SlEngineOptions
      */
     const SlPlan* plan;
     const SlCapabilityRegistry* capabilities;
+    /*
+     * Optional borrowed runtime feature activation set produced by Plan validation. When
+     * supplied, V8 installs feature-owned intrinsics only when their runtime feature is
+     * active. A NULL set preserves low-level engine smoke behavior for tests that exercise
+     * the bridge without Plan-driven startup validation.
+     */
+    const SlRuntimeFeatureSet* runtime_features;
     /*
      * Optional borrowed compiler source-map bytes used by V8 diagnostics to remap generated
      * app.js locations back to author source. The bytes must outlive the engine. When provided,

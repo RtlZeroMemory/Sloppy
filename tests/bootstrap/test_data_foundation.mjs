@@ -187,12 +187,12 @@ function createForgedLoweredQuery() {
     assertThrowsMessage(() => data.sqlite.open({
         database: ":memory:",
         capability: "data.main",
-    }), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
+    }), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.sqlite[\s\S]*Operation:[\s\S]*open/);
     assertThrowsMessage(() => data.sqlite.open({
         path: ":memory:",
         capability: "data.main",
-    }), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
-    assertThrowsMessage(() => data.sqlite("main"), /sqlite provider native bridge unavailable[\s\S]*Provider:[\s\S]*sqlite[\s\S]*Operation:[\s\S]*open/);
+    }), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.sqlite[\s\S]*Operation:[\s\S]*open/);
+    assertThrowsMessage(() => data.sqlite("main"), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.sqlite[\s\S]*Operation:[\s\S]*open/);
 }
 
 {
@@ -693,7 +693,7 @@ function createForgedLoweredQuery() {
 
     assert.equal(app.capabilities.get("data.main").metadata.database, ":memory:");
     assert.deepEqual(app.__debug().modules[0].services, ["data.main"]);
-    assertThrowsMessage(() => app.services.get("data.main"), /native bridge unavailable/);
+    assertThrowsMessage(() => app.services.get("data.main"), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*provider\.sqlite/);
 }
 
 {

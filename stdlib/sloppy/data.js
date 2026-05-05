@@ -601,19 +601,22 @@ Fix:
 }
 
 function createSqliteUnavailableError(operation) {
-    return new Error(`sloppy: sqlite provider native bridge unavailable
+    return new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature provider.sqlite is inactive or unavailable
 
 Provider:
   sqlite
+
+Feature:
+  provider.sqlite
 
 Operation:
   ${operation}
 
 Reason:
-  The native SQLite provider exists, but this JavaScript context did not install the V8 SQLite intrinsics.
+  The active Sloppy Plan did not enable the SQLite V8 intrinsics.
 
 Fix:
-  Run through a V8-enabled Sloppy runtime that loads the SQLite bridge, or keep SQLite usage behind a documented deferral.`);
+  Add SQLite provider metadata to the Plan, or keep SQLite usage behind a documented deferral.`);
 }
 
 function createPostgresUnavailableError(operation, options) {

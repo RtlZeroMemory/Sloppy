@@ -58,16 +58,19 @@
         const bridge = globalThis.__sloppy?.data?.sqlite;
 
         if (bridge === undefined) {
-            throw new Error(`sloppy: sqlite provider native bridge unavailable
+            throw new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature provider.sqlite is inactive or unavailable
 
 Provider:
   sqlite
+
+Feature:
+  provider.sqlite
 
 Operation:
   open
 
 Reason:
-  The V8 runtime did not install SQLite intrinsics.`);
+  The active Sloppy Plan did not enable the SQLite V8 intrinsics.`);
         }
 
         return bridge;

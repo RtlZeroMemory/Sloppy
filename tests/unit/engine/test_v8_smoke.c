@@ -132,13 +132,33 @@ static void init_sqlite_plan(SlPlan* plan, SlPlanDataProvider* provider,
     };
 }
 
+static int attach_runtime_features(SlEngineOptions* options, const SlPlan* plan,
+                                   SlArena* diag_arena, SlRuntimeFeatureSet* features)
+{
+    SlRuntimeFeatureAvailability availability = sl_runtime_feature_default_availability();
+    SlDiag diag = {0};
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(plan, &availability, diag_arena, features, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    options->runtime_features = features;
+    return 0;
+}
+
 static int attach_sqlite_plan(SlEngineOptions* options, SlPlan* plan,
                               SlCapabilityRegistry* registry, SlPlanDataProvider* provider,
-                              SlPlanCapability* capability, const char* access)
+                              SlPlanCapability* capability, SlArena* diag_arena,
+                              SlRuntimeFeatureSet* features, const char* access)
 {
     init_sqlite_plan(plan, provider, capability, access);
     if (expect_status(sl_capability_registry_init_from_plan(plan, registry), SL_STATUS_OK) != 0) {
         return 1;
+    }
+    if (attach_runtime_features(options, plan, diag_arena, features) != 0) {
+        return 2;
     }
     options->plan = plan;
     options->capabilities = registry;
@@ -2213,6 +2233,7 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2223,7 +2244,9 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
         return 130;
     }
 
-    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "readwrite") != 0)
+    {
         return 131;
     }
 
@@ -2303,6 +2326,7 @@ static int test_sqlite_intrinsic_stale_handle_fails(void)
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2313,7 +2337,9 @@ static int test_sqlite_intrinsic_stale_handle_fails(void)
         return 140;
     }
 
-    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "readwrite") != 0)
+    {
         return 141;
     }
 
@@ -2366,6 +2392,7 @@ static int test_sqlite_intrinsic_invalid_arguments_fail(void)
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2376,7 +2403,9 @@ static int test_sqlite_intrinsic_invalid_arguments_fail(void)
         return 150;
     }
 
-    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "readwrite") != 0)
+    {
         return 151;
     }
 
@@ -2432,6 +2461,7 @@ static int test_sqlite_intrinsic_rejects_huge_parameter_array_before_reserve(voi
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2442,7 +2472,9 @@ static int test_sqlite_intrinsic_rejects_huge_parameter_array_before_reserve(voi
         return 156;
     }
 
-    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "readwrite") != 0)
+    {
         return 157;
     }
 
@@ -2502,6 +2534,7 @@ static int test_sqlite_intrinsic_missing_provider_fails(void)
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2512,7 +2545,9 @@ static int test_sqlite_intrinsic_missing_provider_fails(void)
         return 160;
     }
 
-    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "readwrite") != 0) {
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "readwrite") != 0)
+    {
         return 161;
     }
 
@@ -2609,6 +2644,90 @@ static int test_sqlite_intrinsic_missing_capability_registry_fails_closed(void)
     return 0;
 }
 
+static int test_sqlite_intrinsic_inactive_feature_is_not_registered(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanHandler handler = {.id = 1U,
+                             .export_name = sl_str_from_cstr("__sloppy_handler_1"),
+                             .display_name = sl_str_from_cstr("Home")};
+    SlPlanRoute route = {.method = sl_str_from_cstr("GET"),
+                         .pattern = sl_str_from_cstr("/"),
+                         .handler_id = 1U,
+                         .name = sl_str_from_cstr("Home")};
+    SlPlan plan = {.version = SL_PLAN_CURRENT_VERSION,
+                   .target = {.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64),
+                              .engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8)},
+                   .handlers = &handler,
+                   .handler_count = 1U,
+                   .routes = &route,
+                   .route_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 176;
+    }
+
+    if (attach_runtime_features(&options, &plan, &engine_arena, &features) != 0) {
+        return 177;
+    }
+    if (sl_runtime_feature_set_contains(&features, SL_RUNTIME_FEATURE_PROVIDER_SQLITE)) {
+        return 178;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 179;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("sqlite-inactive-feature.js"),
+                sl_str_from_cstr(
+                    "globalThis.sqliteInactive = function () {"
+                    "  if (globalThis.__sloppy && globalThis.__sloppy.data && "
+                    "globalThis.__sloppy.data.sqlite) {"
+                    "    throw new Error('sqlite intrinsic unexpectedly active');"
+                    "  }"
+                    "  throw new Error('SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature "
+                    "provider.sqlite is inactive or unavailable\\nFeature:\\n  provider.sqlite');"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 180;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteInactive"), &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 181;
+    }
+
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        expect_str_contains(diag.message,
+                            sl_str_from_cstr("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("provider.sqlite")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("unexpectedly active")) == 0)
+    {
+        sl_engine_destroy(engine);
+        return 182;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
 {
     unsigned char engine_storage[16384];
@@ -2620,6 +2739,7 @@ static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2630,7 +2750,9 @@ static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
         return 180;
     }
 
-    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "write") != 0) {
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "write") != 0)
+    {
         return 181;
     }
 
@@ -2692,6 +2814,7 @@ static int test_sqlite_intrinsic_read_capability_cannot_open_for_write(void)
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2726,9 +2849,12 @@ static int test_sqlite_intrinsic_read_capability_cannot_open_for_write(void)
     }
     options.plan = &plan;
     options.capabilities = &registry;
+    if (attach_runtime_features(&options, &plan, &engine_arena, &features) != 0) {
+        return 192;
+    }
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
-        return 192;
+        return 193;
     }
 
     if (expect_status(sl_engine_eval_source(
@@ -2741,7 +2867,7 @@ static int test_sqlite_intrinsic_read_capability_cannot_open_for_write(void)
                       SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        return 193;
+        return 194;
     }
 
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
@@ -2777,6 +2903,7 @@ static int test_sqlite_intrinsic_provider_shorthand_read_capability_keeps_readwr
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2811,9 +2938,12 @@ static int test_sqlite_intrinsic_provider_shorthand_read_capability_keeps_readwr
     }
     options.plan = &plan;
     options.capabilities = &registry;
+    if (attach_runtime_features(&options, &plan, &engine_arena, &features) != 0) {
+        return 1962;
+    }
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
-        return 1962;
+        return 1963;
     }
 
     if (expect_status(sl_engine_eval_source(
@@ -2825,7 +2955,7 @@ static int test_sqlite_intrinsic_provider_shorthand_read_capability_keeps_readwr
                       SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        return 1963;
+        return 1964;
     }
 
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
@@ -2861,6 +2991,7 @@ static int test_sqlite_intrinsic_explicit_write_capability_opens_write_only_hand
     SlPlanDataProvider providers[1];
     SlPlanCapability capabilities[1];
     SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
@@ -2871,7 +3002,9 @@ static int test_sqlite_intrinsic_explicit_write_capability_opens_write_only_hand
         return 200;
     }
 
-    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, "write") != 0) {
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "write") != 0)
+    {
         return 201;
     }
 
@@ -2964,7 +3097,7 @@ static int test_sqlite_intrinsic_provider_kind_mismatch_fails_before_open(void)
     options.capabilities = &registry;
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
-        return 212;
+        return 213;
     }
 
     if (expect_status(sl_engine_eval_source(
@@ -2976,7 +3109,7 @@ static int test_sqlite_intrinsic_provider_kind_mismatch_fails_before_open(void)
                       SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        return 213;
+        return 214;
     }
 
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
@@ -3204,6 +3337,11 @@ int main(void)
     }
 
     result = test_sqlite_intrinsic_missing_capability_registry_fails_closed();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_inactive_feature_is_not_registered();
     if (result != 0) {
         return result;
     }

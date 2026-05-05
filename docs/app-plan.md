@@ -87,6 +87,10 @@ COMPILER-30.H/I adds the first compiler-emitted strong metadata layer: `modules`
 `requiredFeatures[]` storage and a runtime feature registry. The parser accepts non-empty
 required-feature arrays, while app-host/runtime startup fails closed when a required feature
 is unknown, unavailable, or missing an unavailable dependency.
+ENGINE-27.C/D extends feature descriptors with current stdlib import and V8-intrinsic
+metadata. Plan activation is still derived from supported Plan target/route/provider
+metadata plus explicit `requiredFeatures[]`; the runtime does not add package-manager
+semantics or arbitrary import resolution.
 
 ## Public API Shape
 
@@ -180,6 +184,13 @@ exception to unknown-field ignore semantics: entries are parsed into `SlPlan` an
 validated against the runtime feature registry. Unknown entries fail with
 `SLOPPY_E_UNKNOWN_RUNTIME_FEATURE`; known but unavailable entries fail with
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`.
+
+Current descriptor import mapping is intentionally narrow and mirrors what the compiler and
+stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/results` to
+`stdlib.results`, `sloppy/schema` to `stdlib.schema`, `sloppy/config` to `stdlib.config`,
+`sloppy/data` to `stdlib.data`, and `sloppy/providers/sqlite` to `provider.sqlite`.
+PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
+Plan validation; they do not implement JavaScript bridges.
 
 ## Schema Sections
 

@@ -8,8 +8,23 @@
  */
 #include "engine_v8_internal.h"
 
-bool sl_v8_install_provider_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
+bool sl_v8_runtime_feature_active(const SlV8Engine* backend, SlRuntimeFeatureId id)
+{
+    return backend != nullptr && backend->has_runtime_features &&
+           sl_runtime_feature_set_contains(&backend->runtime_features, id);
+}
+
+bool sl_v8_install_provider_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                        v8::Local<v8::Object> data)
 {
-    return sl_v8_install_sqlite_intrinsics(isolate, context, data);
+    if (backend == nullptr) {
+        return false;
+    }
+    if (!backend->has_runtime_features) {
+        return sl_v8_install_sqlite_intrinsics(backend->isolate, context, data);
+    }
+    if (sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_PROVIDER_SQLITE)) {
+        return sl_v8_install_sqlite_intrinsics(backend->isolate, context, data);
+    }
+    return true;
 }

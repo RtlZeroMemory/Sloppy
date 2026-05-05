@@ -12,6 +12,7 @@
 
 #include "../engine_internal.h"
 
+#include "sloppy/features.h"
 #include "sloppy/resource.h"
 
 #include <v8.h>
@@ -34,11 +35,15 @@ struct SlV8Engine
     const SlCapabilityRegistry* capabilities = nullptr;
     SlBytes source_map = {};
     SlStr source_map_source_name = {};
+    bool has_runtime_features = false;
+    SlRuntimeFeatureSet runtime_features = {};
     std::array<SlResourceEntry, 64U> resource_entries = {};
     SlResourceTable resources = {};
 };
 
-bool sl_v8_install_provider_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
+bool sl_v8_runtime_feature_active(const SlV8Engine* backend, SlRuntimeFeatureId id);
+
+bool sl_v8_install_provider_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                        v8::Local<v8::Object> data);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
