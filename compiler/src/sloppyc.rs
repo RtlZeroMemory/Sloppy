@@ -1363,6 +1363,11 @@ fn extract_import(
 
     if import_source == "sloppy/fs" {
         if let Some(specifiers) = &import.specifiers {
+            if specifiers.is_empty() {
+                state.unsupported_import_specifier =
+                    Some((import_source.to_string(), import.source.span));
+                return Ok(());
+            }
             for specifier in specifiers {
                 let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
                     state.unsupported_import_specifier =
@@ -7588,6 +7593,22 @@ export default app;
 "#;
         let diagnostic = extract(std::path::Path::new("app.js"), source)
             .expect_err("side-effect sloppy/fs import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
+        assert!(diagnostic
+            .message
+            .contains("unsupported import specifier \"sloppy/fs\""));
+    }
+
+    #[test]
+    fn empty_named_sloppy_fs_import_is_rejected() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import {} from "sloppy/fs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("empty named sloppy/fs import should be rejected");
         assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
         assert!(diagnostic
             .message
