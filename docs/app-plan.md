@@ -95,7 +95,8 @@ and lets the compiler emit that required feature when source imports `sloppy/fs`
 CORE-FS-01.C/D/H consumes the active feature to install the first core `__sloppy.fs`
 V8 bridge and stdlib `File` wrappers. CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
-lock-file primitives under the filesystem backend contract.
+lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
+feature with resource-backed non-recursive file/directory watch events.
 
 ## Public API Shape
 
@@ -169,7 +170,10 @@ same checks to Directory, FileHandle, temp, atomic, symlink, and native lock ope
 project-relative and named-root paths are resolved through Slop-owned policy, named-root
 traversal is rejected, development absolute paths produce warnings, and strict-mode
 absolute paths are denied unless allowed. OS sandboxing remains out of scope. Network
-entries remain metadata/check-only until scoped APIs exist.
+entries remain metadata/check-only until scoped APIs exist. CORE-FS-01.G maps V8
+watch open/next/close through the existing `fs.watch` capability operation and the same
+path policy; recursive watch remains unsupported until the platform backend grows that
+contract deliberately.
 
 All native `SlStr` fields are borrowed views in the struct model. Manually constructed
 plans borrow caller-owned storage. `sl_plan_parse_json` copies JSON strings and handler
@@ -451,9 +455,9 @@ tokens are rejected.
 Capabilities are loaded into the runtime registry and checked by token, kind, access mode,
 and database provider within the V8 SQLite bridge before provider calls. CORE-FS-01.E/F
 adds core, advanced, and FileHandle filesystem operations behind feature-gated V8
-registration; later CORE-FS-01 slices add watch resources, doctor/audit goldens, and
-examples. Network entries remain skeleton checks only and no capability entry creates an
-OS sandbox.
+registration; CORE-FS-01.G adds watch resources behind `fs.watch`; later CORE-FS-01
+slices add doctor/audit goldens and examples. Network entries remain skeleton checks only
+and no capability entry creates an OS sandbox.
 
 ### permissions
 

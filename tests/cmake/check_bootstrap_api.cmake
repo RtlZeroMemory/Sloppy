@@ -104,10 +104,13 @@ foreach(required_pattern IN ITEMS
         "copy(fromPath, toPath, options)"
         "move(fromPath, toPath, options)"
         "delete(path)"
+        "watch(path, options)"
         "const Directory = Object.freeze"
         "class FileHandle"
         "readChunks(options)"
         "readLines(options)"
+        "class FileWatcher"
+        "nextEvent(options)"
         "const Path = Object.freeze"
         "FileWatcher")
     require_substring("${fs_js}" "${required_pattern}" "fs.js is missing expected API shape pattern")

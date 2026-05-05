@@ -43,7 +43,7 @@ them proves deterministic Plan-driven feature activation, unknown/unavailable/de
 runtime-feature diagnostics, and renderer-pinned missing-feature output only; it does not
 prove package trimming, provider expansion, or dynamic feature loading.
 CORE-FS-01 gates must report filesystem evidence by lane. PRs that only add the `stdlib.fs`
-contract and Plan metadata do not prove filesystem I/O, V8 bridge execution, watch
+contract and Plan metadata do not prove filesystem I/O, V8 bridge execution, OS-native watch
 behavior, stream behavior, package readiness, or performance.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler

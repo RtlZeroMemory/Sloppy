@@ -11,9 +11,12 @@
 #include "sloppy/fs.h"
 
 #include <climits>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -49,6 +52,9 @@ enum class FsV8Operation
     HandleFlush,
     HandleSync,
     HandleClose,
+    WatchOpen,
+    WatchNext,
+    WatchClose,
 };
 
 struct FsV8LogicalFile
@@ -61,6 +67,16 @@ struct FsV8LogicalFile
     uint64_t position = 0U;
     bool closed = false;
     bool busy = false;
+};
+
+struct FsV8LogicalWatch
+{
+    std::vector<unsigned char> storage;
+    SlArena arena = {};
+    SlFsWatchHandle* native_watch = nullptr;
+    bool closed = false;
+    std::atomic_bool busy = false;
+    std::atomic_bool closing = false;
 };
 
 struct FsV8Request
@@ -87,6 +103,9 @@ struct FsV8Request
     bool directory = false;
     SlFsFileAccess access = SL_FS_FILE_ACCESS_READ;
     SlFsSeekOrigin seek_origin = SL_FS_SEEK_START;
+    SlFsWatchOptions watch_options = {};
+    SlFsWatchEvent watch_event = {};
+    FsV8LogicalWatch* logical_watch = nullptr;
     uint64_t position = 0U;
     uint64_t truncate_size = 0U;
     int64_t seek_offset = 0;
@@ -106,6 +125,18 @@ void fs_v8_logical_file_cleanup(void* ptr, void* user)
         file->closed = true;
     }
     delete file;
+}
+
+void fs_v8_logical_watch_cleanup(void* ptr, void* user)
+{
+    (void)user;
+    FsV8LogicalWatch* watch = static_cast<FsV8LogicalWatch*>(ptr);
+    if (watch != nullptr && watch->native_watch != nullptr && !watch->closed) {
+        (void)sl_fs_watch_close(watch->native_watch, nullptr);
+        watch->native_watch = nullptr;
+        watch->closed = true;
+    }
+    delete watch;
 }
 
 SlStatus fs_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
@@ -201,6 +232,10 @@ SlCapabilityOperation fs_v8_capability_operation(const FsV8Request* request)
         return SL_CAPABILITY_OPERATION_METADATA;
     case FsV8Operation::HandleRead:
         return SL_CAPABILITY_OPERATION_READ;
+    case FsV8Operation::WatchOpen:
+    case FsV8Operation::WatchNext:
+    case FsV8Operation::WatchClose:
+        return SL_CAPABILITY_OPERATION_WATCH;
     case FsV8Operation::Copy:
     case FsV8Operation::Move:
         return SL_CAPABILITY_OPERATION_READWRITE;
@@ -214,7 +249,8 @@ bool fs_v8_operation_reads(FsV8Operation operation)
     return operation == FsV8Operation::ReadText || operation == FsV8Operation::ReadBytes ||
            operation == FsV8Operation::DirectoryList || operation == FsV8Operation::ReadLink ||
            operation == FsV8Operation::TempFile || operation == FsV8Operation::TempDirectory ||
-           operation == FsV8Operation::HandleRead;
+           operation == FsV8Operation::HandleRead || operation == FsV8Operation::WatchOpen ||
+           operation == FsV8Operation::WatchNext;
 }
 
 bool fs_v8_operation_uses_path(FsV8Operation operation)
@@ -222,7 +258,8 @@ bool fs_v8_operation_uses_path(FsV8Operation operation)
     return operation != FsV8Operation::HandleRead && operation != FsV8Operation::HandleWriteText &&
            operation != FsV8Operation::HandleWriteBytes && operation != FsV8Operation::HandleSeek &&
            operation != FsV8Operation::HandleTruncate && operation != FsV8Operation::HandleFlush &&
-           operation != FsV8Operation::HandleSync && operation != FsV8Operation::HandleClose;
+           operation != FsV8Operation::HandleSync && operation != FsV8Operation::HandleClose &&
+           operation != FsV8Operation::WatchNext && operation != FsV8Operation::WatchClose;
 }
 
 bool fs_v8_apply_seek(uint64_t base, int64_t offset, uint64_t* out)
@@ -607,6 +644,71 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
             request->logical_file->closed = true;
         }
         return status;
+    case FsV8Operation::WatchOpen: {
+        std::unique_ptr<FsV8LogicalWatch> watch(new (std::nothrow) FsV8LogicalWatch());
+        if (!watch) {
+            return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+        }
+        watch->storage.resize(65536U);
+        status = sl_arena_init(&watch->arena, watch->storage.data(), watch->storage.size());
+        if (sl_status_is_ok(status)) {
+            status = sl_fs_watch_open(&watch->arena, resolved, &request->watch_options,
+                                      &watch->native_watch, diag);
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        request->logical_watch = watch.release();
+        return sl_status_ok();
+    }
+    case FsV8Operation::WatchNext:
+        if (request->logical_watch == nullptr || request->logical_watch->closed ||
+            request->logical_watch->native_watch == nullptr)
+        {
+            return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
+        }
+        if (request->logical_watch->closing.load()) {
+            request->bool_result = false;
+            return sl_status_ok();
+        }
+        status = sl_fs_watch_next(request->logical_watch->native_watch, arena,
+                                  &request->watch_event, diag);
+        if (sl_status_code(status) == SL_STATUS_DEADLINE_EXCEEDED) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            if (request->logical_watch->closing.load()) {
+                request->bool_result = false;
+                return sl_status_ok();
+            }
+            status = sl_fs_watch_next(request->logical_watch->native_watch, arena,
+                                      &request->watch_event, diag);
+            if (sl_status_code(status) == SL_STATUS_DEADLINE_EXCEEDED) {
+                request->bool_result = false;
+                return sl_status_ok();
+            }
+        }
+        request->bool_result = sl_status_is_ok(status);
+        if (sl_status_is_ok(status)) {
+            request->result_text.assign(
+                request->watch_event.path.ptr == nullptr ? "" : request->watch_event.path.ptr,
+                request->watch_event.path.length);
+        }
+        return status;
+    case FsV8Operation::WatchClose:
+        if (request->logical_watch == nullptr || request->logical_watch->closed ||
+            request->logical_watch->native_watch == nullptr)
+        {
+            return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
+        }
+        request->logical_watch->closing.store(true);
+        while (request->logical_watch->busy.exchange(true)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        status = sl_fs_watch_close(request->logical_watch->native_watch, diag);
+        if (sl_status_is_ok(status)) {
+            request->logical_watch->native_watch = nullptr;
+            request->logical_watch->closed = true;
+        }
+        return status;
     case FsV8Operation::Copy:
     case FsV8Operation::Move:
         status = fs_v8_resolve(arena, request,
@@ -817,6 +919,35 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
         *out = object;
         return true;
     }
+    case FsV8Operation::WatchOpen: {
+        SlResourceId id = sl_resource_id_invalid();
+        v8::Local<v8::Object> object = v8::Object::New(isolate);
+        v8::Local<v8::String> slot_key;
+        v8::Local<v8::String> generation_key;
+        SlStatus status;
+
+        if (request->logical_watch == nullptr) {
+            *out_error = "filesystem watch was not opened";
+            return false;
+        }
+        status = sl_resource_table_insert(&request->backend->resources, SL_RESOURCE_KIND_FS_WATCH,
+                                          request->logical_watch, fs_v8_logical_watch_cleanup,
+                                          nullptr, &id, nullptr);
+        if (!sl_status_is_ok(status)) {
+            fs_v8_logical_watch_cleanup(request->logical_watch, nullptr);
+            request->logical_watch = nullptr;
+            *out_error = "filesystem watch table is exhausted";
+            return false;
+        }
+        request->logical_watch = nullptr;
+        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("slot"), &slot_key);
+        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("generation"), &generation_key);
+        (void)object->Set(context, slot_key, v8::Integer::NewFromUnsigned(isolate, id.slot));
+        (void)object->Set(context, generation_key,
+                          v8::Integer::NewFromUnsigned(isolate, id.generation));
+        *out = object;
+        return true;
+    }
     case FsV8Operation::HandleRead: {
         auto backing = v8::ArrayBuffer::NewBackingStore(isolate, request->result_bytes.size());
         if (!request->result_bytes.empty()) {
@@ -825,6 +956,44 @@ bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, Fs
         }
         v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
         *out = v8::Uint8Array::New(buffer, 0, request->result_bytes.size());
+        return true;
+    }
+    case FsV8Operation::WatchNext: {
+        v8::Local<v8::Object> object = v8::Object::New(isolate);
+        v8::Local<v8::String> kind_key;
+        v8::Local<v8::String> path_key;
+        v8::Local<v8::String> directory_key;
+        v8::Local<v8::String> overflow_key;
+        v8::Local<v8::String> path_value;
+        const char* kind = request->watch_event.kind == SL_FS_WATCH_EVENT_CREATED    ? "created"
+                           : request->watch_event.kind == SL_FS_WATCH_EVENT_MODIFIED ? "modified"
+                           : request->watch_event.kind == SL_FS_WATCH_EVENT_DELETED  ? "deleted"
+                                                                                     : "overflow";
+
+        if (!request->bool_result) {
+            *out = v8::Null(isolate);
+            return true;
+        }
+        if (!v8::String::NewFromUtf8(isolate, request->result_text.c_str(),
+                                     v8::NewStringType::kNormal,
+                                     static_cast<int>(request->result_text.size()))
+                 .ToLocal(&path_value))
+        {
+            *out_error = "Invalid UTF-8 in filesystem watch event";
+            return false;
+        }
+        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("kind"), &kind_key);
+        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("path"), &path_key);
+        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("isDirectory"), &directory_key);
+        (void)fs_v8_to_local_string(isolate, sl_str_from_cstr("overflow"), &overflow_key);
+        (void)object->Set(context, kind_key,
+                          v8::String::NewFromUtf8(isolate, kind).ToLocalChecked());
+        (void)object->Set(context, path_key, path_value);
+        (void)object->Set(context, directory_key,
+                          v8::Boolean::New(isolate, request->watch_event.is_directory));
+        (void)object->Set(context, overflow_key,
+                          v8::Boolean::New(isolate, request->watch_event.overflow));
+        *out = object;
         return true;
     }
     case FsV8Operation::HandleSeek:
@@ -863,6 +1032,9 @@ SlStatus fs_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
     if (request->logical_file_busy_acquired && request->logical_file != nullptr) {
         request->logical_file->busy = false;
     }
+    if (request->logical_file_busy_acquired && request->logical_watch != nullptr) {
+        request->logical_watch->busy.store(false);
+    }
     if (sl_status_is_ok(request->status) && request->operation == FsV8Operation::HandleClose) {
         SlStatus close_status = sl_resource_table_close_kind(
             &backend->resources, request->resource_id, SL_RESOURCE_KIND_FS_FILE_HANDLE, nullptr);
@@ -871,6 +1043,15 @@ SlStatus fs_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
             request->error = "filesystem handle is stale or closed";
         }
         request->logical_file = nullptr;
+    }
+    if (sl_status_is_ok(request->status) && request->operation == FsV8Operation::WatchClose) {
+        SlStatus close_status = sl_resource_table_close_kind(
+            &backend->resources, request->resource_id, SL_RESOURCE_KIND_FS_WATCH, nullptr);
+        if (!sl_status_is_ok(close_status)) {
+            request->status = close_status;
+            request->error = "filesystem watch is stale or closed";
+        }
+        request->logical_watch = nullptr;
     }
 
     bool ok = false;
@@ -895,6 +1076,10 @@ SlStatus fs_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
     if (request->logical_file != nullptr && request->operation == FsV8Operation::OpenHandle) {
         fs_v8_logical_file_cleanup(request->logical_file, nullptr);
         request->logical_file = nullptr;
+    }
+    if (request->logical_watch != nullptr && request->operation == FsV8Operation::WatchOpen) {
+        fs_v8_logical_watch_cleanup(request->logical_watch, nullptr);
+        request->logical_watch = nullptr;
     }
     delete request;
     isolate->PerformMicrotaskCheckpoint();
@@ -927,6 +1112,41 @@ bool fs_v8_get_optional_bool(v8::Isolate* isolate, v8::Local<v8::Context> contex
         return false;
     }
     *out = property->BooleanValue(isolate);
+    return true;
+}
+
+bool fs_v8_get_optional_size(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             v8::Local<v8::Value> value, const char* key, size_t fallback,
+                             size_t min_value, size_t max_value, size_t* out)
+{
+    v8::Local<v8::String> local_key;
+    v8::Local<v8::Value> property;
+    uint32_t number = 0U;
+
+    if (out == nullptr) {
+        return false;
+    }
+    *out = fallback;
+    if (value->IsUndefined() || value->IsNull()) {
+        return true;
+    }
+    if (!value->IsObject() ||
+        !sl_status_is_ok(fs_v8_to_local_string(isolate, sl_str_from_cstr(key), &local_key)) ||
+        !value.As<v8::Object>()->Get(context, local_key).ToLocal(&property))
+    {
+        return false;
+    }
+    if (property->IsUndefined() || property->IsNull()) {
+        return true;
+    }
+    if (!property->IsUint32()) {
+        return false;
+    }
+    number = property.As<v8::Uint32>()->Value();
+    if ((size_t)number < min_value || (size_t)number > max_value) {
+        return false;
+    }
+    *out = (size_t)number;
     return true;
 }
 
@@ -1123,17 +1343,59 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
         }
         request->create = args.Length() > 2 && args[2]->BooleanValue(isolate);
     }
+    if (operation == FsV8Operation::WatchOpen) {
+        v8::Local<v8::Value> options_arg = args.Length() > 2 ? args[2] : v8::Undefined(isolate);
+
+        request->watch_options.directory = args.Length() > 1 && args[1]->BooleanValue(isolate);
+        request->watch_options.queue_capacity = 16U;
+        request->watch_options.snapshot_capacity = request->watch_options.directory ? 128U : 1U;
+        if (!fs_v8_get_optional_bool(isolate, context, options_arg, "recursive",
+                                     &request->watch_options.recursive) ||
+            !fs_v8_get_optional_size(isolate, context, options_arg, "queueCapacity",
+                                     request->watch_options.queue_capacity, 1U, 256U,
+                                     &request->watch_options.queue_capacity) ||
+            !fs_v8_get_optional_size(isolate, context, options_arg, "snapshotCapacity",
+                                     request->watch_options.snapshot_capacity, 1U, 1024U,
+                                     &request->watch_options.snapshot_capacity))
+        {
+            fs_v8_throw_type_error(isolate, "__sloppy.fs watch options are invalid");
+            return;
+        }
+    }
     if (!fs_v8_operation_uses_path(operation)) {
         void* ptr = nullptr;
+        SlResourceKind expected_kind =
+            operation == FsV8Operation::WatchNext || operation == FsV8Operation::WatchClose
+                ? SL_RESOURCE_KIND_FS_WATCH
+                : SL_RESOURCE_KIND_FS_FILE_HANDLE;
+
         if (args.Length() < 1 ||
             !fs_v8_get_resource_id(isolate, context, args[0], &request->resource_id) ||
             !sl_status_is_ok(sl_resource_table_get(&backend->resources, request->resource_id,
-                                                   SL_RESOURCE_KIND_FS_FILE_HANDLE, &ptr, nullptr)))
+                                                   expected_kind, &ptr, nullptr)))
         {
-            fs_v8_throw_type_error(isolate, "__sloppy.fs handle id is stale or closed");
+            fs_v8_throw_type_error(isolate, expected_kind == SL_RESOURCE_KIND_FS_WATCH
+                                                ? "__sloppy.fs watch id is stale or closed"
+                                                : "__sloppy.fs handle id is stale or closed");
             return;
         }
-        request->logical_file = static_cast<FsV8LogicalFile*>(ptr);
+        if (expected_kind == SL_RESOURCE_KIND_FS_WATCH) {
+            request->logical_watch = static_cast<FsV8LogicalWatch*>(ptr);
+        }
+        else {
+            request->logical_file = static_cast<FsV8LogicalFile*>(ptr);
+        }
+        if (operation == FsV8Operation::WatchClose) {
+            request->logical_watch->closing.store(true);
+            request->logical_file_busy_acquired = true;
+        }
+        if (operation == FsV8Operation::WatchNext) {
+            if (request->logical_watch->busy.exchange(true)) {
+                fs_v8_throw_type_error(isolate, "__sloppy.fs watch has a pending operation");
+                return;
+            }
+            request->logical_file_busy_acquired = true;
+        }
         if (operation == FsV8Operation::HandleClose) {
             if (request->logical_file->busy) {
                 fs_v8_throw_type_error(isolate,
@@ -1188,12 +1450,16 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
             }
             request->truncate_size = (uint64_t)args[1].As<v8::Number>()->Value();
         }
-        if (operation != FsV8Operation::HandleClose && request->logical_file->busy) {
+        if (expected_kind == SL_RESOURCE_KIND_FS_FILE_HANDLE &&
+            operation != FsV8Operation::HandleClose && request->logical_file->busy)
+        {
             fs_v8_throw_type_error(isolate,
                                    "__sloppy.fs handle has a pending filesystem operation");
             return;
         }
-        if (operation != FsV8Operation::HandleClose) {
+        if (expected_kind == SL_RESOURCE_KIND_FS_FILE_HANDLE &&
+            operation != FsV8Operation::HandleClose)
+        {
             request->logical_file->busy = true;
             request->logical_file_busy_acquired = true;
         }
@@ -1220,6 +1486,9 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
         (void)resolver->Reject(context, v8::Exception::Error(message));
         if (request->logical_file_busy_acquired && request->logical_file != nullptr) {
             request->logical_file->busy = false;
+        }
+        if (request->logical_file_busy_acquired && request->logical_watch != nullptr) {
+            request->logical_watch->busy.store(false);
         }
         request->resolver.Reset();
         return;
@@ -1373,6 +1642,21 @@ void fs_v8_handle_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args
     fs_v8_submit_callback(args, FsV8Operation::HandleClose);
 }
 
+void fs_v8_watch_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    fs_v8_submit_callback(args, FsV8Operation::WatchOpen);
+}
+
+void fs_v8_watch_next_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    fs_v8_submit_callback(args, FsV8Operation::WatchNext);
+}
+
+void fs_v8_watch_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    fs_v8_submit_callback(args, FsV8Operation::WatchClose);
+}
+
 bool fs_v8_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
                         v8::Local<v8::Object> object, const char* name,
                         v8::FunctionCallback callback)
@@ -1447,6 +1731,9 @@ bool sl_v8_install_fs_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> con
         !fs_v8_set_function(isolate, context, fs, "handleFlush", fs_v8_handle_flush_callback) ||
         !fs_v8_set_function(isolate, context, fs, "handleSync", fs_v8_handle_sync_callback) ||
         !fs_v8_set_function(isolate, context, fs, "handleClose", fs_v8_handle_close_callback) ||
+        !fs_v8_set_function(isolate, context, fs, "watch", fs_v8_watch_callback) ||
+        !fs_v8_set_function(isolate, context, fs, "watchNext", fs_v8_watch_next_callback) ||
+        !fs_v8_set_function(isolate, context, fs, "watchClose", fs_v8_watch_close_callback) ||
         !sloppy->Set(context, fs_key, fs).FromMaybe(false))
     {
         return false;

@@ -45,6 +45,20 @@ static SlStatus sl_fs_posix_status(int error)
     return sl_status_from_code(SL_STATUS_INTERNAL);
 }
 
+static uint64_t sl_fs_posix_modified_stamp(const struct stat* st)
+{
+    if (st == NULL) {
+        return 0U;
+    }
+#if defined(__APPLE__)
+    return ((uint64_t)st->st_mtimespec.tv_sec * 1000000000ULL) + (uint64_t)st->st_mtimespec.tv_nsec;
+#elif defined(st_mtim)
+    return ((uint64_t)st->st_mtim.tv_sec * 1000000000ULL) + (uint64_t)st->st_mtim.tv_nsec;
+#else
+    return (uint64_t)st->st_mtime * 1000000000ULL;
+#endif
+}
+
 static SlStatus sl_fs_posix_write_all(int fd, const unsigned char* bytes, size_t length)
 {
     size_t offset = 0U;
@@ -440,6 +454,7 @@ SlStatus sl_fs_platform_stat(SlStr path, SlFsStat* out, SlDiag* out_diag)
         out->kind = SL_FS_NODE_OTHER;
     }
     out->size = (uint64_t)st.st_size;
+    out->modified_nsec = sl_fs_posix_modified_stamp(&st);
     return sl_status_ok();
 }
 
@@ -573,6 +588,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         {
             item->kind = stat.kind;
             item->size = stat.size;
+            item->modified_nsec = stat.modified_nsec;
         }
         else if (sl_status_is_ok(status)) {
             item->kind = SL_FS_NODE_OTHER;

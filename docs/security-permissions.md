@@ -45,9 +45,10 @@ the registry before provider work begins. ENGINE-05 wires the V8 SQLite bridge t
 existing database hook; it does not add a new policy engine. CORE-FS-01.C/D/H makes
 `stdlib.fs` Plan-visible and adds the first native filesystem operations plus the
 feature-gated JavaScript bridge. CORE-FS-01.E/F extends that bridge to Directory,
-FileHandle, temp, atomic, symlink, and native lock primitives. The runtime enforces the current
+FileHandle, temp, atomic, symlink, and native lock primitives. CORE-FS-01.G adds
+resource-backed watch handles under the existing `fs.watch` capability. The runtime enforces the current
 development/strict path policy for implemented filesystem operations, but filesystem
-doctor/audit goldens and watch resources are still later CORE-FS-01 slices. Network
+doctor/audit goldens are still a later CORE-FS-01 slice. Network
 capabilities remain metadata/check-only skeletons:
 they can be stored and checked by token/kind/access, but no network API, permission prompt,
 or OS sandbox exists.
@@ -364,8 +365,9 @@ V8-gated `conformance.sqlite.denied_capability`, and V8-gated localhost
 `conformance.users_api_sqlite.localhost_transport`. These names prove the current Sloppy
 capability checks before provider work. CORE-FS-01.E/F adds native `core.filesystem`
 coverage and V8-gated filesystem smoke coverage for core, directory, and FileHandle API
-paths. These gates do not prove OS sandboxing, filesystem doctor/audit completeness,
-watch resources, PostgreSQL/SQL Server JavaScript bridges, live providers, or package
+paths. CORE-FS-01.G adds resource-backed watch handle coverage in native and V8-gated
+filesystem tests. These gates do not prove OS sandboxing, filesystem doctor/audit
+completeness, PostgreSQL/SQL Server JavaScript bridges, live providers, or package
 readiness.
 
 ## Quality Gates

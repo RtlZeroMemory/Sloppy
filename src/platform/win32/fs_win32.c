@@ -73,6 +73,15 @@ static SlStatus sl_fs_win32_status(DWORD error, SlDiag* out_diag, SlStr message)
     return sl_status_from_code(SL_STATUS_INTERNAL);
 }
 
+static uint64_t sl_fs_win32_filetime_stamp(FILETIME value)
+{
+    ULARGE_INTEGER ticks;
+
+    ticks.LowPart = value.dwLowDateTime;
+    ticks.HighPart = value.dwHighDateTime;
+    return ticks.QuadPart * 100U;
+}
+
 static SlStatus sl_fs_win32_path_to_wide(SlArena* arena, SlStr path, wchar_t** out)
 {
     int required = 0;
@@ -497,6 +506,7 @@ SlStatus sl_fs_platform_stat(SlStr path, SlFsStat* out, SlDiag* out_diag)
     out->kind = (attrs.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ? SL_FS_NODE_DIRECTORY
                                                                          : SL_FS_NODE_FILE;
     out->size = ((uint64_t)attrs.nFileSizeHigh << 32U) | (uint64_t)attrs.nFileSizeLow;
+    out->modified_nsec = sl_fs_win32_filetime_stamp(attrs.ftLastWriteTime);
     return sl_status_ok();
 }
 
@@ -693,6 +703,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
         item->kind = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ? SL_FS_NODE_DIRECTORY
                                                                              : SL_FS_NODE_FILE;
         item->size = ((uint64_t)data.nFileSizeHigh << 32U) | (uint64_t)data.nFileSizeLow;
+        item->modified_nsec = sl_fs_win32_filetime_stamp(data.ftLastWriteTime);
         out->count += 1U;
     } while (FindNextFileW(find, &data));
     FindClose(find);

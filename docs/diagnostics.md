@@ -658,10 +658,12 @@ CORE-FS-01.C/D/H adds deterministic core filesystem diagnostics for invalid path
 unknown roots, named-root traversal, development absolute-path warnings, strict absolute
 denials, file errors, and inactive `stdlib.fs` bridge access. CORE-FS-01.E/F routes
 Directory, FileHandle, temp, atomic, symlink, and native lock failures through the same status and
-bridge rejection path, including stale FileHandle IDs. Later CORE-FS-01 slices must add
+bridge rejection path, including stale FileHandle IDs. CORE-FS-01.G adds stale watch
+handle, unsupported recursive watch, no-event timeout, and bounded queue overflow status
+coverage through the same bridge path. Later CORE-FS-01 slices must add
 stable text and JSON goldens for doctor/audit output, permission-denied policy shapes,
-unsupported platform behavior, watch handles, watch overflow, lock contention, and
-atomic-write cleanup failures.
+unsupported platform behavior, watch overflow rendering, lock contention, and atomic-write
+cleanup failures.
 
 ## Examples
 
