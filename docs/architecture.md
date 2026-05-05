@@ -39,8 +39,9 @@ The current foundation/runtime-contract work still does not implement:
 
 ## Current Phase
 
-The repository is in post-Core-MVP foundation work. `sloppyc build` is a real supported-
-subset compiler path that emits Plan, bundle, source-map, and first configuration metadata
+The repository is in post-ENGINE-16 runtime consolidation and Roadmap-2 planning.
+`sloppyc build` is a real supported-subset compiler path that emits Plan, bundle,
+source-map, route/provider/capability/completeness metadata, and configuration metadata
 for the current app shape. `sloppy run --artifacts` is a dev/runtime host for those
 artifacts when the required runtime lane is configured; direct source-input
 `sloppy run app.js` compiles through `sloppyc`, including environment/appsettings context,
@@ -50,9 +51,13 @@ The C runtime now includes core primitives, Plan parsing, diagnostics, HTTP back
 semantics, libuv-backed localhost transport for the one-request-per-connection MVP,
 capability checks, provider executor infrastructure, and native provider boundaries.
 Optional V8 builds execute registered handlers, bounded direct Promise/microtask
-settlement, request-context/result conversion, and the SQLite bridge. Default gates still
-do not prove V8, live providers, public alpha readiness, production HTTP, or benchmark
-claims.
+settlement, request-context/result conversion, source-map exception primary-span remapping,
+and the current synchronous SQLite bridge. ENGINE-16 adds native app/request lifecycle,
+resource cleanup, late-completion, and leak-snapshot evidence. Default gates still do not
+prove V8, live providers, public alpha readiness, production HTTP, or benchmark claims.
+Roadmap-2 now focuses on execution model hardening, runtime feature modularity, provider
+executor adoption, route-level HTTP policy/observability, runtime events/metrics, and
+later torture tests.
 ENGINE-03 adds the first V8 async handler runtime cut. In V8-enabled builds, handler calls
 drain V8 microtasks explicitly on the owning engine thread, fulfilled Promises are
 converted through the existing result conversion path, rejected Promises produce
@@ -167,10 +172,11 @@ reported separately.
 
 ## Future Phase
 
-The next implementation batch should connect framework/app-layer ergonomics, source-input
-run, request binding/validation/config, Strong Plan doctor/OpenAPI work, HTTP
-keep-alive/streaming, and later provider expansion. See
-`docs/project/post-core-mvp-next-roadmap.md`.
+The next implementation batch is Engine Roadmap-2. It should harden execution/threading
+boundaries first, then make runtime features Plan/import/use-driven, route SQLite through
+the provider executor before provider expansion, add route-level HTTP policy and
+observability, add runtime events/counters, and only then run torture/crash-resistance
+harnesses. See `docs/project/engine-roadmap-2.md`.
 
 ## System Shape
 
@@ -448,6 +454,12 @@ Required gates:
 - EPIC 18: SQL Server provider.
 - EPIC 19: CLI introspection.
 - EPIC 20: Benchmarks/performance validation.
+- ENGINE-26: Execution model hardening.
+- ENGINE-27: Runtime feature modularity.
+- ENGINE-28: Provider runtime maturation.
+- HTTP-26: Route-level HTTP policy and observability.
+- ENGINE-29: Runtime events and metrics.
+- ENGINE-30: Runtime torture and crash-resistance harness.
 
 See `docs/roadmap.md` for full epic detail.
 

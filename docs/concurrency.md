@@ -24,6 +24,13 @@ differences from ASP.NET Core, Node, Bun, and Deno.
 
 ## Current Implementation
 
+Post-ENGINE-16 consolidation note: Roadmap-2 owns the next concurrency/async hardening
+wave. The current code has V8 owner-thread checks, a libuv-backed native completion loop,
+provider executor workers, HTTP transport terminal-state checks, and app/request
+late-completion rejection. SQLite bridge calls still run synchronously on the V8 callback
+path, route-level HTTP cancellation/deadline policy is incomplete, and torture evidence
+must wait until execution model, provider runtime, and metrics decisions land.
+
 HTTP-25.A/B/C update: keep-alive in the current transport is sequential only. One
 connection may carry multiple HTTP/1.1 requests, but a second request is not dispatched
 until the first response write completes and request-owned state is reset. Idle

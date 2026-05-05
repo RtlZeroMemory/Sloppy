@@ -30,6 +30,15 @@ The foundation phase does not implement localization or IDE protocol integration
 
 ## Current Phase
 
+Post-ENGINE-16 consolidation note: ENGINE-15 completed the current source-map and
+diagnostic renderer wave, and ENGINE-16 completed lifecycle/resource diagnostic evidence
+for the native helper layer. The next diagnostics/observability source is
+`docs/project/post-engine-16-diagnostics-observability-audit.md`: runtime events,
+counters, request IDs, access events, provider executor counters, and scope/resource
+counter reporting are Roadmap-2 work. V8 diagnostics remain V8-gated; default gates still
+do not prove V8 source-map remapping, package execution, live providers, public alpha, or
+benchmark claims.
+
 HTTP-25.A/B/C update: HTTP transport diagnostics/counters now distinguish keep-alive close
 causes for client `Connection: close`, server-forced close, idle timeout, max requests
 reached, unsupported pipelining, and shutdown closing idle keep-alive connections. These

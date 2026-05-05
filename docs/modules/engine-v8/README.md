@@ -39,6 +39,11 @@ gates do not prove this lane.
 ENGINE-02.E source-input run does not add a V8 source loader. `sloppy run <source.js>` and
 `sloppy run` with `sloppy.json` compile through `sloppyc`, validate generated artifacts,
 and only then reach this same V8 artifact execution path.
+Post-ENGINE-16 Roadmap-2 does not expand the public V8 API first. ENGINE-26 must lock
+owner-thread scheduling and cross-thread completion invariants, ENGINE-27 must feature-gate
+intrinsic registration, and ENGINE-28 must route provider results back through the owner
+thread before provider expansion. Source-map exception primary spans are implemented for
+the current claim; async stack remapping and broader source-frame fidelity remain later.
 
 ## Purpose
 

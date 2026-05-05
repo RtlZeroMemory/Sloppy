@@ -6,6 +6,12 @@ Bootstrap data/capabilities foundation implemented. Native SQLite, PostgreSQL, a
 Server providers are implemented for C/runtime tests. SQLite has a V8-gated
 JavaScript-to-native bridge wired to Plan provider metadata, opaque resource IDs, callback
 transactions, and the native database capability hook.
+Post-ENGINE-16 consolidation keeps that bridge honest: SQLite JS calls are still
+synchronous on the V8 callback path and are not provider-executor-backed. ENGINE-28 is the
+Roadmap-2 provider maturation wave that must define provider operation descriptors, route
+SQLite through a serialized executor, settle results back on the V8 owner thread, and
+harden cancellation/deadline/backpressure/redaction/conformance before PostgreSQL or SQL
+Server JavaScript bridges are implemented.
 ENGINE-23.A/B defines the native provider/offload descriptor and bounded
 per-provider-instance admission model that future SQLite, PostgreSQL, and SQL Server
 runtime bridge work must use. ENGINE-23.C implements the serialized SQLite-class blocking

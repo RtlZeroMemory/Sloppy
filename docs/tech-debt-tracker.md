@@ -10,6 +10,14 @@ These blockers now define the next Slop Engine phase. They supersede treating be
 methodology, public alpha docs, PostgreSQL JS bridge work, or SQL Server JS bridge work as
 immediate product blockers:
 
+Engine Roadmap-2 is the current source for the next runtime maturation wave:
+`docs/project/engine-roadmap-2.md` and
+`docs/project/engine-roadmap-2-issue-index.md`. The durable order is execution model
+hardening, runtime feature modularity, provider runtime maturation, route-level HTTP
+policy/observability, runtime events/metrics, and only then torture/crash-resistance
+harnesses. Provider expansion, public alpha docs, and benchmark/performance claims remain
+blocked until these foundations have their own evidence.
+
 ENGINE-01 locks the framework contract in
 `docs/project/engine-framework-contract.md`; future implementation debt should be tracked
 against that contract rather than reopening ambiguous "minimum alpha" scope.
@@ -317,10 +325,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - MAIN1-14 benchmark methodology hardening: release-only measured runs, local artifact
   policy, hardware/build metadata, trend policy, and no external comparisons until
   comparable paths exist. This is deferred behind Slop Engine foundation completion.
-- GitHub issue cleanup follow-through: #295 still needs owner review before closure or
-  narrowing. The 2026-04-30 cleanup record is
-  `docs/project/post-core-mvp-issue-reconciliation.md`; #26 now has scanner fixture/
-  self-test proof in the platform-boundary scanners.
+- GitHub issue cleanup follow-through: the 2026-05-05 post-ENGINE-16 cleanup closed the
+  completed ENGINE-08/09, ENGINE-14, HTTP-25, and HARDEN-01 parent/task issues with
+  evidence comments. Current issue reconciliation lives in
+  `docs/project/post-engine-16-docs-issue-reconciliation.md`.
 
 ## Deferred By Design
 
@@ -330,14 +338,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Full response pipeline: streaming, files, redirects, cookies, content negotiation,
   compression, keep-alive tuning beyond the bounded HTTP-25.A/B/C defaults, and
   middleware/result filters.
-- #433 `HTTP-25: HTTP/1.1 Keep-Alive and Streaming`: HTTP-25.A/B/C implements the bounded
-  sequential keep-alive connection loop, idle timeout, max requests per connection,
-  lifecycle reset, close policy, and default localhost conformance. HTTP-25.D/E adds
-  bounded chunked request decoding, rejected trailers, an internal/native chunked response
-  writer, pending-write cap diagnostics, and HTTP-25.F bounded keep-alive/streaming
-  stress/conformance. Deferred HTTP-25 work remains any future owner-approved public
-  streaming API, SSE/WebSocket/file streaming, or production hardening. No pipelining, concurrent
-  requests on one connection, or production-edge HTTP claim is implied.
+- HTTP-25 is complete for bounded sequential keep-alive, chunked request decoding,
+  internal/native chunked response writing, and bounded keep-alive/streaming
+  stress/conformance. Remaining HTTP debt is now Roadmap-2 HTTP-26 route-level policy and
+  observability, plus any future owner-approved public streaming API, SSE/WebSocket/file
+  streaming, or production hardening. No pipelining, concurrent requests on one connection,
+  or production-edge HTTP claim is implied.
 - Full route table/trie optimization, catch-all routes, optional segments, regex
   constraints, nested route groups, and ambiguity diagnostics beyond MAIN1-04's
   literal-before-parameter precedence policy.
@@ -403,8 +409,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Reconcile stale GitHub issue labels on closed issues if label hygiene becomes useful for
   reporting.
-- Review #295 for any remaining async diagnostic CLI-format scope after the narrow
-  ENGINE-15.CD renderer contribution.
+- Keep any remaining async diagnostic CLI-format or async stack-remapping work tied to
+  Roadmap-2 diagnostics/observability issues instead of reopening the completed
+  ENGINE-08.B cleanup.
 - Remove duplicate or contradictory "Current Phase" paragraphs as docs continue to evolve.
 
 ## Overengineering Watchlist
