@@ -139,8 +139,9 @@ Missing or inactive `stdlib.time` uses the runtime-feature diagnostics
 
 CORE-TIME-01.C/D/G implements the first runtime-backed subset:
 
-- `__sloppy.time.delay(ms)` posts native timer completion through `SlAsyncLoop`; its worker
-  thread never enters V8, and the owning isolate thread resolves the Promise.
+- `__sloppy.time.delay(ms)` records due requests on a shared Time scheduler for the V8
+  backend. That scheduler never enters V8; it posts owned timer completions through
+  `SlAsyncLoop`, and the owning isolate thread resolves the Promise.
 - `__sloppy.time.monotonicMs()` exposes monotonic milliseconds to the stdlib wrapper for
   deadline accounting.
 - `stdlib/sloppy/time.js` and `runtime-classic.js` implement `Time.delay`, `Time.timeout`,

@@ -326,6 +326,12 @@ const Time = Object.freeze({
         if (timeoutMs === Infinity) {
             throw new InvalidDeadlineError("Time.timeout requires afterMs or deadline.");
         }
+        if (isCancellationSignal(options?.signal) && options.signal.aborted) {
+            return Promise.reject(cancelledError(options.signal.reason));
+        }
+        if (timeoutMs <= 0) {
+            return Promise.reject(timeoutError(options?.deadline));
+        }
 
         if (typeof operationOrPromise === "function") {
             const controller = new CancellationController({ signal: options?.signal });

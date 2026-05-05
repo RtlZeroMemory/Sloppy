@@ -1025,10 +1025,10 @@ artifacts, and missing or incompatible assets fail closed instead of silently fa
 
 `sloppy/time` is Plan-visible through `stdlib.time`. In a V8-enabled runtime with that
 feature active, the private `__sloppy.time` namespace exposes the native delay primitive
-used by `runtime-classic.js` and `stdlib/sloppy/time.js`. Timer workers never enter V8.
-They post owned timer completions to the engine's `SlAsyncLoop`, and the owner-thread
-native async drain resolves the JavaScript Promise. This preserves the existing V8
-owner-thread rule and keeps native timer handles out of JavaScript.
+used by `runtime-classic.js` and `stdlib/sloppy/time.js`. The shared Time scheduler never
+enters V8. It posts owned timer completions to the engine's `SlAsyncLoop`, and the
+owner-thread native async drain resolves JavaScript Promises. This preserves the existing
+V8 owner-thread rule and keeps native timer handles out of JavaScript.
 
 This slice implements `Time.delay`, `Time.timeout`, `Deadline`, `CancellationController`,
 and `Time.yield`. Intervals, scheduled jobs, fake clocks, and integration into FS/provider

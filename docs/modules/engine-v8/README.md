@@ -61,9 +61,9 @@ with bounded non-recursive events. The bridge uses an optional borrowed
 keeps the documented development fallback roots for low-level smoke/source-input tests
 until app-host config wiring supplies project policy.
 CORE-TIME-01.C/D/G installs the private `__sloppy.time` namespace when the active Plan
-enables `stdlib.time`. The native delay worker never enters V8; it posts an owned
-`SL_ASYNC_OPERATION_TIMER` completion to the engine async loop, and the owning isolate
-thread resolves or rejects the Promise during the normal native async drain. Intervals,
+enables `stdlib.time`. The native delay scheduler never enters V8; it posts owned
+`SL_ASYNC_OPERATION_TIMER` completions to the engine async loop, and the owning isolate
+thread resolves or rejects Promises during the normal native async drain. Intervals,
 scheduled jobs, and fake clocks remain later Time slices.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports

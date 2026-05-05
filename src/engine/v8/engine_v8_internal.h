@@ -20,6 +20,7 @@
 #include <v8.h>
 
 #include <array>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -51,7 +52,10 @@ struct SlV8Engine
     std::array<SlAsyncCompletion, 64U> async_completions = {};
     SlAsyncLoop* async_loop = nullptr;
     std::mutex time_mutex;
+    std::condition_variable time_cv;
     std::vector<std::shared_ptr<SlV8TimeRequest>> time_requests;
+    std::thread time_scheduler;
+    bool time_scheduler_started = false;
     bool time_shutting_down = false;
     SlProviderInstanceExecutor fs_executor = {};
     std::array<SlProviderExecutorSlot, 32U> fs_slots = {};
