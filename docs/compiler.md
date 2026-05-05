@@ -64,8 +64,9 @@ TypeScript inference, or new provider runtime bridges.
 
 Compiler diagnostics render a single-line source frame when the extractor already has a
 source span and source text. That renderer is separate from the generated source-map
-artifact; the map now records handler-source mappings, while runtime exception remapping is
-still an ENGINE-15.B task.
+artifact; the map now records handler-source mappings, and ENGINE-15.B consumes those
+Source Map v3 mappings for V8 exception primary spans when the runtime has a validated
+`app.js.map`.
 
 ENGINE-02.E adds the direct run handoff on top of this same compiler pipeline:
 `sloppy run <source>` invokes `sloppyc build`, writes generated artifacts, then enters the
@@ -80,7 +81,8 @@ documented until reuse is implemented.
 The compiler grows from this pipeline in later slices:
 
 1. richer route and app-host metadata;
-2. source-map consumption in runtime diagnostics;
+2. async stack/source-frame diagnostics that build on the V8 exception source-map bridge,
+   while keeping dynamic route strings out of the supported subset;
 3. module extraction;
 4. broader data provider extraction;
 5. V8 bootstrap module loading handoff;
@@ -252,9 +254,9 @@ locations where the compiler has them, and keeps multi-file function-module sour
 same artifact. `app.plan.json` continues to record deterministic `sha256:` hashes for both
 `app.js` and `app.js.map`.
 
-This is compiler evidence only. Runtime/V8 diagnostics still report generated locations
-until ENGINE-15.B consumes the map, and this does not add TypeScript lowering, arbitrary
-bundler source maps, Node/npm resolution, or broader module graph support.
+This remains compiler-artifact evidence. ENGINE-15.B consumes the generated Source Map v3
+mapping table in the V8-gated runtime path, but this does not add TypeScript lowering,
+arbitrary bundler source maps, Node/npm resolution, or broader module graph support.
 
 ## Public CLI Shape
 
@@ -595,10 +597,9 @@ Compiler diagnostics must include:
 
 For current `sloppyc` fixture failures, diagnostics with source spans include a
 deterministic single-line source frame. Diagnostics without spans still render the stable
-path/summary fallback. Richer spans, related compiler locations, and V8/source-map
-exception remapping from generated artifacts remain future work; ENGINE-15.A source maps
-carry real handler mappings plus stable Sloppy metadata, but runtime diagnostics do not
-consume them yet.
+path/summary fallback. Richer spans and related compiler locations remain future work.
+ENGINE-15.A source maps carry real handler mappings plus stable Sloppy metadata, and
+ENGINE-15.B consumes the Source Map v3 mapping table for V8 exception primary spans.
 
 ## Testing Requirements
 

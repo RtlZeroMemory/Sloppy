@@ -108,6 +108,24 @@ static int test_create_invalid_options(void)
         return 14;
     }
 
+    options = noop_options();
+    options.source_map = sl_bytes_from_parts((const unsigned char*)"{}", 2U);
+    if (expect_status(sl_engine_create(&options, &arena, &engine), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        engine != NULL)
+    {
+        return 15;
+    }
+
+    options = noop_options();
+    options.source_map_source_name = sl_str_from_cstr("generated-app.js");
+    if (expect_status(sl_engine_create(&options, &arena, &engine), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        engine != NULL)
+    {
+        return 16;
+    }
+
     return 0;
 }
 

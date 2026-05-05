@@ -129,6 +129,9 @@ Diagnostics:
 - fix hint;
 - golden text;
 - JSON output later.
+- V8-gated source-map remapping tests must verify author-source primary spans, generated
+  fallback when no map is attached, and malformed-map fallback without counting as default
+  non-V8 evidence.
 
 Resource table:
 

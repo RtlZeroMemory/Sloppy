@@ -24,12 +24,16 @@
 
 #include <libplatform/libplatform.h>
 #include <v8.h>
+#include <yyjson.h>
 
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <new>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -44,7 +48,18 @@ struct SlV8MicrotaskDrainGuard
     bool exceeded = false;
 };
 
+struct SlV8SourceMapLocation
+{
+    bool mapped = false;
+    bool malformed = false;
+    std::string path;
+    size_t line = 0U;
+    size_t column = 0U;
+};
+
 thread_local SlV8MicrotaskDrainGuard* g_sl_v8_microtask_guard = nullptr;
+
+SlV8Engine* sl_v8_backend(SlEngine* engine);
 
 SlStr sl_v8_literal(const char* ptr, size_t length)
 {
@@ -238,6 +253,254 @@ std::string sl_v8_stack_summary(v8::Isolate* isolate, v8::Local<v8::Context> con
     return summary;
 }
 
+bool sl_v8_str_equals_string(SlStr left, const std::string& right)
+{
+    return left.length == right.size() &&
+           (left.length == 0U ||
+            (left.ptr != nullptr && memcmp(left.ptr, right.data(), left.length) == 0));
+}
+
+int sl_v8_source_map_base64_value(char ch)
+{
+    if (ch >= 'A' && ch <= 'Z') {
+        return ch - 'A';
+    }
+    if (ch >= 'a' && ch <= 'z') {
+        return ch - 'a' + 26;
+    }
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0' + 52;
+    }
+    if (ch == '+') {
+        return 62;
+    }
+    if (ch == '/') {
+        return 63;
+    }
+    return -1;
+}
+
+bool sl_v8_source_map_decode_vlq(const char* mappings, size_t length, size_t* cursor, int64_t* out)
+{
+    uint64_t value = 0U;
+    unsigned int shift = 0U;
+
+    if (mappings == nullptr || cursor == nullptr || out == nullptr) {
+        return false;
+    }
+
+    while (*cursor < length) {
+        int digit = sl_v8_source_map_base64_value(mappings[*cursor]);
+        bool continuation = false;
+
+        if (digit < 0) {
+            return false;
+        }
+
+        *cursor += 1U;
+        continuation = (digit & 32) != 0;
+        digit &= 31;
+        if (shift >= 64U ||
+            static_cast<uint64_t>(digit) > (std::numeric_limits<uint64_t>::max() >> shift))
+        {
+            return false;
+        }
+        uint64_t part = static_cast<uint64_t>(digit) << shift;
+        if (value > std::numeric_limits<uint64_t>::max() - part) {
+            return false;
+        }
+        value += part;
+        shift += 5U;
+
+        if (!continuation) {
+            uint64_t magnitude = value >> 1U;
+            int64_t decoded = 0;
+            if (magnitude > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+                return false;
+            }
+            decoded = static_cast<int64_t>(magnitude);
+            if ((value & 1) != 0) {
+                decoded = -decoded;
+            }
+            *out = decoded;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool sl_v8_source_map_read_sources(yyjson_val* root, std::vector<std::string>* sources)
+{
+    yyjson_val* source_array = yyjson_obj_get(root, "sources");
+    yyjson_arr_iter iter;
+    yyjson_val* value = nullptr;
+
+    if (sources == nullptr || !yyjson_is_arr(source_array)) {
+        return false;
+    }
+
+    yyjson_arr_iter_init(source_array, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != nullptr) {
+        if (!yyjson_is_str(value)) {
+            return false;
+        }
+        sources->emplace_back(yyjson_get_str(value), yyjson_get_len(value));
+    }
+
+    return !sources->empty();
+}
+
+bool sl_v8_source_map_find_mapping(yyjson_val* root, size_t generated_line, size_t generated_column,
+                                   SlV8SourceMapLocation* out)
+{
+    yyjson_val* mappings_value = yyjson_obj_get(root, "mappings");
+    std::vector<std::string> sources;
+    const char* mappings = nullptr;
+    size_t mappings_length = 0U;
+    size_t cursor = 0U;
+    size_t line = 0U;
+    int64_t previous_source = 0;
+    int64_t previous_original_line = 0;
+    int64_t previous_original_column = 0;
+
+    if (out == nullptr || generated_line == 0U || generated_column == 0U) {
+        return false;
+    }
+
+    if (!yyjson_is_str(mappings_value) || !sl_v8_source_map_read_sources(root, &sources)) {
+        out->malformed = true;
+        return false;
+    }
+
+    mappings = yyjson_get_str(mappings_value);
+    mappings_length = yyjson_get_len(mappings_value);
+    while (cursor <= mappings_length) {
+        int64_t previous_generated_column = 0;
+        bool matched_line = line + 1U == generated_line;
+
+        while (cursor < mappings_length && mappings[cursor] != ';') {
+            int64_t generated_delta = 0;
+            int64_t source_delta = 0;
+            int64_t original_line_delta = 0;
+            int64_t original_column_delta = 0;
+            int64_t current_generated_column = 0;
+
+            if (mappings[cursor] == ',') {
+                cursor += 1U;
+            }
+
+            if (!sl_v8_source_map_decode_vlq(mappings, mappings_length, &cursor, &generated_delta))
+            {
+                out->malformed = true;
+                return false;
+            }
+            current_generated_column = previous_generated_column + generated_delta;
+            previous_generated_column = current_generated_column;
+
+            if (cursor >= mappings_length || mappings[cursor] == ',' || mappings[cursor] == ';') {
+                if (matched_line &&
+                    static_cast<size_t>(current_generated_column) <= generated_column - 1U)
+                {
+                    *out = SlV8SourceMapLocation{};
+                }
+                continue;
+            }
+
+            if (!sl_v8_source_map_decode_vlq(mappings, mappings_length, &cursor, &source_delta) ||
+                !sl_v8_source_map_decode_vlq(mappings, mappings_length, &cursor,
+                                             &original_line_delta) ||
+                !sl_v8_source_map_decode_vlq(mappings, mappings_length, &cursor,
+                                             &original_column_delta))
+            {
+                out->malformed = true;
+                return false;
+            }
+
+            previous_source += source_delta;
+            previous_original_line += original_line_delta;
+            previous_original_column += original_column_delta;
+            if (previous_source < 0 || static_cast<size_t>(previous_source) >= sources.size() ||
+                previous_original_line < 0 || previous_original_column < 0)
+            {
+                out->malformed = true;
+                return false;
+            }
+
+            if (matched_line &&
+                static_cast<size_t>(current_generated_column) <= generated_column - 1U)
+            {
+                out->mapped = true;
+                out->path = sources[static_cast<size_t>(previous_source)];
+                out->line = static_cast<size_t>(previous_original_line) + 1U;
+                out->column = static_cast<size_t>(previous_original_column) + 1U;
+            }
+        }
+
+        if (matched_line) {
+            return out->mapped;
+        }
+
+        if (cursor >= mappings_length) {
+            break;
+        }
+        cursor += 1U;
+        line += 1U;
+    }
+
+    return false;
+}
+
+bool sl_v8_source_map_applies(const SlV8Engine* backend, const std::string& source_name)
+{
+    if (backend == nullptr || backend->source_map.length == 0U ||
+        backend->source_map.ptr == nullptr)
+    {
+        return false;
+    }
+
+    return backend->source_map_source_name.length == 0U ||
+           sl_v8_str_equals_string(backend->source_map_source_name, source_name);
+}
+
+SlV8SourceMapLocation sl_v8_remap_generated_span(const SlV8Engine* backend,
+                                                 const SlSourceSpan& generated_span)
+{
+    SlV8SourceMapLocation result;
+    yyjson_read_err error = {};
+    yyjson_doc* doc = nullptr;
+    yyjson_val* root = nullptr;
+    std::string source_name(generated_span.path.ptr == nullptr ? "" : generated_span.path.ptr,
+                            generated_span.path.length);
+
+    if (!generated_span.has_location || generated_span.line == 0U || generated_span.column == 0U ||
+        !sl_v8_source_map_applies(backend, source_name))
+    {
+        return result;
+    }
+
+    doc = yyjson_read_opts((char*)backend->source_map.ptr, backend->source_map.length, 0U, nullptr,
+                           &error);
+    if (doc == nullptr) {
+        result.malformed = true;
+        return result;
+    }
+
+    root = yyjson_doc_get_root(doc);
+    if (!yyjson_is_obj(root) ||
+        !sl_v8_source_map_find_mapping(root, generated_span.line, generated_span.column, &result))
+    {
+        if (!result.mapped) {
+            result.malformed = result.malformed || !yyjson_is_obj(root);
+        }
+        yyjson_doc_free(doc);
+        return result;
+    }
+
+    yyjson_doc_free(doc);
+    return result;
+}
+
 std::string sl_v8_message_source_name(v8::Isolate* isolate, v8::TryCatch& try_catch,
                                       SlStr fallback_source_name)
 {
@@ -290,11 +553,26 @@ SlStatus sl_v8_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCo
 {
     std::string message = sl_v8_exception_message(isolate, try_catch, fallback_message);
     std::string source_name = sl_v8_message_source_name(isolate, try_catch, fallback_source_name);
-    SlSourceSpan span = sl_v8_exception_span(context, try_catch, source_name);
+    SlSourceSpan generated_span = sl_v8_exception_span(context, try_catch, source_name);
+    SlSourceSpan span = generated_span;
+    SlStr final_hint = hint;
     std::string stack_summary = sl_v8_stack_summary(isolate, context, try_catch);
+    SlV8SourceMapLocation remapped =
+        sl_v8_remap_generated_span(sl_v8_backend(engine), generated_span);
+
+    if (remapped.mapped) {
+        span = sl_source_span_make(sl_v8_str_from_string(remapped.path), remapped.line,
+                                   remapped.column, generated_span.length);
+        final_hint = sl_str_empty();
+    }
+    else if (remapped.malformed) {
+        final_hint = sl_v8_literal(
+            "Malformed source map; reporting the generated JavaScript location.",
+            sizeof("Malformed source map; reporting the generated JavaScript location.") - 1U);
+    }
 
     return sl_v8_write_diag_string_with_span(engine->arena, out_diag, code, failure_code, message,
-                                             span, hint, stack_summary);
+                                             span, final_hint, stack_summary);
 }
 
 void sl_v8_microtask_drain_promise_hook(v8::PromiseHookType type, v8::Local<v8::Promise> promise,
@@ -607,6 +885,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     SlV8Engine* backend = nullptr;
     SlStatus status;
     SlArenaMark mark = {};
+    SlOwnedStr copied_source_map_source_name = {};
 
     if (arena == nullptr || out_engine == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -628,6 +907,23 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->owner_thread = std::this_thread::get_id();
     backend->plan = options == nullptr ? nullptr : options->plan;
     backend->capabilities = options == nullptr ? nullptr : options->capabilities;
+    backend->source_map = options == nullptr ? SlBytes{} : options->source_map;
+    if (options != nullptr && options->source_map_source_name.length > 0U) {
+        status = sl_str_copy_to_arena(arena, options->source_map_source_name,
+                                      &copied_source_map_source_name);
+        if (!sl_status_is_ok(status)) {
+            delete backend;
+            SlStatus reset_status = sl_arena_reset_to(arena, mark);
+            if (!sl_status_is_ok(reset_status)) {
+                return reset_status;
+            }
+            return status;
+        }
+        backend->source_map_source_name = sl_owned_str_as_view(copied_source_map_source_name);
+    }
+    else {
+        backend->source_map_source_name = sl_str_empty();
+    }
 
     status = sl_resource_table_init(&backend->resources, backend->resource_entries.data(),
                                     backend->resource_entries.size());

@@ -120,9 +120,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Source maps and diagnostics completion: ENGINE-15.A now owns the compiler map artifact
   for the supported subset, including multi-file source lists, generated handler mappings,
   source-file hashes, and Sloppy metadata for routes, modules, schemas, providers,
-  capabilities, and effects. ENGINE-15 still owns V8 exception remapping, async diagnostic
-  JSON/source frames, redaction, stable codes, CLI diagnostic format, and diagnostic
-  goldens.
+  capabilities, and effects. ENGINE-15.B now owns the first V8-gated exception primary-span
+  remapping path with honest missing/malformed-map fallback. ENGINE-15 still owns async
+  diagnostic JSON/source frames, redaction, stable codes, CLI diagnostic format, and
+  diagnostic goldens.
 - App/resource lifetime runtime: ENGINE-16 owns app startup/shutdown, request/app scopes,
   resource cleanup, cancellation propagation, leak-oriented hooks, and lifecycle
   diagnostics.
@@ -287,11 +288,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   of using only direct bridge-ready hooks.
 - Provider primitive cleanup follow-up is mapped to #448; PostgreSQL/SQL Server JS bridge
   implementation remains deferred and is not part of immediate next-wave work.
-- Source map consumption for TypeScript remapping from V8 exceptions. ENGINE-02 emits
-  handler-line source maps, but MAIN1-05 still reports generated `app.js` line/column
-  because runtime diagnostics do not consume those maps yet. ENGINE-07 did not claim
-  source-map remapping; lifecycle/async diagnostics remain stable generated-location
-  diagnostics until ENGINE-08 consumes maps for real.
+- Source map consumption beyond V8 exception primary spans. ENGINE-15.B consumes compiler
+  Source Map v3 mappings for V8 compile/eval/call exceptions, but async stacks, source
+  frames, arbitrary bundler maps, and broader TypeScript remapping remain deferred.
 - Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
   drain behavior beyond the current idempotent close, thread-safety contract, and richer
   diagnostics.
@@ -450,8 +449,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 ## ENGINE-14 Follow-ups
 
 - Source-map diagnostics are multi-file at compiler artifact level with stable Sloppy
-  metadata, but runtime remapping, V8 exception consumption, and richer code-frame
-  diagnostics remain part of the source-map diagnostics completion track.
+  metadata, and V8 exception primary spans consume Source Map v3 mappings when available.
+  Richer code-frame diagnostics and async stack remapping remain part of the source-map
+  diagnostics completion track.
 - Full V8 native ESM loading, dynamic import, package/module distribution, and
   package-manager behavior remain intentionally deferred.
 - Function modules support the framework MVP route shape only: direct app-parameter routes
