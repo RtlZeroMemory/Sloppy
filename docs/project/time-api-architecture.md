@@ -1,12 +1,13 @@
 # Time API Architecture
 
-Status: CORE-TIME-01.A/B source of truth. This document defines the intended first
-`sloppy/time` API contract, feature metadata, diagnostics, and implementation boundaries.
-The examples in this document are illustrative contract examples for the current API shape.
-Runtime/native implementation, including native timers, V8 promise settlement, intervals,
-fake clocks, FS integration, executable examples, and conformance, lands in later
+Status: CORE-TIME-01.A/B/C/D/G source of truth. This document defines the intended first
+`sloppy/time` API contract, feature metadata, diagnostics, implementation boundaries, and
+the first V8-backed runtime surface. The examples in this document are illustrative
+contract examples for the current API shape. Native delay, timeout, deadline, cancellation,
+and V8 owner-thread Promise settlement are implemented; intervals, scheduled jobs, fake
+clocks, FS integration, executable examples, and final conformance land in later
 CORE-TIME-01 slices. The interval, scheduled-job, and fake-clock contract semantics are
-locked here.
+locked here but their runtime implementation remains deferred.
 
 ## Goals
 
@@ -30,8 +31,8 @@ The runtime feature descriptor is `stdlib.time`. The compiler emits that feature
 non-type, non-namespace named imports from `sloppy/time`, such as
 `import { Time } from "sloppy/time"`. Namespace imports, default imports, side-effect
 imports, and TypeScript type-only imports do not activate the feature in the Plan. The
-future V8 bridge namespace is `__sloppy.time` and is registered only when the active Plan
-enables `stdlib.time`.
+V8 bridge namespace is `__sloppy.time` and is registered only when the active Plan enables
+`stdlib.time`.
 
 ## API Shape
 
@@ -78,8 +79,9 @@ explicit provider override; ordinary app timers use the system clock.
 
 ## Semantics
 
-- `Time.delay(ms, options?)` resolves once after a non-negative finite delay, or rejects
-  with `CancelledError`, `TimeoutError`, `InvalidDeadlineError`, or `TimerDisposedError`.
+- `Time.delay(ms, options?)` resolves once after a non-negative finite delay up to
+  `4_294_967_295` milliseconds, or rejects with `CancelledError`, `TimeoutError`,
+  `InvalidDeadlineError`, or `TimerDisposedError`.
 - `Time.timeout(operationOrPromise, options)` supports Promise convenience form and
   function-with-signal form. Only the function form can propagate cancellation into user
   work; the Promise form may stop waiting without claiming to cancel arbitrary Promises.
@@ -133,6 +135,25 @@ Missing or inactive `stdlib.time` uses the runtime-feature diagnostics
 - Late completions check terminal state and become cleanup-only.
 - Evidence lanes remain separate: default, V8-gated, package, live-provider,
   stress/torture, and benchmark.
+
+## Implemented Runtime Surface
+
+CORE-TIME-01.C/D/G implements the first runtime-backed subset:
+
+- `__sloppy.time.delay(ms)` records due requests on a shared Time scheduler for the V8
+  backend. That scheduler never enters V8; it posts owned timer completions through
+  `SlAsyncLoop`, and the owning isolate thread resolves the Promise.
+- `__sloppy.time.monotonicMs()` exposes monotonic milliseconds to the stdlib wrapper for
+  deadline accounting.
+- `stdlib/sloppy/time.js` and `runtime-classic.js` implement `Time.delay`, `Time.timeout`,
+  `Time.yield`, `Deadline.after`, `Deadline.at`, `Deadline.never`, and
+  `CancellationController`.
+- Missing or inactive `stdlib.time` remains fail-closed; the private `__sloppy.time`
+  namespace is not registered unless the active Plan enables `stdlib.time`.
+
+The native delay primitive does not expose timer handles to JavaScript. JavaScript
+deadline/cancellation wrappers settle the user-facing Promise deterministically; later
+timer completions become cleanup-only on the native side.
 
 ## Non-Goals
 

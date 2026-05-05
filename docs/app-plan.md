@@ -93,8 +93,10 @@ metadata plus explicit `requiredFeatures[]`; the runtime does not add package-ma
 semantics or arbitrary import resolution. CORE-FS-01.A/B adds the `stdlib.fs` descriptor
 and lets the compiler emit that required feature when source imports `sloppy/fs`.
 CORE-TIME-01.A/B adds the `stdlib.time` descriptor and lets the compiler emit that
-required feature when source imports `sloppy/time`. CORE-FS-01.C/D/H consumes the active
-feature to install the first core `__sloppy.fs` V8 bridge and stdlib `File` wrappers.
+required feature when source imports `sloppy/time`. CORE-TIME-01.C/D/G consumes the active
+feature to install the private `__sloppy.time` V8 bridge for native delay and monotonic
+deadline accounting. CORE-FS-01.C/D/H consumes the active feature to install the first core
+`__sloppy.fs` V8 bridge and stdlib `File` wrappers.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same

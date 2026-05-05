@@ -620,13 +620,13 @@ cancellation are provider-specific future integrations. Late provider completion
 cancellation is ignored for settlement and used only for safe cleanup.
 
 Timeout/deadline is distinct from caller cancellation. A timeout is a runtime deadline
-terminal state and uses a deterministic deadline/timeout status and diagnostic. Timers are
-owned by the backend layer when real timer wakeups are wired. CORE-TIME-01.A/B defines the
-public `sloppy/time` contract and reserves the stable diagnostics for timeout,
-cancellation, disposed timers, invalid delays, expired deadlines, interval overflow,
-skipped scheduled runs, and fake-clock misuse. CORE-TIME-01.C/D/G must wire real timer
-wakeups through the owner-thread scheduler; late completion after timeout is cleanup-only
-and must not double-settle.
+terminal state and uses a deterministic deadline/timeout status and diagnostic.
+CORE-TIME-01.A/B defines the public `sloppy/time` contract and reserves the stable
+diagnostics for timeout, cancellation, disposed timers, invalid delays, expired deadlines,
+interval overflow, skipped scheduled runs, and fake-clock misuse. CORE-TIME-01.C/D/G wires
+native delay wakeups through the V8 owner-thread scheduler: the shared Time scheduler posts
+`SL_ASYNC_OPERATION_TIMER` completions and never enters V8 directly. Late completion after
+JavaScript timeout/cancellation is cleanup-only and must not double-settle.
 
 The HTTP backend foundation has read/header/request timeout configuration fields and an
 explicit request timeout hook. ENGINE-13.D/E makes body reads observe that request token:

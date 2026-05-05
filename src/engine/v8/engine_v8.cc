@@ -843,6 +843,7 @@ bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> contex
     if (!sl_v8_install_provider_intrinsics(backend, context, data) ||
         !sloppy->Set(context, data_key, data).FromMaybe(false) ||
         !sl_v8_install_fs_intrinsics(backend, context, sloppy) ||
+        !sl_v8_install_time_intrinsics(backend, context, sloppy) ||
         !context->Global()->Set(context, sloppy_key, sloppy).FromMaybe(false))
     {
         return false;
@@ -905,19 +906,38 @@ bool sl_v8_fs_feature_enabled(const SlV8Engine* backend)
            sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_FS);
 }
 
-SlStatus sl_v8_init_fs_async(SlV8Engine* backend, SlArena* arena)
+bool sl_v8_time_feature_enabled(const SlV8Engine* backend)
+{
+    return backend != nullptr && backend->has_runtime_features &&
+           sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_TIME);
+}
+
+bool sl_v8_needs_async_loop(const SlV8Engine* backend)
+{
+    return backend != nullptr &&
+           (sl_v8_fs_feature_enabled(backend) || sl_v8_time_feature_enabled(backend));
+}
+
+SlStatus sl_v8_init_async_features(SlV8Engine* backend, SlArena* arena)
 {
     SlProviderExecutorConfig config = {};
     SlStatus status;
 
-    if (backend == nullptr || arena == nullptr || !sl_v8_fs_feature_enabled(backend)) {
+    if (backend == nullptr || arena == nullptr) {
         return sl_status_ok();
     }
 
-    status = sl_async_loop_create(SL_ASYNC_BACKEND_LIBUV, arena, backend->async_completions.data(),
-                                  backend->async_completions.size(), &backend->async_loop);
-    if (!sl_status_is_ok(status)) {
-        return status;
+    if (sl_v8_needs_async_loop(backend)) {
+        status =
+            sl_async_loop_create(SL_ASYNC_BACKEND_LIBUV, arena, backend->async_completions.data(),
+                                 backend->async_completions.size(), &backend->async_loop);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    if (!sl_v8_fs_feature_enabled(backend)) {
+        return sl_status_ok();
     }
 
     config.instance_id = sl_str_from_cstr("stdlib.fs");
@@ -933,6 +953,7 @@ SlStatus sl_v8_init_fs_async(SlV8Engine* backend, SlArena* arena)
     status = sl_provider_executor_init(&backend->fs_executor, arena, &config,
                                        backend->fs_slots.data(), backend->async_loop);
     if (!sl_status_is_ok(status)) {
+        sl_v8_time_dispose(backend);
         sl_async_loop_dispose(backend->async_loop);
         backend->async_loop = nullptr;
         return status;
@@ -1014,7 +1035,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         return sl_v8_reset_create_arena(arena, mark, status);
     }
 
-    status = sl_v8_init_fs_async(backend, arena);
+    status = sl_v8_init_async_features(backend, arena);
     if (!sl_status_is_ok(status)) {
         sl_resource_table_dispose(&backend->resources);
         delete backend;
@@ -1028,6 +1049,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             sl_provider_executor_dispose(&backend->fs_executor);
         }
         if (backend->async_loop != nullptr) {
+            sl_v8_time_dispose(backend);
             sl_async_loop_dispose(backend->async_loop);
         }
         delete backend;
@@ -1043,6 +1065,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             sl_provider_executor_dispose(&backend->fs_executor);
         }
         if (backend->async_loop != nullptr) {
+            sl_v8_time_dispose(backend);
             sl_async_loop_dispose(backend->async_loop);
         }
         delete backend->allocator;
@@ -1065,6 +1088,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
                 sl_provider_executor_dispose(&backend->fs_executor);
             }
             if (backend->async_loop != nullptr) {
+                sl_v8_time_dispose(backend);
                 sl_async_loop_dispose(backend->async_loop);
             }
             delete backend->allocator;
@@ -1085,6 +1109,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             sl_provider_executor_dispose(&backend->fs_executor);
         }
         if (backend->async_loop != nullptr) {
+            sl_v8_time_dispose(backend);
             sl_async_loop_dispose(backend->async_loop);
         }
         delete backend->allocator;
@@ -1129,6 +1154,7 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
             backend->fs_executor_initialized = false;
         }
         if (backend->async_loop != nullptr) {
+            sl_v8_time_dispose(backend);
             sl_async_loop_dispose(backend->async_loop);
             backend->async_loop = nullptr;
         }

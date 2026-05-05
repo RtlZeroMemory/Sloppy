@@ -340,6 +340,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/string_interop.cc
         src/engine/v8/intrinsics.cc
         src/engine/v8/intrinsics_fs.cc
+        src/engine/v8/intrinsics_time.cc
         src/engine/v8/intrinsics_sqlite.cc)
 endif()
 

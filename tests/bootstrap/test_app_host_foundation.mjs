@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 
-import { Sloppy, Results, schema } from "../../stdlib/sloppy/index.js";
+import {
+    CancelledError,
+    CancellationController,
+    Deadline,
+    InvalidDeadlineError,
+    Results,
+    Sloppy,
+    Time,
+    TimerDisposedError,
+    TimeoutError,
+    schema,
+} from "../../stdlib/sloppy/index.js";
 import { sqlite } from "../../stdlib/sloppy/providers/sqlite.js";
 
 function assertThrowsMessage(fn, expected) {
@@ -8,6 +19,88 @@ function assertThrowsMessage(fn, expected) {
         assert.match(String(error.message), expected);
         return true;
     });
+}
+
+{
+    const deadline = Deadline.after(50);
+    assert.equal(deadline.kind, "after");
+    assert.equal(deadline.expired, false);
+    assert.equal(typeof deadline.remainingMs(), "number");
+    assert.equal(Deadline.never().remainingMs(), Infinity);
+
+    const controller = new CancellationController();
+    let observedReason = undefined;
+    controller.signal.addEventListener("abort", () => {
+        observedReason = controller.signal.reason;
+    });
+    assert.equal(controller.cancel("done"), true);
+    assert.equal(controller.cancel("again"), false);
+    assert.equal(controller.signal.aborted, true);
+    assert.equal(controller.signal.reason, "done");
+    assert.equal(observedReason, "done");
+    assert.throws(() => controller.signal.throwIfCancelled(), CancelledError);
+
+    const fanoutController = new CancellationController();
+    let fanoutObserved = false;
+    fanoutController.signal.addEventListener("abort", () => {
+        throw new Error("listener failed");
+    });
+    fanoutController.signal.addEventListener("abort", () => {
+        fanoutObserved = true;
+    });
+    assert.throws(() => fanoutController.cancel("fanout"), AggregateError);
+    assert.equal(fanoutObserved, true);
+
+    await assert.rejects(Time.delay(10, { signal: controller.signal }), CancelledError);
+    let cancelledTimeoutInvoked = false;
+    await assert.rejects(
+        Time.timeout(
+            () => {
+                cancelledTimeoutInvoked = true;
+            },
+            { afterMs: 10, signal: controller.signal },
+        ),
+        CancelledError,
+    );
+    assert.equal(cancelledTimeoutInvoked, false);
+
+    let expiredTimeoutInvoked = false;
+    await assert.rejects(
+        Time.timeout(
+            () => {
+                expiredTimeoutInvoked = true;
+            },
+            { afterMs: 0 },
+        ),
+        TimeoutError,
+    );
+    assert.equal(expiredTimeoutInvoked, false);
+
+    assert.throws(() => Time.delay(-1), InvalidDeadlineError);
+    assert.throws(() => Time.delay(0x100000000), InvalidDeadlineError);
+
+    const previousSloppy = globalThis.__sloppy;
+    try {
+        globalThis.__sloppy = {
+            time: {
+                delay() {
+                    return Promise.reject(new Error("Sloppy timer was disposed before completion"));
+                },
+                monotonicMs() {
+                    return Date.now();
+                },
+            },
+        };
+        await assert.rejects(Time.delay(1), TimerDisposedError);
+    } finally {
+        if (previousSloppy === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previousSloppy;
+        }
+    }
+
+    assertThrowsMessage(() => Time.fakeClock(), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE/);
 }
 
 {
