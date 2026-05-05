@@ -111,16 +111,18 @@ Closed during this reset or immediately before it:
 
 Kept open intentionally:
 
-- #259/#302 compiler/source-input handoff, with ENGINE-02.E covering the current
-  rebuild-always JavaScript shortcut and leaving TypeScript/module/cache reuse follow-ups;
-- #316/#345-#349 CLI/dev loop runtime;
+- #259 compiler/source-input parent remains open; #302/#346 are closed for the current
+  rebuild-always JavaScript shortcut, leaving TypeScript/module/cache reuse follow-ups;
+- #316 CLI/dev loop parent, with #345 and #349 still open for artifact inspection,
+  watch/dev-loop, and command-diagnostic cleanup;
 - #318/#355-#359 Strong Plan strategic layer;
 - #268/#300/#301 public alpha readiness and non-claims review.
 
 Previously created for the owner-approved post-Core next wave, now completed or kept as
 historical evidence where closed:
 
-- #432/#435-#440 FRAMEWORK-01 framework/app-layer source-of-truth and ergonomics;
+- #432 FRAMEWORK-01 framework/app-layer parent, with #437-#439 still open for request
+  binding, validation/error responses, and response model completion;
 - #433/#441-#446 HTTP-25 HTTP/1.1 keep-alive, chunked request decoding, internal
   streaming response writing, and bounded stress/conformance evidence;
 - #434/#447/#448 HARDEN-01 post-Core foundation hardening, with #431 and #26 reused for

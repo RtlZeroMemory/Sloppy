@@ -60,6 +60,15 @@ boundaries documented in `docs/project/engine-framework-contract.md`.
 - #439 covers Results/response model completion.
 - #440 covers examples hardening after the runtime path is honest.
 
+## FRAMEWORK-01.A Status
+
+Issue #435 is completed as the design-lock slice. `docs/project/framework-api-shape.md`
+is the compact source of truth for the Minimal API, function modules, explicit provider
+imports, generated capabilities, layered Plan-visible config, request binding helpers,
+explicit `Results.*`, and Plan-first DSL extraction. This was a contract/docs closure
+only; runtime request binding, validation/error responses, and response model completion
+remain #437 through #439.
+
 ## FRAMEWORK-01.B Status
 
 Issue #436 now has the first implementation: built-in defaults, `appsettings.json`,
