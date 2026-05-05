@@ -1167,6 +1167,16 @@ static int test_lifecycle_leak_hooks_snapshot_zero_after_cleanup(void)
     SlAppLifecycleSnapshot app_snapshot = {0};
     SlAppRequestScopeSnapshot request_snapshot = {0};
 
+    if (expect_status(sl_app_lifecycle_assert_no_leaks(NULL, &diag), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        diag.code != SL_DIAG_INVALID_ARGUMENT ||
+        expect_status(sl_app_request_scope_assert_no_leaks(NULL, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_INVALID_ARGUMENT)
+    {
+        return 129;
+    }
+
     if (expect_status(sl_app_lifecycle_start_with_id(&lifecycle, app_storage, 2U, 700U, &diag),
                       SL_STATUS_OK) != 0 ||
         expect_status(sl_app_lifecycle_add_cleanup(&lifecycle, record_cleanup, &app_cleanup_value,

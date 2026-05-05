@@ -13,8 +13,6 @@
 extern "C" {
 #endif
 
-#define SL_RESOURCE_KIND_COUNT 6U
-
 /*
  * Resource IDs are the only native handle shape that future JavaScript bridge code may
  * expose. They are plain slot/generation values and never contain native pointers.
@@ -35,8 +33,11 @@ typedef enum SlResourceKind
     SL_RESOURCE_KIND_SQLITE_STATEMENT = 2,
     SL_RESOURCE_KIND_POSTGRES_CONNECTION = 3,
     SL_RESOURCE_KIND_SQLSERVER_CONNECTION = 4,
-    SL_RESOURCE_KIND_TEST_RESOURCE = 5
+    SL_RESOURCE_KIND_TEST_RESOURCE = 5,
+    SL_RESOURCE_KIND_LIMIT = 6
 } SlResourceKind;
+
+#define SL_RESOURCE_KIND_COUNT ((size_t)SL_RESOURCE_KIND_LIMIT)
 
 typedef void (*SlResourceCleanupFn)(void* ptr, void* user);
 

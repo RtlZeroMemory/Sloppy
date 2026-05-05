@@ -916,11 +916,19 @@ SlAppLifecycleSnapshot sl_app_lifecycle_snapshot(const SlAppLifecycle* lifecycle
 
 SlStatus sl_app_lifecycle_assert_no_leaks(const SlAppLifecycle* lifecycle, SlDiag* out_diag)
 {
-    SlAppLifecycleSnapshot snapshot = sl_app_lifecycle_snapshot(lifecycle);
+    SlAppLifecycleSnapshot snapshot = {0};
 
     if (out_diag != NULL) {
         *out_diag = (SlDiag){0};
     }
+    if (lifecycle == NULL) {
+        return sl_app_lifecycle_diag_code(
+            out_diag, SL_DIAG_INVALID_ARGUMENT,
+            sl_app_host_literal("app lifecycle leak hook requires a lifecycle",
+                                sizeof("app lifecycle leak hook requires a lifecycle") - 1U),
+            sl_str_empty(), SL_STATUS_INVALID_ARGUMENT);
+    }
+    snapshot = sl_app_lifecycle_snapshot(lifecycle);
     if (snapshot.active_request_scopes == 0U && snapshot.app_cleanup_count == 0U &&
         snapshot.active_app_scopes == 0U)
     {
@@ -1311,11 +1319,22 @@ SlAppRequestScopeSnapshot sl_app_request_scope_snapshot(const SlAppRequestScope*
 SlStatus sl_app_request_scope_assert_no_leaks(const SlAppRequestScope* request_scope,
                                               SlDiag* out_diag)
 {
-    SlAppRequestScopeSnapshot snapshot = sl_app_request_scope_snapshot(request_scope);
+    SlAppRequestScopeSnapshot snapshot = {0};
 
     if (out_diag != NULL) {
         *out_diag = (SlDiag){0};
     }
+    if (request_scope == NULL) {
+        if (out_diag != NULL) {
+            out_diag->severity = SL_DIAG_SEVERITY_ERROR;
+            out_diag->code = SL_DIAG_INVALID_ARGUMENT;
+            out_diag->message = sl_app_host_literal(
+                "request scope leak hook requires a request scope",
+                sizeof("request scope leak hook requires a request scope") - 1U);
+        }
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    snapshot = sl_app_request_scope_snapshot(request_scope);
     if (!snapshot.active && snapshot.request_cleanup_count == 0U) {
         return sl_status_ok();
     }

@@ -79,11 +79,18 @@ typedef struct SlAppLifecycle
     size_t late_completion_count;
 } SlAppLifecycle;
 
+/*
+ * Test/debug snapshot of current lifecycle state. Counts are point-in-time diagnostics,
+ * not atomic counters or peaks. Reserved operation counters remain zero until their
+ * runtime owners integrate with app-host lifetime tracking.
+ */
 typedef struct SlAppLifecycleSnapshot
 {
     SlAppLifecycleState state;
     uint64_t app_id;
+    /* One while the lifecycle itself is open; zero after stopped/failed cleanup. */
     size_t active_app_scopes;
+    /* Includes normal draining requests and forced-shutdown request scopes not yet closed. */
     size_t active_request_scopes;
     size_t app_cleanup_count;
     size_t cleanup_count;
@@ -141,6 +148,10 @@ typedef struct SlAppRequestScope
     bool terminal;
 } SlAppRequestScope;
 
+/*
+ * Test/debug snapshot of one request scope. Counts are current request-local diagnostics;
+ * `active_request_scopes` mirrors the owning lifecycle when one exists.
+ */
 typedef struct SlAppRequestScopeSnapshot
 {
     uint64_t app_id;

@@ -27,7 +27,7 @@ static SlStr sl_resource_literal(const char* ptr, size_t length)
 
 static bool sl_resource_kind_is_valid(SlResourceKind kind)
 {
-    return kind != SL_RESOURCE_KIND_NONE;
+    return kind != SL_RESOURCE_KIND_NONE && kind < SL_RESOURCE_KIND_LIMIT;
 }
 
 static bool sl_resource_capacity_is_valid(size_t capacity)
@@ -506,11 +506,21 @@ SlResourceTableSnapshot sl_resource_table_snapshot(const SlResourceTable* table)
 
 SlStatus sl_resource_table_assert_no_leaks(const SlResourceTable* table, SlDiag* out_diag)
 {
-    SlResourceTableSnapshot snapshot = sl_resource_table_snapshot(table);
+    SlStatus table_status = sl_resource_validate_table(table);
+    SlResourceTableSnapshot snapshot = {0};
 
     if (out_diag != NULL) {
         *out_diag = (SlDiag){0};
     }
+    if (!sl_status_is_ok(table_status)) {
+        sl_resource_diag(out_diag, SL_DIAG_RESOURCE_INVALID_ID,
+                         sl_resource_literal("resource table is not initialized",
+                                             sizeof("resource table is not initialized") - 1U),
+                         sl_resource_id_invalid(), SL_RESOURCE_KIND_NONE, SL_RESOURCE_KIND_NONE,
+                         sl_resource_literal("leak check", sizeof("leak check") - 1U));
+        return table_status;
+    }
+    snapshot = sl_resource_table_snapshot(table);
     if (snapshot.live_count == 0U) {
         return sl_status_ok();
     }

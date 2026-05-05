@@ -460,6 +460,7 @@ static int test_exhaustion_cleanup_and_dispose(void)
 
 static int test_snapshot_and_leak_assertion(void)
 {
+    SlResourceTable uninitialized = {0};
     SlResourceEntry storage[3];
     SlResourceTable table = {0};
     CleanupRecord record = {{0}, {0}, 0U};
@@ -469,6 +470,16 @@ static int test_snapshot_and_leak_assertion(void)
     SlResourceId second = sl_resource_id_invalid();
     SlResourceTableSnapshot snapshot = {0};
     SlDiag diag = {0};
+
+    if (expect_status(sl_resource_table_assert_no_leaks(NULL, &diag), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID ||
+        expect_status(sl_resource_table_assert_no_leaks(&uninitialized, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID)
+    {
+        return 48;
+    }
 
     if (expect_status(sl_resource_table_init(&table, storage, 3U), SL_STATUS_OK) != 0 ||
         expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_TEST_RESOURCE,
