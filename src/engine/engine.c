@@ -30,12 +30,19 @@ static bool sl_engine_str_valid(SlStr str)
     return str.length == 0U || str.ptr != NULL;
 }
 
+static bool sl_engine_bytes_valid(SlBytes bytes)
+{
+    return bytes.length == 0U || bytes.ptr != NULL;
+}
+
 static bool sl_engine_options_valid(const SlEngineOptions* options)
 {
     return options != NULL && sl_engine_str_valid(options->runtime_name) &&
            sl_engine_str_valid(options->runtime_version) &&
            sl_engine_str_valid(options->target_platform) &&
-           sl_engine_str_valid(options->target_engine);
+           sl_engine_str_valid(options->target_engine) &&
+           sl_engine_bytes_valid(options->source_map) &&
+           sl_engine_str_valid(options->source_map_source_name);
 }
 
 static SlStatus sl_engine_write_unsupported_diag(SlArena* arena, SlDiag* out_diag, SlStr message,

@@ -173,6 +173,10 @@ fields while rejecting unknown required features.
 ENGINE-15.A compiler source-map changes must refresh deterministic `app.js.map` goldens,
 verify source-input run emits Sloppy source-map metadata, and report that default non-V8
 gates do not prove V8 exception remapping.
+ENGINE-15.B V8 exception-remapping changes must run in the V8-gated lane. Required evidence
+includes source-map-remapped exception spans, generated-location fallback when no map
+applies, malformed-map fallback, and a clear statement that default non-V8 gates did not
+execute V8 remapping.
 Plan-driven CLI consumer changes must keep process goldens deterministic for text and JSON
 output, include audit nonzero coverage when ERROR findings are emitted, cover OpenAPI
 partial metadata and Slop extensions, and keep runtime execution, V8, live-provider,
@@ -522,6 +526,10 @@ process tests are compiled and linked only in that V8-enabled build. Passing def
 does not prove V8 smoke, owner-thread, lifecycle, Promise-policy, or bootstrap runtime
 tests passed; the V8-enabled configure/build/test commands must be run and reported
 separately.
+ENGINE-15.B adds V8 source-map remapping evidence to this lane. Passing it proves only the
+bounded V8 exception primary-span remapping path for compiler-emitted maps; it does not
+prove arbitrary bundler maps, async stack remapping, IDE source frames, package-manager
+behavior, or public alpha readiness.
 
 Phase 1 CTest expectations:
 

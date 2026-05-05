@@ -26,12 +26,7 @@ This document covers:
 
 ## Non-Goals
 
-The foundation phase does not implement:
-
-- source map parser;
-- V8 exception source-map remapping;
-- localization;
-- IDE protocol integration.
+The foundation phase does not implement localization or IDE protocol integration.
 
 ## Current Phase
 
@@ -388,14 +383,18 @@ Runtime exception flow:
 
 1. V8 reports generated JavaScript location;
 2. V8 bridge captures exception and stack;
-3. diagnostic reports the generated JavaScript file/span when V8 provides one;
-4. bounded stack text may appear as related detail when available;
-5. runtime source-map consumption and original TypeScript spans remain deferred.
+3. when a validated compiler source map is attached for that generated app source, the V8
+   bridge remaps the diagnostic primary span to the author source;
+4. when no applicable map exists or the map is malformed, the diagnostic reports the
+   generated JavaScript file/span honestly;
+5. bounded stack text may appear as related generated-context detail when available.
 
 ENGINE-15.A completes the compiler source-map side for the supported subset: generated
 maps include normal Source Map v3 handler mappings plus deterministic `x_sloppy` metadata
 for source files, routes, modules, schemas, providers, capabilities, and inferred effects.
-V8 exception source-map remapping remains deferred to ENGINE-15.B. MAIN1-06 source frames
+ENGINE-15.B consumes the Source Map v3 `mappings` table for V8 compile/eval/call
+exception primary spans. Missing maps, malformed maps, and uncovered generated locations
+fall back to generated spans instead of inventing author locations. MAIN1-06 source frames
 do not parse source maps, and ENGINE-07 lifecycle/async diagnostics do not rewrite
 generated V8 stack locations to original TypeScript locations.
 
@@ -711,7 +710,8 @@ Diagnostic tests must include:
 output/fallback, stable code/severity mapping, related spans, hints, and representative
 secret redaction. Compiler golden diagnostics cover source frames where `sloppyc` already
 has source spans. Compiler source-map goldens cover deterministic `x_sloppy` metadata.
-Runtime source-map remapping remains deferred.
+V8-gated engine smoke tests cover source-map remapping, missing-map generated fallback, and
+malformed-map fallback without reporting V8 success from the default lane.
 
 ## Quality Gates
 
@@ -730,8 +730,9 @@ Runtime source-map remapping remains deferred.
 5. Add examples from this document as fixtures. Started with missing service and invalid
    plan version.
 6. Add JSON output only after plain text stabilizes. Done for single diagnostics.
-7. Add source map mapping after compiler artifacts exist. Deferred to MAIN1-05 for V8
-   exception remapping and later compiler span fidelity work.
+7. Add source map mapping after compiler artifacts exist. Done for V8 exception primary
+   spans in ENGINE-15.B; async stack/source frames and broader compiler span fidelity remain
+   later work.
 
 ## Acceptance Criteria
 

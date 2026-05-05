@@ -114,14 +114,14 @@ Implemented now:
 Later scope:
 
 - true V8 ESM module loading and a production module cache;
-- richer source-map remapping for generated app modules;
+- async stack remapping and rich source-frame rendering for generated app modules;
 - mapping real provider/HTTP/timer completions onto the new async backend. ENGINE-12.AB
   proves the transport/scheduler boundary with native test completions only; it does not
   add timers, fetch, Node APIs, or public async sources;
 - ENGINE-12 follow-up work after ENGINE-12.CD: full SQLite runtime completion through the
   provider-instance executor model, HTTP-specific disconnect/shutdown integration, and
   stress evidence for many pending operations without benchmark claims;
-- runtime source-map remapping now that compiler source maps contain handler mappings.
+- broad runtime source-map remapping beyond V8 exception primary spans.
 
 ## Non-goals
 
@@ -179,6 +179,9 @@ Current behavior:
 - `sl_engine_info` returns stable noop metadata for active noop engines;
 - `SL_ENGINE_KIND_V8` creates a V8 isolate/context only when V8 is enabled at configure
   time; otherwise it returns `SL_STATUS_UNSUPPORTED`;
+- V8 creation may borrow the already-validated `app.js.map` bytes plus the generated source
+  label they apply to. The bridge uses those bytes only for diagnostics and only when a V8
+  exception originates from that generated app source;
 - `sl_engine_eval_source` evaluates borrowed classic JavaScript source strings in the
   engine context, using `source_name` as the generated JavaScript diagnostic label;
 - `sl_engine_call_function0` looks up a named global function, calls it with no arguments,
@@ -488,16 +491,16 @@ intrinsic failures such as invalid `__sloppy_register_handler(...)`
 arguments or duplicate handler registration are reported as `SL_DIAG_ENGINE_EXCEPTION`
 because they are raised while evaluating the app module.
 
-The mapping is intentionally basic. It captures V8 exception message text, generated
+The mapping is intentionally bounded. It captures V8 exception message text, generated
 source/resource name when available, 1-based line and column when V8 reports them, and a
 bounded stack string as a related note when practical. V8 reports start columns as
-zero-based; the bridge converts them to Sloppy's 1-based diagnostic column convention. No
-runtime source-map consumption, TypeScript remapping, rich code frames, async stack policy,
-route/handler context beyond the current generated-source labels, Node compatibility, or
-package-manager behavior is implemented here.
-Compiler `app.js.map` files now include deterministic handler mappings, but V8 runtime
-diagnostics still report generated `app.js` labels and locations until runtime remapping
-consumes those maps.
+zero-based; the bridge converts them to Sloppy's 1-based diagnostic column convention.
+ENGINE-15.B adds Source Map v3 `mappings` consumption for compile/eval/call exception
+primary spans when `sloppy run` has already validated `app.js.map`. Successful remaps use
+the author source as the primary span; missing maps, malformed maps, and uncovered
+locations keep the generated span and do not fake source awareness. No arbitrary bundler
+maps, rich code frames, async stack policy, Node compatibility, or package-manager behavior
+is implemented here.
 
 ## Tests
 
@@ -517,7 +520,8 @@ Current checks:
 - `engine.v8.smoke` is registered only when V8 is enabled and covers classic script
   evaluation, global function call returning `sloppy-ok`, syntax-error diagnostics,
   missing function diagnostics, non-callable global diagnostics, thrown function
-  diagnostics, unsupported result diagnostics, handler intrinsic misuse, duplicate handler
+  diagnostics, source-map-remapped thrown function and registered-handler diagnostics,
+  malformed-map generated fallback, unsupported result diagnostics, handler intrinsic misuse, duplicate handler
   registration, missing registered handler diagnostics, registered handler context
   dispatch, Promise fulfillment/rejection/pending behavior, stable JSON rendering for a
   Promise rejection diagnostic, cancellation/deadline context snapshots, request-scope

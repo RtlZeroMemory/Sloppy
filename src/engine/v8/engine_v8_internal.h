@@ -32,6 +32,8 @@ struct SlV8Engine
     /* Non-owning app metadata; both referenced objects must outlive this engine. */
     const SlPlan* plan = nullptr;
     const SlCapabilityRegistry* capabilities = nullptr;
+    SlBytes source_map = {};
+    SlStr source_map_source_name = {};
     std::array<SlResourceEntry, 64U> resource_entries = {};
     SlResourceTable resources = {};
 };

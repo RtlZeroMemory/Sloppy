@@ -13,6 +13,8 @@ valid SDK. Default non-V8 gates do not prove this lane.
 - explicit-length string interop, UTF-8 copying, and generated-source diagnostics;
 - compile errors, missing/non-callable functions, thrown handlers, unsupported results,
   and invalid result headers;
+- Source Map v3 exception primary-span remapping for thrown functions and registered
+  handlers, plus generated-location fallback for missing or malformed maps;
 - Promise fulfillment, Promise rejection, pending/deadline behavior, and bounded recursive
   microtasks;
 - request context method/header/body/signal/deadline materialization;
@@ -38,6 +40,7 @@ handler diagnostics.
 
 ## Boundaries
 
-This lane is not default non-V8 evidence, package evidence, live-provider evidence,
-production-edge HTTP evidence, benchmark evidence, Node/npm compatibility, or public alpha
-readiness. Missing SDK means skipped/not configured, not passed.
+This lane is not default non-V8 evidence, arbitrary bundler source-map support, async stack
+remapping evidence, package evidence, live-provider evidence, production-edge HTTP
+evidence, benchmark evidence, Node/npm compatibility, or public alpha readiness. Missing
+SDK means skipped/not configured, not passed.

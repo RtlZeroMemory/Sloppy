@@ -1319,6 +1319,7 @@ typedef struct SlRunApp
     SlInternTable plan_metadata_interns;
     SlCapabilityRegistry capability_registry;
     SlBytes app_js_bytes;
+    SlBytes source_map_bytes;
     SlEngine* engine;
     SlAppLifecycle lifecycle;
     SlHttpRouteTable route_table;
@@ -1897,7 +1898,7 @@ static void sl_run_print_diag(const char* prefix, SlArena* arena, const SlDiag* 
     sl_cli_write_cstr(stderr, "operation failed\n");
 }
 
-static SlEngineOptions sl_run_v8_options(const SlRunApp* app)
+static SlEngineOptions sl_run_v8_options(const SlRunApp* app, const char* app_js_path)
 {
     SlEngineOptions options = {0};
 
@@ -1911,6 +1912,9 @@ static SlEngineOptions sl_run_v8_options(const SlRunApp* app)
      */
     options.plan = app == NULL ? NULL : &app->plan;
     options.capabilities = app == NULL ? NULL : &app->capability_registry;
+    options.source_map = app == NULL ? (SlBytes){0} : app->source_map_bytes;
+    options.source_map_source_name =
+        app_js_path == NULL ? sl_str_empty() : sl_str_from_cstr(app_js_path);
     return options;
 }
 
@@ -2178,7 +2182,7 @@ static int sl_run_load_bootstrap_runtime(SlRunApp* app, const char* stdlib_root)
 static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char* app_js_path)
 {
     SlStr source = {0};
-    SlEngineOptions options = sl_run_v8_options(app);
+    SlEngineOptions options = sl_run_v8_options(app, app_js_path);
     SlDiag diag = {0};
     SlStatus status;
 
@@ -2302,6 +2306,7 @@ static int sl_run_load_app(const char* artifacts_path, const char* stdlib_path, 
         return 1;
     }
     app->app_js_bytes = app_js;
+    app->source_map_bytes = source_map;
 
     return sl_run_load_engine(app, stdlib_path, app_js_path);
 }
