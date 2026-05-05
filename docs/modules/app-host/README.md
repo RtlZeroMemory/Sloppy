@@ -7,7 +7,10 @@ small native app-host hardening layer for the supported artifact runtime path:
 `sl_app_host_validate_startup` validates parsed Plan metadata before V8/user execution, and
 `SlAppRequestScope` gives native request dispatch a deterministic cleanup boundary.
 ENGINE-07 adds `SlAppLifecycle`, an explicit app startup/shutdown cleanup scope used by
-`sloppy run` to release app-scoped resources such as the engine.
+`sloppy run` to release app-scoped resources such as the engine. ENGINE-16.A/B expands
+that native lifecycle into explicit created, starting, running, stopping, draining,
+stopped, and failed states, plus app/request identity fields for native diagnostics and
+tests.
 Full native app-host behavior is still not implemented.
 
 Post-Core framework/API shape is locked in
@@ -98,7 +101,9 @@ artifacts still run as classic scripts after `sloppy run` loads
 `sloppy run --artifacts` now starts a native app lifecycle, performs native app graph
 startup validation after plan and artifact metadata load and before route materialization,
 V8 creation, bootstrap evaluation, or request serving, then shuts that lifecycle down on
-command exit or startup failure. The supported startup checks cover Plan v1 compatibility,
+command exit or startup failure. Startup transitions through `STARTING` to `RUNNING`;
+startup failure can close already-registered app cleanups exactly once and mark the
+lifecycle `FAILED`. The supported startup checks cover Plan v1 compatibility,
 supported target/runtime values, handler table presence and duplicate IDs, runnable GET
 route metadata, route-to-handler references, duplicate method/pattern pairs, duplicate
 non-empty route names, provider/capability token consistency, and duplicate provider
@@ -138,12 +143,16 @@ Current service lifetimes are JavaScript-only singleton and transient registrati
 Capability metadata is copied and frozen for debug/introspection. Native request execution
 now begins with a request scope and closes that scope after handler success, sync failure,
 bounded async resolve/reject/pending failure, cancellation/deadline-style statuses, and
-unsupported pre-handler outcomes. Request-scope cleanup uses `SlScope` LIFO order and owns
-cleanup registrations only; cleanup payloads remain caller-owned. Request-scoped native
-resources are closed through caller-owned `SlAppResourceCleanup` payloads that call
-`SlResourceTable` by `SlResourceId`. `SlAppLifecycle` applies the same cleanup model to
-app-scoped resources and makes shutdown idempotent. No raw native pointer is exposed to
-JavaScript.
+unsupported pre-handler outcomes. Request scopes may be tied to a running app lifecycle,
+carry app/request IDs, increment the app active-request count, and decrement it on close.
+Beginning shutdown stops new request scopes; if request scopes are still active, the app
+enters `DRAINING` until callers close them or explicitly force shutdown. Forced shutdown
+closes app-scope cleanups exactly once and does not make a production graceful-drain claim.
+Request-scope cleanup uses `SlScope` LIFO order and owns cleanup registrations only;
+cleanup payloads remain caller-owned. Request-scoped native resources are closed through
+caller-owned `SlAppResourceCleanup` payloads that call `SlResourceTable` by `SlResourceId`.
+`SlAppLifecycle` applies the same cleanup model to app-scoped resources and makes shutdown
+idempotent. No raw native pointer is exposed to JavaScript.
 
 Real service lifetimes, service disposal, async scope retention, and capability enforcement
 must be explicit and plan-visible before public app-host services can claim runtime
@@ -168,8 +177,10 @@ cycles, phase callback failures, and mutation after freeze. Native startup diagn
 cover missing route handlers, duplicate routes, duplicate route names, invalid
 provider/capability metadata, duplicate provider service tokens, and startup validation
 failure summaries in `sloppy run`. `SLOPPY_E_APP_LIFECYCLE` covers native app lifecycle
-state errors such as registering cleanup before startup and renders through the stable JSON
-diagnostic renderer. Native diagnostics for a real module graph, missing service
+state errors such as registering cleanup before startup, double start, request-scope
+creation after shutdown starts, attempting to finish shutdown while requests are draining,
+and cleanup failure summaries. It renders through the stable JSON diagnostic renderer.
+Native diagnostics for a real module graph, missing service
 activation, invalid lifetime dependencies, missing config providers, automatic request
 validation, provider driver/config failures, and cleanup callback failure details remain
 future work.
@@ -178,8 +189,10 @@ future work.
 
 CTest registers `core.app_host.hardening` to cover native app-host startup validation,
 request-scope cleanup on handler success/failure/cancellation/deadline/unsupported
-outcomes, app shutdown cleanup of app-scoped resource IDs, idempotent shutdown, and stable
-lifecycle diagnostic JSON. CTest registers
+outcomes, app lifecycle start/double-start/startup-failure cleanup, graceful draining,
+forced shutdown, app/request identity propagation, request-scope access after close,
+app-scope versus request-scope resource ownership, app shutdown cleanup of app-scoped
+resource IDs, idempotent shutdown, and stable lifecycle diagnostic JSON. CTest registers
 `bootstrap.stdlib.assets` to verify the source bootstrap files and copied
 build-tree assets exist. CTest also registers `bootstrap.stdlib.api_shape` to statically
 check the implemented bootstrap API names, descriptor fields, route registration/group

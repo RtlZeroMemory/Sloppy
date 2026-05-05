@@ -607,7 +607,13 @@ ENGINE-07 adds an explicit native app lifecycle boundary around this dev-only ru
 engine destruction as an app shutdown cleanup after V8 creation succeeds. Command exit,
 startup aborts after engine creation, and dev-server loop exit all run app shutdown through
 that lifecycle. Shutdown is idempotent; app-scoped cleanup callbacks use the same
-`SlScope` LIFO contract as request scopes.
+`SlScope` LIFO contract as request scopes. ENGINE-16.A/B makes that lifecycle stateful:
+created -> starting -> running -> stopping/draining -> stopped, with failed as the
+terminal startup-failure state. Request scopes opened through the app lifecycle carry
+app/request IDs, increment the active request count, and close before app-scope resources
+are released. Beginning shutdown rejects new request scopes; graceful finish waits for the
+active count to reach zero, while forced shutdown closes app-scope cleanups exactly once
+for the current dev runtime policy.
 
 The response writer remains deliberately small and dev-only. Streaming request/response
 bodies, middleware, production hardening, multipart upload, cookies/sessions, and content

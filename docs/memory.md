@@ -358,10 +358,14 @@ begins before the handler boundary and closes after handler success, synchronous
 unsupported pre-handler outcomes, cancellation/deadline-style statuses, and the bounded V8
 Promise resolve/reject/pending paths. Cleanup callbacks run in `SlScope` LIFO order. The
 scope owns cleanup registrations only; cleanup payloads and user data remain caller-owned
-and must outlive cleanup execution. `SlAppLifecycle` provides the matching app startup and
-shutdown cleanup scope; shutdown is idempotent and uses the same LIFO cleanup contract.
-Cleanup callbacks are currently void/no-fail, so rich cleanup-failure diagnostics remain
-deferred.
+and must outlive cleanup execution. ENGINE-16.A/B lets a request scope retain app/request
+identity and increment a running app lifecycle's active-request count until close; opening a
+request scope after app shutdown starts is rejected deterministically. `SlAppLifecycle`
+provides the matching app startup and shutdown cleanup scope with explicit created,
+starting, running, stopping, draining, stopped, and failed states. Graceful shutdown stops
+new request scopes and waits for active scopes to close before app-scope cleanup; forced
+shutdown closes app-scope cleanups exactly once for the current dev runtime policy. Cleanup
+callbacks are currently void/no-fail, so rich cleanup-failure diagnostics remain deferred.
 
 ## Forbidden Patterns
 

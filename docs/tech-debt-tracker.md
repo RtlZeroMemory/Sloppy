@@ -125,9 +125,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   async diagnostic JSON/source-frame rendering, redaction, and stable codes. ENGINE-15.E
   owns the deterministic diagnostic golden inventory. CLI-wide diagnostic format plumbing
   and richer async stack remapping remain follow-ups.
-- App/resource lifetime runtime: ENGINE-16 owns app startup/shutdown, request/app scopes,
-  resource cleanup, cancellation propagation, leak-oriented hooks, and lifecycle
-  diagnostics.
+- App/resource lifetime runtime: ENGINE-16.A/B now owns explicit app startup/shutdown
+  states, app/request IDs, request-scope admission tied to running app state, graceful drain
+  finish, forced shutdown, and app/request scope ownership tests. ENGINE-16.C/D/E still own
+  broad cleanup-path hardening, cancellation propagation, leak-oriented hooks, and expanded
+  lifecycle diagnostics.
 - SQLite runtime hardening beyond ENGINE-05: JS transactions/prepared-statement decision,
   file database policy, ENGINE-23 serialized blocking offload, cancellation/deadline
   interruption beyond pre-call checks, request-scope automatic cleanup/leak reporting, and
