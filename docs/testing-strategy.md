@@ -206,7 +206,9 @@ Time/deadline/cancellation:
 - filesystem facade integration tests must cover pre-cancelled signals, expired deadlines,
   invalid `timeoutMs`, pass-through `Deadline.never`, and cancellation races without
   claiming native filesystem interruption;
-- final example/conformance evidence stays in CORE-TIME-01.I.
+- source example API-shape checks must cover delay, timeout, deadline, cancellation,
+  interval, scheduled jobs, fake clocks, and filesystem Time options;
+- diagnostic goldens cover all stable Time diagnostic codes.
 
 Platform:
 

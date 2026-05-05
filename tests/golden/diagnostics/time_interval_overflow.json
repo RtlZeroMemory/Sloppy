@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_TIME_INTERVAL_OVERFLOW","severity":"error","message":"interval tick queue overflowed","hints":["Bounded interval queues skip or fail instead of growing without limit."]}

@@ -629,8 +629,9 @@ separate filesystem timeout diagnostic family:
 - `SLOPPY_E_TIME_SCHEDULE_SKIPPED` for no-overlap scheduled runs skipped by policy;
 - `SLOPPY_E_TIME_FAKE_CLOCK_MISUSE` for disposed or misused fake clocks.
 
-Missing or inactive `stdlib.time` uses the runtime-feature diagnostics above. The initial
-renderer goldens cover timeout, cancellation, disposed timer, and invalid delay shapes.
+Missing or inactive `stdlib.time` uses the runtime-feature diagnostics above. Renderer
+goldens cover timeout, cancellation, disposed timer, invalid delay, expired deadline,
+interval overflow, skipped scheduled run, and fake-clock misuse shapes.
 V8-gated Time evidence covers inactive `__sloppy.time` registration and native delay
 Promise settlement. Bootstrap stdlib evidence covers fake-clock disposal, deterministic
 delay/timeout/interval completion, skipped scheduled runs, and filesystem pre-cancel /

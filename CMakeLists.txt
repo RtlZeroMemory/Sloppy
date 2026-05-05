@@ -1654,6 +1654,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.request_context.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_request_context_example.cmake")
+    add_test(
+        NAME examples.time.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_time_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

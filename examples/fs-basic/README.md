@@ -8,13 +8,16 @@ This example uses project-relative paths for local development:
 
 ```js
 import { Directory, File } from "sloppy/fs";
+import { Deadline } from "sloppy/time";
 
 await Directory.create("./tmp", { recursive: true });
 await File.writeJson("./tmp/users.json", [{ id: 1, name: "Ada" }], {
     atomic: true,
     indent: 2,
 });
-const users = await File.readJson("./tmp/users.json");
+const deadline = Deadline.after(1000);
+const users = await File.readJson("./tmp/users.json", { deadline });
 ```
 
-The example does not claim Node `fs` compatibility or public sync filesystem APIs.
+The read uses a Time deadline option. It does not claim preemptive native filesystem
+interruption, Node `fs` compatibility, or public sync filesystem APIs.

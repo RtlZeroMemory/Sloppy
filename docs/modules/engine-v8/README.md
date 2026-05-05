@@ -64,7 +64,9 @@ CORE-TIME-01.C/D/G installs the private `__sloppy.time` namespace when the activ
 enables `stdlib.time`. The native delay scheduler never enters V8; it posts owned
 `SL_ASYNC_OPERATION_TIMER` completions to the engine async loop, and the owning isolate
 thread resolves or rejects Promises during the normal native async drain. Intervals,
-scheduled jobs, and fake clocks remain later Time slices.
+scheduled jobs, and fake clocks are implemented in the JavaScript stdlib layer and are
+covered by bootstrap tests; native owner-thread Time evidence remains the V8-gated delay
+bridge.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8

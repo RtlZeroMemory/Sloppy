@@ -1,12 +1,13 @@
 # Time API Architecture
 
-Status: CORE-TIME-01.A/B/C/D/E/F/G/H source of truth. This document defines the intended first
+Status: CORE-TIME-01.A/B/C/D/E/F/G/H/I source of truth. This document defines the intended first
 `sloppy/time` API contract, feature metadata, diagnostics, implementation boundaries, and
 the first V8-backed runtime surface. The examples in this document are illustrative
 contract examples for the current API shape. Native delay, timeout, deadline, cancellation,
 V8 owner-thread Promise settlement, intervals, scheduled jobs, and fake clocks are
 implemented. Filesystem stdlib wrappers now accept Time-shaped options; executable
-examples and final conformance land in later CORE-TIME-01 slices.
+source examples, diagnostic goldens, and conformance evidence are tracked in
+`tests/conformance/time/README.md`.
 
 ## Goals
 
@@ -118,6 +119,23 @@ Stable Time diagnostic names:
 - `SLOPPY_E_TIME_INTERVAL_OVERFLOW`;
 - `SLOPPY_E_TIME_SCHEDULE_SKIPPED`;
 - `SLOPPY_E_TIME_FAKE_CLOCK_MISUSE`.
+
+The default diagnostic golden lane pins JSON fixtures for all eight Time codes under
+`tests/golden/diagnostics/`. V8-specific evidence stays in the V8-gated lane.
+
+## Examples and Conformance
+
+Source examples live under:
+
+- `examples/time-basic/`;
+- `examples/time-deadline-cancellation/`;
+- `examples/time-interval-schedule/`;
+- `examples/time-fake-clock/`;
+- `examples/fs-basic/` for filesystem deadline integration.
+
+`examples.time.api_shape` checks those examples for the supported public API shape and
+for the explicit non-goals: no Node timer compatibility, no global fake timers for
+ordinary apps, no cron parser, no package-manager behavior, and no benchmark claims.
 
 Missing or inactive `stdlib.time` uses the runtime-feature diagnostics
 `SLOPPY_E_UNKNOWN_RUNTIME_FEATURE`, `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`, or

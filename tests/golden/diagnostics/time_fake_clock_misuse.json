@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_TIME_FAKE_CLOCK_MISUSE","severity":"error","message":"fake clock was misused or disposed","hints":["Fake clocks are explicit test-scoped providers, not global timer mutation."]}
