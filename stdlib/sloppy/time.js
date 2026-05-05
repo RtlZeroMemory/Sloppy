@@ -126,8 +126,16 @@ class CancellationSignal {
         this.reason = reason;
         const listeners = Array.from(this._listeners);
         this._listeners.clear();
+        const errors = [];
         for (const listener of listeners) {
-            listener(reason);
+            try {
+                listener(reason);
+            } catch (error) {
+                errors.push(error);
+            }
+        }
+        if (errors.length > 0) {
+            throw new AggregateError(errors, "one or more abort listeners threw");
         }
         return true;
     }

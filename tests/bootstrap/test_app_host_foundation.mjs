@@ -38,6 +38,18 @@ function assertThrowsMessage(fn, expected) {
     assert.equal(controller.signal.reason, "done");
     assert.equal(observedReason, "done");
     assert.throws(() => controller.signal.throwIfCancelled(), CancelledError);
+
+    const fanoutController = new CancellationController();
+    let fanoutObserved = false;
+    fanoutController.signal.addEventListener("abort", () => {
+        throw new Error("listener failed");
+    });
+    fanoutController.signal.addEventListener("abort", () => {
+        fanoutObserved = true;
+    });
+    assert.throws(() => fanoutController.cancel("fanout"), AggregateError);
+    assert.equal(fanoutObserved, true);
+
     await assert.rejects(Time.delay(10, { signal: controller.signal }), CancelledError);
     let cancelledTimeoutInvoked = false;
     await assert.rejects(
