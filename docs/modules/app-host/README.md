@@ -133,6 +133,11 @@ remain future work. MAIN1-02 validates compiler-emitted route/provider/capabilit
 metadata, and MAIN1-03 validates that metadata at app-host startup, but neither PR makes
 the bootstrap app host emit plans, activates services, opens providers, implements DI, or
 enforces provider/capability access.
+ENGINE-27.A/B extends startup validation with an optional runtime feature activation
+check. It can derive active features from Plan target/routes/providers and
+`requiredFeatures[]` before engine, provider, transport, or stdlib initialization. The
+check is a fail-closed prerequisite; it does not open providers, execute module phases, or
+load feature plugins.
 
 Controllers, decorators, constructor injection, full DI, implicit object-to-JSON responses,
 and public-alpha example docs remain deferred until the corresponding issues land.

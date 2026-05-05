@@ -1,7 +1,8 @@
 # Post-ENGINE-16 Runtime Modularity Audit
 
-Status: 2026-05-05 planning/consolidation audit. This records current runtime feature
-composition and the recommended Roadmap-2 modularity direction without changing code.
+Status: 2026-05-05 implementation audit. ENGINE-27.A/B now records the first runtime
+feature registry and Plan-driven activation path; later ENGINE-27 slices still own
+feature-specific descriptors, V8 intrinsic gating, diagnostic goldens, and package policy.
 
 ## Source Inputs
 
@@ -21,7 +22,7 @@ composition and the recommended Roadmap-2 modularity direction without changing 
 | PostgreSQL provider | Native libpq provider and tests exist. JS stdlib exposes metadata and honest bridge-unavailable errors. | Native provider compiled by current build; no V8 bridge. | Native dependencies can bloat non-using apps; future bridge must not bypass executor/capability model. |
 | SQL Server provider | Native ODBC provider is compiled where enabled; stdlib exposes metadata and honest bridge-unavailable errors. | Platform/config gate plus native tests; no V8 bridge. | Same bloat/dependency risk, especially across non-Windows jobs. |
 | Bootstrap stdlib | Source-controlled JS facade is staged/copied; compiler rewrites supported public imports into classic runtime artifacts. | Broad stdlib asset set is staged; compiler import support is intentionally narrow. | Packaging cannot yet include only used framework/provider modules. |
-| Plan metadata | Plan v1 carries routes, handlers, data providers, capabilities, required features, and metadata consumed by CLI tooling. | Plan validates shape and required-feature compatibility; runtime feature activation is not driven from it yet. | Strong metadata exists, but runtime initialization still does not consume it as a feature graph. |
+| Plan metadata | Plan v1 carries routes, handlers, data providers, capabilities, required features, and metadata consumed by CLI tooling. | ENGINE-27.A/B derives active features from target/route/provider metadata and explicit `requiredFeatures[]` before runtime initialization. | Feature activation is now explicit, but package/link trimming and V8 intrinsic gating remain later slices. |
 
 ## Feature Boundaries Observed
 
@@ -32,8 +33,10 @@ composition and the recommended Roadmap-2 modularity direction without changing 
   with `intrinsics.cc` as the aggregator.
 - The Rust compiler recognizes a supported `"sloppy"` facade and
   `"sloppy/providers/sqlite"` import; unsupported bare imports fail honestly.
-- Plan metadata can describe data providers/capabilities and Strong Plan completeness, but
-  there is no runtime feature registry that maps Plan/import/use to initialization.
+- Plan metadata can describe data providers/capabilities and Strong Plan completeness.
+  ENGINE-27.A/B adds `include/sloppy/features.h` and `src/core/features.c` as the first
+  runtime registry that maps Plan target/routes/providers/`requiredFeatures[]` to active
+  runtime features.
 
 ## Always-On / Bloat Risks
 
@@ -41,7 +44,7 @@ composition and the recommended Roadmap-2 modularity direction without changing 
 | --- | --- | --- |
 | Provider code and dependencies are linked even when unused. | `CMakeLists.txt` includes `src/data/sqlite.c`, `src/data/postgres.c`, and `src/data/sqlserver.c` in core sources. | ENGINE-27.A/C/F should define feature descriptors and package include policy. |
 | V8 intrinsic surface is installed as a group. | `sl_v8_install_intrinsics` installs `__sloppy` and calls provider intrinsic aggregation. | ENGINE-27.D should make intrinsic registration feature-gated. |
-| Plan metadata is validated but not used to initialize only required runtime features. | Plan parser and CLI consumers use metadata; runtime core does not have a feature activation registry. | ENGINE-27.B should make Plan-driven feature activation explicit. |
+| Plan metadata is validated but not used to initialize only required runtime features. | ENGINE-27.A/B now validates Plan-driven feature activation before runtime initialization. | Remaining work is descriptor breadth, V8 intrinsic registration gating, and package include policy. |
 | Stdlib assets are staged broadly. | Bootstrap stdlib is copied as a whole and compiler rewrites only supported imports today. | ENGINE-27.C/F should connect stdlib module descriptors and packaging policy. |
 | Missing-feature diagnostics are ad hoc by layer. | Non-V8, non-SQLite bridge, and unsupported import errors are honest but not from one registry. | ENGINE-27.E should define stable missing-feature diagnostics. |
 

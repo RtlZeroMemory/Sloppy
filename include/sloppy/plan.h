@@ -39,9 +39,9 @@ typedef uint32_t SlHandlerId;
  * bytes available.
  *
  * All SlStr fields below are borrowed views. They do not require NUL termination and remain
- * valid only for the caller-documented plan lifetime. The handler, route, provider, and
- * capability arrays are borrowed and caller-owned; SlPlan never allocates, copies, or frees
- * them.
+ * valid only for the caller-documented plan lifetime. The handler, route, provider,
+ * capability, and SlPlanRequiredFeature arrays exposed through SlPlan.required_features are
+ * borrowed and caller-owned; SlPlan never allocates, copies, or frees them.
  */
 typedef struct SlPlanTarget
 {
@@ -95,6 +95,11 @@ typedef struct SlPlanCapability
     SlStr provider;
 } SlPlanCapability;
 
+typedef struct SlPlanRequiredFeature
+{
+    SlStr id;
+} SlPlanRequiredFeature;
+
 typedef struct SlPlan
 {
     uint32_t version;
@@ -112,6 +117,8 @@ typedef struct SlPlan
     size_t data_provider_count;
     const SlPlanCapability* capabilities;
     size_t capability_count;
+    const SlPlanRequiredFeature* required_features;
+    size_t required_feature_count;
 } SlPlan;
 
 /*
@@ -166,9 +173,10 @@ bool sl_plan_has_duplicate_capability_tokens(const SlPlan* plan);
  *
  * The helper interns only stable metadata: version/target strings, artifact identifiers,
  * handler names, route methods/patterns/names, provider/capability tokens, provider names,
- * service names, and capability kind/access/provider metadata. It intentionally does not
- * intern artifact paths, hashes, source-map paths, provider database names, request data,
- * secrets, connection strings, or transient diagnostics. Byte equality remains the
+ * service names, capability kind/access/provider metadata, and required runtime feature
+ * identifiers. It intentionally does not intern artifact paths, hashes, source-map paths,
+ * provider database names, request data, secrets, connection strings, or transient diagnostics.
+ * Byte equality remains the
  * correctness rule; intern symbols are only a lookup/ownership aid.
  *
  * On failure, `out_plan` and `out_table` are left unchanged and allocations made by this

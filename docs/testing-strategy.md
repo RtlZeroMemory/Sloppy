@@ -51,6 +51,13 @@ event/counter reporting, and ENGINE-30 torture tests run only after those founda
 mature. Torture or stress output is correctness evidence unless a later benchmark
 methodology task explicitly scopes performance claims.
 
+ENGINE-27.A/B adds `core.runtime_features` plus app-host and Plan parser coverage for the
+registry foundation: deterministic feature ordering, route-derived HTTP/libuv/framework
+activation, SQLite-provider activation only when Plan metadata requires it, unavailable
+PostgreSQL/SQL Server feature failure, unknown `requiredFeatures[]`, missing
+dependencies, and V8-disabled diagnostics. These are default-lane registry tests; V8
+intrinsic registration remains V8-gated follow-up evidence.
+
 ENGINE-19.BC registers the current V8, HTTP, and async behavior under explicit conformance
 names without adding runtime behavior. `conformance.http.default_dispatch` is default
 non-V8 synthetic dispatch evidence, `conformance.transport.localhost_mvp` is localhost

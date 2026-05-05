@@ -228,6 +228,8 @@ static int test_valid_fixture_matrix(void)
         {"tests/golden/plan/valid-capability-section.plan.json", 1U, "__sloppy_handler_1", "Home",
          NULL, NULL, 1U, 0U},
         {"tests/golden/plan/valid-capability-skeletons.plan.json", 1U, "__sloppy_handler_1", "Home",
+         NULL, NULL, 1U, 0U},
+        {"tests/golden/plan/unknown-required-feature.plan.json", 1U, "__sloppy_handler_1", "Home",
          NULL, NULL, 1U, 0U}};
     size_t index = 0U;
 
@@ -314,6 +316,15 @@ static int test_valid_fixture_matrix(void)
         {
             return 69 + (int)index;
         }
+        if (sl_str_equal(
+                sl_str_from_cstr(cases[index].path),
+                sl_str_from_cstr("tests/golden/plan/unknown-required-feature.plan.json")) &&
+            (plan.required_feature_count != 1U ||
+             !sl_str_equal(plan.required_features[0].id,
+                           sl_str_from_cstr("future.compiler.required.feature"))))
+        {
+            return 70 + (int)index;
+        }
     }
 
     return 0;
@@ -326,8 +337,6 @@ static int test_invalid_fixture_matrix(void)
          SL_DIAG_MALFORMED_JSON, "malformed app plan JSON"},
         {"tests/golden/plan/invalid-version.plan.json", SL_STATUS_UNSUPPORTED,
          SL_DIAG_INVALID_PLAN_VERSION, "invalid app plan version"},
-        {"tests/golden/plan/unknown-required-feature.plan.json", SL_STATUS_INVALID_ARGUMENT,
-         SL_DIAG_INVALID_PLAN_FIELD, "unsupported required app plan feature"},
         {"tests/golden/plan/required-features-not-array.plan.json", SL_STATUS_INVALID_ARGUMENT,
          SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type"},
         {"tests/golden/plan/missing-runtime-minimum-version.plan.json", SL_STATUS_INVALID_ARGUMENT,
@@ -408,7 +417,8 @@ static int test_invalid_fixture_matrix(void)
         if (plan.version != 0U || plan.handlers != NULL || plan.handler_count != 0U ||
             plan.routes != NULL || plan.route_count != 0U || plan.data_providers != NULL ||
             plan.data_provider_count != 0U || plan.capabilities != NULL ||
-            plan.capability_count != 0U)
+            plan.capability_count != 0U || plan.required_features != NULL ||
+            plan.required_feature_count != 0U)
         {
             return 150 + (int)index;
         }

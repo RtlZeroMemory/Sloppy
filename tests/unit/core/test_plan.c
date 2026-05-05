@@ -213,6 +213,35 @@ static int test_duplicate_handler_ids(void)
     return 0;
 }
 
+static void init_interning_test_plan(SlPlan* plan, SlPlanHandler* handlers, SlPlanRoute* routes,
+                                     SlPlanDataProvider* providers, SlPlanCapability* capabilities,
+                                     SlPlanRequiredFeature* required_features)
+{
+    *plan = (SlPlan){0};
+    plan->version = SL_PLAN_VERSION_1;
+    plan->compiler_version = sl_str_from_cstr("sloppyc-test");
+    plan->runtime_min_version = sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0);
+    plan->stdlib_version = sl_str_from_cstr(SL_PLAN_STDLIB_VERSION_0_1_0);
+    plan->target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    plan->target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    plan->bundle.path = sl_str_from_cstr("app.js");
+    plan->bundle.id = sl_str_from_cstr("same-artifact-id");
+    plan->bundle.hash = sl_str_from_cstr("sha256:not-interned");
+    plan->source_map.path = sl_str_from_cstr("app.js.map");
+    plan->source_map.id = sl_str_from_cstr("same-artifact-id");
+    plan->source_map.hash = sl_str_from_cstr("sha256:not-interned");
+    plan->handlers = handlers;
+    plan->handler_count = 1U;
+    plan->routes = routes;
+    plan->route_count = 1U;
+    plan->data_providers = providers;
+    plan->data_provider_count = 1U;
+    plan->capabilities = capabilities;
+    plan->capability_count = 1U;
+    plan->required_features = required_features;
+    plan->required_feature_count = 1U;
+}
+
 static int test_plan_metadata_interns_stable_strings(void)
 {
     unsigned char arena_storage[4096];
@@ -227,31 +256,13 @@ static int test_plan_metadata_interns_stable_strings(void)
     SlPlanCapability capabilities[1] = {{sl_str_from_cstr("main.db.read"),
                                          sl_str_from_cstr("database"), sl_str_from_cstr("read"),
                                          sl_str_from_cstr("main.db")}};
+    SlPlanRequiredFeature required_features[1] = {{sl_str_from_cstr("provider.sqlite")}};
     SlPlan plan = {0};
     SlPlan interned_plan = {0};
     SlInternTable table = {0};
     SlStatus status;
 
-    plan.version = SL_PLAN_VERSION_1;
-    plan.compiler_version = sl_str_from_cstr("sloppyc-test");
-    plan.runtime_min_version = sl_str_from_cstr(SL_PLAN_RUNTIME_MIN_VERSION_0_1_0);
-    plan.stdlib_version = sl_str_from_cstr(SL_PLAN_STDLIB_VERSION_0_1_0);
-    plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
-    plan.target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
-    plan.bundle.path = sl_str_from_cstr("app.js");
-    plan.bundle.id = sl_str_from_cstr("same-artifact-id");
-    plan.bundle.hash = sl_str_from_cstr("sha256:not-interned");
-    plan.source_map.path = sl_str_from_cstr("app.js.map");
-    plan.source_map.id = sl_str_from_cstr("same-artifact-id");
-    plan.source_map.hash = sl_str_from_cstr("sha256:not-interned");
-    plan.handlers = handlers;
-    plan.handler_count = 1U;
-    plan.routes = routes;
-    plan.route_count = 1U;
-    plan.data_providers = providers;
-    plan.data_provider_count = 1U;
-    plan.capabilities = capabilities;
-    plan.capability_count = 1U;
+    init_interning_test_plan(&plan, handlers, routes, providers, capabilities, required_features);
 
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
@@ -281,12 +292,15 @@ static int test_plan_metadata_interns_stable_strings(void)
     if (interned_plan.data_providers[0].database.ptr != plan.data_providers[0].database.ptr) {
         return 77;
     }
+    if (interned_plan.required_features[0].id.ptr == plan.required_features[0].id.ptr) {
+        return 78;
+    }
     if (interned_plan.bundle.path.ptr != plan.bundle.path.ptr ||
         interned_plan.bundle.hash.ptr != plan.bundle.hash.ptr ||
         interned_plan.source_map.path.ptr != plan.source_map.path.ptr ||
         interned_plan.source_map.hash.ptr != plan.source_map.hash.ptr)
     {
-        return 78;
+        return 79;
     }
 
     return 0;

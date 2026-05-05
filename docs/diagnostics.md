@@ -290,11 +290,21 @@ Implemented foundation codes:
 - `SLOPPY_E_LIFECYCLE_CLEANUP_FAILED`;
 - `SLOPPY_E_LIFECYCLE_LEAK_DETECTED`;
 - `SLOPPY_E_LIFECYCLE_IDENTITY_UNAVAILABLE`;
+- `SLOPPY_E_UNKNOWN_RUNTIME_FEATURE`, for Plan feature ids that are not in the runtime
+  registry;
+- `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`, for known features unavailable in the current
+  runtime lane;
+- `SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING`, for known feature dependencies unavailable
+  in the current runtime lane;
 - `SLOPPY_E_INTERNAL`.
 
 `SLOPPY_NONE` is available for no-diagnostic cases and `SLOPPY_E_UNKNOWN` is returned for
 unknown enum values. `core.diagnostics.foundation` also verifies that every public enum
 value through the current last diagnostic code maps to a stable non-unknown string.
+
+Runtime feature catalog entries carry only stable feature ids and Plan/requested-by context;
+they must not include native handles, pointers, secrets, provider connection strings, or
+package-manager state.
 
 Once released, changing a code requires an ADR or documented migration.
 
@@ -581,6 +591,20 @@ Resource lifecycle diagnostics:
 
 Resource diagnostics may include operation name and expected/actual resource kind names.
 They must not include native pointer values or provider handle addresses.
+
+Runtime feature diagnostics:
+
+- `SLOPPY_E_UNKNOWN_RUNTIME_FEATURE` is emitted when Plan `requiredFeatures[]` names a
+  feature id that is not in the runtime registry.
+- `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is emitted when a known feature is required but
+  unavailable in the current runtime lane, including non-V8 builds that receive V8-targeted
+  runnable artifacts.
+- `SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING` is emitted when a known feature's
+  dependency is unavailable.
+
+Feature diagnostics include the stable feature id and Plan/requested-by context when known.
+They are produced before runtime feature initialization and must not include native handles,
+pointers, secrets, provider connection strings, or package-manager state.
 
 App/request lifecycle diagnostics:
 

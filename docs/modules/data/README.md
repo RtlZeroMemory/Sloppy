@@ -29,6 +29,11 @@ for a small source-built SQLite users API. It proves the current synchronous SQL
 can serve GET/POST JSON handlers over real TCP through `sloppy run --artifacts`; it does
 not prove async/offload SQLite, public alpha readiness, PostgreSQL/SQL Server JS bridges,
 ORM/migrations, production HTTP edge behavior, or benchmark performance.
+ENGINE-27.A/B adds runtime feature ids for `provider.sqlite`, `provider.postgres`, and
+`provider.sqlserver`. Plan data-provider metadata now activates the matching provider
+feature before runtime initialization; PostgreSQL and SQL Server are unavailable/deferred
+for JavaScript runtime activation in this slice, and no provider bridge expansion is
+included.
 FRAMEWORK-01.B changes that example to use configuration-driven SQLite:
 `app.use(sqlite("main"))` binds `Sloppy:Providers:sqlite:main:database` from
 `appsettings.json`; inline `{ database: ... }` remains supported and overrides config.

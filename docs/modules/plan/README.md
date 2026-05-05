@@ -6,10 +6,11 @@ Partially implemented through TASK 06.C and compiler-emitted MVP artifacts.
 
 Post-ENGINE-16 consolidation: Plan metadata is now strong enough to drive routes,
 capabilities, providers, source maps, completeness, doctor/audit/OpenAPI, and current
-app-host startup validation for the supported subset. It does not yet drive runtime
-feature activation. ENGINE-27 is the Roadmap-2 feature-modularity wave that should map
-Plan/import/use metadata to runtime feature descriptors, V8 intrinsic registration,
-missing-feature diagnostics, and package include-only-used policy.
+app-host startup validation for the supported subset. ENGINE-27.A/B now stores
+`requiredFeatures[]` in the native Plan and maps Plan target/route/provider metadata to the
+runtime feature registry. Later ENGINE-27 slices still own feature-specific descriptors,
+V8 intrinsic registration, missing-feature diagnostic goldens, and package
+include-only-used policy.
 
 ## Purpose
 
@@ -30,6 +31,7 @@ Implemented now:
 - minimal Plan v1 shape validation;
 - native Plan v1 alpha route, data provider, and capability metadata validation when those
   sections are present;
+- native Plan v1 `requiredFeatures[]` storage for runtime feature activation;
 - arena-owned parsed plan storage;
 - basic diagnostics for invalid plan JSON and validation failures;
 - documented golden plan fixture matrix;

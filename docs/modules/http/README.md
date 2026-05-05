@@ -39,6 +39,10 @@ body-read cancellation/timeout/shutdown transitions, shutdown rejection for new 
 work, active-request shutdown cancellation hooks, and stable shutdown diagnostics.
 ENGINE-13.F adds bounded default non-V8 stress and conformance smoke over the implemented
 parser, lifecycle, body-policy, overload, shutdown, dispatch, and diagnostic behavior.
+ENGINE-27.A/B adds runtime feature ids for `http` and `transport.libuv`. Runnable Plan
+route metadata activates the framework stdlib, HTTP runtime, and libuv transport features
+before engine initialization. This does not add HTTP-26 route policy, sockets beyond the
+existing transport, or new response behavior.
 ENGINE-24.A/B adds the first reusable transport listener foundation: Slop-owned server
 config/state, libuv-isolated TCP bind/listen/accept, bounded accepted-connection
 storage, overflow close behavior, and cleanup-once stop/dispose. ENGINE-24.C starts

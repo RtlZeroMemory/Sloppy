@@ -474,6 +474,40 @@ static SlStatus sl_plan_intern_capabilities(SlArena* arena, SlInternTable* table
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_intern_required_features(SlArena* arena, SlInternTable* table,
+                                                 SlPlan* staged)
+{
+    SlPlanRequiredFeature* features = NULL;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (staged->required_feature_count == 0U) {
+        staged->required_features = NULL;
+        return sl_status_ok();
+    }
+    if (staged->required_features == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_plan_alloc_copy(arena, staged->required_features, staged->required_feature_count,
+                                sizeof(SlPlanRequiredFeature), _Alignof(SlPlanRequiredFeature),
+                                (void**)&features);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (features == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    for (index = 0U; index < staged->required_feature_count; index += 1U) {
+        status = sl_plan_intern_required(table, features[index].id, &features[index].id);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    staged->required_features = features;
+    return sl_status_ok();
+}
+
 SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capacity,
                                  size_t bucket_count, SlPlan* out_plan, SlInternTable* out_table)
 {
@@ -491,7 +525,8 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
     if ((plan->handler_count > 0U && plan->handlers == NULL) ||
         (plan->route_count > 0U && plan->routes == NULL) ||
         (plan->data_provider_count > 0U && plan->data_providers == NULL) ||
-        (plan->capability_count > 0U && plan->capabilities == NULL))
+        (plan->capability_count > 0U && plan->capabilities == NULL) ||
+        (plan->required_feature_count > 0U && plan->required_features == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -522,6 +557,10 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
         goto failure;
     }
     status = sl_plan_intern_capabilities(arena, &table, &staged);
+    if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+    status = sl_plan_intern_required_features(arena, &table, &staged);
     if (!sl_status_is_ok(status)) {
         goto failure;
     }

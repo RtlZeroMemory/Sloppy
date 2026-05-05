@@ -4,6 +4,7 @@
 #include "sloppy/arena.h"
 #include "sloppy/cancellation.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/features.h"
 #include "sloppy/plan.h"
 #include "sloppy/resource.h"
 #include "sloppy/scope.h"
@@ -22,6 +23,10 @@ typedef struct SlAppHostStartupValidation
     SlArena* diag_arena;
     bool require_runnable_route;
     size_t max_runnable_routes;
+    bool validate_runtime_features;
+    bool override_runtime_feature_availability;
+    SlRuntimeFeatureAvailability runtime_feature_availability;
+    SlRuntimeFeatureSet* out_runtime_features;
 } SlAppHostStartupValidation;
 
 /*
@@ -30,7 +35,9 @@ typedef struct SlAppHostStartupValidation
  * The validator performs no file I/O, engine calls, HTTP parsing, module execution, service
  * activation, provider opening, or V8 work. It checks only metadata that is already native:
  * plan compatibility fields, route-to-handler consistency, duplicate route/name policy,
- * data provider metadata, capability metadata, and duplicate provider service tokens.
+ * data provider metadata, capability metadata, duplicate provider service tokens, and
+ * Plan-driven runtime feature activation requirements. Feature validation does not
+ * initialize engines, transports, providers, or stdlib modules.
  */
 SlStatus sl_app_host_validate_startup(const SlPlan* plan, const SlAppHostStartupValidation* options,
                                       SlDiag* out_diag);

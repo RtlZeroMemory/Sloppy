@@ -44,6 +44,10 @@ owner-thread scheduling and cross-thread completion invariants, ENGINE-27 must f
 intrinsic registration, and ENGINE-28 must route provider results back through the owner
 thread before provider expansion. Source-map exception primary spans are implemented for
 the current claim; async stack remapping and broader source-frame fidelity remain later.
+ENGINE-27.A/B adds the registry source of truth for the `v8` runtime feature and the
+feature-activation prerequisite used by app-host startup. Non-V8 builds now have a stable
+feature diagnostic path before engine creation, while actual V8 intrinsic registration
+remains always-on inside V8 builds until ENGINE-27.D gates registration by active feature.
 
 ## Purpose
 

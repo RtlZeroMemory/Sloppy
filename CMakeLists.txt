@@ -295,6 +295,7 @@ set(
     src/core/resource.c
     src/core/capability.c
     src/core/execution_domain.c
+    src/core/features.c
     src/core/app_host.c
     src/core/loop.c
     src/core/async.c
@@ -355,6 +356,7 @@ set(
     tests/unit/core/test_resource.c
     tests/unit/core/test_capability.c
     tests/unit/core/test_execution_domain.c
+    tests/unit/core/test_features.c
     tests/unit/core/test_app_host.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
@@ -624,6 +626,8 @@ if(SLOPPY_ENABLE_TESTS)
         core_capability_registry core.capability.registry tests/unit/core/test_capability.c)
     sloppy_add_c_unit_test(
         core_execution_domain core.execution_domain tests/unit/core/test_execution_domain.c)
+    sloppy_add_c_unit_test(core_runtime_features core.runtime_features
+                           tests/unit/core/test_features.c)
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
     sloppy_add_c_unit_test(

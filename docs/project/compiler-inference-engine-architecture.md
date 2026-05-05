@@ -249,8 +249,8 @@ Current COMPILER-30.H/I implementation status:
   artifact emission;
 - partial metadata is represented for supported runnable shapes where response or body
   schema facts are incomplete;
-- native Plan v1 compatibility accepts unknown optional fields but rejects non-empty
-  `requiredFeatures`;
+- native Plan v1 compatibility accepts unknown optional fields, stores
+  `requiredFeatures`, and leaves runtime feature availability to ENGINE-27 validation;
 - provider and capability facts stay kind-based through `capabilityKind` and
   `providerKind`; SQLite is not assumed as the only provider kind, and future non-database
   providers require explicit adapters rather than DB-specific hard-coding.

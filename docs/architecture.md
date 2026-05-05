@@ -58,6 +58,13 @@ prove V8, live providers, public alpha readiness, production HTTP, or benchmark 
 Roadmap-2 now focuses on execution model hardening, runtime feature modularity, provider
 executor adoption, route-level HTTP policy/observability, runtime events/metrics, and
 later torture tests.
+ENGINE-27.A/B introduces the first runtime feature registry in `include/sloppy/features.h`
+and `src/core/features.c`. The registry names the current feature source of truth for
+`core`, `v8`, `http`, `transport.libuv`, framework/results/schema stdlib modules, and the
+SQLite/PostgreSQL/SQL Server provider feature ids. App-host startup can now validate
+Plan-derived and explicit `requiredFeatures[]` activation before engine/provider/transport
+initialization. The current package/build may still link broad code; this slice gates
+runtime activation and diagnostics only.
 ENGINE-03 adds the first V8 async handler runtime cut. In V8-enabled builds, handler calls
 drain V8 microtasks explicitly on the owning engine thread, fulfilled Promises are
 converted through the existing result conversion path, rejected Promises produce
