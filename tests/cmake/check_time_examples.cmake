@@ -76,6 +76,7 @@ reject_substring("${time_deadline_source}" "AbortController"
 
 foreach(required_pattern IN ITEMS
         "Time.interval(1000"
+        "tick.index"
         "Time.every(\"5m\""
         "noOverlap: true"
         "missedRunPolicy: \"skip\""

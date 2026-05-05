@@ -3,7 +3,7 @@ import { Time } from "sloppy/time";
 const ticks = [];
 
 for await (const tick of Time.interval(1000, { immediate: true, maxTicks: 3 })) {
-    ticks.push(tick.count);
+    ticks.push(tick.index);
 }
 
 const job = Time.every(
