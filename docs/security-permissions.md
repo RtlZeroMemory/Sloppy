@@ -30,7 +30,6 @@ This document covers:
 
 The foundation phase does not implement:
 
-- filesystem APIs;
 - OS sandboxing;
 - full security audit tooling. The current `sloppy audit` command is metadata-only and
   does not enforce permissions or execute user code.
@@ -43,10 +42,12 @@ MAIN1-02 adds native Plan v1 alpha parsing and validation for `dataProviders` an
 `capabilities` sections. MAIN1-10 turns that metadata into an immutable runtime capability
 registry and explicit provider-bridge check hooks. Those checks are real where callers pass
 the registry before provider work begins. ENGINE-05 wires the V8 SQLite bridge to the
-existing database hook; it does not add a new policy engine. Filesystem and network
-capabilities are metadata/check-only skeletons: they can be stored and checked by
-token/kind/access, but no filesystem API, network API, permission prompt, or OS sandbox
-exists.
+existing database hook; it does not add a new policy engine. CORE-FS-01.A/B defines the
+filesystem API and policy contract and makes `stdlib.fs` Plan-visible. Native filesystem
+operations, JavaScript bridge execution, and filesystem diagnostics are still later
+CORE-FS-01 slices. Network capabilities remain metadata/check-only skeletons: they can be
+stored and checked by token/kind/access, but no network API, permission prompt, or OS
+sandbox exists.
 
 ## Future Phase
 
@@ -142,7 +143,8 @@ Capability tokens must be non-empty strings, duplicates fail, and
 applicable. SQLite JavaScript execution now checks the database hook before native
 open/read/write and transaction work when the engine has Plan/capability metadata. If the
 hook inputs are absent, SQLite bridge calls fail closed. Public file database policy
-remains future work.
+remains future work. Filesystem policy is owned by CORE-FS-01 and starts with the
+development/strict model in `docs/project/filesystem-api-architecture.md`.
 
 ## Permission Grants
 
@@ -160,14 +162,13 @@ Grants must be visible to `sloppy audit` and diagnostics.
 
 ## Filesystem Capabilities
 
-Filesystem capabilities should specify:
+Filesystem capabilities specify or infer:
 
 - token;
 - root path;
-- read/write flags;
-- create/delete flags later;
+- access category: read, write, append, delete, list, metadata, watch, or lock;
 - path normalization policy;
-- symlink policy, deferred;
+- symlink policy;
 - source module.
 
 Core runtime code must use Sloppy platform file/path abstractions. No direct OS file APIs in

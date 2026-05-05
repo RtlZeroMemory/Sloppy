@@ -210,6 +210,34 @@ static int expect_valid_route_methods(const SlPlan* plan)
     return 0;
 }
 
+static int expect_valid_capability_skeletons(const SlPlan* plan)
+{
+    if (plan->capability_count != 2U ||
+        !sl_str_equal(plan->capabilities[0].kind, sl_str_from_cstr("filesystem")) ||
+        !sl_str_equal(plan->capabilities[0].access, sl_str_from_cstr("readwrite")) ||
+        !sl_str_equal(plan->capabilities[1].kind, sl_str_from_cstr("network")) ||
+        !sl_str_equal(plan->capabilities[1].access, sl_str_from_cstr("connect-listen")))
+    {
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_valid_filesystem_capability_accesses(const SlPlan* plan)
+{
+    if (plan->capability_count != 6U ||
+        !sl_str_equal(plan->capabilities[0].access, sl_str_from_cstr("append")) ||
+        !sl_str_equal(plan->capabilities[1].access, sl_str_from_cstr("delete")) ||
+        !sl_str_equal(plan->capabilities[2].access, sl_str_from_cstr("list")) ||
+        !sl_str_equal(plan->capabilities[3].access, sl_str_from_cstr("metadata")) ||
+        !sl_str_equal(plan->capabilities[4].access, sl_str_from_cstr("watch")) ||
+        !sl_str_equal(plan->capabilities[5].access, sl_str_from_cstr("lock")))
+    {
+        return 1;
+    }
+    return 0;
+}
+
 static int test_valid_fixture_matrix(void)
 {
     static const ValidFixtureCase cases[] = {
@@ -308,11 +336,7 @@ static int test_valid_fixture_matrix(void)
         if (sl_str_equal(
                 sl_str_from_cstr(cases[index].path),
                 sl_str_from_cstr("tests/golden/plan/valid-capability-skeletons.plan.json")) &&
-            (plan.capability_count != 2U ||
-             !sl_str_equal(plan.capabilities[0].kind, sl_str_from_cstr("filesystem")) ||
-             !sl_str_equal(plan.capabilities[0].access, sl_str_from_cstr("readwrite")) ||
-             !sl_str_equal(plan.capabilities[1].kind, sl_str_from_cstr("network")) ||
-             !sl_str_equal(plan.capabilities[1].access, sl_str_from_cstr("connect-listen"))))
+            expect_valid_capability_skeletons(&plan) != 0)
         {
             return 69 + (int)index;
         }
@@ -328,6 +352,24 @@ static int test_valid_fixture_matrix(void)
     }
 
     return 0;
+}
+
+static int test_valid_filesystem_capability_accesses_fixture(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status =
+        parse_fixture("tests/golden/plan/valid-filesystem-capability-accesses.plan.json", &plan,
+                      &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 2;
+    }
+    return expect_valid_filesystem_capability_accesses(&plan);
 }
 
 static int test_invalid_fixture_matrix(void)
@@ -564,6 +606,11 @@ int main(void)
     int result = 0;
 
     result = test_valid_fixture_matrix();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_valid_filesystem_capability_accesses_fixture();
     if (result != 0) {
         return result;
     }

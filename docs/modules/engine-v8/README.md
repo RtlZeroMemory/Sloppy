@@ -51,6 +51,9 @@ feature set into the V8 bridge so `__sloppy_register_handler` is installed for a
 `stdlib.framework/app` plans and `__sloppy.data.sqlite` is installed only when
 `provider.sqlite` is active. Direct low-level V8 smoke tests that omit a feature set keep
 legacy intrinsic installation as bridge coverage, not as app-host startup policy.
+CORE-FS-01.A/B adds the `stdlib.fs` feature descriptor and reserves `__sloppy.fs` as the
+future filesystem intrinsic namespace. This module does not register filesystem intrinsics
+until the CORE-FS-01 V8/stdlib implementation slice.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8

@@ -69,7 +69,13 @@ bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
     if (sl_str_equal(kind, sl_str_from_cstr("filesystem"))) {
         return sl_str_equal(access, sl_str_from_cstr("read")) ||
                sl_str_equal(access, sl_str_from_cstr("write")) ||
-               sl_str_equal(access, sl_str_from_cstr("readwrite"));
+               sl_str_equal(access, sl_str_from_cstr("readwrite")) ||
+               sl_str_equal(access, sl_str_from_cstr("append")) ||
+               sl_str_equal(access, sl_str_from_cstr("delete")) ||
+               sl_str_equal(access, sl_str_from_cstr("list")) ||
+               sl_str_equal(access, sl_str_from_cstr("metadata")) ||
+               sl_str_equal(access, sl_str_from_cstr("watch")) ||
+               sl_str_equal(access, sl_str_from_cstr("lock"));
     }
     if (sl_str_equal(kind, sl_str_from_cstr("network"))) {
         return sl_str_equal(access, sl_str_from_cstr("connect")) ||

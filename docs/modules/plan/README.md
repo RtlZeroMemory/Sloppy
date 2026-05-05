@@ -35,6 +35,7 @@ Implemented now:
 - native Plan v1 `requiredFeatures[]` storage for runtime feature activation;
 - runtime feature descriptor metadata for current stdlib imports, provider imports, and
   V8 intrinsic namespaces where implemented;
+- CORE-FS-01.A/B `stdlib.fs` feature metadata for the `sloppy/fs` import;
 - arena-owned parsed plan storage;
 - basic diagnostics for invalid plan JSON and validation failures;
 - documented golden plan fixture matrix;
@@ -48,8 +49,9 @@ MAIN1-10 implemented scope:
 
 - validated database, filesystem, and network capability metadata;
 - database capability provider references are required and must point at `dataProviders`;
-- filesystem/network capabilities are stored as skeleton metadata without provider
-  references;
+- filesystem capabilities support read/write/readwrite plus append/delete/list/metadata/
+  watch/lock policy categories without provider references; network capabilities remain
+  skeleton metadata without provider references;
 - provider/capability metadata rejects obvious secret-bearing fields;
 - an immutable runtime capability registry can be initialized from a parsed plan.
 - SQLite data providers may include canonical `database` metadata used by the V8 SQLite
@@ -68,7 +70,7 @@ Future scope:
 
 ## Non-goals
 
-No general file I/O API, production route table construction, service model, module model,
+No general file I/O implementation in this Plan module, production route table construction, service model, module model,
 provider opening, permission enforcement, source map parser, HTTP runtime broadening, V8
 execution changes, JSON serialization inside the C runtime, streaming parser, schema
 framework, plugin validator, or package-manager behavior.
@@ -92,7 +94,8 @@ EPIC-21 `sloppyc build` emits the first real compiler-owned `routes` metadata se
 `method`, `pattern`, `handlerId`, and `name`. MAIN1-02 makes that section a
 native-validated Plan v1 alpha contract. `dataProviders` and `capabilities` are also
 native-validated when present. MAIN1-10 adds a runtime capability registry and explicit
-check hooks, while filesystem/network entries remain metadata/check-only skeletons.
+check hooks. CORE-FS-01.A/B turns filesystem metadata into the first filesystem API policy
+contract; filesystem execution and network APIs remain outside this module.
 
 ## Public/Internal API
 

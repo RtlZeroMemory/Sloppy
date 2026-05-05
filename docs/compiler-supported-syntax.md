@@ -15,6 +15,8 @@ or arbitrary route registration.
 Supported input is a single `.js` or `.mjs` file with:
 
 - `import { Sloppy, Results } from "sloppy";`, with optional unaliased `data`;
+- optional unaliased `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` imports
+  from `"sloppy/fs"` for Plan-visible filesystem feature activation;
 - exactly one app from `Sloppy.create()` or `Sloppy.createBuilder()` plus `builder.build()`;
 - literal top-level `app.mapGet`, `app.mapPost`, `app.mapPut`, `app.mapPatch`, or
   `app.mapDelete` calls, or a simple `app.mapGroup(...)` variable with literal grouped
@@ -70,6 +72,7 @@ broad module graph bundling, watch mode, or hot reload is implemented.
 | `import { Sloppy, Results } from "sloppy"` | Supported | Accepted as the core public compiler import and rewritten out of generated `app.js`. | None. | Covered by every supported compiler fixture. | Alpha compiler. |
 | Optional `data` import from `"sloppy"` | Supported for metadata-bearing fixtures | Accepted only as unaliased `data`; generated `app.js` reads `data` from `globalThis.__sloppy_runtime`. | Aliases or unknown imports use `SLOPPYC_E_UNSUPPORTED_IMPORT`. | `provider-capability` golden fixture. | ENGINE-02 metadata support. |
 | Optional `schema` import from `"sloppy"` | Supported for metadata-bearing fixtures | Accepted only as unaliased `schema` and used for static schema metadata extraction. It is not emitted into generated runtime code. | Aliases or unknown imports use `SLOPPYC_E_UNSUPPORTED_IMPORT`. | `metadata-extraction` golden fixture and COMPILER-30.E unit coverage. | COMPILER-30.E schema metadata. |
+| Optional `File`, `Directory`, `Path`, `FileHandle`, or `FileWatcher` imports from `"sloppy/fs"` | Supported for feature metadata | Accepted only as unaliased named imports. The compiler emits `requiredFeatures: ["stdlib.fs"]` and filesystem feature evidence. PR1 does not implement filesystem operation extraction or runtime calls. | Aliases or unknown names use `SLOPPYC_E_UNSUPPORTED_IMPORT`. | `sloppy_fs_import_emits_plan_required_feature` unit coverage. | CORE-FS-01.A/B feature metadata. |
 | Aliased `Sloppy` or `Results` imports | Rejected with diagnostic | Rejected because extractor matching is explicit. | `SLOPPYC_E_UNSUPPORTED_IMPORT`. | `unsupported-import-alias` diagnostic fixture. | Deferred until a scoped ergonomics task needs aliases. |
 | Arbitrary bare imports such as `"express"` | Rejected with diagnostic | Rejected; no package or module resolution runs. | `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER` with source location. | `unsupported-import-specifier` diagnostic fixture. | Never as Node/npm compatibility; Sloppy-owned imports only when scoped. |
 | Node imports such as `"fs"`, `"node:fs"`, `"path"`, or `process` | Rejected / never supported as compatibility | Rejected as unsupported imports or by JS/TS standards checks. | `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER` for imports. | `node-fs-import` diagnostic fixture and JS/TS standards scanner. | Node compatibility is not a Sloppy goal. |

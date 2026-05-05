@@ -643,7 +643,8 @@ Permissions diagnostics:
 - wrong capability kind;
 - insufficient capability access;
 - provider mismatch;
-- denied filesystem/network skeleton capability;
+- denied filesystem capability;
+- denied network skeleton capability;
 - denied database token;
 - stale resource ID.
 
@@ -652,6 +653,12 @@ denials. Hints may include token, kind, operation, required/actual access, provi
 provider instance id/name, and provider kind when safe. They must not include connection
 strings, passwords, API keys, raw provider handles, SQL parameter values, or native
 pointers.
+
+CORE-FS-01.A/B reserves the filesystem diagnostic surface. Later CORE-FS-01 slices must add
+stable text and JSON goldens for inactive `stdlib.fs`, invalid path syntax, unknown roots,
+named-root traversal, absolute path development warnings and strict failures, file not
+found, permission denied, unsupported platform behavior, stale file/watch handles, watch
+overflow, lock contention, and atomic-write cleanup failures.
 
 ## Examples
 

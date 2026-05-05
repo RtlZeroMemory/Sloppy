@@ -155,13 +155,15 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_PROVIDER_POSTGRES);
     const SlRuntimeFeatureDescriptor* data =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_DATA);
+    const SlRuntimeFeatureDescriptor* fs =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FS);
     const SlRuntimeFeatureDescriptor* config =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 12) {
+    if (SL_RUNTIME_FEATURE_COUNT != 13) {
         return 60;
     }
-    if (sqlite == NULL || postgres == NULL || data == NULL || config == NULL) {
+    if (sqlite == NULL || postgres == NULL || data == NULL || fs == NULL || config == NULL) {
         return 61;
     }
     if (!sl_str_equal(sqlite->stdlib_import, sl_str_from_cstr("sloppy/providers/sqlite")) ||
@@ -176,6 +178,13 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     {
         return 63;
     }
+    if (!sl_str_equal(fs->stable_id, sl_str_from_cstr("stdlib.fs")) ||
+        !sl_str_equal(fs->stdlib_import, sl_str_from_cstr("sloppy/fs")) ||
+        !sl_str_equal(fs->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.fs")) ||
+        !fs->requires_v8_intrinsics)
+    {
+        return 66;
+    }
     if (!sl_str_equal(config->stable_id, sl_str_from_cstr("stdlib.config")) ||
         !sl_str_equal(config->stdlib_import, sl_str_from_cstr("sloppy/config")) ||
         !sl_str_is_empty(config->v8_intrinsic_namespace))
@@ -186,6 +195,38 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !sl_str_equal(postgres->stdlib_import, sl_str_from_cstr("sloppy/providers/postgres")))
     {
         return 65;
+    }
+    return 0;
+}
+
+static int test_explicit_fs_required_feature_activates_stdlib_fs(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.fs")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_FS))
+    {
+        return 2;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 3;
     }
     return 0;
 }
@@ -485,6 +526,7 @@ int main(void)
 {
     static const FeatureTestFn tests[] = {
         test_descriptors_publish_import_and_intrinsic_metadata,
+        test_explicit_fs_required_feature_activates_stdlib_fs,
         test_minimal_route_activates_expected_features,
         test_sqlite_provider_metadata_activates_sqlite,
         test_unavailable_postgres_required_feature_fails,

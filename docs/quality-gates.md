@@ -42,6 +42,9 @@ ENGINE-27 adds default-lane feature registry and missing-feature diagnostic test
 them proves deterministic Plan-driven feature activation, unknown/unavailable/dependency
 runtime-feature diagnostics, and renderer-pinned missing-feature output only; it does not
 prove package trimming, provider expansion, or dynamic feature loading.
+CORE-FS-01 gates must report filesystem evidence by lane. PRs that only add the `stdlib.fs`
+contract and Plan metadata do not prove filesystem I/O, V8 bridge execution, watch
+behavior, stream behavior, package readiness, or performance.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
