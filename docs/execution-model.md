@@ -614,6 +614,13 @@ app/request IDs, increment the active request count, and close before app-scope 
 are released. Beginning shutdown rejects new request scopes; graceful finish waits for the
 active count to reach zero, while forced shutdown closes app-scope cleanups exactly once
 for the current dev runtime policy.
+ENGINE-16.C adds a shared request terminal-outcome helper over that scope model. Success,
+sync failure, V8 exception, Promise rejection, validation/body parse failure, timeout,
+cancel, client disconnect, response write failure, provider failure, provider pre-start
+cancel, shutdown, and backpressure can all mark the request terminal before cleanup runs.
+Late completions after a terminal request fail deterministically with
+`SL_STATUS_STALE_RESOURCE`/`SLOPPY_E_APP_LIFECYCLE` and must not touch closed request or app
+state.
 
 The response writer remains deliberately small and dev-only. Streaming request/response
 bodies, middleware, production hardening, multipart upload, cookies/sessions, and content
@@ -636,6 +643,8 @@ Current Promise lifecycle requirements:
   bounded ENGINE-03 fulfilled/rejected/pending-timeout outcome handling;
 - continuations run on the owning JS event-loop thread;
 - cleanup runs exactly once;
+- terminal request outcomes are recorded before cleanup so late native completions can
+  observe closed scope state without re-closing resources;
 - rejected promises become diagnostics;
 - async diagnostics are ordinary `SlDiag` values and can be rendered through the stable JSON
   renderer, but a CLI-wide async diagnostic JSON mode remains deferred;

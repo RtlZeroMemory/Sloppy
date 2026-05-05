@@ -127,9 +127,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   and richer async stack remapping remain follow-ups.
 - App/resource lifetime runtime: ENGINE-16.A/B now owns explicit app startup/shutdown
   states, app/request IDs, request-scope admission tied to running app state, graceful drain
-  finish, forced shutdown, and app/request scope ownership tests. ENGINE-16.C/D/E still own
-  broad cleanup-path hardening, cancellation propagation, leak-oriented hooks, and expanded
-  lifecycle diagnostics.
+  finish, forced shutdown, and app/request scope ownership tests. ENGINE-16.C adds native
+  terminal-outcome cleanup hardening across success/error/cancel/timeout/disconnect/
+  provider/write/shutdown/backpressure paths, stale late-completion rejection, and typed
+  resource-close preservation on wrong kind. ENGINE-16.D/E still own leak-oriented hooks
+  and expanded lifecycle diagnostics.
 - SQLite runtime hardening beyond ENGINE-05: JS transactions/prepared-statement decision,
   file database policy, ENGINE-23 serialized blocking offload, cancellation/deadline
   interruption beyond pre-call checks, request-scope automatic cleanup/leak reporting, and

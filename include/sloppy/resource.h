@@ -112,6 +112,8 @@ SlStatus sl_resource_table_get(const SlResourceTable* table, SlResourceId id,
  * an already-empty slot fails as invalid state only if the generation still matches.
  */
 SlStatus sl_resource_table_close(SlResourceTable* table, SlResourceId id, SlDiag* out_diag);
+SlStatus sl_resource_table_close_kind(SlResourceTable* table, SlResourceId id,
+                                      SlResourceKind expected_kind, SlDiag* out_diag);
 
 bool sl_resource_table_contains(const SlResourceTable* table, SlResourceId id,
                                 SlResourceKind expected_kind);

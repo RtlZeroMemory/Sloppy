@@ -151,6 +151,13 @@ closes app-scope cleanups exactly once and does not make a production graceful-d
 Request-scope cleanup uses `SlScope` LIFO order and owns cleanup registrations only;
 cleanup payloads remain caller-owned. Request-scoped native resources are closed through
 caller-owned `SlAppResourceCleanup` payloads that call `SlResourceTable` by `SlResourceId`.
+ENGINE-16.C adds explicit terminal request outcomes before cleanup runs, covering success,
+sync error, V8 exception, Promise rejection, validation/body parse failure, timeout,
+cancel, client disconnect, response write failure, provider failure, provider pre-start
+cancel, shutdown, and backpressure. A late completion after the scope is terminal is
+rejected as stale lifecycle work and does not re-run cleanup. Typed resource cleanup can
+require an expected `SlResourceKind`; wrong-kind cleanup preserves the live resource and
+its ID instead of closing an unexpected handle.
 `SlAppLifecycle` applies the same cleanup model to app-scoped resources and makes shutdown
 idempotent. No raw native pointer is exposed to JavaScript.
 
@@ -179,7 +186,8 @@ provider/capability metadata, duplicate provider service tokens, and startup val
 failure summaries in `sloppy run`. `SLOPPY_E_APP_LIFECYCLE` covers native app lifecycle
 state errors such as registering cleanup before startup, double start, request-scope
 creation after shutdown starts, attempting to finish shutdown while requests are draining,
-and cleanup failure summaries. It renders through the stable JSON diagnostic renderer.
+late request completion after terminal cleanup, and cleanup failure summaries. It renders
+through the stable JSON diagnostic renderer.
 Native diagnostics for a real module graph, missing service
 activation, invalid lifetime dependencies, missing config providers, automatic request
 validation, provider driver/config failures, and cleanup callback failure details remain
@@ -191,8 +199,11 @@ CTest registers `core.app_host.hardening` to cover native app-host startup valid
 request-scope cleanup on handler success/failure/cancellation/deadline/unsupported
 outcomes, app lifecycle start/double-start/startup-failure cleanup, graceful draining,
 forced shutdown, app/request identity propagation, request-scope access after close,
-app-scope versus request-scope resource ownership, app shutdown cleanup of app-scoped
-resource IDs, idempotent shutdown, and stable lifecycle diagnostic JSON. CTest registers
+app-scope versus request-scope resource ownership, terminal-outcome cleanup across
+success/error/cancel/timeout/disconnect/provider/write/shutdown/backpressure cases, stale
+late-completion rejection, typed resource cleanup wrong-kind preservation, app shutdown
+cleanup of app-scoped resource IDs, idempotent shutdown, and stable lifecycle diagnostic
+JSON. CTest registers
 `bootstrap.stdlib.assets` to verify the source bootstrap files and copied
 build-tree assets exist. CTest also registers `bootstrap.stdlib.api_shape` to statically
 check the implemented bootstrap API names, descriptor fields, route registration/group

@@ -2,6 +2,7 @@
 #define SLOPPY_APP_HOST_H
 
 #include "sloppy/arena.h"
+#include "sloppy/cancellation.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/plan.h"
 #include "sloppy/resource.h"
@@ -59,6 +60,7 @@ typedef struct SlAppResourceCleanup
 {
     SlResourceTable* table;
     SlResourceId id;
+    SlResourceKind kind;
 } SlAppResourceCleanup;
 
 typedef struct SlAppLifecycle
@@ -101,10 +103,34 @@ typedef struct SlAppRequestScope
 {
     SlScope cleanups;
     SlAppLifecycle* lifecycle;
+    SlStatus terminal_status;
+    SlDiagCode terminal_diag_code;
     uint64_t app_id;
     uint64_t request_id;
+    SlCancellationReason terminal_reason;
     bool active;
+    bool terminal;
 } SlAppRequestScope;
+
+typedef enum SlAppRequestOutcome
+{
+    SL_APP_REQUEST_OUTCOME_NONE = 0,
+    SL_APP_REQUEST_OUTCOME_SUCCESS = 1,
+    SL_APP_REQUEST_OUTCOME_SYNC_ERROR = 2,
+    SL_APP_REQUEST_OUTCOME_V8_EXCEPTION = 3,
+    SL_APP_REQUEST_OUTCOME_PROMISE_REJECTION = 4,
+    SL_APP_REQUEST_OUTCOME_VALIDATION_FAILURE = 5,
+    SL_APP_REQUEST_OUTCOME_BODY_PARSE_FAILURE = 6,
+    SL_APP_REQUEST_OUTCOME_TIMEOUT = 7,
+    SL_APP_REQUEST_OUTCOME_CANCELLED = 8,
+    SL_APP_REQUEST_OUTCOME_CLIENT_DISCONNECT = 9,
+    SL_APP_REQUEST_OUTCOME_RESPONSE_WRITE_FAILURE = 10,
+    SL_APP_REQUEST_OUTCOME_PROVIDER_FAILURE = 11,
+    SL_APP_REQUEST_OUTCOME_PROVIDER_CANCELLED_BEFORE_START = 12,
+    SL_APP_REQUEST_OUTCOME_PROVIDER_LATE_COMPLETION = 13,
+    SL_APP_REQUEST_OUTCOME_SHUTDOWN = 14,
+    SL_APP_REQUEST_OUTCOME_BACKPRESSURE = 15
+} SlAppRequestOutcome;
 
 typedef SlStatus (*SlAppRequestScopeHandler)(SlAppRequestScope* request_scope, void* user,
                                              SlDiag* out_diag);
@@ -119,8 +145,17 @@ SlStatus sl_app_request_scope_add_cleanup(SlAppRequestScope* request_scope, SlSc
                                           void* payload, void* user);
 SlStatus sl_app_request_scope_add_resource_cleanup(SlAppRequestScope* request_scope,
                                                    SlAppResourceCleanup* resource);
+SlStatus sl_app_request_scope_complete(SlAppRequestScope* request_scope,
+                                       SlAppRequestOutcome outcome, SlStatus status,
+                                       SlDiagCode diag_code, SlDiag* out_diag);
+SlStatus sl_app_request_scope_reject_late_completion(const SlAppRequestScope* request_scope,
+                                                     SlAppRequestOutcome outcome, SlDiag* out_diag);
 SlStatus sl_app_request_scope_close(SlAppRequestScope* request_scope, SlDiag* out_diag);
 bool sl_app_request_scope_is_active(const SlAppRequestScope* request_scope);
+bool sl_app_request_scope_is_terminal(const SlAppRequestScope* request_scope);
+SlStatus sl_app_request_scope_terminal_status(const SlAppRequestScope* request_scope);
+SlDiagCode sl_app_request_scope_terminal_diag_code(const SlAppRequestScope* request_scope);
+SlCancellationReason sl_app_request_scope_terminal_reason(const SlAppRequestScope* request_scope);
 uint64_t sl_app_request_scope_app_id(const SlAppRequestScope* request_scope);
 uint64_t sl_app_request_scope_request_id(const SlAppRequestScope* request_scope);
 

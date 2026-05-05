@@ -341,7 +341,8 @@ SlStatus sl_resource_table_get(const SlResourceTable* table, SlResourceId id,
     return sl_status_ok();
 }
 
-SlStatus sl_resource_table_close(SlResourceTable* table, SlResourceId id, SlDiag* out_diag)
+SlStatus sl_resource_table_close_kind(SlResourceTable* table, SlResourceId id,
+                                      SlResourceKind expected_kind, SlDiag* out_diag)
 {
     SlResourceEntry* entry = NULL;
     SlResourceCleanupFn cleanup = NULL;
@@ -350,6 +351,10 @@ SlStatus sl_resource_table_close(SlResourceTable* table, SlResourceId id, SlDiag
     uint32_t next_generation = 0U;
     SlStatus status;
     SlStr operation = sl_resource_literal("close", sizeof("close") - 1U);
+
+    if (!sl_resource_kind_is_valid(expected_kind)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
 
     status = sl_resource_entry_for_id(table, id, &entry, out_diag, operation);
     if (!sl_status_is_ok(status)) {
@@ -375,6 +380,14 @@ SlStatus sl_resource_table_close(SlResourceTable* table, SlResourceId id, SlDiag
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
 
+    if (entry->kind != expected_kind) {
+        sl_resource_diag(out_diag, SL_DIAG_RESOURCE_WRONG_KIND,
+                         sl_resource_literal("resource kind does not match",
+                                             sizeof("resource kind does not match") - 1U),
+                         id, expected_kind, entry->kind, operation);
+        return sl_status_from_code(SL_STATUS_WRONG_RESOURCE_KIND);
+    }
+
     status = sl_resource_next_generation(entry->generation, &next_generation);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -391,6 +404,26 @@ SlStatus sl_resource_table_close(SlResourceTable* table, SlResourceId id, SlDiag
     }
 
     return sl_status_ok();
+}
+
+SlStatus sl_resource_table_close(SlResourceTable* table, SlResourceId id, SlDiag* out_diag)
+{
+    SlResourceEntry* entry = NULL;
+    SlStatus status;
+
+    status = sl_resource_entry_for_id(table, id, &entry, out_diag,
+                                      sl_resource_literal("close", sizeof("close") - 1U));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (entry == NULL) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    if (!sl_resource_kind_is_valid(entry->kind)) {
+        return sl_resource_table_close_kind(table, id, SL_RESOURCE_KIND_TEST_RESOURCE, out_diag);
+    }
+
+    return sl_resource_table_close_kind(table, id, entry->kind, out_diag);
 }
 
 bool sl_resource_table_contains(const SlResourceTable* table, SlResourceId id,
