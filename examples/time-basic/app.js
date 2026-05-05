@@ -1,9 +1,6 @@
 import { Time } from "sloppy/time";
 
 async function loadUserSummary({ signal } = {}) {
-    if (signal?.aborted) {
-        throw signal.reason;
-    }
     await Time.yield({ signal });
     return { count: 1, source: "cache" };
 }

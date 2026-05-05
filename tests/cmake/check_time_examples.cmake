@@ -80,6 +80,9 @@ foreach(required_pattern IN ITEMS
         "Time.every(\"5m\""
         "noOverlap: true"
         "missedRunPolicy: \"skip\""
+        "markStarted(\"job\")"
+        "markStarted(\"scheduledJob\")"
+        "await started;"
         "await job.stop();")
     require_substring("${time_interval_source}" "${required_pattern}"
                       "examples/time-interval-schedule/app.js is missing expected API shape")
