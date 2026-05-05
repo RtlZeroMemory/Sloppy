@@ -376,9 +376,10 @@ new request scopes and waits for active scopes to close before app-scope cleanup
 shutdown closes app-scope cleanups exactly once for the current dev runtime policy. Cleanup
 callbacks are currently void/no-fail. ENGINE-16.D/E adds `SlAppLifecycleSnapshot`,
 `SlAppRequestScopeSnapshot`, and no-leak assertions so tests can prove app/request cleanup
-counts return to zero and late completions are counted after terminal cleanup. Timer,
-callback, and provider-operation counters remain reserved zero fields until their runtimes
-integrate with the lifecycle hooks.
+counts return to zero and late completions are counted after terminal cleanup. Forced
+shutdown keeps still-live request scopes visible to leak assertions until their request
+scope close path runs. Timer, callback, and provider-operation counters remain reserved
+zero fields until their runtimes integrate with the lifecycle hooks.
 
 ## Forbidden Patterns
 

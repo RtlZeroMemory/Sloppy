@@ -165,8 +165,10 @@ resource tables. The snapshots expose active app/request counts, cleanup counts,
 late-completion counts, resource counts by kind, and deterministic no-leak assertions for
 unit and conformance tests. Timer/callback/provider-operation snapshot fields are reserved
 as zero until those owners integrate with the app-host counters; they are not production
-monitoring APIs. `SlAppLifecycle` applies the same cleanup model to app-scoped resources
-and makes shutdown idempotent. No raw native pointer is exposed to JavaScript.
+monitoring APIs. Force shutdown keeps a leak-hook-only count of still-live request scopes
+until those scopes close, so no-leak assertions cannot pass while a forced request scope is
+still active. `SlAppLifecycle` applies the same cleanup model to app-scoped resources and
+makes shutdown idempotent. No raw native pointer is exposed to JavaScript.
 
 Real service lifetimes, service disposal, async scope retention, and capability enforcement
 must be explicit and plan-visible before public app-host services can claim runtime

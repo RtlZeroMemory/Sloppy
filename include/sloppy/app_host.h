@@ -75,6 +75,7 @@ typedef struct SlAppLifecycle
     SlAppLifecycleState state;
     uint64_t app_id;
     size_t active_request_scopes;
+    size_t forced_shutdown_request_scopes;
     size_t late_completion_count;
 } SlAppLifecycle;
 

@@ -659,6 +659,7 @@ SlStatus sl_app_lifecycle_start_with_id(SlAppLifecycle* lifecycle, SlScopeCleanu
 
     lifecycle->app_id = app_id;
     lifecycle->active_request_scopes = 0U;
+    lifecycle->forced_shutdown_request_scopes = 0U;
     lifecycle->state = SL_APP_LIFECYCLE_STATE_RUNNING;
     return sl_status_ok();
 }
@@ -842,6 +843,7 @@ SlStatus sl_app_lifecycle_force_shutdown(SlAppLifecycle* lifecycle, SlDiag* out_
     }
 
     lifecycle->state = SL_APP_LIFECYCLE_STATE_STOPPING;
+    lifecycle->forced_shutdown_request_scopes += lifecycle->active_request_scopes;
     lifecycle->active_request_scopes = 0U;
     return sl_app_lifecycle_close_cleanups(lifecycle, SL_APP_LIFECYCLE_STATE_STOPPED, out_diag);
 }
@@ -891,7 +893,8 @@ SlAppLifecycleSnapshot sl_app_lifecycle_snapshot(const SlAppLifecycle* lifecycle
 
     snapshot.state = lifecycle->state;
     snapshot.app_id = lifecycle->app_id;
-    snapshot.active_request_scopes = lifecycle->active_request_scopes;
+    snapshot.active_request_scopes =
+        lifecycle->active_request_scopes + lifecycle->forced_shutdown_request_scopes;
     snapshot.app_cleanup_count = sl_scope_cleanup_count(&lifecycle->cleanups);
     snapshot.cleanup_count = snapshot.app_cleanup_count;
     snapshot.late_completion_count = lifecycle->late_completion_count;
@@ -1061,6 +1064,11 @@ static SlStatus sl_app_request_scope_close_internal(SlAppRequestScope* request_s
     request_scope->active = false;
     if (request_scope->lifecycle != NULL && request_scope->lifecycle->active_request_scopes > 0U) {
         request_scope->lifecycle->active_request_scopes -= 1U;
+    }
+    else if (request_scope->lifecycle != NULL &&
+             request_scope->lifecycle->forced_shutdown_request_scopes > 0U)
+    {
+        request_scope->lifecycle->forced_shutdown_request_scopes -= 1U;
     }
     if (!sl_status_is_ok(status)) {
         return sl_app_request_scope_diag(
@@ -1291,7 +1299,8 @@ SlAppRequestScopeSnapshot sl_app_request_scope_snapshot(const SlAppRequestScope*
     snapshot.cleanup_count = snapshot.request_cleanup_count;
     snapshot.late_completion_count = request_scope->late_completion_count;
     if (request_scope->lifecycle != NULL) {
-        snapshot.active_request_scopes = request_scope->lifecycle->active_request_scopes;
+        snapshot.active_request_scopes = request_scope->lifecycle->active_request_scopes +
+                                         request_scope->lifecycle->forced_shutdown_request_scopes;
     }
     if (!request_scope->active && snapshot.request_cleanup_count != 0U) {
         snapshot.leaked_resource_count = snapshot.request_cleanup_count;

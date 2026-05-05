@@ -808,10 +808,22 @@ static int test_forced_shutdown_closes_app_scope_with_active_request(void)
     {
         return 100;
     }
+    if (expect_status(sl_app_lifecycle_assert_no_leaks(&lifecycle, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_LIFECYCLE_LEAK_DETECTED ||
+        sl_app_lifecycle_snapshot(&lifecycle).active_request_scopes != 1U)
+    {
+        return 102;
+    }
     if (expect_status(sl_app_request_scope_close(&request_scope, &diag), SL_STATUS_OK) != 0 ||
         record.count != 1U)
     {
         return 101;
+    }
+    if (expect_status(sl_app_lifecycle_assert_no_leaks(&lifecycle, &diag), SL_STATUS_OK) != 0 ||
+        sl_app_lifecycle_snapshot(&lifecycle).active_request_scopes != 0U)
+    {
+        return 103;
     }
 
     return 0;
