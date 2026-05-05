@@ -809,7 +809,7 @@ SlStatus sl_fs_platform_atomic_write_file(SlArena* arena, SlStr path, SlBytes by
     while (split > 0U && path.ptr[split - 1U] != '/' && path.ptr[split - 1U] != '\\') {
         split -= 1U;
     }
-    directory = split == 0U ? sl_str_from_cstr(".") : sl_str_from_parts(path.ptr, split - 1U);
+    directory = split == 0U ? sl_str_from_cstr(".") : sl_str_from_parts(path.ptr, split);
     status = sl_fs_platform_create_temp_file(arena, directory, sl_str_from_cstr(".sloppy-atomic-"),
                                              &temp, out_diag);
     if (sl_status_is_ok(status)) {
@@ -893,7 +893,7 @@ SlStatus sl_fs_platform_open_file(SlArena* arena, SlStr path, SlFsFileAccess acc
     }
     if (access == SL_FS_FILE_ACCESS_WRITE) {
         desired = GENERIC_WRITE;
-        disposition = create ? CREATE_ALWAYS : TRUNCATE_EXISTING;
+        disposition = create ? OPEN_ALWAYS : OPEN_EXISTING;
     }
     else if (access == SL_FS_FILE_ACCESS_READWRITE) {
         desired = GENERIC_READ | GENERIC_WRITE;

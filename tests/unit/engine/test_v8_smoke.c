@@ -289,9 +289,15 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
                     "\"./sloppy-v8-fs-dir/a.txt\", \"read\", false);"
                     " const bytes = await globalThis.__sloppy.fs.handleRead(handle, 3);"
                     " await globalThis.__sloppy.fs.handleClose(handle);"
+                    " const writer = await globalThis.__sloppy.fs.openHandle("
+                    "\"./sloppy-v8-fs-dir/write.txt\", \"write\", true);"
+                    " await globalThis.__sloppy.fs.handleWriteText(writer, \"write-ok\");"
+                    " await globalThis.__sloppy.fs.handleClose(writer);"
+                    " const written = await globalThis.__sloppy.fs.readText("
+                    "\"./sloppy-v8-fs-dir/write.txt\");"
                     " await globalThis.__sloppy.fs.directoryDelete("
                     "\"./sloppy-v8-fs-dir\", true);"
-                    " return entries[0].name + ':' + bytes.byteLength;"
+                    " return entries[0].name + ':' + bytes.byteLength + ':' + written;"
                     "};"),
                 &diag),
             SL_STATUS_OK) != 0)
@@ -335,7 +341,7 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
                                                &diag),
                       SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("a.txt:3")))
+        !sl_str_equal(result.text, sl_str_from_cstr("a.txt:3:write-ok")))
     {
         sl_engine_destroy(engine);
         (void)sl_fs_delete_file(path, NULL);

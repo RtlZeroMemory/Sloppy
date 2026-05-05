@@ -792,6 +792,11 @@ Reason:
             const decoder = new TextDecoder();
             const newline = options?.newline ?? "\n";
             let buffered = "";
+            if (typeof newline !== "string" || newline.length === 0) {
+                throw new TypeError(
+                    "Sloppy FileHandle.readLines newline must be a non-empty string.",
+                );
+            }
             for await (const chunk of this.readChunks(options)) {
                 buffered += decoder.decode(chunk, { stream: true });
                 let index = buffered.indexOf(newline);

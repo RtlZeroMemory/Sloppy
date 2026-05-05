@@ -503,7 +503,7 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
         status = sl_fs_open_file(arena,
                                  sl_str_from_parts(request->logical_file->path.data(),
                                                    request->logical_file->path.size()),
-                                 SL_FS_FILE_ACCESS_READWRITE, false, &handle, diag);
+                                 request->logical_file->access, false, &handle, diag);
         if (sl_status_is_ok(status)) {
             status = sl_fs_file_seek(handle, (int64_t)request->logical_file->position,
                                      SL_FS_SEEK_START, &request->position, diag);
@@ -562,7 +562,10 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
         status = sl_fs_open_file(arena,
                                  sl_str_from_parts(request->logical_file->path.data(),
                                                    request->logical_file->path.size()),
-                                 SL_FS_FILE_ACCESS_READWRITE, false, &handle, diag);
+                                 request->logical_file->access == SL_FS_FILE_ACCESS_APPEND
+                                     ? SL_FS_FILE_ACCESS_WRITE
+                                     : request->logical_file->access,
+                                 false, &handle, diag);
         if (sl_status_is_ok(status)) {
             status = sl_fs_file_truncate(handle, request->truncate_size, diag);
         }

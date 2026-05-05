@@ -371,6 +371,11 @@ class FileHandle {
         const newline = options?.newline ?? "\n";
         const maxLineLength = options?.maxLineLength ?? 1024 * 1024;
         let buffered = "";
+        if (typeof newline !== "string" || newline.length === 0) {
+            throw new TypeError(
+                "Sloppy FileHandle.readLines newline must be a non-empty string.",
+            );
+        }
         for await (const chunk of this.readChunks(options)) {
             buffered += decoder.decode(chunk, { stream: true });
             if (buffered.length > maxLineLength) {
