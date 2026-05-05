@@ -103,6 +103,12 @@ before returning, for bare close rejection before terminal metadata is recorded,
 late-completion rejection preserving the original terminal metadata. These are
 deterministic native lifecycle tests, not runtime torture, benchmark, provider expansion,
 or public API evidence.
+ENGINE-16.D/E extends `core.app_host.hardening`, `core.resource.lifecycle`, and
+`core.diagnostics.foundation` with leak-oriented evidence: app/request snapshots, resource
+table snapshots, active resource counts by kind, late-completion counters, no-leak
+assertions after request validation failure and app shutdown, synthetic leak diagnostics,
+and stable lifecycle diagnostic code-name coverage. Timer, callback, and provider-operation
+snapshot fields remain zero placeholders until those owners wire their runtime counters.
 
 - C unit tests;
 - Rust/`sloppyc` tests;

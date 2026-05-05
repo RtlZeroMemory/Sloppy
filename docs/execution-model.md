@@ -317,6 +317,12 @@ work can block or outlive the caller stack. Direct V8 bridge calls into synchron
 providers are acceptable only where docs identify the path as current limited behavior and
 do not claim scalable provider execution.
 
+The app-host lifecycle has native debug/test snapshots for the current helper layer.
+`SlAppLifecycleSnapshot`, `SlAppRequestScopeSnapshot`, and `SlResourceTableSnapshot`
+observe active app/request scopes, cleanup counts, late completions, and live resources by
+kind without exposing native pointers. The snapshots are lifecycle evidence hooks, not a
+production process manager, DI container, plugin runtime, or public monitoring API.
+
 ## Artifact Boundary
 
 `sloppyc` emits:

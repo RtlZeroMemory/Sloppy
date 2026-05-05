@@ -131,8 +131,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   terminal-outcome cleanup hardening across success/error/cancel/timeout/disconnect/
   provider/write/shutdown/backpressure paths, stale late-completion rejection,
   handler-owned terminalization idempotence, bare-close rejection before terminal metadata,
-  and typed resource-close preservation on wrong kind. ENGINE-16.D/E still own
-  leak-oriented hooks and expanded lifecycle diagnostics.
+  and typed resource-close preservation on wrong kind. ENGINE-16.D/E adds test/debug
+  lifecycle and resource snapshots, deterministic no-leak assertions, late-completion
+  counts, resource counts by kind, and stable lifecycle-specific diagnostic codes. Real
+  timer/callback/provider-operation counter integration and production monitoring remain
+  follow-ups for the owners of those runtimes.
 - SQLite runtime hardening beyond ENGINE-05: JS transactions/prepared-statement decision,
   file database policy, ENGINE-23 serialized blocking offload, cancellation/deadline
   interruption beyond pre-call checks, request-scope automatic cleanup/leak reporting, and
@@ -201,7 +204,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   sandbox claims.
 - App-host lifecycle/resource completion beyond ENGINE-07: provider ownership policy,
   graceful drain/force-cancel shutdown behavior for real native async work, bounded
-  resource budgets, leak checks where possible, and richer cleanup-failure diagnostics.
+  resource budgets, and adoption of ENGINE-16 leak hooks by provider/timer/callback owners.
 - Conformance/examples/packaging evidence: FRAMEWORK-01.F adds realistic source-input
   examples and tooling checks, but example-specific package smoke and public-alpha-ready
   hosted packaging docs remain open.

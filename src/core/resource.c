@@ -477,6 +477,57 @@ size_t sl_resource_table_live_count(const SlResourceTable* table)
     return count;
 }
 
+SlResourceTableSnapshot sl_resource_table_snapshot(const SlResourceTable* table)
+{
+    SlResourceTableSnapshot snapshot = {0};
+    size_t index = 0U;
+
+    if (table == NULL || table->entries == NULL) {
+        return snapshot;
+    }
+
+    snapshot.capacity = table->capacity;
+    for (index = 0U; index < table->capacity; index += 1U) {
+        const SlResourceEntry* entry = &table->entries[index];
+
+        if (entry->occupied && entry->ptr != NULL) {
+            snapshot.live_count += 1U;
+            if ((size_t)entry->kind < SL_RESOURCE_KIND_COUNT) {
+                snapshot.live_by_kind[(size_t)entry->kind] += 1U;
+            }
+        }
+        else if (entry->generation > 1U) {
+            snapshot.closed_count += 1U;
+        }
+    }
+    snapshot.leaked_resource_count = snapshot.live_count;
+    return snapshot;
+}
+
+SlStatus sl_resource_table_assert_no_leaks(const SlResourceTable* table, SlDiag* out_diag)
+{
+    SlResourceTableSnapshot snapshot = sl_resource_table_snapshot(table);
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (snapshot.live_count == 0U) {
+        return sl_status_ok();
+    }
+    if (out_diag != NULL) {
+        out_diag->severity = SL_DIAG_SEVERITY_ERROR;
+        out_diag->code = SL_DIAG_LIFECYCLE_LEAK_DETECTED;
+        out_diag->message = sl_resource_literal("resource table has live resources",
+                                                sizeof("resource table has live resources") - 1U);
+        out_diag->hints[0] = sl_resource_literal("close or transfer resources before leak check",
+                                                 sizeof("close or transfer resources before leak "
+                                                        "check") -
+                                                     1U);
+        out_diag->hint_count = 1U;
+    }
+    return sl_status_from_code(SL_STATUS_INVALID_STATE);
+}
+
 void sl_resource_table_dispose(SlResourceTable* table)
 {
     size_t index = 0U;

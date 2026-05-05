@@ -558,14 +558,23 @@ They must not include native pointer values or provider handle addresses.
 
 App/request lifecycle diagnostics:
 
-- invalid app lifecycle state, such as cleanup registration before startup, uses
-  `SLOPPY_E_APP_LIFECYCLE`;
-- double start, start after stopped/failed, request-scope creation after shutdown starts,
-  finishing shutdown while active requests are still draining, and cleanup failure
-  summaries also use `SLOPPY_E_APP_LIFECYCLE`;
+- startup storage/init failure uses `SLOPPY_E_LIFECYCLE_START_FAILED`;
+- double start uses `SLOPPY_E_LIFECYCLE_ALREADY_STARTED`;
+- cleanup registration, request-scope creation, or shutdown finishing before the lifecycle
+  reaches the required state uses `SLOPPY_E_LIFECYCLE_NOT_STARTED`;
+- finishing shutdown while active requests are still draining uses
+  `SLOPPY_E_LIFECYCLE_SHUTDOWN_STARTED`;
+- request scopes closed by forced app shutdown record
+  `SLOPPY_E_LIFECYCLE_SHUTDOWN_FORCED` as their terminal diagnostic;
+- use after close or bare close before terminal metadata uses
+  `SLOPPY_E_LIFECYCLE_REQUEST_SCOPE_CLOSED`;
 - late request completions after a terminal request scope use `SL_STATUS_STALE_RESOURCE`
-  with `SLOPPY_E_APP_LIFECYCLE` and a redacted hint telling callers not to touch closed
-  scope state;
+  with `SLOPPY_E_LIFECYCLE_LATE_COMPLETION_DROPPED` and a redacted hint telling callers
+  not to touch closed scope state;
+- cleanup failures use `SLOPPY_E_LIFECYCLE_CLEANUP_FAILED`;
+- test/debug leak assertions use `SLOPPY_E_LIFECYCLE_LEAK_DETECTED`;
+- future required app/request identity that cannot be found should use
+  `SLOPPY_E_LIFECYCLE_IDENTITY_UNAVAILABLE`;
 - app lifecycle JSON diagnostics use the normal deterministic `sl_diag_render_json` field
   order and include no timestamps, random IDs, raw native pointers, or provider handles;
 - lifecycle cleanup helpers close resources through `SlResourceTable` IDs rather than

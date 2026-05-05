@@ -278,6 +278,10 @@ Implemented MAIN1-07 behavior:
 
 Generation counters prevent stale IDs from referring to reused slots. JS-visible native
 resources must use IDs, never raw C pointers.
+`SlResourceTableSnapshot` exposes test/debug observations of capacity, live count, closed
+slot count, leak count, and live resources by kind. `sl_resource_table_assert_no_leaks`
+returns `SL_DIAG_LIFECYCLE_LEAK_DETECTED` when any live table entry remains. These hooks
+observe the table; they do not hide, auto-close, or reclassify leaked resources.
 
 Resource lookup failures use deterministic status/diagnostic pairs:
 
@@ -370,7 +374,11 @@ provides the matching app startup and shutdown cleanup scope with explicit creat
 starting, running, stopping, draining, stopped, and failed states. Graceful shutdown stops
 new request scopes and waits for active scopes to close before app-scope cleanup; forced
 shutdown closes app-scope cleanups exactly once for the current dev runtime policy. Cleanup
-callbacks are currently void/no-fail, so rich cleanup-failure diagnostics remain deferred.
+callbacks are currently void/no-fail. ENGINE-16.D/E adds `SlAppLifecycleSnapshot`,
+`SlAppRequestScopeSnapshot`, and no-leak assertions so tests can prove app/request cleanup
+counts return to zero and late completions are counted after terminal cleanup. Timer,
+callback, and provider-operation counters remain reserved zero fields until their runtimes
+integrate with the lifecycle hooks.
 
 ## Forbidden Patterns
 

@@ -13,6 +13,8 @@
 extern "C" {
 #endif
 
+#define SL_RESOURCE_KIND_COUNT 6U
+
 /*
  * Resource IDs are the only native handle shape that future JavaScript bridge code may
  * expose. They are plain slot/generation values and never contain native pointers.
@@ -54,6 +56,15 @@ typedef struct SlResourceTable
     size_t capacity;
     bool initialized;
 } SlResourceTable;
+
+typedef struct SlResourceTableSnapshot
+{
+    size_t capacity;
+    size_t live_count;
+    size_t closed_count;
+    size_t leaked_resource_count;
+    size_t live_by_kind[SL_RESOURCE_KIND_COUNT];
+} SlResourceTableSnapshot;
 
 SlResourceId sl_resource_id_invalid(void);
 bool sl_resource_id_is_valid(SlResourceId id);
@@ -120,6 +131,8 @@ bool sl_resource_table_contains(const SlResourceTable* table, SlResourceId id,
 bool sl_resource_table_is_alive(const SlResourceTable* table, SlResourceId id);
 size_t sl_resource_table_capacity(const SlResourceTable* table);
 size_t sl_resource_table_live_count(const SlResourceTable* table);
+SlResourceTableSnapshot sl_resource_table_snapshot(const SlResourceTable* table);
+SlStatus sl_resource_table_assert_no_leaks(const SlResourceTable* table, SlDiag* out_diag);
 
 /*
  * Closes all remaining live entries in ascending slot order and clears the table.
