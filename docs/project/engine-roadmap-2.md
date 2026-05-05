@@ -58,8 +58,12 @@ Tasks:
 - ENGINE-27.D: V8 Intrinsic Registration by Feature. Implemented in the second ENGINE-27
   slice by passing the Plan-activated runtime feature set into V8 creation and registering
   SQLite/app-host intrinsics only when the corresponding feature is active.
-- ENGINE-27.E: Missing Feature Diagnostics.
-- ENGINE-27.F: Package Include-Only-Used Feature Policy.
+- ENGINE-27.E: Missing Feature Diagnostics. Implemented in the third ENGINE-27 slice with
+  renderer-pinned goldens for unknown, unavailable, V8-disabled, provider, transport, and
+  dependency-missing feature diagnostics plus stdlib missing-intrinsic text.
+- ENGINE-27.F: Package Include-Only-Used Feature Policy. Implemented in the third ENGINE-27
+  slice as an honest policy: runtime activation is Plan-driven now, while compile/link
+  trimming and stdlib asset pruning remain future package work.
 
 ## EPIC ENGINE-28: Provider Runtime Maturation
 

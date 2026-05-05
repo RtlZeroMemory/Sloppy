@@ -183,7 +183,9 @@ fields with the wrong JSON type fail validation. Top-level `requiredFeatures` is
 exception to unknown-field ignore semantics: entries are parsed into `SlPlan` and then
 validated against the runtime feature registry. Unknown entries fail with
 `SLOPPY_E_UNKNOWN_RUNTIME_FEATURE`; known but unavailable entries fail with
-`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`.
+`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`; unavailable dependencies fail with
+`SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING`. These diagnostics include the feature id and
+Plan/requested-by context where the current Plan shape can provide it.
 
 Current descriptor import mapping is intentionally narrow and mirrors what the compiler and
 stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/results` to

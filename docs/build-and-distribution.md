@@ -427,6 +427,26 @@ release install formalization is still deferred; `tools/windows/package.ps1` own
 reviewable Release archive layout and copies the Release `sloppyc` binary from Cargo
 output.
 
+## Runtime Feature Inclusion Policy
+
+ENGINE-27 makes runtime activation Plan-driven, not package-manager driven. Current
+packages may still contain compiled code and broad stdlib assets for features that a
+specific app does not use. That is honest compiled/link inclusion, not runtime activation:
+startup validates the Plan feature set, registers V8 intrinsics only for active features,
+and fails closed for unavailable required features before provider, transport, or stdlib
+initialization claims success.
+
+Package smoke may claim only the archive layout and commands it actually executed. A
+default non-V8 package smoke does not prove V8 execution, SQLite bridge activation,
+PostgreSQL or SQL Server JavaScript bridges, live-provider readiness, stdlib asset
+trimming, or release readiness. Future include-only-used package work should consume the
+runtime feature descriptors and compiler/Plan metadata to trim stdlib assets, optional
+runtime payloads, and link inputs where feasible. Until that work lands, reports must say
+"compiled/staged but inactive" rather than "excluded" for unused compiled features.
+
+This policy does not add npm, `node_modules`, package-manager resolution, installers,
+public alpha distribution, dynamic runtime plugins, or native feature loading.
+
 ## Release ZIP Layout
 
 First distribution target:

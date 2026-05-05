@@ -613,7 +613,7 @@ Operation:
   ${operation}
 
 Reason:
-  The active Sloppy Plan did not enable the SQLite V8 intrinsics.
+  The active Sloppy Plan did not enable the __sloppy.data.sqlite V8 intrinsic namespace.
 
 Fix:
   Add SQLite provider metadata to the Plan, or keep SQLite usage behind a documented deferral.`);
@@ -621,10 +621,13 @@ Fix:
 
 function createPostgresUnavailableError(operation, options) {
     const safeOptions = validatePostgresOpenOptions(options);
-    return new Error(`sloppy: postgres provider native bridge unavailable
+    return new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature provider.postgres is unavailable
 
 Provider:
   postgres
+
+Feature:
+  provider.postgres
 
 Operation:
   ${operation}
@@ -633,7 +636,7 @@ Connection:
   ${safeOptions.connectionString}
 
 Reason:
-  The native PostgreSQL provider exists for C/runtime tests, but stdlib-to-native database intrinsics are not wired yet.
+  provider.postgres is a deferred runtime feature descriptor; the stdlib-to-native bridge is not implemented.
 
 Fix:
   Register PostgreSQL as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);
@@ -641,10 +644,13 @@ Fix:
 
 function createSqlServerUnavailableError(operation, options) {
     const safeOptions = validateSqlServerOpenOptions(options);
-    return new Error(`sloppy: sqlserver provider native bridge unavailable
+    return new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature provider.sqlserver is unavailable
 
 Provider:
   sqlserver
+
+Feature:
+  provider.sqlserver
 
 Operation:
   ${operation}
@@ -653,7 +659,7 @@ Connection:
   ${safeOptions.connectionString}
 
 Reason:
-  The native SQL Server provider exists for C/runtime tests through ODBC, but stdlib-to-native database intrinsics are not wired yet.
+  provider.sqlserver is a deferred runtime feature descriptor; the stdlib-to-native bridge is not implemented.
 
 Fix:
   Register SQL Server as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);

@@ -9,8 +9,9 @@ capabilities, providers, source maps, completeness, doctor/audit/OpenAPI, and cu
 app-host startup validation for the supported subset. ENGINE-27.A/B now stores
 `requiredFeatures[]` in the native Plan and maps Plan target/route/provider metadata to the
 runtime feature registry. ENGINE-27.C/D adds feature-specific descriptor metadata and uses
-the Plan-activated feature set to gate V8 intrinsic registration. Later ENGINE-27 slices
-still own missing-feature diagnostic goldens and package include-only-used policy.
+the Plan-activated feature set to gate V8 intrinsic registration. ENGINE-27.E/F pins the
+missing-feature diagnostic goldens and defines package include-only-used policy without
+claiming current compile/link trimming.
 
 ## Purpose
 

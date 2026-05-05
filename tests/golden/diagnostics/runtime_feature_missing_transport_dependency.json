@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING","severity":"error","message":"runtime feature dependency is unavailable","related":[{"message":"transport.libuv","span":{}},{"message":"http","span":{}}],"hints":["enable the dependency runtime lane before activating this feature"]}

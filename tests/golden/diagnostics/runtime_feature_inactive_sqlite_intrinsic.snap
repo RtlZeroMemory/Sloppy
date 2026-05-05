@@ -1,0 +1,16 @@
+SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature provider.sqlite is inactive or unavailable
+
+Provider:
+  sqlite
+
+Feature:
+  provider.sqlite
+
+Operation:
+  open
+
+Reason:
+  The active Sloppy Plan did not enable the __sloppy.data.sqlite V8 intrinsic namespace.
+
+Fix:
+  Add SQLite provider metadata to the Plan, or keep SQLite usage behind a documented deferral.

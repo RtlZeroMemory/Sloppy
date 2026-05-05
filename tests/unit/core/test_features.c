@@ -1,5 +1,7 @@
 #include "sloppy/features.h"
 
+#include <stdio.h>
+
 typedef int (*FeatureTestFn)(void);
 
 static int expect_true(bool condition)
@@ -10,6 +12,53 @@ static int expect_true(bool condition)
 static int expect_status(SlStatus status, SlStatusCode code)
 {
     return expect_true(sl_status_code(status) == code);
+}
+
+static int expect_str_equal(SlStr actual, SlStr expected)
+{
+    return expect_true(sl_str_equal(actual, expected));
+}
+
+static int expect_snapshot(SlStr actual, const char* path)
+{
+    char expected[2048];
+    FILE* file = NULL;
+    size_t length = 0U;
+
+#ifdef _MSC_VER
+    if (fopen_s(&file, path, "rb") != 0) {
+        return 1;
+    }
+#else
+    file = fopen(path, "rb");
+#endif
+
+    if (file == NULL) {
+        return 1;
+    }
+
+    length = fread(expected, 1U, sizeof(expected), file);
+    if (ferror(file) != 0) {
+        (void)fclose(file);
+        return 2;
+    }
+    if (length == sizeof(expected)) {
+        unsigned char extra = 0U;
+        const size_t extra_read = fread(&extra, 1U, 1U, file);
+        if (extra_read == 1U) {
+            (void)fclose(file);
+            return 4;
+        }
+        if (ferror(file) != 0) {
+            (void)fclose(file);
+            return 2;
+        }
+    }
+    if (fclose(file) != 0) {
+        return 3;
+    }
+
+    return expect_str_equal(actual, sl_str_from_parts(expected, length));
 }
 
 static SlPlan base_plan(SlPlanHandler* handlers, SlPlanRoute* routes)
@@ -46,6 +95,56 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.provider_postgres = false;
     availability.provider_sqlserver = false;
     return availability;
+}
+
+static SlPlan target_only_plan(void)
+{
+    SlPlan plan = {0};
+
+    plan.version = SL_PLAN_CURRENT_VERSION;
+    plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    plan.target.engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
+    return plan;
+}
+
+static int expect_activation_diagnostic_snapshot(const SlPlan* plan,
+                                                 const SlRuntimeFeatureAvailability* availability,
+                                                 SlStatusCode expected_status,
+                                                 SlDiagCode expected_diag_code,
+                                                 const char* snapshot_path)
+{
+    unsigned char diag_storage[4096];
+    unsigned char render_storage[4096];
+    SlArena diag_arena = {0};
+    SlArena render_arena = {0};
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+    SlStr rendered = {0};
+
+    if (expect_status(sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&render_arena, render_storage, sizeof(render_storage)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (expect_status(
+            sl_runtime_feature_activate_plan(plan, availability, &diag_arena, &set, &diag),
+            expected_status) != 0)
+    {
+        return 2;
+    }
+    if (diag.code != expected_diag_code) {
+        return 3;
+    }
+    if (expect_status(sl_diag_render_json(&render_arena, &diag, &rendered), SL_STATUS_OK) != 0) {
+        return 4;
+    }
+    if (expect_snapshot(rendered, snapshot_path) != 0) {
+        return 5;
+    }
+
+    return 0;
 }
 
 static int test_descriptors_publish_import_and_intrinsic_metadata(void)
@@ -297,6 +396,91 @@ static int test_v8_disabled_fails_honestly(void)
     return 0;
 }
 
+static int test_missing_feature_diagnostic_goldens(void)
+{
+    SlPlanHandler handlers[1];
+    SlPlanRoute routes[1];
+    SlPlanDataProvider providers[1] = {{0}};
+    SlPlanRequiredFeature required[1] = {{0}};
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlPlan plan = base_plan(handlers, routes);
+
+    required[0].id = sl_str_from_cstr("future.magic");
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_INVALID_ARGUMENT, SL_DIAG_UNKNOWN_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unknown.json") != 0)
+    {
+        return 70;
+    }
+
+    required[0].id = sl_str_from_cstr("provider.postgres");
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_postgres.json") != 0)
+    {
+        return 71;
+    }
+
+    required[0].id = sl_str_from_cstr("provider.sqlserver");
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_sqlserver.json") != 0)
+    {
+        return 72;
+    }
+
+    plan.required_features = NULL;
+    plan.required_feature_count = 0U;
+    providers[0].token = sl_str_from_cstr("data.main");
+    providers[0].provider = sl_str_from_cstr("sqlite");
+    plan.data_providers = providers;
+    plan.data_provider_count = 1U;
+    availability.provider_sqlite = false;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_sqlite.json") != 0)
+    {
+        return 73;
+    }
+
+    availability = all_available();
+    availability.v8 = false;
+    plan.data_providers = NULL;
+    plan.data_provider_count = 0U;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_v8_disabled.json") != 0)
+    {
+        return 74;
+    }
+
+    availability = all_available();
+    availability.transport_libuv = false;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING,
+            "tests/golden/diagnostics/runtime_feature_missing_transport_dependency.json") != 0)
+    {
+        return 75;
+    }
+
+    availability = all_available();
+    availability.transport_libuv = false;
+    plan = target_only_plan();
+    required[0].id = sl_str_from_cstr("transport.libuv");
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_transport.json") != 0)
+    {
+        return 76;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     static const FeatureTestFn tests[] = {
@@ -307,6 +491,7 @@ int main(void)
         test_unknown_required_feature_fails_deterministically,
         test_missing_dependency_fails_deterministically,
         test_v8_disabled_fails_honestly,
+        test_missing_feature_diagnostic_goldens,
     };
     size_t index = 0U;
 

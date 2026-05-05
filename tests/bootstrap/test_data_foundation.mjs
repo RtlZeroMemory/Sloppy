@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { Sloppy, data, sql } from "../../stdlib/sloppy/index.js";
 
 function assertThrowsMessage(fn, expected) {
     assert.throws(fn, (error) => {
         assert.match(String(error.message), expected);
+        return true;
+    });
+}
+
+function assertThrowsSnapshot(fn, path) {
+    assert.throws(fn, (error) => {
+        const expected = readFileSync(path, "utf8");
+        assert.equal(`${error.message}\n`, expected);
         return true;
     });
 }
@@ -184,10 +193,10 @@ function createForgedLoweredQuery() {
     assertThrowsMessage(() => data.sqlite.open({
         database: ":memory:",
     }), /capability must be a non-empty string/);
-    assertThrowsMessage(() => data.sqlite.open({
+    assertThrowsSnapshot(() => data.sqlite.open({
         database: ":memory:",
         capability: "data.main",
-    }), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.sqlite[\s\S]*Operation:[\s\S]*open/);
+    }), "tests/golden/diagnostics/runtime_feature_inactive_sqlite_intrinsic.snap");
     assertThrowsMessage(() => data.sqlite.open({
         path: ":memory:",
         capability: "data.main",
@@ -365,7 +374,7 @@ function createForgedLoweredQuery() {
     }), /access must be read or readwrite/);
     assertThrowsMessage(() => data.postgres.open({
         connectionString: "postgres://ada:secret@localhost/sloppy",
-    }), /postgres provider native bridge unavailable[\s\S]*postgres:\/\/ada:<redacted>@localhost/);
+    }), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.postgres[\s\S]*postgres:\/\/ada:<redacted>@localhost/);
 }
 
 {
@@ -403,7 +412,7 @@ function createForgedLoweredQuery() {
     }), /access must be read or readwrite/);
     assertThrowsMessage(() => data.sqlserver.open({
         connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=secret",
-    }), /sqlserver provider native bridge unavailable[\s\S]*PWD=<redacted>/);
+    }), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.sqlserver[\s\S]*PWD=<redacted>/);
 }
 
 {

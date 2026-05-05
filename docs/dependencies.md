@@ -153,6 +153,13 @@ installed or bundled. Default non-V8 package smoke does not connect to PostgreSQ
 Server, does not prove SQL Server ODBC driver installation, does not prove V8 execution,
 and does not prove the deferred JS-to-native data bridge.
 
+ENGINE-27 feature descriptors are the source of truth for runtime activation and future
+package include-only-used work. They do not currently remove dependencies from the build
+graph by themselves. vcpkg/CMake may still compile or link SQLite, libpq, ODBC, libuv, and
+stdlib assets even when a particular Plan does not activate those features. Runtime startup
+must still initialize only the active Plan features and report unavailable/deferred feature
+diagnostics deterministically.
+
 The optional V8 CI job is manual and gated. It requires a runner-local preinstalled SDK
 path through the `v8_root` workflow input. If that path is not supplied or does not exist,
 the job reports skipped/not configured and does not claim V8 validation. Required CI keeps
