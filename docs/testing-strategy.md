@@ -203,8 +203,10 @@ Time/deadline/cancellation:
 - timeout and cancellation errors remain distinguishable;
 - interval async iteration, scheduled-job pause/resume/no-overlap skip behavior, and
   fake-clock deterministic delay/timeout/cleanup behavior in bootstrap stdlib tests;
-- FS integration and final example/conformance evidence stay in their later
-  CORE-TIME-01 lanes.
+- filesystem facade integration tests must cover pre-cancelled signals, expired deadlines,
+  invalid `timeoutMs`, pass-through `Deadline.never`, and cancellation races without
+  claiming native filesystem interruption;
+- final example/conformance evidence stays in CORE-TIME-01.I.
 
 Platform:
 

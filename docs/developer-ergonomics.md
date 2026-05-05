@@ -81,8 +81,10 @@ CORE-TIME-01.A/B locks the `sloppy/time` contract around `Time`, `Deadline`,
 and explicit fake clocks. The compiler now makes `sloppy/time` Plan-visible as
 `stdlib.time`. CORE-TIME-01.C/D/G adds the V8-backed `Time.delay`, `Time.timeout`,
 `Deadline`, `CancellationController`, and `Time.yield` runtime path. CORE-TIME-01.E/F
-adds async iterable intervals, interval-based scheduled jobs, `Time.systemClock`, and explicit
-test-scoped `Time.fakeClock`. Existing-API integration remains a later CORE-TIME slice.
+adds async iterable intervals, interval-based scheduled jobs, `Time.systemClock`, and
+explicit test-scoped `Time.fakeClock`. CORE-TIME-01.H lets filesystem calls accept
+`signal`, `deadline`, and `timeoutMs` without claiming Node timer compatibility or
+preemptive native filesystem interruption.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.

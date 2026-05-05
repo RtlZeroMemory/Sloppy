@@ -4,6 +4,8 @@ import {
     CancelledError,
     CancellationController,
     Deadline,
+    Directory,
+    File,
     InvalidDeadlineError,
     Results,
     Sloppy,
@@ -270,6 +272,67 @@ async function flushMicrotasks(count = 6) {
     disposedClock.dispose();
     await assert.rejects(disposedDelay, TimerDisposedError);
     assert.throws(() => disposedClock.advanceBy(1), TimerDisposedError);
+}
+
+{
+    const previousSloppy = globalThis.__sloppy;
+    let readCalls = 0;
+    try {
+        globalThis.__sloppy = {
+            fs: {
+                readText() {
+                    readCalls += 1;
+                    return Promise.resolve("ok");
+                },
+                stat() {
+                    readCalls += 1;
+                    return Promise.resolve({ exists: true, kind: "directory" });
+                },
+            },
+        };
+
+        const cancelledController = new CancellationController();
+        cancelledController.cancel("caller stopped");
+        await assert.rejects(
+            File.readText("data:/users.json", { signal: cancelledController.signal }),
+            CancelledError,
+        );
+        assert.equal(readCalls, 0);
+
+        await assert.rejects(
+            File.readText("data:/users.json", { deadline: Deadline.after(0) }),
+            TimeoutError,
+        );
+        assert.equal(readCalls, 0);
+
+        await assert.rejects(
+            File.readText("data:/users.json", { timeoutMs: 0 }),
+            TimeoutError,
+        );
+        assert.equal(readCalls, 0);
+
+        assert.throws(
+            () => File.readText("data:/users.json", { timeoutMs: -1 }),
+            InvalidDeadlineError,
+        );
+        assert.equal(readCalls, 0);
+
+        assert.equal(await File.readText("data:/users.json", { deadline: Deadline.never() }), "ok");
+        assert.equal(await Directory.exists("data:/", { deadline: Deadline.never() }), true);
+        assert.equal(readCalls, 2);
+
+        const pendingController = new CancellationController();
+        const pendingRead = File.readText("data:/later.txt", { signal: pendingController.signal });
+        pendingController.cancel("not needed");
+        await assert.rejects(pendingRead, CancelledError);
+        assert.equal(readCalls, 3);
+    } finally {
+        if (previousSloppy === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previousSloppy;
+        }
+    }
 }
 
 {

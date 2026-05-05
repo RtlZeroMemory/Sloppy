@@ -95,7 +95,11 @@ and lets the compiler emit that required feature when source imports `sloppy/fs`
 CORE-TIME-01.A/B adds the `stdlib.time` descriptor and lets the compiler emit that
 required feature when source imports `sloppy/time`. CORE-TIME-01.C/D/G consumes the active
 feature to install the private `__sloppy.time` V8 bridge for native delay and monotonic
-deadline accounting. CORE-FS-01.C/D/H consumes the active feature to install the first core
+deadline accounting. CORE-TIME-01.H aligns filesystem stdlib options with Time concepts;
+it does not add new compiler-emitted Plan metadata beyond the existing `stdlib.fs` and
+`stdlib.time` feature activation. Runtime feature activation treats `stdlib.time` as a
+dependency of `stdlib.fs` so numeric filesystem timeouts work for apps that import only
+`sloppy/fs`. CORE-FS-01.C/D/H consumes the active feature to install the first core
 `__sloppy.fs` V8 bridge and stdlib `File` wrappers.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native

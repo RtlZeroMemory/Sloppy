@@ -126,6 +126,13 @@ still runs cleanup plus scope release exactly once. Cancellation reasons also ma
 backpressure, and shutdown diagnostics consistent for provider and future runtime
 completion owners.
 
+CORE-TIME-01.H aligns existing filesystem APIs with the shared Time vocabulary without
+changing the native filesystem execution model. The JavaScript filesystem facade accepts
+`signal`, `deadline`, and `timeoutMs` and can reject before bridge submission or
+terminalize the caller's Promise after submission. It does not claim that an already-running
+blocking filesystem operation is interrupted; late native completion remains governed by
+the existing owner-thread Promise settlement and cleanup rules.
+
 ENGINE-27.A/B adds a Plan-driven runtime feature activation check before runtime
 initialization. The registry derives active features from `target.engine`, route metadata,
 provider metadata, and explicit `requiredFeatures[]`. It activates only the current

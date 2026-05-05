@@ -1,3 +1,9 @@
+import {
+    CancelledError,
+    InvalidDeadlineError,
+    Time,
+} from "./time.js";
+
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return false;
@@ -139,17 +145,135 @@ function shouldAtomic(options) {
     return atomic;
 }
 
+function isCancellationSignal(value) {
+    return (
+        value !== null &&
+        typeof value === "object" &&
+        typeof value.aborted === "boolean" &&
+        ("reason" in value || typeof value.addEventListener === "function")
+    );
+}
+
+function subscribeCancellation(signal, listener) {
+    if (!isCancellationSignal(signal)) {
+        return () => {};
+    }
+    if (signal.aborted) {
+        listener(signal.reason);
+        return () => {};
+    }
+    if (typeof signal._subscribe === "function") {
+        return signal._subscribe(listener);
+    }
+    if (typeof signal.addEventListener === "function") {
+        const wrapped = () => listener(signal.reason);
+        signal.addEventListener("abort", wrapped);
+        return () => signal.removeEventListener?.("abort", wrapped);
+    }
+    return () => {};
+}
+
+function cancelledError(reason = undefined) {
+    return reason instanceof CancelledError
+        ? reason
+        : new CancelledError("Sloppy filesystem operation was cancelled.", { reason });
+}
+
+function validateTimeoutMs(value, operation) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw new InvalidDeadlineError(`${operation} timeoutMs must be a finite non-negative number.`);
+    }
+    return Math.ceil(value);
+}
+
+function deadlineRemainingMs(deadline) {
+    if (deadline === undefined || deadline === null) {
+        return Infinity;
+    }
+    if (typeof deadline.remainingMs !== "function") {
+        throw new InvalidDeadlineError(
+            "Filesystem operation deadline must come from Deadline.after, Deadline.at, or Deadline.never.",
+        );
+    }
+    return deadline.remainingMs();
+}
+
+function raceFilesystemCancellation(promise, signal) {
+    if (!isCancellationSignal(signal)) {
+        return promise;
+    }
+    if (signal.aborted) {
+        return Promise.reject(cancelledError(signal.reason));
+    }
+    return new Promise((resolve, reject) => {
+        const cleanup = subscribeCancellation(signal, (reason) => {
+            cleanup();
+            reject(cancelledError(reason));
+        });
+        promise.then(
+            (value) => {
+                cleanup();
+                resolve(value);
+            },
+            (error) => {
+                cleanup();
+                reject(error);
+            },
+        );
+    });
+}
+
+function validateTimeOptions(options, operation) {
+    if (options !== undefined && !isPlainObject(options)) {
+        throw new TypeError(`${operation} options must be a plain object.`);
+    }
+}
+
+function applyTimeOptions(createPromise, options, operation) {
+    validateTimeOptions(options, operation);
+    const signal = options?.signal;
+    const timeoutMs = validateTimeoutMs(options?.timeoutMs, operation);
+    const deadline = options?.deadline;
+    if (isCancellationSignal(signal) && signal.aborted) {
+        return Promise.reject(cancelledError(signal.reason));
+    }
+    const deadlineMs = deadlineRemainingMs(deadline);
+    if (timeoutMs === 0 || deadlineMs <= 0) {
+        return Time.timeout(Promise.resolve(), { afterMs: timeoutMs, deadline });
+    }
+    const promise = createPromise();
+    if (timeoutMs !== undefined || deadlineMs !== Infinity) {
+        return Time.timeout(Promise.resolve(promise), {
+            afterMs: timeoutMs,
+            deadline,
+            signal,
+        });
+    }
+    return raceFilesystemCancellation(Promise.resolve(promise), signal);
+}
+
 const File = Object.freeze({
-    readText(path) {
-        return nativeFsBridge("readText").readText(validatePath(path, "readText"));
+    readText(path, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("readText").readText(validatePath(path, "readText")),
+            options,
+            "File.readText",
+        );
     },
 
-    readBytes(path) {
-        return nativeFsBridge("readBytes").readBytes(validatePath(path, "readBytes"));
+    readBytes(path, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("readBytes").readBytes(validatePath(path, "readBytes")),
+            options,
+            "File.readBytes",
+        );
     },
 
-    async readJson(path) {
-        return JSON.parse(await File.readText(path));
+    async readJson(path, options) {
+        return JSON.parse(await File.readText(path, options));
     },
 
     writeText(path, text, options) {
@@ -157,19 +281,35 @@ const File = Object.freeze({
             throw new TypeError("Sloppy File.writeText text must be a string.");
         }
         if (shouldAtomic(options)) {
-            return nativeFsBridge("atomicWriteText").atomicWriteText(validatePath(path, "writeText"), text);
+            return applyTimeOptions(
+                () => nativeFsBridge("atomicWriteText").atomicWriteText(validatePath(path, "writeText"), text),
+                options,
+                "File.writeText",
+            );
         }
-        return nativeFsBridge("writeText").writeText(validatePath(path, "writeText"), text);
+        return applyTimeOptions(
+            () => nativeFsBridge("writeText").writeText(validatePath(path, "writeText"), text),
+            options,
+            "File.writeText",
+        );
     },
 
     writeBytes(path, bytes, options) {
         const checked = validateBytes(bytes, "writeBytes");
         if (shouldAtomic(options)) {
-            return nativeFsBridge("atomicWriteBytes").atomicWriteBytes(validatePath(path, "writeBytes"), checked);
+            return applyTimeOptions(
+                () => nativeFsBridge("atomicWriteBytes").atomicWriteBytes(validatePath(path, "writeBytes"), checked),
+                options,
+                "File.writeBytes",
+            );
         }
-        return nativeFsBridge("writeBytes").writeBytes(
-            validatePath(path, "writeBytes"),
-            checked,
+        return applyTimeOptions(
+            () => nativeFsBridge("writeBytes").writeBytes(
+                validatePath(path, "writeBytes"),
+                checked,
+            ),
+            options,
+            "File.writeBytes",
         );
     },
 
@@ -177,61 +317,97 @@ const File = Object.freeze({
         return File.writeText(path, stringifyJson(value, options), options);
     },
 
-    appendText(path, text) {
+    appendText(path, text, options) {
         if (typeof text !== "string") {
             throw new TypeError("Sloppy File.appendText text must be a string.");
         }
-        return nativeFsBridge("appendText").appendText(validatePath(path, "appendText"), text);
-    },
-
-    appendBytes(path, bytes) {
-        return nativeFsBridge("appendBytes").appendBytes(
-            validatePath(path, "appendBytes"),
-            validateBytes(bytes, "appendBytes"),
+        return applyTimeOptions(
+            () => nativeFsBridge("appendText").appendText(validatePath(path, "appendText"), text),
+            options,
+            "File.appendText",
         );
     },
 
-    exists(path) {
-        return nativeFsBridge("exists").exists(validatePath(path, "exists"));
+    appendBytes(path, bytes, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("appendBytes").appendBytes(
+                validatePath(path, "appendBytes"),
+                validateBytes(bytes, "appendBytes"),
+            ),
+            options,
+            "File.appendBytes",
+        );
     },
 
-    stat(path) {
-        return nativeFsBridge("stat").stat(validatePath(path, "stat"));
+    exists(path, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("exists").exists(validatePath(path, "exists")),
+            options,
+            "File.exists",
+        );
+    },
+
+    stat(path, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("stat").stat(validatePath(path, "stat")),
+            options,
+            "File.stat",
+        );
     },
 
     copy(fromPath, toPath, options) {
-        return nativeFsBridge("copy").copy(
-            validatePath(fromPath, "copy"),
-            validatePath(toPath, "copy"),
-            validateCopyMoveOptions(options),
+        return applyTimeOptions(
+            () => nativeFsBridge("copy").copy(
+                validatePath(fromPath, "copy"),
+                validatePath(toPath, "copy"),
+                validateCopyMoveOptions(options),
+            ),
+            options,
+            "File.copy",
         );
     },
 
     move(fromPath, toPath, options) {
-        return nativeFsBridge("move").move(
-            validatePath(fromPath, "move"),
-            validatePath(toPath, "move"),
-            validateCopyMoveOptions(options),
+        return applyTimeOptions(
+            () => nativeFsBridge("move").move(
+                validatePath(fromPath, "move"),
+                validatePath(toPath, "move"),
+                validateCopyMoveOptions(options),
+            ),
+            options,
+            "File.move",
         );
     },
 
-    delete(path) {
-        return nativeFsBridge("delete").delete(validatePath(path, "delete"));
+    delete(path, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("delete").delete(validatePath(path, "delete")),
+            options,
+            "File.delete",
+        );
     },
 
     async open(path, options) {
         const checked = validateOpenOptions(options);
-        const id = await nativeFsBridge("openHandle").openHandle(
-            validatePath(path, "open"),
-            checked.access,
-            checked.create,
+        const id = await applyTimeOptions(
+            () => nativeFsBridge("openHandle").openHandle(
+                validatePath(path, "open"),
+                checked.access,
+                checked.create,
+            ),
+            options,
+            "File.open",
         );
         return new FileHandle(id);
     },
 
     async watch(path, options) {
         const checked = validateWatchOptions(options, false);
-        const id = await nativeFsBridge("watch").watch(validatePath(path, "watch"), false, checked);
+        const id = await applyTimeOptions(
+            () => nativeFsBridge("watch").watch(validatePath(path, "watch"), false, checked),
+            options,
+            "File.watch",
+        );
         return new FileWatcher(id);
     },
 
@@ -240,15 +416,23 @@ const File = Object.freeze({
         if (typeof directory !== "boolean") {
             throw new TypeError("Sloppy File.createSymlink directory option must be boolean.");
         }
-        return nativeFsBridge("symlink").symlink(
-            validatePath(targetPath, "createSymlink"),
-            validatePath(linkPath, "createSymlink"),
-            directory,
+        return applyTimeOptions(
+            () => nativeFsBridge("symlink").symlink(
+                validatePath(targetPath, "createSymlink"),
+                validatePath(linkPath, "createSymlink"),
+                directory,
+            ),
+            options,
+            "File.createSymlink",
         );
     },
 
-    readLink(path) {
-        return nativeFsBridge("readLink").readLink(validatePath(path, "readLink"));
+    readLink(path, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("readLink").readLink(validatePath(path, "readLink")),
+            options,
+            "File.readLink",
+        );
     },
 
     createTemp(directory, options) {
@@ -256,13 +440,17 @@ const File = Object.freeze({
         if (typeof prefix !== "string" || prefix.length === 0) {
             throw new TypeError("Sloppy File.createTemp prefix must be a non-empty string.");
         }
-        return nativeFsBridge("tempFile").tempFile(validatePath(directory, "createTemp"), prefix);
+        return applyTimeOptions(
+            () => nativeFsBridge("tempFile").tempFile(validatePath(directory, "createTemp"), prefix),
+            options,
+            "File.createTemp",
+        );
     },
 });
 
-async function isSymlink(path) {
+async function isSymlink(path, options) {
     try {
-        await File.readLink(path);
+        await File.readLink(path, options);
         return true;
     }
     catch {
@@ -273,14 +461,22 @@ async function isSymlink(path) {
 const Directory = Object.freeze({
     create(path, options) {
         const checked = validateRecursiveOptions(options);
-        return nativeFsBridge("directoryCreate").directoryCreate(
-            validatePath(path, "create"),
-            checked.recursive,
+        return applyTimeOptions(
+            () => nativeFsBridge("directoryCreate").directoryCreate(
+                validatePath(path, "create"),
+                checked.recursive,
+            ),
+            options,
+            "Directory.create",
         );
     },
 
-    list(path) {
-        return nativeFsBridge("directoryList").directoryList(validatePath(path, "list"));
+    list(path, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("directoryList").directoryList(validatePath(path, "list")),
+            options,
+            "Directory.list",
+        );
     },
 
     async *walk(path, options) {
@@ -288,14 +484,14 @@ const Directory = Object.freeze({
         if (typeof followSymlinks !== "boolean") {
             throw new TypeError("Sloppy Directory.walk followSymlinks option must be boolean.");
         }
-        for (const entry of await Directory.list(path)) {
+        for (const entry of await Directory.list(path, options)) {
             yield entry;
             if (entry.kind === "directory") {
                 const child = `${path.replace(/[\\/]$/, "")}/${entry.name}`;
-                if (!followSymlinks && await isSymlink(child)) {
+                if (!followSymlinks && await isSymlink(child, options)) {
                     continue;
                 }
-                for await (const nested of Directory.walk(child, { followSymlinks })) {
+                for await (const nested of Directory.walk(child, { ...options, followSymlinks })) {
                     yield { ...nested, name: `${entry.name}/${nested.name}` };
                 }
             }
@@ -304,14 +500,18 @@ const Directory = Object.freeze({
 
     delete(path, options) {
         const checked = validateRecursiveOptions(options);
-        return nativeFsBridge("directoryDelete").directoryDelete(
-            validatePath(path, "delete"),
-            checked.recursive,
+        return applyTimeOptions(
+            () => nativeFsBridge("directoryDelete").directoryDelete(
+                validatePath(path, "delete"),
+                checked.recursive,
+            ),
+            options,
+            "Directory.delete",
         );
     },
 
-    async exists(path) {
-        const stat = await File.stat(path);
+    async exists(path, options) {
+        const stat = await File.stat(path, options);
         return stat.exists && stat.kind === "directory";
     },
 
@@ -320,15 +520,23 @@ const Directory = Object.freeze({
         if (typeof prefix !== "string" || prefix.length === 0) {
             throw new TypeError("Sloppy Directory.createTemp prefix must be a non-empty string.");
         }
-        return nativeFsBridge("tempDirectory").tempDirectory(
-            validatePath(directory, "createTemp"),
-            prefix,
+        return applyTimeOptions(
+            () => nativeFsBridge("tempDirectory").tempDirectory(
+                validatePath(directory, "createTemp"),
+                prefix,
+            ),
+            options,
+            "Directory.createTemp",
         );
     },
 
     async watch(path, options) {
         const checked = validateWatchOptions(options, true);
-        const id = await nativeFsBridge("watch").watch(validatePath(path, "watch"), true, checked);
+        const id = await applyTimeOptions(
+            () => nativeFsBridge("watch").watch(validatePath(path, "watch"), true, checked),
+            options,
+            "Directory.watch",
+        );
         return new FileWatcher(id);
     },
 });
@@ -354,52 +562,80 @@ class FileHandle {
         this._id = Object.freeze({ slot: id.slot, generation: id.generation });
     }
 
-    readBytes(maxBytes = 64 * 1024) {
+    readBytes(maxBytes = 64 * 1024, options) {
         if (!Number.isInteger(maxBytes) || maxBytes <= 0 || maxBytes > 1024 * 1024) {
             throw new TypeError("Sloppy FileHandle.readBytes maxBytes must be 1..1048576.");
         }
-        return nativeFsBridge("handleRead").handleRead(this._id, maxBytes);
-    }
-
-    async readText(maxBytes) {
-        const bytes = await this.readBytes(maxBytes);
-        return new TextDecoder().decode(bytes);
-    }
-
-    writeBytes(bytes) {
-        return nativeFsBridge("handleWriteBytes").handleWriteBytes(
-            this._id,
-            validateBytes(bytes, "writeBytes"),
+        return applyTimeOptions(
+            () => nativeFsBridge("handleRead").handleRead(this._id, maxBytes),
+            options,
+            "FileHandle.readBytes",
         );
     }
 
-    writeText(text) {
+    async readText(maxBytes, options) {
+        const bytes = await this.readBytes(maxBytes, options);
+        return new TextDecoder().decode(bytes);
+    }
+
+    writeBytes(bytes, options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("handleWriteBytes").handleWriteBytes(
+                this._id,
+                validateBytes(bytes, "writeBytes"),
+            ),
+            options,
+            "FileHandle.writeBytes",
+        );
+    }
+
+    writeText(text, options) {
         if (typeof text !== "string") {
             throw new TypeError("Sloppy FileHandle.writeText text must be a string.");
         }
-        return nativeFsBridge("handleWriteText").handleWriteText(this._id, text);
+        return applyTimeOptions(
+            () => nativeFsBridge("handleWriteText").handleWriteText(this._id, text),
+            options,
+            "FileHandle.writeText",
+        );
     }
 
-    seek(offset, origin = "start") {
+    seek(offset, origin = "start", options) {
         if (!Number.isInteger(offset) || !["start", "current", "end"].includes(origin)) {
             throw new TypeError("Sloppy FileHandle.seek requires an integer offset and valid origin.");
         }
-        return nativeFsBridge("handleSeek").handleSeek(this._id, offset, origin);
+        return applyTimeOptions(
+            () => nativeFsBridge("handleSeek").handleSeek(this._id, offset, origin),
+            options,
+            "FileHandle.seek",
+        );
     }
 
-    truncate(size) {
+    truncate(size, options) {
         if (!Number.isInteger(size) || size < 0) {
             throw new TypeError("Sloppy FileHandle.truncate size must be a non-negative integer.");
         }
-        return nativeFsBridge("handleTruncate").handleTruncate(this._id, size);
+        return applyTimeOptions(
+            () => nativeFsBridge("handleTruncate").handleTruncate(this._id, size),
+            options,
+            "FileHandle.truncate",
+        );
     }
 
-    flush() {
-        return nativeFsBridge("handleFlush").handleFlush(this._id);
+    flush(options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("handleFlush").handleFlush(this._id),
+            options,
+            "FileHandle.flush",
+        );
     }
 
-    sync() {
-        return nativeFsBridge("handleSync").handleSync(this._id);
+    sync(options) {
+        return applyTimeOptions(
+            () => nativeFsBridge("handleSync").handleSync(this._id),
+            options,
+            "FileHandle.sync",
+        );
     }
 
     close() {
@@ -409,7 +645,7 @@ class FileHandle {
     async *readChunks(options) {
         const chunkSize = options?.chunkSize ?? 64 * 1024;
         for (;;) {
-            const chunk = await this.readBytes(chunkSize);
+            const chunk = await this.readBytes(chunkSize, options);
             if (chunk.byteLength === 0) {
                 return;
             }
@@ -459,7 +695,11 @@ class FileWatcher {
         if (options !== undefined && !isPlainObject(options)) {
             throw new TypeError("Sloppy FileWatcher.nextEvent options must be a plain object.");
         }
-        return nativeFsBridge("watchNext").watchNext(this._id);
+        return applyTimeOptions(
+            () => nativeFsBridge("watchNext").watchNext(this._id),
+            options,
+            "FileWatcher.nextEvent",
+        );
     }
 
     async close() {

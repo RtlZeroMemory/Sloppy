@@ -213,6 +213,11 @@ Async/offload ownership:
   guard must run before provider dispatch/resume, and a terminal owner turns the completion
   into cleanup-only work;
 - provider completion can resume JS only through the V8 owner-thread scheduler;
+- CORE-TIME-01.H aligns provider operation terminology with the public
+  `sloppy/time` names (`signal`, `deadline`, and timeout/deadline terminal state) but does
+  not route the current synchronous SQLite JavaScript bridge through the provider executor;
+  ENGINE-28/ENGINE-17 remain responsible for that conversion and any provider-specific
+  interruption behavior;
 - SQLite's default async execution mode is implemented as `SERIALIZED_BLOCKING` for a
   single connection unless a future SQLite issue chooses different read/write pool
   semantics;

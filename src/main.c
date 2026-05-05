@@ -48,6 +48,7 @@
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
 #define SL_RUN_FILE_MAX_BYTES 65536U
+#define SL_RUN_STDLIB_FILE_MAX_BYTES 131072U
 #define SL_RUN_ARENA_BYTES 65536U
 #define SL_RUN_MAX_ROUTES SL_CLI_MAX_ROUTES
 #define SL_RUN_MAX_CLIENTS 4U
@@ -1306,7 +1307,7 @@ typedef struct SlRunApp
 {
     unsigned char plan_json_storage[SL_RUN_FILE_MAX_BYTES];
     unsigned char metadata_json_storage[SL_RUN_FILE_MAX_BYTES];
-    unsigned char bootstrap_js_storage[SL_RUN_FILE_MAX_BYTES];
+    unsigned char bootstrap_js_storage[SL_RUN_STDLIB_FILE_MAX_BYTES];
     unsigned char app_js_storage[SL_RUN_FILE_MAX_BYTES];
     unsigned char plan_arena_storage[SL_RUN_ARENA_BYTES];
     unsigned char route_arena_storage[SL_RUN_ARENA_BYTES];

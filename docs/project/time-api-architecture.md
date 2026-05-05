@@ -1,12 +1,12 @@
 # Time API Architecture
 
-Status: CORE-TIME-01.A/B/C/D/E/F/G source of truth. This document defines the intended first
+Status: CORE-TIME-01.A/B/C/D/E/F/G/H source of truth. This document defines the intended first
 `sloppy/time` API contract, feature metadata, diagnostics, implementation boundaries, and
 the first V8-backed runtime surface. The examples in this document are illustrative
 contract examples for the current API shape. Native delay, timeout, deadline, cancellation,
 V8 owner-thread Promise settlement, intervals, scheduled jobs, and fake clocks are
-implemented; FS integration, executable examples, and final conformance land in later
-CORE-TIME-01 slices.
+implemented. Filesystem stdlib wrappers now accept Time-shaped options; executable
+examples and final conformance land in later CORE-TIME-01 slices.
 
 ## Goals
 
@@ -137,7 +137,7 @@ Missing or inactive `stdlib.time` uses the runtime-feature diagnostics
 
 ## Implemented Runtime Surface
 
-CORE-TIME-01.C/D/E/F/G implements the first runtime-backed subset:
+CORE-TIME-01.C/D/E/F/G/H implements the first runtime-backed subset:
 
 - `__sloppy.time.delay(ms)` records due requests on a shared Time scheduler for the V8
   backend. That scheduler never enters V8; it posts owned timer completions through
@@ -160,10 +160,36 @@ CORE-TIME-01.C/D/E/F/G implements the first runtime-backed subset:
   with deterministic fake-clock waits.
 - Missing or inactive `stdlib.time` remains fail-closed; the private `__sloppy.time`
   namespace is not registered unless the active Plan enables `stdlib.time`.
+- `stdlib/sloppy/fs.js` and the classic runtime filesystem facade accept
+  `{ signal, deadline, timeoutMs }` on file and directory operations that already return a
+  Promise. Already-cancelled signals, expired deadlines, and invalid `timeoutMs` values
+  reject before the native filesystem bridge is touched. For accepted bridge work, the
+  wrapper settles the user-facing Promise through the same Time errors; the current native
+  filesystem backend is not claimed to interrupt an already-submitted blocking operation.
+- `stdlib.fs` depends on `stdlib.time` in the runtime feature registry. A Plan that imports
+  only `sloppy/fs` still activates the private time bridge needed for numeric filesystem
+  `timeoutMs` options; the compiler's emitted `requiredFeatures[]` remains import-driven.
 
 The native delay primitive does not expose timer handles to JavaScript. JavaScript
 deadline/cancellation wrappers settle the user-facing Promise deterministically; later
 timer completions become cleanup-only on the native side.
+
+## Existing API Integration
+
+- Filesystem: `File.readText`, `readBytes`, `readJson`, writes, append, stat/exists,
+  copy/move/delete, temp/symlink helpers, `File.watch`, `Directory.create/list/walk/delete/
+  exists/createTemp/watch`, FileHandle read/write/seek/truncate/flush/sync, and
+  `FileWatcher.nextEvent` accept Time-shaped options where the operation already has an
+  options object or Promise-returning boundary. Closing a watcher remains explicit through
+  `FileWatcher.close()`.
+- App/request lifecycle: current V8 request contexts already expose `ctx.signal` and
+  `ctx.deadline` shapes from the native request lifecycle. CORE-TIME-01.H aligns naming
+  with `sloppy/time` but does not introduce a new public app lifecycle API.
+- Provider executor: native provider descriptors already carry cancellation/deadline
+  slots and terminal-state handling. The current SQLite JS bridge remains synchronous and
+  is not converted to the provider executor in this EPIC.
+- HTTP policy: existing native HTTP request lifecycle timeout/deadline hooks keep using
+  the same cancellation diagnostic model. Route-level HTTP timeout policy remains HTTP-26.
 
 ## Non-Goals
 

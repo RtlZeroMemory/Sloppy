@@ -616,7 +616,9 @@ message for `provider.sqlite`.
 CORE-TIME-01.A/B adds stable Time diagnostics, CORE-TIME-01.C/D/G wires the first
 V8-gated runtime paths that can produce the timeout/cancellation classes from
 `sloppy/time`, and CORE-TIME-01.E/F adds deterministic interval, scheduled-job, and
-fake-clock paths:
+fake-clock paths. CORE-TIME-01.H reuses those same JavaScript error classes for
+filesystem facade `signal`, `deadline`, and `timeoutMs` options; it does not create a
+separate filesystem timeout diagnostic family:
 
 - `SLOPPY_E_TIME_TIMEOUT` for timeout/deadline expiry;
 - `SLOPPY_E_TIME_CANCELLED` for caller/app/request cancellation;
@@ -631,7 +633,8 @@ Missing or inactive `stdlib.time` uses the runtime-feature diagnostics above. Th
 renderer goldens cover timeout, cancellation, disposed timer, and invalid delay shapes.
 V8-gated Time evidence covers inactive `__sloppy.time` registration and native delay
 Promise settlement. Bootstrap stdlib evidence covers fake-clock disposal, deterministic
-delay/timeout/interval completion, and skipped scheduled runs.
+delay/timeout/interval completion, skipped scheduled runs, and filesystem pre-cancel /
+expired-deadline option behavior.
 
 App/request lifecycle diagnostics:
 

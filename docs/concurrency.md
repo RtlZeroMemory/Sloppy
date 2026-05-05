@@ -168,6 +168,13 @@ request lifecycles through the backend shutdown path when present, close idle/re
 dispatching/writing transport connections, and drain close callbacks. This is not
 production graceful drain, keep-alive idle management, or scalable async HTTP evidence.
 
+CORE-TIME-01.H applies the same cancellation/deadline vocabulary to existing filesystem
+stdlib calls. Pre-cancelled and expired operations are rejected before bridge submission;
+submitted filesystem work may still run to completion in the native backend, with the
+caller-facing Promise terminalized and late completion treated as cleanup-only by the
+existing owner-thread rules. This is Time API alignment, not a new preemptive filesystem
+interruption primitive.
+
 ENGINE-24.G makes the keep-alive decision explicit: the ENGINE-24 transport MVP is
 close-after-response, one request per connection, no sequential second request, no
 pipelining, and no streaming response body. Future HTTP/1.1 keep-alive must resume the read
