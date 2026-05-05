@@ -388,6 +388,11 @@ One V8 isolate/context has one owner thread: the thread that created the engine.
 creation, source evaluation, handler calls, registered-handler validation, and destroy are
 owner-thread operations. Calls from another thread fail before entering V8 with
 `SL_STATUS_INVALID_STATE` and an engine diagnostic when the API has `out_diag`.
+`engine.v8.owner_thread` also checks that V8 engine creation records the creating thread as
+the owner thread. Cross-domain policy lives in `include/sloppy/execution_domain.h`:
+provider workers, blocking offload workers, libuv callbacks, HTTP callbacks, and generic
+async completions are non-V8 domains and must post JavaScript continuations back through
+the V8 owner-thread scheduler.
 
 V8 headers and `v8::*` types may appear only below `src/engine/v8/`.
 

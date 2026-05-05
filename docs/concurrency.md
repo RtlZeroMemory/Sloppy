@@ -262,6 +262,26 @@ Request scope:
 
 - lives until the handler promise settles or the request is cancelled.
 
+## Canonical Execution Domains
+
+ENGINE-26.A/B makes the execution-domain vocabulary mechanical through
+`include/sloppy/execution_domain.h` and the `core.execution_domain` default-lane test.
+The helper is intentionally a fixed policy table, not a feature registry:
+
+| Domain | May enter V8 | Cross-thread data rule | Blocking rule | JS continuation rule |
+| --- | --- | --- | --- | --- |
+| `v8-owner-thread` | Yes | Owns V8 handles and engine state locally. | Must not run blocking provider/offload work. | Already on the owner thread. |
+| `libuv-event-loop` | No | Completion records and retained scopes must be owned before posting. | Must not block. | Post through the owner-thread scheduler before JavaScript resumes. |
+| `http-runtime-callback` | No | Request/response state that outlives a callback must be owned or retained. | Must not block. | Dispatch may reach V8 only through documented runtime/owner-thread paths. |
+| `async-completion-queue` | No | Payloads must be owned or scope-retained until dispatch/cleanup. | Must not perform provider work. | V8 continuations settle only in `src/engine/v8/async_scheduler.cc`. |
+| `provider-executor-worker` | No | Operation descriptors copy metadata/input before worker visibility. | May run classified provider blocking work. | Completion posts back; workers never inspect or settle JS. |
+| `blocking-offload-worker` | No | Offload inputs/results must be operation-owned. | May run classified blocking work. | Completion posts back before JavaScript observes the result. |
+| `app-request-lifecycle` | No | Owns terminal state and cleanup records. | Must not run blocking work. | Late completions are cleanup-only after terminal state. |
+
+Provider workers, blocking offload workers, libuv callbacks, HTTP callbacks, and generic
+completion dispatch are all mechanically classified as non-V8 domains. If they need to
+resume JavaScript, they must route through an owner-thread continuation.
+
 ## V8 Isolation Rules
 
 One isolate is entered only by its owning JS thread. V8 types do not cross into core

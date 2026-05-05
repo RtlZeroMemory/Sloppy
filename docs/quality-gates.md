@@ -542,11 +542,14 @@ must pass `-DSLOPPY_V8_ROOT=<sdk-root>` explicitly. A manual V8-enabled configur
 clearly when the resolved SDK root is empty or does not contain the documented SDK layout.
 
 When the V8 SDK gate succeeds, the V8 bridge source, `engine.v8.smoke`,
-`engine.v8.owner_thread`, V8-gated bootstrap runtime tests, and V8-gated `sloppy run`
+`engine.v8.owner_thread`, `engine.v8.async_scheduler`, V8-gated bootstrap runtime tests,
+and V8-gated `sloppy run`
 process tests are compiled and linked only in that V8-enabled build. Passing default CTest
 does not prove V8 smoke, owner-thread, lifecycle, Promise-policy, or bootstrap runtime
 tests passed; the V8-enabled configure/build/test commands must be run and reported
 separately.
+The default non-V8 lane does run `core.execution_domain`, which proves the fixed ENGINE-26
+domain policy table but does not prove V8 execution.
 ENGINE-15.B adds V8 source-map remapping evidence to this lane. Passing it proves only the
 bounded V8 exception primary-span remapping path for compiler-emitted maps; it does not
 prove arbitrary bundler maps, async stack remapping, IDE source frames, package-manager

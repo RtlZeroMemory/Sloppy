@@ -1,3 +1,5 @@
+#include "../../../src/engine/v8/engine_v8_internal.h"
+
 #include "sloppy/engine.h"
 
 #include <cstddef>
@@ -96,6 +98,31 @@ static int test_wrong_thread_eval_fails_before_entering_v8(void)
     return 0;
 }
 
+static int test_owner_thread_identity_is_initialized(void)
+{
+    unsigned char engine_storage[8192];
+    SlArena engine_arena = {};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = nullptr;
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        engine == nullptr)
+    {
+        return 1;
+    }
+
+    SlV8Engine* backend = static_cast<SlV8Engine*>(engine->backend);
+    if (backend == nullptr || backend->owner_thread != std::this_thread::get_id()) {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_wrong_thread_async_handler_call_fails_before_microtasks(void)
 {
     unsigned char engine_storage[8192];
@@ -176,20 +203,25 @@ static int test_wrong_thread_destroy_defers_to_owner_thread(void)
 
 int main(void)
 {
-    int result = test_wrong_thread_eval_fails_before_entering_v8();
+    int result = test_owner_thread_identity_is_initialized();
 
     if (result != 0) {
         return result;
     }
 
-    result = test_wrong_thread_destroy_defers_to_owner_thread();
+    result = test_wrong_thread_eval_fails_before_entering_v8();
     if (result != 0) {
         return 10 + result;
     }
 
-    result = test_wrong_thread_async_handler_call_fails_before_microtasks();
+    result = test_wrong_thread_destroy_defers_to_owner_thread();
     if (result != 0) {
         return 20 + result;
+    }
+
+    result = test_wrong_thread_async_handler_call_fails_before_microtasks();
+    if (result != 0) {
+        return 30 + result;
     }
 
     return 0;

@@ -294,6 +294,7 @@ set(
     src/core/scope.c
     src/core/resource.c
     src/core/capability.c
+    src/core/execution_domain.c
     src/core/app_host.c
     src/core/loop.c
     src/core/async.c
@@ -353,6 +354,7 @@ set(
     tests/unit/core/test_scope.c
     tests/unit/core/test_resource.c
     tests/unit/core/test_capability.c
+    tests/unit/core/test_execution_domain.c
     tests/unit/core/test_app_host.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
@@ -620,6 +622,8 @@ if(SLOPPY_ENABLE_TESTS)
         core_resource_lifecycle core.resource.lifecycle tests/unit/core/test_resource.c)
     sloppy_add_c_unit_test(
         core_capability_registry core.capability.registry tests/unit/core/test_capability.c)
+    sloppy_add_c_unit_test(
+        core_execution_domain core.execution_domain tests/unit/core/test_execution_domain.c)
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
     sloppy_add_c_unit_test(
@@ -714,6 +718,8 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_add_cxx_unit_test(
             engine_v8_owner_thread engine.v8.owner_thread
             tests/unit/engine/test_v8_owner_thread.cc)
+        target_link_libraries(engine_v8_owner_thread PRIVATE Sloppy::V8)
+        target_compile_features(engine_v8_owner_thread PRIVATE cxx_std_20)
         add_test(NAME conformance.v8.owner_thread COMMAND $<TARGET_FILE:engine_v8_owner_thread>)
         set_tests_properties(
             conformance.v8.owner_thread PROPERTIES LABELS "conformance;v8;async")
