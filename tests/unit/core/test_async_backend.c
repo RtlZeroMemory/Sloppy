@@ -300,6 +300,53 @@ static int test_terminal_completion_is_cleanup_only(void)
     return 0;
 }
 
+static int test_completion_terminal_after_enqueue_is_cleanup_only(void)
+{
+    unsigned char arena_storage[2048];
+    SlArena arena;
+    SlAsyncCompletion storage[1];
+    SlAsyncLoop* loop = NULL;
+    AsyncBackendRecord record = {.statuses = {SL_STATUS_OK}, .dispatch_return = SL_STATUS_OK};
+    AsyncPayload payload;
+    SlAsyncCompletion completion;
+    size_t ran = 0U;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, storage, 1U, &loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 60;
+    }
+
+    completion = make_completion(&record, &payload, 123);
+    completion.terminal_check = completion_scope_is_terminal;
+    completion.terminal_check_user = &record;
+    completion.late = record_late_completion;
+    completion.late_user = &record;
+
+    if (expect_status(sl_async_loop_post(loop, &completion), SL_STATUS_OK) != 0 ||
+        record.retain_count != 1U)
+    {
+        return 61;
+    }
+
+    record.terminal = true;
+    if (expect_status(sl_async_loop_run_once(loop, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+        record.count != 0U || record.late_count != 1U || record.cleanup_count != 1U ||
+        record.release_count != 1U || sl_async_loop_pending_count(loop) != 0U)
+    {
+        return 62;
+    }
+
+    sl_async_loop_dispose(loop);
+    if (record.cleanup_count != 1U || record.release_count != 1U || record.late_count != 1U) {
+        return 63;
+    }
+
+    return 0;
+}
+
 static int test_invalid_arguments(void)
 {
     unsigned char arena_storage[512];
@@ -357,6 +404,11 @@ int main(void)
     }
 
     result = test_terminal_completion_is_cleanup_only();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_completion_terminal_after_enqueue_is_cleanup_only();
     if (result != 0) {
         return result;
     }

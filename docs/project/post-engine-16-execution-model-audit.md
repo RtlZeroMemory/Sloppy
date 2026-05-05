@@ -1,8 +1,8 @@
 # Post-ENGINE-16 Execution Model Audit
 
-Status: 2026-05-05 planning/consolidation audit, updated by ENGINE-26.A/B and ENGINE-26.C/D. This document
-inspects current code and tests after ENGINE-15 and ENGINE-16 and records the execution
-domain source-of-truth added for Roadmap-2.
+Status: 2026-05-05 planning/consolidation audit, updated by ENGINE-26.A/B through
+ENGINE-26.E/F. This document inspects current code and tests after ENGINE-15 and ENGINE-16
+and records the execution domain source-of-truth added for Roadmap-2.
 
 ## Source Inputs
 
@@ -43,8 +43,8 @@ scheduler.
 | HTTP transport terminal checks | Complete for current transport | `http_transport_libuv.c` checks terminal connection state before timeout/write/idle callbacks; timeout/write paths close and treat late write as cleanup-only. | Route-level deadline policy, request IDs, access events, and production drain policy are missing. |
 | App/request lifecycle cleanup | Complete for native helper layer | `app_host.c` records terminal outcomes, rejects late completions, closes cleanup once, and exposes leak snapshots. | Timer/callback/provider-operation counters are reserved placeholders until the owners integrate. |
 | Cancellation/deadline propagation | Partial / hardened | `SlCancellationToken`, V8 pre/post checks, HTTP timeout transitions, provider executor terminal mapping, and `sl_cancellation_diag_code` now provide a shared native diagnostic mapping. | Deadlines are not a coherent cross-domain object yet; provider-specific native interruption remains future work. |
-| Blocking offload policy | Partial | Provider executor supports serialized and bounded blocking-pool modes. | No runtime feature routes SQLite bridge through it; unclear sync paths remain in V8 SQLite bridge. |
-| Race-oriented tests | Partial | Unit tests cover async backend, provider executor, app lifecycle, resource table, HTTP transport, and V8 owner thread. | No torture matrix for late completion, forced shutdown, provider worker races, or many pending native continuations. |
+| Blocking offload policy | Partial / hardened | Provider executor supports serialized and bounded blocking-pool modes. `sl_provider_execution_mode_may_run_inline_on_owner_thread` allows only `INLINE_FAST`; `sl_provider_execution_mode_requires_offload_worker` marks serialized and pool-backed blocking modes. | No runtime feature routes SQLite bridge through it; the V8 SQLite bridge remains synchronous ENGINE-28 debt. |
+| Race-oriented tests | Partial / bounded | Unit tests cover async backend terminal-after-enqueue cleanup-only behavior, provider executor mode policy, queued cancel/shutdown, cleanup-once, app lifecycle, resource table, HTTP transport, and V8 owner thread. | No ENGINE-30 torture matrix for high-volume late completion, forced shutdown, provider worker races, or many pending native continuations. |
 
 ## Async/Threading Search Notes
 
@@ -62,6 +62,9 @@ code reality is:
 - `src/engine/v8/intrinsics_sqlite.cc` calls `sl_sqlite_open`, `sl_sqlite_exec`,
   `sl_sqlite_query`, `sl_sqlite_query_one`, and transaction helpers directly inside V8
   callbacks. That is the clearest V8-blocking sync work path.
+- `include/sloppy/provider_executor.h` now exposes the ENGINE-26.E/F mode policy helpers;
+  tests verify only inline-fast work may run inline on the owner thread and blocking modes
+  require offload workers.
 
 ## Recommended Roadmap-2 Work
 

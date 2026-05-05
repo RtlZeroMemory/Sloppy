@@ -427,6 +427,35 @@ static int make_worker_descriptor_for(ProviderRecord* record, ProviderWorkPayloa
                          SL_STATUS_OK);
 }
 
+static int test_execution_mode_offload_policy(void)
+{
+    if (!sl_provider_execution_mode_may_run_inline_on_owner_thread(
+            SL_PROVIDER_EXECUTION_INLINE_FAST) ||
+        sl_provider_execution_mode_may_run_inline_on_owner_thread(
+            SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) ||
+        sl_provider_execution_mode_may_run_inline_on_owner_thread(
+            SL_PROVIDER_EXECUTION_BLOCKING_POOL) ||
+        sl_provider_execution_mode_may_run_inline_on_owner_thread(
+            SL_PROVIDER_EXECUTION_NONBLOCKING_IO) ||
+        sl_provider_execution_mode_may_run_inline_on_owner_thread(
+            SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED))
+    {
+        return 1;
+    }
+
+    if (sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_INLINE_FAST) ||
+        !sl_provider_execution_mode_requires_offload_worker(
+            SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) ||
+        !sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_BLOCKING_POOL) ||
+        sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_NONBLOCKING_IO) ||
+        sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED))
+    {
+        return 2;
+    }
+
+    return 0;
+}
+
 static int wait_until_atomic_at_least(atomic_int* value, int expected)
 {
     size_t attempts = 0U;
@@ -2513,6 +2542,7 @@ static int test_per_instance_isolation(void)
 int main(void)
 {
     ProviderTestFn tests[] = {test_execution_mode_parse_and_validation,
+                              test_execution_mode_offload_policy,
                               test_serialized_admission_overflow_and_recovery,
                               test_provider_executor_admission_diagnostics_and_counters,
                               test_descriptor_helpers_preserve_outputs_on_failure,

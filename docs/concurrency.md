@@ -566,6 +566,15 @@ Provider execution modes are Slop-owned policy, not libuv policy:
 - `EXTERNAL_MANAGED`: a future escape hatch for externally managed runtimes or pools. It
   still must use Slop admission, completion, diagnostics, and lifetime contracts.
 
+ENGINE-26.E/F makes that mode policy mechanically testable. In
+`include/sloppy/provider_executor.h`, only `INLINE_FAST` returns true from
+`sl_provider_execution_mode_may_run_inline_on_owner_thread`; `SERIALIZED_BLOCKING` and
+`BLOCKING_POOL` return true from `sl_provider_execution_mode_requires_offload_worker`.
+`NONBLOCKING_IO` and `EXTERNAL_MANAGED` are not classified as owner-thread inline-fast work
+and do not get to run blocking provider calls on the V8 owner thread. The current SQLite
+V8 bridge remains the explicit exception/debt: it still executes synchronous provider
+calls on the V8 callback path until ENGINE-28 routes it through the executor.
+
 Provider instances are named runtime resources such as `sqlite:main`, `sqlite:audit`,
 future `postgres:main`, or future `sqlserver:reporting`. Each instance owns or references
 an executor policy: mode, queue capacity, in-flight count, optional worker count, shutdown

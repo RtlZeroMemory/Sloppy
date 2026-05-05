@@ -290,6 +290,13 @@ Runtime execution:
   cleanup plus scope release exactly once in the default lane;
 - `core.cancellation.token` must prove that native cancellation reasons map to stable
   diagnostic categories through `sl_cancellation_diag_code`;
+- `core.provider_executor` must prove the ENGINE-26.E blocking/offload policy helpers:
+  only `INLINE_FAST` is owner-thread inline work, and serialized/pool-backed blocking
+  modes require worker offload;
+- bounded ENGINE-26.F race tests may cover terminal-after-enqueue, queued cancel,
+  shutdown-while-queued/active, cleanup-once, and worker-claim edges. They must remain
+  deterministic unit/conformance evidence and must not be reported as the ENGINE-30
+  torture harness;
 - route-aware diagnostics.
 
 Plan schema fixtures:

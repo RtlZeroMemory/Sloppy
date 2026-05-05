@@ -168,6 +168,11 @@ Async/offload ownership:
 
 - provider work must be admitted through a per-provider-instance Slop executor such as
   `sqlite:main` or `sqlite:audit`;
+- `sl_provider_execution_mode_may_run_inline_on_owner_thread` is true only for
+  `INLINE_FAST`; that mode is for bounded nonblocking metadata/config work and not for
+  provider calls that may touch disk, network, database locks, or blocking driver APIs;
+- `sl_provider_execution_mode_requires_offload_worker` is true for `SERIALIZED_BLOCKING`
+  and `BLOCKING_POOL`, which are the implemented worker-backed blocking provider modes;
 - executor admission requires a provider token and provider-supplied capability check
   hook; database hooks use the Plan-backed capability registry, but the executor itself is
   generic native-provider/offload infrastructure and must not hardcode SQL policy;
@@ -201,6 +206,9 @@ Async/offload ownership:
 - ENGINE-23.C implements the serialized worker lifecycle; future provider bridge work must
   still route through capability-gated dispatch and provider-specific ownership policy
   before claiming scalable SQLite runtime completion.
+- ENGINE-26.E/F documents the current SQLite bridge debt explicitly: V8-gated SQLite
+  open/exec/query/queryOne/transaction calls still run synchronously on the owner-thread
+  callback path until ENGINE-28 adopts this executor policy.
 
 SQLite text/blob ownership:
 
