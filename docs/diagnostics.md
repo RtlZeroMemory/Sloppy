@@ -656,10 +656,12 @@ pointers.
 
 CORE-FS-01.C/D/H adds deterministic core filesystem diagnostics for invalid path syntax,
 unknown roots, named-root traversal, development absolute-path warnings, strict absolute
-denials, file errors, and inactive `stdlib.fs` bridge access. Later CORE-FS-01 slices must
-add stable text and JSON goldens for doctor/audit output, permission-denied policy shapes,
-unsupported platform behavior, stale file/watch handles, watch overflow, lock contention,
-and atomic-write cleanup failures.
+denials, file errors, and inactive `stdlib.fs` bridge access. CORE-FS-01.E/F routes
+Directory, FileHandle, temp, atomic, symlink, and native lock failures through the same status and
+bridge rejection path, including stale FileHandle IDs. Later CORE-FS-01 slices must add
+stable text and JSON goldens for doctor/audit output, permission-denied policy shapes,
+unsupported platform behavior, watch handles, watch overflow, lock contention, and
+atomic-write cleanup failures.
 
 ## Examples
 

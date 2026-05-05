@@ -44,9 +44,11 @@ registry and explicit provider-bridge check hooks. Those checks are real where c
 the registry before provider work begins. ENGINE-05 wires the V8 SQLite bridge to the
 existing database hook; it does not add a new policy engine. CORE-FS-01.C/D/H makes
 `stdlib.fs` Plan-visible and adds the first native filesystem operations plus the
-feature-gated JavaScript bridge. The runtime enforces the current development/strict path
-policy for core operations, but filesystem doctor/audit goldens and advanced resources are
-still later CORE-FS-01 slices. Network capabilities remain metadata/check-only skeletons:
+feature-gated JavaScript bridge. CORE-FS-01.E/F extends that bridge to Directory,
+FileHandle, temp, atomic, symlink, and native lock primitives. The runtime enforces the current
+development/strict path policy for implemented filesystem operations, but filesystem
+doctor/audit goldens and watch resources are still later CORE-FS-01 slices. Network
+capabilities remain metadata/check-only skeletons:
 they can be stored and checked by token/kind/access, but no network API, permission prompt,
 or OS sandbox exists.
 
@@ -360,10 +362,11 @@ Current ENGINE-19.D executable coverage is visible through
 `conformance.capability.native_registry`, `conformance.capability.provider_executor`,
 V8-gated `conformance.sqlite.denied_capability`, and V8-gated localhost
 `conformance.users_api_sqlite.localhost_transport`. These names prove the current Sloppy
-capability checks before provider work. CORE-FS-01.C/D/H adds native `core.filesystem`
-coverage and V8-gated filesystem smoke coverage for the core API path. These gates do not
-prove OS sandboxing, filesystem doctor/audit completeness, advanced FileHandle/watch
-resources, PostgreSQL/SQL Server JavaScript bridges, live providers, or package readiness.
+capability checks before provider work. CORE-FS-01.E/F adds native `core.filesystem`
+coverage and V8-gated filesystem smoke coverage for core, directory, and FileHandle API
+paths. These gates do not prove OS sandboxing, filesystem doctor/audit completeness,
+watch resources, PostgreSQL/SQL Server JavaScript bridges, live providers, or package
+readiness.
 
 ## Quality Gates
 

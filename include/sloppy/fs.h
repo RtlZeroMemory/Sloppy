@@ -37,6 +37,21 @@ typedef enum SlFsNodeKind
     SL_FS_NODE_OTHER = 3
 } SlFsNodeKind;
 
+typedef enum SlFsFileAccess
+{
+    SL_FS_FILE_ACCESS_READ = 0,
+    SL_FS_FILE_ACCESS_WRITE = 1,
+    SL_FS_FILE_ACCESS_READWRITE = 2,
+    SL_FS_FILE_ACCESS_APPEND = 3
+} SlFsFileAccess;
+
+typedef enum SlFsSeekOrigin
+{
+    SL_FS_SEEK_START = 0,
+    SL_FS_SEEK_CURRENT = 1,
+    SL_FS_SEEK_END = 2
+} SlFsSeekOrigin;
+
 typedef struct SlFsRoot
 {
     SlStr name;
@@ -67,6 +82,27 @@ typedef struct SlFsStat
     bool exists;
 } SlFsStat;
 
+typedef struct SlFsDirectoryEntry
+{
+    SlOwnedStr name;
+    SlFsNodeKind kind;
+    uint64_t size;
+} SlFsDirectoryEntry;
+
+typedef struct SlFsDirectoryList
+{
+    SlFsDirectoryEntry* entries;
+    size_t count;
+} SlFsDirectoryList;
+
+typedef struct SlFsTempPath
+{
+    SlOwnedStr path;
+} SlFsTempPath;
+
+typedef struct SlFsFileHandle SlFsFileHandle;
+typedef struct SlFsFileLock SlFsFileLock;
+
 SlFsPolicy sl_fs_development_policy(SlStr app_root);
 SlFsPolicy sl_fs_strict_policy(SlStr app_root, const SlFsRoot* roots, size_t root_count,
                                bool allow_absolute);
@@ -83,6 +119,29 @@ SlStatus sl_fs_move_file(SlStr from_path, SlStr to_path, bool overwrite, SlDiag*
 SlStatus sl_fs_delete_file(SlStr path, SlDiag* out_diag);
 SlStatus sl_fs_stat(SlStr path, SlFsStat* out, SlDiag* out_diag);
 SlStatus sl_fs_exists(SlStr path, bool* out_exists, SlDiag* out_diag);
+SlStatus sl_fs_create_directory(SlStr path, bool recursive, SlDiag* out_diag);
+SlStatus sl_fs_delete_directory(SlStr path, bool recursive, SlDiag* out_diag);
+SlStatus sl_fs_list_directory(SlArena* arena, SlStr path, SlFsDirectoryList* out, SlDiag* out_diag);
+SlStatus sl_fs_create_symlink(SlStr target_path, SlStr link_path, bool directory, SlDiag* out_diag);
+SlStatus sl_fs_read_link(SlArena* arena, SlStr path, SlOwnedStr* out, SlDiag* out_diag);
+SlStatus sl_fs_create_temp_file(SlArena* arena, SlStr directory, SlStr prefix, SlFsTempPath* out,
+                                SlDiag* out_diag);
+SlStatus sl_fs_create_temp_directory(SlArena* arena, SlStr directory, SlStr prefix,
+                                     SlFsTempPath* out, SlDiag* out_diag);
+SlStatus sl_fs_atomic_write_file(SlArena* arena, SlStr path, SlBytes bytes, SlDiag* out_diag);
+SlStatus sl_fs_acquire_lock(SlArena* arena, SlStr path, SlFsFileLock** out_lock, SlDiag* out_diag);
+SlStatus sl_fs_release_lock(SlFsFileLock* lock, SlDiag* out_diag);
+SlStatus sl_fs_open_file(SlArena* arena, SlStr path, SlFsFileAccess access, bool create,
+                         SlFsFileHandle** out_handle, SlDiag* out_diag);
+SlStatus sl_fs_file_read(SlFsFileHandle* handle, SlArena* arena, size_t max_bytes,
+                         SlOwnedBytes* out, SlDiag* out_diag);
+SlStatus sl_fs_file_write(SlFsFileHandle* handle, SlBytes bytes, SlDiag* out_diag);
+SlStatus sl_fs_file_seek(SlFsFileHandle* handle, int64_t offset, SlFsSeekOrigin origin,
+                         uint64_t* out_position, SlDiag* out_diag);
+SlStatus sl_fs_file_truncate(SlFsFileHandle* handle, uint64_t size, SlDiag* out_diag);
+SlStatus sl_fs_file_flush(SlFsFileHandle* handle, SlDiag* out_diag);
+SlStatus sl_fs_file_sync(SlFsFileHandle* handle, SlDiag* out_diag);
+SlStatus sl_fs_file_close(SlFsFileHandle* handle, SlDiag* out_diag);
 
 #ifdef __cplusplus
 }

@@ -1,10 +1,11 @@
 # Filesystem API Architecture
 
-Status: CORE-FS-01.A/B/C/D/H source of truth. This document defines the intended
+Status: CORE-FS-01.A/B/C/D/E/F/H source of truth. This document defines the intended
 first `sloppy/fs` platform API contract and policy model. CORE-FS-01.C/D/H adds
 the native path resolver, platform backend contract, offloaded core file operations,
-and initial V8/stdlib bridge. Streams, watch, advanced operations, diagnostics
-goldens, examples, and conformance land in later CORE-FS-01 slices.
+and initial V8/stdlib bridge. CORE-FS-01.E/F adds advanced operations, FileHandle,
+and minimal filesystem streams. Watch, diagnostics goldens, examples, and conformance
+land in later CORE-FS-01 slices.
 
 ## Goals
 
@@ -135,7 +136,7 @@ capability categories, source locations, development warnings, and strict-mode f
 - POSIX path behavior belongs in POSIX backends.
 - libuv types remain private implementation details.
 
-## Implemented Core Operations
+## Implemented Runtime Operations
 
 CORE-FS-01.C/D/H implements the first runtime surface:
 
@@ -154,12 +155,23 @@ CORE-FS-01.C/D/H implements the first runtime surface:
   `writeText`, `writeBytes`, `writeJson`, `appendText`, `appendBytes`, `exists`,
   `stat`, `copy`, `move`, and `delete`.
 
+CORE-FS-01.E/F extends that surface with:
+
+- directory create/list/delete/exists/walk wrappers and native recursive create/delete;
+- atomic writes through same-directory temporary files and replace/move;
+- temporary file/directory creation with platform-generated unpredictable names;
+- symlink/readlink entry points with platform-specific support and honest failure;
+- Slop-level lock-file acquisition/release for contention-safe advisory lock paths;
+- native FileHandle open/read/write/seek/truncate/flush/sync/close entry points;
+- JS FileHandle resource-table IDs with stale-safe close and chunked async iterable
+  `readChunks` / `readLines` helpers;
+- binary chunk handling that preserves embedded NUL bytes.
+
 Blocking file work is submitted through the Slop-owned executor/offload path. Worker
 callbacks operate on owned request data and settle JavaScript promises back on the V8
 owner thread.
 
 ## Deferred To Later CORE-FS-01 Slices
 
-- Directory, metadata, symlink, temp, atomic, and locking APIs.
-- FileHandle, stream, and watch resources.
+- File watch resources.
 - Diagnostic goldens, doctor/audit output, examples, and conformance.

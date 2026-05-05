@@ -168,6 +168,10 @@ SlStr sl_resource_kind_name(SlResourceKind kind)
         return sl_resource_literal("sqlserver.connection", sizeof("sqlserver.connection") - 1U);
     case SL_RESOURCE_KIND_TEST_RESOURCE:
         return sl_resource_literal("test.resource", sizeof("test.resource") - 1U);
+    case SL_RESOURCE_KIND_FS_FILE_HANDLE:
+        return sl_resource_literal("fs.file_handle", sizeof("fs.file_handle") - 1U);
+    case SL_RESOURCE_KIND_FS_LOCK:
+        return sl_resource_literal("fs.lock", sizeof("fs.lock") - 1U);
     default:
         return sl_resource_literal("unknown", sizeof("unknown") - 1U);
     }

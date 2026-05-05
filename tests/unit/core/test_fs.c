@@ -117,6 +117,107 @@ static int test_core_file_operations(void)
     return 0;
 }
 
+static int test_directory_temp_atomic_lock_and_handle(void)
+{
+    unsigned char storage[131072];
+    SlArena arena = {0};
+    SlStr dir = sl_str_from_cstr("./sloppy-fs-advanced");
+    SlStr nested = sl_str_from_cstr("./sloppy-fs-advanced/nested");
+    SlStr file = sl_str_from_cstr("./sloppy-fs-advanced/nested/file.txt");
+    SlStr atomic = sl_str_from_cstr("./sloppy-fs-advanced/atomic.txt");
+    SlStr lock_path = sl_str_from_cstr("./sloppy-fs-advanced/test.lock");
+    SlFsDirectoryList list = {0};
+    SlFsTempPath temp_file = {0};
+    SlFsTempPath temp_dir = {0};
+    SlFsFileHandle* handle = NULL;
+    SlFsFileLock* first_lock = NULL;
+    SlFsFileLock* second_lock = NULL;
+    SlOwnedBytes bytes = {0};
+    uint64_t position = 0U;
+    bool saw_file = false;
+    size_t index = 0U;
+
+    (void)sl_fs_delete_directory(dir, true, NULL);
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_create_directory(nested, true, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_write_file(file, sl_bytes_from_parts((const unsigned char*)"one", 3U),
+                                       false, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 20;
+    }
+
+    if (expect_status(sl_fs_list_directory(&arena, nested, &list, NULL), SL_STATUS_OK) != 0 ||
+        list.count == 0U)
+    {
+        return 21;
+    }
+    for (index = 0U; index < list.count; index += 1U) {
+        if (sl_str_equal(sl_owned_str_as_view(list.entries[index].name),
+                         sl_str_from_cstr("file.txt")) &&
+            list.entries[index].kind == SL_FS_NODE_FILE)
+        {
+            saw_file = true;
+        }
+    }
+    if (!saw_file) {
+        return 22;
+    }
+
+    if (expect_status(
+            sl_fs_atomic_write_file(&arena, atomic,
+                                    sl_bytes_from_parts((const unsigned char*)"atomic", 6U), NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_read_file(&arena, atomic, &bytes, NULL), SL_STATUS_OK) != 0 ||
+        bytes.length != 6U || memcmp(bytes.ptr, "atomic", 6U) != 0)
+    {
+        return 23;
+    }
+
+    if (expect_status(
+            sl_fs_create_temp_file(&arena, dir, sl_str_from_cstr("tmp-"), &temp_file, NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_fs_create_temp_directory(&arena, dir, sl_str_from_cstr("tmpd-"), &temp_dir, NULL),
+            SL_STATUS_OK) != 0 ||
+        temp_file.path.length == 0U || temp_dir.path.length == 0U)
+    {
+        return 24;
+    }
+
+    if (expect_status(sl_fs_acquire_lock(&arena, lock_path, &first_lock, NULL), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_fs_acquire_lock(&arena, lock_path, &second_lock, NULL),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        expect_status(sl_fs_release_lock(first_lock, NULL), SL_STATUS_OK) != 0)
+    {
+        return 25;
+    }
+
+    if (expect_status(
+            sl_fs_open_file(&arena, file, SL_FS_FILE_ACCESS_READWRITE, true, &handle, NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_file_truncate(handle, 0U, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_fs_file_write(handle, sl_bytes_from_parts((const unsigned char*)"abc\0z", 5U), NULL),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_file_seek(handle, 0, SL_FS_SEEK_START, &position, NULL),
+                      SL_STATUS_OK) != 0 ||
+        position != 0U ||
+        expect_status(sl_fs_file_read(handle, &arena, 5U, &bytes, NULL), SL_STATUS_OK) != 0 ||
+        bytes.length != 5U || memcmp(bytes.ptr, "abc\0z", 5U) != 0 ||
+        expect_status(sl_fs_file_close(handle, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_fs_file_close(handle, NULL), SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 26;
+    }
+
+    if (expect_status(sl_fs_delete_directory(dir, true, NULL), SL_STATUS_OK) != 0) {
+        return 27;
+    }
+    return 0;
+}
+
 int main(void)
 {
     if (test_path_classification_and_policy() != 0) {
@@ -124,6 +225,9 @@ int main(void)
     }
     if (test_core_file_operations() != 0) {
         return 2;
+    }
+    if (test_directory_temp_atomic_lock_and_handle() != 0) {
+        return 3;
     }
     return 0;
 }

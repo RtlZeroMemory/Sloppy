@@ -536,6 +536,31 @@ Reason:
         return Object.freeze({ overwrite: options.overwrite ?? false });
     }
 
+    function validateFsRecursive(options) {
+        if (options === undefined) {
+            return Object.freeze({ recursive: false });
+        }
+        if (!isPlainObject(options) || typeof (options.recursive ?? false) !== "boolean") {
+            throw new TypeError("Sloppy Directory recursive option must be boolean.");
+        }
+        return Object.freeze({ recursive: options.recursive ?? false });
+    }
+
+    function validateFsOpenOptions(options) {
+        if (options === undefined) {
+            return Object.freeze({ access: "read", create: false });
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy File.open options must be a plain object.");
+        }
+        const access = options.access ?? "read";
+        const create = options.create ?? access !== "read";
+        if (!["read", "write", "readwrite", "append"].includes(access) || typeof create !== "boolean") {
+            throw new TypeError("Sloppy File.open options are invalid.");
+        }
+        return Object.freeze({ access, create });
+    }
+
     function stringifyFsJson(value, options) {
         if (options === undefined) {
             return JSON.stringify(value);
@@ -543,14 +568,21 @@ Reason:
         if (!isPlainObject(options)) {
             throw new TypeError("Sloppy File.writeJson options must be a plain object.");
         }
-        if (options.atomic === true) {
-            throw new Error("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: atomic filesystem writes land in CORE-FS-01.E.");
-        }
         const indent = options.indent ?? undefined;
         if (indent !== undefined && (!Number.isInteger(indent) || indent < 0 || indent > 10)) {
             throw new TypeError("Sloppy File.writeJson indent must be an integer from 0 to 10.");
         }
         return JSON.stringify(value, null, indent);
+    }
+
+    function fsShouldAtomic(options) {
+        if (options === undefined) {
+            return false;
+        }
+        if (!isPlainObject(options) || typeof (options.atomic ?? false) !== "boolean") {
+            throw new TypeError("Sloppy File atomic option must be boolean.");
+        }
+        return options.atomic === true;
     }
 
     const File = Object.freeze({
@@ -563,20 +595,27 @@ Reason:
         async readJson(path) {
             return JSON.parse(await File.readText(path));
         },
-        writeText(path, text) {
+        writeText(path, text, options) {
             if (typeof text !== "string") {
                 throw new TypeError("Sloppy File.writeText text must be a string.");
             }
+            if (fsShouldAtomic(options)) {
+                return requireFsBridge("atomicWriteText").atomicWriteText(validateFsPath(path, "writeText"), text);
+            }
             return requireFsBridge("writeText").writeText(validateFsPath(path, "writeText"), text);
         },
-        writeBytes(path, bytes) {
+        writeBytes(path, bytes, options) {
+            const checked = validateFsBytes(bytes, "writeBytes");
+            if (fsShouldAtomic(options)) {
+                return requireFsBridge("atomicWriteBytes").atomicWriteBytes(validateFsPath(path, "writeBytes"), checked);
+            }
             return requireFsBridge("writeBytes").writeBytes(
                 validateFsPath(path, "writeBytes"),
-                validateFsBytes(bytes, "writeBytes"),
+                checked,
             );
         },
         writeJson(path, value, options) {
-            return File.writeText(path, stringifyFsJson(value, options));
+            return File.writeText(path, stringifyFsJson(value, options), options);
         },
         appendText(path, text) {
             if (typeof text !== "string") {
@@ -613,14 +652,70 @@ Reason:
         delete(path) {
             return requireFsBridge("delete").delete(validateFsPath(path, "delete"));
         },
-        open() {
-            throw new Error("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: FileHandle lands in CORE-FS-01.F.");
+        async open(path, options) {
+            const checked = validateFsOpenOptions(options);
+            return new FileHandle(await requireFsBridge("openHandle").openHandle(
+                validateFsPath(path, "open"),
+                checked.access,
+                checked.create,
+            ));
+        },
+        createSymlink(targetPath, linkPath, options) {
+            const directory = options?.directory ?? false;
+            if (typeof directory !== "boolean") {
+                throw new TypeError("Sloppy File.createSymlink directory option must be boolean.");
+            }
+            return requireFsBridge("symlink").symlink(
+                validateFsPath(targetPath, "createSymlink"),
+                validateFsPath(linkPath, "createSymlink"),
+                directory,
+            );
+        },
+        readLink(path) {
+            return requireFsBridge("readLink").readLink(validateFsPath(path, "readLink"));
+        },
+        createTemp(directory, options) {
+            const prefix = options?.prefix ?? "sloppy-";
+            if (typeof prefix !== "string" || prefix.length === 0) {
+                throw new TypeError("Sloppy File.createTemp prefix must be a non-empty string.");
+            }
+            return requireFsBridge("tempFile").tempFile(validateFsPath(directory, "createTemp"), prefix);
         },
     });
 
     const Directory = Object.freeze({
-        create() {
-            throw new Error("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: Directory APIs land in CORE-FS-01.E.");
+        create(path, options) {
+            const checked = validateFsRecursive(options);
+            return requireFsBridge("directoryCreate").directoryCreate(validateFsPath(path, "create"), checked.recursive);
+        },
+        list(path) {
+            return requireFsBridge("directoryList").directoryList(validateFsPath(path, "list"));
+        },
+        async *walk(path) {
+            for (const entry of await Directory.list(path)) {
+                yield entry;
+                if (entry.kind === "directory") {
+                    const child = `${path.replace(/[\\/]$/, "")}/${entry.name}`;
+                    for await (const nested of Directory.walk(child)) {
+                        yield { ...nested, name: `${entry.name}/${nested.name}` };
+                    }
+                }
+            }
+        },
+        delete(path, options) {
+            const checked = validateFsRecursive(options);
+            return requireFsBridge("directoryDelete").directoryDelete(validateFsPath(path, "delete"), checked.recursive);
+        },
+        async exists(path) {
+            const stat = await File.stat(path);
+            return stat.exists && stat.kind === "directory";
+        },
+        createTemp(directory, options) {
+            const prefix = options?.prefix ?? "sloppy-";
+            if (typeof prefix !== "string" || prefix.length === 0) {
+                throw new TypeError("Sloppy Directory.createTemp prefix must be a non-empty string.");
+            }
+            return requireFsBridge("tempDirectory").tempDirectory(validateFsPath(directory, "createTemp"), prefix);
         },
     });
 
@@ -640,7 +735,78 @@ Reason:
         },
     });
 
-    const FileHandle = Object.freeze({});
+    class FileHandle {
+        constructor(id) {
+            this._id = Object.freeze({ slot: id.slot, generation: id.generation });
+        }
+        readBytes(maxBytes = 64 * 1024) {
+            if (!Number.isInteger(maxBytes) || maxBytes <= 0 || maxBytes > 1024 * 1024) {
+                throw new TypeError("Sloppy FileHandle.readBytes maxBytes must be 1..1048576.");
+            }
+            return requireFsBridge("handleRead").handleRead(this._id, maxBytes);
+        }
+        async readText(maxBytes) {
+            return new TextDecoder().decode(await this.readBytes(maxBytes));
+        }
+        writeBytes(bytes) {
+            return requireFsBridge("handleWriteBytes").handleWriteBytes(this._id, validateFsBytes(bytes, "writeBytes"));
+        }
+        writeText(text) {
+            if (typeof text !== "string") {
+                throw new TypeError("Sloppy FileHandle.writeText text must be a string.");
+            }
+            return requireFsBridge("handleWriteText").handleWriteText(this._id, text);
+        }
+        seek(offset, origin = "start") {
+            if (!Number.isInteger(offset) || !["start", "current", "end"].includes(origin)) {
+                throw new TypeError("Sloppy FileHandle.seek requires an integer offset and valid origin.");
+            }
+            return requireFsBridge("handleSeek").handleSeek(this._id, offset, origin);
+        }
+        truncate(size) {
+            if (!Number.isInteger(size) || size < 0) {
+                throw new TypeError("Sloppy FileHandle.truncate size must be a non-negative integer.");
+            }
+            return requireFsBridge("handleTruncate").handleTruncate(this._id, size);
+        }
+        flush() {
+            return requireFsBridge("handleFlush").handleFlush(this._id);
+        }
+        sync() {
+            return requireFsBridge("handleSync").handleSync(this._id);
+        }
+        close() {
+            return requireFsBridge("handleClose").handleClose(this._id);
+        }
+        async *readChunks(options) {
+            const chunkSize = options?.chunkSize ?? 64 * 1024;
+            for (;;) {
+                const chunk = await this.readBytes(chunkSize);
+                if (chunk.byteLength === 0) {
+                    return;
+                }
+                yield chunk;
+            }
+        }
+        async *readLines(options) {
+            const decoder = new TextDecoder();
+            const newline = options?.newline ?? "\n";
+            let buffered = "";
+            for await (const chunk of this.readChunks(options)) {
+                buffered += decoder.decode(chunk, { stream: true });
+                let index = buffered.indexOf(newline);
+                while (index !== -1) {
+                    yield buffered.slice(0, index).replace(/\r$/, "");
+                    buffered = buffered.slice(index + newline.length);
+                    index = buffered.indexOf(newline);
+                }
+            }
+            buffered += decoder.decode();
+            if (buffered.length !== 0) {
+                yield buffered;
+            }
+        }
+    }
     const FileWatcher = Object.freeze({});
 
     globalThis.__sloppy_runtime = Object.freeze({

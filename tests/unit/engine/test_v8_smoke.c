@@ -243,9 +243,11 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
     SlDiag diag = {0};
     SlStr path = sl_str_from_cstr("./sloppy-v8-fs-test.txt");
     SlStr invalid_path = sl_str_from_cstr("./sloppy-v8-fs-invalid.bin");
+    SlStr dir_path = sl_str_from_cstr("./sloppy-v8-fs-dir");
 
     (void)sl_fs_delete_file(path, NULL);
     (void)sl_fs_delete_file(invalid_path, NULL);
+    (void)sl_fs_delete_directory(dir_path, true, NULL);
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
         init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
@@ -275,6 +277,21 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
                     " try { await globalThis.__sloppy.fs.readText("
                     "\"./sloppy-v8-fs-invalid.bin\"); return \"missing rejection\"; }"
                     " catch (err) { return String(err && err.message ? err.message : err); }"
+                    "};"
+                    "globalThis.sloppy_fs_advanced = async function () {"
+                    " await globalThis.__sloppy.fs.directoryCreate("
+                    "\"./sloppy-v8-fs-dir\", true);"
+                    " await globalThis.__sloppy.fs.atomicWriteText("
+                    "\"./sloppy-v8-fs-dir/a.txt\", \"abcdef\");"
+                    " const entries = await globalThis.__sloppy.fs.directoryList("
+                    "\"./sloppy-v8-fs-dir\");"
+                    " const handle = await globalThis.__sloppy.fs.openHandle("
+                    "\"./sloppy-v8-fs-dir/a.txt\", \"read\", false);"
+                    " const bytes = await globalThis.__sloppy.fs.handleRead(handle, 3);"
+                    " await globalThis.__sloppy.fs.handleClose(handle);"
+                    " await globalThis.__sloppy.fs.directoryDelete("
+                    "\"./sloppy-v8-fs-dir\", true);"
+                    " return entries[0].name + ':' + bytes.byteLength;"
                     "};"),
                 &diag),
             SL_STATUS_OK) != 0)
@@ -293,6 +310,7 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
         sl_engine_destroy(engine);
         (void)sl_fs_delete_file(path, NULL);
         (void)sl_fs_delete_file(invalid_path, NULL);
+        (void)sl_fs_delete_directory(dir_path, true, NULL);
         return 4;
     }
 
@@ -307,12 +325,29 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
         sl_engine_destroy(engine);
         (void)sl_fs_delete_file(path, NULL);
         (void)sl_fs_delete_file(invalid_path, NULL);
+        (void)sl_fs_delete_directory(dir_path, true, NULL);
         return 5;
+    }
+
+    result = (SlEngineResult){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_fs_advanced"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("a.txt:3")))
+    {
+        sl_engine_destroy(engine);
+        (void)sl_fs_delete_file(path, NULL);
+        (void)sl_fs_delete_file(invalid_path, NULL);
+        (void)sl_fs_delete_directory(dir_path, true, NULL);
+        return 6;
     }
 
     sl_engine_destroy(engine);
     (void)sl_fs_delete_file(path, NULL);
     (void)sl_fs_delete_file(invalid_path, NULL);
+    (void)sl_fs_delete_directory(dir_path, true, NULL);
     return 0;
 }
 
