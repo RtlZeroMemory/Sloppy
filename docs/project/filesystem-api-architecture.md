@@ -1,6 +1,6 @@
 # Filesystem API Architecture
 
-Status: CORE-FS-01.A/B/C/D/E/F/G/H source of truth. This document defines the intended
+Status: CORE-FS-01.A/B/C/D/E/F/G/H/I/J source of truth. This document defines the intended
 first `sloppy/fs` platform API contract and policy model. CORE-FS-01.C/D/H adds
 the native path resolver, platform backend contract, offloaded core file operations,
 and initial V8/stdlib bridge. CORE-FS-01.E/F adds advanced operations, FileHandle,
