@@ -88,6 +88,11 @@ stress smoke over the same localhost executable. That smoke repeats keep-alive r
 short-lived keep-alive connections, chunked requests, streaming responses, malformed
 requests, and shutdown cleanup only; it is not throughput, latency, scalability, benchmark,
 V8, public streaming API, or production-edge HTTP evidence.
+ENGINE-16.A/B extends `core.app_host.hardening` with deterministic app lifecycle and scope
+ownership cases: start success, double start, stop before start, startup failure cleanup,
+graceful drain, forced shutdown, app/request identity propagation, request-scope rejection
+after shutdown starts, request access after close, and app-scope resources surviving
+request-scope close until app shutdown.
 
 - C unit tests;
 - Rust/`sloppyc` tests;

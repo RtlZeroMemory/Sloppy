@@ -558,6 +558,9 @@ App/request lifecycle diagnostics:
 
 - invalid app lifecycle state, such as cleanup registration before startup, uses
   `SLOPPY_E_APP_LIFECYCLE`;
+- double start, start after stopped/failed, request-scope creation after shutdown starts,
+  finishing shutdown while active requests are still draining, and cleanup failure
+  summaries also use `SLOPPY_E_APP_LIFECYCLE`;
 - app lifecycle JSON diagnostics use the normal deterministic `sl_diag_render_json` field
   order and include no timestamps, random IDs, raw native pointers, or provider handles;
 - lifecycle cleanup helpers close resources through `SlResourceTable` IDs rather than

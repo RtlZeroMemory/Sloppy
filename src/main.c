@@ -1327,6 +1327,7 @@ typedef struct SlRunApp
     uint16_t config_port;
     uint64_t config_keep_alive_idle_timeout_ms;
     uint64_t config_max_requests_per_connection;
+    uint64_t next_request_id;
     bool config_keep_alive_enabled;
     bool config_has_host;
     bool config_has_port;
@@ -2428,9 +2429,15 @@ static SlStatus sl_run_dispatch_response_with_storage(SlRunApp* app,
     dispatch_context.request = request;
     dispatch_context.response = out_response;
 
-    return sl_app_request_scope_execute(
-        request_cleanups, sizeof(request_cleanups) / sizeof(request_cleanups[0]),
-        sl_run_dispatch_with_request_scope, &dispatch_context, out_diag);
+    if (app->next_request_id == UINT64_MAX) {
+        return sl_status_from_code(SL_STATUS_OVERFLOW);
+    }
+    /* Request ID 0 is invalid; request scopes receive monotonic IDs or fail on overflow. */
+    app->next_request_id += 1U;
+    return sl_app_request_scope_execute_for_app(
+        &app->lifecycle, app->next_request_id, request_cleanups,
+        sizeof(request_cleanups) / sizeof(request_cleanups[0]), sl_run_dispatch_with_request_scope,
+        &dispatch_context, out_diag);
 }
 
 static bool sl_run_dispatch_failure_is_cli_mapped(SlStatus status, const SlDiag* diag)

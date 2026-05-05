@@ -414,6 +414,14 @@ work occurs.
 15. Scoped resources dispose.
 16. Request arena resets.
 
+ENGINE-16.A/B wires the dev app host's native request scopes to the app lifecycle when a
+request enters the Plan-backed dispatch path. Opening a request scope requires the app
+lifecycle to be running, records app/request identity, and increments the lifecycle's
+active-request count. Shutdown begins by rejecting new request scopes; graceful finish is
+allowed only after active request scopes close, while forced shutdown closes app resources
+immediately under the current dev-only policy. This does not add a production drain,
+distributed lifecycle, thread-per-request model, or provider expansion.
+
 ## Promise and Microtask Handling
 
 After calling into JS, the engine bridge must drain or schedule microtasks according to
