@@ -198,6 +198,11 @@ Implemented now:
   request-lifetime storage, copy those views before async writes begin, write
   `Transfer-Encoding: chunked`, one bounded frame at a time, followed by a final zero chunk;
   keep-alive resumes only after that final chunk completes.
+- CORE-TIME-01.H aligns the existing request lifecycle terms with public `sloppy/time`
+  names. Request contexts already expose `ctx.signal` and `ctx.deadline` shapes for the
+  current V8 dispatch path, and native timeout/deadline transitions continue to use the
+  shared cancellation diagnostic model. Route-level timeout/body policy remains HTTP-26 and
+  is not implemented by CORE-TIME-01.H.
 
 Future scope:
 

@@ -182,9 +182,10 @@ public monitoring API. Provider, timer, callback, HTTP, and metrics owners must 
 own counters/events through ENGINE-29 after ENGINE-26/28 semantics settle. Torture tests
 come after those counters exist.
 CORE-TIME-01.A/B defines the public deadline/cancellation API that future app/request
-lifecycle integration will consume. App-host request scopes should continue to expose
-`ctx.signal` and deadline information through explicit lifecycle-owned state; ordinary apps
-must not rely on global fake timers.
+lifecycle integration will consume. CORE-TIME-01.H aligns that naming with the current
+V8 request context shape: app-host request scopes continue to expose `ctx.signal` and
+deadline information through explicit lifecycle-owned state. Ordinary apps must not rely on
+global fake timers, and route-level timeout policy remains an HTTP-26 concern.
 
 Real service lifetimes, service disposal, async scope retention, and capability enforcement
 must be explicit and plan-visible before public app-host services can claim runtime

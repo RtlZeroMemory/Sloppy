@@ -94,8 +94,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   owner-thread Promise settlement, deadline/timeout wrappers, and
   `CancellationController` exist. Intervals, scheduled jobs, no-overlap skipped-run
   reporting, `Time.systemClock`, and explicit `Time.fakeClock` deterministic behavior now
-  exist in the stdlib layer. FS/provider/app lifecycle integration, examples, final
-  goldens, and conformance remain tracked by #559-#560.
+  exist in the stdlib layer. CORE-TIME-01.H adds filesystem facade Time options and
+  app/request/provider/HTTP naming alignment without converting SQLite/provider or HTTP
+  policy runtime behavior. Examples, final goldens, and conformance remain tracked by
+  #560.
 - Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded

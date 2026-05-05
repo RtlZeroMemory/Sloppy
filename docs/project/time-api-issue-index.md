@@ -1,6 +1,6 @@
 # CORE-TIME-01 Issue Index
 
-Status: CORE-TIME-01.A/B/C/D/E/F/G source-of-truth index.
+Status: CORE-TIME-01.A/B/C/D/E/F/G/H source-of-truth index.
 
 Parent EPIC: #551 CORE-TIME-01 Time, Deadlines, Cancellation, and Scheduling API.
 
@@ -19,6 +19,9 @@ Parent EPIC: #551 CORE-TIME-01 Time, Deadlines, Cancellation, and Scheduling API
 - V8 intrinsic namespace: `__sloppy.time`.
 - The compiler emits `requiredFeatures: ["stdlib.time"]` when it sees supported named imports
   from `sloppy/time`.
+- CORE-TIME-01.H makes `stdlib.time` a runtime dependency of `stdlib.fs` so filesystem
+  numeric timeout options can use the native Time bridge even when the source file imports
+  only `sloppy/fs`.
 
 ## Stable Diagnostic Codes
 

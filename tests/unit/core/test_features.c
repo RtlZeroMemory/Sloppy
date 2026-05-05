@@ -192,7 +192,8 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     if (!sl_str_equal(fs->stable_id, sl_str_from_cstr("stdlib.fs")) ||
         !sl_str_equal(fs->stdlib_import, sl_str_from_cstr("sloppy/fs")) ||
         !sl_str_equal(fs->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.fs")) ||
-        !fs->requires_v8_intrinsics)
+        !fs->requires_v8_intrinsics ||
+        (fs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
     {
         return 66;
     }
@@ -264,6 +265,7 @@ static int test_explicit_fs_required_feature_activates_stdlib_fs(void)
     }
     if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_FS))
     {
         return 2;
