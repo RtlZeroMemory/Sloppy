@@ -36,6 +36,7 @@ struct SlV8Engine
     /* Non-owning app metadata; both referenced objects must outlive this engine. */
     const SlPlan* plan = nullptr;
     const SlCapabilityRegistry* capabilities = nullptr;
+    const SlFsPolicy* filesystem_policy = nullptr;
     SlBytes source_map = {};
     SlStr source_map_source_name = {};
     bool has_runtime_features = false;

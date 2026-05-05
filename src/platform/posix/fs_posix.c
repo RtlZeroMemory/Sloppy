@@ -34,6 +34,9 @@ static SlStatus sl_fs_posix_write_all(int fd, const unsigned char* bytes, size_t
 
     while (offset < length) {
         ssize_t n = write(fd, bytes + offset, length - offset);
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
         if (n <= 0) {
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
@@ -83,6 +86,9 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
     }
     while (offset < (size_t)st.st_size) {
         ssize_t n = read(fd, (unsigned char*)memory + offset, (size_t)st.st_size - offset);
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
         if (n <= 0) {
             close(fd);
             (void)sl_arena_reset_to(arena, mark);
@@ -118,7 +124,7 @@ SlStatus sl_fs_platform_write_file(SlStr path, SlBytes bytes, bool append, SlDia
     {
         return status;
     }
-    fd = open(native.ptr, flags, 0666);
+    fd = open(native.ptr, flags, 0600);
     if (fd < 0) {
         return sl_fs_posix_status(errno);
     }
@@ -154,7 +160,7 @@ SlStatus sl_fs_platform_copy_file(SlStr from_path, SlStr to_path, bool overwrite
     if (from_fd < 0) {
         return sl_fs_posix_status(errno);
     }
-    to_fd = open(to_native.ptr, to_flags, 0666);
+    to_fd = open(to_native.ptr, to_flags, 0600);
     if (to_fd < 0) {
         status = sl_fs_posix_status(errno);
         close(from_fd);
@@ -163,6 +169,9 @@ SlStatus sl_fs_platform_copy_file(SlStr from_path, SlStr to_path, bool overwrite
 
     for (;;) {
         ssize_t n = read(from_fd, chunk, sizeof(chunk));
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
         if (n < 0) {
             status = sl_status_from_code(SL_STATUS_INTERNAL);
             break;

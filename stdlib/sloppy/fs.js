@@ -161,7 +161,7 @@ const Directory = Object.freeze({
 const Path = Object.freeze({
     classify(path) {
         validatePath(path, "classify");
-        if (path.startsWith("./")) {
+        if (/^\.[\\/]/.test(path)) {
             return "project-relative";
         }
         if (/^(?:[A-Za-z]:[\\/]|[\\/])/.test(path)) {

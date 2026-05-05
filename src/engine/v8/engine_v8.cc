@@ -941,6 +941,16 @@ SlStatus sl_v8_init_fs_async(SlV8Engine* backend, SlArena* arena)
     return sl_status_ok();
 }
 
+SlStatus sl_v8_reset_create_arena(SlArena* arena, SlArenaMark mark, SlStatus status)
+{
+    SlStatus reset_status = sl_arena_reset_to(arena, mark);
+
+    if (!sl_status_is_ok(reset_status)) {
+        return reset_status;
+    }
+    return status;
+}
+
 } // namespace
 
 extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena* arena,
@@ -974,6 +984,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->owner_thread = std::this_thread::get_id();
     backend->plan = options == nullptr ? nullptr : options->plan;
     backend->capabilities = options == nullptr ? nullptr : options->capabilities;
+    backend->filesystem_policy = options == nullptr ? nullptr : options->filesystem_policy;
     backend->source_map = options == nullptr ? SlBytes{} : options->source_map;
     backend->has_runtime_features = options != nullptr && options->runtime_features != nullptr;
     if (backend->has_runtime_features) {
@@ -1000,14 +1011,14 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
                                     backend->resource_entries.size());
     if (!sl_status_is_ok(status)) {
         delete backend;
-        return status;
+        return sl_v8_reset_create_arena(arena, mark, status);
     }
 
     status = sl_v8_init_fs_async(backend, arena);
     if (!sl_status_is_ok(status)) {
         sl_resource_table_dispose(&backend->resources);
         delete backend;
-        return status;
+        return sl_v8_reset_create_arena(arena, mark, status);
     }
 
     backend->allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
@@ -1020,7 +1031,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             sl_async_loop_dispose(backend->async_loop);
         }
         delete backend;
-        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+        return sl_v8_reset_create_arena(arena, mark, sl_status_from_code(SL_STATUS_OUT_OF_MEMORY));
     }
 
     v8::Isolate::CreateParams create_params;
@@ -1036,7 +1047,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         }
         delete backend->allocator;
         delete backend;
-        return sl_status_from_code(SL_STATUS_INTERNAL);
+        return sl_v8_reset_create_arena(arena, mark, sl_status_from_code(SL_STATUS_INTERNAL));
     }
 
     {
@@ -1058,7 +1069,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             }
             delete backend->allocator;
             delete backend;
-            return sl_status_from_code(SL_STATUS_INTERNAL);
+            return sl_v8_reset_create_arena(arena, mark, sl_status_from_code(SL_STATUS_INTERNAL));
         }
         backend->context.Reset(backend->isolate, context);
     }
@@ -1269,11 +1280,9 @@ static SlStatus sl_v8_write_pending_promise_diag(SlEngine* engine, SlDiag* out_d
                           1U));
 }
 
-static SlStatus sl_v8_drain_native_async_until_promise_settles(SlEngine* engine,
-                                                               v8::Isolate* isolate,
-                                                               v8::Local<v8::Context> context,
-                                                               v8::Local<v8::Promise> promise,
-                                                               SlDiag* out_diag)
+static SlStatus sl_v8_drain_native_async_until_promise_settles(
+    SlEngine* engine, v8::Isolate* isolate, v8::Local<v8::Context> context,
+    v8::Local<v8::Promise> promise, const SlCancellationToken* cancellation, SlDiag* out_diag)
 {
     SlV8Engine* backend = sl_v8_backend(engine);
     size_t spins = 0U;
@@ -1288,7 +1297,15 @@ static SlStatus sl_v8_drain_native_async_until_promise_settles(SlEngine* engine,
         if (!sl_status_is_ok(status)) {
             return status;
         }
+        status = sl_v8_check_cancelled(engine, cancellation, out_diag);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         status = sl_v8_drain_microtasks(engine, isolate, context, out_diag);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_v8_check_cancelled(engine, cancellation, out_diag);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -1321,7 +1338,7 @@ static SlStatus sl_v8_convert_promise_result(v8::Isolate* isolate, v8::Local<v8:
 
     if (promise->State() == v8::Promise::kPending) {
         status = sl_v8_drain_native_async_until_promise_settles(engine, isolate, context, promise,
-                                                                out_diag);
+                                                                cancellation, out_diag);
         if (!sl_status_is_ok(status)) {
             return status;
         }

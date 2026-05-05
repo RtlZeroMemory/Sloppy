@@ -627,7 +627,7 @@ Reason:
     const Path = Object.freeze({
         classify(path) {
             validateFsPath(path, "classify");
-            if (path.startsWith("./")) {
+            if (/^\.[\\/]/.test(path)) {
                 return "project-relative";
             }
             if (/^(?:[A-Za-z]:[\\/]|[\\/])/.test(path)) {
@@ -640,11 +640,16 @@ Reason:
         },
     });
 
+    const FileHandle = Object.freeze({});
+    const FileWatcher = Object.freeze({});
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         data,
         File,
         Directory,
         Path,
+        FileHandle,
+        FileWatcher,
     });
 })();

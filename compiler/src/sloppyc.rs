@@ -5595,7 +5595,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "const { Results, data, File, Directory, Path } = __sloppyRuntime;",
+            "const { Results, data, File, Directory, Path, FileHandle, FileWatcher } = __sloppyRuntime;",
         );
         if needs_provider_open_helper {
             push_generated_line(
@@ -5643,7 +5643,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "const { Results, File, Directory, Path } = __sloppyRuntime;",
+            "const { Results, File, Directory, Path, FileHandle, FileWatcher } = __sloppyRuntime;",
         );
     } else {
         push_generated_line(

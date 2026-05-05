@@ -10,8 +10,8 @@
 
 #include "sloppy/fs.h"
 
+#include <climits>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -129,18 +129,77 @@ void fs_v8_copy_bytes(void* dst, const unsigned char* src, size_t length)
     }
 }
 
-SlStatus fs_v8_resolve(SlArena* arena, SlStr input, SlFsResolvedPath* out, SlDiag* out_diag)
+bool fs_v8_is_valid_utf8(const unsigned char* bytes, size_t length)
+{
+    size_t index = 0U;
+
+    while (index < length) {
+        unsigned char ch = bytes[index];
+        size_t remaining = length - index;
+        size_t extra = 0U;
+        unsigned char min_second = 0x80U;
+        unsigned char max_second = 0xBFU;
+
+        if (ch <= 0x7FU) {
+            index += 1U;
+            continue;
+        }
+        if (ch >= 0xC2U && ch <= 0xDFU) {
+            extra = 1U;
+        }
+        else if (ch >= 0xE0U && ch <= 0xEFU) {
+            extra = 2U;
+            if (ch == 0xE0U) {
+                min_second = 0xA0U;
+            }
+            if (ch == 0xEDU) {
+                max_second = 0x9FU;
+            }
+        }
+        else if (ch >= 0xF0U && ch <= 0xF4U) {
+            extra = 3U;
+            if (ch == 0xF0U) {
+                min_second = 0x90U;
+            }
+            if (ch == 0xF4U) {
+                max_second = 0x8FU;
+            }
+        }
+        else {
+            return false;
+        }
+        if (remaining <= extra || bytes[index + 1U] < min_second || bytes[index + 1U] > max_second)
+        {
+            return false;
+        }
+        for (size_t tail = 2U; tail <= extra; tail += 1U) {
+            if (bytes[index + tail] < 0x80U || bytes[index + tail] > 0xBFU) {
+                return false;
+            }
+        }
+        index += extra + 1U;
+    }
+    return true;
+}
+
+SlStatus fs_v8_resolve(SlArena* arena, const FsV8Request* request, SlStr input,
+                       SlFsResolvedPath* out, SlDiag* out_diag)
 {
     const SlFsRoot roots[] = {
         {sl_str_from_cstr("data"), sl_str_from_cstr("./data")},
         {sl_str_from_cstr("tmp"), sl_str_from_cstr("./tmp")},
         {sl_str_from_cstr("uploads"), sl_str_from_cstr("./uploads")},
     };
-    SlFsPolicy policy = sl_fs_development_policy(sl_str_from_cstr("."));
+    const SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    SlFsPolicy fallback = sl_fs_development_policy(sl_str_from_cstr("."));
+    const SlFsPolicy* policy = backend == nullptr ? nullptr : backend->filesystem_policy;
 
-    policy.roots = roots;
-    policy.root_count = sizeof(roots) / sizeof(roots[0]);
-    return sl_fs_resolve_path(arena, &policy, input, out, out_diag);
+    if (policy == nullptr) {
+        fallback.roots = roots;
+        fallback.root_count = sizeof(roots) / sizeof(roots[0]);
+        policy = &fallback;
+    }
+    return sl_fs_resolve_path(arena, policy, input, out, out_diag);
 }
 
 SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
@@ -148,7 +207,7 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
     SlFsResolvedPath path = {};
     SlFsResolvedPath to_path = {};
     SlStatus status = fs_v8_resolve(
-        arena, sl_str_from_parts(request->path.data(), request->path.size()), &path, diag);
+        arena, request, sl_str_from_parts(request->path.data(), request->path.size()), &path, diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -197,7 +256,7 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
         return sl_fs_delete_file(resolved, diag);
     case FsV8Operation::Copy:
     case FsV8Operation::Move:
-        status = fs_v8_resolve(arena,
+        status = fs_v8_resolve(arena, request,
                                sl_str_from_parts(request->to_path.data(), request->to_path.size()),
                                &to_path, diag);
         if (!sl_status_is_ok(status)) {
@@ -258,15 +317,38 @@ SlStatus fs_v8_provider_run(SlProviderOperation* operation, void* user, SlDiagCo
     return status;
 }
 
-v8::Local<v8::Value> fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                                        FsV8Request* request)
+bool fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Context> context, FsV8Request* request,
+                        v8::Local<v8::Value>* out, std::string* out_error)
 {
+    if (out == nullptr || out_error == nullptr) {
+        return false;
+    }
+
     switch (request->operation) {
-    case FsV8Operation::ReadText:
-        return v8::String::NewFromUtf8(isolate, request->result_text.data(),
-                                       v8::NewStringType::kNormal,
-                                       static_cast<int>(request->result_text.size()))
-            .ToLocalChecked();
+    case FsV8Operation::ReadText: {
+        v8::Local<v8::String> text;
+        if (request->result_text.size() > static_cast<size_t>(INT_MAX)) {
+            *out_error = "File text is too large to decode";
+            return false;
+        }
+        if (!fs_v8_is_valid_utf8(
+                reinterpret_cast<const unsigned char*>(request->result_text.data()),
+                request->result_text.size()))
+        {
+            *out_error = "Invalid UTF-8 in file";
+            return false;
+        }
+        if (!v8::String::NewFromUtf8(isolate, request->result_text.data(),
+                                     v8::NewStringType::kNormal,
+                                     static_cast<int>(request->result_text.size()))
+                 .ToLocal(&text))
+        {
+            *out_error = "Invalid UTF-8 in file";
+            return false;
+        }
+        *out = text;
+        return true;
+    }
     case FsV8Operation::ReadBytes: {
         auto backing = v8::ArrayBuffer::NewBackingStore(isolate, request->result_bytes.size());
         if (!request->result_bytes.empty()) {
@@ -274,10 +356,12 @@ v8::Local<v8::Value> fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Cont
                              request->result_bytes.size());
         }
         v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
-        return v8::Uint8Array::New(buffer, 0, request->result_bytes.size());
+        *out = v8::Uint8Array::New(buffer, 0, request->result_bytes.size());
+        return true;
     }
     case FsV8Operation::Exists:
-        return v8::Boolean::New(isolate, request->bool_result);
+        *out = v8::Boolean::New(isolate, request->bool_result);
+        return true;
     case FsV8Operation::Stat: {
         v8::Local<v8::Object> object = v8::Object::New(isolate);
         v8::Local<v8::String> exists_key;
@@ -295,10 +379,12 @@ v8::Local<v8::Value> fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Cont
                           v8::String::NewFromUtf8(isolate, kind).ToLocalChecked());
         (void)object->Set(context, size_key,
                           v8::Number::New(isolate, static_cast<double>(request->stat.size)));
-        return object;
+        *out = object;
+        return true;
     }
     default:
-        return v8::Undefined(isolate);
+        *out = v8::Undefined(isolate);
+        return true;
     }
 }
 
@@ -331,8 +417,16 @@ SlStatus fs_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
         ok = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
     }
     else {
-        ok = resolver->Resolve(context, fs_v8_result_value(isolate, context, request))
-                 .FromMaybe(false);
+        v8::Local<v8::Value> value;
+        std::string error;
+        if (fs_v8_result_value(isolate, context, request, &value, &error)) {
+            ok = resolver->Resolve(context, value).FromMaybe(false);
+        }
+        else {
+            v8::Local<v8::String> message =
+                v8::String::NewFromUtf8(isolate, error.c_str()).ToLocalChecked();
+            ok = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
+        }
     }
     request->resolver.Reset();
     delete request;
@@ -548,11 +642,11 @@ bool sl_v8_install_fs_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> con
 {
     v8::Isolate* isolate = backend == nullptr ? nullptr : backend->isolate;
     v8::Local<v8::String> fs_key;
-    v8::Local<v8::Object> fs = v8::Object::New(isolate);
 
     if (backend == nullptr || isolate == nullptr) {
         return false;
     }
+    v8::Local<v8::Object> fs = v8::Object::New(isolate);
     if (!backend->has_runtime_features ||
         !sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_FS))
     {

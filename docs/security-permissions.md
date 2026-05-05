@@ -145,8 +145,10 @@ applicable. SQLite JavaScript execution now checks the database hook before nati
 open/read/write and transaction work when the engine has Plan/capability metadata. If the
 hook inputs are absent, SQLite bridge calls fail closed. Filesystem policy is owned by
 CORE-FS-01: the current core file operations apply the development/strict path model in
-`docs/project/filesystem-api-architecture.md`, while richer doctor/audit reporting remains
-future work.
+`docs/project/filesystem-api-architecture.md`. The V8 bridge accepts an optional borrowed
+`SlEngineOptions.filesystem_policy`; omitted policy uses the documented development
+fallback roots for low-level bridge tests only, while richer app-host config plumbing and
+doctor/audit reporting remain future work.
 
 ## Permission Grants
 

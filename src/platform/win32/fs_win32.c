@@ -14,12 +14,26 @@
 #include <stdint.h>
 #include <string.h>
 
-static SlDiag sl_fs_win32_diag(SlStr message)
+static SlDiagCode sl_fs_win32_diag_code(DWORD error)
+{
+    if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+        return SL_DIAG_INVALID_ARGUMENT;
+    }
+    if (error == ERROR_ACCESS_DENIED) {
+        return SL_DIAG_PERMISSION_DENIED;
+    }
+    if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS) {
+        return SL_DIAG_INVALID_ARGUMENT;
+    }
+    return SL_DIAG_INTERNAL_ERROR;
+}
+
+static SlDiag sl_fs_win32_diag(DWORD error, SlStr message)
 {
     SlDiag diag = {0};
 
     diag.severity = SL_DIAG_SEVERITY_ERROR;
-    diag.code = SL_DIAG_PERMISSION_DENIED;
+    diag.code = sl_fs_win32_diag_code(error);
     diag.message = message;
     diag.primary_span = sl_source_span_unknown();
     return diag;
@@ -28,7 +42,7 @@ static SlDiag sl_fs_win32_diag(SlStr message)
 static SlStatus sl_fs_win32_status(DWORD error, SlDiag* out_diag, SlStr message)
 {
     if (out_diag != NULL) {
-        *out_diag = sl_fs_win32_diag(message);
+        *out_diag = sl_fs_win32_diag(error, message);
     }
     if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
         return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
@@ -81,7 +95,7 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
     HANDLE file = INVALID_HANDLE_VALUE;
     LARGE_INTEGER size;
     void* memory = NULL;
-    DWORD read = 0;
+    size_t offset = 0U;
     SlStatus status;
 
     if (arena == NULL || out == NULL) {
@@ -100,9 +114,7 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
         return sl_fs_win32_status(GetLastError(), out_diag,
                                   sl_str_from_cstr("filesystem read failed"));
     }
-    if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 ||
-        (ULONGLONG)size.QuadPart > (ULONGLONG)UINT32_MAX)
-    {
+    if (!GetFileSizeEx(file, &size) || size.QuadPart < 0) {
         CloseHandle(file);
         (void)sl_arena_reset_to(arena, mark);
         return sl_status_from_code(SL_STATUS_INTERNAL);
@@ -116,12 +128,18 @@ SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out,
         CloseHandle(file);
         return status;
     }
-    if (!ReadFile(file, memory, (DWORD)size.QuadPart, &read, NULL) || read != (DWORD)size.QuadPart)
-    {
-        CloseHandle(file);
-        (void)sl_arena_reset_to(arena, mark);
-        return sl_fs_win32_status(GetLastError(), out_diag,
-                                  sl_str_from_cstr("filesystem read failed"));
+    while (offset < (size_t)size.QuadPart) {
+        DWORD read = 0;
+        size_t remaining = (size_t)size.QuadPart - offset;
+        DWORD chunk = remaining > (size_t)UINT32_MAX ? UINT32_MAX : (DWORD)remaining;
+
+        if (!ReadFile(file, (unsigned char*)memory + offset, chunk, &read, NULL) || read != chunk) {
+            CloseHandle(file);
+            (void)sl_arena_reset_to(arena, mark);
+            return sl_fs_win32_status(GetLastError(), out_diag,
+                                      sl_str_from_cstr("filesystem read failed"));
+        }
+        offset += (size_t)read;
     }
     CloseHandle(file);
     out->ptr = (unsigned char*)memory;
@@ -135,7 +153,6 @@ SlStatus sl_fs_platform_write_file(SlStr path, SlBytes bytes, bool append, SlDia
     SlArena arena = {0};
     wchar_t* wide = NULL;
     HANDLE file = INVALID_HANDLE_VALUE;
-    DWORD written = 0;
     SlStatus status;
 
     status = sl_arena_init(&arena, scratch, sizeof(scratch));
@@ -152,12 +169,22 @@ SlStatus sl_fs_platform_write_file(SlStr path, SlBytes bytes, bool append, SlDia
         return sl_fs_win32_status(GetLastError(), out_diag,
                                   sl_str_from_cstr("filesystem write failed"));
     }
-    if (bytes.length != 0U && (!WriteFile(file, bytes.ptr, (DWORD)bytes.length, &written, NULL) ||
-                               written != (DWORD)bytes.length))
     {
-        DWORD error = GetLastError();
-        CloseHandle(file);
-        return sl_fs_win32_status(error, out_diag, sl_str_from_cstr("filesystem write failed"));
+        size_t offset = 0U;
+
+        while (offset < bytes.length) {
+            DWORD written = 0;
+            size_t remaining = bytes.length - offset;
+            DWORD chunk = remaining > (size_t)UINT32_MAX ? UINT32_MAX : (DWORD)remaining;
+
+            if (!WriteFile(file, bytes.ptr + offset, chunk, &written, NULL) || written != chunk) {
+                DWORD error = GetLastError();
+                CloseHandle(file);
+                return sl_fs_win32_status(error, out_diag,
+                                          sl_str_from_cstr("filesystem write failed"));
+            }
+            offset += (size_t)written;
+        }
     }
     CloseHandle(file);
     return sl_status_ok();

@@ -170,6 +170,7 @@ static int test_eval_and_call_global_function(void)
 {
     unsigned char engine_storage[8192];
     unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
     SlArena engine_arena = {0};
     SlArena result_arena = {0};
     SlArena feature_arena = {0};
@@ -183,7 +184,7 @@ static int test_eval_and_call_global_function(void)
 
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
-        init_arena(&feature_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
         attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
     {
         return 1;
@@ -241,8 +242,10 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
     SlEngineResult result = {0};
     SlDiag diag = {0};
     SlStr path = sl_str_from_cstr("./sloppy-v8-fs-test.txt");
+    SlStr invalid_path = sl_str_from_cstr("./sloppy-v8-fs-invalid.bin");
 
     (void)sl_fs_delete_file(path, NULL);
+    (void)sl_fs_delete_file(invalid_path, NULL);
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
         init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
@@ -265,6 +268,13 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
                     " await globalThis.__sloppy.fs.writeText(\"./sloppy-v8-fs-test.txt\", "
                     "\"fs-ok\");"
                     " return await globalThis.__sloppy.fs.readText(\"./sloppy-v8-fs-test.txt\");"
+                    "};"
+                    "globalThis.sloppy_fs_invalid_utf8 = async function () {"
+                    " await globalThis.__sloppy.fs.writeBytes(\"./sloppy-v8-fs-invalid.bin\", "
+                    "new Uint8Array([255]));"
+                    " try { await globalThis.__sloppy.fs.readText("
+                    "\"./sloppy-v8-fs-invalid.bin\"); return \"missing rejection\"; }"
+                    " catch (err) { return String(err && err.message ? err.message : err); }"
                     "};"),
                 &diag),
             SL_STATUS_OK) != 0)
@@ -282,11 +292,27 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
     {
         sl_engine_destroy(engine);
         (void)sl_fs_delete_file(path, NULL);
+        (void)sl_fs_delete_file(invalid_path, NULL);
         return 4;
+    }
+
+    result = (SlEngineResult){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_fs_invalid_utf8"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("Invalid UTF-8 in file")))
+    {
+        sl_engine_destroy(engine);
+        (void)sl_fs_delete_file(path, NULL);
+        (void)sl_fs_delete_file(invalid_path, NULL);
+        return 5;
     }
 
     sl_engine_destroy(engine);
     (void)sl_fs_delete_file(path, NULL);
+    (void)sl_fs_delete_file(invalid_path, NULL);
     return 0;
 }
 

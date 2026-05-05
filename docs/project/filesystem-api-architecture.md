@@ -147,6 +147,9 @@ CORE-FS-01.C/D/H implements the first runtime surface:
 - core file operations: read/write/append bytes and text, exists, stat, copy, move,
   and delete;
 - V8 `__sloppy.fs` intrinsics registered only for active `stdlib.fs` feature sets;
+- optional `SlEngineOptions.filesystem_policy` enforcement for V8 filesystem calls, with
+  a development fallback policy only for low-level smoke/source-input coverage until
+  app-host config plumbing lands;
 - `stdlib/sloppy/fs.js` wrappers for `File.readText`, `readBytes`, `readJson`,
   `writeText`, `writeBytes`, `writeJson`, `appendText`, `appendBytes`, `exists`,
   `stat`, `copy`, `move`, and `delete`.
