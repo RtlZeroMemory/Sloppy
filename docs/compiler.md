@@ -65,7 +65,7 @@ TypeScript inference, or new provider runtime bridges.
 Compiler diagnostics render a single-line source frame when the extractor already has a
 source span and source text. That renderer is separate from the generated source-map
 artifact; the map now records handler-source mappings, while runtime exception remapping is
-still an ENGINE-08 task.
+still an ENGINE-15.B task.
 
 ENGINE-02.E adds the direct run handoff on top of this same compiler pipeline:
 `sloppy run <source>` invokes `sloppyc build`, writes generated artifacts, then enters the

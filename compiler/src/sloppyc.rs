@@ -201,6 +201,9 @@ struct EffectMetadata {
     access: &'static str,
     operation: String,
     reason: String,
+    source_name: String,
+    source_text: String,
+    span: Span,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -209,6 +212,8 @@ struct FunctionEffectSummary {
     provider_bindings: BTreeMap<String, ProviderBinding>,
     helper_calls: BTreeSet<String>,
     unknown_provider_usage: bool,
+    source_name: String,
+    source_text: String,
 }
 
 #[derive(Debug, Clone)]
@@ -1063,7 +1068,7 @@ fn extract_entry(
                 extract_variable_declaration(path, source, &source_name, &mut state, declaration)?
             }
             Statement::FunctionDeclaration(function) => {
-                extract_function_declaration(path, source, &mut state, function)?
+                extract_function_declaration(path, source, &source_name, &mut state, function)?
             }
             Statement::ExpressionStatement(_) => {}
             Statement::ExportDefaultDeclaration(export) => {
@@ -1458,7 +1463,12 @@ fn extract_variable_declaration(
                 .with_span(init.span()));
             };
             let helper_source = format!("const {name} = {init_source};");
-            let summary = helper_effects_from_initializer(init, &state.provider_bindings);
+            let summary = helper_effects_from_initializer(
+                init,
+                &state.provider_bindings,
+                source,
+                source_name,
+            );
             state.helper_sources.insert(name.to_string(), helper_source);
             state.helper_effects.insert(name.to_string(), summary);
             resolve_helper_effect_callgraph(&mut state.helper_effects);
@@ -1490,6 +1500,7 @@ fn extract_variable_declaration(
 fn extract_function_declaration(
     path: &Path,
     source: &str,
+    source_name: &str,
     state: &mut AppState,
     function: &oxc_ast::ast::Function<'_>,
 ) -> Result<(), Diagnostic> {
@@ -1510,8 +1521,13 @@ fn extract_function_declaration(
         .with_span(function.span));
     };
     let name = identifier.name.as_str().to_string();
-    let summary =
-        function_effects_from_function(function, &state.provider_bindings, &BTreeMap::new());
+    let summary = function_effects_from_function(
+        function,
+        &state.provider_bindings,
+        &BTreeMap::new(),
+        source,
+        source_name,
+    );
     state.helper_sources.insert(name.clone(), helper_source);
     state.helper_effects.insert(name, summary);
     resolve_helper_effect_callgraph(&mut state.helper_effects);
@@ -3316,7 +3332,13 @@ fn handler_from_argument(
 ) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
-            let effects = function_effects_from_arrow(function, provider_bindings, helper_effects);
+            let effects = function_effects_from_arrow(
+                function,
+                provider_bindings,
+                helper_effects,
+                source,
+                source_name,
+            );
             if handler_parameters_are_unsupported(&function.params)
                 || arrow_has_typescript_syntax(function)
                 || effects.unknown_provider_usage
@@ -3348,8 +3370,13 @@ fn handler_from_argument(
             })
         }
         Argument::FunctionExpression(function) => {
-            let effects =
-                function_effects_from_function(function, provider_bindings, helper_effects);
+            let effects = function_effects_from_function(
+                function,
+                provider_bindings,
+                helper_effects,
+                source,
+                source_name,
+            );
             if handler_parameters_are_unsupported(&function.params)
                 || function_has_typescript_syntax(function)
                 || effects.unknown_provider_usage
@@ -3495,14 +3522,24 @@ fn handler_context_parameter_name(
 fn helper_effects_from_initializer(
     expression: &Expression<'_>,
     provider_bindings: &BTreeMap<String, ProviderBinding>,
+    source: &str,
+    source_name: &str,
 ) -> FunctionEffectSummary {
     match expression {
-        Expression::ArrowFunctionExpression(function) => {
-            function_effects_from_arrow(function, provider_bindings, &BTreeMap::new())
-        }
-        Expression::FunctionExpression(function) => {
-            function_effects_from_function(function, provider_bindings, &BTreeMap::new())
-        }
+        Expression::ArrowFunctionExpression(function) => function_effects_from_arrow(
+            function,
+            provider_bindings,
+            &BTreeMap::new(),
+            source,
+            source_name,
+        ),
+        Expression::FunctionExpression(function) => function_effects_from_function(
+            function,
+            provider_bindings,
+            &BTreeMap::new(),
+            source,
+            source_name,
+        ),
         _ => FunctionEffectSummary::default(),
     }
 }
@@ -3511,9 +3548,13 @@ fn function_effects_from_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
     provider_bindings: &BTreeMap<String, ProviderBinding>,
     helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    source: &str,
+    source_name: &str,
 ) -> FunctionEffectSummary {
     let mut summary = FunctionEffectSummary {
         provider_bindings: provider_bindings.clone(),
+        source_name: source_name.to_string(),
+        source_text: source.to_string(),
         ..FunctionEffectSummary::default()
     };
     for statement in &function.body.statements {
@@ -3527,9 +3568,13 @@ fn function_effects_from_function(
     function: &oxc_ast::ast::Function<'_>,
     provider_bindings: &BTreeMap<String, ProviderBinding>,
     helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    source: &str,
+    source_name: &str,
 ) -> FunctionEffectSummary {
     let mut summary = FunctionEffectSummary {
         provider_bindings: provider_bindings.clone(),
+        source_name: source_name.to_string(),
+        source_text: source.to_string(),
         ..FunctionEffectSummary::default()
     };
     if let Some(body) = &function.body {
@@ -3855,6 +3900,9 @@ fn collect_call_effects(
                     access,
                     operation: method.to_string(),
                     reason: format!("{receiver}.{method}"),
+                    source_name: summary.source_name.clone(),
+                    source_text: summary.source_text.clone(),
+                    span: call.span,
                 });
             } else if method != "close" {
                 summary.unknown_provider_usage = true;
@@ -5236,9 +5284,9 @@ fn emit_plan(
                             "operation": effect.operation,
                             "reason": effect.reason,
                             "source": source_location_json(
-                                &route.handler.source_name,
-                                &route.handler.source_text,
-                                route.handler.span
+                                &effect.source_name,
+                                &effect.source_text,
+                                effect.span
                             )
                         })
                     })
@@ -5703,9 +5751,9 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
                     "operation": effect.operation,
                     "reason": effect.reason,
                     "source": source_location_json(
-                        &route.handler.source_name,
-                        &route.handler.source_text,
-                        route.handler.span
+                        &effect.source_name,
+                        &effect.source_text,
+                        effect.span
                     )
                 })
             })

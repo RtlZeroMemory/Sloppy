@@ -34,8 +34,8 @@
         "providerKind": "sqlite",
         "reason": "db.query",
         "source": {
-          "column": 20,
-          "line": 7,
+          "column": 35,
+          "line": 8,
           "path": "users.js"
         }
       }

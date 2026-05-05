@@ -32,8 +32,8 @@
         "providerKind": "sqlite",
         "reason": "db.query",
         "source": {
-          "column": 16,
-          "line": 26,
+          "column": 10,
+          "line": 18,
           "path": "input.js"
         }
       },
@@ -46,8 +46,8 @@
         "providerKind": "sqlite",
         "reason": "db.exec",
         "source": {
-          "column": 17,
-          "line": 31,
+          "column": 3,
+          "line": 22,
           "path": "input.js"
         }
       },
@@ -60,8 +60,8 @@
         "providerKind": "sqlite",
         "reason": "db.queryOne",
         "source": {
-          "column": 17,
-          "line": 31,
+          "column": 10,
+          "line": 23,
           "path": "input.js"
         }
       },
@@ -74,8 +74,8 @@
         "providerKind": "sqlite",
         "reason": "db.queryOne",
         "source": {
-          "column": 24,
-          "line": 35,
+          "column": 9,
+          "line": 37,
           "path": "input.js"
         }
       }

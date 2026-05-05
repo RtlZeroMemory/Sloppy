@@ -142,8 +142,8 @@
           "providerKind": "sqlite",
           "reason": "db.query",
           "source": {
-            "column": 19,
-            "line": 12,
+            "column": 10,
+            "line": 9,
             "path": "input.js"
           }
         }
@@ -173,7 +173,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:e3251a2ab2309d0cbadb5d7da899b002b3a0bd7f356c806f10b13071882d4c38",
+    "hash": "sha256:8399bb853f5bb228cb25c3c385e64267c8551c4e57807a3121950ec4eb7e046a",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
