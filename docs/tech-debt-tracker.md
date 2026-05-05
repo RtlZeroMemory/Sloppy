@@ -89,12 +89,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   registration, missing-feature diagnostic goldens, and package include-only-used policy
   now exist. Compiled/link-time trimming, stdlib asset pruning, richer Plan source spans,
   and broader future feature consumers remain unclaimed follow-ups.
-- Time API implementation after CORE-TIME-01.C/D/G: `stdlib.time`, the `sloppy/time`
+- Time API implementation after CORE-TIME-01.C/D/E/F/G: `stdlib.time`, the `sloppy/time`
   import contract, stable error names, initial diagnostics, V8-gated native delay,
   owner-thread Promise settlement, deadline/timeout wrappers, and
-  `CancellationController` exist. Intervals, scheduled jobs, fake clocks,
-  FS/provider/app lifecycle integration, examples, final goldens, and conformance remain
-  tracked by #556-#560.
+  `CancellationController` exist. Intervals, scheduled jobs, no-overlap skipped-run
+  reporting, `Time.systemClock`, and explicit `Time.fakeClock` deterministic behavior now
+  exist in the stdlib layer. FS/provider/app lifecycle integration, examples, final
+  goldens, and conformance remain tracked by #559-#560.
 - Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded

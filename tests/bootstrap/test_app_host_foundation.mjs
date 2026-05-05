@@ -21,6 +21,12 @@ function assertThrowsMessage(fn, expected) {
     });
 }
 
+async function flushMicrotasks(count = 6) {
+    for (let i = 0; i < count; i += 1) {
+        await Promise.resolve();
+    }
+}
+
 {
     const deadline = Deadline.after(50);
     assert.equal(deadline.kind, "after");
@@ -100,7 +106,170 @@ function assertThrowsMessage(fn, expected) {
         }
     }
 
-    assertThrowsMessage(() => Time.fakeClock(), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE/);
+    const clock = Time.fakeClock({ now: new Date("2026-01-01T00:00:00.000Z") });
+    assert.equal(clock.kind, "fake");
+    assert.equal(clock.now().toISOString(), "2026-01-01T00:00:00.000Z");
+
+    let delayed = false;
+    const delayPromise = Time.delay(1000, { clock }).then(() => {
+        delayed = true;
+    });
+    clock.advanceBy(999);
+    await flushMicrotasks();
+    assert.equal(delayed, false);
+    clock.advanceBy(1);
+    await delayPromise;
+    assert.equal(delayed, true);
+
+    const timeoutPromise = Time.timeout(new Promise(() => {}), { afterMs: 500, clock });
+    clock.advanceBy(500);
+    await assert.rejects(timeoutPromise, TimeoutError);
+
+    const promiseTimeoutClock = Time.fakeClock();
+    assert.equal(
+        await Time.timeout(Promise.resolve("fast"), { afterMs: 1000, clock: promiseTimeoutClock }),
+        "fast",
+    );
+    assert.equal(promiseTimeoutClock._timers.length, 0);
+
+    const functionTimeoutClock = Time.fakeClock();
+    assert.equal(
+        await Time.timeout(() => "fast", { afterMs: 1000, clock: functionTimeoutClock }),
+        "fast",
+    );
+    assert.equal(functionTimeoutClock._timers.length, 0);
+
+    assert.throws(
+        () => Time.delay(100, { clock: Time.fakeClock(), deadline: Deadline.after(100) }),
+        InvalidDeadlineError,
+    );
+    assert.throws(
+        () => Time.timeout(Promise.resolve("x"), { clock: Time.fakeClock(), deadline: Deadline.after(100) }),
+        InvalidDeadlineError,
+    );
+
+    const orderedClock = Time.fakeClock();
+    const timerOrder = [];
+    const laterTimer = Time.delay(200, { clock: orderedClock }).then(() => {
+        timerOrder.push("later");
+    });
+    const earlierTimer = Time.delay(100, { clock: orderedClock }).then(() => {
+        timerOrder.push("earlier");
+    });
+    orderedClock.advanceBy(200);
+    await Promise.all([laterTimer, earlierTimer]);
+    assert.deepEqual(timerOrder, ["earlier", "later"]);
+
+    const immediateInterval = Time.interval(1000, { clock, immediate: true, maxTicks: 1 });
+    assert.equal((await immediateInterval.next()).value.index, 1);
+    assert.equal((await immediateInterval.next()).done, true);
+
+    const guardedInterval = Time.interval(1000, { clock, maxTicks: 1 });
+    const guardedTick = guardedInterval.next();
+    await assert.rejects(guardedInterval.next(), /overlapping next\(\) calls/);
+    clock.advanceBy(1000);
+    assert.equal((await guardedTick).value.index, 1);
+
+    const boundedIntervalController = new CancellationController();
+    const boundedInterval = Time.interval(1000, {
+        clock,
+        maxTicks: 1,
+        signal: boundedIntervalController.signal,
+    });
+    const boundedTick = boundedInterval.next();
+    clock.advanceBy(1000);
+    assert.equal((await boundedTick).value.index, 1);
+    assert.equal(boundedIntervalController.signal._listeners.size, 0);
+
+    const interval = Time.interval("1s", { clock, maxTicks: 2 });
+    const firstTick = interval.next();
+    clock.advanceBy(1000);
+    assert.equal((await firstTick).value.index, 1);
+    const secondTick = interval.next();
+    clock.advanceBy(1000);
+    assert.equal((await secondTick).value.index, 2);
+    assert.equal((await interval.next()).done, true);
+
+    let scheduledRuns = 0;
+    const job = Time.every(
+        "1s",
+        () => {
+            scheduledRuns += 1;
+        },
+        { clock },
+    );
+    clock.advanceBy(1000);
+    await flushMicrotasks();
+    assert.equal(scheduledRuns, 1);
+    job.pause();
+    clock.advanceBy(2000);
+    await flushMicrotasks();
+    assert.equal(scheduledRuns, 1);
+    job.resume();
+    clock.advanceBy(1000);
+    await flushMicrotasks();
+    assert.equal(scheduledRuns, 2);
+    await job.stop();
+    assert.equal(job.stopped, true);
+
+    let immediateJobRuns = 0;
+    const immediateJob = Time.every(
+        1000,
+        () => {
+            immediateJobRuns += 1;
+        },
+        { clock, immediate: true, maxRuns: 1 },
+    );
+    await flushMicrotasks();
+    assert.equal(immediateJobRuns, 1);
+    assert.equal(immediateJob.stopped, true);
+
+    let releaseJob = undefined;
+    let noOverlapRuns = 0;
+    const noOverlapJob = Time.every(
+        1000,
+        async () => {
+            noOverlapRuns += 1;
+            await new Promise((resolve) => {
+                releaseJob = resolve;
+            });
+        },
+        { clock },
+    );
+    clock.advanceBy(1000);
+    await flushMicrotasks();
+    assert.equal(noOverlapRuns, 1);
+    clock.advanceBy(3000);
+    await flushMicrotasks();
+    assert.equal(noOverlapRuns, 1);
+    assert.equal(noOverlapJob.skippedRuns, 3);
+    releaseJob();
+    await flushMicrotasks();
+    await noOverlapJob.stop();
+
+    const cancelJobClock = Time.fakeClock();
+    const cancelJobController = new CancellationController();
+    const cancelJob = Time.every(1000, () => {}, {
+        clock: cancelJobClock,
+        signal: cancelJobController.signal,
+    });
+    cancelJobController.cancel("done");
+    await flushMicrotasks();
+    assert.equal(cancelJob.stopped, true);
+    assert.equal(cancelJob.nextRun, null);
+
+    const disposedJobClock = Time.fakeClock();
+    const disposedJob = Time.every(1000, () => {}, { clock: disposedJobClock });
+    disposedJobClock.dispose();
+    await flushMicrotasks();
+    assert.equal(disposedJob.stopped, true);
+    assert.equal(disposedJob.nextRun, null);
+
+    const disposedClock = Time.fakeClock();
+    const disposedDelay = Time.delay(100, { clock: disposedClock });
+    disposedClock.dispose();
+    await assert.rejects(disposedDelay, TimerDisposedError);
+    assert.throws(() => disposedClock.advanceBy(1), TimerDisposedError);
 }
 
 {

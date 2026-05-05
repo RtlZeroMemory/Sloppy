@@ -628,6 +628,11 @@ native delay wakeups through the V8 owner-thread scheduler: the shared Time sche
 `SL_ASYNC_OPERATION_TIMER` completions and never enters V8 directly. Late completion after
 JavaScript timeout/cancellation is cleanup-only and must not double-settle.
 
+CORE-TIME-01.E/F keeps intervals and scheduled jobs cleanup-safe in the JavaScript stdlib
+layer. Intervals are pull-based async iterables, so ticks are not queued without consumer
+demand. Scheduled jobs skip runs by policy when a no-overlap handler is still running.
+Fake clocks are explicit per-instance providers and do not mutate global runtime time.
+
 The HTTP backend foundation has read/header/request timeout configuration fields and an
 explicit request timeout hook. ENGINE-13.D/E makes body reads observe that request token:
 pre-cancelled, cancelled-during-read, timed-out-during-read, and shutdown-during-read

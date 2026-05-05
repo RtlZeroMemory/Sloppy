@@ -1,6 +1,6 @@
 # CORE-TIME-01 Issue Index
 
-Status: CORE-TIME-01.A/B/C/D/G source-of-truth index.
+Status: CORE-TIME-01.A/B/C/D/E/F/G source-of-truth index.
 
 Parent EPIC: #551 CORE-TIME-01 Time, Deadlines, Cancellation, and Scheduling API.
 
@@ -8,7 +8,7 @@ Parent EPIC: #551 CORE-TIME-01 Time, Deadlines, Cancellation, and Scheduling API
 | --- | --- | --- |
 | CORE-TIME-01.A/B | #552, #553 | API contract, feature/Plan metadata, diagnostics, and stable JS error classes. |
 | CORE-TIME-01.C/D/G | #554, #555, #558 | Native timer backend, owner-thread completion, delay/timeout/deadline/cancellation, and V8/stdlib surface. Implemented in PR #567. |
-| CORE-TIME-01.E/F | #556, #557 | Interval/ticker, scheduled jobs, TimeProvider, and FakeClock. |
+| CORE-TIME-01.E/F | #556, #557 | Interval/ticker, scheduled jobs, TimeProvider, and FakeClock. Implemented in PR #568. |
 | CORE-TIME-01.H | #559 | Integration into existing core APIs such as filesystem, app/request lifecycle, provider descriptors, and HTTP policy placeholders. |
 | CORE-TIME-01.I | #560 | Conformance, examples, docs, and diagnostic goldens. |
 

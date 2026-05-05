@@ -613,9 +613,10 @@ unknown, unavailable, V8-disabled, provider, transport, and dependency-missing f
 failures. `runtime_feature_inactive_sqlite_intrinsic.snap` pins the stdlib missing-intrinsic
 message for `provider.sqlite`.
 
-CORE-TIME-01.A/B adds stable Time diagnostics, and CORE-TIME-01.C/D/G wires the first
+CORE-TIME-01.A/B adds stable Time diagnostics, CORE-TIME-01.C/D/G wires the first
 V8-gated runtime paths that can produce the timeout/cancellation classes from
-`sloppy/time`:
+`sloppy/time`, and CORE-TIME-01.E/F adds deterministic interval, scheduled-job, and
+fake-clock paths:
 
 - `SLOPPY_E_TIME_TIMEOUT` for timeout/deadline expiry;
 - `SLOPPY_E_TIME_CANCELLED` for caller/app/request cancellation;
@@ -629,7 +630,8 @@ V8-gated runtime paths that can produce the timeout/cancellation classes from
 Missing or inactive `stdlib.time` uses the runtime-feature diagnostics above. The initial
 renderer goldens cover timeout, cancellation, disposed timer, and invalid delay shapes.
 V8-gated Time evidence covers inactive `__sloppy.time` registration and native delay
-Promise settlement; interval/schedule/fake-clock diagnostics remain later slices.
+Promise settlement. Bootstrap stdlib evidence covers fake-clock disposal, deterministic
+delay/timeout/interval completion, and skipped scheduled runs.
 
 App/request lifecycle diagnostics:
 

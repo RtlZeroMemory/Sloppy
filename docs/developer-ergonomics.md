@@ -80,8 +80,9 @@ CORE-TIME-01.A/B locks the `sloppy/time` contract around `Time`, `Deadline`,
 `CancellationController`, async delay/timeout, intervals, interval-based scheduled jobs,
 and explicit fake clocks. The compiler now makes `sloppy/time` Plan-visible as
 `stdlib.time`. CORE-TIME-01.C/D/G adds the V8-backed `Time.delay`, `Time.timeout`,
-`Deadline`, `CancellationController`, and `Time.yield` runtime path. Intervals, scheduled
-jobs, fake clocks, and existing-API integration remain later CORE-TIME slices.
+`Deadline`, `CancellationController`, and `Time.yield` runtime path. CORE-TIME-01.E/F
+adds async iterable intervals, interval-based scheduled jobs, `Time.systemClock`, and explicit
+test-scoped `Time.fakeClock`. Existing-API integration remains a later CORE-TIME slice.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.

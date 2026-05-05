@@ -1030,6 +1030,8 @@ enters V8. It posts owned timer completions to the engine's `SlAsyncLoop`, and t
 owner-thread native async drain resolves JavaScript Promises. This preserves the existing
 V8 owner-thread rule and keeps native timer handles out of JavaScript.
 
-This slice implements `Time.delay`, `Time.timeout`, `Deadline`, `CancellationController`,
-and `Time.yield`. Intervals, scheduled jobs, fake clocks, and integration into FS/provider
-or request lifecycle APIs are still separate CORE-TIME-01 slices.
+CORE-TIME-01.C/D/G implements `Time.delay`, `Time.timeout`, `Deadline`,
+`CancellationController`, and `Time.yield`. CORE-TIME-01.E/F layers async iterable
+intervals, interval-based scheduled jobs, and explicit fake clocks on top of the stdlib
+TimeProvider shape. Integration into FS/provider or request lifecycle APIs remains a
+separate CORE-TIME-01 slice.

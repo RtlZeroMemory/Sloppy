@@ -1,13 +1,12 @@
 # Time API Architecture
 
-Status: CORE-TIME-01.A/B/C/D/G source of truth. This document defines the intended first
+Status: CORE-TIME-01.A/B/C/D/E/F/G source of truth. This document defines the intended first
 `sloppy/time` API contract, feature metadata, diagnostics, implementation boundaries, and
 the first V8-backed runtime surface. The examples in this document are illustrative
 contract examples for the current API shape. Native delay, timeout, deadline, cancellation,
-and V8 owner-thread Promise settlement are implemented; intervals, scheduled jobs, fake
-clocks, FS integration, executable examples, and final conformance land in later
-CORE-TIME-01 slices. The interval, scheduled-job, and fake-clock contract semantics are
-locked here but their runtime implementation remains deferred.
+V8 owner-thread Promise settlement, intervals, scheduled jobs, and fake clocks are
+implemented; FS integration, executable examples, and final conformance land in later
+CORE-TIME-01 slices.
 
 ## Goals
 
@@ -68,8 +67,7 @@ await p;
 
 - `DelayOptions`: `signal`, `deadline`, `clock`.
 - `TimeoutOptions`: `afterMs`, `deadline`, `signal`, `clock`.
-- `IntervalOptions`: `signal`, `deadline`, `clock`, `immediate`, `maxTicks`,
-  `mode: "fixed-delay" | "fixed-rate"` where fixed-delay is the default.
+- `IntervalOptions`: `signal`, `deadline`, `clock`, `immediate`, and `maxTicks`.
 - `ScheduleOptions`: `signal`, `clock`, `noOverlap`, `missedRunPolicy: "skip"`,
   optional `immediate`, and optional `maxRuns`.
 
@@ -94,7 +92,8 @@ explicit provider override; ordinary app timers use the system clock.
   never builds an unbounded catch-up queue.
 - `Time.every(interval, handler, options)` creates an interval-based `ScheduledJob` with
   `pause`, `resume`, `stop`, `nextRun`, and running-state inspection. Cron parsing is out
-  of scope for this EPIC.
+  of scope for this EPIC. The implemented schedule interval parser accepts millisecond
+  numbers and compact `ms`, `s`, `m`, and `h` strings such as `"500ms"` and `"5m"`.
 - `Time.systemClock()` returns the normal provider. `Time.fakeClock()` returns an explicit
   test-scoped provider that drives delay, timeout, interval, and scheduled jobs only for
   operations that receive it.
@@ -138,7 +137,7 @@ Missing or inactive `stdlib.time` uses the runtime-feature diagnostics
 
 ## Implemented Runtime Surface
 
-CORE-TIME-01.C/D/G implements the first runtime-backed subset:
+CORE-TIME-01.C/D/E/F/G implements the first runtime-backed subset:
 
 - `__sloppy.time.delay(ms)` records due requests on a shared Time scheduler for the V8
   backend. That scheduler never enters V8; it posts owned timer completions through
@@ -146,8 +145,19 @@ CORE-TIME-01.C/D/G implements the first runtime-backed subset:
 - `__sloppy.time.monotonicMs()` exposes monotonic milliseconds to the stdlib wrapper for
   deadline accounting.
 - `stdlib/sloppy/time.js` and `runtime-classic.js` implement `Time.delay`, `Time.timeout`,
-  `Time.yield`, `Deadline.after`, `Deadline.at`, `Deadline.never`, and
-  `CancellationController`.
+  `Time.yield`, `Time.interval`, `Time.every`, `Time.systemClock`, `Time.fakeClock`,
+  `Deadline.after`, `Deadline.at`, `Deadline.never`, and `CancellationController`.
+- `Time.interval` is pull-based and async iterable; cancellation or `return()` stops the
+  iterator without queuing unbounded ticks.
+- `Time.every` starts an interval-based scheduled job after one interval by default, or
+  immediately when `options.immediate === true`; it skips missed runs by policy while a
+  no-overlap handler is still running, and reports skipped runs on the job.
+- `Time.fakeClock` owns a deterministic per-instance timer queue. `advanceBy` drives only
+  operations that were given that clock, and `dispose` rejects pending fake timers with
+  `TimerDisposedError`.
+- Clock-injected operations use duration-based timing in this slice; passing both
+  `deadline` and an injected `clock` is rejected so system-backed deadlines are not mixed
+  with deterministic fake-clock waits.
 - Missing or inactive `stdlib.time` remains fail-closed; the private `__sloppy.time`
   namespace is not registered unless the active Plan enables `stdlib.time`.
 
