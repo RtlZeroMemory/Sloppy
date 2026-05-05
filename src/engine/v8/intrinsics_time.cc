@@ -176,27 +176,39 @@ void time_v8_worker(std::shared_ptr<SlV8TimeRequest> request)
         }
     }
 
-    TimeV8CompletionPayload* payload = new (std::nothrow) TimeV8CompletionPayload();
-    if (payload == nullptr) {
-        request->cancelled.store(true);
-        return;
-    }
-    payload->request = request;
+    while (!request->cancelled.load()) {
+        {
+            std::lock_guard<std::mutex> lock(backend->time_mutex);
+            if (backend->time_shutting_down || backend->async_loop == nullptr) {
+                request->cancelled.store(true);
+                return;
+            }
+        }
 
-    SlAsyncCompletion completion = {};
-    completion.kind = SL_ASYNC_COMPLETION_V8_CONTINUATION;
-    completion.operation_kind = SL_ASYNC_OPERATION_TIMER;
-    completion.status = sl_status_ok();
-    completion.payload = payload;
-    completion.dispatch = time_v8_completion_dispatch;
-    completion.cleanup = time_v8_completion_cleanup;
+        TimeV8CompletionPayload* payload = new (std::nothrow) TimeV8CompletionPayload();
+        if (payload == nullptr) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        payload->request = request;
 
-    request->completion_posted.store(true);
-    SlStatus status = sl_async_loop_post(backend->async_loop, &completion);
-    if (!sl_status_is_ok(status)) {
+        SlAsyncCompletion completion = {};
+        completion.kind = SL_ASYNC_COMPLETION_V8_CONTINUATION;
+        completion.operation_kind = SL_ASYNC_OPERATION_TIMER;
+        completion.status = sl_status_ok();
+        completion.payload = payload;
+        completion.dispatch = time_v8_completion_dispatch;
+        completion.cleanup = time_v8_completion_cleanup;
+
+        request->completion_posted.store(true);
+        SlStatus status = sl_async_loop_post(backend->async_loop, &completion);
+        if (sl_status_is_ok(status)) {
+            return;
+        }
         request->completion_posted.store(false);
-        request->cancelled.store(true);
         delete payload;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 

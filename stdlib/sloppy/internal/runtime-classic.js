@@ -1218,6 +1218,9 @@ Reason:
 
     function delayWithDeadline(ms, options = undefined) {
         const delayMs = validateDelayMs(ms, "Time.delay");
+        if (isCancellationSignal(options?.signal) && options.signal.aborted) {
+            return Promise.reject(cancelledError(options.signal.reason));
+        }
         const remaining = deadlineDelayMs(options?.deadline);
         if (remaining <= 0) {
             return Promise.reject(timeoutError(options?.deadline));

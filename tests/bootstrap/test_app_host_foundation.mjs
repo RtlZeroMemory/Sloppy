@@ -37,6 +37,7 @@ function assertThrowsMessage(fn, expected) {
     assert.equal(controller.signal.reason, "done");
     assert.equal(observedReason, "done");
     assert.throws(() => controller.signal.throwIfCancelled(), CancelledError);
+    await assert.rejects(Time.delay(10, { signal: controller.signal }), CancelledError);
 
     assert.throws(() => Time.delay(-1), InvalidDeadlineError);
     assertThrowsMessage(() => Time.fakeClock(), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE/);

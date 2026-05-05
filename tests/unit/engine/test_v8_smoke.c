@@ -1112,7 +1112,11 @@ static int test_time_intrinsic_delay_settles_on_owner_thread(void)
                 engine, sl_str_from_cstr("v8-time-delay.js"),
                 sl_str_from_cstr("globalThis.sloppy_time_delay = async function () {"
                                  "  const before = globalThis.__sloppy.time.monotonicMs();"
-                                 "  await globalThis.__sloppy.time.delay(2);"
+                                 "  const delays = [globalThis.__sloppy.time.delay(2)];"
+                                 "  for (let i = 0; i < 80; i += 1) {"
+                                 "    delays.push(globalThis.__sloppy.time.delay(0));"
+                                 "  }"
+                                 "  await Promise.all(delays);"
                                  "  const after = globalThis.__sloppy.time.monotonicMs();"
                                  "  return after >= before ? 'time-delay-ok' : 'time-regressed';"
                                  "};"),
