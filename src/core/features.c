@@ -233,11 +233,6 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.data"), SL_FEATURE_STR("data stdlib"),
          SL_FEATURE_STR("sloppy/data"), SL_FEATURE_EMPTY,
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true},
-        {SL_RUNTIME_FEATURE_STDLIB_TIME, SL_RUNTIME_FEATURE_KIND_STDLIB,
-         SL_FEATURE_STR("stdlib.time"), SL_FEATURE_STR("time stdlib"),
-         SL_FEATURE_STR("sloppy/time"), SL_FEATURE_STR("__sloppy.time"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
-         true, true},
         {SL_RUNTIME_FEATURE_STDLIB_FS, SL_RUNTIME_FEATURE_KIND_STDLIB, SL_FEATURE_STR("stdlib.fs"),
          SL_FEATURE_STR("filesystem stdlib"), SL_FEATURE_STR("sloppy/fs"),
          SL_FEATURE_STR("__sloppy.fs"),
@@ -258,7 +253,12 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("provider.sqlserver"), SL_FEATURE_STR("SQL Server provider"),
          SL_FEATURE_STR("sloppy/providers/sqlserver"), SL_FEATURE_EMPTY,
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), false,
-         false, true}};
+         false, true},
+        {SL_RUNTIME_FEATURE_STDLIB_TIME, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.time"), SL_FEATURE_STR("time stdlib"),
+         SL_FEATURE_STR("sloppy/time"), SL_FEATURE_STR("__sloppy.time"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
+         true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;

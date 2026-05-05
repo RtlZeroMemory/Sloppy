@@ -8,8 +8,8 @@ use std::{
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BindingPattern, CallExpression, ChainElement, Declaration,
-    Expression, ExpressionStatement, ForStatementInit, ImportDeclarationSpecifier,
-    ObjectPropertyKind, PropertyKey, PropertyKind, Statement,
+    Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
+    ImportDeclarationSpecifier, ObjectPropertyKind, PropertyKey, PropertyKind, Statement,
 };
 use oxc_parser::Parser;
 use oxc_span::Span;
@@ -1004,6 +1004,7 @@ struct ModuleGraph {
     visiting: BTreeSet<PathBuf>,
     modules: BTreeMap<PathBuf, CachedModule>,
     source_files: Vec<SourceFile>,
+    uses_time_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1023,6 +1024,7 @@ impl ModuleGraph {
             visiting: BTreeSet::new(),
             modules: BTreeMap::new(),
             source_files: Vec::new(),
+            uses_time_runtime: false,
         }
     }
 
@@ -1266,7 +1268,7 @@ fn extract_entry(
         configuration: None,
         schemas: state.schemas,
         config_reads: state.config_reads,
-        uses_time_runtime: state.time_imported,
+        uses_time_runtime: state.time_imported || graph.uses_time_runtime,
         uses_fs_runtime: state.fs_imported,
     })
 }
@@ -1300,6 +1302,62 @@ fn collect_schema_declaration_names(statements: &[Statement<'_>]) -> BTreeSet<St
         }
     }
     names
+}
+
+fn sloppy_time_import_name_supported(name: &str) -> bool {
+    matches!(
+        name,
+        "Time"
+            | "Deadline"
+            | "CancellationController"
+            | "TimeoutError"
+            | "CancelledError"
+            | "InvalidDeadlineError"
+            | "TimerDisposedError"
+    )
+}
+
+fn validate_module_sloppy_time_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    let Some(specifiers) = &import.specifiers else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy/time\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    };
+    if specifiers.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy/time\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    }
+    for specifier in specifiers {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                "unsupported import specifier \"sloppy/time\"",
+            )
+            .with_path(path)
+            .with_span(import.source.span));
+        };
+        let imported = specifier.imported.name().as_str();
+        let local = specifier.local.name.as_str();
+        if !sloppy_time_import_name_supported(imported) || imported != local {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT_NAME",
+                format!("unsupported sloppy/time import \"{imported}\""),
+            )
+            .with_path(path)
+            .with_span(specifier.span));
+        }
+    }
+    Ok(())
 }
 
 fn extract_import(
@@ -1418,29 +1476,10 @@ fn extract_import(
                 };
                 let imported = specifier.imported.name().as_str();
                 let local = specifier.local.name.as_str();
-                if matches!(
-                    imported,
-                    "Time"
-                        | "Deadline"
-                        | "CancellationController"
-                        | "TimeoutError"
-                        | "CancelledError"
-                        | "InvalidDeadlineError"
-                        | "TimerDisposedError"
-                ) && imported == local
-                {
+                if sloppy_time_import_name_supported(imported) && imported == local {
                     state.time_imported = true;
                 } else {
-                    if matches!(
-                        imported,
-                        "Time"
-                            | "Deadline"
-                            | "CancellationController"
-                            | "TimeoutError"
-                            | "CancelledError"
-                            | "InvalidDeadlineError"
-                            | "TimerDisposedError"
-                    ) {
+                    if sloppy_time_import_name_supported(imported) {
                         state.unsupported_import_alias = true;
                     }
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
@@ -2825,6 +2864,11 @@ fn extract_relative_module(
             Statement::ImportDeclaration(import) => {
                 let import_source = import.source.value.as_str();
                 if import_source == "sloppy" {
+                    continue;
+                }
+                if import_source == "sloppy/time" {
+                    validate_module_sloppy_time_import(&imported.path, import)?;
+                    graph.uses_time_runtime = true;
                     continue;
                 }
                 if import_source.starts_with("./") || import_source.starts_with("../") {
@@ -6589,6 +6633,49 @@ export default app;
     }
 
     #[test]
+    fn function_module_sloppy_time_import_emits_required_feature() {
+        let root = fixture_temp_dir("function-module-time-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("jobs.js"),
+            r#"import { Results } from "sloppy";
+import { Time, Deadline } from "sloppy/time";
+
+export function jobsModule(app) {
+    app.get("/jobs", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { jobsModule } from "./modules/jobs.js";
+
+const app = Sloppy.create();
+app.useModule(jobsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_time_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains("Time, Deadline"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.time"]));
+        assert_eq!(plan["features"]["time"], serde_json::json!(true));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
     fn emits_used_function_modules_without_routes() {
         let root = fixture_temp_dir("empty-function-module");
         let modules = root.join("modules");
@@ -7673,6 +7760,9 @@ export default app;
         assert!(app.uses_time_runtime);
 
         let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(
+            "const { Results, Time, Deadline, CancellationController, TimeoutError, CancelledError, InvalidDeadlineError, TimerDisposedError } = __sloppyRuntime;"
+        ));
         let emitted_source_map = super::emit_source_map(&app, &emitted_js);
         let plan = super::emit_plan(
             &app,

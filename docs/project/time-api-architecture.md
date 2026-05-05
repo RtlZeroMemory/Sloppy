@@ -2,8 +2,9 @@
 
 Status: CORE-TIME-01.A/B source of truth. This document defines the intended first
 `sloppy/time` API contract, feature metadata, diagnostics, and implementation boundaries.
-Native timers, V8 promise settlement, intervals, fake clocks, FS integration, examples, and
-conformance land in later CORE-TIME-01 slices.
+The examples in this document are illustrative contract examples for the current API shape.
+Native timers, V8 promise settlement, intervals, fake clocks, FS integration, executable
+examples, and conformance land in later CORE-TIME-01 slices.
 
 ## Goals
 
