@@ -55,9 +55,11 @@ typedef struct SlEngineOptions
     const SlCapabilityRegistry* capabilities;
     /*
      * Optional borrowed compiler source-map bytes used by V8 diagnostics to remap generated
-     * app.js locations back to author source. When provided, source_map_source_name identifies
-     * the generated source label that the map applies to. Missing or malformed source maps must
-     * not fake author locations; V8 diagnostics fall back to generated source locations.
+     * app.js locations back to author source. The bytes must outlive the engine. When provided,
+     * source_map_source_name identifies the generated source label that the map applies to; V8
+     * copies that label into engine-owned storage during create. Missing or malformed source
+     * maps must not fake author locations; V8 diagnostics fall back to generated source
+     * locations.
      */
     SlBytes source_map;
     SlStr source_map_source_name;

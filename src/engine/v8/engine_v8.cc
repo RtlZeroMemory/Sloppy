@@ -28,6 +28,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -301,7 +302,16 @@ bool sl_v8_source_map_decode_vlq(const char* mappings, size_t length, size_t* cu
         saw_digit = true;
         continuation = (digit & 32) != 0;
         digit &= 31;
-        value += static_cast<int64_t>(digit) << shift;
+        if (shift >= 63 ||
+            static_cast<int64_t>(digit) > (std::numeric_limits<int64_t>::max() >> shift))
+        {
+            return false;
+        }
+        int64_t part = static_cast<int64_t>(digit) << shift;
+        if (value > std::numeric_limits<int64_t>::max() - part) {
+            return false;
+        }
+        value += part;
         shift += 5;
 
         if (!continuation) {
@@ -869,6 +879,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     SlV8Engine* backend = nullptr;
     SlStatus status;
     SlArenaMark mark = {};
+    SlOwnedStr copied_source_map_source_name = {};
 
     if (arena == nullptr || out_engine == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -891,8 +902,22 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->plan = options == nullptr ? nullptr : options->plan;
     backend->capabilities = options == nullptr ? nullptr : options->capabilities;
     backend->source_map = options == nullptr ? SlBytes{} : options->source_map;
-    backend->source_map_source_name =
-        options == nullptr ? sl_str_empty() : options->source_map_source_name;
+    if (options != nullptr && options->source_map_source_name.length > 0U) {
+        status = sl_str_copy_to_arena(arena, options->source_map_source_name,
+                                      &copied_source_map_source_name);
+        if (!sl_status_is_ok(status)) {
+            delete backend;
+            SlStatus reset_status = sl_arena_reset_to(arena, mark);
+            if (!sl_status_is_ok(reset_status)) {
+                return reset_status;
+            }
+            return status;
+        }
+        backend->source_map_source_name = sl_owned_str_as_view(copied_source_map_source_name);
+    }
+    else {
+        backend->source_map_source_name = sl_str_empty();
+    }
 
     status = sl_resource_table_init(&backend->resources, backend->resource_entries.data(),
                                     backend->resource_entries.size());

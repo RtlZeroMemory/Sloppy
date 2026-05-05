@@ -568,7 +568,8 @@ static int test_malformed_source_map_reports_generated_location(void)
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
-    const char malformed_map[] = "{ not-json";
+    const char malformed_map[] =
+        "{\"version\":3,\"sources\":[\"src/users.js\"],\"mappings\":\"gggggggggggggggggA\"}";
 
     options.source_map =
         sl_bytes_from_parts((const unsigned char*)malformed_map, sizeof(malformed_map) - 1U);
