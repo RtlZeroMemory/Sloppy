@@ -1268,8 +1268,7 @@ static SlStatus sl_provider_operation_post_terminal(SlProviderOperation* operati
     {
         reason = sl_cancellation_token_reason(operation->cancellation);
         status = sl_status_from_code(sl_cancellation_status_code(reason));
-        diag_code = reason == SL_CANCELLATION_REASON_BACKPRESSURE ? SL_DIAG_ENGINE_BACKPRESSURE
-                                                                  : SL_DIAG_ENGINE_CANCELLED;
+        diag_code = sl_cancellation_diag_code(reason);
         message = sl_cancellation_reason_name(reason);
     }
 
@@ -1349,7 +1348,7 @@ SlStatus sl_provider_operation_cancel(SlProviderOperation* operation, SlStr deta
 
     post_status = sl_provider_operation_post_terminal(
         operation, sl_status_from_code(SL_STATUS_CANCELLED), SL_CANCELLATION_REASON_CANCELLED,
-        SL_DIAG_ENGINE_CANCELLED, detail);
+        sl_cancellation_diag_code(SL_CANCELLATION_REASON_CANCELLED), detail);
     if (!sl_status_is_ok(post_status)) {
         return post_status;
     }
@@ -1383,7 +1382,8 @@ SlStatus sl_provider_operation_timeout(SlProviderOperation* operation, SlStr det
     }
     post_status = sl_provider_operation_post_terminal(
         operation, sl_status_from_code(SL_STATUS_DEADLINE_EXCEEDED),
-        SL_CANCELLATION_REASON_DEADLINE_EXCEEDED, SL_DIAG_ENGINE_PROMISE_PENDING, detail);
+        SL_CANCELLATION_REASON_DEADLINE_EXCEEDED,
+        sl_cancellation_diag_code(SL_CANCELLATION_REASON_DEADLINE_EXCEEDED), detail);
     if (!sl_status_is_ok(post_status)) {
         return post_status;
     }
@@ -1424,7 +1424,8 @@ SlStatus sl_provider_executor_shutdown(SlProviderInstanceExecutor* executor,
         if (operation != NULL) {
             SlStatus status = sl_provider_operation_post_terminal(
                 operation, sl_status_from_code(SL_STATUS_CANCELLED),
-                SL_CANCELLATION_REASON_SHUTDOWN, SL_DIAG_APP_LIFECYCLE,
+                SL_CANCELLATION_REASON_SHUTDOWN,
+                sl_cancellation_diag_code(SL_CANCELLATION_REASON_SHUTDOWN),
                 sl_str_from_cstr("provider executor shutdown"));
             if (sl_status_is_ok(status)) {
                 executor->cancelled_count += 1U;

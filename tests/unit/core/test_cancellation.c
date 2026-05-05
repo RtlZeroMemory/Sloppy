@@ -68,5 +68,16 @@ int main(void)
         return 7;
     }
 
+    if (sl_cancellation_diag_code(SL_CANCELLATION_REASON_CANCELLED) != SL_DIAG_ENGINE_CANCELLED ||
+        sl_cancellation_diag_code(SL_CANCELLATION_REASON_DEADLINE_EXCEEDED) !=
+            SL_DIAG_ENGINE_PROMISE_PENDING ||
+        sl_cancellation_diag_code(SL_CANCELLATION_REASON_BACKPRESSURE) !=
+            SL_DIAG_ENGINE_BACKPRESSURE ||
+        sl_cancellation_diag_code(SL_CANCELLATION_REASON_SHUTDOWN) != SL_DIAG_APP_LIFECYCLE ||
+        sl_cancellation_diag_code(SL_CANCELLATION_REASON_NONE) != SL_DIAG_NONE)
+    {
+        return 8;
+    }
+
     return 0;
 }

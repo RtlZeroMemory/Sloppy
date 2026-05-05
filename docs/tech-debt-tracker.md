@@ -438,6 +438,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   continuation dispatch. `core.execution_domain` covers the default non-V8 policy table,
   while V8-gated owner-thread tests cover initialized owner identity and wrong-thread
   rejection.
+- Added ENGINE-26.C/D completion and cancellation hardening: `SlAsyncCompletion` has a
+  generic terminal check plus late-completion hook so terminal owners can turn late
+  completions into cleanup-only work, and `sl_cancellation_diag_code` centralizes native
+  cancel/deadline/backpressure/shutdown diagnostic categories.
 - Applied the 2026-04-30 GitHub issue hygiene pass after ENGINE-23 roadmap creation:
   closed completed ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12, ENGINE-21,
   ENGINE-22, and old #32 with evidence comments; documented kept-open and human-review

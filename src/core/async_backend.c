@@ -154,12 +154,26 @@ void sl_async_loop_finish_completion(const SlAsyncCompletion* completion)
     sl_async_loop_release_completion_scope(completion);
 }
 
+static bool sl_async_completion_is_terminal(const SlAsyncCompletion* completion)
+{
+    return completion != NULL && completion->terminal_check != NULL &&
+           completion->terminal_check(completion, completion->terminal_check_user);
+}
+
 SlStatus sl_async_loop_dispatch_completion(SlAsyncLoop* loop, const SlAsyncCompletion* completion)
 {
     SlStatus status;
 
     if (loop == NULL || completion == NULL || completion->dispatch == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (sl_async_completion_is_terminal(completion)) {
+        if (completion->late != NULL) {
+            completion->late(completion, completion->late_user);
+        }
+        sl_async_loop_finish_completion(completion);
+        return sl_status_ok();
     }
 
     status = completion->dispatch(loop, completion, completion->dispatch_user);

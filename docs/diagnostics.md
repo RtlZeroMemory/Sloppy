@@ -126,6 +126,13 @@ operation/backend, worker failure, operation failure, cancellation, timeout, lat
 completion, and capability-denial paths have deterministic counters or terminal
 diagnostics, and bounded stress smoke verifies redacted diagnostics without treating the
 result as performance proof.
+ENGINE-26.C/D centralizes native cancellation reason to diagnostic-code mapping in
+`sl_cancellation_diag_code`: caller cancellation maps to `SLOPPY_E_ENGINE_CANCELLED`,
+deadline/timeout maps to `SLOPPY_E_ENGINE_PROMISE_PENDING`, admission/backpressure maps to
+`SLOPPY_E_ENGINE_BACKPRESSURE`, shutdown maps to `SLOPPY_E_APP_LIFECYCLE`, and no
+cancellation maps to no diagnostic. Generic async completions that are late because their
+owner is already terminal do not dispatch user/provider/V8 continuation code; they may
+record the late hook and then follow the deterministic cleanup path.
 
 ENGINE-17.B/D keeps SQLite diagnostic categories distinct on the current synchronous V8
 bridge path. Capability denial remains a permission diagnostic before native work; invalid,

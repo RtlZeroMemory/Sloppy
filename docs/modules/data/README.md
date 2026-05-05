@@ -187,8 +187,10 @@ Async/offload ownership:
   cancellation remain provider-specific future work;
 - late worker completion after cancellation, timeout, or shutdown is cleanup-only and must
   not double-settle;
-- provider completion posts through `SlAsyncLoop` and can resume JS only through the V8
-  owner-thread scheduler;
+- provider completion posts through `SlAsyncLoop`; the generic async completion terminal
+  guard must run before provider dispatch/resume, and a terminal owner turns the completion
+  into cleanup-only work;
+- provider completion can resume JS only through the V8 owner-thread scheduler;
 - SQLite's default async execution mode is implemented as `SERIALIZED_BLOCKING` for a
   single connection unless a future SQLite issue chooses different read/write pool
   semantics;

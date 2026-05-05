@@ -282,6 +282,16 @@ Provider workers, blocking offload workers, libuv callbacks, HTTP callbacks, and
 completion dispatch are all mechanically classified as non-V8 domains. If they need to
 resume JavaScript, they must route through an owner-thread continuation.
 
+ENGINE-26.C/D adds a generic terminal-state guard at the async completion boundary.
+`SlAsyncCompletion.terminal_check` is evaluated during owner-thread drain before the
+completion's dispatch callback runs. If the owner request/app/resource is already terminal,
+dispatch is skipped, the optional late-completion hook can record the drop, and the normal
+cleanup/scope release path still runs exactly once. This makes late completion behavior
+explicit at the queue boundary while keeping request/app terminal policy owned by the
+lifecycle domain. Cancellation reason to diagnostic-code mapping is centralized in
+`sl_cancellation_diag_code`, so provider executor and future completion owners do not
+silently diverge on cancel, deadline, backpressure, or shutdown categories.
+
 ## V8 Isolation Rules
 
 One isolate is entered only by its owning JS thread. V8 types do not cross into core
