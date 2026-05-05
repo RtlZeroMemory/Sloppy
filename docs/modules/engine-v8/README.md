@@ -486,8 +486,10 @@ failures use `SLOPPY_E_INVALID_HTTP_RESULT`. Promise rejections use
 microtask drain use `SLOPPY_E_ENGINE_PROMISE_PENDING`; pre-cancelled request contexts use
 `SLOPPY_E_ENGINE_CANCELLED` or `SLOPPY_E_ENGINE_BACKPRESSURE` depending on the cancellation
 reason. Async diagnostics are ordinary `SlDiag` values and can be rendered through the
-stable JSON renderer; there is still no CLI-wide async diagnostic JSON mode. Eval-time
-intrinsic failures such as invalid `__sloppy_register_handler(...)`
+stable JSON renderer. When a caller has matching source text, the core diagnostic renderer
+can also emit deterministic JSON source frames, but the V8 bridge does not yet attach
+source-map-remapped frames to async stacks. There is still no CLI-wide async diagnostic JSON
+mode. Eval-time intrinsic failures such as invalid `__sloppy_register_handler(...)`
 arguments or duplicate handler registration are reported as `SL_DIAG_ENGINE_EXCEPTION`
 because they are raised while evaluating the app module.
 
@@ -499,8 +501,8 @@ ENGINE-15.B adds Source Map v3 `mappings` consumption for compile/eval/call exce
 primary spans when `sloppy run` has already validated `app.js.map`. Successful remaps use
 the author source as the primary span; missing maps, malformed maps, and uncovered
 locations keep the generated span and do not fake source awareness. No arbitrary bundler
-maps, rich code frames, async stack policy, Node compatibility, or package-manager behavior
-is implemented here.
+maps, async stack remapping, Node compatibility, or package-manager behavior is implemented
+here.
 
 ## Tests
 

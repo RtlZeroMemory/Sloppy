@@ -289,8 +289,9 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Provider primitive cleanup follow-up is mapped to #448; PostgreSQL/SQL Server JS bridge
   implementation remains deferred and is not part of immediate next-wave work.
 - Source map consumption beyond V8 exception primary spans. ENGINE-15.B consumes compiler
-  Source Map v3 mappings for V8 compile/eval/call exceptions, but async stacks, source
-  frames, arbitrary bundler maps, and broader TypeScript remapping remain deferred.
+  Source Map v3 mappings for V8 compile/eval/call exceptions, and ENGINE-15.CD adds the
+  shared JSON source-frame renderer when source text is supplied. Async stacks, arbitrary
+  bundler maps, and broader TypeScript remapping remain deferred.
 - Provider pooling hardening for PostgreSQL and SQL Server: wait policy, health checks,
   drain behavior beyond the current idempotent close, thread-safety contract, and richer
   diagnostics.
@@ -378,7 +379,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Stronger Rust lint configuration after `sloppyc` grows beyond the placeholder CLI.
 - Stronger generated-artifact and ignored-file staging checks.
 - More diagnostic polish: CLI-wide diagnostic format flags, structured fixes,
-  localization, richer related spans, and source-map remapping.
+  localization, richer related spans, and async source-map remapping.
 - Fuzz targets for plan JSON, route patterns, HTTP request-head parsing, source maps, and
   compiler extraction.
 - Sanitizer matrix for core-only and provider-enabled builds.
@@ -392,7 +393,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Reconcile stale GitHub issue labels on closed issues if label hygiene becomes useful for
   reporting.
-- Review #295 for async diagnostic JSON scope after the narrow ENGINE-07 contribution.
+- Review #295 for any remaining async diagnostic CLI-format scope after the narrow
+  ENGINE-15.CD renderer contribution.
 - Remove duplicate or contradictory "Current Phase" paragraphs as docs continue to evolve.
 
 ## Overengineering Watchlist
@@ -450,8 +452,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Source-map diagnostics are multi-file at compiler artifact level with stable Sloppy
   metadata, and V8 exception primary spans consume Source Map v3 mappings when available.
-  Richer code-frame diagnostics and async stack remapping remain part of the source-map
-  diagnostics completion track.
+  JSON source-frame rendering is available in the shared diagnostic renderer; async stack
+  remapping remains part of the source-map diagnostics completion track.
 - Full V8 native ESM loading, dynamic import, package/module distribution, and
   package-manager behavior remain intentionally deferred.
 - Function modules support the framework MVP route shape only: direct app-parameter routes

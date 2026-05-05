@@ -236,10 +236,11 @@ Secrets must be handled as secret values:
 - logs default to redaction for known secret fields.
 
 Diagnostic redaction currently covers representative password, `PWD`, token, `SECRET`,
-`API_KEY`, and URI userinfo password forms. This is a deterministic audit helper for known
-diagnostic paths, not a full process-wide secret scanner. New provider/runtime diagnostics
-that include user configuration must either pass through provider-specific redaction or the
-shared diagnostic redaction helper before rendering text or JSON.
+`API_KEY`, generic `key`, `connectionString`/`connection_string`, and URI userinfo
+password forms. This is a deterministic audit helper for known diagnostic paths, not a full
+process-wide secret scanner. New provider/runtime diagnostics that include user
+configuration must either pass through provider-specific redaction or the shared diagnostic
+redaction helper before rendering text or JSON.
 
 ## Native Handles And Resource IDs
 

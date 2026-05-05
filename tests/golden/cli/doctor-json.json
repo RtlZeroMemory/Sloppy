@@ -10,6 +10,6 @@
     { "id": "app.plan.capabilities", "status": "warn", "message": "capability metadata not present" },
     { "id": "sqlite.provider", "status": "ok", "message": "sqlite provider metadata available" },
     { "id": "postgres.live", "status": "warn", "message": "live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set" },
-    { "id": "sqlserver.driver", "status": "error", "message": "connectionString=Driver={ODBC Driver 18 for SQL Server};Server=localhost;UID=sa;PWD=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found" }
+    { "id": "sqlserver.driver", "status": "error", "message": "connectionString=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found" }
   ]
 }

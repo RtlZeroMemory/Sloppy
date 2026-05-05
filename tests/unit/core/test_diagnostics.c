@@ -466,6 +466,28 @@ static int test_http_code_names(void)
     return 0;
 }
 
+static int test_stable_code_registry_complete(void)
+{
+    size_t value = (size_t)SL_DIAG_NONE;
+
+    for (; value <= (size_t)SL_DIAG_HTTP_RESPONSE_BACKPRESSURE; value += 1U) {
+        if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
+                                      sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
+        {
+            return 53;
+        }
+    }
+
+    if (expect_str_equal(
+            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_HTTP_RESPONSE_BACKPRESSURE + 1U)),
+            sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
+    {
+        return 54;
+    }
+
+    return 0;
+}
+
 static int test_builder_and_bounds(void)
 {
     unsigned char buffer[1024];
@@ -838,6 +860,53 @@ static int test_source_frame_snapshot_and_fallback(void)
     return 0;
 }
 
+static int test_json_source_frame_snapshot(void)
+{
+    unsigned char buffer[4096];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlDiagSource source;
+    SlStr rendered;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 96;
+    }
+    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR,
+                                           SL_DIAG_INVALID_ROUTE_PATTERN,
+                                           sl_str_from_cstr("unsupported dynamic route pattern")),
+                      SL_STATUS_OK) != 0)
+    {
+        return 97;
+    }
+    if (expect_status(sl_diag_builder_set_primary_span(
+                          &builder, sl_source_span_make(sl_str_from_cstr("app.js"), 5U, 12U, 9U)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_add_hint(
+                          &builder, sl_str_from_cstr("expected a string literal route pattern")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0)
+    {
+        return 98;
+    }
+
+    source.path = sl_str_from_cstr("app.js");
+    source.text = sl_str_from_cstr("import { Sloppy } from \"sloppy\";\n"
+                                   "const app = Sloppy.create();\n"
+                                   "const routePath = \"/users\";\n"
+                                   "\n"
+                                   "app.mapGet(routePath, handler)\n");
+    if (expect_status(sl_diag_render_json_with_source(&arena, &diag, &source, &rendered),
+                      SL_STATUS_OK) != 0)
+    {
+        return 99;
+    }
+    if (expect_snapshot(rendered, "tests/golden/diagnostics/json_source_frame.json") != 0) {
+        return 100;
+    }
+    return 0;
+}
+
 static int test_redaction_helper(void)
 {
     unsigned char buffer[1024];
@@ -850,7 +919,8 @@ static int test_redaction_helper(void)
     if (expect_status(sl_diag_redact_secrets(
                           &arena,
                           sl_str_from_cstr("password=secret PWD = {top;secret}; token:abc "
-                                           "postgres://ada:secret@localhost/db API_KEY=xyz"),
+                                           "postgres://ada:secret@localhost/db API_KEY=xyz "
+                                           "key=plain connectionString=Server=.;Password=p;"),
                           &redacted),
                       SL_STATUS_OK) != 0)
     {
@@ -859,7 +929,8 @@ static int test_redaction_helper(void)
     if (expect_str_equal(redacted,
                          sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
                                           "token:<redacted> postgres://ada:<redacted>@localhost/db "
-                                          "API_KEY=<redacted>")) != 0)
+                                          "API_KEY=<redacted> key=<redacted> "
+                                          "connectionString=<redacted>;")) != 0)
     {
         return 102;
     }
@@ -888,6 +959,11 @@ static int test_snapshots(void)
         return result;
     }
 
+    result = test_json_source_frame_snapshot();
+    if (result != 0) {
+        return result;
+    }
+
     return 0;
 }
 
@@ -908,6 +984,11 @@ int main(void)
     }
 
     result = test_engine_async_code_names();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_stable_code_registry_complete();
     if (result != 0) {
         return result;
     }

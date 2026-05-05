@@ -177,6 +177,10 @@ ENGINE-15.B V8 exception-remapping changes must run in the V8-gated lane. Requir
 includes source-map-remapped exception spans, generated-location fallback when no map
 applies, malformed-map fallback, and a clear statement that default non-V8 gates did not
 execute V8 remapping.
+ENGINE-15.CD diagnostic changes must keep default-lane renderer evidence deterministic:
+stable code registry completeness, JSON source-frame snapshots, expanded redaction
+coverage, and clear separation from V8-only async execution evidence. V8 async diagnostic
+tests may prove JSON rendering for executed Promise paths only in the V8-enabled lane.
 Plan-driven CLI consumer changes must keep process goldens deterministic for text and JSON
 output, include audit nonzero coverage when ERROR findings are emitted, cover OpenAPI
 partial metadata and Slop extensions, and keep runtime execution, V8, live-provider,
@@ -530,6 +534,10 @@ ENGINE-15.B adds V8 source-map remapping evidence to this lane. Passing it prove
 bounded V8 exception primary-span remapping path for compiler-emitted maps; it does not
 prove arbitrary bundler maps, async stack remapping, IDE source frames, package-manager
 behavior, or public alpha readiness.
+ENGINE-15.CD async diagnostic JSON evidence in this lane proves V8 Promise rejection
+diagnostics can use the stable JSON renderer. It does not prove source-map-remapped async
+stacks, arbitrary bundler source maps, Node/package-manager behavior, or public alpha
+readiness.
 
 Phase 1 CTest expectations:
 
