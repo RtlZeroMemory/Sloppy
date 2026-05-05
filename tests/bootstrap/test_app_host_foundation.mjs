@@ -8,6 +8,7 @@ import {
     Results,
     Sloppy,
     Time,
+    TimerDisposedError,
     TimeoutError,
     schema,
 } from "../../stdlib/sloppy/index.js";
@@ -76,6 +77,29 @@ function assertThrowsMessage(fn, expected) {
     assert.equal(expiredTimeoutInvoked, false);
 
     assert.throws(() => Time.delay(-1), InvalidDeadlineError);
+    assert.throws(() => Time.delay(0x100000000), InvalidDeadlineError);
+
+    const previousSloppy = globalThis.__sloppy;
+    try {
+        globalThis.__sloppy = {
+            time: {
+                delay() {
+                    return Promise.reject(new Error("Sloppy timer was disposed before completion"));
+                },
+                monotonicMs() {
+                    return Date.now();
+                },
+            },
+        };
+        await assert.rejects(Time.delay(1), TimerDisposedError);
+    } finally {
+        if (previousSloppy === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previousSloppy;
+        }
+    }
+
     assertThrowsMessage(() => Time.fakeClock(), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE/);
 }
 

@@ -32,6 +32,9 @@ class TimerDisposedError extends SloppyTimeError {
     }
 }
 
+const MAX_DELAY_MS = 0xffffffff;
+const NATIVE_TIMER_DISPOSED_MESSAGE = "Sloppy timer was disposed before completion";
+
 function unavailable(operation) {
     throw new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.time is inactive or unavailable
 
@@ -54,8 +57,10 @@ function nativeTime(operation) {
 }
 
 function validateDelayMs(ms, operation) {
-    if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) {
-        throw new InvalidDeadlineError(`${operation} requires a finite non-negative millisecond delay.`);
+    if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0 || ms > MAX_DELAY_MS) {
+        throw new InvalidDeadlineError(
+            `${operation} requires a finite non-negative millisecond delay no greater than ${MAX_DELAY_MS}.`,
+        );
     }
     return Math.ceil(ms);
 }
@@ -75,6 +80,16 @@ function cancelledError(reason = undefined) {
     return reason instanceof CancelledError
         ? reason
         : new CancelledError("Sloppy time operation was cancelled.", { reason });
+}
+
+function normalizeNativeTimerError(error) {
+    if (error instanceof TimerDisposedError) {
+        throw error;
+    }
+    if (error instanceof Error && error.message === NATIVE_TIMER_DISPOSED_MESSAGE) {
+        throw new TimerDisposedError(error.message, { reason: error });
+    }
+    throw error;
 }
 
 class CancellationSignal {
@@ -317,7 +332,8 @@ function delayWithDeadline(ms, options = undefined) {
             if (actualDelay < delayMs) {
                 throw timeoutError(options?.deadline);
             }
-        });
+        })
+        .catch(normalizeNativeTimerError);
     return raceCancellation(promise, options?.signal);
 }
 

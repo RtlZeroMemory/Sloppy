@@ -79,8 +79,9 @@ explicit provider override; ordinary app timers use the system clock.
 
 ## Semantics
 
-- `Time.delay(ms, options?)` resolves once after a non-negative finite delay, or rejects
-  with `CancelledError`, `TimeoutError`, `InvalidDeadlineError`, or `TimerDisposedError`.
+- `Time.delay(ms, options?)` resolves once after a non-negative finite delay up to
+  `4_294_967_295` milliseconds, or rejects with `CancelledError`, `TimeoutError`,
+  `InvalidDeadlineError`, or `TimerDisposedError`.
 - `Time.timeout(operationOrPromise, options)` supports Promise convenience form and
   function-with-signal form. Only the function form can propagate cancellation into user
   work; the Promise form may stop waiting without claiming to cancel arbitrary Promises.
