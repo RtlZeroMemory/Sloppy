@@ -11,9 +11,11 @@
 #include "sloppy/fs.h"
 
 #include <climits>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -665,8 +667,13 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
         status = sl_fs_watch_next(request->logical_watch->native_watch, arena,
                                   &request->watch_event, diag);
         if (sl_status_code(status) == SL_STATUS_DEADLINE_EXCEEDED) {
-            request->bool_result = false;
-            return sl_status_ok();
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            status = sl_fs_watch_next(request->logical_watch->native_watch, arena,
+                                      &request->watch_event, diag);
+            if (sl_status_code(status) == SL_STATUS_DEADLINE_EXCEEDED) {
+                request->bool_result = false;
+                return sl_status_ok();
+            }
         }
         request->bool_result = sl_status_is_ok(status);
         if (sl_status_is_ok(status)) {

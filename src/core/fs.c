@@ -21,6 +21,7 @@ typedef struct SlFsWatchSnapshot
 
 struct SlFsWatchHandle
 {
+    SlArena* arena;
     SlOwnedStr path;
     SlFsWatchEvent* queue;
     size_t queue_capacity;
@@ -82,11 +83,15 @@ static SlStatus sl_fs_watch_copy_path(SlArena* arena, SlStr path, SlOwnedStr* ou
     return sl_str_copy_to_arena(arena, path, out);
 }
 
-static SlStatus sl_fs_watch_enqueue(SlFsWatchHandle* watch, SlArena* arena, SlFsWatchEventKind kind,
-                                    SlStr path, bool is_directory)
+static SlOwnedStr sl_fs_watch_owned_view(SlStr path)
+{
+    return (SlOwnedStr){.ptr = (char*)path.ptr, .length = path.length};
+}
+
+static SlStatus sl_fs_watch_enqueue(SlFsWatchHandle* watch, SlFsWatchEventKind kind, SlStr path,
+                                    bool is_directory)
 {
     SlFsWatchEvent* event = NULL;
-    SlStatus status;
     size_t index = 0U;
 
     if (watch == NULL || watch->closed) {
@@ -98,12 +103,8 @@ static SlStatus sl_fs_watch_enqueue(SlFsWatchHandle* watch, SlArena* arena, SlFs
     }
     index = (watch->queue_head + watch->queue_count) % watch->queue_capacity;
     event = &watch->queue[index];
-    *event = (SlFsWatchEvent){.kind = kind, .is_directory = is_directory};
-    status = sl_fs_watch_copy_path(arena, path, &event->path);
-    if (!sl_status_is_ok(status)) {
-        *event = (SlFsWatchEvent){0};
-        return status;
-    }
+    *event = (SlFsWatchEvent){
+        .kind = kind, .path = sl_fs_watch_owned_view(path), .is_directory = is_directory};
     watch->queue_count += 1U;
     return sl_status_ok();
 }
@@ -150,29 +151,34 @@ static SlFsWatchSnapshot* sl_fs_watch_find_snapshot(SlFsWatchHandle* watch, SlSt
     return NULL;
 }
 
-static SlStatus sl_fs_watch_rebuild_file_snapshot(SlFsWatchHandle* watch, SlArena* arena,
-                                                  const SlFsStat* stat)
+static SlStatus sl_fs_watch_update_file_snapshot(SlFsWatchHandle* watch, const SlFsStat* stat)
 {
     SlFsWatchSnapshot* snapshot = NULL;
     SlStatus status;
 
-    if (watch == NULL || arena == NULL || stat == NULL || watch->snapshots == NULL ||
+    if (watch == NULL || stat == NULL || watch->arena == NULL || watch->snapshots == NULL ||
         watch->snapshot_capacity == 0U)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     snapshot = &watch->snapshots[0];
-    *snapshot = (SlFsWatchSnapshot){.kind = stat->kind, .size = stat->size, .exists = stat->exists};
-    status = sl_fs_watch_copy_path(arena, sl_owned_str_as_view(watch->path), &snapshot->path);
-    if (!sl_status_is_ok(status)) {
-        *snapshot = (SlFsWatchSnapshot){0};
-        return status;
+    if (snapshot->path.ptr == NULL && watch->path.ptr != NULL) {
+        status =
+            sl_fs_watch_copy_path(watch->arena, sl_owned_str_as_view(watch->path), &snapshot->path);
+        if (!sl_status_is_ok(status)) {
+            *snapshot = (SlFsWatchSnapshot){0};
+            return status;
+        }
     }
+    snapshot->kind = stat->kind;
+    snapshot->size = stat->size;
+    snapshot->exists = stat->exists;
+    snapshot->seen = true;
     watch->snapshot_count = 1U;
     return sl_status_ok();
 }
 
-static SlStatus sl_fs_watch_scan_file(SlFsWatchHandle* watch, SlArena* arena)
+static SlStatus sl_fs_watch_scan_file(SlFsWatchHandle* watch)
 {
     SlFsStat stat = {0};
     SlStatus status;
@@ -185,59 +191,84 @@ static SlStatus sl_fs_watch_scan_file(SlFsWatchHandle* watch, SlArena* arena)
     previous = watch->snapshot_count == 0U ? NULL : &watch->snapshots[0];
     if (previous != NULL) {
         if (!previous->exists && stat.exists) {
-            status = sl_fs_watch_enqueue(watch, arena, SL_FS_WATCH_EVENT_CREATED,
-                                         sl_owned_str_as_view(watch->path),
+            status = sl_fs_watch_enqueue(watch, SL_FS_WATCH_EVENT_CREATED,
+                                         sl_owned_str_as_view(previous->path),
                                          stat.kind == SL_FS_NODE_DIRECTORY);
         }
         else if (previous->exists && !stat.exists) {
-            status = sl_fs_watch_enqueue(watch, arena, SL_FS_WATCH_EVENT_DELETED,
-                                         sl_owned_str_as_view(watch->path),
+            status = sl_fs_watch_enqueue(watch, SL_FS_WATCH_EVENT_DELETED,
+                                         sl_owned_str_as_view(previous->path),
                                          previous->kind == SL_FS_NODE_DIRECTORY);
         }
         else if (previous->exists && stat.exists &&
                  (previous->kind != stat.kind || previous->size != stat.size))
         {
-            status = sl_fs_watch_enqueue(watch, arena, SL_FS_WATCH_EVENT_MODIFIED,
-                                         sl_owned_str_as_view(watch->path),
+            status = sl_fs_watch_enqueue(watch, SL_FS_WATCH_EVENT_MODIFIED,
+                                         sl_owned_str_as_view(previous->path),
                                          stat.kind == SL_FS_NODE_DIRECTORY);
         }
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
-    return sl_fs_watch_rebuild_file_snapshot(watch, arena, &stat);
+    return sl_fs_watch_update_file_snapshot(watch, &stat);
 }
 
-static SlStatus sl_fs_watch_rebuild_directory_snapshot(SlFsWatchHandle* watch, SlArena* arena,
-                                                       const SlFsDirectoryList* list)
+static SlStatus sl_fs_watch_add_snapshot(SlFsWatchHandle* watch, SlStr path, SlFsNodeKind kind,
+                                         uint64_t size, SlFsWatchSnapshot** out_snapshot)
 {
-    size_t index = 0U;
-    size_t count = 0U;
+    SlFsWatchSnapshot* snapshot = NULL;
     SlStatus status;
 
-    if (watch == NULL || arena == NULL || list == NULL || watch->snapshots == NULL) {
+    if (out_snapshot != NULL) {
+        *out_snapshot = NULL;
+    }
+    if (watch == NULL || watch->arena == NULL || watch->snapshots == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    count = list->count > watch->snapshot_capacity ? watch->snapshot_capacity : list->count;
-    for (index = 0U; index < count; index += 1U) {
-        SlFsWatchSnapshot* snapshot = &watch->snapshots[index];
-
-        *snapshot = (SlFsWatchSnapshot){
-            .kind = list->entries[index].kind, .size = list->entries[index].size, .exists = true};
-        status = sl_fs_watch_copy_path(arena, sl_owned_str_as_view(list->entries[index].name),
-                                       &snapshot->path);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-    watch->snapshot_count = count;
-    if (list->count > watch->snapshot_capacity) {
+    if (watch->snapshot_count >= watch->snapshot_capacity) {
         watch->overflow_pending = true;
+        return sl_status_ok();
+    }
+    snapshot = &watch->snapshots[watch->snapshot_count];
+    *snapshot = (SlFsWatchSnapshot){.kind = kind, .size = size, .exists = true, .seen = true};
+    status = sl_fs_watch_copy_path(watch->arena, path, &snapshot->path);
+    if (!sl_status_is_ok(status)) {
+        *snapshot = (SlFsWatchSnapshot){0};
+        return status;
+    }
+    watch->snapshot_count += 1U;
+    if (out_snapshot != NULL) {
+        *out_snapshot = snapshot;
     }
     return sl_status_ok();
 }
 
-static SlStatus sl_fs_watch_scan_directory(SlFsWatchHandle* watch, SlArena* arena)
+static SlStatus sl_fs_watch_seed_directory_snapshot(SlFsWatchHandle* watch,
+                                                    const SlFsDirectoryList* list)
+{
+    size_t index = 0U;
+    SlStatus status;
+
+    if (watch == NULL || list == NULL || watch->snapshots == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (index = 0U; index < list->count; index += 1U) {
+        status =
+            sl_fs_watch_add_snapshot(watch, sl_owned_str_as_view(list->entries[index].name),
+                                     list->entries[index].kind, list->entries[index].size, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (watch->snapshot_count >= watch->snapshot_capacity && index + 1U < list->count) {
+            watch->overflow_pending = true;
+            return sl_status_ok();
+        }
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_fs_watch_scan_directory(SlFsWatchHandle* watch)
 {
     unsigned char scan_storage[65536];
     SlArena scan_arena = {0};
@@ -262,35 +293,49 @@ static SlStatus sl_fs_watch_scan_directory(SlFsWatchHandle* watch, SlArena* aren
             sl_fs_watch_find_snapshot(watch, sl_owned_str_as_view(entry->name));
 
         if (previous == NULL) {
-            status = sl_fs_watch_enqueue(watch, arena, SL_FS_WATCH_EVENT_CREATED,
-                                         sl_owned_str_as_view(entry->name),
-                                         entry->kind == SL_FS_NODE_DIRECTORY);
+            status = sl_fs_watch_add_snapshot(watch, sl_owned_str_as_view(entry->name), entry->kind,
+                                              entry->size, &previous);
+            if (previous != NULL && sl_status_is_ok(status)) {
+                status = sl_fs_watch_enqueue(watch, SL_FS_WATCH_EVENT_CREATED,
+                                             sl_owned_str_as_view(previous->path),
+                                             entry->kind == SL_FS_NODE_DIRECTORY);
+            }
         }
         else {
             previous->seen = true;
             if (previous->kind != entry->kind || previous->size != entry->size) {
-                status = sl_fs_watch_enqueue(watch, arena, SL_FS_WATCH_EVENT_MODIFIED,
-                                             sl_owned_str_as_view(entry->name),
+                status = sl_fs_watch_enqueue(watch, SL_FS_WATCH_EVENT_MODIFIED,
+                                             sl_owned_str_as_view(previous->path),
                                              entry->kind == SL_FS_NODE_DIRECTORY);
             }
+            previous->kind = entry->kind;
+            previous->size = entry->size;
+            previous->exists = true;
         }
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
-    for (index = 0U; index < watch->snapshot_count; index += 1U) {
+    index = 0U;
+    while (index < watch->snapshot_count) {
         SlFsWatchSnapshot* previous = &watch->snapshots[index];
 
         if (previous->exists && !previous->seen) {
-            status = sl_fs_watch_enqueue(watch, arena, SL_FS_WATCH_EVENT_DELETED,
+            status = sl_fs_watch_enqueue(watch, SL_FS_WATCH_EVENT_DELETED,
                                          sl_owned_str_as_view(previous->path),
                                          previous->kind == SL_FS_NODE_DIRECTORY);
             if (!sl_status_is_ok(status)) {
                 return status;
             }
+            watch->snapshot_count -= 1U;
+            if (index < watch->snapshot_count) {
+                watch->snapshots[index] = watch->snapshots[watch->snapshot_count];
+            }
+            continue;
         }
+        index += 1U;
     }
-    return sl_fs_watch_rebuild_directory_snapshot(watch, arena, &list);
+    return sl_status_ok();
 }
 
 static SlStatus sl_fs_watch_normalize_options(const SlFsWatchOptions* options,
@@ -337,30 +382,46 @@ static SlStatus sl_fs_watch_alloc(SlArena* arena, SlStr path, const SlFsWatchOpt
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+    }
     watch = (SlFsWatchHandle*)memory;
-    *watch = (SlFsWatchHandle){.directory = options->directory,
+    *watch = (SlFsWatchHandle){.arena = arena,
+                               .directory = options->directory,
                                .recursive = options->recursive,
                                .queue_capacity = options->queue_capacity,
                                .snapshot_capacity = options->snapshot_capacity};
     status = sl_fs_watch_copy_path(arena, path, &watch->path);
-    if (sl_status_is_ok(status)) {
-        status = sl_checked_mul_size(options->queue_capacity, sizeof(SlFsWatchEvent), &bytes);
-    }
-    if (sl_status_is_ok(status)) {
-        status = sl_arena_alloc(arena, bytes, _Alignof(SlFsWatchEvent), &memory);
-    }
-    if (sl_status_is_ok(status)) {
-        watch->queue = (SlFsWatchEvent*)memory;
-        for (size_t index = 0U; index < options->queue_capacity; index += 1U) {
-            watch->queue[index] = (SlFsWatchEvent){0};
-        }
-        status = sl_checked_mul_size(options->snapshot_capacity, sizeof(SlFsWatchSnapshot), &bytes);
-    }
-    if (sl_status_is_ok(status)) {
-        status = sl_arena_alloc(arena, bytes, _Alignof(SlFsWatchSnapshot), &memory);
-    }
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    status = sl_checked_mul_size(options->queue_capacity, sizeof(SlFsWatchEvent), &bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    memory = NULL;
+    status = sl_arena_alloc(arena, bytes, _Alignof(SlFsWatchEvent), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+    }
+    watch->queue = (SlFsWatchEvent*)memory;
+    for (size_t index = 0U; index < options->queue_capacity; index += 1U) {
+        watch->queue[index] = (SlFsWatchEvent){0};
+    }
+    status = sl_checked_mul_size(options->snapshot_capacity, sizeof(SlFsWatchSnapshot), &bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    memory = NULL;
+    status = sl_arena_alloc(arena, bytes, _Alignof(SlFsWatchSnapshot), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (memory == NULL) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
     watch->snapshots = (SlFsWatchSnapshot*)memory;
     for (size_t index = 0U; index < options->snapshot_capacity; index += 1U) {
@@ -398,12 +459,12 @@ static SlStatus sl_fs_watch_seed(SlFsWatchHandle* watch, SlArena* arena, SlStr p
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        return sl_fs_watch_rebuild_directory_snapshot(watch, arena, &list);
+        return sl_fs_watch_seed_directory_snapshot(watch, &list);
     }
     if (!sl_status_is_ok(status) && sl_status_code(status) != SL_STATUS_OUT_OF_RANGE) {
         return status;
     }
-    return sl_fs_watch_rebuild_file_snapshot(watch, arena, &stat);
+    return sl_fs_watch_update_file_snapshot(watch, &stat);
 }
 
 static SlDiag sl_fs_diag(SlDiagCode code, SlStr message)
@@ -1132,8 +1193,7 @@ SlStatus sl_fs_watch_next(SlFsWatchHandle* watch, SlArena* arena, SlFsWatchEvent
     if (sl_status_code(status) != SL_STATUS_DEADLINE_EXCEEDED) {
         return status;
     }
-    status = watch->directory ? sl_fs_watch_scan_directory(watch, arena)
-                              : sl_fs_watch_scan_file(watch, arena);
+    status = watch->directory ? sl_fs_watch_scan_directory(watch) : sl_fs_watch_scan_file(watch);
     if (!sl_status_is_ok(status)) {
         return status;
     }

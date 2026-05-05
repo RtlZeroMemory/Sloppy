@@ -902,7 +902,6 @@ Reason:
                         if (event !== null) {
                             return { done: false, value: event };
                         }
-                        await Promise.resolve();
                     }
                     return { done: true, value: undefined };
                 },
