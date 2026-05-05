@@ -11,4 +11,4 @@ const summary = await Time.timeout((signal) => loadUserSummary({ signal }), { af
 ```
 
 The Time API is async-first and Promise-friendly. It has no Node timer compatibility
-promise, no package-manager behavior, and no benchmark claims.
+promise, is not a cron parser, has no package-manager behavior, and makes no benchmark claims.

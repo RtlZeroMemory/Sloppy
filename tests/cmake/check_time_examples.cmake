@@ -110,9 +110,10 @@ foreach(required_pattern IN ITEMS
         "not a cron parser"
         "no package-manager behavior"
         "no benchmark claims")
-    require_substring("${time_basic_readme_source};${time_interval_readme_source}"
-                      "${required_pattern}"
-                      "Time example READMEs are missing required boundary text")
+    require_substring("${time_basic_readme_source}" "${required_pattern}"
+                      "examples/time-basic/README.md is missing required boundary text")
+    require_substring("${time_interval_readme_source}" "${required_pattern}"
+                      "examples/time-interval-schedule/README.md is missing required boundary text")
 endforeach()
 
 foreach(required_pattern IN ITEMS

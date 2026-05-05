@@ -7,5 +7,5 @@ interval-based scheduled jobs.
 it is not a cron parser. Jobs use no-overlap behavior by default, and the documented missed
 run policy is `"skip"` so the runtime avoids unbounded catch-up storms.
 
-This example makes no Node timer compatibility, package-manager behavior, public alpha, or
-benchmark claims.
+This example makes no Node timer compatibility promise. It is not a cron parser, has no package-manager behavior,
+and makes no benchmark claims.
