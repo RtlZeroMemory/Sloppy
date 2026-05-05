@@ -285,6 +285,8 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
                     "\"./sloppy-v8-fs-dir/a.txt\", \"abcdef\");"
                     " const entries = await globalThis.__sloppy.fs.directoryList("
                     "\"./sloppy-v8-fs-dir\");"
+                    " const entry = entries.find((item) => item && item.name === 'a.txt');"
+                    " if (!entry) { throw new Error('missing a.txt'); }"
                     " const handle = await globalThis.__sloppy.fs.openHandle("
                     "\"./sloppy-v8-fs-dir/a.txt\", \"read\", false);"
                     " const bytes = await globalThis.__sloppy.fs.handleRead(handle, 3);"
@@ -297,7 +299,7 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
                     "\"./sloppy-v8-fs-dir/write.txt\");"
                     " await globalThis.__sloppy.fs.directoryDelete("
                     "\"./sloppy-v8-fs-dir\", true);"
-                    " return entries[0].name + ':' + bytes.byteLength + ':' + written;"
+                    " return entry.name + ':' + bytes.byteLength + ':' + written;"
                     "};"),
                 &diag),
             SL_STATUS_OK) != 0)

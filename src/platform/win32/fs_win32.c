@@ -168,6 +168,37 @@ static void sl_fs_win32_copy_chars(char* dst, const char* src, size_t length)
     }
 }
 
+static size_t sl_fs_win32_root_length(const wchar_t* path)
+{
+    size_t cursor = 0U;
+
+    if (path == NULL || path[0] == L'\0') {
+        return 0U;
+    }
+    if (((path[0] >= L'A' && path[0] <= L'Z') || (path[0] >= L'a' && path[0] <= L'z')) &&
+        path[1] == L':')
+    {
+        return path[2] == L'\\' || path[2] == L'/' ? 3U : 2U;
+    }
+    if ((path[0] == L'\\' || path[0] == L'/') && (path[1] == L'\\' || path[1] == L'/')) {
+        cursor = 2U;
+        while (path[cursor] != L'\0' && path[cursor] != L'\\' && path[cursor] != L'/') {
+            cursor += 1U;
+        }
+        while (path[cursor] == L'\\' || path[cursor] == L'/') {
+            cursor += 1U;
+        }
+        while (path[cursor] != L'\0' && path[cursor] != L'\\' && path[cursor] != L'/') {
+            cursor += 1U;
+        }
+        if (path[cursor] == L'\\' || path[cursor] == L'/') {
+            cursor += 1U;
+        }
+        return cursor;
+    }
+    return path[0] == L'\\' || path[0] == L'/' ? 1U : 0U;
+}
+
 static SlStatus sl_fs_win32_join_wide(SlArena* arena, const wchar_t* root, const wchar_t* name,
                                       wchar_t** out)
 {
@@ -489,7 +520,7 @@ SlStatus sl_fs_platform_create_directory(SlStr path, bool recursive, SlDiag* out
         }
         return sl_status_ok();
     }
-    for (wchar_t* cursor = wide + 1; *cursor != L'\0'; cursor += 1) {
+    for (wchar_t* cursor = wide + sl_fs_win32_root_length(wide); *cursor != L'\0'; cursor += 1) {
         if (*cursor == L'/' || *cursor == L'\\') {
             wchar_t saved = *cursor;
             *cursor = L'\0';

@@ -232,6 +232,16 @@ const File = Object.freeze({
     },
 });
 
+async function isSymlink(path) {
+    try {
+        await File.readLink(path);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+
 const Directory = Object.freeze({
     create(path, options) {
         const checked = validateRecursiveOptions(options);
@@ -245,12 +255,19 @@ const Directory = Object.freeze({
         return nativeFsBridge("directoryList").directoryList(validatePath(path, "list"));
     },
 
-    async *walk(path) {
+    async *walk(path, options) {
+        const followSymlinks = options?.followSymlinks ?? false;
+        if (typeof followSymlinks !== "boolean") {
+            throw new TypeError("Sloppy Directory.walk followSymlinks option must be boolean.");
+        }
         for (const entry of await Directory.list(path)) {
             yield entry;
             if (entry.kind === "directory") {
                 const child = `${path.replace(/[\\/]$/, "")}/${entry.name}`;
-                for await (const nested of Directory.walk(child)) {
+                if (!followSymlinks && await isSymlink(child)) {
+                    continue;
+                }
+                for await (const nested of Directory.walk(child, { followSymlinks })) {
                     yield { ...nested, name: `${entry.name}/${nested.name}` };
                 }
             }

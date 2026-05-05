@@ -634,14 +634,31 @@ SlStatus sl_fs_platform_read_link(SlArena* arena, SlStr path, SlOwnedStr* out, S
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, capacity + 1U, _Alignof(char), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    length = readlink(native.ptr, (char*)memory, capacity);
-    if (length < 0) {
+    for (;;) {
+        status = sl_arena_alloc(arena, capacity + 1U, _Alignof(char), &memory);
+        if (!sl_status_is_ok(status)) {
+            (void)sl_arena_reset_to(arena, mark);
+            return status;
+        }
+        length = readlink(native.ptr, (char*)memory, capacity);
+        if (length < 0) {
+            int error = errno;
+            (void)sl_arena_reset_to(arena, mark);
+            return sl_fs_posix_status(error);
+        }
+        if ((size_t)length < capacity) {
+            break;
+        }
+        if (capacity > (SIZE_MAX / 2U)) {
+            (void)sl_arena_reset_to(arena, mark);
+            return sl_status_from_code(SL_STATUS_OVERFLOW);
+        }
+        capacity *= 2U;
         (void)sl_arena_reset_to(arena, mark);
-        return sl_fs_posix_status(errno);
+        status = sl_fs_posix_path(arena, path, &native);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
     }
     ((char*)memory)[length] = '\0';
     out->ptr = (char*)memory;

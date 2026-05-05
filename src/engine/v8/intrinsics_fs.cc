@@ -54,6 +54,9 @@ enum class FsV8Operation
 struct FsV8LogicalFile
 {
     std::string path;
+    std::vector<unsigned char> storage;
+    SlArena arena = {};
+    SlFsFileHandle* native_handle = nullptr;
     SlFsFileAccess access = SL_FS_FILE_ACCESS_READ;
     uint64_t position = 0U;
     bool closed = false;
@@ -96,7 +99,13 @@ struct FsV8Request
 void fs_v8_logical_file_cleanup(void* ptr, void* user)
 {
     (void)user;
-    delete static_cast<FsV8LogicalFile*>(ptr);
+    FsV8LogicalFile* file = static_cast<FsV8LogicalFile*>(ptr);
+    if (file != nullptr && file->native_handle != nullptr && !file->closed) {
+        (void)sl_fs_file_close(file->native_handle, nullptr);
+        file->native_handle = nullptr;
+        file->closed = true;
+    }
+    delete file;
 }
 
 SlStatus fs_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
@@ -131,8 +140,26 @@ std::string fs_v8_diag_message(const SlDiag& diag, const char* fallback)
     return fallback == nullptr ? "filesystem operation failed" : fallback;
 }
 
-SlCapabilityOperation fs_v8_capability_operation(FsV8Operation operation)
+SlCapabilityOperation fs_v8_access_capability(SlFsFileAccess access)
 {
+    switch (access) {
+    case SL_FS_FILE_ACCESS_READ:
+        return SL_CAPABILITY_OPERATION_READ;
+    case SL_FS_FILE_ACCESS_WRITE:
+        return SL_CAPABILITY_OPERATION_WRITE;
+    case SL_FS_FILE_ACCESS_READWRITE:
+        return SL_CAPABILITY_OPERATION_READWRITE;
+    case SL_FS_FILE_ACCESS_APPEND:
+        return SL_CAPABILITY_OPERATION_APPEND;
+    default:
+        return SL_CAPABILITY_OPERATION_READWRITE;
+    }
+}
+
+SlCapabilityOperation fs_v8_capability_operation(const FsV8Request* request)
+{
+    FsV8Operation operation = request == nullptr ? FsV8Operation::ReadText : request->operation;
+
     switch (operation) {
     case FsV8Operation::ReadText:
     case FsV8Operation::ReadBytes:
@@ -142,30 +169,38 @@ SlCapabilityOperation fs_v8_capability_operation(FsV8Operation operation)
     case FsV8Operation::AtomicWriteText:
     case FsV8Operation::AtomicWriteBytes:
     case FsV8Operation::DirectoryCreate:
-    case FsV8Operation::DirectoryDelete:
     case FsV8Operation::Symlink:
     case FsV8Operation::TempFile:
     case FsV8Operation::TempDirectory:
-    case FsV8Operation::OpenHandle:
-    case FsV8Operation::HandleWriteText:
-    case FsV8Operation::HandleWriteBytes:
-    case FsV8Operation::HandleTruncate:
     case FsV8Operation::HandleFlush:
     case FsV8Operation::HandleSync:
     case FsV8Operation::HandleClose:
         return SL_CAPABILITY_OPERATION_WRITE;
+    case FsV8Operation::OpenHandle:
+        return fs_v8_access_capability(request == nullptr ? SL_FS_FILE_ACCESS_READ
+                                                          : request->access);
+    case FsV8Operation::HandleWriteText:
+    case FsV8Operation::HandleWriteBytes:
+    case FsV8Operation::HandleTruncate:
+        return request != nullptr && request->logical_file != nullptr &&
+                       request->logical_file->access == SL_FS_FILE_ACCESS_APPEND
+                   ? SL_CAPABILITY_OPERATION_APPEND
+                   : SL_CAPABILITY_OPERATION_WRITE;
     case FsV8Operation::AppendText:
     case FsV8Operation::AppendBytes:
         return SL_CAPABILITY_OPERATION_APPEND;
+    case FsV8Operation::DirectoryDelete:
     case FsV8Operation::DeleteFile:
         return SL_CAPABILITY_OPERATION_DELETE;
+    case FsV8Operation::DirectoryList:
+        return SL_CAPABILITY_OPERATION_LIST;
     case FsV8Operation::Exists:
     case FsV8Operation::Stat:
-    case FsV8Operation::DirectoryList:
     case FsV8Operation::ReadLink:
-    case FsV8Operation::HandleRead:
     case FsV8Operation::HandleSeek:
         return SL_CAPABILITY_OPERATION_METADATA;
+    case FsV8Operation::HandleRead:
+        return SL_CAPABILITY_OPERATION_READ;
     case FsV8Operation::Copy:
     case FsV8Operation::Move:
         return SL_CAPABILITY_OPERATION_READWRITE;
@@ -433,15 +468,15 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
         return status;
     }
     case FsV8Operation::OpenHandle: {
-        SlFsFileHandle* native_handle = nullptr;
         std::unique_ptr<FsV8LogicalFile> handle(new (std::nothrow) FsV8LogicalFile());
         if (!handle) {
             return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
         }
-        status = sl_fs_open_file(arena, resolved, request->access, request->create, &native_handle,
-                                 diag);
-        if (native_handle != nullptr) {
-            (void)sl_fs_file_close(native_handle, NULL);
+        handle->storage.resize(4096U);
+        status = sl_arena_init(&handle->arena, handle->storage.data(), handle->storage.size());
+        if (sl_status_is_ok(status)) {
+            status = sl_fs_open_file(&handle->arena, resolved, request->access, request->create,
+                                     &handle->native_handle, diag);
         }
         if (!sl_status_is_ok(status)) {
             return status;
@@ -457,66 +492,53 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
         return sl_status_ok();
     }
     case FsV8Operation::HandleRead: {
-        SlFsFileHandle* handle = nullptr;
         SlOwnedBytes bytes = {};
-        if (request->logical_file == nullptr || request->logical_file->closed) {
+        if (request->logical_file == nullptr || request->logical_file->closed ||
+            request->logical_file->native_handle == nullptr)
+        {
             return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
         }
         if (!fs_v8_logical_can_read(request->logical_file)) {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
-        status = sl_fs_open_file(arena,
-                                 sl_str_from_parts(request->logical_file->path.data(),
-                                                   request->logical_file->path.size()),
-                                 SL_FS_FILE_ACCESS_READ, false, &handle, diag);
+        status = sl_fs_file_seek(request->logical_file->native_handle,
+                                 (int64_t)request->logical_file->position, SL_FS_SEEK_START,
+                                 &request->position, diag);
         if (sl_status_is_ok(status)) {
-            status = sl_fs_file_seek(handle, (int64_t)request->logical_file->position,
-                                     SL_FS_SEEK_START, &request->position, diag);
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_fs_file_read(handle, arena, request->max_bytes, &bytes, diag);
+            status = sl_fs_file_read(request->logical_file->native_handle, arena,
+                                     request->max_bytes, &bytes, diag);
         }
         if (sl_status_is_ok(status)) {
             request->logical_file->position += bytes.length;
             request->result_bytes.assign(bytes.ptr, bytes.ptr + bytes.length);
         }
-        if (handle != nullptr) {
-            (void)sl_fs_file_close(handle, NULL);
-        }
         return status;
     }
     case FsV8Operation::HandleWriteText:
     case FsV8Operation::HandleWriteBytes: {
-        SlFsFileHandle* handle = nullptr;
         SlBytes payload =
             request->operation == FsV8Operation::HandleWriteText
                 ? sl_bytes_from_parts(reinterpret_cast<const unsigned char*>(request->text.data()),
                                       request->text.size())
                 : sl_bytes_from_parts(request->bytes.empty() ? nullptr : request->bytes.data(),
                                       request->bytes.size());
-        if (request->logical_file == nullptr || request->logical_file->closed) {
+        if (request->logical_file == nullptr || request->logical_file->closed ||
+            request->logical_file->native_handle == nullptr)
+        {
             return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
         }
         if (!fs_v8_logical_can_write(request->logical_file)) {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
-        status = sl_fs_open_file(arena,
-                                 sl_str_from_parts(request->logical_file->path.data(),
-                                                   request->logical_file->path.size()),
-                                 request->logical_file->access, false, &handle, diag);
+        status = sl_fs_file_seek(request->logical_file->native_handle,
+                                 (int64_t)request->logical_file->position, SL_FS_SEEK_START,
+                                 &request->position, diag);
         if (sl_status_is_ok(status)) {
-            status = sl_fs_file_seek(handle, (int64_t)request->logical_file->position,
-                                     SL_FS_SEEK_START, &request->position, diag);
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_fs_file_write(handle, payload, diag);
+            status = sl_fs_file_write(request->logical_file->native_handle, payload, diag);
         }
         if (sl_status_is_ok(status)) {
             request->logical_file->position += payload.length;
             request->position = request->logical_file->position;
-        }
-        if (handle != nullptr) {
-            (void)sl_fs_file_close(handle, NULL);
         }
         return status;
     }
@@ -552,33 +574,39 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
         request->position = request->logical_file->position;
         return sl_status_ok();
     case FsV8Operation::HandleTruncate: {
-        SlFsFileHandle* handle = nullptr;
-        if (request->logical_file == nullptr || request->logical_file->closed) {
+        if (request->logical_file == nullptr || request->logical_file->closed ||
+            request->logical_file->native_handle == nullptr)
+        {
             return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
         }
         if (!fs_v8_logical_can_write(request->logical_file)) {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
-        status = sl_fs_open_file(arena,
-                                 sl_str_from_parts(request->logical_file->path.data(),
-                                                   request->logical_file->path.size()),
-                                 request->logical_file->access == SL_FS_FILE_ACCESS_APPEND
-                                     ? SL_FS_FILE_ACCESS_WRITE
-                                     : request->logical_file->access,
-                                 false, &handle, diag);
-        if (sl_status_is_ok(status)) {
-            status = sl_fs_file_truncate(handle, request->truncate_size, diag);
-        }
-        if (handle != nullptr) {
-            (void)sl_fs_file_close(handle, NULL);
-        }
-        return status;
+        return sl_fs_file_truncate(request->logical_file->native_handle, request->truncate_size,
+                                   diag);
     }
     case FsV8Operation::HandleFlush:
-    case FsV8Operation::HandleSync:
-        return request->logical_file == nullptr || request->logical_file->closed
+        return request->logical_file == nullptr || request->logical_file->closed ||
+                       request->logical_file->native_handle == nullptr
                    ? sl_status_from_code(SL_STATUS_STALE_RESOURCE)
-                   : sl_status_ok();
+                   : sl_fs_file_flush(request->logical_file->native_handle, diag);
+    case FsV8Operation::HandleSync:
+        return request->logical_file == nullptr || request->logical_file->closed ||
+                       request->logical_file->native_handle == nullptr
+                   ? sl_status_from_code(SL_STATUS_STALE_RESOURCE)
+                   : sl_fs_file_sync(request->logical_file->native_handle, diag);
+    case FsV8Operation::HandleClose:
+        if (request->logical_file == nullptr || request->logical_file->closed ||
+            request->logical_file->native_handle == nullptr)
+        {
+            return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
+        }
+        status = sl_fs_file_close(request->logical_file->native_handle, diag);
+        if (sl_status_is_ok(status)) {
+            request->logical_file->native_handle = nullptr;
+            request->logical_file->closed = true;
+        }
+        return status;
     case FsV8Operation::Copy:
     case FsV8Operation::Move:
         status = fs_v8_resolve(arena, request,
@@ -835,6 +863,15 @@ SlStatus fs_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
     if (request->logical_file_busy_acquired && request->logical_file != nullptr) {
         request->logical_file->busy = false;
     }
+    if (sl_status_is_ok(request->status) && request->operation == FsV8Operation::HandleClose) {
+        SlStatus close_status = sl_resource_table_close_kind(
+            &backend->resources, request->resource_id, SL_RESOURCE_KIND_FS_FILE_HANDLE, nullptr);
+        if (!sl_status_is_ok(close_status)) {
+            request->status = close_status;
+            request->error = "filesystem handle is stale or closed";
+        }
+        request->logical_file = nullptr;
+    }
 
     bool ok = false;
     if (!sl_status_is_ok(request->status)) {
@@ -1012,41 +1049,6 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
     request->backend = backend;
     request->operation = operation;
 
-    if (operation == FsV8Operation::HandleClose) {
-        SlResourceId id = {};
-        void* ptr = nullptr;
-        if (args.Length() < 1 || !fs_v8_get_resource_id(isolate, context, args[0], &id)) {
-            fs_v8_throw_type_error(isolate, "__sloppy.fs handle close requires a handle id");
-            return;
-        }
-        if (!sl_status_is_ok(sl_resource_table_get(&backend->resources, id,
-                                                   SL_RESOURCE_KIND_FS_FILE_HANDLE, &ptr, nullptr)))
-        {
-            fs_v8_throw_type_error(isolate, "__sloppy.fs handle id is stale or closed");
-            return;
-        }
-        FsV8LogicalFile* logical_file = static_cast<FsV8LogicalFile*>(ptr);
-        if (logical_file->busy) {
-            fs_v8_throw_type_error(isolate,
-                                   "__sloppy.fs handle has a pending filesystem operation");
-            return;
-        }
-        request->resolver.Reset(isolate, resolver);
-        args.GetReturnValue().Set(resolver->GetPromise());
-        SlStatus close_status = sl_resource_table_close_kind(
-            &backend->resources, id, SL_RESOURCE_KIND_FS_FILE_HANDLE, nullptr);
-        if (sl_status_is_ok(close_status)) {
-            (void)resolver->Resolve(context, v8::Undefined(isolate));
-        }
-        else {
-            v8::Local<v8::String> message =
-                v8::String::NewFromUtf8Literal(isolate, "filesystem handle is stale or closed");
-            (void)resolver->Reject(context, v8::Exception::Error(message));
-        }
-        request->resolver.Reset();
-        return;
-    }
-
     if (fs_v8_operation_uses_path(operation) &&
         (args.Length() < 1 || !fs_v8_value_to_std_string(isolate, args[0], &request->path) ||
          request->path.empty()))
@@ -1132,6 +1134,15 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
             return;
         }
         request->logical_file = static_cast<FsV8LogicalFile*>(ptr);
+        if (operation == FsV8Operation::HandleClose) {
+            if (request->logical_file->busy) {
+                fs_v8_throw_type_error(isolate,
+                                       "__sloppy.fs handle has a pending filesystem operation");
+                return;
+            }
+            request->logical_file->busy = true;
+            request->logical_file_busy_acquired = true;
+        }
         if (operation == FsV8Operation::HandleRead) {
             uint64_t max_bytes = 64U * 1024U;
             if (args.Length() > 1 && args[1]->IsNumber()) {
@@ -1177,13 +1188,15 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
             }
             request->truncate_size = (uint64_t)args[1].As<v8::Number>()->Value();
         }
-        if (request->logical_file->busy) {
+        if (operation != FsV8Operation::HandleClose && request->logical_file->busy) {
             fs_v8_throw_type_error(isolate,
                                    "__sloppy.fs handle has a pending filesystem operation");
             return;
         }
-        request->logical_file->busy = true;
-        request->logical_file_busy_acquired = true;
+        if (operation != FsV8Operation::HandleClose) {
+            request->logical_file->busy = true;
+            request->logical_file_busy_acquired = true;
+        }
     }
 
     request->resolver.Reset(isolate, resolver);
@@ -1194,7 +1207,7 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
         SL_PROVIDER_OPERATION_KIND_INTERNAL, sl_str_from_cstr("fs"),
         SL_PROVIDER_EXECUTION_BLOCKING_POOL, fs_v8_completion_dispatch, nullptr);
     (void)sl_provider_operation_descriptor_attach_capability(
-        &descriptor, sl_str_from_cstr("stdlib.fs"), fs_v8_capability_operation(operation));
+        &descriptor, sl_str_from_cstr("stdlib.fs"), fs_v8_capability_operation(request.get()));
     (void)sl_provider_operation_descriptor_attach_run(&descriptor, fs_v8_provider_run,
                                                       request.get());
 

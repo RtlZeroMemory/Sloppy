@@ -683,6 +683,16 @@ Reason:
         },
     });
 
+    async function isFsSymlink(path) {
+        try {
+            await File.readLink(path);
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
+
     const Directory = Object.freeze({
         create(path, options) {
             const checked = validateFsRecursive(options);
@@ -691,12 +701,19 @@ Reason:
         list(path) {
             return requireFsBridge("directoryList").directoryList(validateFsPath(path, "list"));
         },
-        async *walk(path) {
+        async *walk(path, options) {
+            const followSymlinks = options?.followSymlinks ?? false;
+            if (typeof followSymlinks !== "boolean") {
+                throw new TypeError("Sloppy Directory.walk followSymlinks option must be boolean.");
+            }
             for (const entry of await Directory.list(path)) {
                 yield entry;
                 if (entry.kind === "directory") {
                     const child = `${path.replace(/[\\/]$/, "")}/${entry.name}`;
-                    for await (const nested of Directory.walk(child)) {
+                    if (!followSymlinks && await isFsSymlink(child)) {
+                        continue;
+                    }
+                    for await (const nested of Directory.walk(child, { followSymlinks })) {
                         yield { ...nested, name: `${entry.name}/${nested.name}` };
                     }
                 }
@@ -791,6 +808,7 @@ Reason:
         async *readLines(options) {
             const decoder = new TextDecoder();
             const newline = options?.newline ?? "\n";
+            const maxLineLength = options?.maxLineLength ?? 1024 * 1024;
             let buffered = "";
             if (typeof newline !== "string" || newline.length === 0) {
                 throw new TypeError(
@@ -799,6 +817,11 @@ Reason:
             }
             for await (const chunk of this.readChunks(options)) {
                 buffered += decoder.decode(chunk, { stream: true });
+                if (buffered.length > maxLineLength) {
+                    throw new Error(
+                        "SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.",
+                    );
+                }
                 let index = buffered.indexOf(newline);
                 while (index !== -1) {
                     yield buffered.slice(0, index).replace(/\r$/, "");
