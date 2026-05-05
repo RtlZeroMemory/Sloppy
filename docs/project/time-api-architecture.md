@@ -149,8 +149,9 @@ CORE-TIME-01.C/D/E/F/G implements the first runtime-backed subset:
   `Deadline.after`, `Deadline.at`, `Deadline.never`, and `CancellationController`.
 - `Time.interval` is pull-based and async iterable; cancellation or `return()` stops the
   iterator without queuing unbounded ticks.
-- `Time.every` starts an interval-based scheduled job immediately, skips missed runs by
-  policy while a no-overlap handler is still running, and reports skipped runs on the job.
+- `Time.every` starts an interval-based scheduled job after one interval by default, or
+  immediately when `options.immediate === true`; it skips missed runs by policy while a
+  no-overlap handler is still running, and reports skipped runs on the job.
 - `Time.fakeClock` owns a deterministic per-instance timer queue. `advanceBy` drives only
   operations that were given that clock, and `dispose` rejects pending fake timers with
   `TimerDisposedError`.

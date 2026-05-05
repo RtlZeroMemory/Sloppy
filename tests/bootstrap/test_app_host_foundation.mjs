@@ -139,9 +139,27 @@ async function flushMicrotasks(count = 6) {
     );
     assert.equal(functionTimeoutClock._timers.length, 0);
 
+    const orderedClock = Time.fakeClock();
+    const timerOrder = [];
+    const laterTimer = Time.delay(200, { clock: orderedClock }).then(() => {
+        timerOrder.push("later");
+    });
+    const earlierTimer = Time.delay(100, { clock: orderedClock }).then(() => {
+        timerOrder.push("earlier");
+    });
+    orderedClock.advanceBy(200);
+    await Promise.all([laterTimer, earlierTimer]);
+    assert.deepEqual(timerOrder, ["earlier", "later"]);
+
     const immediateInterval = Time.interval(1000, { clock, immediate: true, maxTicks: 1 });
     assert.equal((await immediateInterval.next()).value.index, 1);
     assert.equal((await immediateInterval.next()).done, true);
+
+    const guardedInterval = Time.interval(1000, { clock, maxTicks: 1 });
+    const guardedTick = guardedInterval.next();
+    await assert.rejects(guardedInterval.next(), /overlapping next\(\) calls/);
+    clock.advanceBy(1000);
+    assert.equal((await guardedTick).value.index, 1);
 
     const interval = Time.interval("1s", { clock, maxTicks: 2 });
     const firstTick = interval.next();

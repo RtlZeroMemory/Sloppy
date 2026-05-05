@@ -424,6 +424,7 @@ class TimeInterval {
         this._maxTicks = validateMaxTicks(options?.maxTicks, "Time.interval");
         this._ticks = 0;
         this._stopped = false;
+        this._nextInFlight = null;
         this._cleanup = subscribeCancellation(this._signal, () => {
             this._stopped = true;
         });
@@ -433,7 +434,17 @@ class TimeInterval {
         return this;
     }
 
-    async next() {
+    next() {
+        if (this._nextInFlight !== null) {
+            return Promise.reject(new Error("Time.interval does not support overlapping next() calls."));
+        }
+        this._nextInFlight = this._nextImpl();
+        return this._nextInFlight.finally(() => {
+            this._nextInFlight = null;
+        });
+    }
+
+    async _nextImpl() {
         if (this._stopped || this._ticks >= this._maxTicks) {
             this._cleanup();
             return { done: true, value: undefined };
@@ -642,6 +653,7 @@ class FakeClock {
         this._nowMs = 0;
         this._disposed = false;
         this._timers = [];
+        this._timerSeq = 0;
     }
 
     now() {
@@ -675,6 +687,7 @@ class FakeClock {
         return new Promise((resolve, reject) => {
             const timer = {
                 dueMs: this._nowMs + actualDelay,
+                seq: this._timerSeq += 1,
                 reject,
                 resolve: () => {
                     cleanup();
@@ -755,6 +768,7 @@ class FakeClock {
             }
             return true;
         });
+        due.sort((left, right) => left.dueMs - right.dueMs || left.seq - right.seq);
         for (const timer of due) {
             timer.resolve();
         }
