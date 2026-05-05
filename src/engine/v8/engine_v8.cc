@@ -282,9 +282,8 @@ int sl_v8_source_map_base64_value(char ch)
 
 bool sl_v8_source_map_decode_vlq(const char* mappings, size_t length, size_t* cursor, int64_t* out)
 {
-    int64_t value = 0;
-    int shift = 0;
-    bool saw_digit = false;
+    uint64_t value = 0U;
+    unsigned int shift = 0U;
 
     if (mappings == nullptr || cursor == nullptr || out == nullptr) {
         return false;
@@ -299,23 +298,27 @@ bool sl_v8_source_map_decode_vlq(const char* mappings, size_t length, size_t* cu
         }
 
         *cursor += 1U;
-        saw_digit = true;
         continuation = (digit & 32) != 0;
         digit &= 31;
-        if (shift >= 63 ||
-            static_cast<int64_t>(digit) > (std::numeric_limits<int64_t>::max() >> shift))
+        if (shift >= 64U ||
+            static_cast<uint64_t>(digit) > (std::numeric_limits<uint64_t>::max() >> shift))
         {
             return false;
         }
-        int64_t part = static_cast<int64_t>(digit) << shift;
-        if (value > std::numeric_limits<int64_t>::max() - part) {
+        uint64_t part = static_cast<uint64_t>(digit) << shift;
+        if (value > std::numeric_limits<uint64_t>::max() - part) {
             return false;
         }
         value += part;
-        shift += 5;
+        shift += 5U;
 
         if (!continuation) {
-            int64_t decoded = value >> 1;
+            uint64_t magnitude = value >> 1U;
+            int64_t decoded = 0;
+            if (magnitude > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+                return false;
+            }
+            decoded = static_cast<int64_t>(magnitude);
             if ((value & 1) != 0) {
                 decoded = -decoded;
             }
@@ -324,7 +327,7 @@ bool sl_v8_source_map_decode_vlq(const char* mappings, size_t length, size_t* cu
         }
     }
 
-    return !saw_digit;
+    return false;
 }
 
 bool sl_v8_source_map_read_sources(yyjson_val* root, std::vector<std::string>* sources)
@@ -396,6 +399,11 @@ bool sl_v8_source_map_find_mapping(yyjson_val* root, size_t generated_line, size
             previous_generated_column = current_generated_column;
 
             if (cursor >= mappings_length || mappings[cursor] == ',' || mappings[cursor] == ';') {
+                if (matched_line &&
+                    static_cast<size_t>(current_generated_column) <= generated_column - 1U)
+                {
+                    *out = SlV8SourceMapLocation{};
+                }
                 continue;
             }
 
@@ -422,12 +430,10 @@ bool sl_v8_source_map_find_mapping(yyjson_val* root, size_t generated_line, size
             if (matched_line &&
                 static_cast<size_t>(current_generated_column) <= generated_column - 1U)
             {
-                size_t column_delta =
-                    generated_column - 1U - static_cast<size_t>(current_generated_column);
                 out->mapped = true;
                 out->path = sources[static_cast<size_t>(previous_source)];
                 out->line = static_cast<size_t>(previous_original_line) + 1U;
-                out->column = static_cast<size_t>(previous_original_column) + column_delta + 1U;
+                out->column = static_cast<size_t>(previous_original_column) + 1U;
             }
         }
 

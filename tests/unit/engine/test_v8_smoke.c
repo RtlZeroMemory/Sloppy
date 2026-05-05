@@ -558,6 +558,135 @@ static int test_throwing_function_remaps_source_map_location(void)
     return 0;
 }
 
+static int test_source_map_original_column_does_not_add_generated_delta(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    const char source[] = "globalThis.sloppy_column_mapped = function () {\n"
+                          "  throw new Error(\"column mapped\");\n"
+                          "};";
+    const char source_map[] =
+        "{\"version\":3,\"file\":\"generated-app.js\",\"sources\":[\"src/columns.js\"],"
+        "\"names\":[],\"mappings\":\";AAAoB\"}";
+
+    options.source_map =
+        sl_bytes_from_parts((const unsigned char*)source_map, sizeof(source_map) - 1U);
+    options.source_map_source_name = sl_str_from_cstr("generated-app.js");
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 50;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 51;
+    }
+
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("generated-app.js"),
+                                            sl_str_from_cstr(source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 52;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_column_mapped"), &result,
+                                               &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 53;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        !sl_str_equal(diag.primary_span.path, sl_str_from_cstr("src/columns.js")) ||
+        !diag.primary_span.has_location || diag.primary_span.line != 1U ||
+        diag.primary_span.column != 21U)
+    {
+        sl_engine_destroy(engine);
+        return 54;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_unmapped_source_map_segment_reports_generated_location(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    const char source[] = "globalThis.sloppy_unmapped_segment = function () {\n"
+                          "  throw new Error(\"unmapped segment\");\n"
+                          "};";
+    const char source_map[] =
+        "{\"version\":3,\"file\":\"generated-app.js\",\"sources\":[\"src/unmapped.js\"],"
+        "\"names\":[],\"mappings\":\";AAAA,A\"}";
+
+    options.source_map =
+        sl_bytes_from_parts((const unsigned char*)source_map, sizeof(source_map) - 1U);
+    options.source_map_source_name = sl_str_from_cstr("generated-app.js");
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 55;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 56;
+    }
+
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("generated-app.js"),
+                                            sl_str_from_cstr(source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 57;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_unmapped_segment"), &result,
+                                               &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 58;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE) {
+        sl_engine_destroy(engine);
+        return 59;
+    }
+    if (diag.code != SL_DIAG_ENGINE_EXCEPTION) {
+        sl_engine_destroy(engine);
+        return 70;
+    }
+    if (!sl_str_equal(diag.primary_span.path, sl_str_from_cstr("generated-app.js"))) {
+        sl_engine_destroy(engine);
+        return 71;
+    }
+    if (!diag.primary_span.has_location) {
+        sl_engine_destroy(engine);
+        return 72;
+    }
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_malformed_source_map_reports_generated_location(void)
 {
     unsigned char engine_storage[8192];
@@ -578,11 +707,11 @@ static int test_malformed_source_map_reports_generated_location(void)
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
     {
-        return 50;
+        return 60;
     }
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
-        return 51;
+        return 61;
     }
 
     if (expect_status(sl_engine_eval_source(
@@ -593,7 +722,7 @@ static int test_malformed_source_map_reports_generated_location(void)
                       SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        return 52;
+        return 62;
     }
 
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
@@ -601,7 +730,7 @@ static int test_malformed_source_map_reports_generated_location(void)
                       SL_STATUS_INVALID_STATE) != 0)
     {
         sl_engine_destroy(engine);
-        return 53;
+        return 63;
     }
 
     if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_EXCEPTION ||
@@ -610,7 +739,7 @@ static int test_malformed_source_map_reports_generated_location(void)
         expect_str_contains(diag.hints[0], sl_str_from_cstr("Malformed source map")) != 0)
     {
         sl_engine_destroy(engine);
-        return 54;
+        return 64;
     }
 
     sl_engine_destroy(engine);
@@ -644,11 +773,11 @@ static int test_registered_handler_throw_remaps_source_map_location(void)
     if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
     {
-        return 55;
+        return 65;
     }
 
     if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
-        return 56;
+        return 66;
     }
 
     if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("generated-app.js"),
@@ -656,7 +785,7 @@ static int test_registered_handler_throw_remaps_source_map_location(void)
                       SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
-        return 57;
+        return 67;
     }
 
     if (expect_status(sl_engine_call_registered_handler_with_context(engine, &result_arena, 1U,
@@ -664,7 +793,7 @@ static int test_registered_handler_throw_remaps_source_map_location(void)
                       SL_STATUS_INVALID_STATE) != 0)
     {
         sl_engine_destroy(engine);
-        return 58;
+        return 68;
     }
 
     if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_EXCEPTION ||
@@ -673,7 +802,7 @@ static int test_registered_handler_throw_remaps_source_map_location(void)
         !diag.primary_span.has_location || diag.primary_span.line != 6U)
     {
         sl_engine_destroy(engine);
-        return 59;
+        return 69;
     }
 
     sl_engine_destroy(engine);
@@ -2910,6 +3039,16 @@ int main(void)
     }
 
     result = test_throwing_function_remaps_source_map_location();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_source_map_original_column_does_not_add_generated_delta();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_unmapped_source_map_segment_reports_generated_location();
     if (result != 0) {
         return result;
     }

@@ -81,7 +81,8 @@ documented until reuse is implemented.
 The compiler grows from this pipeline in later slices:
 
 1. richer route and app-host metadata;
-2. source-map consumption in runtime diagnostics;
+2. async stack/source-frame diagnostics that build on the V8 exception source-map bridge,
+   while keeping dynamic route strings out of the supported subset;
 3. module extraction;
 4. broader data provider extraction;
 5. V8 bootstrap module loading handoff;
