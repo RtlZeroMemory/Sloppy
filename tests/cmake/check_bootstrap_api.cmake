@@ -128,13 +128,14 @@ foreach(required_pattern IN ITEMS
         "const Deadline = Object.freeze"
         "class CancellationController"
         "const Time = Object.freeze"
-        "delay()"
-        "timeout()"
+        "delay(ms, options"
+        "timeout(operationOrPromise, options"
         "interval()"
         "every()"
-        "yield()"
+        "yield(options"
         "systemClock()"
         "fakeClock()"
+        "nativeTime(\"Time.delay\")"
         "stdlib.time")
     require_substring("${time_js}" "${required_pattern}" "time.js is missing expected API contract pattern")
 endforeach()

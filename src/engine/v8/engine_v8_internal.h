@@ -21,8 +21,13 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <vector>
+
+struct SlV8TimeRequest;
 
 struct SlV8Engine
 {
@@ -45,6 +50,9 @@ struct SlV8Engine
     SlResourceTable resources = {};
     std::array<SlAsyncCompletion, 64U> async_completions = {};
     SlAsyncLoop* async_loop = nullptr;
+    std::mutex time_mutex;
+    std::vector<std::shared_ptr<SlV8TimeRequest>> time_requests;
+    bool time_shutting_down = false;
     SlProviderInstanceExecutor fs_executor = {};
     std::array<SlProviderExecutorSlot, 32U> fs_slots = {};
     bool fs_executor_initialized = false;
@@ -57,6 +65,10 @@ bool sl_v8_install_provider_intrinsics(SlV8Engine* backend, v8::Local<v8::Contex
 
 bool sl_v8_install_fs_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                  v8::Local<v8::Object> sloppy);
+
+bool sl_v8_install_time_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
+                                   v8::Local<v8::Object> sloppy);
+void sl_v8_time_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);

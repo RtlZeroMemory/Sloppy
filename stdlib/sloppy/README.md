@@ -33,8 +33,10 @@ The current modules implement the first app-host foundation and developer ergono
 facade. `index.js` re-exports frozen `Sloppy`, `data`, `sql`, filesystem API namespaces,
 `Results`, and `schema`
 objects. The implemented `Results.*` helpers return plain frozen descriptor objects.
-`time.js` currently publishes the CORE-TIME-01.A/B API names and stable error classes while
-failing closed until the native timer/V8 bridge slice lands.
+`time.js` publishes the CORE-TIME-01 API names and stable error classes. In V8-enabled
+runtimes whose active Plan enables `stdlib.time`, it uses the private `__sloppy.time`
+bridge for native delay and monotonic deadline accounting; otherwise runtime scheduling
+fails closed with the existing missing-feature error.
 `schema` exposes a small validation skeleton for string, number, boolean, and object
 shapes.
 `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` expose the CORE-FS-01.G filesystem

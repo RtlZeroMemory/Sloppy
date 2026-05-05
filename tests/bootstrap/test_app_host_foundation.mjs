@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 
-import { Sloppy, Results, schema } from "../../stdlib/sloppy/index.js";
+import {
+    CancelledError,
+    CancellationController,
+    Deadline,
+    InvalidDeadlineError,
+    Results,
+    Sloppy,
+    Time,
+    schema,
+} from "../../stdlib/sloppy/index.js";
 import { sqlite } from "../../stdlib/sloppy/providers/sqlite.js";
 
 function assertThrowsMessage(fn, expected) {
@@ -8,6 +17,29 @@ function assertThrowsMessage(fn, expected) {
         assert.match(String(error.message), expected);
         return true;
     });
+}
+
+{
+    const deadline = Deadline.after(50);
+    assert.equal(deadline.kind, "after");
+    assert.equal(deadline.expired, false);
+    assert.equal(typeof deadline.remainingMs(), "number");
+    assert.equal(Deadline.never().remainingMs(), Infinity);
+
+    const controller = new CancellationController();
+    let observedReason = undefined;
+    controller.signal.addEventListener("abort", () => {
+        observedReason = controller.signal.reason;
+    });
+    assert.equal(controller.cancel("done"), true);
+    assert.equal(controller.cancel("again"), false);
+    assert.equal(controller.signal.aborted, true);
+    assert.equal(controller.signal.reason, "done");
+    assert.equal(observedReason, "done");
+    assert.throws(() => controller.signal.throwIfCancelled(), CancelledError);
+
+    assert.throws(() => Time.delay(-1), InvalidDeadlineError);
+    assertThrowsMessage(() => Time.fakeClock(), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE/);
 }
 
 {

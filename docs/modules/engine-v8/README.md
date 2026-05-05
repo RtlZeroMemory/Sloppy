@@ -60,10 +60,11 @@ with bounded non-recursive events. The bridge uses an optional borrowed
 `SlEngineOptions.filesystem_policy` for path/root enforcement; when it is omitted, V8
 keeps the documented development fallback roots for low-level smoke/source-input tests
 until app-host config wiring supplies project policy.
-CORE-TIME-01.A/B defines the future private `__sloppy.time` namespace and `stdlib.time`
-feature descriptor. Native timer scheduling is still deferred, but the future bridge must
-settle delay/timeout/interval/job Promises only through `async_scheduler.cc` on the V8
-owner thread; timer callbacks themselves must never enter V8.
+CORE-TIME-01.C/D/G installs the private `__sloppy.time` namespace when the active Plan
+enables `stdlib.time`. The native delay worker never enters V8; it posts an owned
+`SL_ASYNC_OPERATION_TIMER` completion to the engine async loop, and the owning isolate
+thread resolves or rejects the Promise during the normal native async drain. Intervals,
+scheduled jobs, and fake clocks remain later Time slices.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
