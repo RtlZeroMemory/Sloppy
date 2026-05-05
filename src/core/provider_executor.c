@@ -98,6 +98,17 @@ bool sl_provider_execution_mode_is_supported(SlProviderExecutionMode mode)
            mode == SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED;
 }
 
+bool sl_provider_execution_mode_may_run_inline_on_owner_thread(SlProviderExecutionMode mode)
+{
+    return mode == SL_PROVIDER_EXECUTION_INLINE_FAST;
+}
+
+bool sl_provider_execution_mode_requires_offload_worker(SlProviderExecutionMode mode)
+{
+    return mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING ||
+           mode == SL_PROVIDER_EXECUTION_BLOCKING_POOL;
+}
+
 SlStr sl_provider_operation_kind_name(SlProviderOperationKind kind)
 {
     switch (kind) {
@@ -1106,8 +1117,7 @@ sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor, S
     }
 
     if (descriptor->run != NULL &&
-        descriptor->execution_mode != SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING &&
-        descriptor->execution_mode != SL_PROVIDER_EXECUTION_BLOCKING_POOL)
+        !sl_provider_execution_mode_requires_offload_worker(descriptor->execution_mode))
     {
         executor->invalid_operation_count += 1U;
         return sl_provider_executor_reject_with_diag(

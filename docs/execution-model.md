@@ -682,6 +682,12 @@ the yes/no policy used by tests: only `v8-owner-thread` may enter V8; provider w
 blocking offload, libuv callbacks, HTTP callbacks, and generic async completions must copy
 or retain cross-thread data and dispatch any JavaScript continuation back to the owner
 thread. This is a policy helper, not runtime feature modularity.
+ENGINE-26.E/F adds provider execution-mode policy helpers and bounded race-oriented
+evidence. Only `INLINE_FAST` is classified as owner-thread inline work; serialized and
+pool-backed blocking provider modes require offload workers. The async backend race test
+also proves a retained completion that becomes terminal after enqueue but before owner
+drain is cleanup-only. This does not convert the synchronous SQLite V8 bridge or add the
+ENGINE-30 torture harness.
 ENGINE-12.AB does not add public timers, fetch, fs, process, Node APIs, production provider
 offload, or production scalability evidence. ENGINE-12.CD adds native cancellation/
 deadline, shutdown, backpressure, and provider-executor policy for a deterministic

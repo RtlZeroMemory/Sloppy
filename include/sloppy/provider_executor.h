@@ -209,6 +209,8 @@ struct SlProviderInstanceExecutor
 SlStr sl_provider_execution_mode_name(SlProviderExecutionMode mode);
 SlStatus sl_provider_execution_mode_parse(SlStr text, SlProviderExecutionMode* out);
 bool sl_provider_execution_mode_is_supported(SlProviderExecutionMode mode);
+bool sl_provider_execution_mode_may_run_inline_on_owner_thread(SlProviderExecutionMode mode);
+bool sl_provider_execution_mode_requires_offload_worker(SlProviderExecutionMode mode);
 SlStr sl_provider_operation_kind_name(SlProviderOperationKind kind);
 bool sl_provider_operation_kind_is_supported(SlProviderOperationKind kind);
 

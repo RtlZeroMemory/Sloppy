@@ -1,7 +1,8 @@
 # Post-ENGINE-16 Provider Runtime Audit
 
-Status: 2026-05-05 planning/consolidation audit. This records current provider/offload
-reality after ENGINE-16 and before Engine Roadmap-2.
+Status: 2026-05-05 planning/consolidation audit, updated by ENGINE-26.E/F. This records
+current provider/offload reality after ENGINE-16 and before Engine Roadmap-2 provider
+maturation.
 
 ## Source Inputs
 
@@ -18,7 +19,7 @@ reality after ENGINE-16 and before Engine Roadmap-2.
 
 | Provider/runtime part | Current state | Notes |
 | --- | --- | --- |
-| Provider executor | Implemented native infrastructure. Supports `SERIALIZED_BLOCKING`, `BLOCKING_POOL`, bounded admission, copied operation metadata/input bytes, capability checks before enqueue, cancellation/timeout/shutdown terminal posting, late-completion counts, and cleanup exactly once. | Worker code never enters V8. Worker-backed submissions require the libuv async backend for thread-safe completion posting. |
+| Provider executor | Implemented native infrastructure. Supports `SERIALIZED_BLOCKING`, `BLOCKING_POOL`, bounded admission, copied operation metadata/input bytes, capability checks before enqueue, cancellation/timeout/shutdown terminal posting, late-completion counts, cleanup exactly once, and ENGINE-26.E/F execution-mode policy helpers. | Worker code never enters V8. Worker-backed submissions require the libuv async backend for thread-safe completion posting. Only `INLINE_FAST` is classified as owner-thread inline work. |
 | SQLite native provider | Implemented synchronous C provider with caller-owned connection/transaction wrappers, parameter binding, result copying, transactions, and diagnostics. | It has text/blob copy helpers intended for future operation-owned async/offload inputs. |
 | SQLite JS bridge | Implemented V8-gated bridge through safe `SlResourceId` handles and capability checks. | The bridge is synchronous: open/exec/query/queryOne/transaction calls run on the V8 callback path and can block the owner thread. |
 | PostgreSQL native provider | Implemented synchronous native libpq provider plus redaction, doctor, pool skeleton, and live optional tests. | No JS bridge; no executor adoption; no nonblocking client integration. |
@@ -46,6 +47,8 @@ reality after ENGINE-16 and before Engine Roadmap-2.
   owner thread today.
 - Provider executor operations copy metadata and input bytes before handoff, but the real
   SQLite bridge has not adopted that path.
+- Provider execution-mode helpers now make the policy explicit: inline-fast is the only
+  owner-thread inline mode, and serialized/blocking-pool modes require offload workers.
 - Provider capabilities are checked for current SQLite bridge calls and provider executor
   admissions. Route/request/provider-operation policy is not yet one coherent runtime
   feature model.

@@ -159,6 +159,8 @@ Framework and provider bridge code belongs in sibling V8 modules:
 - Native provider, HTTP, timer, or other future completions must pass any terminal-state
   guard before reaching `async_scheduler.cc`; provider/libuv/offload domains still never
   enter V8 directly.
+- Current SQLite bridge callbacks remain synchronous and owner-thread-bound. They are
+  documented ENGINE-28 debt, not an allowed general pattern for blocking provider work.
 
 Future framework-specific V8 bridge code must add a dedicated sibling module, not expand
 `engine_v8.cc`.
