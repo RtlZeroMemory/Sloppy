@@ -155,6 +155,9 @@ CORE-TIME-01.C/D/E/F/G implements the first runtime-backed subset:
 - `Time.fakeClock` owns a deterministic per-instance timer queue. `advanceBy` drives only
   operations that were given that clock, and `dispose` rejects pending fake timers with
   `TimerDisposedError`.
+- Clock-injected operations use duration-based timing in this slice; passing both
+  `deadline` and an injected `clock` is rejected so system-backed deadlines are not mixed
+  with deterministic fake-clock waits.
 - Missing or inactive `stdlib.time` remains fail-closed; the private `__sloppy.time`
   namespace is not registered unless the active Plan enables `stdlib.time`.
 

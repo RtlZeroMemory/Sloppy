@@ -139,6 +139,15 @@ async function flushMicrotasks(count = 6) {
     );
     assert.equal(functionTimeoutClock._timers.length, 0);
 
+    assert.throws(
+        () => Time.delay(100, { clock: Time.fakeClock(), deadline: Deadline.after(100) }),
+        InvalidDeadlineError,
+    );
+    assert.throws(
+        () => Time.timeout(Promise.resolve("x"), { clock: Time.fakeClock(), deadline: Deadline.after(100) }),
+        InvalidDeadlineError,
+    );
+
     const orderedClock = Time.fakeClock();
     const timerOrder = [];
     const laterTimer = Time.delay(200, { clock: orderedClock }).then(() => {
@@ -160,6 +169,17 @@ async function flushMicrotasks(count = 6) {
     await assert.rejects(guardedInterval.next(), /overlapping next\(\) calls/);
     clock.advanceBy(1000);
     assert.equal((await guardedTick).value.index, 1);
+
+    const boundedIntervalController = new CancellationController();
+    const boundedInterval = Time.interval(1000, {
+        clock,
+        maxTicks: 1,
+        signal: boundedIntervalController.signal,
+    });
+    const boundedTick = boundedInterval.next();
+    clock.advanceBy(1000);
+    assert.equal((await boundedTick).value.index, 1);
+    assert.equal(boundedIntervalController.signal._listeners.size, 0);
 
     const interval = Time.interval("1s", { clock, maxTicks: 2 });
     const firstTick = interval.next();

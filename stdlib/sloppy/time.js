@@ -376,11 +376,20 @@ function clockMonotonicNowMs(clock) {
         : monotonicNowMs();
 }
 
+function validateClockDeadlineOptions(options, operation) {
+    if (options?.clock !== undefined && options.clock !== null && options?.deadline !== undefined) {
+        throw new InvalidDeadlineError(
+            `${operation} does not support deadline with an injected clock; use a duration option with that clock.`,
+        );
+    }
+}
+
 function delayWithDeadline(ms, options = undefined, operation = "Time.delay") {
     const delayMs = validateDelayMs(ms, operation);
     if (isCancellationSignal(options?.signal) && options.signal.aborted) {
         return Promise.reject(cancelledError(options.signal.reason));
     }
+    validateClockDeadlineOptions(options, operation);
     const remaining = deadlineDelayMs(options?.deadline);
     if (remaining <= 0) {
         return Promise.reject(timeoutError(options?.deadline));
@@ -470,6 +479,9 @@ class TimeInterval {
         }
 
         this._ticks += 1;
+        if (this._ticks >= this._maxTicks) {
+            this._cleanup();
+        }
         return {
             done: false,
             value: Object.freeze({
@@ -781,6 +793,7 @@ const Time = Object.freeze({
     },
 
     timeout(operationOrPromise, options = undefined) {
+        validateClockDeadlineOptions(options, "Time.timeout");
         const afterMs =
             options?.afterMs !== undefined ? validateDelayMs(options.afterMs, "Time.timeout") : Infinity;
         const deadlineMs = deadlineDelayMs(options?.deadline);
