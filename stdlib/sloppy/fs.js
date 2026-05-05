@@ -2,6 +2,7 @@ import {
     CancelledError,
     InvalidDeadlineError,
     Time,
+    TimeoutError,
 } from "./time.js";
 
 const MAX_TIMEOUT_MS = 0xffffffff;
@@ -191,6 +192,28 @@ function validateTimeoutMs(value, operation) {
         );
     }
     return Math.ceil(value);
+}
+
+function createTimeoutBudgetOptions(options, operation) {
+    const timeoutMs = validateTimeoutMs(options?.timeoutMs, operation);
+    if (timeoutMs === undefined) {
+        return () => options;
+    }
+    const expiresAtMs = Date.now() + timeoutMs;
+    return () => ({
+        ...options,
+        timeoutMs: Math.max(0, expiresAtMs - Date.now()),
+    });
+}
+
+function isTimeTerminalError(error) {
+    return (
+        error instanceof CancelledError ||
+        error instanceof TimeoutError ||
+        error?.name === "AbortError" ||
+        error?.name === "CancelledError" ||
+        error?.name === "TimeoutError"
+    );
 }
 
 function deadlineRemainingMs(deadline) {
@@ -457,7 +480,10 @@ async function isSymlink(path, options) {
         await File.readLink(path, options);
         return true;
     }
-    catch {
+    catch (error) {
+        if (isTimeTerminalError(error)) {
+            throw error;
+        }
         return false;
     }
 }
@@ -488,14 +514,18 @@ const Directory = Object.freeze({
         if (typeof followSymlinks !== "boolean") {
             throw new TypeError("Sloppy Directory.walk followSymlinks option must be boolean.");
         }
-        for (const entry of await Directory.list(path, options)) {
+        const optionsForStep = createTimeoutBudgetOptions(options, "Directory.walk");
+        for (const entry of await Directory.list(path, optionsForStep())) {
             yield entry;
             if (entry.kind === "directory") {
                 const child = `${path.replace(/[\\/]$/, "")}/${entry.name}`;
-                if (!followSymlinks && await isSymlink(child, options)) {
+                if (!followSymlinks && await isSymlink(child, optionsForStep())) {
                     continue;
                 }
-                for await (const nested of Directory.walk(child, { ...options, followSymlinks })) {
+                for await (const nested of Directory.walk(child, {
+                    ...optionsForStep(),
+                    followSymlinks,
+                })) {
                     yield { ...nested, name: `${entry.name}/${nested.name}` };
                 }
             }
@@ -648,8 +678,9 @@ class FileHandle {
 
     async *readChunks(options) {
         const chunkSize = options?.chunkSize ?? 64 * 1024;
+        const optionsForRead = createTimeoutBudgetOptions(options, "FileHandle.readChunks");
         for (;;) {
-            const chunk = await this.readBytes(chunkSize, options);
+            const chunk = await this.readBytes(chunkSize, optionsForRead());
             if (chunk.byteLength === 0) {
                 return;
             }

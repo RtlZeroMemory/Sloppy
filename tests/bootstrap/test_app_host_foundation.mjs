@@ -6,6 +6,7 @@ import {
     Deadline,
     Directory,
     File,
+    FileHandle,
     InvalidDeadlineError,
     Results,
     Sloppy,
@@ -276,8 +277,14 @@ async function flushMicrotasks(count = 6) {
 
 {
     const previousSloppy = globalThis.__sloppy;
+    const previousDateNow = Date.now;
     let readCalls = 0;
+    let handleReadCalls = 0;
+    let readLinkCalls = 0;
+    let directoryListCalls = 0;
+    let fakeNowMs = 1000;
     try {
+        Date.now = () => fakeNowMs;
         globalThis.__sloppy = {
             fs: {
                 readText() {
@@ -287,6 +294,26 @@ async function flushMicrotasks(count = 6) {
                 stat() {
                     readCalls += 1;
                     return Promise.resolve({ exists: true, kind: "directory" });
+                },
+                directoryList() {
+                    directoryListCalls += 1;
+                    return Promise.resolve([{ name: "child", kind: "directory" }]);
+                },
+                readLink() {
+                    readLinkCalls += 1;
+                    return Promise.resolve("data:/target");
+                },
+                handleRead() {
+                    handleReadCalls += 1;
+                    return Promise.resolve(new Uint8Array([handleReadCalls === 1 ? 65 : 0]));
+                },
+            },
+            time: {
+                delay() {
+                    return new Promise(() => {});
+                },
+                monotonicMs() {
+                    return fakeNowMs;
                 },
             },
         };
@@ -332,7 +359,29 @@ async function flushMicrotasks(count = 6) {
         pendingController.cancel("not needed");
         await assert.rejects(pendingRead, CancelledError);
         assert.equal(readCalls, 3);
+
+        const walk = Directory.walk("data:/root", { timeoutMs: 5 });
+        assert.deepEqual(await walk.next(), {
+            done: false,
+            value: { name: "child", kind: "directory" },
+        });
+        fakeNowMs += 6;
+        await assert.rejects(walk.next(), TimeoutError);
+        assert.equal(directoryListCalls, 1);
+        assert.equal(readLinkCalls, 0);
+
+        fakeNowMs = 2000;
+        const handle = new FileHandle({ slot: 1, generation: 1 });
+        const chunks = handle.readChunks({ chunkSize: 1, timeoutMs: 5 });
+        assert.deepEqual(await chunks.next(), {
+            done: false,
+            value: new Uint8Array([65]),
+        });
+        fakeNowMs += 6;
+        await assert.rejects(chunks.next(), TimeoutError);
+        assert.equal(handleReadCalls, 1);
     } finally {
+        Date.now = previousDateNow;
         if (previousSloppy === undefined) {
             delete globalThis.__sloppy;
         } else {
