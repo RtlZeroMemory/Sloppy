@@ -598,7 +598,9 @@ Runtime feature diagnostics:
   feature id that is not in the runtime registry.
 - `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is emitted when a known feature is required but
   unavailable in the current runtime lane, including non-V8 builds that receive V8-targeted
-  runnable artifacts.
+  runnable artifacts. ENGINE-27.C/D also uses the same stable text shape when stdlib code
+  reaches a provider bridge whose V8 intrinsic was not registered because the active Plan
+  did not enable that feature.
 - `SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING` is emitted when a known feature's
   dependency is unavailable.
 

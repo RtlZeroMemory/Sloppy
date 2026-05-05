@@ -806,23 +806,29 @@ bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> contex
 {
     v8::Isolate* isolate = backend == nullptr ? nullptr : backend->isolate;
     v8::Local<v8::String> name;
-    v8::Local<v8::FunctionTemplate> function_template =
-        v8::FunctionTemplate::New(isolate, sl_v8_register_handler_callback);
     v8::Local<v8::Function> function;
     v8::Local<v8::String> sloppy_key;
     v8::Local<v8::String> data_key;
     v8::Local<v8::Object> sloppy = v8::Object::New(isolate);
     v8::Local<v8::Object> data = v8::Object::New(isolate);
 
-    if (!sl_status_is_ok(sl_v8_string_from_native_view(
-            backend, sl_str_from_cstr("__sloppy_register_handler"), &name)) ||
-        !function_template->GetFunction(context).ToLocal(&function))
+    // Preserve legacy low-level bridge coverage when callers do not provide a validated
+    // feature set; app-host startup passes one for strict SL_RUNTIME_FEATURE_STDLIB_APP gating.
+    if (!backend->has_runtime_features ||
+        sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_APP))
     {
-        return false;
-    }
+        v8::Local<v8::FunctionTemplate> function_template =
+            v8::FunctionTemplate::New(isolate, sl_v8_register_handler_callback);
+        if (!sl_status_is_ok(sl_v8_string_from_native_view(
+                backend, sl_str_from_cstr("__sloppy_register_handler"), &name)) ||
+            !function_template->GetFunction(context).ToLocal(&function))
+        {
+            return false;
+        }
 
-    if (!context->Global()->Set(context, name, function).FromMaybe(false)) {
-        return false;
+        if (!context->Global()->Set(context, name, function).FromMaybe(false)) {
+            return false;
+        }
     }
 
     if (!sl_status_is_ok(
@@ -833,7 +839,7 @@ bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> contex
         return false;
     }
 
-    if (!sl_v8_install_provider_intrinsics(isolate, context, data) ||
+    if (!sl_v8_install_provider_intrinsics(backend, context, data) ||
         !sloppy->Set(context, data_key, data).FromMaybe(false) ||
         !context->Global()->Set(context, sloppy_key, sloppy).FromMaybe(false))
     {
@@ -908,6 +914,10 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->plan = options == nullptr ? nullptr : options->plan;
     backend->capabilities = options == nullptr ? nullptr : options->capabilities;
     backend->source_map = options == nullptr ? SlBytes{} : options->source_map;
+    backend->has_runtime_features = options != nullptr && options->runtime_features != nullptr;
+    if (backend->has_runtime_features) {
+        backend->runtime_features = *options->runtime_features;
+    }
     if (options != nullptr && options->source_map_source_name.length > 0U) {
         status = sl_str_copy_to_arena(arena, options->source_map_source_name,
                                       &copied_source_map_source_name);

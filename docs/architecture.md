@@ -65,6 +65,10 @@ SQLite/PostgreSQL/SQL Server provider feature ids. App-host startup can now vali
 Plan-derived and explicit `requiredFeatures[]` activation before engine/provider/transport
 initialization. The current package/build may still link broad code; this slice gates
 runtime activation and diagnostics only.
+ENGINE-27.C/D extends those descriptors with current import ownership for app/results/
+schema/config/data/provider stdlib modules and with V8 intrinsic metadata where a native
+bridge exists today. V8 creation now borrows the validated active feature set so
+app/provider intrinsics are installed only for active features during app-host startup.
 ENGINE-03 adds the first V8 async handler runtime cut. In V8-enabled builds, handler calls
 drain V8 microtasks explicitly on the owning engine thread, fulfilled Promises are
 converted through the existing result conversion path, rejected Promises produce

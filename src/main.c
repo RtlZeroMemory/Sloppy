@@ -1317,6 +1317,7 @@ typedef struct SlRunApp
     SlArena engine_arena;
     SlPlan plan;
     SlInternTable plan_metadata_interns;
+    SlRuntimeFeatureSet runtime_features;
     SlCapabilityRegistry capability_registry;
     SlBytes app_js_bytes;
     SlBytes source_map_bytes;
@@ -1913,6 +1914,7 @@ static SlEngineOptions sl_run_v8_options(const SlRunApp* app, const char* app_js
      */
     options.plan = app == NULL ? NULL : &app->plan;
     options.capabilities = app == NULL ? NULL : &app->capability_registry;
+    options.runtime_features = app == NULL ? NULL : &app->runtime_features;
     options.source_map = app == NULL ? (SlBytes){0} : app->source_map_bytes;
     options.source_map_source_name =
         app_js_path == NULL ? sl_str_empty() : sl_str_from_cstr(app_js_path);
@@ -2097,6 +2099,7 @@ static int sl_run_validate_runtime_features(SlRunApp* app)
     validation.require_runnable_route = true;
     validation.max_runnable_routes = SL_RUN_MAX_ROUTES;
     validation.validate_runtime_features = true;
+    validation.out_runtime_features = &app->runtime_features;
 
     status = sl_app_host_validate_startup(&app->plan, &validation, &diag);
     if (!sl_status_is_ok(status)) {

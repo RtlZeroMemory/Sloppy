@@ -48,6 +48,49 @@ static SlRuntimeFeatureAvailability all_available(void)
     return availability;
 }
 
+static int test_descriptors_publish_import_and_intrinsic_metadata(void)
+{
+    const SlRuntimeFeatureDescriptor* sqlite =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_PROVIDER_SQLITE);
+    const SlRuntimeFeatureDescriptor* postgres =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_PROVIDER_POSTGRES);
+    const SlRuntimeFeatureDescriptor* data =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_DATA);
+    const SlRuntimeFeatureDescriptor* config =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
+
+    if (SL_RUNTIME_FEATURE_COUNT != 12) {
+        return 60;
+    }
+    if (sqlite == NULL || postgres == NULL || data == NULL || config == NULL) {
+        return 61;
+    }
+    if (!sl_str_equal(sqlite->stdlib_import, sl_str_from_cstr("sloppy/providers/sqlite")) ||
+        !sl_str_equal(sqlite->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.data.sqlite")) ||
+        !sqlite->requires_v8_intrinsics)
+    {
+        return 62;
+    }
+    if (!sl_str_equal(data->stable_id, sl_str_from_cstr("stdlib.data")) ||
+        !sl_str_equal(data->stdlib_import, sl_str_from_cstr("sloppy/data")) ||
+        !sl_str_is_empty(data->v8_intrinsic_namespace) || data->requires_v8_intrinsics)
+    {
+        return 63;
+    }
+    if (!sl_str_equal(config->stable_id, sl_str_from_cstr("stdlib.config")) ||
+        !sl_str_equal(config->stdlib_import, sl_str_from_cstr("sloppy/config")) ||
+        !sl_str_is_empty(config->v8_intrinsic_namespace))
+    {
+        return 64;
+    }
+    if (postgres->available || postgres->requires_v8_intrinsics ||
+        !sl_str_equal(postgres->stdlib_import, sl_str_from_cstr("sloppy/providers/postgres")))
+    {
+        return 65;
+    }
+    return 0;
+}
+
 static int test_minimal_route_activates_expected_features(void)
 {
     unsigned char diag_storage[2048];
@@ -121,11 +164,17 @@ static int test_sqlite_provider_metadata_activates_sqlite(void)
     {
         return 11;
     }
-    if (set.activations[6].id != SL_RUNTIME_FEATURE_PROVIDER_SQLITE ||
-        set.activations[6].reason != SL_RUNTIME_FEATURE_REASON_PLAN_PROVIDER ||
-        !sl_str_equal(set.activations[6].requested_by, sl_str_from_cstr("data.main")))
-    {
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_DATA)) {
         return 12;
+    }
+    if (set.activation_count != 8U || set.activations[6].id != SL_RUNTIME_FEATURE_STDLIB_DATA ||
+        set.activations[6].reason != SL_RUNTIME_FEATURE_REASON_DEPENDENCY ||
+        !sl_str_equal(set.activations[6].requested_by, sl_str_from_cstr("provider.sqlite")) ||
+        set.activations[7].id != SL_RUNTIME_FEATURE_PROVIDER_SQLITE ||
+        set.activations[7].reason != SL_RUNTIME_FEATURE_REASON_PLAN_PROVIDER ||
+        !sl_str_equal(set.activations[7].requested_by, sl_str_from_cstr("data.main")))
+    {
+        return 13;
     }
     return 0;
 }
@@ -251,6 +300,7 @@ static int test_v8_disabled_fails_honestly(void)
 int main(void)
 {
     static const FeatureTestFn tests[] = {
+        test_descriptors_publish_import_and_intrinsic_metadata,
         test_minimal_route_activates_expected_features,
         test_sqlite_provider_metadata_activates_sqlite,
         test_unavailable_postgres_required_feature_fails,

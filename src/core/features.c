@@ -11,6 +11,7 @@
 
 #define SL_FEATURE_BIT(id) (UINT32_C(1) << (uint32_t)(id))
 #define SL_FEATURE_STR(text) {text, sizeof(text) - 1U}
+#define SL_FEATURE_EMPTY {NULL, 0U}
 
 #ifdef SLOPPY_ENABLE_V8_BRIDGE
 #define SL_FEATURE_V8_AVAILABLE true
@@ -25,7 +26,8 @@ static SlStr sl_feature_literal(const char* ptr, size_t length)
 
 static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_make(SlRuntimeFeatureId id, SlRuntimeFeatureKind kind, SlStr stable_id,
-                           SlStr diagnostics_name, uint32_t dependencies, bool available,
+                           SlStr diagnostics_name, SlStr stdlib_import,
+                           SlStr v8_intrinsic_namespace, uint32_t dependencies, bool available,
                            bool requires_v8_intrinsics, bool package_include_hint)
 {
     SlRuntimeFeatureDescriptor descriptor;
@@ -34,6 +36,8 @@ sl_feature_descriptor_make(SlRuntimeFeatureId id, SlRuntimeFeatureKind kind, SlS
     descriptor.kind = kind;
     descriptor.stable_id = stable_id;
     descriptor.diagnostics_name = diagnostics_name;
+    descriptor.stdlib_import = stdlib_import;
+    descriptor.v8_intrinsic_namespace = v8_intrinsic_namespace;
     descriptor.dependencies = dependencies;
     descriptor.available = available;
     descriptor.requires_v8_intrinsics = requires_v8_intrinsics;
@@ -56,16 +60,18 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     case SL_RUNTIME_FEATURE_CORE:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_CORE, sl_feature_literal("core", sizeof("core") - 1U),
-            sl_feature_literal("core runtime", sizeof("core runtime") - 1U), 0U, true, false, true);
+            sl_feature_literal("core runtime", sizeof("core runtime") - 1U), sl_str_empty(),
+            sl_str_empty(), 0U, true, false, true);
     case SL_RUNTIME_FEATURE_V8:
-        return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_ENGINE,
-                                          sl_feature_literal("v8", sizeof("v8") - 1U),
-                                          sl_feature_literal("V8 engine", sizeof("V8 engine") - 1U),
-                                          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE), v8, true, true);
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_ENGINE, sl_feature_literal("v8", sizeof("v8") - 1U),
+            sl_feature_literal("V8 engine", sizeof("V8 engine") - 1U), sl_str_empty(),
+            sl_str_empty(), SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE), v8, true, true);
     case SL_RUNTIME_FEATURE_HTTP:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_HTTP, sl_feature_literal("http", sizeof("http") - 1U),
-            sl_feature_literal("HTTP runtime", sizeof("HTTP runtime") - 1U),
+            sl_feature_literal("HTTP runtime", sizeof("HTTP runtime") - 1U), sl_str_empty(),
+            sl_str_empty(),
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
                 SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV),
             http, false, true);
@@ -73,13 +79,16 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_TRANSPORT,
             sl_feature_literal("transport.libuv", sizeof("transport.libuv") - 1U),
-            sl_feature_literal("libuv transport", sizeof("libuv transport") - 1U),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE), libuv, false, true);
+            sl_feature_literal("libuv transport", sizeof("libuv transport") - 1U), sl_str_empty(),
+            sl_str_empty(), SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE), libuv, false, true);
     case SL_RUNTIME_FEATURE_STDLIB_APP:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_STDLIB,
             sl_feature_literal("stdlib.framework/app", sizeof("stdlib.framework/app") - 1U),
             sl_feature_literal("framework app stdlib", sizeof("framework app stdlib") - 1U),
+            sl_feature_literal("sloppy/app", sizeof("sloppy/app") - 1U),
+            sl_feature_literal("__sloppy_register_handler",
+                               sizeof("__sloppy_register_handler") - 1U),
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
             true, true);
     case SL_RUNTIME_FEATURE_STDLIB_RESULTS:
@@ -87,37 +96,63 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
             id, SL_RUNTIME_FEATURE_KIND_STDLIB,
             sl_feature_literal("stdlib.results", sizeof("stdlib.results") - 1U),
             sl_feature_literal("results stdlib", sizeof("results stdlib") - 1U),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, true, true);
+            sl_feature_literal("sloppy/results", sizeof("sloppy/results") - 1U), sl_str_empty(),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true);
     case SL_RUNTIME_FEATURE_STDLIB_SCHEMA:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_STDLIB,
             sl_feature_literal("stdlib.schema", sizeof("stdlib.schema") - 1U),
             sl_feature_literal("schema stdlib", sizeof("schema stdlib") - 1U),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, true, true);
+            sl_feature_literal("sloppy/schema", sizeof("sloppy/schema") - 1U), sl_str_empty(),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true);
+    case SL_RUNTIME_FEATURE_STDLIB_CONFIG:
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+            sl_feature_literal("stdlib.config", sizeof("stdlib.config") - 1U),
+            sl_feature_literal("config stdlib", sizeof("config stdlib") - 1U),
+            sl_feature_literal("sloppy/config", sizeof("sloppy/config") - 1U), sl_str_empty(),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true);
+    case SL_RUNTIME_FEATURE_STDLIB_DATA:
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+            sl_feature_literal("stdlib.data", sizeof("stdlib.data") - 1U),
+            sl_feature_literal("data stdlib", sizeof("data stdlib") - 1U),
+            sl_feature_literal("sloppy/data", sizeof("sloppy/data") - 1U), sl_str_empty(),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
             sl_feature_literal("provider.sqlite", sizeof("provider.sqlite") - 1U),
             sl_feature_literal("SQLite provider", sizeof("SQLite provider") - 1U),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), sqlite,
-            true, true);
+            sl_feature_literal("sloppy/providers/sqlite", sizeof("sloppy/providers/sqlite") - 1U),
+            sl_feature_literal("__sloppy.data.sqlite", sizeof("__sloppy.data.sqlite") - 1U),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+                SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_DATA),
+            sqlite, true, true);
     case SL_RUNTIME_FEATURE_PROVIDER_POSTGRES:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
             sl_feature_literal("provider.postgres", sizeof("provider.postgres") - 1U),
             sl_feature_literal("PostgreSQL provider", sizeof("PostgreSQL provider") - 1U),
+            sl_feature_literal("sloppy/providers/postgres",
+                               sizeof("sloppy/providers/postgres") - 1U),
+            sl_str_empty(),
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
-            postgres, true, true);
+            postgres, false, true);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
             sl_feature_literal("provider.sqlserver", sizeof("provider.sqlserver") - 1U),
             sl_feature_literal("SQL Server provider", sizeof("SQL Server provider") - 1U),
+            sl_feature_literal("sloppy/providers/sqlserver",
+                               sizeof("sloppy/providers/sqlserver") - 1U),
+            sl_str_empty(),
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
-            sqlserver, true, true);
+            sqlserver, false, true);
     default:
         return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_CORE, sl_str_empty(),
-                                          sl_str_empty(), 0U, false, false, false);
+                                          sl_str_empty(), sl_str_empty(), sl_str_empty(), 0U, false,
+                                          false, false);
     }
 }
 
@@ -142,40 +177,55 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
 {
     static const SlRuntimeFeatureDescriptor descriptors[SL_RUNTIME_FEATURE_COUNT] = {
         {SL_RUNTIME_FEATURE_CORE, SL_RUNTIME_FEATURE_KIND_CORE, SL_FEATURE_STR("core"),
-         SL_FEATURE_STR("core runtime"), 0U, true, false, true},
+         SL_FEATURE_STR("core runtime"), SL_FEATURE_EMPTY, SL_FEATURE_EMPTY, 0U, true, false, true},
         {SL_RUNTIME_FEATURE_V8, SL_RUNTIME_FEATURE_KIND_ENGINE, SL_FEATURE_STR("v8"),
-         SL_FEATURE_STR("V8 engine"), SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE),
-         SL_FEATURE_V8_AVAILABLE, true, true},
+         SL_FEATURE_STR("V8 engine"), SL_FEATURE_EMPTY, SL_FEATURE_EMPTY,
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE), SL_FEATURE_V8_AVAILABLE, true, true},
         {SL_RUNTIME_FEATURE_HTTP, SL_RUNTIME_FEATURE_KIND_HTTP, SL_FEATURE_STR("http"),
-         SL_FEATURE_STR("HTTP runtime"),
+         SL_FEATURE_STR("HTTP runtime"), SL_FEATURE_EMPTY, SL_FEATURE_EMPTY,
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV),
          true, false, true},
         {SL_RUNTIME_FEATURE_TRANSPORT_LIBUV, SL_RUNTIME_FEATURE_KIND_TRANSPORT,
-         SL_FEATURE_STR("transport.libuv"), SL_FEATURE_STR("libuv transport"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE), true, false, true},
+         SL_FEATURE_STR("transport.libuv"), SL_FEATURE_STR("libuv transport"), SL_FEATURE_EMPTY,
+         SL_FEATURE_EMPTY, SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE), true, false, true},
         {SL_RUNTIME_FEATURE_STDLIB_APP, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.framework/app"), SL_FEATURE_STR("framework app stdlib"),
+         SL_FEATURE_STR("sloppy/app"), SL_FEATURE_STR("__sloppy_register_handler"),
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
          true, true},
         {SL_RUNTIME_FEATURE_STDLIB_RESULTS, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.results"), SL_FEATURE_STR("results stdlib"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, true, true},
+         SL_FEATURE_STR("sloppy/results"), SL_FEATURE_EMPTY,
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true},
         {SL_RUNTIME_FEATURE_STDLIB_SCHEMA, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.schema"), SL_FEATURE_STR("schema stdlib"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, true, true},
+         SL_FEATURE_STR("sloppy/schema"), SL_FEATURE_EMPTY,
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true},
+        {SL_RUNTIME_FEATURE_STDLIB_CONFIG, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.config"), SL_FEATURE_STR("config stdlib"),
+         SL_FEATURE_STR("sloppy/config"), SL_FEATURE_EMPTY,
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true},
+        {SL_RUNTIME_FEATURE_STDLIB_DATA, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.data"), SL_FEATURE_STR("data stdlib"),
+         SL_FEATURE_STR("sloppy/data"), SL_FEATURE_EMPTY,
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true},
         {SL_RUNTIME_FEATURE_PROVIDER_SQLITE, SL_RUNTIME_FEATURE_KIND_PROVIDER,
          SL_FEATURE_STR("provider.sqlite"), SL_FEATURE_STR("SQLite provider"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
-         true, true},
+         SL_FEATURE_STR("sloppy/providers/sqlite"), SL_FEATURE_STR("__sloppy.data.sqlite"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_DATA),
+         true, true, true},
         {SL_RUNTIME_FEATURE_PROVIDER_POSTGRES, SL_RUNTIME_FEATURE_KIND_PROVIDER,
          SL_FEATURE_STR("provider.postgres"), SL_FEATURE_STR("PostgreSQL provider"),
+         SL_FEATURE_STR("sloppy/providers/postgres"), SL_FEATURE_EMPTY,
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), false,
-         true, true},
+         false, true},
         {SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER, SL_RUNTIME_FEATURE_KIND_PROVIDER,
          SL_FEATURE_STR("provider.sqlserver"), SL_FEATURE_STR("SQL Server provider"),
+         SL_FEATURE_STR("sloppy/providers/sqlserver"), SL_FEATURE_EMPTY,
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), false,
-         true, true}};
+         false, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;

@@ -46,8 +46,11 @@ thread before provider expansion. Source-map exception primary spans are impleme
 the current claim; async stack remapping and broader source-frame fidelity remain later.
 ENGINE-27.A/B adds the registry source of truth for the `v8` runtime feature and the
 feature-activation prerequisite used by app-host startup. Non-V8 builds now have a stable
-feature diagnostic path before engine creation, while actual V8 intrinsic registration
-remains always-on inside V8 builds until ENGINE-27.D gates registration by active feature.
+feature diagnostic path before engine creation. ENGINE-27.C/D passes the validated active
+feature set into the V8 bridge so `__sloppy_register_handler` is installed for active
+`stdlib.framework/app` plans and `__sloppy.data.sqlite` is installed only when
+`provider.sqlite` is active. Direct low-level V8 smoke tests that omit a feature set keep
+legacy intrinsic installation as bridge coverage, not as app-host startup policy.
 
 ## Purpose
 
@@ -207,8 +210,11 @@ Current behavior:
 - `__sloppy_register_handler(id, handler)` exists only in the V8 runtime context and accepts
   a positive numeric handler ID plus a callable handler. Duplicate IDs, nonnumeric IDs, and
   non-callable handlers fail during app evaluation with deterministic V8 diagnostics;
-- `__sloppy.data.sqlite` exists only in the V8 runtime context and is installed by the
-  SQLite provider intrinsic module. It exposes internal open/exec/query/queryOne/close
+- `__sloppy.data.sqlite` exists only in the V8 runtime context and is normally installed by
+  the SQLite provider intrinsic module when `provider.sqlite` is active. Low-level bridge
+  callers that pass no runtime feature set may still receive `__sloppy.data.sqlite` for
+  legacy smoke coverage; app-host startup passes a feature set and uses strict
+  `provider.sqlite` gating. The namespace exposes internal open/exec/query/queryOne/close
   callbacks used by the stdlib wrapper, not a public raw native API;
 - SQLite bridge parameter conversion rejects JavaScript parameter arrays above 32,766
   elements before any native parameter vector reserve/allocation. The failure is a stable
@@ -547,9 +553,11 @@ Current checks:
   dispatch, Promise fulfillment/rejection/pending behavior, stable JSON rendering for a
   Promise rejection diagnostic, cancellation/deadline context snapshots, request-scope
   cleanup across sync throw and async success/failure paths, and create/destroy/create
-  lifecycle behavior. It also covers SQLite provider-token opens, exec/query/queryOne,
-  close, stale handles, invalid parameters, missing provider metadata, missing capability
-  registry fail-closed behavior, and denied capability reads.
+  lifecycle behavior. It also covers active-feature-set intrinsic registration: SQLite
+  provider-token opens, exec/query/queryOne, close, stale handles, invalid parameters,
+  missing provider metadata, missing capability registry fail-closed behavior, denied
+  capability reads, and the inactive-`provider.sqlite` path where the SQLite intrinsic is
+  not registered.
 - `engine.v8.owner_thread` is registered only when V8 is enabled and covers owner-thread
   lifecycle checks, wrong-thread eval rejection before entering V8, wrong-thread async
   handler call rejection before V8 microtasks run, and wrong-thread destroy deferral to the

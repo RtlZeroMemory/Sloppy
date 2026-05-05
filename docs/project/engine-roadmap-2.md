@@ -52,8 +52,12 @@ Tasks:
 - ENGINE-27.B: Plan-Driven Feature Activation. Implemented in the first ENGINE-27 slice
   by deriving active features from Plan target/routes/providers plus explicit
   `requiredFeatures[]` before runtime initialization.
-- ENGINE-27.C: Provider/Transport/Stdlib Feature Descriptors.
-- ENGINE-27.D: V8 Intrinsic Registration by Feature.
+- ENGINE-27.C: Provider/Transport/Stdlib Feature Descriptors. Implemented in the second
+  ENGINE-27 slice with descriptor import/intrinsic metadata for current stdlib modules,
+  HTTP/libuv, SQLite, and unavailable/deferred PostgreSQL/SQL Server provider features.
+- ENGINE-27.D: V8 Intrinsic Registration by Feature. Implemented in the second ENGINE-27
+  slice by passing the Plan-activated runtime feature set into V8 creation and registering
+  SQLite/app-host intrinsics only when the corresponding feature is active.
 - ENGINE-27.E: Missing Feature Diagnostics.
 - ENGINE-27.F: Package Include-Only-Used Feature Policy.
 

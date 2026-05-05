@@ -34,6 +34,11 @@ ENGINE-27.A/B adds runtime feature ids for `provider.sqlite`, `provider.postgres
 feature before runtime initialization; PostgreSQL and SQL Server are unavailable/deferred
 for JavaScript runtime activation in this slice, and no provider bridge expansion is
 included.
+ENGINE-27.C/D adds provider descriptor metadata. `provider.sqlite` maps to stdlib import
+`sloppy/providers/sqlite` and V8 intrinsic namespace `__sloppy.data.sqlite`; app-host V8
+startup registers that intrinsic only when the active Plan includes SQLite provider
+metadata. `provider.postgres` and `provider.sqlserver` descriptors remain
+unavailable/deferred and do not claim JavaScript bridge implementation.
 FRAMEWORK-01.B changes that example to use configuration-driven SQLite:
 `app.use(sqlite("main"))` binds `Sloppy:Providers:sqlite:main:database` from
 `appsettings.json`; inline `{ database: ... }` remains supported and overrides config.
@@ -100,7 +105,7 @@ Implemented native SQLite API:
 
 Implemented SQLite JS bridge API:
 
-- internal V8 intrinsics under `__sloppy.data.sqlite`;
+- internal V8 intrinsics under `__sloppy.data.sqlite` when `provider.sqlite` is active;
 - V8 layering: `engine_v8.cc` owns the provider-neutral engine core, `intrinsics.cc`
   aggregates provider intrinsic registration, and `intrinsics_sqlite.cc` owns SQLite
   argument conversion, row materialization, resource lookup, cleanup, and provider calls.
