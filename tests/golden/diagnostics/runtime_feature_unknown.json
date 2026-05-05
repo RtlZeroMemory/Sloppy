@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_UNKNOWN_RUNTIME_FEATURE","severity":"error","message":"unknown runtime feature","related":[{"message":"future.magic","span":{}},{"message":"requiredFeatures[]","span":{}}],"hints":["use a feature id known by this runtime"]}

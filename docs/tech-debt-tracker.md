@@ -84,10 +84,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   returned Promises that settle during the owner-thread microtask drain, rejection
   diagnostics, pending-Promise failure, cancellation snapshots, and request-scope cleanup
   for the bounded call.
-- Runtime feature modularity beyond ENGINE-27.C/D: the core registry, Plan-driven
-  activation, current stdlib/provider/transport descriptor mapping, and Plan-gated V8
-  intrinsic registration now exist. Formal missing-feature diagnostic goldens, package
-  include-only-used policy, and compiled/link-time trimming remain unclaimed follow-ups.
+- Runtime feature modularity after ENGINE-27: the core registry, Plan-driven activation,
+  current stdlib/provider/transport descriptor mapping, Plan-gated V8 intrinsic
+  registration, missing-feature diagnostic goldens, and package include-only-used policy
+  now exist. Compiled/link-time trimming, stdlib asset pruning, richer Plan source spans,
+  and broader future feature consumers remain unclaimed follow-ups.
 - Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded

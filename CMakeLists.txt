@@ -628,6 +628,7 @@ if(SLOPPY_ENABLE_TESTS)
         core_execution_domain core.execution_domain tests/unit/core/test_execution_domain.c)
     sloppy_add_c_unit_test(core_runtime_features core.runtime_features
                            tests/unit/core/test_features.c)
+    set_tests_properties(core.runtime_features PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
     sloppy_add_c_unit_test(
@@ -1640,6 +1641,9 @@ if(SLOPPY_ENABLE_TESTS)
             NAME bootstrap.stdlib.data_foundation
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_data_foundation.mjs")
+        set_tests_properties(
+            bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
+            bootstrap.stdlib.data_foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 
     if(CARGO_EXECUTABLE)

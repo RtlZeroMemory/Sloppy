@@ -70,7 +70,7 @@ Operation:
   open
 
 Reason:
-  The active Sloppy Plan did not enable the SQLite V8 intrinsics.`);
+  The active Sloppy Plan did not enable the __sloppy.data.sqlite V8 intrinsic namespace.`);
         }
 
         return bridge;

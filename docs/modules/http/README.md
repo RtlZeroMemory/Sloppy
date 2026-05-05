@@ -47,6 +47,11 @@ ENGINE-27.C records those as deterministic runtime descriptors: `http` describes
 native HTTP runtime and depends on `transport.libuv`, while `transport.libuv` maps only to
 the existing libuv transport implementation under `src/platform/libuv/`. This descriptor
 metadata does not expose libuv types, create a new socket policy, or change HTTP behavior.
+ENGINE-27.E pins missing-transport feature diagnostics: if Plan activation needs `http`
+but `transport.libuv` is unavailable, startup fails with
+`SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING`; if a Plan explicitly requires
+`transport.libuv` in an unavailable lane, startup fails with
+`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`.
 ENGINE-24.A/B adds the first reusable transport listener foundation: Slop-owned server
 config/state, libuv-isolated TCP bind/listen/accept, bounded accepted-connection
 storage, overflow close behavior, and cleanup-once stop/dispose. ENGINE-24.C starts

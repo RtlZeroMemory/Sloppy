@@ -55,11 +55,13 @@ ENGINE-27.A/B adds `core.runtime_features` plus app-host and Plan parser coverag
 registry foundation: deterministic feature ordering, route-derived HTTP/libuv/framework
 activation, SQLite-provider activation only when Plan metadata requires it, unavailable
 PostgreSQL/SQL Server feature failure, unknown `requiredFeatures[]`, missing
-dependencies, and V8-disabled diagnostics. These are default-lane registry tests; V8
-intrinsic registration remains V8-gated follow-up evidence. ENGINE-27.C/D extends the same
-default-lane registry coverage with descriptor import/intrinsic metadata and adds
-V8-gated smoke coverage proving SQLite intrinsics are registered for active
-`provider.sqlite` Plans and omitted for Plans that do not activate that feature.
+dependencies, and V8-disabled diagnostics. ENGINE-27.C/D extends the same default-lane
+registry coverage with descriptor import/intrinsic metadata and adds V8-gated smoke
+coverage proving SQLite intrinsics are registered for active `provider.sqlite` Plans and
+omitted for Plans that do not activate that feature. ENGINE-27.E/F adds renderer-pinned
+missing-feature goldens for unknown, unavailable, V8-disabled, provider, transport, and
+dependency-missing runtime features plus a stdlib missing-intrinsic snapshot. These
+goldens do not claim V8 execution, package trimming, or live-provider readiness.
 
 ENGINE-19.BC registers the current V8, HTTP, and async behavior under explicit conformance
 names without adding runtime behavior. `conformance.http.default_dispatch` is default

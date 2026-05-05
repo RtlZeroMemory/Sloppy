@@ -598,15 +598,20 @@ Runtime feature diagnostics:
   feature id that is not in the runtime registry.
 - `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is emitted when a known feature is required but
   unavailable in the current runtime lane, including non-V8 builds that receive V8-targeted
-  runnable artifacts. ENGINE-27.C/D also uses the same stable text shape when stdlib code
-  reaches a provider bridge whose V8 intrinsic was not registered because the active Plan
-  did not enable that feature.
+  runnable artifacts, unavailable/deferred PostgreSQL or SQL Server provider features,
+  disabled SQLite provider availability, missing transport availability, and stdlib code
+  that reaches a provider bridge whose V8 intrinsic was not registered because the active
+  Plan did not enable that feature.
 - `SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING` is emitted when a known feature's
   dependency is unavailable.
 
 Feature diagnostics include the stable feature id and Plan/requested-by context when known.
 They are produced before runtime feature initialization and must not include native handles,
 pointers, secrets, provider connection strings, or package-manager state.
+`tests/golden/diagnostics/runtime_feature_*.json` pins the deterministic renderer shape for
+unknown, unavailable, V8-disabled, provider, transport, and dependency-missing feature
+failures. `runtime_feature_inactive_sqlite_intrinsic.snap` pins the stdlib missing-intrinsic
+message for `provider.sqlite`.
 
 App/request lifecycle diagnostics:
 

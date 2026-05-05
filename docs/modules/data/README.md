@@ -39,6 +39,13 @@ ENGINE-27.C/D adds provider descriptor metadata. `provider.sqlite` maps to stdli
 startup registers that intrinsic only when the active Plan includes SQLite provider
 metadata. `provider.postgres` and `provider.sqlserver` descriptors remain
 unavailable/deferred and do not claim JavaScript bridge implementation.
+ENGINE-27.E/F pins the missing-feature diagnostics for provider activation. A Plan that
+requires `provider.sqlite` while SQLite availability is disabled, or that requires
+`provider.postgres`/`provider.sqlserver`, fails with `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`
+before provider initialization. Direct stdlib calls into unavailable PostgreSQL or SQL
+Server bridges use the same runtime-feature code and still redact connection strings.
+Current packages may compile/stage provider code and stdlib assets even when a Plan does
+not activate them; package trimming remains future work.
 FRAMEWORK-01.B changes that example to use configuration-driven SQLite:
 `app.use(sqlite("main"))` binds `Sloppy:Providers:sqlite:main:database` from
 `appsettings.json`; inline `{ database: ... }` remains supported and overrides config.
