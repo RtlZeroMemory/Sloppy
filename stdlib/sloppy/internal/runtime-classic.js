@@ -1249,6 +1249,15 @@ Reason:
         });
     }
 
+    function cancelAndDisposeController(controller, reason) {
+        try {
+            controller.cancel(reason);
+        } catch (_) {
+            // Cleanup paths must not be derailed by user abort listeners.
+        }
+        controller.dispose();
+    }
+
     function parseIntervalMs(value, operation) {
         if (typeof value === "number") {
             const ms = validateDelayMs(value, operation);
@@ -1462,21 +1471,14 @@ Reason:
             if (this._stopped) {
                 return this._loopPromise;
             }
-            this._stopped = true;
-            try {
-                this._controller.cancel(reason);
-            } catch (_) {
-                // Stop must be cleanup-safe even when user abort listeners throw.
-            }
-            this._controller.dispose();
+            this._finishStopped(reason, true);
             return this._loopPromise;
         }
 
         async _runLoop() {
             while (!this._stopped) {
                 if (this._runCount >= this._maxRuns) {
-                    this._stopped = true;
-                    this._controller.dispose();
+                    this._finishStopped("scheduled job completed");
                     break;
                 }
                 const waitMs = Math.max(0, this._nextRunMs - clockMonotonicNowMs(this._clock));
@@ -1487,9 +1489,11 @@ Reason:
                     });
                 } catch (error) {
                     if (error instanceof CancelledError || error instanceof TimerDisposedError) {
+                        this._finishStopped(error);
                         break;
                     }
                     this._lastError = error;
+                    this._finishStopped(error);
                     break;
                 }
 
@@ -1529,6 +1533,19 @@ Reason:
                 .finally(() => {
                     this._running = false;
                 });
+        }
+
+        _finishStopped(reason, cancel = false) {
+            if (this._stopped) {
+                this._controller.dispose();
+                return;
+            }
+            this._stopped = true;
+            if (cancel) {
+                cancelAndDisposeController(this._controller, reason);
+                return;
+            }
+            this._controller.dispose();
         }
     }
 
@@ -1697,9 +1714,17 @@ Reason:
 
             if (typeof operationOrPromise === "function") {
                 const controller = new CancellationController({ signal: options?.signal });
-                const timeoutPromise = Time.delay(timeoutMs, { clock: options?.clock }).then(() => {
+                const timeoutController = new CancellationController({ signal: options?.signal });
+                const timeoutPromise = Time.delay(timeoutMs, {
+                    clock: options?.clock,
+                    signal: timeoutController.signal,
+                }).then(() => {
                     const error = timeoutError(options?.deadline);
-                    controller.cancel(error);
+                    try {
+                        controller.cancel(error);
+                    } catch (_) {
+                        // Timeout remains authoritative even when user abort listeners throw.
+                    }
                     throw error;
                 });
                 const operationPromise = Promise.resolve().then(() =>
@@ -1709,15 +1734,24 @@ Reason:
                 if (isCancellationSignal(options?.signal)) {
                     race.push(raceCancellation(new Promise(() => {}), options.signal));
                 }
-                return Promise.race(race).finally(() => controller.dispose());
+                return Promise.race(race).finally(() => {
+                    cancelAndDisposeController(timeoutController, "timeout race settled");
+                    controller.dispose();
+                });
             }
 
+            const timeoutController = new CancellationController({ signal: options?.signal });
             return Promise.race([
                 raceCancellation(Promise.resolve(operationOrPromise), options?.signal),
-                Time.delay(timeoutMs, { clock: options?.clock, signal: options?.signal }).then(() => {
+                Time.delay(timeoutMs, {
+                    clock: options?.clock,
+                    signal: timeoutController.signal,
+                }).then(() => {
                     throw timeoutError(options?.deadline);
                 }),
-            ]);
+            ]).finally(() => {
+                cancelAndDisposeController(timeoutController, "timeout race settled");
+            });
         },
 
         interval(ms, options = undefined) {

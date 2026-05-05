@@ -125,6 +125,20 @@ async function flushMicrotasks(count = 6) {
     clock.advanceBy(500);
     await assert.rejects(timeoutPromise, TimeoutError);
 
+    const promiseTimeoutClock = Time.fakeClock();
+    assert.equal(
+        await Time.timeout(Promise.resolve("fast"), { afterMs: 1000, clock: promiseTimeoutClock }),
+        "fast",
+    );
+    assert.equal(promiseTimeoutClock._timers.length, 0);
+
+    const functionTimeoutClock = Time.fakeClock();
+    assert.equal(
+        await Time.timeout(() => "fast", { afterMs: 1000, clock: functionTimeoutClock }),
+        "fast",
+    );
+    assert.equal(functionTimeoutClock._timers.length, 0);
+
     const immediateInterval = Time.interval(1000, { clock, immediate: true, maxTicks: 1 });
     assert.equal((await immediateInterval.next()).value.index, 1);
     assert.equal((await immediateInterval.next()).done, true);
@@ -194,6 +208,24 @@ async function flushMicrotasks(count = 6) {
     releaseJob();
     await flushMicrotasks();
     await noOverlapJob.stop();
+
+    const cancelJobClock = Time.fakeClock();
+    const cancelJobController = new CancellationController();
+    const cancelJob = Time.every(1000, () => {}, {
+        clock: cancelJobClock,
+        signal: cancelJobController.signal,
+    });
+    cancelJobController.cancel("done");
+    await flushMicrotasks();
+    assert.equal(cancelJob.stopped, true);
+    assert.equal(cancelJob.nextRun, null);
+
+    const disposedJobClock = Time.fakeClock();
+    const disposedJob = Time.every(1000, () => {}, { clock: disposedJobClock });
+    disposedJobClock.dispose();
+    await flushMicrotasks();
+    assert.equal(disposedJob.stopped, true);
+    assert.equal(disposedJob.nextRun, null);
 
     const disposedClock = Time.fakeClock();
     const disposedDelay = Time.delay(100, { clock: disposedClock });
