@@ -76,6 +76,12 @@ once. Failed posts, including overflow and disposed-loop posts, do not take owne
 the caller remains responsible for cleanup. Queued completions must own or retain any
 memory needed after the caller returns; borrowed request-arena views must not be placed in
 queued work unless the owning request/app scope is explicitly retained.
+ENGINE-26.C/D extends this rule with a generic terminal check on `SlAsyncCompletion`.
+Completion owners may attach a terminal predicate before enqueueing work. When the owner
+thread drains a completion whose request/app/resource is already terminal, dispatch is
+skipped and the late-completion hook, cleanup callback, and retained-scope release still
+run exactly once. The queued payload itself must still be owned or scope-retained before it
+crosses domains; the terminal guard prevents use after close, not unsafe borrowed storage.
 
 ENGINE-23.A/B extends that rule to provider/offload operations. `SlProviderOperation`
 descriptors copy provider instance IDs, provider kind, operation name, capability token,

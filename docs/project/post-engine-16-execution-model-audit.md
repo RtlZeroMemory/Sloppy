@@ -1,6 +1,6 @@
 # Post-ENGINE-16 Execution Model Audit
 
-Status: 2026-05-05 planning/consolidation audit, updated by ENGINE-26.A/B. This document
+Status: 2026-05-05 planning/consolidation audit, updated by ENGINE-26.A/B and ENGINE-26.C/D. This document
 inspects current code and tests after ENGINE-15 and ENGINE-16 and records the execution
 domain source-of-truth added for Roadmap-2.
 
@@ -37,12 +37,12 @@ scheduler.
 | Area | Status | Evidence | Gap / risk |
 | --- | --- | --- | --- |
 | V8 owner-thread isolation | Complete for current V8 entrypoints | `engine_v8.cc` records owner thread and rejects eval/call/info on wrong thread; `tests/unit/engine/test_v8_owner_thread.cc` covers initialized owner identity, wrong-thread calls, and destroy deferral. | Real provider/HTTP/timer continuations still need adoption in later Roadmap-2 work. |
-| Native async completion queue | Partial | `SlAsyncLoop` has libuv and test backends; libuv post is thread-safe and owner-loop dispatch checks owner thread. | Policy is split across headers/docs; shutdown/deadline/backpressure behavior is implemented for provider operations but not a universal runtime contract. |
+| Native async completion queue | Partial / hardened | `SlAsyncLoop` has libuv and test backends; libuv post is thread-safe and owner-loop dispatch checks owner thread. `SlAsyncCompletion` supports a terminal check plus late hook so owner-thread drain can skip dispatch and still cleanup/release exactly once. | Completion owners still must adopt the terminal guard; this is not a torture matrix or provider bridge conversion. |
 | V8 native continuation scheduler | Partial | `src/engine/v8/async_scheduler.cc` is the only code path that settles V8 Promise state from native completions; `include/sloppy/execution_domain.h` marks all non-owner domains as requiring owner-thread dispatch before JS continuation. | It is proven with test continuations, not with real SQLite/provider/HTTP/timer completions. |
 | Provider workers and V8 separation | Partial / good boundary | `provider_executor.c` worker loop invokes provider `run` callbacks and posts completion; comments, API, and `core.execution_domain` classify provider workers as non-V8. | SQLite bridge still calls provider functions synchronously on the V8 callback path, so the intended worker boundary is not adopted by the real JS SQLite path. |
 | HTTP transport terminal checks | Complete for current transport | `http_transport_libuv.c` checks terminal connection state before timeout/write/idle callbacks; timeout/write paths close and treat late write as cleanup-only. | Route-level deadline policy, request IDs, access events, and production drain policy are missing. |
 | App/request lifecycle cleanup | Complete for native helper layer | `app_host.c` records terminal outcomes, rejects late completions, closes cleanup once, and exposes leak snapshots. | Timer/callback/provider-operation counters are reserved placeholders until the owners integrate. |
-| Cancellation/deadline propagation | Partial | `SlCancellationToken`, V8 pre/post checks, HTTP timeout transitions, and provider executor terminal mapping exist. | Deadlines are not a coherent cross-domain object yet; provider-specific native interruption remains future work. |
+| Cancellation/deadline propagation | Partial / hardened | `SlCancellationToken`, V8 pre/post checks, HTTP timeout transitions, provider executor terminal mapping, and `sl_cancellation_diag_code` now provide a shared native diagnostic mapping. | Deadlines are not a coherent cross-domain object yet; provider-specific native interruption remains future work. |
 | Blocking offload policy | Partial | Provider executor supports serialized and bounded blocking-pool modes. | No runtime feature routes SQLite bridge through it; unclear sync paths remain in V8 SQLite bridge. |
 | Race-oriented tests | Partial | Unit tests cover async backend, provider executor, app lifecycle, resource table, HTTP transport, and V8 owner thread. | No torture matrix for late completion, forced shutdown, provider worker races, or many pending native continuations. |
 
@@ -53,9 +53,9 @@ terminal-state checks, V8 entrypoints, provider worker callbacks, libuv callback
 TODO/FIXME/temporary/deferred/later language around async/threading. The highest-signal
 code reality is:
 
-- `include/sloppy/async_backend.h` still describes ENGINE-12.C as future policy, while
-  provider-executor policy has since landed. The canonical docs should now point to
-  Roadmap-2 for the remaining universal runtime policy.
+- `include/sloppy/async_backend.h` now documents the ENGINE-26.C/D terminal completion
+  guard. Completion owners still need explicit adoption and race tests before scalable
+  async runtime claims.
 - `include/sloppy/http_backend.h` still has comments from the close-after-response era.
   The backend layer is still lower-level than HTTP-25, but canonical docs must avoid
   implying keep-alive is entirely absent.

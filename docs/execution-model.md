@@ -118,6 +118,13 @@ operation descriptors, per-provider-instance executors, serialized SQLite-class 
 offload, bounded blocking pools, capability-gated admission, cancellation/late-completion
 semantics, diagnostics, and stress evidence. Provider execution is not part of ENGINE-13's
 HTTP backend implementation and must not block the V8 owner thread.
+ENGINE-26.C/D hardens the shared completion boundary without expanding provider or HTTP
+runtime behavior. `SlAsyncCompletion` can now carry a caller-owned terminal-state check and
+late-completion hook; owner-thread drain skips dispatch when the owner reports terminal and
+still runs cleanup plus scope release exactly once. Cancellation reasons also map through
+`sl_cancellation_diag_code`, which keeps queued/active cancel, timeout/deadline,
+backpressure, and shutdown diagnostics consistent for provider and future runtime
+completion owners.
 
 TASK 10.A adds a pure-C route pattern parser and matcher foundation for later native route
 dispatch. It supports only a minimal path-pattern subset and one-pattern matching. It does

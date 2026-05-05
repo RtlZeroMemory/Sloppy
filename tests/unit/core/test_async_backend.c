@@ -12,6 +12,8 @@ typedef struct AsyncBackendRecord
     size_t retain_count;
     size_t release_count;
     SlStatusCode dispatch_return;
+    bool terminal;
+    size_t late_count;
 } AsyncBackendRecord;
 
 typedef struct AsyncPayload
@@ -82,6 +84,24 @@ static void cleanup_completion(const SlAsyncCompletion* completion, void* user)
     }
 }
 
+static bool completion_scope_is_terminal(const SlAsyncCompletion* completion, void* user)
+{
+    AsyncBackendRecord* record = (AsyncBackendRecord*)user;
+
+    (void)completion;
+    return record != NULL && record->terminal;
+}
+
+static void record_late_completion(const SlAsyncCompletion* completion, void* user)
+{
+    AsyncBackendRecord* record = (AsyncBackendRecord*)user;
+
+    (void)completion;
+    if (record != NULL) {
+        record->late_count += 1U;
+    }
+}
+
 static SlAsyncCompletion make_completion(AsyncBackendRecord* record, AsyncPayload* payload,
                                          int value)
 {
@@ -108,7 +128,7 @@ static int test_create_post_drain_and_cleanup(void)
     SlArena arena;
     SlAsyncCompletion storage[3];
     SlAsyncLoop* loop = NULL;
-    AsyncBackendRecord record = {{0}, {SL_STATUS_OK}, 0U, 0U, 0U, 0U, SL_STATUS_OK};
+    AsyncBackendRecord record = {.statuses = {SL_STATUS_OK}, .dispatch_return = SL_STATUS_OK};
     AsyncPayload first;
     AsyncPayload second;
     SlAsyncCompletion first_completion;
@@ -170,7 +190,7 @@ static int test_capacity_overflow_does_not_take_ownership(void)
     SlArena arena;
     SlAsyncCompletion storage[1];
     SlAsyncLoop* loop = NULL;
-    AsyncBackendRecord record = {{0}, {SL_STATUS_OK}, 0U, 0U, 0U, 0U, SL_STATUS_OK};
+    AsyncBackendRecord record = {.statuses = {SL_STATUS_OK}, .dispatch_return = SL_STATUS_OK};
     AsyncPayload first;
     AsyncPayload overflow;
     SlAsyncCompletion first_completion;
@@ -208,7 +228,7 @@ static int test_dispatch_failure_still_cleans_once(void)
     SlArena arena;
     SlAsyncCompletion storage[1];
     SlAsyncLoop* loop = NULL;
-    AsyncBackendRecord record = {{0}, {SL_STATUS_OK}, 0U, 0U, 0U, 0U, SL_STATUS_INTERNAL};
+    AsyncBackendRecord record = {.statuses = {SL_STATUS_OK}, .dispatch_return = SL_STATUS_INTERNAL};
     AsyncPayload payload;
     SlAsyncCompletion completion;
     size_t ran = 0U;
@@ -238,13 +258,55 @@ static int test_dispatch_failure_still_cleans_once(void)
     return 0;
 }
 
+static int test_terminal_completion_is_cleanup_only(void)
+{
+    unsigned char arena_storage[2048];
+    SlArena arena;
+    SlAsyncCompletion storage[1];
+    SlAsyncLoop* loop = NULL;
+    AsyncBackendRecord record = {
+        .statuses = {SL_STATUS_OK}, .dispatch_return = SL_STATUS_OK, .terminal = true};
+    AsyncPayload payload;
+    SlAsyncCompletion completion;
+    size_t ran = 0U;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, storage, 1U, &loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 50;
+    }
+
+    completion = make_completion(&record, &payload, 99);
+    completion.terminal_check = completion_scope_is_terminal;
+    completion.terminal_check_user = &record;
+    completion.late = record_late_completion;
+    completion.late_user = &record;
+
+    if (expect_status(sl_async_loop_post(loop, &completion), SL_STATUS_OK) != 0 ||
+        expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+        record.count != 0U || record.late_count != 1U || record.cleanup_count != 1U ||
+        record.release_count != 1U || sl_async_loop_pending_count(loop) != 0U)
+    {
+        return 51;
+    }
+
+    sl_async_loop_dispose(loop);
+    if (record.cleanup_count != 1U || record.release_count != 1U || record.late_count != 1U) {
+        return 52;
+    }
+
+    return 0;
+}
+
 static int test_invalid_arguments(void)
 {
     unsigned char arena_storage[512];
     SlArena arena;
     SlAsyncCompletion storage[1];
     SlAsyncLoop* loop = NULL;
-    AsyncBackendRecord record = {{0}, {SL_STATUS_OK}, 0U, 0U, 0U, 0U, SL_STATUS_OK};
+    AsyncBackendRecord record = {.statuses = {SL_STATUS_OK}, .dispatch_return = SL_STATUS_OK};
     AsyncPayload payload;
     SlAsyncCompletion completion;
 
@@ -290,6 +352,11 @@ int main(void)
     }
 
     result = test_dispatch_failure_still_cleans_once();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_terminal_completion_is_cleanup_only();
     if (result != 0) {
         return result;
     }

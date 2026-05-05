@@ -285,6 +285,11 @@ Runtime execution:
   lane: only the V8 owner thread may enter V8, non-owner domains require copied/owned
   cross-thread data, and provider/offload domains must dispatch JavaScript continuation
   back to the owner thread;
+- `core.async.backend` must prove the ENGINE-26.C/D generic terminal-completion guard:
+  terminal completions skip dispatch, record late cleanup if configured, and still run
+  cleanup plus scope release exactly once in the default lane;
+- `core.cancellation.token` must prove that native cancellation reasons map to stable
+  diagnostic categories through `sl_cancellation_diag_code`;
 - route-aware diagnostics.
 
 Plan schema fixtures:

@@ -42,6 +42,8 @@ typedef enum SlAsyncOperationKind
 typedef SlStatus (*SlAsyncCompletionDispatchFn)(SlAsyncLoop* loop,
                                                 const SlAsyncCompletion* completion, void* user);
 typedef void (*SlAsyncCompletionCleanupFn)(const SlAsyncCompletion* completion, void* user);
+typedef bool (*SlAsyncCompletionTerminalCheckFn)(const SlAsyncCompletion* completion, void* user);
+typedef void (*SlAsyncCompletionLateFn)(const SlAsyncCompletion* completion, void* user);
 typedef SlStatus (*SlAsyncScopeRetainFn)(void* scope, void* user);
 typedef void (*SlAsyncScopeReleaseFn)(void* scope, void* user);
 
@@ -61,9 +63,13 @@ struct SlAsyncCompletion
     const SlDiag* diag;
     void* payload;
     void* operation;
+    SlAsyncCompletionTerminalCheckFn terminal_check;
+    void* terminal_check_user;
     SlAsyncScopeRef scope;
     SlAsyncCompletionDispatchFn dispatch;
     void* dispatch_user;
+    SlAsyncCompletionLateFn late;
+    void* late_user;
     SlAsyncCompletionCleanupFn cleanup;
     void* cleanup_user;
 };
@@ -84,8 +90,10 @@ SlStatus sl_async_loop_create(SlAsyncBackendKind kind, SlArena* arena, SlAsyncCo
  * Disposes a loop and discards pending completions.
  *
  * Pending owned completions run their cleanup callback and scope release exactly once.
- * Full cancellation, deadline, backpressure, and shutdown drain policy is deliberately
- * deferred to ENGINE-12.C.
+ * If a completion carries `terminal_check` and that check reports terminal during
+ * owner-thread drain, dispatch is skipped, the optional late-completion hook runs, and
+ * cleanup/scope release still run exactly once. This lets request/app/resource owners make
+ * late completions cleanup-only without letting the async queue touch closed state.
  */
 void sl_async_loop_dispose(SlAsyncLoop* loop);
 

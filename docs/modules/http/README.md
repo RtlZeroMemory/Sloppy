@@ -148,6 +148,10 @@ Implemented now:
   V8; shutdown stops accepting and closes active transport connections using the backend
   shutdown token path when a request lifecycle exists. The policy is immediate-cancel/
   drain-lite, not production graceful drain.
+- ENGINE-26.C/D async completion terminal guard: HTTP/request owners can attach a terminal
+  predicate to queued native completions so completions arriving after timeout, shutdown,
+  disconnect, or request close skip dispatch and execute only late-hook/cleanup behavior.
+  This does not add HTTP-26 route policy or production graceful drain semantics.
 - ENGINE-13.F stress/conformance smoke evidence: bounded repeated valid requests, repeated
   malformed requests, repeated parser-limit failures, repeated body/media policy failures,
   overload rejection without queue growth, shutdown rejection/cancellation cleanup, and

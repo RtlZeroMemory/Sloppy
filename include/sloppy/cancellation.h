@@ -1,6 +1,7 @@
 #ifndef SLOPPY_CANCELLATION_H
 #define SLOPPY_CANCELLATION_H
 
+#include "sloppy/diagnostics.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -41,6 +42,7 @@ bool sl_cancellation_token_is_cancelled(const SlCancellationToken* token);
 SlCancellationReason sl_cancellation_token_reason(const SlCancellationToken* token);
 SlStr sl_cancellation_reason_name(SlCancellationReason reason);
 SlStatusCode sl_cancellation_status_code(SlCancellationReason reason);
+SlDiagCode sl_cancellation_diag_code(SlCancellationReason reason);
 
 #ifdef __cplusplus
 }

@@ -88,3 +88,20 @@ SlStatusCode sl_cancellation_status_code(SlCancellationReason reason)
         return SL_STATUS_INVALID_ARGUMENT;
     }
 }
+
+SlDiagCode sl_cancellation_diag_code(SlCancellationReason reason)
+{
+    switch (reason) {
+    case SL_CANCELLATION_REASON_DEADLINE_EXCEEDED:
+        return SL_DIAG_ENGINE_PROMISE_PENDING;
+    case SL_CANCELLATION_REASON_BACKPRESSURE:
+        return SL_DIAG_ENGINE_BACKPRESSURE;
+    case SL_CANCELLATION_REASON_SHUTDOWN:
+        return SL_DIAG_APP_LIFECYCLE;
+    case SL_CANCELLATION_REASON_CANCELLED:
+        return SL_DIAG_ENGINE_CANCELLED;
+    case SL_CANCELLATION_REASON_NONE:
+    default:
+        return SL_DIAG_NONE;
+    }
+}

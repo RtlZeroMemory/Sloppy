@@ -156,6 +156,9 @@ Framework and provider bridge code belongs in sibling V8 modules:
   cleanup callback, and native provider calls.
 - `async_scheduler.cc` owns owner-thread native continuation scheduling and Promise
   settlement from native completions.
+- Native provider, HTTP, timer, or other future completions must pass any terminal-state
+  guard before reaching `async_scheduler.cc`; provider/libuv/offload domains still never
+  enter V8 directly.
 
 Future framework-specific V8 bridge code must add a dedicated sibling module, not expand
 `engine_v8.cc`.
