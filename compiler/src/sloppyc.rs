@@ -1387,6 +1387,9 @@ fn extract_import(
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
             }
+        } else {
+            state.unsupported_import_specifier =
+                Some((import_source.to_string(), import.source.span));
         }
         return Ok(());
     }
@@ -7573,6 +7576,22 @@ export default app;
             value["strongPlan"]["evidence"]["filesystem"],
             serde_json::json!(true)
         );
+    }
+
+    #[test]
+    fn side_effect_sloppy_fs_import_is_rejected() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import "sloppy/fs";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("side-effect sloppy/fs import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER");
+        assert!(diagnostic
+            .message
+            .contains("unsupported import specifier \"sloppy/fs\""));
     }
 
     #[test]
