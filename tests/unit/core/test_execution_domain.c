@@ -12,6 +12,13 @@ static int expect_str(SlStr actual, SlStr expected)
     return expect_true(sl_str_equal(actual, expected));
 }
 
+static SlExecutionDomain unsupported_domain_for_test(void)
+{
+    /* Intentionally exercises lookup behavior for future/invalid enum values. */
+    /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) */
+    return (SlExecutionDomain)999;
+}
+
 static int test_domain_names_are_stable(void)
 {
     if (expect_str(sl_execution_domain_name(SL_EXECUTION_DOMAIN_V8_OWNER_THREAD),
@@ -28,7 +35,9 @@ static int test_domain_names_are_stable(void)
                    sl_str_from_cstr("blocking-offload-worker")) != 0 ||
         expect_str(sl_execution_domain_name(SL_EXECUTION_DOMAIN_APP_REQUEST_LIFECYCLE),
                    sl_str_from_cstr("app-request-lifecycle")) != 0 ||
-        expect_str(sl_execution_domain_name(SL_EXECUTION_DOMAIN_NONE),
+        expect_str(sl_execution_domain_name(SL_EXECUTION_DOMAIN_NONE), sl_str_from_cstr("none")) !=
+            0 ||
+        expect_str(sl_execution_domain_name(unsupported_domain_for_test()),
                    sl_str_from_cstr("unknown")) != 0)
     {
         return 1;
@@ -111,13 +120,6 @@ static int test_blocking_and_js_dispatch_policy(void)
     }
 
     return 0;
-}
-
-static SlExecutionDomain unsupported_domain_for_test(void)
-{
-    /* Intentionally exercises lookup behavior for future/invalid enum values. */
-    /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) */
-    return (SlExecutionDomain)999;
 }
 
 static int test_supported_domain_classification(void)

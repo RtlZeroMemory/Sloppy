@@ -30,6 +30,10 @@ static const SlExecutionDomainPolicy SL_EXECUTION_DOMAIN_POLICIES[] = {
      SL_EXECUTION_DOMAIN_APP_REQUEST_LIFECYCLE, false, false, false, false},
 };
 
+_Static_assert(sizeof(SL_EXECUTION_DOMAIN_POLICIES) / sizeof(SL_EXECUTION_DOMAIN_POLICIES[0]) ==
+                   (size_t)SL_EXECUTION_DOMAIN_APP_REQUEST_LIFECYCLE,
+               "Update SL_EXECUTION_DOMAIN_POLICIES when SlExecutionDomain changes");
+
 static const SlExecutionDomainPolicy* sl_execution_domain_policy_find(SlExecutionDomain domain)
 {
     size_t index = 0U;
@@ -48,6 +52,10 @@ static const SlExecutionDomainPolicy* sl_execution_domain_policy_find(SlExecutio
 
 SlStr sl_execution_domain_name(SlExecutionDomain domain)
 {
+    if (domain == SL_EXECUTION_DOMAIN_NONE) {
+        return sl_str_from_cstr("none");
+    }
+
     const SlExecutionDomainPolicy* policy = sl_execution_domain_policy_find(domain);
 
     if (policy == NULL) {
