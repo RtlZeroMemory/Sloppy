@@ -680,7 +680,7 @@ static int test_app_lifecycle_rejects_double_start(void)
 
     if (expect_status(sl_app_lifecycle_start(&lifecycle, storage, 1U, &diag),
                       SL_STATUS_INVALID_STATE) != 0 ||
-        diag.code != SL_DIAG_APP_LIFECYCLE ||
+        diag.code != SL_DIAG_LIFECYCLE_ALREADY_STARTED ||
         !sl_str_equal(diag.message, sl_str_from_cstr("app lifecycle is already started")))
     {
         return 87;
@@ -808,10 +808,22 @@ static int test_forced_shutdown_closes_app_scope_with_active_request(void)
     {
         return 100;
     }
+    if (expect_status(sl_app_lifecycle_assert_no_leaks(&lifecycle, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_LIFECYCLE_LEAK_DETECTED ||
+        sl_app_lifecycle_snapshot(&lifecycle).active_request_scopes != 1U)
+    {
+        return 102;
+    }
     if (expect_status(sl_app_request_scope_close(&request_scope, &diag), SL_STATUS_OK) != 0 ||
         record.count != 1U)
     {
         return 101;
+    }
+    if (expect_status(sl_app_lifecycle_assert_no_leaks(&lifecycle, &diag), SL_STATUS_OK) != 0 ||
+        sl_app_lifecycle_snapshot(&lifecycle).active_request_scopes != 0U)
+    {
+        return 103;
     }
 
     return 0;
@@ -901,7 +913,7 @@ static int test_request_scope_close_requires_terminal_outcome(void)
     }
     if (expect_status(sl_app_request_scope_close(&request_scope, &diag), SL_STATUS_INVALID_STATE) !=
             0 ||
-        diag.code != SL_DIAG_APP_LIFECYCLE ||
+        diag.code != SL_DIAG_LIFECYCLE_REQUEST_SCOPE_CLOSED ||
         !sl_str_equal(diag.message,
                       sl_str_from_cstr("request scope terminal outcome was not recorded")))
     {
@@ -1023,10 +1035,12 @@ static int run_request_terminal_outcome_case(SlAppRequestOutcome outcome, SlStat
                                                     SL_APP_REQUEST_OUTCOME_PROVIDER_LATE_COMPLETION,
                                                     sl_status_ok(), SL_DIAG_NONE, &diag),
                       SL_STATUS_STALE_RESOURCE) != 0 ||
-        record.count != 1U || diag.code != SL_DIAG_APP_LIFECYCLE ||
+        record.count != 1U || diag.code != SL_DIAG_LIFECYCLE_LATE_COMPLETION_DROPPED ||
         sl_status_code(sl_app_request_scope_terminal_status(&request_scope)) != status_code ||
         sl_app_request_scope_terminal_diag_code(&request_scope) != diag_code ||
         sl_app_request_scope_terminal_reason(&request_scope) != expected_reason ||
+        sl_app_request_scope_snapshot(&request_scope).late_completion_count != 1U ||
+        sl_app_lifecycle_snapshot(&lifecycle).late_completion_count != 1U ||
         !sl_str_equal(diag.message, sl_str_from_cstr("request provider late completion dropped")))
     {
         return 3;
@@ -1140,6 +1154,107 @@ static int test_typed_resource_cleanup_preserves_wrong_kind_resource(void)
     return 0;
 }
 
+static int test_lifecycle_leak_hooks_snapshot_zero_after_cleanup(void)
+{
+    SlScopeCleanup app_storage[2];
+    SlScopeCleanup request_storage[2];
+    SlAppLifecycle lifecycle = {0};
+    SlAppRequestScope request_scope = {0};
+    CleanupRecord record = {{0}, 0U};
+    int app_cleanup_value = 70;
+    int request_cleanup_value = 71;
+    SlDiag diag = {0};
+    SlAppLifecycleSnapshot app_snapshot = {0};
+    SlAppRequestScopeSnapshot request_snapshot = {0};
+
+    if (expect_status(sl_app_lifecycle_assert_no_leaks(NULL, &diag), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        diag.code != SL_DIAG_INVALID_ARGUMENT ||
+        expect_status(sl_app_request_scope_assert_no_leaks(NULL, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_INVALID_ARGUMENT)
+    {
+        return 129;
+    }
+
+    if (expect_status(sl_app_lifecycle_start_with_id(&lifecycle, app_storage, 2U, 700U, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_app_lifecycle_add_cleanup(&lifecycle, record_cleanup, &app_cleanup_value,
+                                                   &record, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_app_request_scope_init_for_app(&request_scope, &lifecycle, 701U,
+                                                        request_storage, 2U, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_app_request_scope_add_cleanup(&request_scope, record_cleanup,
+                                                       &request_cleanup_value, &record),
+                      SL_STATUS_OK) != 0)
+    {
+        return 130;
+    }
+
+    app_snapshot = sl_app_lifecycle_snapshot(&lifecycle);
+    request_snapshot = sl_app_request_scope_snapshot(&request_scope);
+    if (app_snapshot.app_id != 700U || app_snapshot.active_app_scopes != 1U ||
+        app_snapshot.active_request_scopes != 1U || app_snapshot.app_cleanup_count != 1U ||
+        request_snapshot.app_id != 700U || request_snapshot.request_id != 701U ||
+        !request_snapshot.active || request_snapshot.request_cleanup_count != 1U)
+    {
+        return 131;
+    }
+    if (expect_status(sl_app_request_scope_assert_no_leaks(&request_scope, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_LIFECYCLE_LEAK_DETECTED)
+    {
+        return 132;
+    }
+
+    if (expect_status(sl_app_request_scope_complete(&request_scope,
+                                                    SL_APP_REQUEST_OUTCOME_VALIDATION_FAILURE,
+                                                    sl_status_from_code(SL_STATUS_INVALID_ARGUMENT),
+                                                    SL_DIAG_INVALID_ARGUMENT, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 133;
+    }
+
+    request_snapshot = sl_app_request_scope_snapshot(&request_scope);
+    app_snapshot = sl_app_lifecycle_snapshot(&lifecycle);
+    if (request_snapshot.active || !request_snapshot.terminal ||
+        request_snapshot.request_cleanup_count != 0U ||
+        request_snapshot.leaked_resource_count != 0U || app_snapshot.active_request_scopes != 0U ||
+        record.count != 1U || record.order[0] != 71)
+    {
+        return 134;
+    }
+    if (expect_status(sl_app_request_scope_assert_no_leaks(&request_scope, &diag), SL_STATUS_OK) !=
+        0)
+    {
+        return 135;
+    }
+    if (expect_status(sl_app_lifecycle_assert_no_leaks(&lifecycle, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_LIFECYCLE_LEAK_DETECTED)
+    {
+        return 136;
+    }
+
+    if (expect_status(sl_app_lifecycle_shutdown(&lifecycle, &diag), SL_STATUS_OK) != 0) {
+        return 137;
+    }
+
+    app_snapshot = sl_app_lifecycle_snapshot(&lifecycle);
+    if (app_snapshot.active_app_scopes != 0U || app_snapshot.app_cleanup_count != 0U ||
+        app_snapshot.leaked_resource_count != 0U || record.count != 2U || record.order[1] != 70)
+    {
+        return 138;
+    }
+    if (expect_status(sl_app_lifecycle_assert_no_leaks(&lifecycle, &diag), SL_STATUS_OK) != 0) {
+        return 139;
+    }
+
+    return 0;
+}
+
 static int test_app_lifecycle_diagnostic_json_is_stable(void)
 {
     unsigned char json_storage[1024];
@@ -1159,7 +1274,8 @@ static int test_app_lifecycle_diagnostic_json_is_stable(void)
     }
 
     status = sl_app_lifecycle_add_cleanup(&lifecycle, record_cleanup, &cleanup_value, NULL, &diag);
-    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 || diag.code != SL_DIAG_APP_LIFECYCLE ||
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_LIFECYCLE_NOT_STARTED ||
         !sl_str_equal(diag.message, sl_str_from_cstr("app lifecycle is not active")))
     {
         return 81;
@@ -1169,7 +1285,7 @@ static int test_app_lifecycle_diagnostic_json_is_stable(void)
     if (expect_status(render_status, SL_STATUS_OK) != 0) {
         return 82;
     }
-    if (expect_str_equal(json, sl_str_from_cstr("{\"code\":\"SLOPPY_E_APP_LIFECYCLE\","
+    if (expect_str_equal(json, sl_str_from_cstr("{\"code\":\"SLOPPY_E_LIFECYCLE_NOT_STARTED\","
                                                 "\"severity\":\"error\","
                                                 "\"message\":\"app lifecycle is not active\","
                                                 "\"hints\":[\"start the app lifecycle before "
@@ -1230,6 +1346,7 @@ int main(void)
         test_request_owned_resource_closes_before_app_resource,
         test_request_terminal_outcomes_cleanup_once,
         test_typed_resource_cleanup_preserves_wrong_kind_resource,
+        test_lifecycle_leak_hooks_snapshot_zero_after_cleanup,
         test_app_lifecycle_diagnostic_json_is_stable,
     };
 

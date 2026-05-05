@@ -33,8 +33,11 @@ typedef enum SlResourceKind
     SL_RESOURCE_KIND_SQLITE_STATEMENT = 2,
     SL_RESOURCE_KIND_POSTGRES_CONNECTION = 3,
     SL_RESOURCE_KIND_SQLSERVER_CONNECTION = 4,
-    SL_RESOURCE_KIND_TEST_RESOURCE = 5
+    SL_RESOURCE_KIND_TEST_RESOURCE = 5,
+    SL_RESOURCE_KIND_LIMIT = 6
 } SlResourceKind;
+
+#define SL_RESOURCE_KIND_COUNT ((size_t)SL_RESOURCE_KIND_LIMIT)
 
 typedef void (*SlResourceCleanupFn)(void* ptr, void* user);
 
@@ -54,6 +57,24 @@ typedef struct SlResourceTable
     size_t capacity;
     bool initialized;
 } SlResourceTable;
+
+/*
+ * Point-in-time test/debug snapshot of a resource table.
+ *
+ * A NULL or uninitialized table snapshots as zero values for non-asserting diagnostics.
+ * For initialized tables, `live_count` is the sum of `live_by_kind[]`, slot zero
+ * (`SL_RESOURCE_KIND_NONE`) is always zero, and each other slot is indexed by the
+ * matching `SlResourceKind` value. Counts are current observations, not peaks, and are
+ * not atomic.
+ */
+typedef struct SlResourceTableSnapshot
+{
+    size_t capacity;
+    size_t live_count;
+    size_t closed_count;
+    size_t leaked_resource_count;
+    size_t live_by_kind[SL_RESOURCE_KIND_COUNT];
+} SlResourceTableSnapshot;
 
 SlResourceId sl_resource_id_invalid(void);
 bool sl_resource_id_is_valid(SlResourceId id);
@@ -120,6 +141,22 @@ bool sl_resource_table_contains(const SlResourceTable* table, SlResourceId id,
 bool sl_resource_table_is_alive(const SlResourceTable* table, SlResourceId id);
 size_t sl_resource_table_capacity(const SlResourceTable* table);
 size_t sl_resource_table_live_count(const SlResourceTable* table);
+
+/*
+ * Returns the current table counters for test/debug assertions.
+ *
+ * This helper is non-failing and deterministic for invalid inputs; use
+ * `sl_resource_table_assert_no_leaks` when invalid tables must fail the check.
+ */
+SlResourceTableSnapshot sl_resource_table_snapshot(const SlResourceTable* table);
+
+/*
+ * Fails unless the table is valid and has no live resources.
+ *
+ * Invalid tables never pass as empty. On failure, `out_diag` receives a stable diagnostic
+ * when provided; diagnostics expose only resource IDs/kinds, never native pointers.
+ */
+SlStatus sl_resource_table_assert_no_leaks(const SlResourceTable* table, SlDiag* out_diag);
 
 /*
  * Closes all remaining live entries in ascending slot order and clears the table.

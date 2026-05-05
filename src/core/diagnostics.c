@@ -174,6 +174,63 @@ static bool sl_diag_is_http_code(SlDiagCode code)
     }
 }
 
+static SlStr sl_diag_lifecycle_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_LIFECYCLE_START_FAILED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_START_FAILED",
+                               sizeof("SLOPPY_E_LIFECYCLE_START_FAILED") - 1U);
+    case SL_DIAG_LIFECYCLE_ALREADY_STARTED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_ALREADY_STARTED",
+                               sizeof("SLOPPY_E_LIFECYCLE_ALREADY_STARTED") - 1U);
+    case SL_DIAG_LIFECYCLE_NOT_STARTED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_NOT_STARTED",
+                               sizeof("SLOPPY_E_LIFECYCLE_NOT_STARTED") - 1U);
+    case SL_DIAG_LIFECYCLE_SHUTDOWN_STARTED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_SHUTDOWN_STARTED",
+                               sizeof("SLOPPY_E_LIFECYCLE_SHUTDOWN_STARTED") - 1U);
+    case SL_DIAG_LIFECYCLE_SHUTDOWN_FORCED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_SHUTDOWN_FORCED",
+                               sizeof("SLOPPY_E_LIFECYCLE_SHUTDOWN_FORCED") - 1U);
+    case SL_DIAG_LIFECYCLE_REQUEST_SCOPE_CLOSED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_REQUEST_SCOPE_CLOSED",
+                               sizeof("SLOPPY_E_LIFECYCLE_REQUEST_SCOPE_CLOSED") - 1U);
+    case SL_DIAG_LIFECYCLE_LATE_COMPLETION_DROPPED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_LATE_COMPLETION_DROPPED",
+                               sizeof("SLOPPY_E_LIFECYCLE_LATE_COMPLETION_DROPPED") - 1U);
+    case SL_DIAG_LIFECYCLE_CLEANUP_FAILED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_CLEANUP_FAILED",
+                               sizeof("SLOPPY_E_LIFECYCLE_CLEANUP_FAILED") - 1U);
+    case SL_DIAG_LIFECYCLE_LEAK_DETECTED:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_LEAK_DETECTED",
+                               sizeof("SLOPPY_E_LIFECYCLE_LEAK_DETECTED") - 1U);
+    case SL_DIAG_LIFECYCLE_IDENTITY_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_LIFECYCLE_IDENTITY_UNAVAILABLE",
+                               sizeof("SLOPPY_E_LIFECYCLE_IDENTITY_UNAVAILABLE") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static bool sl_diag_is_lifecycle_code(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_LIFECYCLE_START_FAILED:
+    case SL_DIAG_LIFECYCLE_ALREADY_STARTED:
+    case SL_DIAG_LIFECYCLE_NOT_STARTED:
+    case SL_DIAG_LIFECYCLE_SHUTDOWN_STARTED:
+    case SL_DIAG_LIFECYCLE_SHUTDOWN_FORCED:
+    case SL_DIAG_LIFECYCLE_REQUEST_SCOPE_CLOSED:
+    case SL_DIAG_LIFECYCLE_LATE_COMPLETION_DROPPED:
+    case SL_DIAG_LIFECYCLE_CLEANUP_FAILED:
+    case SL_DIAG_LIFECYCLE_LEAK_DETECTED:
+    case SL_DIAG_LIFECYCLE_IDENTITY_UNAVAILABLE:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool sl_diag_str_is_valid(SlStr str)
 {
     return str.length == 0U || str.ptr != NULL;
@@ -564,6 +621,9 @@ SlStr sl_diag_code_name(SlDiagCode code)
 {
     if (sl_diag_is_http_code(code)) {
         return sl_diag_http_code_name(code);
+    }
+    if (sl_diag_is_lifecycle_code(code)) {
+        return sl_diag_lifecycle_code_name(code);
     }
 
     switch (code) {

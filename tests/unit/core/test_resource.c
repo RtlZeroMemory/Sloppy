@@ -458,6 +458,75 @@ static int test_exhaustion_cleanup_and_dispose(void)
     return 0;
 }
 
+static int test_snapshot_and_leak_assertion(void)
+{
+    SlResourceTable uninitialized = {0};
+    SlResourceEntry storage[3];
+    SlResourceTable table = {0};
+    CleanupRecord record = {{0}, {0}, 0U};
+    CleanupPayload first_payload = {&record, 1};
+    CleanupPayload second_payload = {&record, 2};
+    SlResourceId first = sl_resource_id_invalid();
+    SlResourceId second = sl_resource_id_invalid();
+    SlResourceTableSnapshot snapshot = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_resource_table_assert_no_leaks(NULL, &diag), SL_STATUS_INVALID_ARGUMENT) !=
+            0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID ||
+        expect_status(sl_resource_table_assert_no_leaks(&uninitialized, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_RESOURCE_INVALID_ID)
+    {
+        return 48;
+    }
+
+    if (expect_status(sl_resource_table_init(&table, storage, 3U), SL_STATUS_OK) != 0 ||
+        expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_TEST_RESOURCE,
+                                               &first_payload, record_cleanup, NULL, &first, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_resource_table_insert(&table, SL_RESOURCE_KIND_SQLITE_CONNECTION,
+                                               &second_payload, record_cleanup, NULL, &second,
+                                               NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 49;
+    }
+
+    snapshot = sl_resource_table_snapshot(&table);
+    if (snapshot.capacity != 3U || snapshot.live_count != 2U ||
+        snapshot.leaked_resource_count != 2U ||
+        snapshot.live_by_kind[SL_RESOURCE_KIND_TEST_RESOURCE] != 1U ||
+        snapshot.live_by_kind[SL_RESOURCE_KIND_SQLITE_CONNECTION] != 1U)
+    {
+        return 50;
+    }
+    if (expect_status(sl_resource_table_assert_no_leaks(&table, &diag), SL_STATUS_INVALID_STATE) !=
+            0 ||
+        diag.code != SL_DIAG_LIFECYCLE_LEAK_DETECTED)
+    {
+        return 51;
+    }
+
+    if (expect_status(sl_resource_table_close(&table, first, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_resource_table_close(&table, second, &diag), SL_STATUS_OK) != 0)
+    {
+        return 52;
+    }
+
+    snapshot = sl_resource_table_snapshot(&table);
+    if (snapshot.live_count != 0U || snapshot.closed_count != 2U ||
+        snapshot.leaked_resource_count != 0U || record.count != 2U)
+    {
+        return 53;
+    }
+    if (expect_status(sl_resource_table_assert_no_leaks(&table, &diag), SL_STATUS_OK) != 0) {
+        return 54;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = 0;
@@ -487,5 +556,10 @@ int main(void)
         return result;
     }
 
-    return test_exhaustion_cleanup_and_dispose();
+    result = test_exhaustion_cleanup_and_dispose();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_snapshot_and_leak_assertion();
 }

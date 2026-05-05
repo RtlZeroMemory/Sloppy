@@ -453,6 +453,13 @@ response write failure, provider failure, provider pre-start cancellation, shutd
 backpressure. Late completions after any terminal outcome are rejected as stale lifecycle
 work and are cleanup-only; they must not re-enter V8, settle a second result, or touch
 closed request/app state.
+ENGINE-16.D/E adds native test/debug snapshots for those invariants. Request snapshots
+show terminal status, request/app identity, cleanup counts, active state, and late
+completion counts; app snapshots show active request count and app cleanup count; resource
+table snapshots show live resources by kind. Timer, callback, and provider-operation
+counters are intentionally zero until those runtime owners adopt the hook. Forced shutdown
+tracks still-live request scopes for leak assertions until those scopes close, even though
+the lifecycle has stopped admitting or draining operational work.
 
 ## Native Async Operations
 

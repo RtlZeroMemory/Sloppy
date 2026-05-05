@@ -27,7 +27,7 @@ static SlStr sl_resource_literal(const char* ptr, size_t length)
 
 static bool sl_resource_kind_is_valid(SlResourceKind kind)
 {
-    return kind != SL_RESOURCE_KIND_NONE;
+    return kind != SL_RESOURCE_KIND_NONE && kind < SL_RESOURCE_KIND_LIMIT;
 }
 
 static bool sl_resource_capacity_is_valid(size_t capacity)
@@ -475,6 +475,67 @@ size_t sl_resource_table_live_count(const SlResourceTable* table)
     }
 
     return count;
+}
+
+SlResourceTableSnapshot sl_resource_table_snapshot(const SlResourceTable* table)
+{
+    SlResourceTableSnapshot snapshot = {0};
+    size_t index = 0U;
+
+    if (table == NULL || table->entries == NULL) {
+        return snapshot;
+    }
+
+    snapshot.capacity = table->capacity;
+    for (index = 0U; index < table->capacity; index += 1U) {
+        const SlResourceEntry* entry = &table->entries[index];
+
+        if (entry->occupied && entry->ptr != NULL) {
+            snapshot.live_count += 1U;
+            if ((size_t)entry->kind < SL_RESOURCE_KIND_COUNT) {
+                snapshot.live_by_kind[(size_t)entry->kind] += 1U;
+            }
+        }
+        else if (entry->generation > 1U) {
+            snapshot.closed_count += 1U;
+        }
+    }
+    snapshot.leaked_resource_count = snapshot.live_count;
+    return snapshot;
+}
+
+SlStatus sl_resource_table_assert_no_leaks(const SlResourceTable* table, SlDiag* out_diag)
+{
+    SlStatus table_status = sl_resource_validate_table(table);
+    SlResourceTableSnapshot snapshot = {0};
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (!sl_status_is_ok(table_status)) {
+        sl_resource_diag(out_diag, SL_DIAG_RESOURCE_INVALID_ID,
+                         sl_resource_literal("resource table is not initialized",
+                                             sizeof("resource table is not initialized") - 1U),
+                         sl_resource_id_invalid(), SL_RESOURCE_KIND_NONE, SL_RESOURCE_KIND_NONE,
+                         sl_resource_literal("leak check", sizeof("leak check") - 1U));
+        return table_status;
+    }
+    snapshot = sl_resource_table_snapshot(table);
+    if (snapshot.live_count == 0U) {
+        return sl_status_ok();
+    }
+    if (out_diag != NULL) {
+        out_diag->severity = SL_DIAG_SEVERITY_ERROR;
+        out_diag->code = SL_DIAG_LIFECYCLE_LEAK_DETECTED;
+        out_diag->message = sl_resource_literal("resource table has live resources",
+                                                sizeof("resource table has live resources") - 1U);
+        out_diag->hints[0] = sl_resource_literal("close or transfer resources before leak check",
+                                                 sizeof("close or transfer resources before leak "
+                                                        "check") -
+                                                     1U);
+        out_diag->hint_count = 1U;
+    }
+    return sl_status_from_code(SL_STATUS_INVALID_STATE);
 }
 
 void sl_resource_table_dispose(SlResourceTable* table)

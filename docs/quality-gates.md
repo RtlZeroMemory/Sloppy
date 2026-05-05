@@ -96,6 +96,13 @@ provider binding, bootstrap JS tests cover typed access and `bind`, source-input
 coverage verifies config-driven SQLite Plan output in the non-V8 lane, and docs/goldens
 must show configuration metadata without claiming reload, secrets, custom providers,
 Node/npm compatibility, or public alpha readiness.
+ENGINE-16.D/E lifecycle evidence is default non-V8 unit evidence. Passing
+`core.app_host.hardening`, `core.resource.lifecycle`, and `core.diagnostics.foundation`
+proves deterministic lifecycle snapshots, resource-table snapshots, no-leak assertions,
+late-completion counts, synthetic leak diagnostics, and stable lifecycle code names for the
+native helper layer. It does not prove production monitoring, real timer/provider operation
+counters, V8 execution, live providers, runtime torture, benchmark/performance behavior, or
+public alpha readiness.
 
 ## Future Phase
 

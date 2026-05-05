@@ -160,8 +160,15 @@ requires a pre-recorded terminal outcome, except for the forced-shutdown cleanup
 the app lifecycle supplies a shutdown terminal reason. Typed resource cleanup can
 require an expected `SlResourceKind` through `SlAppTypedResourceCleanup`; wrong-kind
 cleanup preserves the live resource and its ID instead of closing an unexpected handle.
-`SlAppLifecycle` applies the same cleanup model to app-scoped resources and makes shutdown
-idempotent. No raw native pointer is exposed to JavaScript.
+ENGINE-16.D/E adds native test/debug snapshots for app lifecycles, request scopes, and
+resource tables. The snapshots expose active app/request counts, cleanup counts,
+late-completion counts, resource counts by kind, and deterministic no-leak assertions for
+unit and conformance tests. Timer/callback/provider-operation snapshot fields are reserved
+as zero until those owners integrate with the app-host counters; they are not production
+monitoring APIs. Force shutdown keeps a leak-hook-only count of still-live request scopes
+until those scopes close, so no-leak assertions cannot pass while a forced request scope is
+still active. `SlAppLifecycle` applies the same cleanup model to app-scoped resources and
+makes shutdown idempotent. No raw native pointer is exposed to JavaScript.
 
 Real service lifetimes, service disposal, async scope retention, and capability enforcement
 must be explicit and plan-visible before public app-host services can claim runtime
@@ -185,11 +192,13 @@ module names, invalid module objects, missing module dependencies, module depend
 cycles, phase callback failures, and mutation after freeze. Native startup diagnostics now
 cover missing route handlers, duplicate routes, duplicate route names, invalid
 provider/capability metadata, duplicate provider service tokens, and startup validation
-failure summaries in `sloppy run`. `SLOPPY_E_APP_LIFECYCLE` covers native app lifecycle
-state errors such as registering cleanup before startup, double start, request-scope
-creation after shutdown starts, attempting to finish shutdown while requests are draining,
-late request completion after terminal cleanup, and cleanup failure summaries. It renders
-through the stable JSON diagnostic renderer.
+failure summaries in `sloppy run`. Lifecycle diagnostics now use stable specific code
+names for start failure, already-started state, not-started state, shutdown/drain state,
+forced-shutdown terminalization, closed request scopes, dropped late completions, cleanup
+failure, leak-hook failure, and missing identity. Resource lifecycle diagnostics remain
+under the resource code family for invalid, stale, wrong-kind, closed, and exhausted table
+failures. All render through the stable JSON diagnostic renderer and do not expose native
+pointers or OS handles.
 Native diagnostics for a real module graph, missing service
 activation, invalid lifetime dependencies, missing config providers, automatic request
 validation, provider driver/config failures, and cleanup callback failure details remain
@@ -204,8 +213,9 @@ forced shutdown, app/request identity propagation, request-scope access after cl
 app-scope versus request-scope resource ownership, terminal-outcome cleanup across
 success/error/cancel/timeout/disconnect/provider/write/shutdown/backpressure cases, stale
 late-completion rejection, typed resource cleanup wrong-kind preservation, app shutdown
-cleanup of app-scoped resource IDs, idempotent shutdown, and stable lifecycle diagnostic
-JSON. CTest registers
+cleanup of app-scoped resource IDs, idempotent shutdown, lifecycle/resource leak snapshots,
+no-leak assertions, synthetic leak detection, late-completion counts, and stable lifecycle
+diagnostic JSON. CTest registers
 `bootstrap.stdlib.assets` to verify the source bootstrap files and copied
 build-tree assets exist. CTest also registers `bootstrap.stdlib.api_shape` to statically
 check the implemented bootstrap API names, descriptor fields, route registration/group

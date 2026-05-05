@@ -75,7 +75,31 @@ typedef struct SlAppLifecycle
     SlAppLifecycleState state;
     uint64_t app_id;
     size_t active_request_scopes;
+    size_t forced_shutdown_request_scopes;
+    size_t late_completion_count;
 } SlAppLifecycle;
+
+/*
+ * Test/debug snapshot of current lifecycle state. Counts are point-in-time diagnostics,
+ * not atomic counters or peaks. Reserved operation counters remain zero until their
+ * runtime owners integrate with app-host lifetime tracking.
+ */
+typedef struct SlAppLifecycleSnapshot
+{
+    SlAppLifecycleState state;
+    uint64_t app_id;
+    /* One while the lifecycle itself is open; zero after stopped/failed cleanup. */
+    size_t active_app_scopes;
+    /* Includes normal draining requests and forced-shutdown request scopes not yet closed. */
+    size_t active_request_scopes;
+    size_t app_cleanup_count;
+    size_t cleanup_count;
+    size_t late_completion_count;
+    size_t leaked_resource_count;
+    size_t active_timer_count;
+    size_t active_callback_count;
+    size_t active_provider_operation_count;
+} SlAppLifecycleSnapshot;
 
 /*
  * Starts an app lifecycle over caller-owned cleanup storage.
@@ -107,6 +131,8 @@ bool sl_app_lifecycle_is_started(const SlAppLifecycle* lifecycle);
 bool sl_app_lifecycle_is_shutdown(const SlAppLifecycle* lifecycle);
 uint64_t sl_app_lifecycle_app_id(const SlAppLifecycle* lifecycle);
 size_t sl_app_lifecycle_active_request_count(const SlAppLifecycle* lifecycle);
+SlAppLifecycleSnapshot sl_app_lifecycle_snapshot(const SlAppLifecycle* lifecycle);
+SlStatus sl_app_lifecycle_assert_no_leaks(const SlAppLifecycle* lifecycle, SlDiag* out_diag);
 
 typedef struct SlAppRequestScope
 {
@@ -117,9 +143,30 @@ typedef struct SlAppRequestScope
     uint64_t app_id;
     uint64_t request_id;
     SlCancellationReason terminal_reason;
+    size_t late_completion_count;
     bool active;
     bool terminal;
 } SlAppRequestScope;
+
+/*
+ * Test/debug snapshot of one request scope. Counts are current request-local diagnostics;
+ * `active_request_scopes` mirrors the owning lifecycle when one exists.
+ */
+typedef struct SlAppRequestScopeSnapshot
+{
+    uint64_t app_id;
+    uint64_t request_id;
+    size_t active_request_scopes;
+    size_t request_cleanup_count;
+    size_t cleanup_count;
+    size_t late_completion_count;
+    size_t leaked_resource_count;
+    bool active;
+    bool terminal;
+    SlStatus terminal_status;
+    SlDiagCode terminal_diag_code;
+    SlCancellationReason terminal_reason;
+} SlAppRequestScopeSnapshot;
 
 typedef enum SlAppRequestOutcome
 {
@@ -159,7 +206,7 @@ SlStatus sl_app_request_scope_add_typed_resource_cleanup(SlAppRequestScope* requ
 SlStatus sl_app_request_scope_complete(SlAppRequestScope* request_scope,
                                        SlAppRequestOutcome outcome, SlStatus status,
                                        SlDiagCode diag_code, SlDiag* out_diag);
-SlStatus sl_app_request_scope_reject_late_completion(const SlAppRequestScope* request_scope,
+SlStatus sl_app_request_scope_reject_late_completion(SlAppRequestScope* request_scope,
                                                      SlAppRequestOutcome outcome, SlDiag* out_diag);
 /*
  * Closes an already-terminal request scope. Callers must record the terminal outcome with
@@ -173,6 +220,9 @@ SlDiagCode sl_app_request_scope_terminal_diag_code(const SlAppRequestScope* requ
 SlCancellationReason sl_app_request_scope_terminal_reason(const SlAppRequestScope* request_scope);
 uint64_t sl_app_request_scope_app_id(const SlAppRequestScope* request_scope);
 uint64_t sl_app_request_scope_request_id(const SlAppRequestScope* request_scope);
+SlAppRequestScopeSnapshot sl_app_request_scope_snapshot(const SlAppRequestScope* request_scope);
+SlStatus sl_app_request_scope_assert_no_leaks(const SlAppRequestScope* request_scope,
+                                              SlDiag* out_diag);
 
 /*
  * Runs one native request handler with a deterministic request cleanup scope.
