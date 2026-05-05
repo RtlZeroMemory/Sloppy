@@ -1,13 +1,13 @@
 Sloppy Doctor
 
 [ok] bootstrap.assets: bootstrap runtime asset found
-[ok] engine.v8: V8 bridge compiled; runtime success still requires V8 tests
+[warn] engine.v8: V8 bridge disabled in this build; V8 runtime tests not run
 [warn] providers.live: live provider checks are not configured by default and no live DB was contacted
 [warn] package.runtime: local CLI checks do not prove package release readiness
 [ok] app.plan.parse: app plan parsed by native Plan v1 parser
 [warn] app.plan.routes: no route metadata present
 [warn] app.plan.providers: provider metadata not present
-[warn] app.plan.capabilities: capability metadata not present
-[ok] sqlite.provider: sqlite provider metadata available
-[warn] postgres.live: live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set
-[error] sqlserver.driver: connectionString=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found
+[ok] app.plan.capabilities: capability metadata present
+[ok] stdlib.fs.capabilities: filesystem capability metadata is visible to sloppy/fs policy checks
+[ok] stdlib.fs.watch: fs.watch capability metadata is present
+[ok] stdlib.fs.policy: filesystem paths are policy-visible; doctor/audit goldens exercise readwrite/watch/delete metadata

@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/fs-policy.js",
+    "id": "cli-fs-policy-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/fs-policy.js.map",
+    "id": "cli-fs-policy-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Filesystem.Policy"
+    }
+  ],
+  "capabilities": [
+    { "token": "files.data", "kind": "filesystem", "access": "readwrite" },
+    { "token": "files.watch", "kind": "filesystem", "access": "watch" },
+    { "token": "files.delete", "kind": "filesystem", "access": "delete" }
+  ],
+  "doctorChecks": [
+    {
+      "id": "stdlib.fs.policy",
+      "status": "ok",
+      "message": "filesystem paths are policy-visible; doctor/audit goldens exercise readwrite/watch/delete metadata"
+    }
+  ]
+}

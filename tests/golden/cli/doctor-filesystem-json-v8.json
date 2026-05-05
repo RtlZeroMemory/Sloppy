@@ -7,9 +7,9 @@
     { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
     { "id": "app.plan.routes", "status": "warn", "message": "no route metadata present" },
     { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
-    { "id": "app.plan.capabilities", "status": "warn", "message": "capability metadata not present" },
-    { "id": "sqlite.provider", "status": "ok", "message": "sqlite provider metadata available" },
-    { "id": "postgres.live", "status": "warn", "message": "live PostgreSQL check skipped because SLOPPY_POSTGRES_TEST_URL is not set" },
-    { "id": "sqlserver.driver", "status": "error", "message": "connectionString=<redacted>; Microsoft ODBC Driver 18 for SQL Server not found" }
+    { "id": "app.plan.capabilities", "status": "ok", "message": "capability metadata present" },
+    { "id": "stdlib.fs.capabilities", "status": "ok", "message": "filesystem capability metadata is visible to sloppy/fs policy checks" },
+    { "id": "stdlib.fs.watch", "status": "ok", "message": "fs.watch capability metadata is present" },
+    { "id": "stdlib.fs.policy", "status": "ok", "message": "filesystem paths are policy-visible; doctor/audit goldens exercise readwrite/watch/delete metadata" }
   ]
 }

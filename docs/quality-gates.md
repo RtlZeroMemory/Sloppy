@@ -45,6 +45,9 @@ prove package trimming, provider expansion, or dynamic feature loading.
 CORE-FS-01 gates must report filesystem evidence by lane. PRs that only add the `stdlib.fs`
 contract and Plan metadata do not prove filesystem I/O, V8 bridge execution, OS-native watch
 behavior, stream behavior, package readiness, or performance.
+CORE-FS-01.I/J adds filesystem doctor/audit goldens for capability visibility and source
+examples for the implemented API; those gates do not prove OS sandboxing or public alpha
+readiness.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS

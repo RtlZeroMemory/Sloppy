@@ -69,6 +69,8 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
   tests/examples;
 - `data.sqlite` exposes SQLite provider metadata and an `open(options)` entry point that
     works only in V8-enabled contexts with the SQLite bridge installed;
+- `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` are exported from the
+  staged `sloppy/fs` stdlib surface when `stdlib.fs` is enabled by Plan feature metadata;
 - `Sloppy.create()` remains supported as a default builder plus `build()`;
 - `app.use(sqlite("main"))` accepts a provider descriptor, binds
   `Sloppy:Providers:sqlite:main`, and lets inline provider options override config

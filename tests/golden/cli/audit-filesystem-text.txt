@@ -1,0 +1,3 @@
+Sloppy Audit
+
+[note] SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE filesystem capabilities are policy-visible for sloppy/fs; no OS sandbox is implemented (capabilities)
