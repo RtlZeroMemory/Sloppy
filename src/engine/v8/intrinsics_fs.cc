@@ -11,6 +11,7 @@
 #include "sloppy/fs.h"
 
 #include <climits>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -74,7 +75,8 @@ struct FsV8LogicalWatch
     SlArena arena = {};
     SlFsWatchHandle* native_watch = nullptr;
     bool closed = false;
-    bool busy = false;
+    std::atomic_bool busy = false;
+    std::atomic_bool closing = false;
 };
 
 struct FsV8Request
@@ -247,7 +249,8 @@ bool fs_v8_operation_reads(FsV8Operation operation)
     return operation == FsV8Operation::ReadText || operation == FsV8Operation::ReadBytes ||
            operation == FsV8Operation::DirectoryList || operation == FsV8Operation::ReadLink ||
            operation == FsV8Operation::TempFile || operation == FsV8Operation::TempDirectory ||
-           operation == FsV8Operation::HandleRead;
+           operation == FsV8Operation::HandleRead || operation == FsV8Operation::WatchOpen ||
+           operation == FsV8Operation::WatchNext;
 }
 
 bool fs_v8_operation_uses_path(FsV8Operation operation)
@@ -664,10 +667,18 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
         {
             return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
         }
+        if (request->logical_watch->closing.load()) {
+            request->bool_result = false;
+            return sl_status_ok();
+        }
         status = sl_fs_watch_next(request->logical_watch->native_watch, arena,
                                   &request->watch_event, diag);
         if (sl_status_code(status) == SL_STATUS_DEADLINE_EXCEEDED) {
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
+            if (request->logical_watch->closing.load()) {
+                request->bool_result = false;
+                return sl_status_ok();
+            }
             status = sl_fs_watch_next(request->logical_watch->native_watch, arena,
                                       &request->watch_event, diag);
             if (sl_status_code(status) == SL_STATUS_DEADLINE_EXCEEDED) {
@@ -687,6 +698,10 @@ SlStatus fs_v8_run_operation(SlArena* arena, FsV8Request* request, SlDiag* diag)
             request->logical_watch->native_watch == nullptr)
         {
             return sl_status_from_code(SL_STATUS_STALE_RESOURCE);
+        }
+        request->logical_watch->closing.store(true);
+        while (request->logical_watch->busy.exchange(true)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         status = sl_fs_watch_close(request->logical_watch->native_watch, diag);
         if (sl_status_is_ok(status)) {
@@ -1018,7 +1033,7 @@ SlStatus fs_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* c
         request->logical_file->busy = false;
     }
     if (request->logical_file_busy_acquired && request->logical_watch != nullptr) {
-        request->logical_watch->busy = false;
+        request->logical_watch->busy.store(false);
     }
     if (sl_status_is_ok(request->status) && request->operation == FsV8Operation::HandleClose) {
         SlStatus close_status = sl_resource_table_close_kind(
@@ -1102,11 +1117,11 @@ bool fs_v8_get_optional_bool(v8::Isolate* isolate, v8::Local<v8::Context> contex
 
 bool fs_v8_get_optional_size(v8::Isolate* isolate, v8::Local<v8::Context> context,
                              v8::Local<v8::Value> value, const char* key, size_t fallback,
-                             size_t* out)
+                             size_t min_value, size_t max_value, size_t* out)
 {
     v8::Local<v8::String> local_key;
     v8::Local<v8::Value> property;
-    double number = 0.0;
+    uint32_t number = 0U;
 
     if (out == nullptr) {
         return false;
@@ -1124,11 +1139,11 @@ bool fs_v8_get_optional_size(v8::Isolate* isolate, v8::Local<v8::Context> contex
     if (property->IsUndefined() || property->IsNull()) {
         return true;
     }
-    if (!property->IsNumber()) {
+    if (!property->IsUint32()) {
         return false;
     }
-    number = property.As<v8::Number>()->Value();
-    if (!(number >= 1.0 && number <= 1024.0)) {
+    number = property.As<v8::Uint32>()->Value();
+    if ((size_t)number < min_value || (size_t)number > max_value) {
         return false;
     }
     *out = (size_t)number;
@@ -1337,10 +1352,10 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
         if (!fs_v8_get_optional_bool(isolate, context, options_arg, "recursive",
                                      &request->watch_options.recursive) ||
             !fs_v8_get_optional_size(isolate, context, options_arg, "queueCapacity",
-                                     request->watch_options.queue_capacity,
+                                     request->watch_options.queue_capacity, 1U, 256U,
                                      &request->watch_options.queue_capacity) ||
             !fs_v8_get_optional_size(isolate, context, options_arg, "snapshotCapacity",
-                                     request->watch_options.snapshot_capacity,
+                                     request->watch_options.snapshot_capacity, 1U, 1024U,
                                      &request->watch_options.snapshot_capacity))
         {
             fs_v8_throw_type_error(isolate, "__sloppy.fs watch options are invalid");
@@ -1371,19 +1386,14 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
             request->logical_file = static_cast<FsV8LogicalFile*>(ptr);
         }
         if (operation == FsV8Operation::WatchClose) {
-            if (request->logical_watch->busy) {
-                fs_v8_throw_type_error(isolate, "__sloppy.fs watch has a pending operation");
-                return;
-            }
-            request->logical_watch->busy = true;
+            request->logical_watch->closing.store(true);
             request->logical_file_busy_acquired = true;
         }
         if (operation == FsV8Operation::WatchNext) {
-            if (request->logical_watch->busy) {
+            if (request->logical_watch->busy.exchange(true)) {
                 fs_v8_throw_type_error(isolate, "__sloppy.fs watch has a pending operation");
                 return;
             }
-            request->logical_watch->busy = true;
             request->logical_file_busy_acquired = true;
         }
         if (operation == FsV8Operation::HandleClose) {
@@ -1478,7 +1488,7 @@ void fs_v8_submit_callback(const v8::FunctionCallbackInfo<v8::Value>& args, FsV8
             request->logical_file->busy = false;
         }
         if (request->logical_file_busy_acquired && request->logical_watch != nullptr) {
-            request->logical_watch->busy = false;
+            request->logical_watch->busy.store(false);
         }
         request->resolver.Reset();
         return;

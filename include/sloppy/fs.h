@@ -87,6 +87,7 @@ typedef struct SlFsStat
 {
     SlFsNodeKind kind;
     uint64_t size;
+    uint64_t modified_nsec;
     bool exists;
 } SlFsStat;
 
@@ -95,6 +96,7 @@ typedef struct SlFsDirectoryEntry
     SlOwnedStr name;
     SlFsNodeKind kind;
     uint64_t size;
+    uint64_t modified_nsec;
 } SlFsDirectoryEntry;
 
 typedef struct SlFsDirectoryList

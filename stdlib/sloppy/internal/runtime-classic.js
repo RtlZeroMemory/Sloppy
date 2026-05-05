@@ -905,6 +905,10 @@ Reason:
                     }
                     return { done: true, value: undefined };
                 },
+                return: async () => {
+                    await this.close();
+                    return { done: true, value: undefined };
+                },
             };
         }
     }

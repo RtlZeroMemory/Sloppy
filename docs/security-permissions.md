@@ -365,8 +365,9 @@ V8-gated `conformance.sqlite.denied_capability`, and V8-gated localhost
 `conformance.users_api_sqlite.localhost_transport`. These names prove the current Sloppy
 capability checks before provider work. CORE-FS-01.E/F adds native `core.filesystem`
 coverage and V8-gated filesystem smoke coverage for core, directory, and FileHandle API
-paths. These gates do not prove OS sandboxing, filesystem doctor/audit completeness,
-watch resources, PostgreSQL/SQL Server JavaScript bridges, live providers, or package
+paths. CORE-FS-01.G adds resource-backed watch handle coverage in native and V8-gated
+filesystem tests. These gates do not prove OS sandboxing, filesystem doctor/audit
+completeness, PostgreSQL/SQL Server JavaScript bridges, live providers, or package
 readiness.
 
 ## Quality Gates
