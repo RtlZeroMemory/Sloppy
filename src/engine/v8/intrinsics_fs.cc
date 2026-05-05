@@ -114,6 +114,21 @@ bool fs_v8_operation_writes(FsV8Operation operation)
            operation == FsV8Operation::AppendText || operation == FsV8Operation::AppendBytes;
 }
 
+bool fs_v8_operation_reads(FsV8Operation operation)
+{
+    return operation == FsV8Operation::ReadText || operation == FsV8Operation::ReadBytes;
+}
+
+void fs_v8_copy_bytes(void* dst, const unsigned char* src, size_t length)
+{
+    unsigned char* out = static_cast<unsigned char*>(dst);
+    size_t index = 0U;
+
+    for (index = 0U; index < length; index += 1U) {
+        out[index] = src[index];
+    }
+}
+
 SlStatus fs_v8_resolve(SlArena* arena, SlStr input, SlFsResolvedPath* out, SlDiag* out_diag)
 {
     const SlFsRoot roots[] = {
@@ -203,8 +218,7 @@ SlStatus fs_v8_provider_run(SlProviderOperation* operation, void* user, SlDiagCo
                             SlStr* out_message)
 {
     FsV8Request* request = static_cast<FsV8Request*>(user);
-    std::vector<unsigned char> storage(16U * 1024U * 1024U);
-    SlArena arena = {};
+    size_t capacity = 64U * 1024U;
     SlDiag diag = {};
     SlStatus status;
 
@@ -213,9 +227,22 @@ SlStatus fs_v8_provider_run(SlProviderOperation* operation, void* user, SlDiagCo
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_arena_init(&arena, storage.data(), storage.size());
-    if (sl_status_is_ok(status)) {
+    for (;;) {
+        std::vector<unsigned char> storage(capacity);
+        SlArena arena = {};
+
+        diag = {};
+        status = sl_arena_init(&arena, storage.data(), storage.size());
+        if (!sl_status_is_ok(status)) {
+            break;
+        }
         status = fs_v8_run_operation(&arena, request, &diag);
+        if (sl_status_code(status) != SL_STATUS_OUT_OF_MEMORY ||
+            !fs_v8_operation_reads(request->operation) || capacity > (SIZE_MAX / 2U))
+        {
+            break;
+        }
+        capacity *= 2U;
     }
 
     request->status = status;
@@ -243,7 +270,8 @@ v8::Local<v8::Value> fs_v8_result_value(v8::Isolate* isolate, v8::Local<v8::Cont
     case FsV8Operation::ReadBytes: {
         auto backing = v8::ArrayBuffer::NewBackingStore(isolate, request->result_bytes.size());
         if (!request->result_bytes.empty()) {
-            memcpy(backing->Data(), request->result_bytes.data(), request->result_bytes.size());
+            fs_v8_copy_bytes(backing->Data(), request->result_bytes.data(),
+                             request->result_bytes.size());
         }
         v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
         return v8::Uint8Array::New(buffer, 0, request->result_bytes.size());

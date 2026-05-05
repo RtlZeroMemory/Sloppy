@@ -28,6 +28,20 @@ static SlStatus sl_fs_posix_status(int error)
     return sl_status_from_code(SL_STATUS_INTERNAL);
 }
 
+static SlStatus sl_fs_posix_write_all(int fd, const unsigned char* bytes, size_t length)
+{
+    size_t offset = 0U;
+
+    while (offset < length) {
+        ssize_t n = write(fd, bytes + offset, length - offset);
+        if (n <= 0) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        offset += (size_t)n;
+    }
+    return sl_status_ok();
+}
+
 SlStatus sl_fs_platform_read_file(SlArena* arena, SlStr path, SlOwnedBytes* out, SlDiag* out_diag)
 {
     SlArenaMark mark;
@@ -89,7 +103,6 @@ SlStatus sl_fs_platform_write_file(SlStr path, SlBytes bytes, bool append, SlDia
     SlOwnedStr native = {0};
     int fd = -1;
     int flags = O_WRONLY | O_CREAT;
-    size_t offset = 0U;
     SlStatus status;
 
     (void)out_diag;
@@ -109,38 +122,66 @@ SlStatus sl_fs_platform_write_file(SlStr path, SlBytes bytes, bool append, SlDia
     if (fd < 0) {
         return sl_fs_posix_status(errno);
     }
-    while (offset < bytes.length) {
-        ssize_t n = write(fd, bytes.ptr + offset, bytes.length - offset);
-        if (n <= 0) {
-            close(fd);
-            return sl_status_from_code(SL_STATUS_INTERNAL);
-        }
-        offset += (size_t)n;
-    }
+    status = sl_fs_posix_write_all(fd, bytes.ptr, bytes.length);
     close(fd);
-    return sl_status_ok();
+    return status;
 }
 
 SlStatus sl_fs_platform_copy_file(SlStr from_path, SlStr to_path, bool overwrite, SlDiag* out_diag)
 {
-    unsigned char storage[1048576];
+    unsigned char scratch[8192];
+    unsigned char chunk[65536];
     SlArena arena = {0};
-    SlOwnedBytes bytes = {0};
-    SlFsStat stat = {0};
+    SlOwnedStr from_native = {0};
+    SlOwnedStr to_native = {0};
+    int from_fd = -1;
+    int to_fd = -1;
+    int to_flags = O_WRONLY | O_CREAT | O_TRUNC;
     SlStatus status;
 
-    status = sl_arena_init(&arena, storage, sizeof(storage));
-    if (!sl_status_is_ok(status)) {
+    (void)out_diag;
+    if (!overwrite) {
+        to_flags |= O_EXCL;
+    }
+    status = sl_arena_init(&arena, scratch, sizeof(scratch));
+    if (!sl_status_is_ok(status) ||
+        !sl_status_is_ok((status = sl_fs_posix_path(&arena, from_path, &from_native))) ||
+        !sl_status_is_ok((status = sl_fs_posix_path(&arena, to_path, &to_native))))
+    {
         return status;
     }
-    if (!overwrite && sl_status_is_ok(sl_fs_platform_stat(to_path, &stat, NULL)) && stat.exists) {
-        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    from_fd = open(from_native.ptr, O_RDONLY);
+    if (from_fd < 0) {
+        return sl_fs_posix_status(errno);
     }
-    status = sl_fs_platform_read_file(&arena, from_path, &bytes, out_diag);
-    if (!sl_status_is_ok(status)) {
+    to_fd = open(to_native.ptr, to_flags, 0666);
+    if (to_fd < 0) {
+        status = sl_fs_posix_status(errno);
+        close(from_fd);
         return status;
     }
-    return sl_fs_platform_write_file(to_path, sl_owned_bytes_as_view(bytes), false, out_diag);
+
+    for (;;) {
+        ssize_t n = read(from_fd, chunk, sizeof(chunk));
+        if (n < 0) {
+            status = sl_status_from_code(SL_STATUS_INTERNAL);
+            break;
+        }
+        if (n == 0) {
+            status = sl_status_ok();
+            break;
+        }
+        status = sl_fs_posix_write_all(to_fd, chunk, (size_t)n);
+        if (!sl_status_is_ok(status)) {
+            break;
+        }
+    }
+    close(from_fd);
+    close(to_fd);
+    if (!sl_status_is_ok(status)) {
+        (void)unlink(to_native.ptr);
+    }
+    return status;
 }
 
 SlStatus sl_fs_platform_move_file(SlStr from_path, SlStr to_path, bool overwrite, SlDiag* out_diag)
