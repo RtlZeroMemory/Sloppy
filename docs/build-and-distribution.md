@@ -69,9 +69,12 @@ staged into one archive and smoke-tested outside the checkout.
 
 EPIC-26 adds hosted default non-V8 CI gates for Windows clang-cl, Linux clang, Linux gcc,
 and macOS clang. It also adds a manual optional V8 workflow path and explicit provider
-gate reporting. MAIN1-12 keeps that evidence split and hardens package-smoke policy.
-Default CI still does not prove V8 execution, live PostgreSQL, live SQL Server, package
-runtime readiness, or package-manager distribution.
+gate reporting. MAIN1-12 keeps that evidence split and hardens package-smoke policy. The
+GitHub workflow now separates a fast PR lane from a full validation lane: draft/WIP PRs run
+static checks, Rust checks, and a Windows clang-cl smoke path for normal code changes,
+while ready PRs, pushes to `main`, manual runs, and PRs labeled `full-ci` run the complete
+non-V8 platform matrix. Default CI still does not prove V8 execution, live PostgreSQL,
+live SQL Server, package runtime readiness, or package-manager distribution.
 
 ## Future Phase
 
@@ -295,7 +298,9 @@ Distribution policy:
 
 CI policy:
 
-- required pull-request CI does not fetch, build, or require V8;
+- required merge validation does not fetch, build, or require V8;
+- draft/WIP pull requests may use the fast lane only, but ready PRs must run the full
+  non-V8 validation lane before merge;
 - manual `workflow_dispatch` can run the optional V8 validation job;
 - the optional job requires `enable_v8=true` and a runner-local `v8_root` pointing to a
   preinstalled SDK;
