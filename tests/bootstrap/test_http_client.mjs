@@ -59,11 +59,14 @@ function readSocketRequest(socket) {
 }
 
 function startHttpServer(handler) {
+    let nextConnectionId = 1;
     const server = net.createServer(async (socket) => {
+        const connectionId = nextConnectionId;
+        nextConnectionId += 1;
         socket.on("error", () => {});
         try {
             const request = await readSocketRequest(socket);
-            const response = await handler(request);
+            const response = await handler(request, { connectionId });
             socket.end(response);
         } catch {
             socket.destroy();
@@ -338,6 +341,50 @@ await withNodeNetBridge(async () => {
         assert.deepEqual(observed.map((request) => request.target), ["/one", "/two"]);
         assert.equal(new Set(observed.map((request) => request.connectionId)).size, 1);
         assert.deepEqual(observed.map((request) => request.connection), ["keep-alive", "keep-alive"]);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.equal(await (await client.get("/first")).text(), "ok");
+        assert.equal(await (await client.get("/second")).text(), "ok");
+
+        assert.deepEqual(observed.map((request) => request.target), ["/first", "/second"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 2);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.equal(await (await client.get("/stale-one")).text(), "ok");
+        assert.equal(await (await client.get("/stale-two")).text(), "ok");
+
+        assert.deepEqual(observed.map((request) => request.target), ["/stale-one", "/stale-two"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 2);
     } finally {
         await server.close();
     }

@@ -772,6 +772,10 @@ function isHttpRedirectStatus(status) {
     return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
+function httpConnectionHeaderHas(value, token) {
+    return value.split(",").some((part) => part.trim().toLowerCase() === token);
+}
+
 function resolveHttpRedirectUrl(currentUrl, location, operation) {
     if (typeof location !== "string" || location.length === 0 || hasHttpControlChars(location)) {
         throw httpClientError(
@@ -819,7 +823,7 @@ class HttpConnectionPool {
         if (idle !== undefined) {
             clearTimeout(idle.timer);
             entry.inUse += 1;
-            return idle.connection;
+            return { connection: idle.connection, reused: true };
         }
         if (entry.total >= this._options.maxConnectionsPerOrigin) {
             throw httpClientError(
@@ -831,7 +835,7 @@ class HttpConnectionPool {
         entry.total += 1;
         entry.inUse += 1;
         try {
-            return await connect();
+            return { connection: await connect(), reused: false };
         } catch (error) {
             entry.total -= 1;
             entry.inUse -= 1;
@@ -1540,7 +1544,7 @@ function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = fa
     const head = httpBytesToAscii(headBytes);
     const lines = head.split("\r\n");
     const statusLine = lines.shift();
-    const match = /^HTTP\/1\.[01] ([0-9]{3})(?: (.*))?$/.exec(statusLine ?? "");
+    const match = /^HTTP\/1\.([01]) ([0-9]{3})(?: (.*))?$/.exec(statusLine ?? "");
     const headers = [];
     let contentLength = undefined;
     let transferEncoding = undefined;
@@ -1585,7 +1589,12 @@ function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = fa
             connectionHeader = value.toLowerCase();
         }
     }
-    let connectionReusable = complete === false && connectionHeader !== "close";
+    const httpMinorVersion = match === null ? 1 : Number(match[1]);
+    let connectionReusable =
+        complete === false &&
+        (httpMinorVersion === 1
+            ? !httpConnectionHeaderHas(connectionHeader, "close")
+            : httpConnectionHeaderHas(connectionHeader, "keep-alive"));
     if (transferEncoding === "chunked") {
         const decoded = parseHttpChunkedBody(bodyBytes, maxResponseBytes, complete);
         if (decoded === undefined) {
@@ -1624,8 +1633,8 @@ function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = fa
         connectionReusable = false;
     }
     return new HttpClientResponse(
-        Number(match[1]),
-        match[2] ?? "",
+        Number(match[2]),
+        match[3] ?? "",
         new HttpHeaderBag(headers),
         bodyBytes,
         connectionReusable,
@@ -1837,28 +1846,54 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
         });
     };
 
-    try {
-        originKey = httpOriginKey(request.url);
-        connection =
-            pool === undefined ? await acquireConnection() : await pool.acquire(originKey, acquireConnection);
-        lifecycle.connection = connection;
-        await connection.write(serializeHttpRequest(request, pool !== undefined));
-        const response = await readHttpResponse(connection, request);
-        reusable = response._connectionReusable === true;
-        return response;
-    } finally {
-        if (lifecycle.connection === connection) {
-            lifecycle.connection = undefined;
-        }
-        if (connection !== undefined && !released) {
-            released = true;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        connection = undefined;
+        reusable = false;
+        released = false;
+        let reused = false;
+        try {
+            originKey = httpOriginKey(request.url);
             if (pool === undefined) {
-                await connection.close().catch(() => {});
+                connection = await acquireConnection();
             } else {
-                await pool.release(originKey, connection, reusable).catch(() => {});
+                const lease = await pool.acquire(originKey, acquireConnection);
+                connection = lease.connection;
+                reused = lease.reused;
+            }
+            lifecycle.connection = connection;
+            await connection.write(serializeHttpRequest(request, pool !== undefined));
+            const response = await readHttpResponse(connection, request);
+            reusable = response._connectionReusable === true;
+            return response;
+        } catch (error) {
+            if (connection !== undefined && pool !== undefined && reused && attempt === 0) {
+                released = true;
+                if (lifecycle.connection === connection) {
+                    lifecycle.connection = undefined;
+                }
+                await pool.release(originKey, connection, false).catch(() => {});
+                continue;
+            }
+            throw error;
+        } finally {
+            if (lifecycle.connection === connection) {
+                lifecycle.connection = undefined;
+            }
+            if (connection !== undefined && !released) {
+                released = true;
+                if (pool === undefined) {
+                    await connection.close().catch(() => {});
+                } else {
+                    await pool.release(originKey, connection, reusable).catch(() => {});
+                }
             }
         }
     }
+    throw httpClientError(
+        "HttpClientConnectError",
+        "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
+        "HTTP client transport operation failed.",
+    );
 }
 
 async function sendHttpRequestWithRedirects(normalized, pool, lifecycle) {
