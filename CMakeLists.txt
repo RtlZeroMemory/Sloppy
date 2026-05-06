@@ -779,25 +779,24 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_add_cxx_unit_test(
             core_http_transport core.http.transport tests/unit/core/test_http_transport.cc)
         target_link_libraries(core_http_transport PRIVATE ${SLOPPY_LIBUV_TARGET})
-        add_test(
-            NAME conformance.transport.localhost_mvp
-            COMMAND $<TARGET_FILE:core_http_transport> --without-bounded-smoke)
-        set_tests_properties(
-            conformance.transport.localhost_mvp PROPERTIES LABELS "conformance;transport;http")
-        foreach(
-            test_name
-            IN
-            ITEMS conformance.transport.keep_alive
-                  conformance.transport.keep_alive_idle_timeout
-                  conformance.transport.keep_alive_max_requests
-                  conformance.transport.lifecycle_reset
-                  conformance.transport.chunked_request
-                  conformance.transport.streaming_response
-                  conformance.transport.backpressure
-                  conformance.transport.shutdown_cancel)
-            add_test(NAME ${test_name} COMMAND $<TARGET_FILE:core_http_transport> --without-bounded-smoke)
+        function(sloppy_add_http_transport_case test_name case_name)
+            add_test(
+                NAME ${test_name}
+                COMMAND $<TARGET_FILE:core_http_transport> --case ${case_name})
             set_tests_properties(${test_name} PROPERTIES LABELS "conformance;transport;http")
-        endforeach()
+        endfunction()
+        sloppy_add_http_transport_case(conformance.transport.localhost_mvp localhost_mvp)
+        sloppy_add_http_transport_case(conformance.transport.keep_alive keep_alive)
+        sloppy_add_http_transport_case(
+            conformance.transport.keep_alive_idle_timeout keep_alive_idle_timeout)
+        sloppy_add_http_transport_case(
+            conformance.transport.keep_alive_max_requests keep_alive_max_requests)
+        sloppy_add_http_transport_case(conformance.transport.lifecycle_reset lifecycle_reset)
+        sloppy_add_http_transport_case(conformance.transport.chunked_request chunked_request)
+        sloppy_add_http_transport_case(
+            conformance.transport.streaming_response streaming_response)
+        sloppy_add_http_transport_case(conformance.transport.backpressure backpressure)
+        sloppy_add_http_transport_case(conformance.transport.shutdown_cancel shutdown_cancel)
         add_test(
             NAME smoke.transport.keep_alive_streaming_bounded
             COMMAND $<TARGET_FILE:core_http_transport> --bounded-smoke-only)
@@ -995,6 +994,8 @@ if(SLOPPY_ENABLE_TESTS)
     set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN tests/golden/cli/doctor-http-client-json.json)
     set(SLOPPY_DOCTOR_WORKERS_TEXT_GOLDEN tests/golden/cli/doctor-workers-text.txt)
     set(SLOPPY_DOCTOR_WORKERS_JSON_GOLDEN tests/golden/cli/doctor-workers-json.json)
+    set(SLOPPY_DOCTOR_CONFIG_TEXT_GOLDEN tests/golden/cli/doctor-config-text.txt)
+    set(SLOPPY_DOCTOR_CONFIG_JSON_GOLDEN tests/golden/cli/doctor-config-json.json)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
         tests/golden/cli/doctor-crypto-noncrypto-hash-text.txt)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -1020,6 +1021,8 @@ if(SLOPPY_ENABLE_TESTS)
             tests/golden/cli/doctor-http-client-json-v8.json)
         set(SLOPPY_DOCTOR_WORKERS_TEXT_GOLDEN tests/golden/cli/doctor-workers-text-v8.txt)
         set(SLOPPY_DOCTOR_WORKERS_JSON_GOLDEN tests/golden/cli/doctor-workers-json-v8.json)
+        set(SLOPPY_DOCTOR_CONFIG_TEXT_GOLDEN tests/golden/cli/doctor-config-text-v8.txt)
+        set(SLOPPY_DOCTOR_CONFIG_JSON_GOLDEN tests/golden/cli/doctor-config-json-v8.json)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
             tests/golden/cli/doctor-crypto-noncrypto-hash-text-v8.txt)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -1071,6 +1074,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_workers_json ${SLOPPY_DOCTOR_WORKERS_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/workers-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_config_text ${SLOPPY_DOCTOR_CONFIG_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/config.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_config_json ${SLOPPY_DOCTOR_CONFIG_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/config.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_crypto_noncrypto_hash_text
         ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN} doctor --plan
@@ -1888,6 +1897,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.workers.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_workers_examples.cmake")
+    add_test(
+        NAME examples.config.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_config_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

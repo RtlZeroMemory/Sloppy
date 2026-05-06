@@ -42,6 +42,7 @@ require_match("${queue_js}" "overflow: \"reject\"" "workqueue overflow")
 
 file(READ "${example_root}/workers-workerpool/app.js" pool_js)
 require_match("${pool_js}" "WorkerPool.create" "workerpool example")
+require_match("${pool_js}" "pool.run" "workerpool example runs work")
 require_match("${pool_js}" "Deadline.after" "workerpool deadline")
 
 file(READ "${example_root}/workers-js-isolate/app.js" worker_js)

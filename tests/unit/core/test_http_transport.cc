@@ -1805,7 +1805,7 @@ static int test_keep_alive_idle_timeout_closes_once(void)
     SlDiag diag = {};
 
     config = keep_alive_config(nullptr);
-    config.keep_alive_idle_timeout_ms = 1U;
+    config.keep_alive_idle_timeout_ms = 25U;
     dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("ok\n"));
     config.dispatch = dispatch_hook;
     config.dispatch_user = &dispatch;
@@ -2451,10 +2451,77 @@ static int test_bounded_keep_alive_chunked_streaming_stress_smoke(void)
     return 0;
 }
 
+typedef int (*TransportCaseTest)(void);
+
+static int run_case_sequence(const TransportCaseTest* tests, size_t test_count)
+{
+    for (size_t index = 0U; index < test_count; index += 1U) {
+        int result = tests[index]();
+        if (result != 0) {
+            return result;
+        }
+    }
+    return 0;
+}
+
+#define SLOPPY_TRANSPORT_CASE_SEQUENCE(...)                                                        \
+    do {                                                                                           \
+        static const TransportCaseTest tests[] = {__VA_ARGS__};                                    \
+        return run_case_sequence(tests, sizeof(tests) / sizeof(tests[0]));                         \
+    } while (0)
+
+static int run_named_transport_case(const char* name)
+{
+    if (name == nullptr) {
+        return 2;
+    }
+    if (strcmp(name, "localhost_mvp") == 0) {
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(test_localhost_transport_smoke_success_and_dispatch_statuses,
+                                       test_localhost_transport_smoke_body_success_and_rejections,
+                                       test_dispatch_failures_map_to_safe_responses);
+    }
+    if (strcmp(name, "keep_alive") == 0) {
+        return test_keep_alive_two_sequential_requests_reuse_connection();
+    }
+    if (strcmp(name, "keep_alive_idle_timeout") == 0) {
+        return test_keep_alive_idle_timeout_closes_once();
+    }
+    if (strcmp(name, "keep_alive_max_requests") == 0) {
+        return test_keep_alive_close_disabled_http10_and_max_requests();
+    }
+    if (strcmp(name, "lifecycle_reset") == 0) {
+        return test_keep_alive_n_post_get_and_lifecycle_reset();
+    }
+    if (strcmp(name, "chunked_request") == 0) {
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(test_chunked_request_decoding_success_cases,
+                                       test_chunked_request_decoding_allows_bounded_wire_overhead,
+                                       test_chunked_request_decoding_rejections);
+    }
+    if (strcmp(name, "streaming_response") == 0) {
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(test_streaming_response_writes_chunked_frames,
+                                       test_streaming_response_multiple_empty_and_keep_alive);
+    }
+    if (strcmp(name, "backpressure") == 0) {
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(test_streaming_response_backpressure_rejection,
+                                       test_response_buffer_capacity_failure_is_deterministic);
+    }
+    if (strcmp(name, "shutdown_cancel") == 0) {
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(test_disconnect_cleanup_paths,
+                                       test_shutdown_rejects_new_accepts_and_closes_head_read,
+                                       test_shutdown_during_body_read_cancels_cleanup_once,
+                                       test_header_and_body_timeout_write_408_or_close,
+                                       test_shutdown_during_response_write_is_cleanup_only);
+    }
+    return 2;
+}
+
 int main(int argc, char** argv)
 {
     bool run_core = true;
     bool run_bounded_smoke = true;
+    if (argc == 3 && strcmp(argv[1], "--case") == 0) {
+        return run_named_transport_case(argv[2]);
+    }
     if (argc == 2 && strcmp(argv[1], "--without-bounded-smoke") == 0) {
         run_bounded_smoke = false;
     }

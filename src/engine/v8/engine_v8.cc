@@ -937,8 +937,9 @@ bool sl_v8_os_feature_enabled(const SlV8Engine* backend)
 
 bool sl_v8_workers_feature_enabled(const SlV8Engine* backend)
 {
-    return backend != nullptr && backend->has_runtime_features &&
-           sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_WORKERS);
+    return backend != nullptr &&
+           (!backend->has_runtime_features ||
+            sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_WORKERS));
 }
 
 bool sl_v8_needs_async_loop(const SlV8Engine* backend)

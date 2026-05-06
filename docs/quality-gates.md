@@ -138,13 +138,16 @@ PR-reporting rules for default non-V8, V8-gated, localhost transport, SQLite/cap
 package outside-checkout, live-provider optional, stress/smoke, and benchmark harness
 evidence. Skipped optional gates are not pass claims.
 ENGINE-19.BC adds first-class CTest registrations for the implemented V8, HTTP, and async
-evidence lanes: `conformance.http.default_dispatch`, `conformance.transport.localhost_mvp`,
-HTTP-25.F's `conformance.transport.keep_alive*`,
+evidence lanes: `conformance.http.default_dispatch`, targeted
+`conformance.transport.localhost_mvp`, HTTP-25.F's targeted
+`conformance.transport.keep_alive*`,
 `conformance.transport.lifecycle_reset`, `conformance.transport.chunked_request`,
 `conformance.transport.streaming_response`, `conformance.transport.backpressure`,
 `conformance.transport.shutdown_cancel`, `smoke.transport.keep_alive_streaming_bounded`,
 `conformance.async.*`, and V8-gated `conformance.v8.*`. These entries run existing
-validated executables under matrix-aligned names. Default gate success now includes the
+validated executables under matrix-aligned names, with the transport conformance aliases
+using focused arguments rather than rerunning the full transport suite for each evidence
+name. Default gate success now includes the
 HTTP-25.A/B/C sequential keep-alive smoke plus HTTP-25.D/E bounded chunked request decoding
 and internal/native chunked response writer checks plus HTTP-25.F bounded stress smoke; it
 still does not prove V8

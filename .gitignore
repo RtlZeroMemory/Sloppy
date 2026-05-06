@@ -14,6 +14,10 @@ install_manifest.txt
 .sloppy/
 vcpkg_installed/
 
+# Local configuration overrides and user secrets
+appsettings.local.json
+appsettings.*.local.json
+
 # Rust
 compiler/target/
 target/

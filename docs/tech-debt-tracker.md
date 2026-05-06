@@ -203,12 +203,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   command diagnostics through #345/#349. The source-input run decision (#346),
   doctor/audit checks (#347), and OpenAPI route skeleton policy (#348) are completed by
   ENGINE-02.E and ENGINE-20.C/D evidence.
-- Framework configuration follow-up: FRAMEWORK-01.B implements the first config model, but
-  reload-on-change, user secrets, custom/remote providers, broad arbitrary CLI config
-  binding, native typed Plan graph consumption, doctor/OpenAPI config reporting, request
-  binding, validation, and PostgreSQL/SQL Server JS provider config bridges remain
-  deferred. Strong Plan #355-#359 should promote emitted config metadata into the typed
-  graph before tooling claims deeper config awareness.
+- Framework configuration follow-up: CORE-CONFIG-01 implements layered config sources,
+  local/user secrets, arbitrary compiler `--config` overrides, typed reads/binding,
+  provider-owned config metadata, doctor config reporting, and package-manifest metadata.
+  Reload-on-change, production secret vaults, custom/remote providers, native typed Plan
+  graph consumption, OpenAPI config reporting, request binding, and PostgreSQL/SQL Server
+  JS provider config bridges remain deferred. Strong Plan work should promote emitted
+  config metadata into the typed graph before tooling claims deeper config awareness.
 - Framework API shape migration: FRAMEWORK-01.F adds hardened Minimal API, config,
   module, validation-metadata, and SQLite examples for the implemented source-input path.
   Remaining debt is runtime semantic validation, broader service/DI lifetimes, public

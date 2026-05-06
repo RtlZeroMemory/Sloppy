@@ -2013,11 +2013,15 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
     SlEngine* engine = NULL;
     SlEngineResult result = {0};
     SlDiag diag = {0};
-    SlStr worker_path = sl_str_from_cstr("./sloppy-v8-worker-test.js");
+    char worker_path_buffer[128];
+    char script_buffer[4096];
+    SlStr worker_path = {0};
     SlBytes worker_source = sl_bytes_from_parts(
         (const unsigned char*)"export async function parse(payload) {"
                               "  return 'tokens:' + payload.text.split(/\\s+/u).length;"
                               "}\n"
+                              "let count = 0;\n"
+                              "export function countCalls() { count += 1; return count; }\n"
                               "export function bytes(payload) {"
                               "  const raw = new Uint8Array(payload.raw);"
                               "  return new Uint8Array([raw[0], payload.view[1]]);"
@@ -2027,6 +2031,8 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
         sizeof("export async function parse(payload) {"
                "  return 'tokens:' + payload.text.split(/\\s+/u).length;"
                "}\n"
+               "let count = 0;\n"
+               "export function countCalls() { count += 1; return count; }\n"
                "export function bytes(payload) {"
                "  const raw = new Uint8Array(payload.raw);"
                "  return new Uint8Array([raw[0], payload.view[1]]);"
@@ -2034,6 +2040,9 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
                "export function onMessage(payload) { return 'msg:' + payload.kind; }\n") -
             1U);
 
+    (void)snprintf(worker_path_buffer, sizeof(worker_path_buffer), "./sloppy-v8-worker-test-%p.js",
+                   (void*)&engine_storage[0]);
+    worker_path = sl_str_from_cstr(worker_path_buffer);
     (void)sl_fs_delete_file(worker_path, NULL);
     if (expect_status(sl_fs_write_file(worker_path, worker_source, false, &diag), SL_STATUS_OK) !=
             0 ||
@@ -2051,39 +2060,41 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
         return 516;
     }
 
-    if (expect_status(
-            sl_engine_eval_source(
-                engine, sl_str_from_cstr("v8-workers-js-worker.js"),
-                sl_str_from_cstr(
-                    "globalThis.sloppy_workers_js_worker = async function () {"
-                    "  const worker = globalThis.__sloppy.workers.startWorker("
-                    "    './sloppy-v8-worker-test.js', { memoryLimitMb: 128 });"
-                    "  const parsed = await worker.invoke('parse', { text: 'one two three' });"
-                    "  const bytes = await worker.invoke('bytes', {"
-                    "    raw: new Uint8Array([11, 12]).buffer,"
-                    "    view: new Uint8Array([13, 14])"
-                    "  });"
-                    "  const posted = await worker.post({ kind: 'ping' });"
-                    "  await worker.stop();"
-                    "  try {"
-                    "    await worker.invoke('parse', { text: 'late' });"
-                    "    return 'missing-stale-error';"
-                    "  } catch (err) {"
-                    "    return parsed + ':' + (bytes instanceof Uint8Array) + ':' +"
-                    "      Array.from(bytes).join(',') + ':' + posted + ':' + err.code;"
-                    "  }"
-                    "};"
-                    "globalThis.sloppy_workers_resource_limit = function () {"
-                    "  try {"
-                    "    globalThis.__sloppy.workers.startWorker("
-                    "      './sloppy-v8-worker-test.js', { memoryLimitMb: 1 });"
-                    "    return 'missing-resource-error';"
-                    "  } catch (err) {"
-                    "    return err.code;"
-                    "  }"
-                    "};"),
-                &diag),
-            SL_STATUS_OK) != 0)
+    (void)snprintf(
+        script_buffer, sizeof(script_buffer),
+        "globalThis.sloppy_workers_js_worker = async function () {"
+        "  const worker = globalThis.__sloppy.workers.startWorker('%s', { memoryLimitMb: 128 });"
+        "  const parsed = await worker.invoke('parse', { text: 'one two three' });"
+        "  const firstCount = await worker.invoke('countCalls');"
+        "  const secondCount = await worker.invoke('countCalls');"
+        "  const bytes = await worker.invoke('bytes', {"
+        "    raw: new Uint8Array([11, 12]).buffer,"
+        "    view: new Uint8Array([13, 14])"
+        "  });"
+        "  const posted = await worker.post({ kind: 'ping' });"
+        "  await worker.stop();"
+        "  try {"
+        "    await worker.invoke('parse', { text: 'late' });"
+        "    return 'missing-stale-error';"
+        "  } catch (err) {"
+        "    return parsed + ':' + (bytes instanceof Uint8Array) + ':' +"
+        "      Array.from(bytes).join(',') + ':' + firstCount + ',' + secondCount + ':' +"
+        "      posted + ':' + err.code;"
+        "  }"
+        "};"
+        "globalThis.sloppy_workers_resource_limit = function () {"
+        "  try {"
+        "    globalThis.__sloppy.workers.startWorker('%s', { memoryLimitMb: 1 });"
+        "    return 'missing-resource-error';"
+        "  } catch (err) {"
+        "    return err.code;"
+        "  }"
+        "};",
+        worker_path_buffer, worker_path_buffer);
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("v8-workers-js-worker.js"),
+                                            sl_str_from_parts(script_buffer, strlen(script_buffer)),
+                                            &diag),
+                      SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         (void)sl_fs_delete_file(worker_path, NULL);
@@ -2095,9 +2106,8 @@ static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
                                                &result, &diag),
                       SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(
-            result.text,
-            sl_str_from_cstr("tokens:3:true:11,14:msg:ping:SLOPPY_E_WORKER_STALE_HANDLE")))
+        !sl_str_equal(result.text, sl_str_from_cstr("tokens:3:true:11,14:1,2:msg:ping:"
+                                                    "SLOPPY_E_WORKER_STALE_HANDLE")))
     {
         sl_engine_destroy(engine);
         (void)sl_fs_delete_file(worker_path, NULL);

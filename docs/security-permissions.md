@@ -79,12 +79,13 @@ Every inferred capability must be Plan-visible and later inspectable through doc
 routes, audit, or capabilities tooling. If inference is not safe, compilation must fail or
 require explicit metadata; no silent unsound inference.
 
-FRAMEWORK-01.B keeps normal provider configuration on the inferred path:
+CORE-CONFIG-01 keeps normal provider configuration on the inferred path:
 `app.use(sqlite("main"))` binds `Sloppy:Providers:sqlite:main`, the compiler emits the
-matching provider/capability metadata, and missing required provider config fails before
-provider work. Application config may contain secrets later, but this slice does not add a
-secrets manager, user secrets, remote providers, or raw environment access from JS.
-Secret-looking config values are redacted in diagnostics and Plan metadata.
+matching provider/capability/config metadata, and missing required provider config fails
+before provider work. Local user secrets live under `.sloppy/secrets*.json` and are local
+development inputs only. Production vaults, remote config providers, and raw environment
+access bypasses remain deferred. Secret config values are redacted in diagnostics, doctor
+output, package metadata, tests, examples, and Plan metadata.
 
 CORE-CRYPTO-01.I completes the scoped implemented crypto API without adding a new
 permission grant type. `sloppy/crypto` is Plan-visible as `stdlib.crypto` and registers
@@ -339,6 +340,7 @@ Secrets must be handled as secret values:
 - env var values are not printed;
 - diagnostics may show key names like `DATABASE_URL`;
 - plan artifacts must not contain raw secret values;
+- config package manifests show required keys and env names, not values;
 - logs default to redaction for known secret fields.
 
 Diagnostic redaction currently covers representative password, `PWD`, token, `SECRET`,

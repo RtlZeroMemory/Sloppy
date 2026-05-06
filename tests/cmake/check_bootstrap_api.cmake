@@ -202,6 +202,9 @@ foreach(required_pattern IN ITEMS
         "SLOPPY_E_WORK_QUEUE_FULL"
         "SLOPPY_E_WORK_JOB_TIMEOUT"
         "SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD"
+        "SloppyWorkerError"
+        "WorkerCancellationController"
+        "WorkerCancellationSignal"
         "__sloppyWorkerResource"
         "serializePayload")
     require_substring("${workers_js}" "${required_pattern}" "workers.js is missing expected API contract pattern")
@@ -222,6 +225,9 @@ foreach(required_pattern IN ITEMS
         "WorkQueue,"
         "WorkerPool,"
         "Worker,"
+        "WorkerCancellationController,"
+        "WorkerCancellationSignal,"
+        "SloppyWorkerError,"
         "SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.time")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected time runtime export pattern")
 endforeach()

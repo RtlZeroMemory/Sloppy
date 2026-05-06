@@ -16,8 +16,11 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
+#include <exception>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <regex>
 #include <string>
@@ -30,12 +33,15 @@ constexpr size_t kWorkersV8MaxModuleBytes = 1024U * 1024U;
 constexpr size_t kWorkersV8PerWorkerQueueCapacity = 64U;
 constexpr size_t kWorkersV8MicrotaskLimit = 1024U;
 constexpr size_t kWorkersV8MinMemoryLimitMb = 16U;
+constexpr size_t kWorkersV8BytesPerMb = 1024U * 1024U;
 
 enum class WorkersV8RequestKind
 {
     PoolRun,
     JsInvoke,
 };
+
+struct SlV8WorkerRequest;
 
 struct SlV8JsWorker
 {
@@ -46,6 +52,15 @@ struct SlV8JsWorker
     size_t memory_limit_mb = 128U;
     bool stopped = false;
     size_t active_count = 0U;
+    std::mutex mutex;
+    std::condition_variable cv;
+    std::vector<std::shared_ptr<SlV8WorkerRequest>> queue;
+    std::thread thread;
+    bool stopping = false;
+    bool startup_complete = false;
+    bool startup_ok = false;
+    std::string startup_error_code;
+    std::string startup_error_message;
 };
 
 struct SlV8WorkerRequest
@@ -352,6 +367,47 @@ std::string workers_v8_transform_module_source(const std::string& source)
     return "globalThis.__sloppyWorkerExports = Object.create(null);\n" + transformed;
 }
 
+bool workers_v8_validate_module_export_syntax(const std::string& source, std::string* out_message)
+{
+    struct UnsupportedExport
+    {
+        const char* pattern;
+        const char* syntax;
+    };
+    static const UnsupportedExport unsupported[] = {
+        {R"(\bexport\s+default\b)", "export default"},
+        {R"(\bexport\s*\{)", "export list/re-export"},
+        {R"(\bexport\s*\*)", "export star/re-export"},
+        {R"(\bexport\s+class\b)", "export class"},
+        {R"(\bexport\s+let\b)", "export let"},
+        {R"(\bexport\s+var\b)", "export var"},
+    };
+
+    for (const UnsupportedExport& item : unsupported) {
+        if (std::regex_search(source, std::regex(item.pattern))) {
+            if (out_message != nullptr) {
+                *out_message = std::string("worker module export syntax is unsupported: ") +
+                               item.syntax +
+                               "; supported exports are named export function, export async "
+                               "function, and export const declarations";
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
+void workers_v8_apply_memory_limit(v8::Isolate::CreateParams* create_params, size_t memory_limit_mb)
+{
+    if (create_params == nullptr || memory_limit_mb == 0U ||
+        memory_limit_mb > std::numeric_limits<size_t>::max() / kWorkersV8BytesPerMb)
+    {
+        return;
+    }
+    create_params->constraints.ConfigureDefaultsFromHeapSize(0U, memory_limit_mb *
+                                                                     kWorkersV8BytesPerMb);
+}
+
 bool workers_v8_compile_run(v8::Isolate* isolate, v8::Local<v8::Context> context,
                             const std::string& source_name, const std::string& source,
                             v8::Local<v8::Value>* out)
@@ -392,6 +448,7 @@ WorkersV8ExecutionResult workers_v8_execute_in_isolate(const SlV8WorkerRequest& 
 
     v8::Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = allocator;
+    workers_v8_apply_memory_limit(&create_params, request.memory_limit_mb);
     v8::Isolate* isolate = v8::Isolate::New(create_params);
     if (isolate == nullptr) {
         delete allocator;
@@ -476,6 +533,12 @@ WorkersV8ExecutionResult workers_v8_execute_in_isolate(const SlV8WorkerRequest& 
         }
         else {
             std::string transformed;
+            std::string syntax_error;
+            if (!workers_v8_validate_module_export_syntax(request.module_source, &syntax_error)) {
+                result.code = "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED";
+                result.message = std::move(syntax_error);
+                goto workers_v8_execute_done;
+            }
             try {
                 transformed = workers_v8_transform_module_source(request.module_source);
             } catch (...) {
@@ -560,6 +623,109 @@ WorkersV8ExecutionResult workers_v8_execute_in_isolate(const SlV8WorkerRequest& 
 workers_v8_execute_done:
     isolate->Dispose();
     delete allocator;
+    return result;
+}
+
+WorkersV8ExecutionResult workers_v8_execute_js_on_runtime(v8::Isolate* isolate,
+                                                          v8::Local<v8::Context> context,
+                                                          const SlV8WorkerRequest& request)
+{
+    WorkersV8ExecutionResult result = {};
+    v8::TryCatch try_catch(isolate);
+    v8::Local<v8::Value> input_value;
+    v8::Local<v8::Object> ctx = v8::Object::New(isolate);
+    v8::Local<v8::Object> signal = v8::Object::New(isolate);
+    v8::Local<v8::Value> exports_value;
+    v8::Local<v8::Value> fn_value;
+    v8::Local<v8::Function> fn;
+    v8::Local<v8::Value> call_result;
+    bool undefined_json = false;
+
+    if (request.input_json.size() > kWorkersV8MaxPayloadBytes) {
+        result.code = "SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED";
+        result.message = "worker resource limit exceeded";
+        return result;
+    }
+    if (!workers_v8_json_parse(isolate, context, request.input_json, &input_value)) {
+        result.code = "SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED";
+        result.message = "worker message serialization failed";
+        return result;
+    }
+    if (!signal
+             ->Set(context, workers_v8_literal(isolate, "cancelled"),
+                   v8::Boolean::New(isolate, false))
+             .FromMaybe(false) ||
+        !signal
+             ->Set(context, workers_v8_literal(isolate, "aborted"),
+                   v8::Boolean::New(isolate, false))
+             .FromMaybe(false) ||
+        !ctx->Set(context, workers_v8_literal(isolate, "input"), input_value).FromMaybe(false) ||
+        !ctx->Set(context, workers_v8_literal(isolate, "signal"), signal).FromMaybe(false))
+    {
+        result.code = "SLOPPY_E_WORKER_CRASHED";
+        result.message = "worker context creation failed";
+        return result;
+    }
+    if (!context->Global()
+             ->Get(context, workers_v8_literal(isolate, "__sloppyWorkerExports"))
+             .ToLocal(&exports_value) ||
+        !exports_value->IsObject() ||
+        !exports_value.As<v8::Object>()
+             ->Get(context, v8::String::NewFromUtf8(isolate, request.export_name.c_str(),
+                                                    v8::NewStringType::kNormal,
+                                                    static_cast<int>(request.export_name.size()))
+                                .ToLocalChecked())
+             .ToLocal(&fn_value) ||
+        !fn_value->IsFunction())
+    {
+        result.code = "SLOPPY_E_WORKER_CRASHED";
+        result.message = "worker export is not callable";
+        return result;
+    }
+
+    fn = fn_value.As<v8::Function>();
+    v8::Local<v8::Value> argv[] = {input_value, ctx};
+    if (!fn->Call(context, context->Global(), 2, argv).ToLocal(&call_result)) {
+        result.code = "SLOPPY_E_WORKER_CRASHED";
+        result.message = "worker crashed";
+        return result;
+    }
+
+    if (call_result->IsPromise()) {
+        v8::Local<v8::Promise> promise = call_result.As<v8::Promise>();
+        size_t spins = 0U;
+        while (promise->State() == v8::Promise::kPending && spins < kWorkersV8MicrotaskLimit) {
+            isolate->PerformMicrotaskCheckpoint();
+            spins += 1U;
+        }
+        if (promise->State() == v8::Promise::kPending) {
+            result.code = "SLOPPY_E_WORK_JOB_TIMEOUT";
+            result.message = "worker Promise did not settle during bounded drain";
+            return result;
+        }
+        if (promise->State() == v8::Promise::kRejected) {
+            result.code = "SLOPPY_E_WORKER_CRASHED";
+            result.message = "worker Promise rejected";
+            return result;
+        }
+        call_result = promise->Result();
+    }
+    else {
+        isolate->PerformMicrotaskCheckpoint();
+    }
+
+    if (!workers_v8_json_stringify(isolate, context, call_result, &result.json, &undefined_json)) {
+        result.code = "SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED";
+        result.message = "worker result serialization failed";
+        return result;
+    }
+    if (result.json.size() > kWorkersV8MaxResultBytes) {
+        result.code = "SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED";
+        result.message = "worker resource limit exceeded";
+        return result;
+    }
+    result.undefined_result = undefined_json;
+    result.ok = true;
     return result;
 }
 
@@ -715,6 +881,7 @@ void workers_v8_post_completion(const std::shared_ptr<SlV8WorkerRequest>& reques
         delete payload;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+    std::terminate();
 }
 
 void workers_v8_thread_main(std::shared_ptr<SlV8WorkerRequest> request)
@@ -726,6 +893,110 @@ void workers_v8_thread_main(std::shared_ptr<SlV8WorkerRequest> request)
     request->error_code = std::move(result.code);
     request->error_message = std::move(result.message);
     workers_v8_post_completion(request);
+}
+
+void workers_v8_signal_worker_startup(const std::shared_ptr<SlV8JsWorker>& worker, bool ok,
+                                      const std::string& code, const std::string& message)
+{
+    if (worker == nullptr) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(worker->mutex);
+        worker->startup_ok = ok;
+        worker->startup_complete = true;
+        worker->startup_error_code = code;
+        worker->startup_error_message = message;
+    }
+    worker->cv.notify_all();
+}
+
+void workers_v8_worker_runtime_main(std::shared_ptr<SlV8JsWorker> worker)
+{
+    v8::ArrayBuffer::Allocator* allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+    if (allocator == nullptr) {
+        workers_v8_signal_worker_startup(worker, false, "SLOPPY_E_WORKER_POOL_UNAVAILABLE",
+                                         "worker isolate allocator unavailable");
+        return;
+    }
+
+    v8::Isolate::CreateParams create_params;
+    create_params.array_buffer_allocator = allocator;
+    workers_v8_apply_memory_limit(&create_params, worker->memory_limit_mb);
+    v8::Isolate* isolate = v8::Isolate::New(create_params);
+    if (isolate == nullptr) {
+        delete allocator;
+        workers_v8_signal_worker_startup(worker, false, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED",
+                                         "worker isolate startup failed");
+        return;
+    }
+
+    {
+        v8::Isolate::Scope isolate_scope(isolate);
+        v8::HandleScope handle_scope(isolate);
+        isolate->SetMicrotasksPolicy(v8::MicrotasksPolicy::kExplicit);
+        v8::Local<v8::Context> context = v8::Context::New(isolate);
+        v8::Context::Scope context_scope(context);
+        v8::TryCatch try_catch(isolate);
+        v8::Local<v8::Value> ignored;
+        std::string transformed;
+        std::string syntax_error;
+
+        if (!workers_v8_validate_module_export_syntax(worker->module_source, &syntax_error)) {
+            workers_v8_signal_worker_startup(
+                worker, false, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", syntax_error);
+        }
+        else {
+            try {
+                transformed = workers_v8_transform_module_source(worker->module_source);
+            } catch (...) {
+                workers_v8_signal_worker_startup(worker, false,
+                                                 "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED",
+                                                 "worker module transform failed");
+            }
+        }
+        if (!transformed.empty() &&
+            !workers_v8_compile_run(isolate, context, worker->module_path, transformed, &ignored))
+        {
+            workers_v8_signal_worker_startup(worker, false,
+                                             "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED",
+                                             "worker isolate startup failed");
+        }
+        else if (!transformed.empty()) {
+            workers_v8_signal_worker_startup(worker, true, std::string(), std::string());
+        }
+
+        for (;;) {
+            std::shared_ptr<SlV8WorkerRequest> request;
+            {
+                std::unique_lock<std::mutex> lock(worker->mutex);
+                worker->cv.wait(lock,
+                                [&worker]() { return worker->stopping || !worker->queue.empty(); });
+                if (worker->queue.empty()) {
+                    if (worker->stopping) {
+                        break;
+                    }
+                    continue;
+                }
+                request = worker->queue.front();
+                worker->queue.erase(worker->queue.begin());
+            }
+
+            v8::HandleScope request_scope(isolate);
+            v8::Context::Scope request_context_scope(context);
+            WorkersV8ExecutionResult result =
+                workers_v8_execute_js_on_runtime(isolate, context, *request);
+            request->reject = !result.ok;
+            request->result_is_undefined = result.undefined_result;
+            request->result_json = std::move(result.json);
+            request->error_code = std::move(result.code);
+            request->error_message = std::move(result.message);
+            workers_v8_post_completion(request);
+        }
+    }
+
+    isolate->Dispose();
+    delete allocator;
 }
 
 bool workers_v8_track_request(SlV8Engine* backend,
@@ -788,6 +1059,64 @@ bool workers_v8_start_request(SlV8Engine* backend,
         workers_v8_untrack_request(backend, request);
         return false;
     }
+    return true;
+}
+
+void workers_v8_stop_worker_runtime(const std::shared_ptr<SlV8JsWorker>& worker)
+{
+    if (worker == nullptr) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(worker->mutex);
+        worker->stopping = true;
+    }
+    worker->cv.notify_all();
+    if (worker->thread.joinable() && worker->thread.get_id() != std::this_thread::get_id()) {
+        worker->thread.join();
+    }
+}
+
+bool workers_v8_start_worker_runtime(const std::shared_ptr<SlV8JsWorker>& worker)
+{
+    if (worker == nullptr) {
+        return false;
+    }
+    try {
+        worker->thread = std::thread(workers_v8_worker_runtime_main, worker);
+    } catch (...) {
+        return false;
+    }
+
+    std::unique_lock<std::mutex> lock(worker->mutex);
+    worker->cv.wait(lock, [&worker]() { return worker->startup_complete; });
+    return worker->startup_ok;
+}
+
+bool workers_v8_enqueue_worker_request(const std::shared_ptr<SlV8JsWorker>& worker,
+                                       const std::shared_ptr<SlV8WorkerRequest>& request)
+{
+    SlV8Engine* backend = worker == nullptr ? nullptr : worker->backend;
+    if (backend == nullptr || worker == nullptr || request == nullptr ||
+        !workers_v8_track_request(backend, request))
+    {
+        return false;
+    }
+    bool stopping = false;
+    {
+        std::lock_guard<std::mutex> lock(worker->mutex);
+        if (worker->stopping) {
+            stopping = true;
+        }
+        else {
+            worker->queue.push_back(request);
+        }
+    }
+    if (stopping) {
+        workers_v8_untrack_request(backend, request);
+        return false;
+    }
+    worker->cv.notify_one();
     return true;
 }
 
@@ -870,21 +1199,6 @@ bool workers_v8_read_worker_source(SlV8Engine* backend, const std::string& modul
         std::string(reinterpret_cast<const char*>(bytes.ptr), static_cast<size_t>(bytes.length));
     (void)backend;
     return true;
-}
-
-bool workers_v8_startup_check(const std::string& module_path, const std::string& module_source,
-                              size_t memory_limit_mb)
-{
-    SlV8WorkerRequest request = {};
-    request.kind = WorkersV8RequestKind::JsInvoke;
-    request.module_path = module_path;
-    request.module_source = module_source;
-    request.export_name = "__sloppyMissingStartupCheck";
-    request.input_json = "null";
-    request.memory_limit_mb = memory_limit_mb;
-    WorkersV8ExecutionResult result = workers_v8_execute_in_isolate(request);
-    return result.code == "SLOPPY_E_WORKER_CRASHED" &&
-           result.message == "worker export is not callable";
 }
 
 void workers_v8_run_pool_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -1013,7 +1327,7 @@ void workers_v8_worker_invoke_callback(const v8::FunctionCallbackInfo<v8::Value>
     request->export_name = std::move(export_name);
     request->input_json = std::move(input_json);
     request->memory_limit_mb = worker->memory_limit_mb;
-    if (!workers_v8_start_request(backend, request)) {
+    if (!workers_v8_enqueue_worker_request(worker, request)) {
         workers_v8_finish_worker_request(request);
         workers_v8_throw_code_error(backend, "SLOPPY_E_WORKER_POOL_UNAVAILABLE",
                                     "worker pool unavailable");
@@ -1085,7 +1399,7 @@ void workers_v8_worker_post_callback(const v8::FunctionCallbackInfo<v8::Value>& 
     request->export_name = "onMessage";
     request->input_json = std::move(input_json);
     request->memory_limit_mb = worker->memory_limit_mb;
-    if (!workers_v8_start_request(backend, request)) {
+    if (!workers_v8_enqueue_worker_request(worker, request)) {
         workers_v8_finish_worker_request(request);
         workers_v8_throw_code_error(backend, "SLOPPY_E_WORKER_POOL_UNAVAILABLE",
                                     "worker pool unavailable");
@@ -1108,21 +1422,39 @@ void workers_v8_worker_stop_callback(const v8::FunctionCallbackInfo<v8::Value>& 
         return;
     }
 
-    std::lock_guard<std::mutex> lock(backend->workers_mutex);
-    for (auto it = backend->js_workers.begin(); it != backend->js_workers.end(); ++it) {
-        std::shared_ptr<SlV8JsWorker> worker = *it;
-        if (worker == nullptr || worker->id != worker_id) {
-            continue;
+    std::shared_ptr<SlV8JsWorker> stopped_worker;
+    {
+        std::lock_guard<std::mutex> lock(backend->workers_mutex);
+        for (auto it = backend->js_workers.begin(); it != backend->js_workers.end(); ++it) {
+            std::shared_ptr<SlV8JsWorker> worker = *it;
+            if (worker == nullptr || worker->id != worker_id) {
+                continue;
+            }
+            worker->stopped = true;
+            stopped_worker = worker;
+            if (worker->active_count == 0U) {
+                backend->js_workers.erase(it);
+            }
+            break;
         }
-        worker->stopped = true;
-        if (worker->active_count == 0U) {
-            backend->js_workers.erase(it);
-        }
+    }
+    if (stopped_worker != nullptr) {
+        workers_v8_stop_worker_runtime(stopped_worker);
         args.GetReturnValue().Set(v8::Undefined(isolate));
         return;
     }
     workers_v8_throw_code_error(backend, "SLOPPY_E_WORKER_STALE_HANDLE",
                                 "worker handle is stale or disposed");
+}
+
+void workers_v8_worker_on_message_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+
+    workers_v8_throw_code_error(backend, "SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE",
+                                "worker receive bridge is unavailable");
 }
 
 bool workers_v8_make_worker_handle(SlV8Engine* backend, v8::Local<v8::Context> context,
@@ -1146,6 +1478,8 @@ bool workers_v8_make_worker_handle(SlV8Engine* backend, v8::Local<v8::Context> c
                                  workers_v8_worker_invoke_callback) ||
         !workers_v8_set_function(backend, context, object, "post",
                                  workers_v8_worker_post_callback) ||
+        !workers_v8_set_function(backend, context, object, "onMessage",
+                                 workers_v8_worker_on_message_callback) ||
         !workers_v8_set_function(backend, context, object, "stop",
                                  workers_v8_worker_stop_callback) ||
         !workers_v8_set_string(backend, context, object, "__sloppyWorkerResource", "jsWorker"))
@@ -1187,8 +1521,7 @@ void workers_v8_start_worker_callback(const v8::FunctionCallbackInfo<v8::Value>&
         return;
     }
     if (!workers_v8_read_worker_source(backend, module_path, &module_source) ||
-        module_source.size() > kWorkersV8MaxModuleBytes ||
-        !workers_v8_startup_check(module_path, module_source, memory_limit_mb))
+        module_source.size() > kWorkersV8MaxModuleBytes)
     {
         workers_v8_throw_code_error(backend, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED",
                                     "worker isolate startup failed");
@@ -1212,6 +1545,25 @@ void workers_v8_start_worker_callback(const v8::FunctionCallbackInfo<v8::Value>&
                                         "app shutdown cancelled worker operation");
             return;
         }
+    }
+    if (!workers_v8_start_worker_runtime(worker)) {
+        workers_v8_stop_worker_runtime(worker);
+        workers_v8_throw_code_error(
+            backend,
+            worker->startup_error_code.empty() ? "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED"
+                                               : worker->startup_error_code.c_str(),
+            worker->startup_error_message.empty() ? "worker isolate startup failed"
+                                                  : worker->startup_error_message.c_str());
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> lock(backend->workers_mutex);
+        if (backend->workers_shutting_down) {
+            workers_v8_stop_worker_runtime(worker);
+            workers_v8_throw_code_error(backend, "SLOPPY_E_WORKER_SHUTDOWN_CANCELLED",
+                                        "app shutdown cancelled worker operation");
+            return;
+        }
         worker->id = backend->next_worker_id++;
         if (worker->id == 0U) {
             worker->id = backend->next_worker_id++;
@@ -1220,6 +1572,13 @@ void workers_v8_start_worker_callback(const v8::FunctionCallbackInfo<v8::Value>&
     }
 
     if (!workers_v8_make_worker_handle(backend, context, worker, &handle)) {
+        {
+            std::lock_guard<std::mutex> lock(backend->workers_mutex);
+            worker->stopped = true;
+            auto& workers = backend->js_workers;
+            workers.erase(std::remove(workers.begin(), workers.end(), worker), workers.end());
+        }
+        workers_v8_stop_worker_runtime(worker);
         workers_v8_throw_code_error(backend, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED",
                                     "worker isolate startup failed");
         return;
@@ -1263,6 +1622,7 @@ bool sl_v8_install_workers_intrinsics(SlV8Engine* backend, v8::Local<v8::Context
 void sl_v8_workers_dispose(SlV8Engine* backend)
 {
     std::vector<std::shared_ptr<SlV8WorkerRequest>> requests;
+    std::vector<std::shared_ptr<SlV8JsWorker>> workers;
 
     if (backend == nullptr) {
         return;
@@ -1271,11 +1631,16 @@ void sl_v8_workers_dispose(SlV8Engine* backend)
         std::lock_guard<std::mutex> lock(backend->workers_mutex);
         backend->workers_shutting_down = true;
         requests = backend->worker_requests;
+        workers = backend->js_workers;
         for (const std::shared_ptr<SlV8JsWorker>& worker : backend->js_workers) {
             if (worker != nullptr) {
                 worker->stopped = true;
             }
         }
+    }
+
+    for (const std::shared_ptr<SlV8JsWorker>& worker : workers) {
+        workers_v8_stop_worker_runtime(worker);
     }
 
     for (const std::shared_ptr<SlV8WorkerRequest>& request : requests) {

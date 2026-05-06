@@ -160,7 +160,11 @@ class WorkerCancellationSignal {
         const listeners = Array.from(this._listeners);
         this._listeners.clear();
         for (const listener of listeners) {
-            listener(reason);
+            try {
+                listener(reason);
+            } catch {
+                // Cancellation fan-out must stay deterministic even if user code throws.
+            }
         }
         return true;
     }
@@ -184,20 +188,35 @@ function normalizeOperationOptions(options = undefined) {
     if (typeof options !== "object") {
         throw new TypeError("worker operation options must be an object.");
     }
-    return {
-        deadline: normalizeDeadline(options.deadline),
-        signal: options.signal,
-        timeoutMs: options.timeoutMs,
-    };
-}
-
-function timeoutMsFromOptions(options) {
+    let timeoutDeadline = undefined;
     if (options.timeoutMs !== undefined) {
         if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0) {
             throw new TypeError("worker timeoutMs must be finite and non-negative.");
         }
-        return Math.ceil(options.timeoutMs);
+        timeoutDeadline = Deadline.after(Math.ceil(options.timeoutMs));
     }
+    const explicitDeadline = normalizeDeadline(options.deadline);
+    return {
+        deadline: combineDeadlines(explicitDeadline, timeoutDeadline),
+        signal: options.signal,
+    };
+}
+
+function combineDeadlines(first, second) {
+    if (first === undefined) {
+        return second;
+    }
+    if (second === undefined) {
+        return first;
+    }
+    return Object.freeze({
+        remainingMs() {
+            return Math.min(deadlineRemainingMs(first), deadlineRemainingMs(second));
+        },
+    });
+}
+
+function timeoutMsFromOptions(options) {
     const deadlineMs = deadlineRemainingMs(options.deadline);
     return deadlineMs === Infinity ? Infinity : Math.ceil(deadlineMs);
 }
@@ -219,7 +238,11 @@ function copyBytes(bytes) {
         return bytes.slice(0);
     }
     if (ArrayBuffer.isView(bytes)) {
-        return new Uint8Array(typedArrayBackingStore(bytes), bytes.byteOffset, bytes.byteLength).slice();
+        const copy = typedArrayBackingStore(bytes).slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        if (bytes instanceof DataView) {
+            return new DataView(copy);
+        }
+        return new bytes.constructor(copy);
     }
     return undefined;
 }
@@ -333,8 +356,6 @@ function retryDelayMs(backoff, attempt, error) {
     return Math.ceil(value);
 }
 
-let nextJobId = 1;
-
 class WorkQueueHandle {
     constructor(name, options = undefined) {
         this.name = validateName(name, "WorkQueue");
@@ -355,6 +376,7 @@ class WorkQueueHandle {
         this._waiters = [];
         this._active = 0;
         this._stopped = false;
+        this._nextJobId = 1;
         this._stopPromise = undefined;
         this._resolveStop = undefined;
         this._stats = {
@@ -420,7 +442,7 @@ class WorkQueueHandle {
                 return;
             }
             const job = {
-                id: nextJobId++,
+                id: this._nextJobId++,
                 data: payload,
                 attempt: 0,
                 options: normalizeOperationOptions(options),
@@ -675,15 +697,17 @@ class WorkerPoolHandle {
         });
         this._queue.process(async (job, ctx) => {
             const bridge = globalThis.__sloppy?.workers;
-            if (bridge !== undefined && typeof bridge.runPool === "function") {
-                try {
-                    return await bridge.runPool(this.name, job.data.fn, job.data.input, ctx);
-                } catch (error) {
-                    throw toWorkerError(error, "SLOPPY_E_WORKER_CRASHED", "worker pool operation failed");
-                }
+            if (bridge === undefined || typeof bridge.runPool !== "function") {
+                throw workerError(
+                    "SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE",
+                    "worker pool bridge is unavailable",
+                );
             }
-            await yieldTurn();
-            return job.data.fn(Object.freeze({ input: job.data.input, signal: ctx.signal, deadline: ctx.deadline }));
+            try {
+                return await bridge.runPool(this.name, job.data.fn, job.data.input, ctx);
+            } catch (error) {
+                throw toWorkerError(error, "SLOPPY_E_WORKER_CRASHED", "worker pool operation failed");
+            }
         });
         this.__sloppyWorkerResource = "workerPool";
         Object.seal(this);
@@ -725,58 +749,6 @@ class WorkerPoolHandle {
             name: this.name,
             workers: this.workers,
             maxQueued: this.maxQueued,
-        });
-    }
-}
-
-class JsWorkerHandle {
-    constructor(modulePath, moduleNamespace, options) {
-        this.modulePath = modulePath;
-        this._module = moduleNamespace;
-        this._stopped = false;
-        this._memoryLimitMb = options.memoryLimitMb;
-        this.__sloppyWorkerResource = "jsWorker";
-        Object.seal(this);
-    }
-
-    async invoke(exportName, payload = undefined, options = undefined) {
-        if (this._stopped) {
-            throw workerError("SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
-        }
-        if (typeof exportName !== "string" || exportName.length === 0) {
-            throw new TypeError("Worker.invoke export name must be a non-empty string.");
-        }
-        const fn = this._module[exportName];
-        if (typeof fn !== "function") {
-            throw workerError("SLOPPY_E_WORKER_CRASHED", "worker export is not callable");
-        }
-        const input = serializePayload(payload);
-        const owned = makeContext(normalizeOperationOptions(options));
-        try {
-            return await Promise.race([
-                fn(input, owned.ctx),
-                new Promise((_, reject) => {
-                    subscribeSignal(owned.ctx.signal, (reason) => reject(rejectForCancellation(reason, "SLOPPY_E_WORK_JOB_TIMEOUT")));
-                }),
-            ]);
-        } finally {
-            owned.cleanup();
-        }
-    }
-
-    async post(message, options = undefined) {
-        return this.invoke("onMessage", message, options);
-    }
-
-    async stop() {
-        this._stopped = true;
-    }
-
-    __sloppyPlanMetadata() {
-        return Object.freeze({
-            kind: "jsWorker",
-            path: this.modulePath,
-            memoryLimitMb: this._memoryLimitMb,
         });
     }
 }
@@ -834,6 +806,23 @@ class NativeJsWorkerHandle {
         }
     }
 
+    onMessage(callback) {
+        if (this._stopped) {
+            throw workerError("SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+        }
+        if (typeof callback !== "function") {
+            throw new TypeError("Worker.onMessage requires a callback.");
+        }
+        const subscribe = this._native.onMessage ?? this._native.addMessageListener;
+        if (typeof subscribe !== "function") {
+            throw workerError(
+                "SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE",
+                "worker receive bridge is unavailable",
+            );
+        }
+        return subscribe.call(this._native, callback);
+    }
+
     async stop() {
         if (this._stopped) {
             return;
@@ -888,12 +877,10 @@ const Worker = Object.freeze({
                 throw toWorkerError(error, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", "worker isolate startup failed");
             }
         }
-        try {
-            const moduleNamespace = await import(modulePath);
-            return new JsWorkerHandle(modulePath, moduleNamespace, { memoryLimitMb });
-        } catch (error) {
-            throw workerError("SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", "worker isolate startup failed", error);
-        }
+        throw workerError(
+            "SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE",
+            "worker bridge is unavailable",
+        );
     },
 });
 

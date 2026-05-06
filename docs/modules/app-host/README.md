@@ -19,9 +19,11 @@ Post-Core framework/API shape is locked in
 the next framework target is Minimal API `app.get/post/...`, function modules first,
 layered Plan-visible config, explicit provider imports, inferred provider capabilities,
 explicit `ctx` binding helpers, and explicit `Results.*` descriptors.
-FRAMEWORK-01.B implements the first typed config surface in the stdlib: case-insensitive
-logical keys, nested `addObject`, `getString/getInt/getNumber/getBool`, `bind`, and
-provider shorthand binding such as `sqlite:main`.
+CORE-CONFIG-01 implements the expanded typed config surface in the stdlib:
+case-insensitive logical keys, nested `addObject`, typed getters for strings, numbers,
+booleans, durations, sizes, arrays, objects, and secrets, descriptor `bind`, defaults,
+required validation, enum/range validation, and provider shorthand binding such as
+`sqlite:main`.
 
 ## Purpose
 
@@ -49,7 +51,8 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
 - `Sloppy.createBuilder()` creates a JavaScript bootstrap builder;
 - `builder.config.addObject(...)` stores flat or nested object-backed config values, with
   later object providers overriding earlier keys;
-- `builder.config` and `app.config` expose typed getters plus `bind(prefix, schema)`;
+- `builder.config` and `app.config` expose typed getters plus `bind(prefix, schema)` and
+  descriptor-based typed binding;
 - `builder.logging.setMinimumLevel(...)` and `builder.logging.addMemorySink()` configure a
   deterministic memory logger with no timestamps;
 - `builder.capabilities.addDatabase(...)` registers database capability metadata;
@@ -132,9 +135,10 @@ only and do not add filesystem or network APIs.
 `app.run`, `app.listen`, `app.build`, automatic `app.plan.json` emission from the
 bootstrap facade, real data providers, database connections from JavaScript, SQL execution
 from JavaScript, nested route groups, module package loading, native plugins, middleware,
-automatic validation/request binding, config file/env providers, console/file/native
+automatic validation/request binding, reload-on-change config watching, console/file/native
 logging sinks, async request lifetimes, async service factories, and typed service tokens
-remain future work. MAIN1-02 validates compiler-emitted route/provider/capability plan
+remain future work. Config file, environment, local secret, and CLI override providers are
+compiler/source-input concerns rather than bootstrap-only app-host file reads. MAIN1-02 validates compiler-emitted route/provider/capability plan
 metadata, and MAIN1-03 validates that metadata at app-host startup, but neither PR makes
 the bootstrap app host emit plans, activates services, opens providers, implements DI, or
 enforces provider/capability access.

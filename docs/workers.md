@@ -29,7 +29,7 @@ import {
 - `WorkerPool.create(name, options)` creates a bounded offload queue with fixed worker
   concurrency; the V8 bridge executes admitted work in worker-owned isolates.
 - `Worker.start(modulePath, options?)` starts an explicit worker module when a supported bridge
-  or bootstrap module loader is available.
+  is available; it fails closed instead of running a same-isolate JavaScript fallback.
 
 All resource names must be stable non-empty strings. Public JavaScript handles expose no raw
 native pointers, OS handles, libuv handles, thread IDs, or V8 isolate pointers.
@@ -83,9 +83,10 @@ Compiler imports from `sloppy/workers` emit:
 - `requiredFeatures: ["stdlib.workers"]`
 - `features.workers: true`
 - `strongPlan.evidence.workers: true`
-- a `workers.policy` object describing bounded defaults, no raw native handles, and owner-thread
-  settlement requirements
-- `doctorChecks[].id = "stdlib.workers.contract"`
+
+Compiler imports do not infer concrete worker resources or emit a passing worker doctor check.
+Runtime plan contribution APIs and explicit plan fixtures own worker resource metadata until a
+static resource analyzer exists.
 
 Runtime feature activation registers `stdlib.workers` with dependencies on `core`, `v8`,
 `transport.libuv`, `stdlib.time`, and `stdlib.codec`.

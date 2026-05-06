@@ -5788,7 +5788,11 @@ Reason:
             return value.slice(0);
         }
         if (ArrayBuffer.isView(value)) {
-            return new Uint8Array(sloppyWorkerTypedArrayBackingStore(value), value.byteOffset, value.byteLength).slice();
+            const copy = sloppyWorkerTypedArrayBackingStore(value).slice(value.byteOffset, value.byteOffset + value.byteLength);
+            if (value instanceof DataView) {
+                return new DataView(copy);
+            }
+            return new value.constructor(copy);
         }
         if (Array.isArray(value)) {
             if (seen.has(value)) {
@@ -5836,6 +5840,107 @@ Reason:
         return resolved;
     }
 
+    function sloppyWorkerDeadlineRemainingMs(deadline) {
+        if (deadline === undefined || deadline === null) {
+            return Infinity;
+        }
+        if (typeof deadline.remainingMs !== "function") {
+            throw new TypeError("worker deadline must expose remainingMs().");
+        }
+        const remaining = Number(deadline.remainingMs());
+        return Number.isFinite(remaining) ? Math.max(0, remaining) : Infinity;
+    }
+
+    function sloppyWorkerCombineDeadlines(first, second) {
+        if (first === undefined || first === null) {
+            return second;
+        }
+        if (second === undefined || second === null) {
+            return first;
+        }
+        return Object.freeze({
+            remainingMs() {
+                return Math.min(sloppyWorkerDeadlineRemainingMs(first), sloppyWorkerDeadlineRemainingMs(second));
+            },
+        });
+    }
+
+    function sloppyWorkerNormalizeOptions(options = undefined) {
+        if (options === undefined || options === null) {
+            return { deadline: undefined, signal: undefined };
+        }
+        if (typeof options !== "object") {
+            throw new TypeError("worker operation options must be an object.");
+        }
+        let timeoutDeadline = undefined;
+        if (options.timeoutMs !== undefined) {
+            if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0) {
+                throw new TypeError("worker timeoutMs must be finite and non-negative.");
+            }
+            timeoutDeadline = Deadline.after(Math.ceil(options.timeoutMs));
+        }
+        return {
+            deadline: sloppyWorkerCombineDeadlines(options.deadline, timeoutDeadline),
+            signal: options.signal,
+        };
+    }
+
+    function sloppyWorkerSignalCancelled(signal) {
+        return signal !== null && typeof signal === "object" &&
+            (signal.cancelled === true || signal.aborted === true);
+    }
+
+    function sloppyWorkerSubscribeSignal(signal, listener) {
+        if (signal === null || typeof signal !== "object" || typeof listener !== "function") {
+            return () => {};
+        }
+        if (sloppyWorkerSignalCancelled(signal)) {
+            listener(signal.reason);
+            return () => {};
+        }
+        if (typeof signal._subscribe === "function") {
+            return signal._subscribe(listener);
+        }
+        if (typeof signal.addEventListener === "function") {
+            const wrapped = () => listener(signal.reason);
+            signal.addEventListener("abort", wrapped);
+            return () => signal.removeEventListener?.("abort", wrapped);
+        }
+        return () => {};
+    }
+
+    function sloppyWorkerRejectForCancellation(reason) {
+        if (reason === "deadline" || reason === "timeout") {
+            return sloppyWorkerError("SLOPPY_E_WORK_JOB_TIMEOUT", "worker operation timed out");
+        }
+        return sloppyWorkerError("SLOPPY_E_WORK_JOB_CANCELLED", "worker operation was cancelled");
+    }
+
+    function sloppyWorkerContext(options, extra = {}) {
+        const controller = new WorkerCancellationController();
+        const cleanupParent = sloppyWorkerSubscribeSignal(options.signal, (reason) => controller.cancel(reason));
+        const remainingMs = sloppyWorkerDeadlineRemainingMs(options.deadline);
+        let timer = undefined;
+        if (remainingMs === 0) {
+            controller.cancel("deadline");
+        } else if (remainingMs !== Infinity) {
+            timer = setTimeout(() => controller.cancel("deadline"), Math.ceil(remainingMs));
+        }
+        return {
+            ctx: Object.freeze({
+                signal: controller.signal,
+                deadline: options.deadline,
+                ...extra,
+            }),
+            cleanup() {
+                cleanupParent();
+                if (timer !== undefined) {
+                    clearTimeout(timer);
+                }
+            },
+        };
+    }
+
     class WorkerCancellationSignal {
         constructor() {
             this.cancelled = false;
@@ -5843,6 +5948,12 @@ Reason:
             this.reason = undefined;
             this._listeners = new Set();
             Object.seal(this);
+        }
+
+        throwIfCancelled() {
+            if (this.cancelled) {
+                throw sloppyWorkerError("SLOPPY_E_WORK_JOB_CANCELLED", "worker operation was cancelled");
+            }
         }
 
         addEventListener(type, listener) {
@@ -5855,6 +5966,17 @@ Reason:
             if (type === "abort") {
                 this._listeners.delete(listener);
             }
+        }
+
+        _subscribe(listener) {
+            if (this.cancelled) {
+                listener(this.reason);
+                return () => {};
+            }
+            this._listeners.add(listener);
+            return () => {
+                this._listeners.delete(listener);
+            };
         }
 
         _cancel(reason) {
@@ -5889,10 +6011,18 @@ Reason:
             this.maxQueued = sloppyWorkerPositive(options?.maxQueued, "WorkQueue.maxQueued", 1024);
             this.concurrency = sloppyWorkerPositive(options?.concurrency, "WorkQueue.concurrency", 1);
             this.overflow = options?.overflow ?? "reject";
+            if (!["reject", "backpressure"].includes(this.overflow)) {
+                throw new TypeError("WorkQueue overflow must be \"reject\" or \"backpressure\".");
+            }
+            this.maxBackpressureWaiters = sloppyWorkerPositive(options?.maxBackpressureWaiters, "WorkQueue.maxBackpressureWaiters", this.maxQueued);
             this._handler = undefined;
             this._queue = [];
+            this._waiters = [];
             this._active = 0;
             this._stopped = false;
+            this._nextJobId = 1;
+            this._stopPromise = undefined;
+            this._resolveStop = undefined;
             this.__sloppyWorkerResource = "workQueue";
             Object.seal(this);
         }
@@ -5905,6 +6035,9 @@ Reason:
             if (typeof handler !== "function") {
                 throw new TypeError("WorkQueue.process requires a job handler.");
             }
+            if (this._handler !== undefined) {
+                throw new TypeError("WorkQueue.process may only be called once.");
+            }
             this._handler = handler;
             this._pump();
             return this;
@@ -5914,6 +6047,9 @@ Reason:
             if (this._stopped) {
                 return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
             }
+            if (this._handler === undefined) {
+                return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue has no processor"));
+            }
             return this._enqueuePayload(sloppyWorkerSerializePayload(data), options);
         }
 
@@ -5921,13 +6057,47 @@ Reason:
             if (this._stopped) {
                 return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
             }
-            if (this._queue.length >= this.maxQueued && this._active >= this.concurrency) {
-                return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_FULL", "work queue is full"));
-            }
-            return new Promise((resolve, reject) => {
-                this._queue.push({ data: payload, options, resolve, reject });
+            const submit = () => new Promise((resolve, reject) => {
+                if (this._stopped) {
+                    reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
+                    return;
+                }
+                this._queue.push({
+                    id: this._nextJobId++,
+                    data: payload,
+                    options: sloppyWorkerNormalizeOptions(options),
+                    resolve,
+                    reject,
+                });
                 this._pump();
             });
+            if (this._queue.length >= this.maxQueued && this._active >= this.concurrency) {
+                if (this.overflow === "reject") {
+                    return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_FULL", "work queue is full"));
+                }
+                if (this._waiters.length >= this.maxBackpressureWaiters) {
+                    return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_FULL", "work queue backpressure waiters are full"));
+                }
+                return new Promise((resolve, reject) => {
+                    this._waiters.push({
+                        reject,
+                        resume: () => submit().then(resolve, reject),
+                    });
+                });
+            }
+            return submit();
+        }
+
+        async drain() {
+            if (this._queue.length === 0 && this._active === 0) {
+                return;
+            }
+            if (this._stopPromise === undefined) {
+                this._stopPromise = new Promise((resolve) => {
+                    this._resolveStop = resolve;
+                });
+            }
+            await this._stopPromise;
         }
 
         async stop(options = undefined) {
@@ -5937,19 +6107,54 @@ Reason:
                     this._queue.shift().reject(sloppyWorkerError("SLOPPY_E_WORKER_SHUTDOWN_CANCELLED", "queued job was cancelled by shutdown"));
                 }
             }
+            const waiterError = options?.drain === false
+                ? sloppyWorkerError("SLOPPY_E_WORKER_SHUTDOWN_CANCELLED", "queued job was cancelled by shutdown")
+                : sloppyWorkerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped");
+            while (this._waiters.length > 0) {
+                this._waiters.shift().reject(waiterError);
+            }
+            await this.drain();
         }
 
         _pump() {
+            while (!this._stopped && this._waiters.length > 0 && this._queue.length < this.maxQueued) {
+                this._waiters.shift().resume();
+            }
             while (this._handler && this._active < this.concurrency && this._queue.length > 0) {
                 const job = this._queue.shift();
                 this._active += 1;
-                Promise.resolve()
-                    .then(() => this._handler(Object.freeze({ data: job.data }), Object.freeze({ signal: new WorkerCancellationSignal() })))
-                    .then(job.resolve, (error) => job.reject(sloppyWorkerError("SLOPPY_E_WORK_JOB_FAILED", "work queue job failed", error)))
-                    .finally(() => {
-                        this._active -= 1;
-                        this._pump();
-                    });
+                this._runJob(job);
+            }
+            if (this._queue.length === 0 && this._active === 0 && this._resolveStop !== undefined) {
+                this._resolveStop();
+                this._resolveStop = undefined;
+                this._stopPromise = undefined;
+            }
+        }
+
+        async _runJob(job) {
+            const owned = sloppyWorkerContext(job.options);
+            try {
+                if (sloppyWorkerSignalCancelled(owned.ctx.signal)) {
+                    throw sloppyWorkerRejectForCancellation(owned.ctx.signal.reason);
+                }
+                const result = await Promise.race([
+                    this._handler(Object.freeze({ id: job.id, data: job.data }), owned.ctx),
+                    new Promise((_, reject) => {
+                        sloppyWorkerSubscribeSignal(owned.ctx.signal, (reason) => reject(sloppyWorkerRejectForCancellation(reason)));
+                    }),
+                ]);
+                job.resolve(result);
+            } catch (error) {
+                if (error instanceof SloppyWorkerError) {
+                    job.reject(error);
+                } else {
+                    job.reject(sloppyWorkerError("SLOPPY_E_WORK_JOB_FAILED", "work queue job failed", error));
+                }
+            } finally {
+                owned.cleanup();
+                this._active -= 1;
+                this._pump();
             }
         }
 
@@ -6007,16 +6212,16 @@ Reason:
     const WorkerPool = Object.freeze({
         create(name, options = undefined) {
             const queue = new ClassicWorkQueue(name, { maxQueued: options?.maxQueued ?? 64, concurrency: options?.workers ?? 1 });
-            queue.process(async (job) => {
+            queue.process(async (job, ctx) => {
                 const bridge = globalThis.__sloppy?.workers;
-                if (bridge !== undefined && typeof bridge.runPool === "function") {
-                    try {
-                        return await bridge.runPool(name, job.data.fn, job.data.input, {});
-                    } catch (error) {
-                        throw sloppyWorkerBridgeError(error, "SLOPPY_E_WORKER_CRASHED", "worker pool operation failed");
-                    }
+                if (bridge === undefined || typeof bridge.runPool !== "function") {
+                    throw sloppyWorkerError("SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE", "worker pool bridge is unavailable");
                 }
-                return job.data.fn(Object.freeze({ input: job.data.input }));
+                try {
+                    return await bridge.runPool(name, job.data.fn, job.data.input, ctx);
+                } catch (error) {
+                    throw sloppyWorkerBridgeError(error, "SLOPPY_E_WORKER_CRASHED", "worker pool operation failed");
+                }
             });
             return Object.freeze({
                 __sloppyWorkerResource: "workerPool",
@@ -6024,7 +6229,7 @@ Reason:
                     if (typeof fn !== "function") {
                         return Promise.reject(new TypeError("WorkerPool.run requires a function."));
                     }
-                    return queue._enqueuePayload({ fn, input: sloppyWorkerSerializePayload(runOptions?.input) });
+                    return queue._enqueuePayload({ fn, input: sloppyWorkerSerializePayload(runOptions?.input) }, runOptions);
                 },
                 stop(options = undefined) {
                     return queue.stop(options);
@@ -6071,6 +6276,20 @@ Reason:
             }
         }
 
+        onMessage(callback) {
+            if (this._stopped) {
+                throw sloppyWorkerError("SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+            }
+            if (typeof callback !== "function") {
+                throw new TypeError("Worker.onMessage requires a callback.");
+            }
+            const subscribe = this._native.onMessage ?? this._native.addMessageListener;
+            if (typeof subscribe !== "function") {
+                throw sloppyWorkerError("SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE", "worker receive bridge is unavailable");
+            }
+            return subscribe.call(this._native, callback);
+        }
+
         async stop() {
             if (this._stopped) {
                 return;
@@ -6103,7 +6322,7 @@ Reason:
                     throw sloppyWorkerBridgeError(error, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", "worker isolate startup failed");
                 }
             }
-            throw sloppyWorkerError("SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", "worker isolate startup failed");
+            throw sloppyWorkerError("SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE", "worker bridge is unavailable");
         },
     });
 

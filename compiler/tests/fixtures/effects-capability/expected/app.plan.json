@@ -80,12 +80,35 @@
         "value": 30000
       }
     ],
+    "packageManifest": {
+      "optional": [],
+      "required": [
+        {
+          "env": "Sloppy__Providers__sqlite__main__database",
+          "key": "Sloppy:Providers:sqlite:main:database",
+          "secret": false,
+          "type": "string"
+        }
+      ]
+    },
     "providers": [
       {
         "name": "main",
         "prefix": "Sloppy:Providers:sqlite:main",
         "provider": "sqlite",
         "source": "inline"
+      }
+    ],
+    "requirements": [
+      {
+        "key": "Sloppy:Providers:sqlite:main:database",
+        "redaction": "none",
+        "required": true,
+        "requiredBy": "input.js:5",
+        "secret": false,
+        "source": "inline",
+        "status": "present",
+        "type": "string"
       }
     ]
   },

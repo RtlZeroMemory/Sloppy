@@ -48,6 +48,7 @@
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_MAX_REQUIRED_FEATURES 32U
 #define SL_CLI_MAX_HTTP_CLIENTS 32U
+#define SL_CLI_MAX_CONFIG_REQUIREMENTS 64U
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_FILE_READ_SCRATCH_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
@@ -166,6 +167,18 @@ typedef struct SlCliHttpClient
     bool strict_network;
 } SlCliHttpClient;
 
+typedef struct SlCliConfigRequirement
+{
+    SlCliSpan key;
+    SlCliSpan type;
+    SlCliSpan status;
+    SlCliSpan source;
+    SlCliSpan required_by;
+    SlCliSpan redaction;
+    bool required;
+    bool secret;
+} SlCliConfigRequirement;
+
 typedef struct SlCliSchemaProperty
 {
     SlCliSpan name;
@@ -207,6 +220,8 @@ typedef struct SlCliMetadata
     size_t required_feature_count;
     SlCliHttpClient http_clients[SL_CLI_MAX_HTTP_CLIENTS];
     size_t http_client_count;
+    SlCliConfigRequirement config_requirements[SL_CLI_MAX_CONFIG_REQUIREMENTS];
+    size_t config_requirement_count;
     SlCliSpan completeness;
 } SlCliMetadata;
 
@@ -262,6 +277,11 @@ static bool sl_cli_span_equal(SlCliSpan left, SlCliSpan right)
 static bool sl_cli_span_equal_cstr(SlCliSpan left, const char* right)
 {
     return sl_cli_span_equal(left, sl_cli_span_cstr(right));
+}
+
+static bool sl_cli_string_builder_append_span(SlStringBuilder* builder, SlCliSpan span)
+{
+    return sl_status_is_ok(sl_string_builder_append_str(builder, sl_cli_span_str(span)));
 }
 
 static SlCliSpan sl_cli_json_span(yyjson_val* object, const char* name)
@@ -1317,6 +1337,68 @@ static int sl_cli_parse_http_clients(yyjson_val* root, SlCliMetadata* metadata)
     return 0;
 }
 
+static int sl_cli_parse_config_requirements(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* configuration = yyjson_obj_get(root, "configuration");
+    yyjson_val* requirements = NULL;
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (configuration == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(configuration)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: configuration must be an object\n");
+        return 1;
+    }
+
+    requirements = yyjson_obj_get(configuration, "requirements");
+    if (requirements == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(requirements)) {
+        sl_cli_write_cstr(
+            stderr, "sloppy: malformed metadata: configuration.requirements must be an array\n");
+        return 1;
+    }
+
+    yyjson_arr_iter_init(requirements, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliConfigRequirement requirement = {0};
+        yyjson_val* required = NULL;
+        yyjson_val* secret = NULL;
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed config requirement metadata\n");
+            return 1;
+        }
+        if (metadata->config_requirement_count >= SL_CLI_MAX_CONFIG_REQUIREMENTS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many config requirements in metadata\n");
+            return 1;
+        }
+
+        requirement.key = sl_cli_json_span(value, "key");
+        requirement.type = sl_cli_json_span(value, "type");
+        requirement.status = sl_cli_json_span(value, "status");
+        requirement.source = sl_cli_json_span(value, "source");
+        requirement.required_by = sl_cli_json_span(value, "requiredBy");
+        requirement.redaction = sl_cli_json_span(value, "redaction");
+        required = yyjson_obj_get(value, "required");
+        secret = yyjson_obj_get(value, "secret");
+        requirement.required =
+            required != NULL && yyjson_is_bool(required) && yyjson_get_bool(required);
+        requirement.secret = secret != NULL && yyjson_is_bool(secret) && yyjson_get_bool(secret);
+        if (sl_cli_span_empty(requirement.key) || sl_cli_span_empty(requirement.status)) {
+            sl_cli_write_cstr(stderr, "sloppy: config requirement is missing key or status\n");
+            return 1;
+        }
+        metadata->config_requirements[metadata->config_requirement_count] = requirement;
+        metadata->config_requirement_count += 1U;
+    }
+
+    return 0;
+}
+
 static int sl_cli_validate_native_plan(const char* path, SlBytes json, SlArena* arena)
 {
     SlPlan plan = {0};
@@ -1382,7 +1464,8 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
         sl_cli_parse_schemas(root, out_metadata) != 0 ||
         sl_cli_parse_doctor_checks(root, out_metadata) != 0 ||
         sl_cli_parse_required_features(root, out_metadata) != 0 ||
-        sl_cli_parse_http_clients(root, out_metadata) != 0)
+        sl_cli_parse_http_clients(root, out_metadata) != 0 ||
+        sl_cli_parse_config_requirements(root, out_metadata) != 0)
     {
         return 1;
     }
@@ -3898,6 +3981,119 @@ static void sl_cli_doctor_emit_workers(const SlCliOptions* options, SlArena* are
         sl_cli_span_cstr("worker doctor metadata omits payload and secret values"), emitted);
 }
 
+static void sl_cli_doctor_emit_config_requirements(const SlCliOptions* options, SlArena* arena,
+                                                   const SlCliMetadata* metadata, bool* emitted)
+{
+    char id_buffer[320];
+    char message_buffer[640];
+    size_t index = 0U;
+
+    if (metadata->config_requirement_count == 0U) {
+        return;
+    }
+
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.plan.config"), sl_cli_span_cstr("ok"),
+                       sl_cli_span_cstr("configuration requirements are Plan-visible"), emitted);
+    for (index = 0U; index < metadata->config_requirement_count; index += 1U) {
+        const SlCliConfigRequirement* requirement = &metadata->config_requirements[index];
+        SlStringBuilder id_builder = {0};
+        SlStringBuilder message_builder = {0};
+        SlStr id = {0};
+        SlStr message = {0};
+        SlCliSpan status = sl_cli_span_cstr("ok");
+        const char* redaction = requirement->secret ? "secret" : "none";
+
+        if (!sl_status_is_ok(
+                sl_string_builder_init_fixed(&id_builder, id_buffer, sizeof(id_buffer))) ||
+            !sl_status_is_ok(sl_string_builder_init_fixed(&message_builder, message_buffer,
+                                                          sizeof(message_buffer))) ||
+            !sl_status_is_ok(sl_string_builder_append_cstr(&id_builder, "config.")) ||
+            !sl_cli_string_builder_append_span(&id_builder, requirement->key))
+        {
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("config.requirement"), sl_cli_span_cstr("warn"),
+                sl_cli_span_cstr("configuration requirement metadata is too long"), emitted);
+            continue;
+        }
+
+        if (sl_cli_span_equal_cstr(requirement->status, "missing")) {
+            const char* missing_kind = "optional ";
+            if (requirement->required && requirement->secret) {
+                missing_kind = "required secret ";
+            }
+            else if (requirement->required) {
+                missing_kind = "required ";
+            }
+            else if (requirement->secret) {
+                missing_kind = "optional secret ";
+            }
+            status = requirement->required ? sl_cli_span_cstr("error") : sl_cli_span_cstr("warn");
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, "Missing ")) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, missing_kind)) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, "config ")) ||
+                !sl_cli_string_builder_append_span(&message_builder, requirement->key) ||
+                !sl_status_is_ok(
+                    sl_string_builder_append_cstr(&message_builder, " required by ")) ||
+                !sl_cli_string_builder_append_span(&message_builder, requirement->required_by) ||
+                !sl_status_is_ok(
+                    sl_string_builder_append_cstr(&message_builder, " (redaction: ")) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, redaction)) ||
+                !sl_status_is_ok(sl_string_builder_append_char(&message_builder, ')')))
+            {
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("config.requirement"),
+                    sl_cli_span_cstr("warn"),
+                    sl_cli_span_cstr("configuration requirement message is too long"), emitted);
+                continue;
+            }
+        }
+        else if (sl_cli_span_equal_cstr(requirement->status, "defaulted")) {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, "Config ")) ||
+                !sl_cli_string_builder_append_span(&message_builder, requirement->key) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(
+                    &message_builder, " uses its declared default required by ")) ||
+                !sl_cli_string_builder_append_span(&message_builder, requirement->required_by) ||
+                !sl_status_is_ok(
+                    sl_string_builder_append_cstr(&message_builder, " (redaction: ")) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, redaction)) ||
+                !sl_status_is_ok(sl_string_builder_append_char(&message_builder, ')')))
+            {
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("config.requirement"),
+                    sl_cli_span_cstr("warn"),
+                    sl_cli_span_cstr("configuration requirement message is too long"), emitted);
+                continue;
+            }
+        }
+        else {
+            if (!sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, "Config ")) ||
+                !sl_cli_string_builder_append_span(&message_builder, requirement->key) ||
+                !sl_status_is_ok(
+                    sl_string_builder_append_cstr(&message_builder, " is present from ")) ||
+                !sl_cli_string_builder_append_span(&message_builder, requirement->source) ||
+                !sl_status_is_ok(
+                    sl_string_builder_append_cstr(&message_builder, " required by ")) ||
+                !sl_cli_string_builder_append_span(&message_builder, requirement->required_by) ||
+                !sl_status_is_ok(
+                    sl_string_builder_append_cstr(&message_builder, " (redaction: ")) ||
+                !sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, redaction)) ||
+                !sl_status_is_ok(sl_string_builder_append_char(&message_builder, ')')))
+            {
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("config.requirement"),
+                    sl_cli_span_cstr("warn"),
+                    sl_cli_span_cstr("configuration requirement message is too long"), emitted);
+                continue;
+            }
+        }
+
+        id = sl_string_builder_view(&id_builder);
+        message = sl_string_builder_view(&message_builder);
+        sl_cli_doctor_emit(options, arena, sl_cli_span_from_str(id), status,
+                           sl_cli_span_from_str(message), emitted);
+    }
+}
+
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
@@ -3924,6 +4120,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     sl_cli_doctor_emit_os_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_http_clients(options, arena, metadata, emitted);
     sl_cli_doctor_emit_workers(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_config_requirements(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
         SlCliSpan message =

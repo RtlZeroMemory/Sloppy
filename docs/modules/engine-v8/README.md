@@ -189,10 +189,10 @@ Later scope:
 
 ## Non-goals
 
-No ESM resolver, full app host, arbitrary import graph, workers, inspector, snapshots, hot reload, Node
-compatibility, timers, fetch, fs, process/Buffer APIs, npm resolution, or package-manager
-behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and does not make
-this bridge a production server boundary.
+No ESM resolver, full app host, arbitrary import graph, raw native worker handles, inspector,
+snapshots, hot reload, Node compatibility, fetch, process/Buffer APIs, npm resolution, or
+package-manager behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and
+does not make this bridge a production server boundary.
 
 ## Intrinsic Module Layout
 

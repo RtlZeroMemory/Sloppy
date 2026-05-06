@@ -124,9 +124,10 @@ Canonical Windows workflow:
 
 Root wrappers may exist, but `tools/windows` is canonical for the Windows workflow.
 
-Local Codex sessions on this Windows machine must assume the Sloppy V8 SDK is available
-through the repository scripts. For runtime, engine, stdlib, compiler-Plan, or V8-adjacent
-changes, run and report the V8 lane unless the resolver itself fails:
+Codex sessions on this machine must assume the compatible local V8 SDK is available through
+the repo scripts. For implementation PRs that touch runtime, app-host, compiler, bootstrap,
+provider, configuration, or V8-adjacent behavior, run and report a separate V8-enabled
+Windows lane unless the resolver itself fails:
 
 ```powershell
 .\tools\windows\resolve-v8-sdk.ps1
@@ -135,8 +136,9 @@ changes, run and report the V8 lane unless the resolver itself fails:
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
 
-Do not report V8 as unavailable on this machine without first running the resolver and
-including the concrete failure.
+If SDK resolution fails on this machine, treat that as a local environment blocker and
+report it honestly, including the concrete resolver failure, instead of counting the V8
+lane as skipped, optional, or unavailable.
 
 ## Before opening a PR
 

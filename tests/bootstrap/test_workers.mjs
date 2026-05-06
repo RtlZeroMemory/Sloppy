@@ -33,6 +33,50 @@ async function flush(count = 5) {
     }
 }
 
+function installWorkerBridge() {
+    const previous = globalThis.__sloppy;
+    globalThis.__sloppy = {
+        ...previous,
+        workers: {
+            async runPool(_name, fn, input, ctx) {
+                return fn(Object.freeze({
+                    input,
+                    signal: ctx.signal,
+                    deadline: ctx.deadline,
+                }));
+            },
+            async startWorker(modulePath) {
+                const moduleNamespace = await import(modulePath);
+                let stopped = false;
+                return {
+                    async invoke(exportName, payload = null, ctx = undefined) {
+                        if (stopped) {
+                            throw new SloppyWorkerError("SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+                        }
+                        const fn = moduleNamespace[exportName];
+                        if (typeof fn !== "function") {
+                            throw new SloppyWorkerError("SLOPPY_E_WORKER_CRASHED", "worker export is not callable");
+                        }
+                        return fn(payload, ctx);
+                    },
+                    async post(payload = null, ctx = undefined) {
+                        return this.invoke("onMessage", payload, ctx);
+                    },
+                    onMessage(callback) {
+                        return callback;
+                    },
+                    async stop() {
+                        stopped = true;
+                    },
+                };
+            },
+        },
+    };
+    return () => {
+        globalThis.__sloppy = previous;
+    };
+}
+
 {
     let started = 0;
     let observedCancel = false;
@@ -163,16 +207,28 @@ async function flush(count = 5) {
 }
 
 {
+    await assertRejectsWorkerCode(
+        WorkerPool.create("missing-bridge", { workers: 1 }).run(async () => "never"),
+        "SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE",
+    );
+}
+
+{
+    const restoreBridge = installWorkerBridge();
     const pool = WorkerPool.create("image-processing", { workers: 2, maxQueued: 4 });
-    const values = await Promise.all([
-        pool.run(async (ctx) => ctx.input + 1, { input: 1 }),
-        pool.run(async (ctx) => ctx.input + 1, { input: 2 }),
-    ]);
-    assert.deepEqual(values, [2, 3]);
-    assert.equal(await pool.run(async (ctx) => ctx.input === null), true);
-    assert.equal(pool.state.workers, 2);
-    await pool.stop();
-    await assertRejectsWorkerCode(pool.run(async () => "late"), "SLOPPY_E_WORK_QUEUE_STOPPED");
+    try {
+        const values = await Promise.all([
+            pool.run(async (ctx) => ctx.input + 1, { input: 1 }),
+            pool.run(async (ctx) => ctx.input + 1, { input: 2 }),
+        ]);
+        assert.deepEqual(values, [2, 3]);
+        assert.equal(await pool.run(async (ctx) => ctx.input === null), true);
+        assert.equal(pool.state.workers, 2);
+        await pool.stop();
+        await assertRejectsWorkerCode(pool.run(async () => "late"), "SLOPPY_E_WORK_QUEUE_STOPPED");
+    } finally {
+        restoreBridge();
+    }
 }
 
 {
@@ -183,19 +239,32 @@ async function flush(count = 5) {
 }
 
 {
+    await assertRejectsWorkerCode(
+        Worker.start("file:///missing-worker.mjs", { memoryLimitMb: 128 }),
+        "SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE",
+    );
+}
+
+{
+    const restoreBridge = installWorkerBridge();
     const directory = await mkdtemp(join(tmpdir(), "sloppy-worker-"));
     const workerPath = join(directory, "parser.mjs");
-    await writeFile(
-        workerPath,
-        "export async function parse(payload) { return { tokens: payload.text.split(/\\s+/u).length }; }\n"
-            + "export function ping(payload) { return payload === null ? 'pong' : 'unexpected'; }\n"
-            + "export function onMessage(payload) { return payload === null ? 'posted-null' : 'unexpected'; }\n",
-        "utf8",
-    );
-    const worker = await Worker.start(pathToFileURL(workerPath).href, { memoryLimitMb: 128 });
-    assert.deepEqual(await worker.invoke("parse", { text: "one two three" }), { tokens: 3 });
-    assert.equal(await worker.invoke("ping"), "pong");
-    assert.equal(await worker.post(), "posted-null");
-    await worker.stop();
-    await assertRejectsWorkerCode(worker.invoke("parse", { text: "late" }), "SLOPPY_E_WORKER_STALE_HANDLE");
+    try {
+        await writeFile(
+            workerPath,
+            "export async function parse(payload) { return { tokens: payload.text.split(/\\s+/u).length }; }\n"
+                + "export function ping(payload) { return payload === null ? 'pong' : 'unexpected'; }\n"
+                + "export function onMessage(payload) { return payload === null ? 'posted-null' : 'unexpected'; }\n",
+            "utf8",
+        );
+        const worker = await Worker.start(pathToFileURL(workerPath).href, { memoryLimitMb: 128 });
+        assert.deepEqual(await worker.invoke("parse", { text: "one two three" }), { tokens: 3 });
+        assert.equal(await worker.invoke("ping"), "pong");
+        assert.equal(await worker.post(), "posted-null");
+        assert.equal(typeof worker.onMessage(() => {}), "function");
+        await worker.stop();
+        await assertRejectsWorkerCode(worker.invoke("parse", { text: "late" }), "SLOPPY_E_WORKER_STALE_HANDLE");
+    } finally {
+        restoreBridge();
+    }
 }
