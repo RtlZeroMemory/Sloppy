@@ -3756,6 +3756,16 @@ Reason:
     const HTTP_CLIENT_DEFAULT_MAX_HEADER_BYTES = 16 * 1024;
     const HTTP_CLIENT_DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
     const HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
+    const HTTP_CLIENT_DEFAULT_MAX_REDIRECTS = 5;
+    const HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS = 30000;
+    const HTTP_CLIENT_DEFAULT_MAX_CONNECTIONS_PER_ORIGIN = 8;
+    const HTTP_CLIENT_SENSITIVE_HEADERS = new Set([
+        "authorization",
+        "cookie",
+        "proxy-authorization",
+        "x-api-key",
+        "api-key",
+    ]);
 
     function httpClientError(code, message, options = undefined) {
         return new Error(`${code}: ${message}`, options);
@@ -3797,6 +3807,272 @@ Reason:
         const normalizedName = name.toLowerCase();
         if (!headers.has(normalizedName)) {
             headers.set(normalizedName, { name, value });
+        }
+    }
+
+    function httpOriginKey(url) {
+        return `${url.scheme}://${url.hostHeader}`;
+    }
+
+    function httpUrlToString(url) {
+        return `${url.scheme}://${url.hostHeader}${url.target}`;
+    }
+
+    function cloneHttpHeaders(headers) {
+        const cloned = new Map();
+        for (const [name, entry] of headers.entries()) {
+            cloned.set(name, { name: entry.name, value: entry.value });
+        }
+        return cloned;
+    }
+
+    function parseHttpSecretHeaders(value, operation) {
+        if (value === undefined) {
+            return [];
+        }
+        if (!Array.isArray(value)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} secretHeaders must be an array of header names.`);
+        }
+        return value.map((name) => {
+            if (typeof name !== "string" || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    `${operation} secretHeaders entries must be valid header names.`,
+                );
+            }
+            return name.toLowerCase();
+        });
+    }
+
+    function isHttpSensitiveHeader(name, value, secretHeaders) {
+        const normalized = name.toLowerCase();
+        return (
+            HTTP_CLIENT_SENSITIVE_HEADERS.has(normalized) ||
+            secretHeaders.has(normalized) ||
+            /token|secret|api[-_]?key/i.test(name) ||
+            /bearer\s+/i.test(value)
+        );
+    }
+
+    function stripHttpSensitiveHeaders(headers, policy) {
+        const stripped = [];
+        for (const [name, entry] of Array.from(headers.entries())) {
+            if (isHttpSensitiveHeader(name, entry.value, policy.secretHeaders)) {
+                stripped.push(entry.name);
+                headers.delete(name);
+            }
+        }
+        if (stripped.length > 0 && policy.crossOriginSensitiveHeaders === "deny") {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED",
+                "HTTP client cross-origin redirect refused sensitive headers.",
+            );
+        }
+        return stripped;
+    }
+
+    function normalizeHttpRedirectPolicy(baseOptions, requestObject, operation) {
+        const raw = requestObject.redirects ?? baseOptions?.redirects;
+        let enabled = true;
+        let max = HTTP_CLIENT_DEFAULT_MAX_REDIRECTS;
+        let allowPost = false;
+        let crossOriginSensitiveHeaders = "strip";
+        const secretHeaders = [
+            ...parseHttpSecretHeaders(baseOptions?.secretHeaders, operation),
+            ...parseHttpSecretHeaders(requestObject.secretHeaders, operation),
+        ];
+        if (raw === false) {
+            enabled = false;
+        } else if (raw === true || raw === undefined) {
+            enabled = true;
+        } else if (isPlainObject(raw)) {
+            if (raw.enabled !== undefined) {
+                if (typeof raw.enabled !== "boolean") {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} redirects.enabled must be a boolean.`);
+                }
+                enabled = raw.enabled;
+            }
+            if (raw.max !== undefined) {
+                if (!Number.isInteger(raw.max) || raw.max < 0 || raw.max > 20) {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} redirects.max must be an integer from 0 to 20.`);
+                }
+                max = raw.max;
+            }
+            if (raw.allowPost !== undefined) {
+                if (typeof raw.allowPost !== "boolean") {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} redirects.allowPost must be a boolean.`);
+                }
+                allowPost = raw.allowPost;
+            }
+            if (raw.crossOriginSensitiveHeaders !== undefined) {
+                if (raw.crossOriginSensitiveHeaders !== "strip" && raw.crossOriginSensitiveHeaders !== "deny") {
+                    throw httpClientError(
+                        "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                        `${operation} redirects.crossOriginSensitiveHeaders must be "strip" or "deny".`,
+                    );
+                }
+                crossOriginSensitiveHeaders = raw.crossOriginSensitiveHeaders;
+            }
+            secretHeaders.push(...parseHttpSecretHeaders(raw.secretHeaders, operation));
+        } else {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} redirects must be a boolean or policy object.`);
+        }
+        return Object.freeze({
+            enabled,
+            max,
+            allowPost,
+            crossOriginSensitiveHeaders,
+            secretHeaders: new Set(secretHeaders),
+        });
+    }
+
+    function normalizeHttpPoolOptions(value, operation) {
+        if (value === undefined || value === null || value === false) {
+            return undefined;
+        }
+        if (value !== true && !isPlainObject(value)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} pool must be a policy object.`);
+        }
+        const raw = value === true ? {} : value;
+        const maxConnectionsPerOrigin = raw.maxConnectionsPerOrigin ?? HTTP_CLIENT_DEFAULT_MAX_CONNECTIONS_PER_ORIGIN;
+        const idleTimeoutMs = raw.idleTimeoutMs ?? HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS;
+        if (!Number.isInteger(maxConnectionsPerOrigin) || maxConnectionsPerOrigin < 1 || maxConnectionsPerOrigin > 256) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} pool.maxConnectionsPerOrigin must be an integer from 1 to 256.`,
+            );
+        }
+        if (!Number.isInteger(idleTimeoutMs) || idleTimeoutMs < 0) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} pool.idleTimeoutMs must be a non-negative integer.`);
+        }
+        return Object.freeze({ maxConnectionsPerOrigin, idleTimeoutMs });
+    }
+
+    function normalizeHttpNetworkPolicy(baseOptions, requestObject, operation) {
+        const raw = requestObject.network ?? baseOptions?.network;
+        if (raw === undefined || raw === null || raw === false) {
+            return Object.freeze({ strict: false, allowedOrigins: new Set() });
+        }
+        if (!isPlainObject(raw)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} network must be a policy object.`);
+        }
+        const strict = raw.strict === true;
+        const allowed = raw.allow ?? raw.allowedOrigins ?? [];
+        if (!Array.isArray(allowed)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} network.allow must be an array of origins.`);
+        }
+        const allowedOrigins = new Set();
+        for (const origin of allowed) {
+            if (origin === "*") {
+                allowedOrigins.add("*");
+                continue;
+            }
+            const parsed = parseAbsoluteHttpUrl(origin, operation);
+            allowedOrigins.add(httpOriginKey(parsed));
+        }
+        return Object.freeze({ strict, allowedOrigins });
+    }
+
+    function assertHttpNetworkAllowed(policy, url) {
+        if (!policy.strict) {
+            return;
+        }
+        const origin = httpOriginKey(url);
+        if (!policy.allowedOrigins.has("*") && !policy.allowedOrigins.has(origin)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_STRICT_NETWORK_DENIED",
+                "HTTP client strict network policy denied the outbound origin.",
+            );
+        }
+    }
+
+    function isHttpRedirectStatus(status) {
+        return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+    }
+
+    function resolveHttpRedirectUrl(currentUrl, location, operation) {
+        if (typeof location !== "string" || location.length === 0 || hasHttpControlChars(location)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                "HTTP redirect Location must be a non-empty URL without control characters.",
+            );
+        }
+        if (location.includes("://")) {
+            return parseAbsoluteHttpUrl(location, operation);
+        }
+        if (location.startsWith("//")) {
+            return parseAbsoluteHttpUrl(`${currentUrl.scheme}:${location}`, operation);
+        }
+        return Object.freeze({ ...currentUrl, target: joinHttpTarget(currentUrl.target, location, operation) });
+    }
+
+    class HttpConnectionPool {
+        constructor(options) {
+            this._options = options;
+            this._entries = new Map();
+        }
+
+        _entry(originKey) {
+            let entry = this._entries.get(originKey);
+            if (entry === undefined) {
+                entry = { idle: [], total: 0, inUse: 0 };
+                this._entries.set(originKey, entry);
+            }
+            return entry;
+        }
+
+        _prune(originKey, entry) {
+            if (entry.total === 0 && entry.inUse === 0 && entry.idle.length === 0) {
+                this._entries.delete(originKey);
+            }
+        }
+
+        async acquire(originKey, connect) {
+            const entry = this._entry(originKey);
+            const idle = entry.idle.pop();
+            if (idle !== undefined) {
+                clearTimeout(idle.timer);
+                entry.inUse += 1;
+                return idle.connection;
+            }
+            if (entry.total >= this._options.maxConnectionsPerOrigin) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED", "HTTP client connection pool exhausted for origin.");
+            }
+            entry.total += 1;
+            entry.inUse += 1;
+            try {
+                return await connect();
+            } catch (error) {
+                entry.total -= 1;
+                entry.inUse -= 1;
+                this._prune(originKey, entry);
+                throw error;
+            }
+        }
+
+        async release(originKey, connection, reusable) {
+            const entry = this._entries.get(originKey);
+            if (entry === undefined) {
+                await connection.close().catch(() => {});
+                return;
+            }
+            entry.inUse -= 1;
+            if (reusable && this._options.idleTimeoutMs > 0) {
+                const timer = setTimeout(() => {
+                    const index = entry.idle.findIndex((idle) => idle.connection === connection);
+                    if (index >= 0) {
+                        entry.idle.splice(index, 1);
+                        entry.total -= 1;
+                        connection.close().catch(() => {});
+                        this._prune(originKey, entry);
+                    }
+                }, this._options.idleTimeoutMs);
+                entry.idle.push({ connection, timer });
+                return;
+            }
+            entry.total -= 1;
+            await connection.close().catch(() => {});
+            this._prune(originKey, entry);
         }
     }
 
@@ -4315,12 +4591,13 @@ Reason:
     }
 
     class HttpClientResponse {
-        constructor(status, statusText, headers, body) {
+        constructor(status, statusText, headers, body, connectionReusable = false) {
             this.status = status;
             this.statusText = statusText;
             this.headers = headers;
             this._body = body;
             this._consumed = false;
+            this._connectionReusable = connectionReusable;
         }
 
         _consume() {
@@ -4372,6 +4649,7 @@ Reason:
         const headers = [];
         let contentLength = undefined;
         let transferEncoding = undefined;
+        let connectionHeader = "";
         if (match === null) {
             throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP response status line is malformed.");
         }
@@ -4395,7 +4673,11 @@ Reason:
             if (name.toLowerCase() === "transfer-encoding") {
                 transferEncoding = value.toLowerCase();
             }
+            if (name.toLowerCase() === "connection") {
+                connectionHeader = value.toLowerCase();
+            }
         }
+        let connectionReusable = complete === false && connectionHeader !== "close";
         if (transferEncoding === "chunked") {
             const decoded = parseHttpChunkedBody(bodyBytes, maxResponseBytes, complete);
             if (decoded === undefined) {
@@ -4422,8 +4704,9 @@ Reason:
             if (!complete) {
                 return undefined;
             }
+            connectionReusable = false;
         }
-        return new HttpClientResponse(Number(match[1]), match[2] ?? "", new HttpHeaderBag(headers), bodyBytes);
+        return new HttpClientResponse(Number(match[1]), match[2] ?? "", new HttpHeaderBag(headers), bodyBytes, connectionReusable);
     }
 
     async function readHttpResponse(connection, limits) {
@@ -4478,6 +4761,8 @@ Reason:
         const headers = new Map();
         appendHttpHeaders(headers, baseOptions?.headers, operation);
         appendHttpHeaders(headers, requestObject.headers, operation);
+        const redirects = normalizeHttpRedirectPolicy(baseOptions, requestObject, operation);
+        const network = normalizeHttpNetworkPolicy(baseOptions, requestObject, operation);
         const maxRequestBytes =
             parseHttpSize(requestObject.maxRequestBytes ?? baseOptions?.maxRequestBytes, operation) ??
             HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES;
@@ -4518,14 +4803,18 @@ Reason:
             maxHeaderBytes,
             maxRequestBytes,
             maxResponseBytes,
+            redirects,
+            network,
+            operation,
+            expiresAtMs,
         });
     }
 
-    function serializeHttpRequest(request) {
+    function serializeHttpRequest(request, keepAlive = false) {
         const lines = [
             `${request.method} ${request.url.target} HTTP/1.1`,
             `Host: ${request.url.hostHeader}`,
-            "Connection: close",
+            keepAlive ? "Connection: keep-alive" : "Connection: close",
         ];
         if (!request.headers.has("accept")) {
             lines.push("Accept: */*");
@@ -4558,26 +4847,98 @@ Reason:
         return httpClientError("SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED", "HTTP client transport operation failed.", { cause: error });
     }
 
-    async function sendHttpRequest(baseOptions, request, options = undefined, defaultMethod = undefined) {
+    async function sendHttpRequestOnce(request, pool, lifecycle) {
         let connection;
+        let originKey;
+        let reusable = false;
+        let released = false;
+        const acquireConnection = async () => {
+            assertHttpNetworkAllowed(request.network, request.url);
+            const remainingMs = httpRemainingMs(request.expiresAtMs);
+            if (remainingMs <= 0) {
+                throw httpRequestTimeoutError();
+            }
+            return await TcpClient.connect({
+                host: request.url.host,
+                port: request.url.port,
+                timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
+                noDelay: true,
+            });
+        };
+
+        try {
+            originKey = httpOriginKey(request.url);
+            connection = pool === undefined ? await acquireConnection() : await pool.acquire(originKey, acquireConnection);
+            lifecycle.connection = connection;
+            await connection.write(serializeHttpRequest(request, pool !== undefined));
+            const response = await readHttpResponse(connection, request);
+            reusable = response._connectionReusable === true;
+            return response;
+        } finally {
+            if (lifecycle.connection === connection) {
+                lifecycle.connection = undefined;
+            }
+            if (connection !== undefined && !released) {
+                released = true;
+                if (pool === undefined) {
+                    await connection.close().catch(() => {});
+                } else {
+                    await pool.release(originKey, connection, reusable).catch(() => {});
+                }
+            }
+        }
+    }
+
+    async function sendHttpRequestWithRedirects(normalized, pool, lifecycle) {
+        if (typeof globalThis.__sloppy?.net?.connect !== "function") {
+            return await httpClientUnavailable("request");
+        }
+        let current = normalized;
+        const visited = new Set([httpUrlToString(current.url)]);
+        let redirectCount = 0;
+        while (true) {
+            const response = await sendHttpRequestOnce(current, pool, lifecycle);
+            if (!current.redirects.enabled || !isHttpRedirectStatus(response.status)) {
+                return response;
+            }
+            const location = response.headers.get("location");
+            if (location === null) {
+                return response;
+            }
+            if (redirectCount >= current.redirects.max) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED", "HTTP client exceeded the configured redirect limit.");
+            }
+            if (current.method !== "GET" && current.method !== "HEAD" && !current.redirects.allowPost) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    "HTTP client redirect for request body methods requires redirects.allowPost.",
+                );
+            }
+            const nextUrl = resolveHttpRedirectUrl(current.url, location, current.operation);
+            const nextUrlText = httpUrlToString(nextUrl);
+            if (visited.has(nextUrlText)) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_REDIRECT_LOOP", "HTTP client detected a redirect loop.");
+            }
+            visited.add(nextUrlText);
+            redirectCount += 1;
+            const headers = cloneHttpHeaders(current.headers);
+            if (httpOriginKey(nextUrl) !== httpOriginKey(current.url)) {
+                stripHttpSensitiveHeaders(headers, current.redirects);
+            }
+            current = Object.freeze({ ...current, url: nextUrl, headers });
+        }
+    }
+
+    async function sendHttpRequest(baseOptions, request, options = undefined, defaultMethod = undefined, pool = undefined) {
         const normalized = await normalizeHttpRequest(baseOptions, request, options, defaultMethod);
         let timeoutId;
         let timedOut = false;
         let cancelled = false;
         let cancelReason;
         let cleanupCancellation = () => {};
+        const lifecycle = { connection: undefined };
         const run = async () => {
-            if (typeof globalThis.__sloppy?.net?.connect !== "function") {
-                return await httpClientUnavailable("request");
-            }
-            connection = await TcpClient.connect({
-                host: normalized.url.host,
-                port: normalized.url.port,
-                timeoutMs: normalized.timeoutMs,
-                noDelay: true,
-            });
-            await connection.write(serializeHttpRequest(normalized));
-            return await readHttpResponse(connection, normalized);
+            return await sendHttpRequestWithRedirects(normalized, pool, lifecycle);
         };
 
         try {
@@ -4598,17 +4959,13 @@ Reason:
                     cleanupCancellation = subscribeHttpCancellation(normalized.signal, (reason) => {
                         cancelled = true;
                         cancelReason = reason;
-                        if (connection !== undefined) {
-                            connection.abort().catch(() => {});
-                        }
+                        lifecycle.connection?.abort().catch(() => {});
                         reject(httpRequestCancelledError());
                     });
                     if (normalized.timeoutDelayMs !== Infinity) {
                         timeoutId = setTimeout(() => {
                             timedOut = true;
-                            if (connection !== undefined) {
-                                connection.abort().catch(() => {});
-                            }
+                            lifecycle.connection?.abort().catch(() => {});
                             reject(httpRequestTimeoutError());
                         }, normalized.timeoutDelayMs);
                     }
@@ -4634,9 +4991,6 @@ Reason:
             cleanupCancellation();
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
-            }
-            if (connection !== undefined) {
-                await connection.close().catch(() => {});
             }
         }
     }
@@ -4666,42 +5020,44 @@ Reason:
         return await response.bytes();
     }
 
-    async function sendHttpBodyRequest(baseOptions, url, options, kind) {
+    async function sendHttpBodyRequest(baseOptions, url, options, kind, pool = undefined) {
         const requestOptions =
             kind === "json" ? withHttpDefaultHeader(options, "Accept", "application/json") : options;
-        const response = await sendHttpRequest(baseOptions, url, requestOptions, "GET");
+        const response = await sendHttpRequest(baseOptions, url, requestOptions, "GET", pool);
         return await readHttpResponseBody(response, kind);
     }
 
-    function postJsonRequest(baseOptions, url, value, options = undefined) {
-        return sendHttpRequest(baseOptions, url, { ...(options ?? {}), json: value }, "POST");
+    function postJsonRequest(baseOptions, url, value, options = undefined, pool = undefined) {
+        return sendHttpRequest(baseOptions, url, { ...(options ?? {}), json: value }, "POST", pool);
     }
 
     function createHttpClientFacade(baseOptions = undefined) {
+        const poolOptions = normalizeHttpPoolOptions(baseOptions?.pool, "HttpClient.create");
+        const pool = poolOptions === undefined ? undefined : new HttpConnectionPool(poolOptions);
         const client = {
             request(request, options = undefined) {
-                return sendHttpRequest(baseOptions, request, options);
+                return sendHttpRequest(baseOptions, request, options, undefined, pool);
             },
             get(url, options = undefined) {
-                return sendHttpRequest(baseOptions, url, options, "GET");
+                return sendHttpRequest(baseOptions, url, options, "GET", pool);
             },
             post(url, options = undefined) {
-                return sendHttpRequest(baseOptions, url, options, "POST");
+                return sendHttpRequest(baseOptions, url, options, "POST", pool);
             },
             getJson(url, options = undefined) {
-                return sendHttpBodyRequest(baseOptions, url, options, "json");
+                return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
             },
             postJson(url, value, options = undefined) {
-                return postJsonRequest(baseOptions, url, value, options);
+                return postJsonRequest(baseOptions, url, value, options, pool);
             },
             text(url, options = undefined) {
-                return sendHttpBodyRequest(baseOptions, url, options, "text");
+                return sendHttpBodyRequest(baseOptions, url, options, "text", pool);
             },
             json(url, options = undefined) {
-                return sendHttpBodyRequest(baseOptions, url, options, "json");
+                return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
             },
             bytes(url, options = undefined) {
-                return sendHttpBodyRequest(baseOptions, url, options, "bytes");
+                return sendHttpBodyRequest(baseOptions, url, options, "bytes", pool);
             },
         };
         Object.defineProperty(client, "__sloppyHttpClientOptions", {
