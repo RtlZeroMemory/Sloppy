@@ -93,6 +93,12 @@ CORE-CRYPTO-01.C/D/F/H implements the first `sloppy/crypto` runtime surface arou
 `__sloppy.crypto` bridge. `Password` and `NonCryptoHash` remain visible but fail closed
 until their dedicated slices land. The API is Sloppy-shaped and does not promise
 WebCrypto, Node crypto, or Bun compatibility.
+CORE-CODEC-01.A/B locks the first `sloppy/codec` contract around `Base64`,
+`Base64Url`, `Hex`, UTF-8 `Text`, `Binary`, `Compression`, and `Checksums`. The compiler
+now makes `sloppy/codec` Plan-visible as `stdlib.codec`, but the runtime feature remains
+unavailable by default until implementation PRs add the transformation APIs, V8/stdlib
+surface, and conformance vectors. The API does not promise Node Buffer, Web Streams, Bun,
+or Deno compatibility.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.

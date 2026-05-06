@@ -106,6 +106,14 @@ tests, and V8-gated `__sloppy.crypto` smoke coverage. Deterministic tests must n
 randomness quality, password cracking cost, timing resistance, benchmark performance,
 WebCrypto/Node/Bun compatibility, or public alpha readiness.
 
+CORE-CODEC-01 tests must keep evidence claims narrow. Contract tests may prove
+`sloppy/codec` import recognition, `stdlib.codec` Plan metadata, unavailable-feature
+diagnostics, stable codec diagnostic names/goldens, backend policy, and checksum
+non-security wording. Later implementation tests must use standard Base64/Base64Url/Hex,
+UTF-8, binary endian, compression, streaming, and checksum vectors without claiming Node
+Buffer/Web Streams/Bun/Deno compatibility, benchmark performance, or public alpha
+readiness.
+
 FRAMEWORK-01.B adds configuration coverage across Rust compiler tests, JS stdlib tests,
 compiler golden artifacts, source-input process tests, and the SQLite users API fixture.
 FRAMEWORK-01.F extends example coverage with compile-artifact tests for hello-minimal,

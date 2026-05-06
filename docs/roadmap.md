@@ -93,6 +93,7 @@ Durable architecture sources remain:
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Time/deadline API | Complete/proven for scoped path | CORE-TIME-01.A/B defines `sloppy/time`, `stdlib.time`, compiler Plan activation, stable diagnostics, and bootstrap error classes. CORE-TIME-01.C/D/G adds the V8-gated native delay backend, owner-thread Promise settlement, `Time.delay`, `Time.timeout`, `Deadline`, and `CancellationController`. CORE-TIME-01.E/F adds intervals, scheduled jobs, and fake clock. CORE-TIME-01.H aligns filesystem options plus app/request/provider/HTTP naming boundaries. CORE-TIME-01.I adds source examples, final goldens, and the conformance evidence index. |
 | Crypto API | Partial | CORE-CRYPTO-01.C/D/F/H implements `sloppy/crypto` random helpers, SHA-2/HMAC, ConstantTime, Secret cleanup, `stdlib.crypto`/`__sloppy.crypto`, and bootstrap JS surface. Password hashing, `NonCryptoHash`, final examples, and conformance/goldens remain deferred. |
+| Codec API | Missing/contracted | CORE-CODEC-01.A/B defines `sloppy/codec`, `stdlib.codec`, compiler Plan activation, backend/dependency policy, stable diagnostics, and safety policy. Base64/Base64Url/Hex/Text/Binary/Compression/Checksums implementations remain deferred to #624-#631. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
 | Source-input run | Partial/proven for compiler-owned module subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; supported relative function modules and Sloppy provider imports are compiler-owned. Cache reuse, watch/hot reload, Node/npm, and full TypeScript remain deferred. |
 | Framework configuration | Partial/proven for first slice | Built-in defaults, appsettings overlays, environment selection, canonical env vars, selected CLI overrides, typed access, `bind`, config-driven SQLite provider metadata, redacted Plan metadata, and first Plan-driven doctor/audit consumption exist. Reload, user secrets, custom/remote providers, broad CLI config, and OpenAPI config consumption remain deferred. |
@@ -170,6 +171,8 @@ claims remain blocked.
 - Public performance or benchmark comparison claims.
 - WebCrypto, Node crypto, or Bun compatibility promises.
 - Custom crypto algorithms or weak random fallbacks.
+- Node Buffer, Web Streams, Bun, or Deno codec compatibility promises.
+- Custom compression algorithms.
 - Production-edge HTTP claims.
 - PostgreSQL/SQL Server JavaScript bridges.
 - ORM/migrations.

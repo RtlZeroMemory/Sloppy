@@ -56,6 +56,9 @@ Do not include `.git/`, `build/`, `compiler/target/`, or other generated artifac
   diagnostics/source-map/observability findings after ENGINE-15.
 - `docs/project/post-engine-16-docs-issue-reconciliation.md` records the 2026-05-05 docs
   and issue reconciliation.
+- `docs/project/codec-api-architecture.md` records the CORE-CODEC-01 API contract,
+  backend/dependency policy, feature/Plan model, diagnostics, and safety boundaries.
+- `docs/project/codec-api-issue-index.md` maps CORE-CODEC-01 issue slices #622-#631.
 
 ## Historical Post-Core Reset
 

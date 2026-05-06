@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM","severity":"error","message":"checksum algorithm is unsupported","hints":["Checksums are non-security utilities and expose only documented algorithms."]}

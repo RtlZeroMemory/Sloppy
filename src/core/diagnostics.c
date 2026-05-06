@@ -335,6 +335,102 @@ static bool sl_diag_is_crypto_code(SlDiagCode code)
     }
 }
 
+static SlStr sl_diag_codec_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_CODEC_FEATURE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_CODEC_FEATURE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_CODEC_FEATURE_UNAVAILABLE") - 1U);
+    case SL_DIAG_CODEC_UNSUPPORTED_ENCODING:
+        return sl_diag_literal("SLOPPY_E_CODEC_UNSUPPORTED_ENCODING",
+                               sizeof("SLOPPY_E_CODEC_UNSUPPORTED_ENCODING") - 1U);
+    case SL_DIAG_CODEC_INVALID_BASE64:
+        return sl_diag_literal("SLOPPY_E_CODEC_INVALID_BASE64",
+                               sizeof("SLOPPY_E_CODEC_INVALID_BASE64") - 1U);
+    case SL_DIAG_CODEC_INVALID_BASE64URL:
+        return sl_diag_literal("SLOPPY_E_CODEC_INVALID_BASE64URL",
+                               sizeof("SLOPPY_E_CODEC_INVALID_BASE64URL") - 1U);
+    case SL_DIAG_CODEC_INVALID_HEX:
+        return sl_diag_literal("SLOPPY_E_CODEC_INVALID_HEX",
+                               sizeof("SLOPPY_E_CODEC_INVALID_HEX") - 1U);
+    case SL_DIAG_CODEC_MALFORMED_UTF8:
+        return sl_diag_literal("SLOPPY_E_CODEC_MALFORMED_UTF8",
+                               sizeof("SLOPPY_E_CODEC_MALFORMED_UTF8") - 1U);
+    case SL_DIAG_CODEC_BINARY_READ_OUT_OF_BOUNDS:
+        return sl_diag_literal("SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS",
+                               sizeof("SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS") - 1U);
+    case SL_DIAG_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE:
+        return sl_diag_literal("SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE",
+                               sizeof("SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE") - 1U);
+    case SL_DIAG_CODEC_COMPRESSION_BACKEND_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE",
+                               sizeof("SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE") - 1U);
+    case SL_DIAG_CODEC_DECOMPRESSION_LIMIT_EXCEEDED:
+        return sl_diag_literal("SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED",
+                               sizeof("SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED") - 1U);
+    case SL_DIAG_CODEC_COMPRESSED_STREAM_CORRUPT:
+        return sl_diag_literal("SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT",
+                               sizeof("SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT") - 1U);
+    case SL_DIAG_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM:
+        return sl_diag_literal("SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM",
+                               sizeof("SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM") - 1U);
+    case SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING:
+        return sl_diag_literal("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING",
+                               sizeof("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static bool sl_diag_is_codec_code(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_CODEC_FEATURE_UNAVAILABLE:
+    case SL_DIAG_CODEC_UNSUPPORTED_ENCODING:
+    case SL_DIAG_CODEC_INVALID_BASE64:
+    case SL_DIAG_CODEC_INVALID_BASE64URL:
+    case SL_DIAG_CODEC_INVALID_HEX:
+    case SL_DIAG_CODEC_MALFORMED_UTF8:
+    case SL_DIAG_CODEC_BINARY_READ_OUT_OF_BOUNDS:
+    case SL_DIAG_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE:
+    case SL_DIAG_CODEC_COMPRESSION_BACKEND_UNAVAILABLE:
+    case SL_DIAG_CODEC_DECOMPRESSION_LIMIT_EXCEEDED:
+    case SL_DIAG_CODEC_COMPRESSED_STREAM_CORRUPT:
+    case SL_DIAG_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM:
+    case SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static SlStr sl_diag_core_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_NONE:
+        return sl_diag_literal("SLOPPY_NONE", sizeof("SLOPPY_NONE") - 1U);
+    case SL_DIAG_INVALID_ARGUMENT:
+        return sl_diag_literal("SLOPPY_E_INVALID_ARGUMENT",
+                               sizeof("SLOPPY_E_INVALID_ARGUMENT") - 1U);
+    case SL_DIAG_OUT_OF_MEMORY:
+        return sl_diag_literal("SLOPPY_E_OUT_OF_MEMORY", sizeof("SLOPPY_E_OUT_OF_MEMORY") - 1U);
+    case SL_DIAG_OVERFLOW:
+        return sl_diag_literal("SLOPPY_E_OVERFLOW", sizeof("SLOPPY_E_OVERFLOW") - 1U);
+    case SL_DIAG_INVALID_PLAN_VERSION:
+        return sl_diag_literal("SLOPPY_E_INVALID_PLAN_VERSION",
+                               sizeof("SLOPPY_E_INVALID_PLAN_VERSION") - 1U);
+    case SL_DIAG_MISSING_SERVICE:
+        return sl_diag_literal("SLOPPY_E_MISSING_SERVICE", sizeof("SLOPPY_E_MISSING_SERVICE") - 1U);
+    case SL_DIAG_PERMISSION_DENIED:
+        return sl_diag_literal("SLOPPY_E_PERMISSION_DENIED",
+                               sizeof("SLOPPY_E_PERMISSION_DENIED") - 1U);
+    case SL_DIAG_INTERNAL_ERROR:
+        return sl_diag_literal("SLOPPY_E_INTERNAL", sizeof("SLOPPY_E_INTERNAL") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
 static bool sl_diag_str_is_valid(SlStr str)
 {
     return str.length == 0U || str.ptr != NULL;
@@ -735,27 +831,18 @@ SlStr sl_diag_code_name(SlDiagCode code)
     if (sl_diag_is_crypto_code(code)) {
         return sl_diag_crypto_code_name(code);
     }
+    if (sl_diag_is_codec_code(code)) {
+        return sl_diag_codec_code_name(code);
+    }
+
+    SlStr core_name = sl_diag_core_code_name(code);
+    if (!sl_str_equal(core_name,
+                      sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U)))
+    {
+        return core_name;
+    }
 
     switch (code) {
-    case SL_DIAG_NONE:
-        return sl_diag_literal("SLOPPY_NONE", sizeof("SLOPPY_NONE") - 1U);
-    case SL_DIAG_INVALID_ARGUMENT:
-        return sl_diag_literal("SLOPPY_E_INVALID_ARGUMENT",
-                               sizeof("SLOPPY_E_INVALID_ARGUMENT") - 1U);
-    case SL_DIAG_OUT_OF_MEMORY:
-        return sl_diag_literal("SLOPPY_E_OUT_OF_MEMORY", sizeof("SLOPPY_E_OUT_OF_MEMORY") - 1U);
-    case SL_DIAG_OVERFLOW:
-        return sl_diag_literal("SLOPPY_E_OVERFLOW", sizeof("SLOPPY_E_OVERFLOW") - 1U);
-    case SL_DIAG_INVALID_PLAN_VERSION:
-        return sl_diag_literal("SLOPPY_E_INVALID_PLAN_VERSION",
-                               sizeof("SLOPPY_E_INVALID_PLAN_VERSION") - 1U);
-    case SL_DIAG_MISSING_SERVICE:
-        return sl_diag_literal("SLOPPY_E_MISSING_SERVICE", sizeof("SLOPPY_E_MISSING_SERVICE") - 1U);
-    case SL_DIAG_PERMISSION_DENIED:
-        return sl_diag_literal("SLOPPY_E_PERMISSION_DENIED",
-                               sizeof("SLOPPY_E_PERMISSION_DENIED") - 1U);
-    case SL_DIAG_INTERNAL_ERROR:
-        return sl_diag_literal("SLOPPY_E_INTERNAL", sizeof("SLOPPY_E_INTERNAL") - 1U);
     case SL_DIAG_INVALID_PLAN_FIELD:
         return sl_diag_literal("SLOPPY_E_INVALID_PLAN_FIELD",
                                sizeof("SLOPPY_E_INVALID_PLAN_FIELD") - 1U);

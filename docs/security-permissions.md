@@ -104,6 +104,13 @@ Current random evidence is limited to OS-source use and API shape: UUID version/
 token/hex/numeric alphabets, and rejection-sampling implementation. Deterministic tests do
 not claim random quality.
 
+CORE-CODEC-01.A/B adds the codec API contract without adding a new permission grant type.
+`sloppy/codec` is Plan-visible as `stdlib.codec` and unavailable by default until real
+transformation APIs land. Checksums are explicitly non-security utilities: they must not be
+used or documented as authentication, HMAC, signatures, password hashing, tokens, or
+attacker-resistant integrity. Security-looking checksum use may become a compiler warning
+where statically visible; security APIs remain under `sloppy/crypto`.
+
 COMPILER-30.E keeps this metadata-only: supported config reads, schema declarations,
 request bindings, and `Results.*` response facts are Plan-visible for later audit and
 completeness work, but this slice does not enforce provider/capability effects or runtime
