@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_ENV_ACCESS_DENIED","severity":"error","message":"environment access was denied","hints":["Strict OS policy requires an env.read or env.list allowance."]}

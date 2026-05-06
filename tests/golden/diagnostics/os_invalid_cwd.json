@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_INVALID_CWD","severity":"error","message":"process working directory is invalid","hints":["Validate cwd before process admission and avoid leaking machine-local paths."]}

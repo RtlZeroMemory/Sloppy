@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_PIPE_CLOSED","severity":"error","message":"process pipe is closed","hints":["Stale or closed process pipes fail without exposing native handles."]}

@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_FEATURE_UNAVAILABLE","severity":"error","message":"OS feature is unavailable","hints":["Enable stdlib.os only in a runtime lane with registered OS backends."]}

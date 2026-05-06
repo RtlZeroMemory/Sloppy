@@ -197,6 +197,7 @@ struct ExtractedApp {
     uses_codec_runtime: bool,
     checksum_security_context_visible: bool,
     uses_net_runtime: bool,
+    uses_os_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -326,6 +327,7 @@ struct AppState {
     codec_imported: bool,
     checksum_security_context_visible: bool,
     net_imported: bool,
+    os_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -363,6 +365,7 @@ impl AppState {
             codec_imported: false,
             checksum_security_context_visible: false,
             net_imported: false,
+            os_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -1038,6 +1041,7 @@ struct ModuleGraph {
     uses_codec_runtime: bool,
     checksum_security_context_visible: bool,
     uses_net_runtime: bool,
+    uses_os_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1063,6 +1067,7 @@ impl ModuleGraph {
             uses_codec_runtime: false,
             checksum_security_context_visible: false,
             uses_net_runtime: false,
+            uses_os_runtime: false,
         }
     }
 
@@ -1149,7 +1154,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented named, unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", or \"sloppy/net\"; Sloppy does not implement Node or npm resolution."));
+                .with_hint("Use documented named, unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", or \"sloppy/os\"; Sloppy does not implement Node or npm resolution."));
     }
 
     if let Some((specifier, span)) = &state.unsupported_import_name {
@@ -1159,7 +1164,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", or \"sloppy/net\"."));
+        .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", or \"sloppy/os\"."));
     }
 
     if !state.sloppy_imported || !state.results_imported {
@@ -1315,6 +1320,7 @@ fn extract_entry(
         checksum_security_context_visible: state.checksum_security_context_visible
             || graph.checksum_security_context_visible,
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
+        uses_os_runtime: state.os_imported || graph.uses_os_runtime,
     })
 }
 
@@ -1562,6 +1568,10 @@ fn sloppy_net_import_name_supported(name: &str) -> bool {
     )
 }
 
+fn sloppy_os_import_name_supported(name: &str) -> bool {
+    matches!(name, "System" | "Environment" | "Process" | "Signals")
+}
+
 #[derive(Debug, Clone, Copy)]
 enum SloppyStdlibImport {
     Fs,
@@ -1569,6 +1579,7 @@ enum SloppyStdlibImport {
     Crypto,
     Codec,
     Net,
+    Os,
 }
 
 impl SloppyStdlibImport {
@@ -1579,6 +1590,7 @@ impl SloppyStdlibImport {
             "sloppy/crypto" => Some(Self::Crypto),
             "sloppy/codec" => Some(Self::Codec),
             "sloppy/net" => Some(Self::Net),
+            "sloppy/os" => Some(Self::Os),
             _ => None,
         }
     }
@@ -1593,6 +1605,7 @@ impl SloppyStdlibImport {
             Self::Crypto => sloppy_crypto_import_name_supported(name),
             Self::Codec => sloppy_codec_import_name_supported(name),
             Self::Net => sloppy_net_import_name_supported(name),
+            Self::Os => sloppy_os_import_name_supported(name),
         }
     }
 }
@@ -1685,6 +1698,13 @@ fn validate_module_sloppy_net_import(
     validate_module_sloppy_import(path, import, "sloppy/net", sloppy_net_import_name_supported)
 }
 
+fn validate_module_sloppy_os_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(path, import, "sloppy/os", sloppy_os_import_name_supported)
+}
+
 fn import_specifier_is_runtime_value(
     import: &ImportDeclaration<'_>,
     specifier: &oxc_ast::ast::ImportSpecifier<'_>,
@@ -1712,6 +1732,7 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Crypto => state.crypto_imported = true,
         SloppyStdlibImport::Codec => state.codec_imported = true,
         SloppyStdlibImport::Net => state.net_imported = true,
+        SloppyStdlibImport::Os => state.os_imported = true,
     }
 }
 
@@ -3220,6 +3241,13 @@ fn extract_relative_module(
                     validate_module_sloppy_net_import(&imported.path, import)?;
                     if import_has_runtime_value_specifier(import) {
                         graph.uses_net_runtime = true;
+                    }
+                    continue;
+                }
+                if import_source == "sloppy/os" {
+                    validate_module_sloppy_os_import(&imported.path, import)?;
+                    if import_has_runtime_value_specifier(import) {
+                        graph.uses_os_runtime = true;
                     }
                     continue;
                 }
@@ -6021,6 +6049,11 @@ fn emit_plan(
         value["strongPlan"]["evidence"]["network"] = json!(true);
         value["features"]["network"] = json!(true);
     }
+    if app.uses_os_runtime {
+        required_features.push("stdlib.os");
+        value["strongPlan"]["evidence"]["os"] = json!(true);
+        value["features"]["os"] = json!(true);
+    }
     if !required_features.is_empty() {
         value["requiredFeatures"] = json!(required_features);
     }
@@ -6124,6 +6157,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             "TcpConnection",
             "NetworkAddress",
         ]);
+    }
+    if app.uses_os_runtime {
+        runtime_exports.extend(["System", "Environment", "Process", "Signals"]);
     }
     push_generated_line(
         &mut output,
@@ -6778,6 +6814,7 @@ mod tests {
             uses_codec_runtime: false,
             checksum_security_context_visible: false,
             uses_net_runtime: false,
+            uses_os_runtime: false,
         };
         config
             .apply_to_app(&mut app)
@@ -8558,6 +8595,39 @@ export default app;
     }
 
     #[test]
+    fn sloppy_os_import_emits_plan_required_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { System, Environment, Process, Signals } from "sloppy/os";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/os import should be recognized");
+        assert!(app.uses_os_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(
+            "const { Results, System, Environment, Process, Signals } = __sloppyRuntime;"
+        ));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(value["requiredFeatures"], serde_json::json!(["stdlib.os"]));
+        assert_eq!(value["features"]["os"], serde_json::json!(true));
+        assert_eq!(
+            value["strongPlan"]["evidence"]["os"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
     fn sloppy_codec_import_emits_plan_required_feature() {
         let source = r#"import { Sloppy, Results } from "sloppy";
 import { Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } from "sloppy/codec";
@@ -8748,6 +8818,37 @@ export default app;
     }
 
     #[test]
+    fn type_only_sloppy_os_import_does_not_emit_runtime_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import type { Process } from "sloppy/os";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("type-only sloppy/os import should be recognized");
+        assert!(!app.uses_os_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results } = __sloppyRuntime;"));
+        assert!(!emitted_js.source.contains("Process"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert!(value.get("requiredFeatures").is_none());
+        assert!(value["features"].get("os").is_none());
+        assert!(value["strongPlan"]["evidence"].get("os").is_none());
+    }
+
+    #[test]
     fn sloppy_net_import_alias_is_rejected() {
         let source = r#"import { Sloppy, Results } from "sloppy";
 import { TcpClient as Client } from "sloppy/net";
@@ -8761,6 +8862,22 @@ export default app;
         assert!(diagnostic
             .message
             .contains("unsupported sloppy import \"TcpClient\""));
+    }
+
+    #[test]
+    fn sloppy_os_import_alias_is_rejected() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { Process as ChildProcess } from "sloppy/os";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("aliased sloppy/os import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+        assert!(diagnostic
+            .message
+            .contains("unsupported sloppy import \"Process\""));
     }
 
     #[test]

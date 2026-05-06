@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_COMMAND_NOT_FOUND","severity":"error","message":"command was not found","hints":["Process APIs execute explicit argv only and report lookup failure deterministically."]}

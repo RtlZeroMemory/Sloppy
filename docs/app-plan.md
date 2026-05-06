@@ -111,6 +111,10 @@ CORE-CODEC-01.E adds Binary reader/writer. CORE-CODEC-01.F/G adds zlib-backed
 gzip/gunzip and bounded async-iterable gzip/gunzip transforms. CORE-CODEC-01.H/J adds
 CRC32 plus a static doctor warning when checksum use is visible in security-looking
 contexts.
+CORE-OS-01.A/B adds the `stdlib.os` descriptor and compiler activation for `sloppy/os`.
+The feature is known but unavailable by default until later OS runtime slices register the
+V8/stdlib surface; requiring it today fails closed instead of pretending that environment
+access, process execution, or signals exist.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
@@ -187,7 +191,11 @@ runtime policy checks for the core filesystem operations, and CORE-FS-01.E/F app
 same checks to Directory, FileHandle, temp, atomic, symlink, and native lock operations:
 project-relative and named-root paths are resolved through Slop-owned policy, named-root
 traversal is rejected, development absolute paths produce warnings, and strict-mode
-absolute paths are denied unless allowed. OS sandboxing remains out of scope. Network
+absolute paths are denied unless allowed. OS sandboxing remains out of scope. CORE-OS-01.A/B
+reserves OS policy categories for `os.info`, `env.read`, `env.list`, `process.run`,
+`process.shell`, `process.signal`, `process.kill`, and `signals.shutdown`; these categories
+define host-system admission points for later OS runtime work, do not expand the current
+native Plan `capabilities[]` kind vocabulary, and do not create an OS sandbox. Network
 entries are Plan-visible for scoped TCP policy and doctor/audit metadata evidence after
 CORE-NET-01.I, but they still do not create an OS sandbox. CORE-FS-01.G maps V8
 watch open/next/close through the existing `fs.watch` capability operation and the same
@@ -226,7 +234,7 @@ stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/
 `stdlib.results`, `sloppy/schema` to `stdlib.schema`, `sloppy/config` to `stdlib.config`,
 `sloppy/data` to `stdlib.data`, `sloppy/time` to `stdlib.time`, `sloppy/fs` to `stdlib.fs`,
 `sloppy/crypto` to `stdlib.crypto`, `sloppy/net` to `stdlib.net`,
-`sloppy/codec` to `stdlib.codec`, and
+`sloppy/codec` to `stdlib.codec`, `sloppy/os` to `stdlib.os`, and
 `sloppy/providers/sqlite` to `provider.sqlite`.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
 Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.I
@@ -239,7 +247,9 @@ socket-option coverage, and doctor/audit/source-example evidence for the scoped 
 The codec descriptor is active for V8 plans after CORE-CODEC-01.C/D/I registered the
 `__sloppy.codec` namespace; Base64/Base64Url/Hex/Text and Binary are implemented in the
 bootstrap JS surface, and Compression uses bounded native zlib gzip/gunzip helpers through
-that namespace. Checksum backends remain a future slice.
+that namespace. Checksum backends remain a future slice. The OS descriptor is Plan-visible
+after CORE-OS-01.A/B, but remains unavailable until System, Environment, Process, and
+Signals implementation slices land.
 
 ## Schema Sections
 

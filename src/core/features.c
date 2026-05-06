@@ -111,6 +111,27 @@ static SlRuntimeFeatureDescriptor sl_feature_net_descriptor(SlRuntimeFeatureId i
         available, true, true);
 }
 
+static SlRuntimeFeatureDescriptor sl_feature_os_descriptor(SlRuntimeFeatureId id, bool available)
+{
+    return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+                                      sl_feature_literal("stdlib.os", sizeof("stdlib.os") - 1U),
+                                      sl_feature_literal("OS stdlib", sizeof("OS stdlib") - 1U),
+                                      sl_feature_literal("sloppy/os", sizeof("sloppy/os") - 1U),
+                                      sl_feature_literal("__sloppy.os", sizeof("__sloppy.os") - 1U),
+                                      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) |
+                                          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+                                          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
+                                          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+                                      available, true, true);
+}
+
+static SlRuntimeFeatureDescriptor sl_feature_unknown_descriptor(SlRuntimeFeatureId id)
+{
+    return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_CORE, sl_str_empty(),
+                                      sl_str_empty(), sl_str_empty(), sl_str_empty(), 0U, false,
+                                      false, false);
+}
+
 static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
                                         const SlRuntimeFeatureAvailability* availability)
@@ -124,7 +145,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     const bool crypto = availability == NULL ? false : availability->stdlib_crypto;
     const bool net = availability == NULL ? false : availability->stdlib_net;
     const bool codec = availability == NULL ? true : availability->stdlib_codec;
-
+    const bool os = availability == NULL ? false : availability->stdlib_os;
     switch (id) {
     case SL_RUNTIME_FEATURE_CORE:
         return sl_feature_descriptor_make(
@@ -196,6 +217,8 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_codec_descriptor(id, codec);
     case SL_RUNTIME_FEATURE_STDLIB_NET:
         return sl_feature_net_descriptor(id, net);
+    case SL_RUNTIME_FEATURE_STDLIB_OS:
+        return sl_feature_os_descriptor(id, os);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
         return sl_feature_fs_descriptor(id);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
@@ -229,9 +252,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
             sqlserver, false, true);
     default:
-        return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_CORE, sl_str_empty(),
-                                          sl_str_empty(), sl_str_empty(), sl_str_empty(), 0U, false,
-                                          false, false);
+        return sl_feature_unknown_descriptor(id);
     }
 }
 
@@ -252,6 +273,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.stdlib_crypto = true;
     availability.stdlib_codec = true;
     availability.stdlib_net = true;
+    availability.stdlib_os = false;
     return availability;
 }
 
@@ -335,7 +357,13 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-         true, true, true}};
+         true, true, true},
+        {SL_RUNTIME_FEATURE_STDLIB_OS, SL_RUNTIME_FEATURE_KIND_STDLIB, SL_FEATURE_STR("stdlib.os"),
+         SL_FEATURE_STR("OS stdlib"), SL_FEATURE_STR("sloppy/os"), SL_FEATURE_STR("__sloppy.os"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+         false, true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;

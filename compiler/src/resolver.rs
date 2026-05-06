@@ -17,6 +17,7 @@ pub enum ImportKind {
     SlopCrypto,
     SlopCodec,
     SlopNet,
+    SlopOs,
     SqliteProvider,
     UnresolvedRelative(String),
     UnsupportedBare(String),
@@ -47,6 +48,9 @@ pub fn classify_import(from_path: &Path, specifier: &str) -> ImportKind {
     }
     if specifier == "sloppy/net" {
         return ImportKind::SlopNet;
+    }
+    if specifier == "sloppy/os" {
+        return ImportKind::SlopOs;
     }
     if specifier == "sloppy/providers/sqlite" {
         return ImportKind::SqliteProvider;
@@ -120,6 +124,10 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/net"),
             ImportKind::SlopNet
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/os"),
+            ImportKind::SlopOs
         );
     }
 

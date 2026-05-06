@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_SHELL_EXECUTION_DENIED","severity":"error","message":"shell execution was denied","hints":["Shell execution is not implicit and must remain separately gated if added."]}
