@@ -72,12 +72,12 @@ CORE-CRYPTO-01.E registers the private `__sloppy.crypto` namespace for active
 and password helpers used by `stdlib/sloppy/crypto.js`; it does not expose raw native
 pointers or backend handles. `Password.hash`, `Password.verify`, and
 `Password.needsRehash` use worker-thread requests and settle on the V8 owner thread.
-CORE-NET-01.C/D/H registers the private `__sloppy.net` namespace for active `stdlib.net`
-plans. The bridge exposes TCP client/connection operations through JS-safe resource IDs;
-blocking connect/read/write/close work runs on owned native worker threads, and Promise
-settlement happens through the engine async loop on the V8 owner thread. Listener/accept,
-DNS policy, richer socket options, and deadline/cancellation hardening remain later
-CORE-NET slices.
+CORE-NET-01.E/F registers the private `__sloppy.net` namespace for active `stdlib.net`
+plans. The bridge exposes TCP client/connection/listener operations through JS-safe
+resource IDs; blocking connect/listen/accept/read/write/close work runs on owned native
+worker threads, and Promise settlement happens through the engine async loop on the V8
+owner thread. DNS policy, richer socket options, and final deadline/cancellation hardening
+remain later CORE-NET slices.
 CORE-CODEC-01.C/D/I registers the private `__sloppy.codec` namespace marker for active
 `stdlib.codec` plans. Base64/Base64Url/Hex/UTF-8 algorithms live in the bootstrap stdlib
 for this slice; the namespace intentionally exposes no raw native handles and no public

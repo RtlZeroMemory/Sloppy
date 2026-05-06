@@ -247,6 +247,153 @@ int test_invalid_host_and_port()
     return 0;
 }
 
+struct ClientExchange
+{
+    unsigned char arena_storage[64U * 1024U] = {};
+    SlArena arena = {};
+    uint16_t port = 0;
+    int result = 0;
+};
+
+void client_exchange_run(ClientExchange* exchange)
+{
+    SlTcpConnection* connection = nullptr;
+    SlTcpConnectOptions options = {};
+    SlOwnedStr line = {};
+
+    if (exchange == nullptr) {
+        return;
+    }
+    sl_arena_init(&exchange->arena, exchange->arena_storage, sizeof(exchange->arena_storage));
+    options = sl_tcp_connect_options_default(sl_str_from_cstr("127.0.0.1"), exchange->port);
+    if (expect_status(sl_tcp_client_connect(&exchange->arena, &options, &connection, nullptr),
+                      SL_STATUS_OK) != 0 ||
+        connection == nullptr)
+    {
+        exchange->result = 1;
+        return;
+    }
+    if (expect_status(
+            sl_tcp_connection_write_text(connection, sl_str_from_cstr("hello-listener\n"), nullptr),
+            SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_tcp_connection_read_line(connection, &exchange->arena, 128U, &line, nullptr),
+            SL_STATUS_OK) != 0 ||
+        line.length != 14U || std::memcmp(line.ptr, "listener-reply", 14U) != 0)
+    {
+        exchange->result = 2;
+        (void)sl_tcp_connection_abort(connection, nullptr);
+        return;
+    }
+    if (expect_status(sl_tcp_connection_close(connection, nullptr), SL_STATUS_OK) != 0) {
+        exchange->result = 3;
+        return;
+    }
+    exchange->result = 0;
+}
+
+int test_listener_accept_ephemeral_and_close()
+{
+    unsigned char listener_storage[32U * 1024U];
+    unsigned char accepted_storage[64U * 1024U];
+    SlArena listener_arena = {};
+    SlArena accepted_arena = {};
+    SlTcpListener* listener = nullptr;
+    SlTcpConnection* accepted = nullptr;
+    SlTcpListenOptions listen_options = {};
+    SlTcpAcceptOptions accept_options = {};
+    SlNetworkEndpoint endpoint = {};
+    SlOwnedStr line = {};
+    ClientExchange exchange = {};
+
+    sl_arena_init(&listener_arena, listener_storage, sizeof(listener_storage));
+    sl_arena_init(&accepted_arena, accepted_storage, sizeof(accepted_storage));
+    listen_options = sl_tcp_listen_options_default(sl_str_from_cstr("127.0.0.1"), 0U);
+    if (expect_status(sl_tcp_listener_listen(&listener_arena, &listen_options, &listener, nullptr),
+                      SL_STATUS_OK) != 0 ||
+        listener == nullptr || sl_tcp_listener_state(listener) != SL_TCP_LISTENER_LISTENING ||
+        expect_status(sl_tcp_listener_local_endpoint(listener, &endpoint), SL_STATUS_OK) != 0 ||
+        endpoint.port == 0U || endpoint.family != SL_NETWORK_ADDRESS_IPV4)
+    {
+        return 1;
+    }
+
+    exchange.port = endpoint.port;
+    std::thread client(client_exchange_run, &exchange);
+    accept_options = sl_tcp_accept_options_default();
+    accept_options.has_timeout_ms = true;
+    accept_options.timeout_ms = 2000U;
+    if (expect_status(
+            sl_tcp_listener_accept(listener, &accepted_arena, &accept_options, &accepted, nullptr),
+            SL_STATUS_OK) != 0 ||
+        accepted == nullptr || sl_tcp_connection_state(accepted) != SL_TCP_CONNECTION_CONNECTED)
+    {
+        client.join();
+        (void)sl_tcp_listener_abort(listener, nullptr);
+        return 2;
+    }
+    if (expect_status(sl_tcp_connection_read_line(accepted, &accepted_arena, 128U, &line, nullptr),
+                      SL_STATUS_OK) != 0 ||
+        line.length != 14U || std::memcmp(line.ptr, "hello-listener", 14U) != 0 ||
+        expect_status(
+            sl_tcp_connection_write_text(accepted, sl_str_from_cstr("listener-reply\n"), nullptr),
+            SL_STATUS_OK) != 0)
+    {
+        client.join();
+        (void)sl_tcp_connection_abort(accepted, nullptr);
+        (void)sl_tcp_listener_abort(listener, nullptr);
+        return 3;
+    }
+    client.join();
+    if (exchange.result != 0 ||
+        expect_status(sl_tcp_connection_close(accepted, nullptr), SL_STATUS_OK) != 0 ||
+        expect_status(sl_tcp_listener_close(listener, nullptr), SL_STATUS_OK) != 0 ||
+        sl_tcp_listener_state(listener) != SL_TCP_LISTENER_CLOSED)
+    {
+        return 4;
+    }
+    return 0;
+}
+
+int test_listener_accept_timeout_and_stale_handle()
+{
+    unsigned char listener_storage[32U * 1024U];
+    unsigned char accepted_storage[32U * 1024U];
+    SlArena listener_arena = {};
+    SlArena accepted_arena = {};
+    SlTcpListener* listener = nullptr;
+    SlTcpConnection* accepted = nullptr;
+    SlTcpListenOptions listen_options = {};
+    SlTcpAcceptOptions accept_options = {};
+
+    sl_arena_init(&listener_arena, listener_storage, sizeof(listener_storage));
+    sl_arena_init(&accepted_arena, accepted_storage, sizeof(accepted_storage));
+    listen_options = sl_tcp_listen_options_default(sl_str_from_cstr("127.0.0.1"), 0U);
+    if (expect_status(sl_tcp_listener_listen(&listener_arena, &listen_options, &listener, nullptr),
+                      SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    accept_options.has_timeout_ms = true;
+    accept_options.timeout_ms = 1U;
+    if (expect_status(
+            sl_tcp_listener_accept(listener, &accepted_arena, &accept_options, &accepted, nullptr),
+            SL_STATUS_DEADLINE_EXCEEDED) != 0 ||
+        accepted != nullptr)
+    {
+        (void)sl_tcp_listener_abort(listener, nullptr);
+        return 2;
+    }
+    if (expect_status(sl_tcp_listener_close(listener, nullptr), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_tcp_listener_accept(listener, &accepted_arena, nullptr, &accepted, nullptr),
+            SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 3;
+    }
+    return 0;
+}
+
 } // namespace
 
 int main()
@@ -255,6 +402,12 @@ int main()
         return 1;
     }
     if (test_invalid_host_and_port() != 0) {
+        return 1;
+    }
+    if (test_listener_accept_ephemeral_and_close() != 0) {
+        return 1;
+    }
+    if (test_listener_accept_timeout_and_stale_handle() != 0) {
         return 1;
     }
     return 0;

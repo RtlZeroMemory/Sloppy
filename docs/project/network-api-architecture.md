@@ -1,9 +1,9 @@
 # Network API Architecture
 
-Status: CORE-NET-01.C/D/H client implementation. This document defines the low-level
+Status: CORE-NET-01.E/F listener and stream lifecycle implementation. This document defines the low-level
 TCP/IP runtime API, policy model, feature metadata, diagnostics, and first native TCP
-client/connection implementation. It is not execution evidence for TCP listen/accept
-behavior, broad DNS policy, external network access, TLS, HTTP client behavior, UDP,
+client/connection/listener implementation. It is not execution evidence for broad DNS
+policy, external network access, TLS, HTTP client behavior, UDP,
 WebSocket, or local IPC.
 
 ## Goals
@@ -34,9 +34,9 @@ import { TcpClient, TcpListener, TcpConnection, NetworkAddress } from "sloppy/ne
 
 The compiler recognizes only named, unaliased imports from `sloppy/net`. The import adds
 `stdlib.net` to emitted Plan `requiredFeatures[]`, emits `features.network = true`, and
-sets `strongPlan.evidence.network = true`. CORE-NET-01.C/D/H makes `stdlib.net`
+sets `strongPlan.evidence.network = true`. CORE-NET-01.E/F keeps `stdlib.net`
 available when its dependencies are available and installs the initial `__sloppy.net`
-client/connection bridge for active V8 plans.
+client/connection/listener bridge for active V8 plans.
 
 ## API Contract
 
@@ -134,7 +134,7 @@ Future compiler/doctor behavior:
 - dynamic host/port values emit partial/dynamic metadata, not guessed endpoints;
 - source locations point to the API call or nearest literal option object where available.
 
-Runtime behavior after CORE-NET-01.C/D/H:
+Runtime behavior after CORE-NET-01.E/F:
 
 - `stdlib.net` is known to the feature registry;
 - default availability is true when the runtime lane has V8, libuv transport, and
@@ -144,6 +144,9 @@ Runtime behavior after CORE-NET-01.C/D/H:
 - `TcpConnection` supports bounded write, `writeText`, `read`, `readUntil`, `readLine`,
   endpoint metadata, close, abort, stale/closed-handle diagnostics, and embedded-NUL byte
   round trips;
+- `TcpListener` supports numeric loopback listen, ephemeral ports, bounded backlog,
+  blocking native accept, JS async accept iteration, close, abort, stale-listener
+  diagnostics, and accept timeout/cancellation status mapping;
 - the V8 bridge exposes only JS-safe resource IDs and settles Promises on the owner thread
   after native worker-thread completion.
 

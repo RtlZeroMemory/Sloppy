@@ -669,8 +669,9 @@ Random-source, unsupported-algorithm, HMAC key, stale Secret, and constant-time 
 failures are surfaced with stable code-name strings in JS-facing errors. Shape tests and
 goldens may include operation names and algorithm ids, but never generated random bytes or
 secret material.
-CORE-NET-01.C/D/H adds the first executable Network diagnostics for TCP client and
-connection operations on top of the stable CORE-NET-01.A/B code set. Missing or inactive
+CORE-NET-01.E/F extends the first executable Network diagnostics for TCP client,
+connection, and listener operations on top of the stable CORE-NET-01.A/B code set.
+Missing or inactive
 `stdlib.net` uses the runtime-feature diagnostics above before execution reaches the
 feature-gated API surface. Network-specific codes cover TCP API, policy, lifecycle, and
 stream failures:
@@ -695,9 +696,9 @@ stream failures:
 Network diagnostics may name operation, policy mode, loopback/external classification, and
 redacted endpoint shape. They must not include secrets, headers, tokens, raw sockets, libuv
 handles, OS handles, V8 handles, raw native pointers, or package-manager state. Default
-goldens prove deterministic diagnostic shape only. Loopback client tests prove scoped TCP
-client execution; they do not prove listener/accept behavior, external network access,
-throughput, broad DNS behavior, or benchmark evidence.
+goldens prove deterministic diagnostic shape only. Loopback client/listener tests prove
+scoped TCP execution; they do not prove external network access, throughput, broad DNS
+behavior, or benchmark evidence.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
