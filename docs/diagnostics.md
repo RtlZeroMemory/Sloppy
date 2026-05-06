@@ -640,9 +640,10 @@ delay/timeout/interval completion, skipped scheduled runs, and filesystem pre-ca
 expired-deadline option behavior.
 
 CORE-CRYPTO-01.E keeps stable Crypto diagnostics and JSON goldens for the feature/model
-plus random/hash/HMAC/Secret/password surface. Missing or inactive `stdlib.crypto` uses
-the runtime-feature or missing-bridge diagnostic path rather than raw JavaScript property
-failures. Crypto-specific codes cover primitive/API failures:
+plus random/hash/HMAC/Secret/password surface. CORE-CRYPTO-01.G adds the non-security
+`NonCryptoHash` warning shape. Missing or inactive `stdlib.crypto` uses the runtime-feature
+or missing-bridge diagnostic path rather than raw JavaScript property failures.
+Crypto-specific codes cover primitive/API failures:
 
 - `SLOPPY_E_CRYPTO_FEATURE_UNAVAILABLE` for crypto API use when the feature/backend lane is
   not active;
@@ -656,7 +657,9 @@ failures. Crypto-specific codes cover primitive/API failures:
 - `SLOPPY_E_CRYPTO_RANDOM_SOURCE_UNAVAILABLE` for fail-closed OS CSPRNG failures;
 - `SLOPPY_E_CRYPTO_SECRET_DISPOSED` for stale/disposed Secret use;
 - `SLOPPY_E_CRYPTO_CONSTANT_TIME_INVALID_INPUT` for invalid byte inputs;
-- `SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE` for unavailable vetted backend operations.
+- `SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE` for unavailable vetted backend operations;
+- `SLOPPY_W_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING` when static source visibility
+  suggests `NonCryptoHash` is being used in a security-looking context.
 
 Password hashing maps unsupported encoded hashes to the password-hash diagnostic shape and
 backend/offload failures to the backend-unavailable shape. Crypto diagnostics must not

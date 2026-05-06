@@ -1261,6 +1261,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "enc('wrong-password'), passwordHash));"
                                  "  const passwordRehash = await c.passwordNeedsRehash("
                                  "passwordHash, 3, 67108864);"
+                                 "  const nonCrypto = c.nonCryptoXxHash64(enc('hello'));"
                                  "  const oversizedHashRejected = await (async () => {"
                                  "    try { await c.passwordVerify(enc('password'), 'x'.repeat("
                                  "129)); return false; }"
@@ -1276,7 +1277,8 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "uuid[14] + ':' + code.length + ':' + randomHexLength + ':' + "
                                  "emptyRandomText.length + ':' + passwordHash.startsWith("
                                  "'$argon2id$') + ':' + passwordOk + ':' + passwordRehash + ':' + "
-                                 "wrongPasswordRejected + ':' + oversizedHashRejected + ':' + "
+                                 "wrongPasswordRejected + ':' + nonCrypto + ':' + "
+                                 "oversizedHashRejected + ':' + "
                                  "oversizedRehashRejected + ':' + equal;"
                                  "};"),
                 &diag),
@@ -1299,7 +1301,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
         !sl_str_equal(result.text, sl_str_from_cstr("ba7816bf8f01cfea414140de5dae2223"
                                                     "b00361a396177a9cb410ff61f20015ad:"
                                                     "b0344c61:4:6:8:0:true:true:true:true:"
-                                                    "true:true:true")))
+                                                    "26c7827d889f6da3:true:true:true")))
     {
         sl_engine_destroy(engine);
         return 415;

@@ -260,6 +260,7 @@ find_package(llhttp CONFIG REQUIRED)
 find_package(libuv CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(unofficial-sodium CONFIG REQUIRED)
+find_package(xxHash CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(PostgreSQL REQUIRED)
 if(SLOPPY_ENABLE_SQLSERVER)
@@ -287,6 +288,14 @@ else()
     message(FATAL_ERROR "libuv dependency was found, but neither libuv::uv_a nor libuv::uv is available.")
 endif()
 
+if(TARGET xxHash::xxhash)
+    set(SLOPPY_XXHASH_TARGET xxHash::xxhash)
+elseif(TARGET xxhash)
+    set(SLOPPY_XXHASH_TARGET xxhash)
+else()
+    message(FATAL_ERROR "xxHash dependency was found, but no known CMake target is available.")
+endif()
+
 set(
     SLOPPY_CORE_SOURCES
     src/core/status.c
@@ -304,6 +313,7 @@ set(
     src/core/execution_domain.c
     src/core/features.c
     src/core/crypto.c
+    src/core/crypto_noncrypto_hash.c
     src/core/fs.c
     src/platform/crypto_password_sodium.c
     src/platform/libuv/net_tcp_libuv.c
@@ -428,6 +438,7 @@ target_link_libraries(
     PRIVATE yyjson::yyjson
             ${SLOPPY_LLHTTP_TARGET}
             ${SLOPPY_LIBUV_TARGET}
+            ${SLOPPY_XXHASH_TARGET}
             OpenSSL::Crypto
             unofficial-sodium::sodium
             PostgreSQL::PostgreSQL
@@ -926,6 +937,10 @@ if(SLOPPY_ENABLE_TESTS)
     set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json.json)
     set(SLOPPY_DOCTOR_FS_TEXT_GOLDEN tests/golden/cli/doctor-filesystem-text.txt)
     set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json.json)
+    set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
+        tests/golden/cli/doctor-crypto-noncrypto-hash-text.txt)
+    set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
+        tests/golden/cli/doctor-crypto-noncrypto-hash-json.json)
     if(SLOPPY_ENABLE_V8)
         set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text-v8.txt)
         set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json-v8.json)
@@ -933,6 +948,10 @@ if(SLOPPY_ENABLE_TESTS)
         set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json-v8.json)
         set(SLOPPY_DOCTOR_FS_TEXT_GOLDEN tests/golden/cli/doctor-filesystem-text-v8.txt)
         set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json-v8.json)
+        set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
+            tests/golden/cli/doctor-crypto-noncrypto-hash-text-v8.txt)
+        set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
+            tests/golden/cli/doctor-crypto-noncrypto-hash-json-v8.json)
     endif()
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_text ${SLOPPY_DOCTOR_TEXT_GOLDEN} doctor --plan
@@ -952,6 +971,14 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_filesystem_json ${SLOPPY_DOCTOR_FS_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/filesystem-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_crypto_noncrypto_hash_text
+        ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/crypto-noncrypto-hash.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_crypto_noncrypto_hash_json
+        ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/crypto-noncrypto-hash.plan.json --format json)
     sloppy_add_cli_nonzero_golden_test(
         sloppy.cli.audit_text tests/golden/cli/audit-text.txt audit --plan
         tests/fixtures/cli/audit-problems.plan.json --format text)

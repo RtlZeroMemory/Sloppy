@@ -93,7 +93,10 @@ facilities or vetted dependencies behind Sloppy-owned platform/backend boundarie
 Password hashing uses `libsodium` Argon2id PHC strings, but JavaScript never receives raw
 native pointers or backend handles. Secure `Hash`/`Hmac` APIs and `NonCryptoHash` are
 separate namespaces so non-security hashes are not confused with signatures, tokens,
-password hashes, or integrity checks.
+password hashes, or integrity checks. CORE-CRYPTO-01.G implements `NonCryptoHash.xxHash64`
+through the vetted `xxhash` dependency and emits a Plan-visible doctor warning when
+statically visible source uses it in security-looking contexts. That warning is a
+best-effort static cue, not comprehensive security enforcement.
 
 Secret-bearing crypto inputs must not appear in Plan metadata, diagnostics, logs, examples,
 or goldens. `Secret` disposal is best-effort cleanup of Sloppy-owned native buffers only:

@@ -88,11 +88,12 @@ preemptive native filesystem interruption. CORE-TIME-01.I adds focused examples 
 delay/timeout, deadline/cancellation, intervals/scheduled jobs, fake clocks, and filesystem
 deadline integration.
 CORE-CRYPTO-01.E implements the first `sloppy/crypto` runtime surface around
-`Random`, `Hash`, `Hmac`, `Password`, `ConstantTime`, and `Secret`. The compiler makes
+`Random`, `Hash`, `Hmac`, `Password`, `ConstantTime`, and `Secret`. CORE-CRYPTO-01.G adds
+dependency-backed `NonCryptoHash.xxHash64(data)` as a visibly non-security helper that
+returns a lowercase 64-bit hex string. The compiler makes
 `sloppy/crypto` Plan-visible as `stdlib.crypto`, and active V8 plans receive the private
-`__sloppy.crypto` bridge. `NonCryptoHash` remains visible but fails closed until its
-dedicated slice lands. The API is Sloppy-shaped and does not promise
-WebCrypto, Node crypto, or Bun compatibility.
+`__sloppy.crypto` bridge. The API is Sloppy-shaped and does not promise WebCrypto, Node
+crypto, or Bun compatibility.
 CORE-NET-01.A/B locks the first `sloppy/net` TCP contract around `TcpClient`,
 `TcpListener`, `TcpConnection`, and `NetworkAddress`. The compiler now makes `sloppy/net`
 Plan-visible as `stdlib.net`, but the runtime feature remains unavailable by default until
