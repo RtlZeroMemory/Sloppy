@@ -530,6 +530,13 @@ function hasHttpControlChars(value) {
     return false;
 }
 
+function setHttpDefaultHeader(headers, name, value) {
+    const normalizedName = name.toLowerCase();
+    if (!headers.has(normalizedName)) {
+        headers.set(normalizedName, { name, value });
+    }
+}
+
 function parseHttpPort(text, operation) {
     if (text === undefined || text === "") {
         return undefined;
@@ -674,6 +681,56 @@ function parseAbsoluteHttpUrl(url, operation) {
     });
 }
 
+function splitHttpTarget(target) {
+    const queryStart = target.indexOf("?");
+    if (queryStart < 0) {
+        return { path: target, suffix: "" };
+    }
+    return { path: target.slice(0, queryStart), suffix: target.slice(queryStart) };
+}
+
+function normalizeHttpTargetPath(path) {
+    const segments = [];
+    for (const segment of path.split("/")) {
+        if (segment === "" || segment === ".") {
+            continue;
+        }
+        if (segment === "..") {
+            segments.pop();
+            continue;
+        }
+        segments.push(segment);
+    }
+    return `/${segments.join("/")}`;
+}
+
+function joinHttpTarget(baseTarget, requestUrl, operation) {
+    if (hasHttpControlChars(requestUrl)) {
+        throw httpClientError(
+            "HttpClientInvalidUrlError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+            `${operation} URL contains invalid control characters.`,
+        );
+    }
+    if (requestUrl.length === 0) {
+        const { path, suffix } = splitHttpTarget(baseTarget);
+        return `${normalizeHttpTargetPath(path)}${suffix}`;
+    }
+    if (requestUrl.startsWith("?")) {
+        const { path } = splitHttpTarget(baseTarget);
+        return `${normalizeHttpTargetPath(path)}${requestUrl}`;
+    }
+    if (requestUrl.startsWith("/")) {
+        const { path, suffix } = splitHttpTarget(requestUrl);
+        return `${normalizeHttpTargetPath(path)}${suffix}`;
+    }
+
+    const { path: basePath } = splitHttpTarget(baseTarget);
+    const baseDirectory = basePath.endsWith("/") ? basePath : basePath.slice(0, basePath.lastIndexOf("/") + 1);
+    const { path, suffix } = splitHttpTarget(`${baseDirectory}${requestUrl}`);
+    return `${normalizeHttpTargetPath(path)}${suffix}`;
+}
+
 function resolveHttpUrl(baseOptions, requestUrl, operation) {
     if (typeof requestUrl === "string" && hasHttpControlChars(requestUrl)) {
         throw httpClientError(
@@ -686,15 +743,15 @@ function resolveHttpUrl(baseOptions, requestUrl, operation) {
         return parseAbsoluteHttpUrl(requestUrl, operation);
     }
     const baseUrl = baseOptions?.baseUrl;
-    if (typeof requestUrl !== "string" || !requestUrl.startsWith("/") || typeof baseUrl !== "string") {
+    if (typeof requestUrl !== "string" || typeof baseUrl !== "string") {
         throw httpClientError(
             "HttpClientInvalidUrlError",
             "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
-            `${operation} requires an absolute URL or an absolute path with client baseUrl.`,
+            `${operation} requires an absolute URL or a path with client baseUrl.`,
         );
     }
     const base = parseAbsoluteHttpUrl(baseUrl, operation);
-    return Object.freeze({ ...base, target: requestUrl });
+    return Object.freeze({ ...base, target: joinHttpTarget(base.target, requestUrl, operation) });
 }
 
 function normalizeHttpMethod(method, operation) {
@@ -747,8 +804,8 @@ function appendHttpHeaders(target, headers, operation) {
     }
 }
 
-function normalizeHttpBody(options, operation) {
-    const sources = ["text", "bytes"].filter((key) => options?.[key] !== undefined);
+function normalizeHttpBody(options, headers, operation) {
+    const sources = ["json", "text", "bytes", "stream"].filter((key) => options?.[key] !== undefined);
     if (sources.length > 1) {
         throw httpClientError(
             "HttpClientAmbiguousBodyError",
@@ -759,6 +816,28 @@ function normalizeHttpBody(options, operation) {
     if (sources.length === 0) {
         return new Uint8Array(0);
     }
+    if (sources[0] === "json") {
+        let text;
+        try {
+            text = JSON.stringify(options.json);
+        } catch (error) {
+            throw httpClientError(
+                "HttpClientJsonError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_JSON",
+                `${operation} JSON body could not be serialized.`,
+                { cause: error },
+            );
+        }
+        if (text === undefined) {
+            throw httpClientError(
+                "HttpClientJsonError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_JSON",
+                `${operation} JSON body must serialize to a JSON value.`,
+            );
+        }
+        setHttpDefaultHeader(headers, "Content-Type", "application/json");
+        return new TextEncoder().encode(text);
+    }
     if (sources[0] === "text") {
         if (typeof options.text !== "string") {
             throw httpClientError(
@@ -767,7 +846,15 @@ function normalizeHttpBody(options, operation) {
                 `${operation} text body must be a string.`,
             );
         }
+        setHttpDefaultHeader(headers, "Content-Type", "text/plain; charset=utf-8");
         return new TextEncoder().encode(options.text);
+    }
+    if (sources[0] === "stream") {
+        throw httpClientError(
+            "HttpClientFeatureUnavailableError",
+            "SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE",
+            "HTTP client stream request bodies are not available in this runtime slice.",
+        );
     }
     if (!(options.bytes instanceof Uint8Array)) {
         throw httpClientError(
@@ -776,7 +863,7 @@ function normalizeHttpBody(options, operation) {
             `${operation} bytes body must be a Uint8Array.`,
         );
     }
-    return options.bytes;
+    return options.bytes.slice();
 }
 
 function concatHttpBytes(chunks, totalLength) {
@@ -939,7 +1026,16 @@ class HttpClientResponse {
     }
 
     async json() {
-        return JSON.parse(new TextDecoder().decode(this._consume()));
+        try {
+            return JSON.parse(new TextDecoder().decode(this._consume()));
+        } catch (error) {
+            throw httpClientError(
+                "HttpClientJsonError",
+                "SLOPPY_E_HTTP_CLIENT_INVALID_JSON",
+                "HTTP response body is not valid JSON.",
+                { cause: error },
+            );
+        }
     }
 }
 
@@ -1102,7 +1198,7 @@ function normalizeHttpRequest(baseOptions, request, options, defaultMethod) {
     const headers = new Map();
     appendHttpHeaders(headers, baseOptions?.headers, operation);
     appendHttpHeaders(headers, requestObject.headers, operation);
-    const body = normalizeHttpBody(requestObject, operation);
+    const body = normalizeHttpBody(requestObject, headers, operation);
     const maxResponseBytes =
         parseHttpSize(requestObject.maxResponseBytes ?? baseOptions?.maxResponseBytes, operation) ??
         HTTP_CLIENT_DEFAULT_MAX_RESPONSE_BYTES;
@@ -1133,8 +1229,10 @@ function serializeHttpRequest(request) {
         `${request.method} ${request.url.target} HTTP/1.1`,
         `Host: ${request.url.hostHeader}`,
         "Connection: close",
-        "Accept: */*",
     ];
+    if (!request.headers.has("accept")) {
+        lines.push("Accept: */*");
+    }
     for (const { name, value } of request.headers.values()) {
         lines.push(`${name}: ${value}`);
     }
@@ -1247,6 +1345,42 @@ async function sendHttpRequest(baseOptions, request, options = undefined, defaul
     }
 }
 
+function withHttpDefaultHeader(options, name, value) {
+    const merged = { ...(options ?? {}) };
+    if (options?.headers !== undefined && !isPlainObject(options.headers)) {
+        return merged;
+    }
+    const headers = { ...(isPlainObject(options?.headers) ? options.headers : {}) };
+    const normalizedName = name.toLowerCase();
+    const hasHeader = Object.keys(headers).some((key) => key.toLowerCase() === normalizedName);
+    if (!hasHeader) {
+        headers[name] = value;
+    }
+    merged.headers = headers;
+    return merged;
+}
+
+async function readHttpResponseBody(response, kind) {
+    if (kind === "json") {
+        return await response.json();
+    }
+    if (kind === "text") {
+        return await response.text();
+    }
+    return await response.bytes();
+}
+
+async function sendHttpBodyRequest(baseOptions, url, options, kind) {
+    const requestOptions =
+        kind === "json" ? withHttpDefaultHeader(options, "Accept", "application/json") : options;
+    const response = await sendHttpRequest(baseOptions, url, requestOptions, "GET");
+    return await readHttpResponseBody(response, kind);
+}
+
+function postJsonRequest(baseOptions, url, value, options = undefined) {
+    return sendHttpRequest(baseOptions, url, { ...(options ?? {}), json: value }, "POST");
+}
+
 function createHttpClientFacade(baseOptions = undefined) {
     const client = {
         request(request, options = undefined) {
@@ -1258,11 +1392,20 @@ function createHttpClientFacade(baseOptions = undefined) {
         post(url, options = undefined) {
             return sendHttpRequest(baseOptions, url, options, "POST");
         },
-        getJson() {
-            return httpClientUnavailable("getJson");
+        getJson(url, options = undefined) {
+            return sendHttpBodyRequest(baseOptions, url, options, "json");
         },
-        postJson() {
-            return httpClientUnavailable("postJson");
+        postJson(url, value, options = undefined) {
+            return postJsonRequest(baseOptions, url, value, options);
+        },
+        text(url, options = undefined) {
+            return sendHttpBodyRequest(baseOptions, url, options, "text");
+        },
+        json(url, options = undefined) {
+            return sendHttpBodyRequest(baseOptions, url, options, "json");
+        },
+        bytes(url, options = undefined) {
+            return sendHttpBodyRequest(baseOptions, url, options, "bytes");
         },
     };
     Object.defineProperty(client, "__sloppyHttpClientOptions", {
@@ -1285,11 +1428,20 @@ const HttpClient = Object.freeze({
     post(url, options = undefined) {
         return sendHttpRequest(undefined, url, options, "POST");
     },
-    getJson() {
-        return httpClientUnavailable("getJson");
+    getJson(url, options = undefined) {
+        return sendHttpBodyRequest(undefined, url, options, "json");
     },
-    postJson() {
-        return httpClientUnavailable("postJson");
+    postJson(url, value, options = undefined) {
+        return postJsonRequest(undefined, url, value, options);
+    },
+    text(url, options = undefined) {
+        return sendHttpBodyRequest(undefined, url, options, "text");
+    },
+    json(url, options = undefined) {
+        return sendHttpBodyRequest(undefined, url, options, "json");
+    },
+    bytes(url, options = undefined) {
+        return sendHttpBodyRequest(undefined, url, options, "bytes");
     },
 });
 
