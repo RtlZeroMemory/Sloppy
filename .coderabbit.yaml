@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  changed_files_summary: true
+  sequence_diagrams: false
+  related_issues: false
+  related_prs: false
+  poem: false
+  collapse_walkthrough: true
+  enable_prompt_for_ai_agents: true
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 3
+  path_filters:
+    - "!build/**"
+    - "!out/**"
+    - "!cmake-build-*/**"
+    - "!compiler/target/**"
+    - "!target/**"
+    - "!.sdeps/**"
+    - "!vcpkg_installed/**"
+    - "!.sloppy/**"
+    - "!artifacts/**"
+    - "!logs/**"
+    - "!coverage/**"
+    - "!**/*.log"
+    - "!**/*.trace"
+    - "!**/*.zip"
+    - "!**/*.7z"
+    - "!**/*.tar.gz"
+    - "!**/*.exe"
+    - "!**/*.dll"
+    - "!**/*.so"
+    - "!**/*.dylib"
+    - "!**/*.lib"
+    - "!**/*.a"
+    - "!**/*.obj"
+    - "!**/*.o"
+    - "!**/*.pdb"
+    - "!**/*.ilk"
+    - "!**/*.idb"
+    - "!**/*.exp"
+    - "!**/*.map"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!benchmarks/results/**"
+    - "!benchmarks/output/**"
+  path_instructions:
+    - path: "include/**"
+      instructions: "Treat public headers as durable C ABI/API contracts. Focus on ownership, lifetime, nullability, struct/layout compatibility, enum value compatibility, and accidental platform or V8 type leaks."
+    - path: "src/**"
+      instructions: "Prioritize native correctness over style: bounds checks, checked size arithmetic, allocation failure, cleanup on error paths, resource lifetime, undefined behavior, thread/async ownership, and simple locally reviewable C/C++."
+    - path: "src/platform/**"
+      instructions: "Check that OS APIs stay behind the platform abstraction and that Windows, POSIX, Linux, and macOS behavior remains explicit, portable where promised, and covered by the right platform tests."
+    - path: "src/engine/v8/**"
+      instructions: "Review V8 bridge changes for isolate owner-thread rules, exception/error propagation, native handle ownership, ABI isolation, and no V8 types escaping outside this subtree."
+    - path: "compiler/**"
+      instructions: "Review Rust compiler/tooling changes for deterministic artifacts, clear diagnostics, parser/extractor honesty, safe error handling, narrow unsafe or FFI assumptions, and intentional Cargo dependency changes."
+    - path: "stdlib/sloppy/**"
+      instructions: "Review JavaScript bootstrap changes for stable descriptor contracts, no Node/npm compatibility drift, deterministic redacted errors, freeze/build lifecycle behavior, and no hidden global mutable runtime state."
+    - path: "examples/**"
+      instructions: "Treat examples as public contract evidence. Check that they only show supported behavior, use relative stdlib imports where current docs require it, and do not imply Node, package-manager, or future runtime support."
+    - path: "tests/**"
+      instructions: "Review tests for documented behavior coverage, malformed/boundary/failure paths, deterministic fixtures, intentional golden updates, and avoidance of assertions that merely mirror implementation details."
+    - path: ".github/**"
+      instructions: "Review CI for honest gate semantics, reproducibility, cache correctness, Windows/Linux/macOS coverage, dependency pinning, and accidentally disabled warnings, lints, tests, or optional-provider reporting."
+    - path: "tools/**"
+      instructions: "Review scripts for Windows-first workflow compatibility, path quoting, environment setup, generated artifact hygiene, and failures that remain visible instead of being silently skipped."
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - AGENTS.md
+      - docs/review-playbook.md
+      - docs/c-standards.md
+      - docs/c-style.md
+      - docs/js-ts-standards.md
+      - docs/rust-standards.md
+      - docs/testing-strategy.md
+      - docs/documentation-policy.md

@@ -87,6 +87,49 @@ Agent workflow:
 
 Language-specific gates are part of `tools/windows/dev.ps1 lint`.
 
+## Review guidelines
+
+AI reviewers should spend review budget on bugs that can break Sloppy's contracts, safety,
+or evidence trail. Prefer a few high-signal findings over broad style commentary, and cite
+the governing docs when a change conflicts with them.
+
+Prioritize:
+
+- correctness bugs, security regressions, bad error handling, resource leaks, and missing
+  failure-path cleanup;
+- C/C++ memory safety issues: bounds checks, checked arithmetic for sizes and offsets,
+  null handling, ownership/lifetime, allocation failure, double-free/use-after-free risk,
+  unsafe string/memory operations, strict-aliasing/alignment issues, and undefined behavior;
+- Rust compiler/tooling issues: unsafe block invariants, panic safety in non-test code,
+  unnecessary `unwrap`/`expect`, deterministic output, feature/crate boundary drift, and
+  trait or macro abstractions that obscure simple logic;
+- JavaScript/TypeScript runtime-contract issues: descriptor shape drift, unsupported
+  Node/npm compatibility assumptions, nullable/undefined assumptions, type holes, async
+  cleanup, secret redaction, and ESM/package-boundary regressions;
+- native boundary issues: V8 type leakage outside `src/engine/v8/*`, JS raw native pointer
+  exposure, ownership transfer across language boundaries, thread-affinity mistakes, string
+  encoding bugs, and exceptions or panics crossing FFI/ABI boundaries unsafely;
+- parser, Plan, route, protocol, terminal/IO, and binary-format issues: malformed input
+  handling, partial reads/writes, bounds checks before access, integer overflow, state
+  machine correctness, deterministic output, and backward/forward compatibility;
+- concurrency and async bugs: owner-thread rules, races, cancellation/timeout behavior,
+  late completion, shutdown ordering, worker-pool/resource lifetime, and hidden global
+  mutable state;
+- build, CI, and tooling regressions: reproducibility, cache correctness, dependency
+  pinning, release/debug drift, disabled warnings/lints/tests, optional V8/provider gates
+  that overclaim success, and broken Windows/Linux/macOS paths;
+- tests that miss documented behavior, skip important failure paths, depend on timing,
+  mirror implementation details, update goldens without explaining intent, or make
+  benchmark/performance claims from smoke evidence;
+- docs/spec changes that contradict implementation, omit user-visible behavior limits,
+  overclaim unsupported runtime/provider/V8 behavior, or leave ABI/API/safety invariants
+  stale.
+
+Deprioritize grammar nits, naming preferences, formatting already covered by gates, and
+minor refactors unless they hide a serious issue. Call out over-engineering when a new
+abstraction, registry, plugin point, macro layer, or generic helper is not required by the
+task or the source-of-truth docs.
+
 ## Hard boundaries
 
 - No OS APIs outside `src/platform/*`.
