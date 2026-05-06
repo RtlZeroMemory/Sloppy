@@ -2384,7 +2384,7 @@ Reason:
         if (options === undefined) {
             return {};
         }
-        if (options === null || typeof options !== "object" || Array.isArray(options)) {
+        if (!isPlainObject(options)) {
             throw new TypeError(`${operation} options must be an object when provided.`);
         }
         return options;

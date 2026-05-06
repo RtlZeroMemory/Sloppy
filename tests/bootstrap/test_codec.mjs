@@ -75,7 +75,9 @@ assertCodecError(() => fatalDecoder.finish(), "SLOPPY_E_CODEC_MALFORMED_UTF8");
 
 assert.throws(() => Base64.encode("abc"), TypeError);
 assert.throws(() => Base64Url.encode(new Uint8Array(0), { padding: "no" }), TypeError);
+assert.throws(() => Base64Url.decode("", new Date()), TypeError);
 assert.throws(() => Text.utf8.decode(new Uint8Array(0), { ignoreBOM: true }), TypeError);
+assert.throws(() => Text.utf8.decoder(new Uint8Array(0)), TypeError);
 assertCodecError(() => Binary.reader(new Uint8Array(0)), "SLOPPY_E_CODEC_FEATURE_UNAVAILABLE");
 await assert.rejects(() => Compression.gzip(new Uint8Array(0)), /SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE/);
 assertCodecError(() => Checksums.crc32(new Uint8Array(0)), "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM");

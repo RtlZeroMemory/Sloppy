@@ -10,10 +10,8 @@
 
 namespace {
 
-SlStatus codec_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
+SlStatus codec_v8_to_local_string(SlV8Engine* backend, SlStr str, v8::Local<v8::String>* out)
 {
-    SlV8Engine* backend =
-        isolate == nullptr ? nullptr : static_cast<SlV8Engine*>(isolate->GetData(0));
     return sl_v8_string_from_native_view(backend, str, out);
 }
 
@@ -35,7 +33,7 @@ bool sl_v8_install_codec_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> 
         return true;
     }
 
-    if (!sl_status_is_ok(codec_v8_to_local_string(isolate, sl_str_from_cstr("codec"), &codec_key)))
+    if (!sl_status_is_ok(codec_v8_to_local_string(backend, sl_str_from_cstr("codec"), &codec_key)))
     {
         return false;
     }

@@ -3,6 +3,7 @@ set(required_bootstrap_assets
     app.js
     bootstrap.manifest.json
     codec.js
+    crypto.js
     data.js
     fs.js
     time.js

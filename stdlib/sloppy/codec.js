@@ -28,11 +28,19 @@ function requireString(value, operation) {
     return value;
 }
 
+function isPlainObject(value) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+        return false;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+}
+
 function validateOptionsObject(options, operation) {
     if (options === undefined) {
         return {};
     }
-    if (options === null || typeof options !== "object" || Array.isArray(options)) {
+    if (!isPlainObject(options)) {
         throw new TypeError(`${operation} options must be an object when provided.`);
     }
     return options;

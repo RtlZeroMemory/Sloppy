@@ -11,6 +11,7 @@ Source layout:
 stdlib/sloppy/
   index.js
   codec.js
+  crypto.js
   data.js
   fs.js
   time.js
