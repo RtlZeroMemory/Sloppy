@@ -459,6 +459,12 @@ target_link_libraries(
             unofficial::sqlite3::sqlite3
             ZLIB::ZLIB)
 
+if(UNIX AND NOT APPLE)
+    # vcpkg's static libpq may leave libpgcommon's math symbols to the consumer.
+    # Keep libm after the PostgreSQL archive for GNU ld's left-to-right resolution.
+    target_link_libraries(sloppy_core PRIVATE m)
+endif()
+
 if(WIN32)
     target_link_libraries(sloppy_core PRIVATE bcrypt)
 endif()
