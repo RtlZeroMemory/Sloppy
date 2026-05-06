@@ -1,8 +1,9 @@
 # HTTP Client API Architecture
 
-Status: CORE-HTTPCLIENT-01.A/B/C contract slice plus CORE-HTTPCLIENT-01.D partial
-HTTP/1.1 client transport. This document defines the outbound HTTP client API and policy
-model, and records the first executable cleartext HTTP/1.1 request/response lane.
+Status: CORE-HTTPCLIENT-01.A/B/C contract slice plus CORE-HTTPCLIENT-01.D/E partial
+HTTP/1.1 client transport and helper surface. This document defines the outbound HTTP
+client API and policy model, and records the first executable cleartext HTTP/1.1
+request/response lane.
 
 ## Goal
 
@@ -21,9 +22,10 @@ Runtime feature id: `stdlib.httpclient`.
 runtime lane provides cleartext `http://` HTTP/1.1 request/response execution through the
 Slop-owned CORE-NET TCP bridge and activates the `stdlib.net` dependency automatically.
 Direct stdlib facade calls fail with `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE` only when
-the JS surface is reached without the required runtime bridge. HTTPS/TLS, redirects,
-pooling, streaming bodies, named-client doctor metadata, and convenience JSON helpers
-remain deferred to later CORE-HTTPCLIENT-01 slices.
+the JS surface is reached without the required runtime bridge. The helper surface now
+includes one-shot `text`, `json`, `bytes`, `getJson`, and `postJson` convenience methods
+plus request `json` body serialization. HTTPS/TLS, redirects, pooling, streaming bodies,
+and named-client doctor metadata remain deferred to later CORE-HTTPCLIENT-01 slices.
 
 ## Public Shape
 
@@ -32,8 +34,14 @@ The intended public surface is:
 - `HttpClient.get(url, options?)`;
 - `HttpClient.post(url, options?)`;
 - `HttpClient.request(request)`;
+- `HttpClient.text(url, options?)`;
+- `HttpClient.json(url, options?)`;
+- `HttpClient.bytes(url, options?)`;
+- `HttpClient.getJson(url, options?)`;
+- `HttpClient.postJson(url, value, options?)`;
 - `HttpClient.create(options)`;
-- reusable client methods `request`, `get`, `post`, `getJson`, and `postJson`;
+- reusable client methods `request`, `get`, `post`, `text`, `json`, `bytes`, `getJson`,
+  and `postJson`;
 - response helpers `text()`, `json()`, `bytes()`, and later `stream()`.
 
 Named clients are framework-owned reusable resources:
@@ -81,12 +89,26 @@ A request body source is one of:
 Only one body source may be set. Ambiguous combinations fail before native work with
 `SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY`.
 
+The current helper lane implements `json`, `text`, and `bytes`. `json` serializes with
+`JSON.stringify`, sets a default `Content-Type: application/json` when the caller has not
+provided one, and fails with `SLOPPY_E_HTTP_CLIENT_INVALID_JSON` before transport work if
+the value cannot be serialized. `text` sets a default UTF-8 text content type. `bytes`
+clones the caller-provided `Uint8Array` before serialization. `stream` remains reserved
+for CORE-HTTPCLIENT-01.F and fails with `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE` in this
+lane.
+
 ## Response Bodies
 
 Response bodies are consumed once. `json()`, `text()`, `bytes()`, and stream reads must
 produce deterministic already-consumed errors. HTTP/1.1 connection reuse is allowed only
 after the response is safely consumed or drained. Dirty, truncated, malformed, cancelled,
 timed-out, or partially consumed bodies discard the connection.
+
+`HttpClient.text`, `HttpClient.json`, `HttpClient.bytes`, and `getJson` perform a GET and
+consume the response body once. Invalid response JSON fails with
+`SLOPPY_E_HTTP_CLIENT_INVALID_JSON`. `postJson` returns the response object so callers can
+inspect status and choose which body helper to consume, matching the reusable-client
+workflow.
 
 ## Deadline And Cancellation
 

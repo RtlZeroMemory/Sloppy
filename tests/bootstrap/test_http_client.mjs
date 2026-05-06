@@ -277,6 +277,46 @@ await withNodeNetBridge(async () => {
     let observed;
     const server = await startHttpServer((request) => {
         observed = request;
+        return "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 18\r\n\r\n{\"id\":1,\"ok\":true}";
+    });
+
+    try {
+        const client = HttpClient.create({ baseUrl: `${server.url}/v1/` });
+        const value = await client.getJson("users/1?active=1");
+
+        assert.deepEqual(value, { id: 1, ok: true });
+        assert.equal(observed.method, "GET");
+        assert.equal(observed.target, "/v1/users/1?active=1");
+        assert.equal(observed.headers.get("accept"), "application/json");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+
+    try {
+        assert.equal(await HttpClient.text(`${server.url}/text`), "hello");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nabc");
+
+    try {
+        assert.deepEqual(Array.from(await HttpClient.bytes(`${server.url}/bytes`)), [97, 98, 99]);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let observed;
+    const server = await startHttpServer((request) => {
+        observed = request;
         return "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n";
     });
 
@@ -299,6 +339,28 @@ await withNodeNetBridge(async () => {
     }
 });
 
+await withNodeNetBridge(async () => {
+    let observed;
+    const server = await startHttpServer((request) => {
+        observed = request;
+        return "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: 8\r\n\r\n{\"id\":1}";
+    });
+
+    try {
+        const response = await HttpClient.postJson(`${server.url}/items`, { name: "test" });
+
+        assert.equal(response.status, 201);
+        assert.deepEqual(await response.json(), { id: 1 });
+        assert.equal(observed.method, "POST");
+        assert.equal(observed.target, "/items");
+        assert.equal(observed.headers.get("content-type"), "application/json");
+        assert.equal(observed.headers.get("content-length"), "15");
+        assert.equal(observed.body.toString("utf8"), "{\"name\":\"test\"}");
+    } finally {
+        await server.close();
+    }
+});
+
 await assertRejectsMessage(
     () => HttpClient.get("https://127.0.0.1/"),
     /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
@@ -310,6 +372,25 @@ await assertRejectsMessage(
 );
 
 await assertRejectsMessage(
+    () => HttpClient.request({ url: "http://127.0.0.1/", json: {}, text: "a" }),
+    /SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY/,
+);
+
+await assertRejectsMessage(
+    () => HttpClient.request({ url: "http://127.0.0.1/", stream: {} }),
+    /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
+);
+
+{
+    const circular = {};
+    circular.self = circular;
+    await assertRejectsMessage(
+        () => HttpClient.request({ url: "http://127.0.0.1/", json: circular }),
+        /SLOPPY_E_HTTP_CLIENT_INVALID_JSON/,
+    );
+}
+
+await assertRejectsMessage(
     () => HttpClient.get("http://127.0.0.1/\r\nx-test: injected"),
     /SLOPPY_E_HTTP_CLIENT_INVALID_URL/,
 );
@@ -319,12 +400,29 @@ await assertRejectsMessage(
     /SLOPPY_E_HTTP_CLIENT_INVALID_URL/,
 );
 
+await assertRejectsMessage(
+    () => HttpClient.getJson("http://127.0.0.1/", { headers: "accept: application/json" }),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
 await withNodeNetBridge(async () => {
     const server = await startHttpServer(() => "wat\r\n\r\n");
     try {
         await assertRejectsMessage(
             () => HttpClient.get(`${server.url}/malformed`),
             /SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE/,
+        );
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 8\r\n\r\nnot json");
+    try {
+        await assertRejectsMessage(
+            () => HttpClient.getJson(`${server.url}/invalid-json`),
+            /SLOPPY_E_HTTP_CLIENT_INVALID_JSON/,
         );
     } finally {
         await server.close();

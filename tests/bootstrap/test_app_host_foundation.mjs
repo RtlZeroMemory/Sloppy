@@ -224,8 +224,14 @@ async function flushMicrotasks(count = 6) {
 {
     assert.equal(typeof HttpClient.create, "function");
     assert.equal(typeof HttpClient.get, "function");
-    const client = HttpClient.create({ baseUrl: "https://api.example.test" });
+    assert.equal(typeof HttpClient.getJson, "function");
+    assert.equal(typeof HttpClient.postJson, "function");
+    assert.equal(typeof HttpClient.text, "function");
+    assert.equal(typeof HttpClient.json, "function");
+    assert.equal(typeof HttpClient.bytes, "function");
+    const client = HttpClient.create({ baseUrl: "http://api.example.test" });
     assert.equal(typeof client.getJson, "function");
+    assert.equal(typeof client.postJson, "function");
     await assertRejectsMessage(
         () => HttpClient.get("http://api.example.test/health"),
         /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
