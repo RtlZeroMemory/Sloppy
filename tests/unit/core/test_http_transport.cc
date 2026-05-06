@@ -2,6 +2,8 @@
 
 #include <uv.h>
 
+#include <cstring>
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
