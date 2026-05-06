@@ -82,9 +82,12 @@ Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, comp
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
 standards scanning, Rust standards scanning, and a lightweight docs freshness structure
 check.
-Default CI now runs Windows clang-cl, Linux clang, Linux gcc, and macOS clang non-V8 gates.
-Benchmark list/smoke checks may run as correctness smoke, but performance deltas are not a
-normal hard gate yet.
+CI has a fast PR lane and a full validation lane. Draft/WIP pull requests run the fast
+lane so agents can iterate without burning the full platform matrix on stale commits. Ready
+pull requests, pushes to `main`, manual workflow runs, and draft pull requests explicitly
+labeled `full-ci` run the full non-V8 validation lane. A PR must not be treated as
+merge-ready until the full lane is green on the final branch state. Benchmark list/smoke
+checks may run as correctness smoke, but performance deltas are not a normal hard gate yet.
 
 Default gate success must be reported as default non-V8 evidence. It does not prove V8
 runtime execution, live PostgreSQL or SQL Server behavior, package release readiness,
@@ -326,33 +329,50 @@ CI behavior:
 
 ## CI Gates
 
-Default CI runs a required non-V8 matrix:
+CI cancels stale runs for the same pull request or ref. The fast PR lane runs on pull
+request updates and covers:
 
-- Windows clang-cl through `windows-dev`;
-- Linux clang through `linux-clang`;
-- Linux gcc through `linux-gcc`;
-- macOS clang through `macos-clang`.
+- static/generated artifact hygiene and `git diff --check`;
+- platform, C, JS/TS, Rust standards, and docs freshness scanners;
+- Rust format, clippy, and tests once, outside the OS/compiler matrix;
+- a Windows clang-cl configure/build/CTest smoke for non-docs-only draft/WIP changes.
 
-Each required job should run:
+Docs-only draft/WIP changes may skip native and Rust build jobs and run only the static
+fast checks. Mixed changes do not use the docs-only shortcut. This skip is not a merge
+readiness signal; ready PRs still run the full lane.
+
+Full CI runs the required non-V8 validation matrix:
+
+- `ci-full / windows`: Windows clang-cl through `windows-dev`;
+- `ci-full / linux-clang`: Linux clang through `linux-clang`;
+- `ci-full / linux-gcc`: Linux gcc through `linux-gcc`;
+- `ci-full / macos`: macOS clang through `macos-clang`;
+- `rust`: Cargo format, clippy, and tests.
+
+The branch-protection target should be the full validation lane for merge readiness. Fast
+jobs are useful iteration signals, but they are not a replacement for full CI on the final
+branch state.
+
+Each full platform job should run:
 
 - checkout;
 - platform toolchain setup;
-- Rust setup;
+- Rust setup where CTest/compiler integration requires Cargo;
 - vcpkg bootstrap/restore;
 - generated artifact tracking check;
 - CMake configure with `SLOPPY_ENABLE_WERROR=ON`;
 - CMake build;
 - CTest;
-- Cargo build;
-- cargo fmt;
-- cargo clippy;
-- cargo test;
 - platform/C standards scanners appropriate to the runner.
 
-The Windows job remains the full local-gate mirror and runs `tools/windows/dev.ps1`
-`format-check` and `lint`, including C, JS/TS, Rust, docs freshness, and artifact-hygiene
-scanners. Linux/macOS jobs run direct CMake/Cargo commands plus POSIX platform and C
-standards scanners. They do not require PowerShell-only Windows wrapper behavior.
+The dedicated `rust` job owns full Cargo format, clippy, and tests so those checks do not
+run redundantly in every OS/compiler matrix job. Platform jobs may still build or run
+`sloppyc` through CMake/CTest when native integration tests require it. The Windows job
+remains the full local-gate mirror for C/C++ formatting and linting and runs
+`tools/windows/dev.ps1 format-check` and `tools/windows/dev.ps1 lint`, including C, JS/TS,
+Rust standards, docs freshness, and artifact-hygiene scanners. Linux/macOS jobs run direct
+CMake/CTest commands plus POSIX platform and C standards scanners. They do not require
+PowerShell-only Windows wrapper behavior.
 
 Optional/gated jobs:
 
