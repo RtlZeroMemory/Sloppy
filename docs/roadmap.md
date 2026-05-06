@@ -50,7 +50,9 @@ The compact source records for this reset are:
 - `docs/project/compiler-inference-engine-architecture.md`;
 - `docs/project/compiler-inference-issue-index.md`;
 - `docs/project/http-post-mvp-transport-plan.md`;
-- `docs/project/post-core-immediate-hardening-plan.md`.
+- `docs/project/post-core-immediate-hardening-plan.md`;
+- `docs/project/crypto-api-architecture.md`;
+- `docs/project/crypto-api-issue-index.md`.
 
 Durable architecture sources remain:
 
@@ -90,6 +92,7 @@ Durable architecture sources remain:
 | Capability enforcement | Complete/proven for integrated paths | SQLite/provider-executor paths enforce before provider work; CORE-FS-01 implements filesystem feature/capability policy, import-driven Plan metadata, runtime path-policy enforcement for implemented FS operations, and doctor/audit goldens for filesystem metadata visibility; CORE-FS-02 keeps trusted runtime artifact reads independent of app filesystem grants; network remains metadata/check skeleton. |
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Time/deadline API | Complete/proven for scoped path | CORE-TIME-01.A/B defines `sloppy/time`, `stdlib.time`, compiler Plan activation, stable diagnostics, and bootstrap error classes. CORE-TIME-01.C/D/G adds the V8-gated native delay backend, owner-thread Promise settlement, `Time.delay`, `Time.timeout`, `Deadline`, and `CancellationController`. CORE-TIME-01.E/F adds intervals, scheduled jobs, and fake clock. CORE-TIME-01.H aligns filesystem options plus app/request/provider/HTTP naming boundaries. CORE-TIME-01.I adds source examples, final goldens, and the conformance evidence index. |
+| Crypto API | Missing/contracted | CORE-CRYPTO-01.A/B defines `sloppy/crypto`, `stdlib.crypto`, compiler Plan activation, backend policy, stable diagnostics, and redaction policy. Primitive random/hash/HMAC/password/Secret/NonCryptoHash implementations are still deferred to #574-#580. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
 | Source-input run | Partial/proven for compiler-owned module subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; supported relative function modules and Sloppy provider imports are compiler-owned. Cache reuse, watch/hot reload, Node/npm, and full TypeScript remain deferred. |
 | Framework configuration | Partial/proven for first slice | Built-in defaults, appsettings overlays, environment selection, canonical env vars, selected CLI overrides, typed access, `bind`, config-driven SQLite provider metadata, redacted Plan metadata, and first Plan-driven doctor/audit consumption exist. Reload, user secrets, custom/remote providers, broad CLI config, and OpenAPI config consumption remain deferred. |
@@ -120,6 +123,8 @@ Kept open intentionally:
   watch/dev-loop, and command-diagnostic cleanup;
 - #318/#355-#359 Strong Plan strategic layer;
 - #268/#300/#301 public alpha readiness and non-claims review.
+- #571 CORE-CRYPTO-01 remains the crypto parent while #572-#580 land sequentially; #572/#573
+  cover the current contract, feature, diagnostic, and redaction model.
 
 Previously created for the owner-approved post-Core next wave, now completed or kept as
 historical evidence where closed:
@@ -162,6 +167,8 @@ claims remain blocked.
 - Node/npm/package-manager compatibility.
 - Public alpha docs and tutorials.
 - Public performance or benchmark comparison claims.
+- WebCrypto, Node crypto, or Bun compatibility promises.
+- Custom crypto algorithms or weak random fallbacks.
 - Production-edge HTTP claims.
 - PostgreSQL/SQL Server JavaScript bridges.
 - ORM/migrations.

@@ -45,6 +45,15 @@ production-drain claim. There is still no pipelining, concurrent request executi
 connection, request streaming API, public JS streaming response helper, SSE/WebSockets,
 file streaming, or production graceful-drain claim.
 
+CORE-CRYPTO-01.A/B update: `Password.hash`, `Password.verify`, and
+`Password.needsRehash` are async public APIs and must offload expensive password work away
+from the V8 owner thread. Cross-thread password data must be copied into owned buffers,
+cleaned up exactly once, and settled back on the owner thread. Late completion after
+cancellation or shutdown is cleanup-only. Small bounded hash/HMAC operations may run inline
+only if a later implementation PR documents the cap; otherwise crypto work that can block
+the isolate must use the same owner-thread settlement discipline as other native
+completion paths.
+
 TASK 09.A implements the first `SlLoop` skeleton as a caller-backed, fixed-capacity native
 completion queue. It is deterministic and single-threaded: callbacks run synchronously on
 the caller thread through `sl_loop_run_once` or `sl_loop_drain`. It creates no threads,

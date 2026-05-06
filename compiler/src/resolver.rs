@@ -14,6 +14,7 @@ pub enum ImportKind {
     SlopStdlib,
     SlopTime,
     SlopFilesystem,
+    SlopCrypto,
     SqliteProvider,
     UnresolvedRelative(String),
     UnsupportedBare(String),
@@ -35,6 +36,9 @@ pub fn classify_import(from_path: &Path, specifier: &str) -> ImportKind {
     }
     if specifier == "sloppy/fs" {
         return ImportKind::SlopFilesystem;
+    }
+    if specifier == "sloppy/crypto" {
+        return ImportKind::SlopCrypto;
     }
     if specifier == "sloppy/providers/sqlite" {
         return ImportKind::SqliteProvider;
@@ -96,6 +100,10 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/fs"),
             ImportKind::SlopFilesystem
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/crypto"),
+            ImportKind::SlopCrypto
         );
     }
 

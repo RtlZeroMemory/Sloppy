@@ -87,6 +87,11 @@ explicit test-scoped `Time.fakeClock`. CORE-TIME-01.H lets filesystem calls acce
 preemptive native filesystem interruption. CORE-TIME-01.I adds focused examples for
 delay/timeout, deadline/cancellation, intervals/scheduled jobs, fake clocks, and filesystem
 deadline integration.
+CORE-CRYPTO-01.A/B locks the first `sloppy/crypto` contract around `Random`, `Hash`,
+`Hmac`, `Password`, `ConstantTime`, `Secret`, and `NonCryptoHash`. The compiler now makes
+`sloppy/crypto` Plan-visible as `stdlib.crypto`, but the runtime feature remains
+unavailable by default until vetted OS/dependency backends and the V8 bridge land. The API
+is Sloppy-shaped and does not promise WebCrypto, Node crypto, or Bun compatibility.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.

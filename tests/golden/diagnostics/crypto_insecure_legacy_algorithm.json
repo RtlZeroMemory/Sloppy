@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CRYPTO_INSECURE_LEGACY_ALGORITHM","severity":"warning","message":"insecure or legacy crypto algorithm","hints":["Legacy algorithms require an explicit compatibility policy and are never defaults."]}

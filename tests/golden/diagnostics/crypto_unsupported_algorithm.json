@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CRYPTO_UNSUPPORTED_ALGORITHM","severity":"error","message":"unsupported crypto algorithm","hints":["Use a supported algorithm from sloppy/crypto."]}

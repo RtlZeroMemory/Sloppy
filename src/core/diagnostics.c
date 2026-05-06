@@ -278,6 +278,63 @@ static bool sl_diag_is_time_code(SlDiagCode code)
     }
 }
 
+static SlStr sl_diag_crypto_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_CRYPTO_FEATURE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_FEATURE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_CRYPTO_FEATURE_UNAVAILABLE") - 1U);
+    case SL_DIAG_CRYPTO_UNSUPPORTED_ALGORITHM:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_UNSUPPORTED_ALGORITHM",
+                               sizeof("SLOPPY_E_CRYPTO_UNSUPPORTED_ALGORITHM") - 1U);
+    case SL_DIAG_CRYPTO_INSECURE_LEGACY_ALGORITHM:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_INSECURE_LEGACY_ALGORITHM",
+                               sizeof("SLOPPY_E_CRYPTO_INSECURE_LEGACY_ALGORITHM") - 1U);
+    case SL_DIAG_CRYPTO_INVALID_KEY_SECRET:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_INVALID_KEY_SECRET",
+                               sizeof("SLOPPY_E_CRYPTO_INVALID_KEY_SECRET") - 1U);
+    case SL_DIAG_CRYPTO_PASSWORD_VERIFY_FAILED:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_PASSWORD_VERIFY_FAILED",
+                               sizeof("SLOPPY_E_CRYPTO_PASSWORD_VERIFY_FAILED") - 1U);
+    case SL_DIAG_CRYPTO_PASSWORD_HASH_UNSUPPORTED:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_PASSWORD_HASH_UNSUPPORTED",
+                               sizeof("SLOPPY_E_CRYPTO_PASSWORD_HASH_UNSUPPORTED") - 1U);
+    case SL_DIAG_CRYPTO_RANDOM_SOURCE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_RANDOM_SOURCE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_CRYPTO_RANDOM_SOURCE_UNAVAILABLE") - 1U);
+    case SL_DIAG_CRYPTO_SECRET_DISPOSED:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_SECRET_DISPOSED",
+                               sizeof("SLOPPY_E_CRYPTO_SECRET_DISPOSED") - 1U);
+    case SL_DIAG_CRYPTO_CONSTANT_TIME_INVALID_INPUT:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_CONSTANT_TIME_INVALID_INPUT",
+                               sizeof("SLOPPY_E_CRYPTO_CONSTANT_TIME_INVALID_INPUT") - 1U);
+    case SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE",
+                               sizeof("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static bool sl_diag_is_crypto_code(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_CRYPTO_FEATURE_UNAVAILABLE:
+    case SL_DIAG_CRYPTO_UNSUPPORTED_ALGORITHM:
+    case SL_DIAG_CRYPTO_INSECURE_LEGACY_ALGORITHM:
+    case SL_DIAG_CRYPTO_INVALID_KEY_SECRET:
+    case SL_DIAG_CRYPTO_PASSWORD_VERIFY_FAILED:
+    case SL_DIAG_CRYPTO_PASSWORD_HASH_UNSUPPORTED:
+    case SL_DIAG_CRYPTO_RANDOM_SOURCE_UNAVAILABLE:
+    case SL_DIAG_CRYPTO_SECRET_DISPOSED:
+    case SL_DIAG_CRYPTO_CONSTANT_TIME_INVALID_INPUT:
+    case SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool sl_diag_str_is_valid(SlStr str)
 {
     return str.length == 0U || str.ptr != NULL;
@@ -674,6 +731,9 @@ SlStr sl_diag_code_name(SlDiagCode code)
     }
     if (sl_diag_is_time_code(code)) {
         return sl_diag_time_code_name(code);
+    }
+    if (sl_diag_is_crypto_code(code)) {
+        return sl_diag_crypto_code_name(code);
     }
 
     switch (code) {
@@ -1987,6 +2047,13 @@ static bool sl_diag_secret_key_at(SlStr text, size_t index, size_t* out_separato
         {"pwd", sizeof("pwd") - 1U},
         {"token", sizeof("token") - 1U},
         {"secret", sizeof("secret") - 1U},
+        {"passphrase", sizeof("passphrase") - 1U},
+        {"private_key", sizeof("private_key") - 1U},
+        {"privatekey", sizeof("privatekey") - 1U},
+        {"secret_key", sizeof("secret_key") - 1U},
+        {"secretkey", sizeof("secretkey") - 1U},
+        {"client_secret", sizeof("client_secret") - 1U},
+        {"clientsecret", sizeof("clientsecret") - 1U},
         {"api_key", sizeof("api_key") - 1U},
         {"apikey", sizeof("apikey") - 1U},
         {"key", sizeof("key") - 1U},

@@ -57,6 +57,19 @@ static SlRuntimeFeatureDescriptor sl_feature_time_descriptor(SlRuntimeFeatureId 
         true);
 }
 
+static SlRuntimeFeatureDescriptor sl_feature_crypto_descriptor(SlRuntimeFeatureId id,
+                                                               bool available)
+{
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.crypto", sizeof("stdlib.crypto") - 1U),
+        sl_feature_literal("crypto stdlib", sizeof("crypto stdlib") - 1U),
+        sl_feature_literal("sloppy/crypto", sizeof("sloppy/crypto") - 1U),
+        sl_feature_literal("__sloppy.crypto", sizeof("__sloppy.crypto") - 1U),
+        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), available,
+        true, true);
+}
+
 static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
                                         const SlRuntimeFeatureAvailability* availability)
@@ -67,7 +80,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     const bool sqlite = availability == NULL ? false : availability->provider_sqlite;
     const bool postgres = availability == NULL ? false : availability->provider_postgres;
     const bool sqlserver = availability == NULL ? false : availability->provider_sqlserver;
-
+    const bool crypto = availability == NULL ? false : availability->stdlib_crypto;
     switch (id) {
     case SL_RUNTIME_FEATURE_CORE:
         return sl_feature_descriptor_make(
@@ -133,6 +146,8 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true);
     case SL_RUNTIME_FEATURE_STDLIB_TIME:
         return sl_feature_time_descriptor(id);
+    case SL_RUNTIME_FEATURE_STDLIB_CRYPTO:
+        return sl_feature_crypto_descriptor(id, crypto);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_STDLIB,
@@ -194,6 +209,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.provider_sqlite = true;
     availability.provider_postgres = false;
     availability.provider_sqlserver = false;
+    availability.stdlib_crypto = false;
     return availability;
 }
 
@@ -260,6 +276,11 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.time"), SL_FEATURE_STR("time stdlib"),
          SL_FEATURE_STR("sloppy/time"), SL_FEATURE_STR("__sloppy.time"),
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
+         true, true},
+        {SL_RUNTIME_FEATURE_STDLIB_CRYPTO, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.crypto"), SL_FEATURE_STR("crypto stdlib"),
+         SL_FEATURE_STR("sloppy/crypto"), SL_FEATURE_STR("__sloppy.crypto"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), false,
          true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {

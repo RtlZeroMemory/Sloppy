@@ -214,10 +214,11 @@ Plan/requested-by context where the current Plan shape can provide it.
 Current descriptor import mapping is intentionally narrow and mirrors what the compiler and
 stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/results` to
 `stdlib.results`, `sloppy/schema` to `stdlib.schema`, `sloppy/config` to `stdlib.config`,
-`sloppy/data` to `stdlib.data`, `sloppy/time` to `stdlib.time`, `sloppy/fs` to `stdlib.fs`, and
-`sloppy/providers/sqlite` to `provider.sqlite`.
+`sloppy/data` to `stdlib.data`, `sloppy/time` to `stdlib.time`, `sloppy/fs` to `stdlib.fs`,
+`sloppy/crypto` to `stdlib.crypto`, and `sloppy/providers/sqlite` to `provider.sqlite`.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
-Plan validation; they do not implement JavaScript bridges.
+Plan validation; the crypto descriptor is known but unavailable by default until the
+CORE-CRYPTO implementation PRs register vetted backends and V8 intrinsics.
 
 ## Schema Sections
 

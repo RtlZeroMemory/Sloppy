@@ -578,6 +578,72 @@ static int test_time_code_names(void)
     return 0;
 }
 
+static int test_crypto_code_names(void)
+{
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_FEATURE_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_FEATURE_UNAVAILABLE")) != 0)
+    {
+        return 120;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_UNSUPPORTED_ALGORITHM),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_UNSUPPORTED_ALGORITHM")) != 0)
+    {
+        return 121;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_INSECURE_LEGACY_ALGORITHM),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_INSECURE_LEGACY_ALGORITHM")) != 0)
+    {
+        return 122;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_INVALID_KEY_SECRET),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_INVALID_KEY_SECRET")) != 0)
+    {
+        return 123;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_PASSWORD_VERIFY_FAILED),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_PASSWORD_VERIFY_FAILED")) != 0)
+    {
+        return 124;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_PASSWORD_HASH_UNSUPPORTED),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_PASSWORD_HASH_UNSUPPORTED")) != 0)
+    {
+        return 125;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_RANDOM_SOURCE_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_RANDOM_SOURCE_UNAVAILABLE")) != 0)
+    {
+        return 126;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_SECRET_DISPOSED),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_SECRET_DISPOSED")) != 0)
+    {
+        return 127;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_CONSTANT_TIME_INVALID_INPUT),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_CONSTANT_TIME_INVALID_INPUT")) != 0)
+    {
+        return 128;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE")) != 0)
+    {
+        return 129;
+    }
+
+    return 0;
+}
+
+static int test_time_and_crypto_code_names(void)
+{
+    int result = test_time_code_names();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_crypto_code_names();
+}
+
 static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
                                      const char* snapshot)
 {
@@ -668,11 +734,126 @@ static int test_time_diagnostic_json_goldens(void)
     return 0;
 }
 
+static int expect_crypto_json_snapshot(SlDiagSeverity severity, SlDiagCode code,
+                                       const char* message, const char* hint, const char* snapshot)
+{
+    unsigned char buffer[2048];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlStr rendered;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 1;
+    }
+    if (expect_status(
+            sl_diag_builder_init(&builder, &arena, severity, code, sl_str_from_cstr(message)),
+            SL_STATUS_OK) != 0)
+    {
+        return 2;
+    }
+    if (expect_status(sl_diag_builder_add_hint(&builder, sl_str_from_cstr(hint)), SL_STATUS_OK) !=
+        0)
+    {
+        return 3;
+    }
+    if (expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0) {
+        return 4;
+    }
+    if (expect_status(sl_diag_render_json(&arena, &diag, &rendered), SL_STATUS_OK) != 0) {
+        return 5;
+    }
+    return expect_snapshot(rendered, snapshot);
+}
+
+static int test_crypto_diagnostic_json_goldens(void)
+{
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_FEATURE_UNAVAILABLE,
+            "crypto feature is unavailable",
+            "Enable stdlib.crypto only in a runtime lane with registered crypto backends.",
+            "tests/golden/diagnostics/crypto_feature_unavailable.json") != 0)
+    {
+        return 130;
+    }
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_UNSUPPORTED_ALGORITHM,
+            "unsupported crypto algorithm", "Use a supported algorithm from sloppy/crypto.",
+            "tests/golden/diagnostics/crypto_unsupported_algorithm.json") != 0)
+    {
+        return 131;
+    }
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_WARNING, SL_DIAG_CRYPTO_INSECURE_LEGACY_ALGORITHM,
+            "insecure or legacy crypto algorithm",
+            "Legacy algorithms require an explicit compatibility policy and are never defaults.",
+            "tests/golden/diagnostics/crypto_insecure_legacy_algorithm.json") != 0)
+    {
+        return 132;
+    }
+    if (expect_crypto_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_INVALID_KEY_SECRET,
+                                    "invalid key or secret",
+                                    "Diagnostics must describe shape, not secret contents.",
+                                    "tests/golden/diagnostics/crypto_invalid_key_secret.json") != 0)
+    {
+        return 133;
+    }
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_PASSWORD_VERIFY_FAILED,
+            "password verification failed",
+            "Verification failures must not reveal password or encoded-hash internals.",
+            "tests/golden/diagnostics/crypto_password_verify_failed.json") != 0)
+    {
+        return 134;
+    }
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_PASSWORD_HASH_UNSUPPORTED,
+            "password hash format is unsupported",
+            "Only documented encoded hash formats are accepted.",
+            "tests/golden/diagnostics/crypto_password_hash_unsupported.json") != 0)
+    {
+        return 135;
+    }
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_RANDOM_SOURCE_UNAVAILABLE,
+            "secure random source is unavailable",
+            "Random APIs must fail closed instead of using weak fallback output.",
+            "tests/golden/diagnostics/crypto_random_source_unavailable.json") != 0)
+    {
+        return 136;
+    }
+    if (expect_crypto_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_SECRET_DISPOSED,
+                                    "secret was disposed",
+                                    "Disposed Secret values reject further use deterministically.",
+                                    "tests/golden/diagnostics/crypto_secret_disposed.json") != 0)
+    {
+        return 137;
+    }
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_CONSTANT_TIME_INVALID_INPUT,
+            "constant-time comparison input is invalid",
+            "Validate byte lengths and owned input views before comparing.",
+            "tests/golden/diagnostics/crypto_constant_time_invalid_input.json") != 0)
+    {
+        return 138;
+    }
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE,
+            "crypto backend is unavailable",
+            "Backend diagnostics must name the operation without leaking secrets.",
+            "tests/golden/diagnostics/crypto_backend_unavailable.json") != 0)
+    {
+        return 139;
+    }
+
+    return 0;
+}
+
 static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_TIME_FAKE_CLOCK_MISUSE; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -681,7 +862,7 @@ static int test_stable_code_registry_complete(void)
     }
 
     if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_TIME_FAKE_CLOCK_MISUSE + 1U)),
+            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
@@ -1134,7 +1315,8 @@ static int test_redaction_helper(void)
                                            "postgres://ada:secret@localhost/db API_KEY=xyz "
                                            "monkey=value donkey:abc key=plain "
                                            "key exchange: keep key steps: visible "
-                                           "connectionString=Server=.;Password=p;"),
+                                           "connectionString=Server=.;Password=p; "
+                                           "clientSecret=abc private_key=pem passphrase=hunter2"),
                           &redacted),
                       SL_STATUS_OK) != 0)
     {
@@ -1145,7 +1327,8 @@ static int test_redaction_helper(void)
                                        "token:<redacted> postgres://ada:<redacted>@localhost/db "
                                        "API_KEY=<redacted> monkey=value donkey:abc key=<redacted> "
                                        "key exchange: keep key steps: visible "
-                                       "connectionString=<redacted>;")) != 0)
+                                       "connectionString=<redacted>; clientSecret=<redacted> "
+                                       "private_key=<redacted> passphrase=<redacted>")) != 0)
     {
         return 102;
     }
@@ -1313,7 +1496,7 @@ int main(void)
         return result;
     }
 
-    result = test_time_code_names();
+    result = test_time_and_crypto_code_names();
     if (result != 0) {
         return result;
     }
@@ -1359,6 +1542,11 @@ int main(void)
     }
 
     result = test_time_diagnostic_json_goldens();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_crypto_diagnostic_json_goldens();
     if (result != 0) {
         return result;
     }

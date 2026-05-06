@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE","severity":"error","message":"crypto backend is unavailable","hints":["Backend diagnostics must name the operation without leaking secrets."]}
