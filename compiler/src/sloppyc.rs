@@ -1119,9 +1119,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint(
-            "Only the public bare import \"sloppy\" is accepted; Sloppy does not implement Node or npm resolution.",
-        ));
+        .with_hint("Use documented named, unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", or \"sloppy/net\"; Sloppy does not implement Node or npm resolution."));
     }
 
     if let Some((specifier, span)) = &state.unsupported_import_name {
