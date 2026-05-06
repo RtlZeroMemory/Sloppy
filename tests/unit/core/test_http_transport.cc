@@ -1,5 +1,7 @@
 #include "sloppy/http_transport.h"
 
+#include <cstring>
+
 #include <uv.h>
 
 #include <cstring>

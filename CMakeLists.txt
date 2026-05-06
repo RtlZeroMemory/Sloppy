@@ -458,6 +458,10 @@ if(WIN32)
     target_link_libraries(sloppy_core PRIVATE bcrypt)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(sloppy_core PRIVATE m)
+endif()
+
 if(APPLE)
     target_link_libraries(sloppy_core PRIVATE "-framework Security")
 endif()

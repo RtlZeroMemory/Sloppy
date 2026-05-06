@@ -89,8 +89,10 @@ Reusable clients may opt into a bounded per-origin connection pool with
 one in-flight request per connection and reuses only safely delimited responses
 (`Content-Length` or complete chunked bodies) when the peer does not send
 `Connection: close`. Protocol errors, timeout, cancellation, truncated responses, and
-close-delimited bodies discard the connection. Those details remain transport internals so
-HTTP/2 multiplexing can later replace the backend without changing the public API.
+close-delimited bodies discard the connection. A stale pooled connection may be retried
+only for safe methods (`GET` and `HEAD`) and only when the failure matches closed/reset
+connection cleanup before a response is accepted. Those details remain transport internals
+so HTTP/2 multiplexing can later replace the backend without changing the public API.
 
 ## Request Bodies
 
@@ -114,12 +116,21 @@ enforces `maxRequestBytes`, and writes the resulting bounded body through the cu
 HTTP/1.1 transport. This is backpressure-aware at the JS source boundary, but not yet
 socket-level chunked upload streaming.
 
+Size options such as `maxRequestBytes`, `maxResponseBytes`, and `maxHeaderBytes` accept
+non-negative integer byte counts or explicit unit strings (`b`, `kb`, `mb`, `gb`) such as
+`"4mb"`.
+
 ## Response Bodies
 
 Response bodies are consumed once. `json()`, `text()`, `bytes()`, and stream reads must
 produce deterministic already-consumed errors. HTTP/1.1 connection reuse is allowed only
 after the response is safely consumed or drained. Dirty, truncated, malformed, cancelled,
 timed-out, or partially consumed bodies discard the connection.
+
+`HEAD` responses and body-forbidden status responses (`1xx`, `204`, `304`) expose an empty
+body to callers. `HEAD` may carry ordinary body metadata such as `Content-Length`; only
+observed body bytes make that connection dirty. For body-forbidden statuses, body metadata
+or bytes make the current HTTP/1.1 connection dirty and keep it out of the pool.
 
 `HttpClient.text`, `HttpClient.json`, `HttpClient.bytes`, and `getJson` perform a GET and
 consume the response body once. Invalid response JSON fails with

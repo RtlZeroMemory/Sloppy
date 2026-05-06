@@ -608,6 +608,12 @@ const HTTP_CLIENT_SENSITIVE_HEADERS = new Set([
     "x-api-key",
     "api-key",
 ]);
+const HTTP_CLIENT_SIZE_UNITS = Object.freeze({
+    b: 1,
+    kb: 1024,
+    mb: 1024 * 1024,
+    gb: 1024 * 1024 * 1024,
+});
 
 function httpClientError(name, code, message, options = undefined) {
     return new SloppyNetError(name, `${code}: ${message}`, options);
@@ -630,10 +636,19 @@ function parseHttpSize(value, operation) {
     if (Number.isInteger(value) && value >= 0) {
         return value;
     }
+    if (typeof value === "string") {
+        const match = /^([0-9]+)\s*(b|kb|mb|gb)$/i.exec(value.trim());
+        if (match !== null) {
+            const size = Number(match[1]) * HTTP_CLIENT_SIZE_UNITS[match[2].toLowerCase()];
+            if (Number.isSafeInteger(size)) {
+                return size;
+            }
+        }
+    }
     throw httpClientError(
         "HttpClientInvalidOptionsError",
         "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
-        `${operation} size option must be a non-negative integer.`,
+        `${operation} size option must be a non-negative integer byte count or size string like "4mb".`,
     );
 }
 
@@ -1320,11 +1335,11 @@ function appendHttpHeaders(target, headers, operation) {
                 `${operation} manages Host, Connection, and Content-Length headers.`,
             );
         }
-        if (typeof value !== "string" || /[\r\n]/.test(value)) {
+        if (typeof value !== "string" || hasHttpControlChars(value)) {
             throw httpClientError(
                 "HttpClientInvalidOptionsError",
                 "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
-                `${operation} header value must be a string without CR or LF.`,
+                `${operation} header value must be a string without control characters.`,
             );
         }
         target.set(normalizedName, { name, value });
@@ -1664,7 +1679,7 @@ class HttpClientResponse {
     }
 }
 
-function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = false) {
+function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = false, requestMethod = "GET") {
     const head = httpBytesToAscii(headBytes);
     const lines = head.split("\r\n");
     const statusLine = lines.shift();
@@ -1720,7 +1735,19 @@ function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = fa
         (httpMinorVersion === 1
             ? !httpConnectionHeaderHas(connectionHeader, "close")
             : httpConnectionHeaderHas(connectionHeader, "keep-alive"));
-    if (isHttpBodyForbiddenStatus(status)) {
+    const methodForbidsBody = requestMethod === "HEAD";
+    const statusForbidsBody = isHttpBodyForbiddenStatus(status);
+    const bodyForbidden = methodForbidsBody || statusForbidsBody;
+    if (bodyForbidden) {
+        if (statusForbidsBody && contentLength !== undefined && contentLength > 0) {
+            connectionReusable = false;
+        }
+        if (statusForbidsBody && transferEncoding !== undefined) {
+            connectionReusable = false;
+        }
+        if (bodyBytes.byteLength > 0) {
+            connectionReusable = false;
+        }
         bodyBytes = bodyBytes.slice(0, 0);
     } else if (transferEncoding === "chunked") {
         const decoded = parseHttpChunkedBody(bodyBytes, maxResponseBytes, complete);
@@ -1817,10 +1844,19 @@ async function readHttpResponse(connection, limits) {
             }
             continue;
         }
+        if (headerEnd > limits.maxHeaderBytes) {
+            throw httpClientError(
+                "HttpClientHeaderLimitError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP response headers exceeded the configured limit.",
+            );
+        }
         parsed = parseHttpResponse(
             received.slice(0, headerEnd),
             received.slice(headerEnd),
             limits.maxResponseBytes,
+            false,
+            limits.method,
         );
     }
     if (parsed === undefined) {
@@ -1830,14 +1866,30 @@ async function readHttpResponse(connection, limits) {
             received.slice(headerEnd),
             limits.maxResponseBytes,
             true,
+            limits.method,
         );
     }
     return parsed;
 }
 
+function normalizeHttpOptionsObject(value, operation) {
+    if (value === undefined || value === null) {
+        return undefined;
+    }
+    if (!isPlainObject(value)) {
+        throw httpClientError(
+            "HttpClientInvalidOptionsError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+            `${operation} options must be a plain object.`,
+        );
+    }
+    return value;
+}
+
 async function normalizeHttpRequest(baseOptions, request, options, defaultMethod) {
     const operation = "HttpClient.request";
-    const requestObject = typeof request === "string" ? { ...(options ?? {}), url: request } : request;
+    const requestOptions = typeof request === "string" ? normalizeHttpOptionsObject(options, operation) : undefined;
+    const requestObject = typeof request === "string" ? { ...(requestOptions ?? {}), url: request } : request;
     if (!isPlainObject(requestObject)) {
         throw httpClientError(
             "HttpClientInvalidOptionsError",
@@ -1961,6 +2013,29 @@ function mapHttpTransportError(error) {
     );
 }
 
+function httpErrorMessageChain(error) {
+    let text = "";
+    let current = error;
+    for (let depth = 0; depth < 5 && current !== undefined && current !== null; depth += 1) {
+        text += ` ${String(current.message ?? current)}`;
+        current = current.cause;
+    }
+    return text;
+}
+
+function isSafeHttpRetryMethod(method) {
+    return method === "GET" || method === "HEAD";
+}
+
+function isStalePooledConnectionError(error) {
+    const message = httpErrorMessageChain(error);
+    return (
+        message.includes("SLOPPY_E_NET_CONNECTION_CLOSED") ||
+        message.includes("ECONNRESET") ||
+        message.includes("EPIPE")
+    );
+}
+
 async function sendHttpRequestOnce(request, pool, lifecycle) {
     let connection;
     let originKey;
@@ -2000,7 +2075,14 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
             reusable = response._connectionReusable === true;
             return response;
         } catch (error) {
-            if (connection !== undefined && pool !== undefined && reused && attempt === 0) {
+            if (
+                connection !== undefined &&
+                pool !== undefined &&
+                reused &&
+                attempt === 0 &&
+                isSafeHttpRetryMethod(request.method) &&
+                isStalePooledConnectionError(error)
+            ) {
                 released = true;
                 if (lifecycle.connection === connection) {
                     lifecycle.connection = undefined;
@@ -2166,11 +2248,12 @@ async function sendHttpRequest(baseOptions, request, options = undefined, defaul
 }
 
 function withHttpDefaultHeader(options, name, value) {
-    const merged = { ...(options ?? {}) };
-    if (options?.headers !== undefined && !isPlainObject(options.headers)) {
+    const normalizedOptions = normalizeHttpOptionsObject(options, "HttpClient.request");
+    const merged = { ...(normalizedOptions ?? {}) };
+    if (normalizedOptions?.headers !== undefined && !isPlainObject(normalizedOptions.headers)) {
         return merged;
     }
-    const headers = { ...(isPlainObject(options?.headers) ? options.headers : {}) };
+    const headers = { ...(isPlainObject(normalizedOptions?.headers) ? normalizedOptions.headers : {}) };
     const normalizedName = name.toLowerCase();
     const hasHeader = Object.keys(headers).some((key) => key.toLowerCase() === normalizedName);
     if (!hasHeader) {
@@ -2198,10 +2281,12 @@ async function sendHttpBodyRequest(baseOptions, url, options, kind, pool = undef
 }
 
 function postJsonRequest(baseOptions, url, value, options = undefined, pool = undefined) {
-    return sendHttpRequest(baseOptions, url, { ...(options ?? {}), json: value }, "POST", pool);
+    const normalizedOptions = normalizeHttpOptionsObject(options, "HttpClient.request");
+    return sendHttpRequest(baseOptions, url, { ...(normalizedOptions ?? {}), json: value }, "POST", pool);
 }
 
 function createHttpClientFacade(baseOptions = undefined) {
+    baseOptions = normalizeHttpOptionsObject(baseOptions, "HttpClient.create");
     const poolOptions = normalizeHttpPoolOptions(baseOptions?.pool, "HttpClient.create");
     const pool = poolOptions === undefined ? undefined : new HttpConnectionPool(poolOptions);
     const client = {
