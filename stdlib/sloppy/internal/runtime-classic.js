@@ -3274,28 +3274,55 @@ Reason:
         }
     }
 
-    function raceCompressionCancellation(promise, signal) {
-        if (!codecIsCancellationSignal(signal)) {
+    function raceCompressionTerminal(promise, options, operation) {
+        checkCompressionTerminalOptions(options, operation);
+        const signal = options.signal;
+        const remainingMs = codecDeadlineRemainingMs(options.deadline, operation);
+        if (!codecIsCancellationSignal(signal) && remainingMs === Infinity) {
             return promise;
         }
-        if (signal.aborted) {
-            return Promise.reject(compressionCancelledError(signal.reason));
-        }
         return new Promise((resolve, reject) => {
-            const cleanup = codecSubscribeCancellation(signal, (reason) => {
-                cleanup();
-                reject(compressionCancelledError(reason));
+            let finished = false;
+            let timeoutId;
+            let cleanupSignal = () => {};
+            const finish = (callback, value) => {
+                if (finished) {
+                    return;
+                }
+                finished = true;
+                cleanupAll();
+                callback(value);
+            };
+            cleanupSignal = codecSubscribeCancellation(signal, (reason) => {
+                finish(reject, compressionCancelledError(reason));
             });
+            if (remainingMs !== Infinity) {
+                const setTimer = globalThis["setTimeout"];
+                const clearTimer = globalThis["clearTimeout"];
+                if (typeof setTimer !== "function" || typeof clearTimer !== "function") {
+                    finish(reject, compressionTimeoutError(options.deadline));
+                    return;
+                }
+                timeoutId = setTimer(
+                    () => finish(reject, compressionTimeoutError(options.deadline)),
+                    Math.min(Math.ceil(remainingMs), 0x7fffffff),
+                );
+            }
             promise.then(
                 (value) => {
-                    cleanup();
-                    resolve(value);
+                    finish(resolve, value);
                 },
                 (error) => {
-                    cleanup();
-                    reject(error);
+                    finish(reject, error);
                 },
             );
+            function cleanupAll() {
+                cleanupSignal();
+                if (timeoutId !== undefined) {
+                    const clearTimer = globalThis["clearTimeout"];
+                    clearTimer(timeoutId);
+                }
+            }
         });
     }
 
@@ -3309,7 +3336,7 @@ Reason:
             const promise = Promise.resolve(invoke(new Uint8Array(bytes))).then((result) =>
                 normalizeCompressionResult(result, operation),
             );
-            return raceCompressionCancellation(promise, options?.signal);
+            return raceCompressionTerminal(promise, options ?? {}, operation);
         } catch (error) {
             return Promise.reject(error);
         }
@@ -3325,9 +3352,18 @@ Reason:
         let total = 0;
         const chunks = [];
         let terminal = false;
+        const iterator =
+            typeof input[Symbol.asyncIterator] === "function"
+                ? input[Symbol.asyncIterator]()
+                : input[Symbol.iterator]();
         try {
-            for await (const chunk of input) {
+            while (true) {
                 checkCompressionTerminalOptions(parsed, operation);
+                const next = await raceCompressionTerminal(Promise.resolve(iterator.next()), parsed, operation);
+                if (next.done === true) {
+                    break;
+                }
+                const chunk = next.value;
                 const bytes = requireBytes(chunk, operation);
                 if (bytes.byteLength > parsed.maxInputBytes - total) {
                     throw new TypeError(`${operation} buffered input exceeds maxInputBytes.`);
@@ -3342,11 +3378,17 @@ Reason:
                 inputBytes.set(chunk, offset);
                 offset += chunk.byteLength;
             }
-            const output = await raceCompressionCancellation(Promise.resolve(invoke(inputBytes, parsed.codecOptions)), parsed.signal);
+            const output = await raceCompressionTerminal(Promise.resolve(invoke(inputBytes, parsed.codecOptions)), parsed, operation);
             checkCompressionTerminalOptions(parsed, operation);
             terminal = true;
             yield output;
         } finally {
+            if (!terminal && typeof iterator.return === "function") {
+                try {
+                    await raceCompressionTerminal(Promise.resolve(iterator.return()), parsed, operation);
+                } catch {
+                }
+            }
             chunks.length = 0;
             if (!terminal) {
                 total = 0;

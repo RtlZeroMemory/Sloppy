@@ -154,6 +154,48 @@ async function collectAsyncBytes(stream) {
     return chunks[0];
 }
 
+function createAbortSignal() {
+    const listeners = new Set();
+    return {
+        signal: {
+            aborted: false,
+            reason: undefined,
+            addEventListener(type, listener) {
+                if (type === "abort") {
+                    listeners.add(listener);
+                }
+            },
+            removeEventListener(type, listener) {
+                if (type === "abort") {
+                    listeners.delete(listener);
+                }
+            },
+        },
+        abort(reason) {
+            this.signal.aborted = true;
+            this.signal.reason = reason;
+            for (const listener of listeners) {
+                listener();
+            }
+        },
+    };
+}
+
+function stalledAsyncIterable() {
+    return {
+        [Symbol.asyncIterator]() {
+            return {
+                next() {
+                    return new Promise(() => {});
+                },
+                return() {
+                    return { done: true };
+                },
+            };
+        },
+    };
+}
+
 const previousSloppy = globalThis.__sloppy;
 try {
     const fakeGzipPrefix = new Uint8Array([0x1f, 0x8b, 0x08, 0x00]);
@@ -198,6 +240,14 @@ try {
     );
     await assert.rejects(
         async () => collectAsyncBytes(Compression.gunzipStream([compressed], { deadline: { remainingMs: () => 0 } })),
+        (error) => error.name === "TimeoutError",
+    );
+    const controller = createAbortSignal();
+    const stalledCompression = collectAsyncBytes(Compression.gzipStream(stalledAsyncIterable(), { signal: controller.signal }));
+    controller.abort("stop");
+    await assert.rejects(async () => stalledCompression, (error) => error.name === "CancelledError");
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gzipStream(stalledAsyncIterable(), { deadline: { remainingMs: () => 1 } })),
         (error) => error.name === "TimeoutError",
     );
     assert.throws(() => Compression.gzipStream(null), TypeError);
