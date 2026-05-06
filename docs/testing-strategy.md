@@ -100,11 +100,11 @@ not proof that public `sloppy/fs` strict policy allowed or denied access.
 CORE-CRYPTO-01 tests must keep evidence claims narrow. Contract tests prove
 `sloppy/crypto` import recognition, `stdlib.crypto` Plan metadata, runtime-feature
 diagnostics, stable crypto diagnostic names/goldens, and redaction helper coverage.
-CORE-CRYPTO-01.C/D/F/H adds standard SHA-2/HMAC vectors, UUID/token/hex/numeric-code shape
-checks, ConstantTime correctness checks, Secret cleanup-once checks, bootstrap stdlib shape
-tests, and V8-gated `__sloppy.crypto` smoke coverage. Deterministic tests must not claim
-randomness quality, password cracking cost, timing resistance, benchmark performance,
-WebCrypto/Node/Bun compatibility, or public alpha readiness.
+CORE-CRYPTO-01.E adds password hash/verify/needsRehash coverage for the selected
+`libsodium` Argon2id PHC backend, unsupported-format checks, bootstrap stdlib smoke
+coverage, and V8-gated owner-thread settlement evidence. Deterministic tests must not
+claim randomness quality, password cracking cost, timing resistance, benchmark
+performance, WebCrypto/Node/Bun compatibility, or public alpha readiness.
 
 FRAMEWORK-01.B adds configuration coverage across Rust compiler tests, JS stdlib tests,
 compiler golden artifacts, source-input process tests, and the SQLite users API fixture.

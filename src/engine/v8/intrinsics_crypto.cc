@@ -12,16 +12,49 @@
 #include "sloppy/crypto.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <limits>
 #include <memory>
+#include <new>
 #include <string>
+#include <thread>
 #include <vector>
+
+enum class SlV8CryptoPasswordOperation
+{
+    Hash,
+    Verify,
+    NeedsRehash
+};
+
+struct SlV8CryptoPasswordRequest
+{
+    SlV8Engine* backend = nullptr;
+    v8::Global<v8::Promise::Resolver> resolver;
+    std::atomic_bool cancelled = false;
+    std::atomic_bool completion_posted = false;
+    std::thread worker;
+    SlV8CryptoPasswordOperation operation = SlV8CryptoPasswordOperation::Hash;
+    std::vector<unsigned char> password;
+    std::string encoded_hash;
+    SlCryptoPasswordOptions options = {};
+    SlStatus status = sl_status_ok();
+    std::string text_result;
+    bool bool_result = false;
+};
 
 namespace {
 
 constexpr size_t kCryptoMaxInlineBytes = 1024U * 1024U;
 constexpr size_t kCryptoMaxRandomBytes = 4096U;
 constexpr size_t kCryptoMaxTextRandom = 1024U;
+constexpr size_t kCryptoMaxPasswordBytes = 4096U;
+
+struct CryptoV8PasswordCompletionPayload
+{
+    std::shared_ptr<SlV8CryptoPasswordRequest> request;
+};
 
 SlStatus crypto_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
@@ -84,6 +117,19 @@ bool crypto_v8_size_arg(v8::Local<v8::Value> value, size_t max, size_t* out)
     return true;
 }
 
+bool crypto_v8_u64_arg(v8::Local<v8::Value> value, uint64_t min, uint64_t max, uint64_t* out)
+{
+    if (out == nullptr || value.IsEmpty() || !value->IsUint32()) {
+        return false;
+    }
+    uint64_t number = static_cast<uint64_t>(value.As<v8::Uint32>()->Value());
+    if (number < min || number > max) {
+        return false;
+    }
+    *out = number;
+    return true;
+}
+
 bool crypto_v8_algorithm_arg(v8::Isolate* isolate, v8::Local<v8::Value> value,
                              SlCryptoHashAlgorithm* out)
 {
@@ -120,6 +166,316 @@ bool crypto_v8_bytes_arg(v8::Local<v8::Value> value, size_t max, std::vector<uns
         static_cast<const unsigned char*>(backing->Data()) + static_cast<ptrdiff_t>(offset);
     out->assign(start, start + length);
     return true;
+}
+
+void crypto_v8_zero_vector(std::vector<unsigned char>& bytes)
+{
+    volatile unsigned char* data = bytes.empty() ? nullptr : bytes.data();
+    size_t index = 0U;
+
+    for (index = 0U; data != nullptr && index < bytes.size(); index += 1U) {
+        data[index] = 0U;
+    }
+    bytes.clear();
+    bytes.shrink_to_fit();
+}
+
+const char* crypto_v8_password_error_message(const SlV8CryptoPasswordRequest& request)
+{
+    if (sl_status_code(request.status) == SL_STATUS_UNSUPPORTED &&
+        request.operation != SlV8CryptoPasswordOperation::Hash)
+    {
+        return "SLOPPY_E_CRYPTO_PASSWORD_HASH_UNSUPPORTED: password hash format is unsupported";
+    }
+    if (sl_status_code(request.status) == SL_STATUS_INVALID_ARGUMENT) {
+        return "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: invalid password hashing inputs";
+    }
+    return "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password hashing backend is unavailable";
+}
+
+void crypto_v8_remove_password_request(const std::shared_ptr<SlV8CryptoPasswordRequest>& request)
+{
+    SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    if (backend == nullptr) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(backend->crypto_mutex);
+    auto& requests = backend->crypto_password_requests;
+    requests.erase(std::remove(requests.begin(), requests.end(), request), requests.end());
+}
+
+SlStatus crypto_v8_password_completion_dispatch(SlAsyncLoop* loop,
+                                                const SlAsyncCompletion* completion, void* user)
+{
+    CryptoV8PasswordCompletionPayload* payload =
+        completion == nullptr
+            ? nullptr
+            : static_cast<CryptoV8PasswordCompletionPayload*>(completion->payload);
+    std::shared_ptr<SlV8CryptoPasswordRequest> request =
+        payload == nullptr ? nullptr : payload->request;
+    SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+
+    (void)loop;
+    (void)user;
+    if (request == nullptr || backend == nullptr || backend->isolate == nullptr ||
+        request->resolver.IsEmpty())
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (backend->owner_thread != std::this_thread::get_id()) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    v8::Isolate* isolate = backend->isolate;
+    v8::Isolate::Scope isolate_scope(isolate);
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = backend->context.Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
+    bool ok = false;
+
+    if (request->cancelled.load() || !sl_status_is_ok(request->status)) {
+        v8::Local<v8::String> message;
+        if (!sl_status_is_ok(crypto_v8_to_local_string(
+                isolate, sl_str_from_cstr(crypto_v8_password_error_message(*request)), &message)))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        ok = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
+    }
+    else if (request->operation == SlV8CryptoPasswordOperation::Hash) {
+        v8::Local<v8::String> encoded;
+        if (!sl_status_is_ok(crypto_v8_to_local_string(
+                isolate,
+                sl_str_from_parts(request->text_result.data(), request->text_result.size()),
+                &encoded)))
+        {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        ok = resolver->Resolve(context, encoded).FromMaybe(false);
+    }
+    else {
+        ok = resolver->Resolve(context, v8::Boolean::New(isolate, request->bool_result))
+                 .FromMaybe(false);
+    }
+
+    isolate->PerformMicrotaskCheckpoint();
+    return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
+}
+
+void crypto_v8_password_completion_cleanup(const SlAsyncCompletion* completion, void* user)
+{
+    CryptoV8PasswordCompletionPayload* payload =
+        completion == nullptr
+            ? nullptr
+            : static_cast<CryptoV8PasswordCompletionPayload*>(completion->payload);
+    std::shared_ptr<SlV8CryptoPasswordRequest> request =
+        payload == nullptr ? nullptr : payload->request;
+
+    (void)user;
+    if (request != nullptr) {
+        request->cancelled.store(true);
+        if (request->worker.joinable() && request->worker.get_id() != std::this_thread::get_id()) {
+            request->worker.join();
+        }
+        request->resolver.Reset();
+        request->completion_posted.store(false);
+        crypto_v8_zero_vector(request->password);
+        crypto_v8_remove_password_request(request);
+    }
+    delete payload;
+}
+
+bool crypto_v8_post_password_completion(const std::shared_ptr<SlV8CryptoPasswordRequest>& request)
+{
+    SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    if (backend == nullptr) {
+        return false;
+    }
+
+    while (!request->cancelled.load()) {
+        {
+            std::lock_guard<std::mutex> lock(backend->crypto_mutex);
+            if (backend->crypto_shutting_down || backend->async_loop == nullptr) {
+                request->cancelled.store(true);
+                return false;
+            }
+        }
+
+        CryptoV8PasswordCompletionPayload* payload =
+            new (std::nothrow) CryptoV8PasswordCompletionPayload();
+        if (payload == nullptr) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        payload->request = request;
+
+        SlAsyncCompletion completion = {};
+        completion.kind = SL_ASYNC_COMPLETION_V8_CONTINUATION;
+        completion.operation_kind = SL_ASYNC_OPERATION_BLOCKING_OFFLOAD;
+        completion.status = request->status;
+        completion.payload = payload;
+        completion.dispatch = crypto_v8_password_completion_dispatch;
+        completion.cleanup = crypto_v8_password_completion_cleanup;
+
+        request->completion_posted.store(true);
+        SlStatus post_status = sl_async_loop_post(backend->async_loop, &completion);
+        if (sl_status_is_ok(post_status)) {
+            return true;
+        }
+        request->completion_posted.store(false);
+        delete payload;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return false;
+}
+
+void crypto_v8_password_worker(std::shared_ptr<SlV8CryptoPasswordRequest> request)
+{
+    char encoded[SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX] = {0};
+    size_t written = 0U;
+
+    if (request == nullptr) {
+        return;
+    }
+
+    if (request->operation == SlV8CryptoPasswordOperation::Hash) {
+        request->status = sl_crypto_password_hash(
+            sl_bytes_from_parts(request->password.data(), request->password.size()),
+            &request->options, encoded, sizeof(encoded), &written);
+        if (sl_status_is_ok(request->status)) {
+            request->text_result.assign(encoded, written);
+        }
+    }
+    else if (request->operation == SlV8CryptoPasswordOperation::Verify) {
+        request->status = sl_crypto_password_verify(
+            sl_bytes_from_parts(request->password.data(), request->password.size()),
+            sl_str_from_parts(request->encoded_hash.data(), request->encoded_hash.size()),
+            &request->bool_result);
+    }
+    else {
+        request->status = sl_crypto_password_needs_rehash(
+            sl_str_from_parts(request->encoded_hash.data(), request->encoded_hash.size()),
+            &request->options, &request->bool_result);
+    }
+
+    crypto_v8_zero_vector(request->password);
+    (void)crypto_v8_post_password_completion(request);
+}
+
+bool crypto_v8_password_options_args(const v8::FunctionCallbackInfo<v8::Value>& args, int ops_index,
+                                     int mem_index, SlCryptoPasswordOptions* out_options)
+{
+    SlCryptoPasswordOptions options = sl_crypto_password_default_options();
+
+    if (out_options == nullptr || args.Length() <= mem_index ||
+        !crypto_v8_u64_arg(args[ops_index], SL_CRYPTO_PASSWORD_OPSLIMIT_MIN,
+                           SL_CRYPTO_PASSWORD_OPSLIMIT_MAX, &options.ops_limit) ||
+        !crypto_v8_u64_arg(args[mem_index], SL_CRYPTO_PASSWORD_MEMLIMIT_MIN,
+                           SL_CRYPTO_PASSWORD_MEMLIMIT_MAX, &options.mem_limit))
+    {
+        return false;
+    }
+    *out_options = options;
+    return true;
+}
+
+void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>& args,
+                                      SlV8CryptoPasswordOperation operation)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Promise::Resolver> resolver;
+    std::vector<unsigned char> password;
+    std::string encoded_hash;
+    SlCryptoPasswordOptions options = sl_crypto_password_default_options();
+
+    if (backend == nullptr || backend->async_loop == nullptr) {
+        crypto_v8_throw_error(
+            isolate, "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password async lane is unavailable");
+        return;
+    }
+
+    if (operation == SlV8CryptoPasswordOperation::Hash) {
+        if (args.Length() != 3 ||
+            !crypto_v8_bytes_arg(args[0], kCryptoMaxPasswordBytes, &password) ||
+            !crypto_v8_password_options_args(args, 1, 2, &options))
+        {
+            crypto_v8_zero_vector(password);
+            crypto_v8_throw_type_error(
+                isolate, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.hash arguments invalid");
+            return;
+        }
+    }
+    else if (operation == SlV8CryptoPasswordOperation::Verify) {
+        if (args.Length() != 2 ||
+            !crypto_v8_bytes_arg(args[0], kCryptoMaxPasswordBytes, &password) ||
+            !sl_v8_std_string_from_value(isolate, args[1], &encoded_hash))
+        {
+            crypto_v8_zero_vector(password);
+            crypto_v8_throw_type_error(
+                isolate, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.verify arguments invalid");
+            return;
+        }
+    }
+    else if (args.Length() != 3 || !sl_v8_std_string_from_value(isolate, args[0], &encoded_hash) ||
+             !crypto_v8_password_options_args(args, 1, 2, &options))
+    {
+        crypto_v8_throw_type_error(
+            isolate, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.needsRehash arguments invalid");
+        return;
+    }
+
+    if (!v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
+        crypto_v8_zero_vector(password);
+        crypto_v8_throw_error(isolate,
+                              "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: could not create Promise");
+        return;
+    }
+
+    std::shared_ptr<SlV8CryptoPasswordRequest> request(new (std::nothrow)
+                                                           SlV8CryptoPasswordRequest());
+    if (request == nullptr) {
+        crypto_v8_zero_vector(password);
+        crypto_v8_throw_error(isolate,
+                              "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: could not allocate request");
+        return;
+    }
+
+    request->backend = backend;
+    request->operation = operation;
+    request->password = std::move(password);
+    request->encoded_hash = std::move(encoded_hash);
+    request->options = options;
+    request->resolver.Reset(isolate, resolver);
+
+    {
+        std::lock_guard<std::mutex> lock(backend->crypto_mutex);
+        if (backend->crypto_shutting_down) {
+            request->resolver.Reset();
+            crypto_v8_zero_vector(request->password);
+            crypto_v8_throw_error(isolate,
+                                  "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: crypto is shutting down");
+            return;
+        }
+        backend->crypto_password_requests.push_back(request);
+    }
+
+    try {
+        request->worker = std::thread(crypto_v8_password_worker, request);
+    } catch (...) {
+        request->resolver.Reset();
+        crypto_v8_remove_password_request(request);
+        crypto_v8_zero_vector(request->password);
+        crypto_v8_throw_error(isolate,
+                              "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password worker unavailable");
+        return;
+    }
+
+    args.GetReturnValue().Set(resolver->GetPromise());
 }
 
 bool crypto_v8_uint8_array(v8::Isolate* isolate, const unsigned char* data, size_t length,
@@ -334,6 +690,21 @@ void crypto_v8_constant_time_equals_callback(const v8::FunctionCallbackInfo<v8::
     args.GetReturnValue().Set(v8::Boolean::New(isolate, equal));
 }
 
+void crypto_v8_password_hash_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    crypto_v8_start_password_request(args, SlV8CryptoPasswordOperation::Hash);
+}
+
+void crypto_v8_password_verify_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    crypto_v8_start_password_request(args, SlV8CryptoPasswordOperation::Verify);
+}
+
+void crypto_v8_password_needs_rehash_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    crypto_v8_start_password_request(args, SlV8CryptoPasswordOperation::NeedsRehash);
+}
+
 } // namespace
 
 bool sl_v8_install_crypto_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
@@ -368,9 +739,49 @@ bool sl_v8_install_crypto_intrinsics(SlV8Engine* backend, v8::Local<v8::Context>
         !crypto_v8_set_function(isolate, context, crypto, "hash", crypto_v8_hash_callback) ||
         !crypto_v8_set_function(isolate, context, crypto, "hmac", crypto_v8_hmac_callback) ||
         !crypto_v8_set_function(isolate, context, crypto, "constantTimeEquals",
-                                crypto_v8_constant_time_equals_callback))
+                                crypto_v8_constant_time_equals_callback) ||
+        !crypto_v8_set_function(isolate, context, crypto, "passwordHash",
+                                crypto_v8_password_hash_callback) ||
+        !crypto_v8_set_function(isolate, context, crypto, "passwordVerify",
+                                crypto_v8_password_verify_callback) ||
+        !crypto_v8_set_function(isolate, context, crypto, "passwordNeedsRehash",
+                                crypto_v8_password_needs_rehash_callback))
     {
         return false;
     }
     return sloppy->Set(context, crypto_key, crypto).FromMaybe(false);
+}
+
+void sl_v8_crypto_dispose(SlV8Engine* backend)
+{
+    std::vector<std::shared_ptr<SlV8CryptoPasswordRequest>> requests;
+
+    if (backend == nullptr) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(backend->crypto_mutex);
+        backend->crypto_shutting_down = true;
+        requests = backend->crypto_password_requests;
+    }
+
+    for (const std::shared_ptr<SlV8CryptoPasswordRequest>& request : requests) {
+        if (request == nullptr) {
+            continue;
+        }
+        request->cancelled.store(true);
+        if (request->worker.joinable() && request->worker.get_id() != std::this_thread::get_id()) {
+            request->worker.join();
+        }
+        if (!request->completion_posted.load()) {
+            request->resolver.Reset();
+        }
+        crypto_v8_zero_vector(request->password);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(backend->crypto_mutex);
+        backend->crypto_password_requests.clear();
+    }
 }

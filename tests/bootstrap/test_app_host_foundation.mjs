@@ -11,6 +11,7 @@ import {
     Hash,
     Hmac,
     InvalidDeadlineError,
+    Password,
     Random,
     Results,
     Secret,
@@ -70,6 +71,23 @@ async function flushMicrotasks(count = 6) {
                 constantTimeEquals(left, right) {
                     return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
                 },
+                passwordHash(bytes, opsLimit, memoryLimitBytes) {
+                    assert.deepEqual(bytes, encodeAscii("password"));
+                    assert.equal(opsLimit, 2);
+                    assert.equal(memoryLimitBytes, 67108864);
+                    return Promise.resolve("$argon2id$v=19$m=65536,t=2,p=1$test$hash");
+                },
+                passwordVerify(bytes, encodedHash) {
+                    assert.deepEqual(bytes, encodeAscii("password"));
+                    assert.equal(encodedHash.startsWith("$argon2id$"), true);
+                    return Promise.resolve(true);
+                },
+                passwordNeedsRehash(encodedHash, opsLimit, memoryLimitBytes) {
+                    assert.equal(encodedHash.startsWith("$argon2id$"), true);
+                    assert.equal(opsLimit, 3);
+                    assert.equal(memoryLimitBytes, 67108864);
+                    return Promise.resolve(true);
+                },
             },
         };
 
@@ -81,6 +99,10 @@ async function flushMicrotasks(count = 6) {
         assert.equal(await Hash.sha256Hex("abc"), "ba78");
         assert.deepEqual(await Hmac.sha256("key", "abc"), new Uint8Array([1, 2, 3]));
         assert.equal(await Hmac.verifySha256("key", "abc", new Uint8Array([1, 2, 3])), true);
+        const encoded = await Password.hash("password");
+        assert.equal(encoded.startsWith("$argon2id$"), true);
+        assert.equal(await Password.verify("password", encoded), true);
+        assert.equal(await Password.needsRehash(encoded, { opsLimit: 3 }), true);
         assert.equal(ConstantTime.equals(new Uint8Array([1]), new Uint8Array([1])), true);
         const secret = Secret.fromUtf8("key");
         assert.deepEqual(secret.bytes(), encodeAscii("key"));

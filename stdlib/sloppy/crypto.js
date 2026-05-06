@@ -1,4 +1,11 @@
 const MAX_INLINE_BYTES = 1024 * 1024;
+const MAX_PASSWORD_BYTES = 4096;
+const PASSWORD_DEFAULT_OPS_LIMIT = 2;
+const PASSWORD_MIN_OPS_LIMIT = 2;
+const PASSWORD_MAX_OPS_LIMIT = 4;
+const PASSWORD_DEFAULT_MEMORY_LIMIT_BYTES = 67108864;
+const PASSWORD_MIN_MEMORY_LIMIT_BYTES = 67108864;
+const PASSWORD_MAX_MEMORY_LIMIT_BYTES = 268435456;
 
 function cryptoUnavailable(operation) {
     throw new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.crypto is inactive or unavailable
@@ -77,6 +84,47 @@ function requireBoundedBytes(bytes, operation) {
         throw new TypeError(`Sloppy crypto ${operation} input is too large for inline hashing.`);
     }
     return bytes;
+}
+
+function passwordBytes(value, operation) {
+    const bytes = dataToBytes(value, operation);
+    if (bytes.byteLength > MAX_PASSWORD_BYTES) {
+        throw new TypeError(`Sloppy crypto ${operation} password input is too large.`);
+    }
+    return bytes;
+}
+
+function passwordOptions(options = undefined) {
+    if (options === undefined) {
+        return {
+            opsLimit: PASSWORD_DEFAULT_OPS_LIMIT,
+            memoryLimitBytes: PASSWORD_DEFAULT_MEMORY_LIMIT_BYTES,
+        };
+    }
+    if (options === null || typeof options !== "object") {
+        throw new TypeError("Sloppy Password options must be an object when provided.");
+    }
+
+    const opsLimit = options.opsLimit ?? PASSWORD_DEFAULT_OPS_LIMIT;
+    const memoryLimitBytes = options.memoryLimitBytes ?? PASSWORD_DEFAULT_MEMORY_LIMIT_BYTES;
+    if (
+        !Number.isInteger(opsLimit) ||
+        opsLimit < PASSWORD_MIN_OPS_LIMIT ||
+        opsLimit > PASSWORD_MAX_OPS_LIMIT ||
+        !Number.isInteger(memoryLimitBytes) ||
+        memoryLimitBytes < PASSWORD_MIN_MEMORY_LIMIT_BYTES ||
+        memoryLimitBytes > PASSWORD_MAX_MEMORY_LIMIT_BYTES
+    ) {
+        throw new TypeError("Sloppy Password options are outside the documented safe bounds.");
+    }
+    return { opsLimit, memoryLimitBytes };
+}
+
+function encodedPasswordHash(value, operation) {
+    if (typeof value !== "string") {
+        throw new TypeError(`Sloppy crypto ${operation} encoded hash must be a string.`);
+    }
+    return value;
 }
 
 function bytesToHex(bytes) {
@@ -262,19 +310,26 @@ const ConstantTime = Object.freeze({
 });
 
 const Password = Object.freeze({
-    hash() {
-        return Promise.reject(
-            new Error("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: Password.hash lands in CORE-CRYPTO-01.E."),
+    hash(password, options = undefined) {
+        const normalized = passwordOptions(options);
+        return nativeCrypto("Password.hash").passwordHash(
+            passwordBytes(password, "Password.hash"),
+            normalized.opsLimit,
+            normalized.memoryLimitBytes,
         );
     },
-    verify() {
-        return Promise.reject(
-            new Error("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: Password.verify lands in CORE-CRYPTO-01.E."),
+    verify(password, encodedHash) {
+        return nativeCrypto("Password.verify").passwordVerify(
+            passwordBytes(password, "Password.verify"),
+            encodedPasswordHash(encodedHash, "Password.verify"),
         );
     },
-    needsRehash() {
-        return Promise.reject(
-            new Error("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: Password.needsRehash lands in CORE-CRYPTO-01.E."),
+    needsRehash(encodedHash, options = undefined) {
+        const normalized = passwordOptions(options);
+        return nativeCrypto("Password.needsRehash").passwordNeedsRehash(
+            encodedPasswordHash(encodedHash, "Password.needsRehash"),
+            normalized.opsLimit,
+            normalized.memoryLimitBytes,
         );
     },
 });

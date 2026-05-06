@@ -10,7 +10,7 @@ Status: PR 2 random/hash/HMAC/Secret/V8 surface implementation.
 | #573 | Feature, Plan, Diagnostics, and Secret Redaction Model | PR 1 | `stdlib.crypto` feature, compiler Plan activation, diagnostics, and redaction model defined. |
 | #574 | OS Random, UUID, Token, and Entropy Helpers | PR 2 | Implemented with OS CSPRNG backends, UUID v4, hex, URL-safe token, and numeric-code helpers. |
 | #575 | Hash and HMAC APIs | PR 2 | Implemented SHA-256/SHA-384/SHA-512 and HMAC-SHA-256/SHA-384/SHA-512 through vetted backends. |
-| #576 | Password Hashing and Verification | PR 3 | Deferred until Argon2id/offload implementation lands. |
+| #576 | Password Hashing and Verification | PR 3 | Implemented with libsodium Argon2id PHC strings and V8 owner-thread settlement. |
 | #577 | Constant-Time and Secret Buffer Utilities | PR 2 | Implemented constant-time equality helper and cleanup-once Secret utilities. |
 | #578 | Non-Cryptographic Hash Utilities | PR 4 | Deferred until dependency-backed `NonCryptoHash` implementation lands. |
 | #579 | V8/Stdlib Integration and JS Surface | PR 2 | Implemented `__sloppy.crypto`, `stdlib/sloppy/crypto.js`, bootstrap runtime exports, and V8 smoke coverage. |
@@ -34,7 +34,7 @@ Status: PR 2 random/hash/HMAC/Secret/V8 surface implementation.
 - Default runtime availability remains false until backends land.
 - Secure random uses OS CSPRNG only.
 - SHA-2/HMAC use OS crypto where suitable or vetted dependency backends.
-- Password default target is Argon2id PHC through a vetted dependency and offload path.
+- Password default is Argon2id PHC through `libsodium` and the V8 offload path.
 - `bcrypt` and `PBKDF2` are compatibility/deferred, not defaults.
 - `NonCryptoHash` is visibly separate from secure `Hash`/`Hmac`.
 - `xxHash64` is the selected first non-crypto hash target.
@@ -48,8 +48,8 @@ Status: PR 2 random/hash/HMAC/Secret/V8 surface implementation.
 - Non-Windows SHA-2/HMAC uses OpenSSL 3 through the vetted dependency toolchain.
 - Token and numeric-code helpers use rejection sampling; tests verify API shape and
   alphabet/UUID constraints only.
-- V8 hash/HMAC inputs are capped at 1 MiB for the inline bridge. Password hashing remains
-  deferred because it requires offload.
+- V8 hash/HMAC inputs are capped at 1 MiB for the inline bridge. Password hashing uses
+  worker-thread requests and settles promises on the V8 owner thread.
 
 ## Evidence Expected Later
 

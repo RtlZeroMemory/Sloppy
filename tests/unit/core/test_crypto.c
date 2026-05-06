@@ -230,6 +230,91 @@ static int test_encoding_and_secret_lifecycle(void)
                        storage[3] == 0U && storage[4] == 0U);
 }
 
+static int test_password_hash_verify_and_rehash(void)
+{
+    const unsigned char password[] = "correct horse battery staple";
+    const unsigned char wrong_password[] = "correct horse battery fail";
+    char encoded[SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX] = {0};
+    size_t written = 0U;
+    bool verified = false;
+    bool needs_rehash = true;
+    SlCryptoPasswordOptions stronger = sl_crypto_password_default_options();
+
+    if (expect_status(sl_crypto_password_hash(sl_bytes_from_parts(password, sizeof(password) - 1U),
+                                              NULL, encoded, sizeof(encoded), &written),
+                      SL_STATUS_OK) != 0)
+    {
+        return 40;
+    }
+    if (written == 0U || written >= sizeof(encoded) ||
+        memcmp(encoded, "$argon2id$", sizeof("$argon2id$") - 1U) != 0)
+    {
+        return 41;
+    }
+
+    if (expect_status(
+            sl_crypto_password_verify(sl_bytes_from_parts(password, sizeof(password) - 1U),
+                                      sl_str_from_parts(encoded, written), &verified),
+            SL_STATUS_OK) != 0 ||
+        !verified)
+    {
+        return 42;
+    }
+
+    verified = true;
+    if (expect_status(sl_crypto_password_verify(
+                          sl_bytes_from_parts(wrong_password, sizeof(wrong_password) - 1U),
+                          sl_str_from_parts(encoded, written), &verified),
+                      SL_STATUS_OK) != 0 ||
+        verified)
+    {
+        return 43;
+    }
+
+    if (expect_status(sl_crypto_password_needs_rehash(sl_str_from_parts(encoded, written), NULL,
+                                                      &needs_rehash),
+                      SL_STATUS_OK) != 0 ||
+        needs_rehash)
+    {
+        return 44;
+    }
+
+    stronger.ops_limit = SL_CRYPTO_PASSWORD_OPSLIMIT_DEFAULT + 1U;
+    if (expect_status(sl_crypto_password_needs_rehash(sl_str_from_parts(encoded, written),
+                                                      &stronger, &needs_rehash),
+                      SL_STATUS_OK) != 0 ||
+        !needs_rehash)
+    {
+        return 45;
+    }
+    return 0;
+}
+
+static int test_password_rejects_unsupported_format(void)
+{
+    const unsigned char password[] = "password-value-not-in-diagnostic";
+    bool verified = true;
+    bool needs_rehash = false;
+
+    if (expect_status(
+            sl_crypto_password_verify(sl_bytes_from_parts(password, sizeof(password) - 1U),
+                                      sl_str_from_cstr("$bcrypt$unsupported"), &verified),
+            SL_STATUS_UNSUPPORTED) != 0 ||
+        verified)
+    {
+        return 50;
+    }
+
+    if (expect_status(sl_crypto_password_needs_rehash(sl_str_from_cstr("$bcrypt$unsupported"), NULL,
+                                                      &needs_rehash),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        needs_rehash)
+    {
+        return 51;
+    }
+    return 0;
+}
+
 int main(void)
 {
     int result = test_random_shapes();
@@ -244,5 +329,13 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_encoding_and_secret_lifecycle();
+    result = test_encoding_and_secret_lifecycle();
+    if (result != 0) {
+        return result;
+    }
+    result = test_password_hash_verify_and_rehash();
+    if (result != 0) {
+        return result;
+    }
+    return test_password_rejects_unsupported_format();
 }

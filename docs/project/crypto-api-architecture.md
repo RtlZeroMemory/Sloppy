@@ -1,10 +1,10 @@
 # Crypto API Architecture
 
-Status: CORE-CRYPTO-01.C/D/F/H implementation. The contract, feature model, OS random,
-SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, and V8 bridge are now
-implemented. Password hashing, `NonCryptoHash`, final examples, and the full conformance
-pass remain later CORE-CRYPTO slices. This document is not randomness-quality,
-password-cost, timing-proof, or performance evidence.
+Status: CORE-CRYPTO-01.E implementation. The contract, feature model, OS random,
+SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, V8 bridge, and
+Argon2id password hashing are now implemented. `NonCryptoHash`, final examples, and the
+full conformance pass remain later CORE-CRYPTO slices. This document is not
+randomness-quality, password cracking-cost, timing-proof, or performance evidence.
 
 ## Goals
 
@@ -103,7 +103,7 @@ registers the V8 intrinsic namespace for active `stdlib.crypto` plans.
 | Token/code | URL-safe token, hex, decimal code | Supported | Rejection sampling where alphabet size could introduce modulo bias. |
 | Hash | SHA-256, SHA-384, SHA-512 | Supported | OS crypto where sane, otherwise vetted dependency backend. |
 | HMAC | HMAC-SHA-256, HMAC-SHA-384, HMAC-SHA-512 | Supported | Same backend family as SHA-2; verification uses constant-time compare. |
-| Password | Argon2id PHC | Supported target | Default once `libargon2` or equivalent vetted backend is integrated. |
+| Password | Argon2id PHC | Supported | Default through the vetted `libsodium` Argon2id backend. |
 | Password compatibility | bcrypt | Deferred | Compatibility only if a vetted dependency and safe bounds are selected. |
 | Password legacy | PBKDF2 | Deferred | Interoperability only; never default for new hashes. |
 | Legacy crypto | MD5, SHA-1, weak ciphers | Rejected for secure APIs | May only appear as explicit warning/deferred compatibility policy. |
@@ -135,8 +135,10 @@ Implemented backend choices:
   tests verify length/alphabet/UUID version/variant only; they make no randomness-quality
   claim.
 
-Password hashing uses a vetted dependency. The selected default is Argon2id with PHC
-encoded output, safe memory/time/parallelism defaults, and documented upper/lower bounds.
+Password hashing uses the vetted `libsodium` dependency. The selected default is Argon2id
+with PHC encoded output through `crypto_pwhash_str_alg(..., crypto_pwhash_ALG_ARGON2ID13)`.
+The default policy is ops limit `2` and memory limit `67108864` bytes; user-provided
+options are accepted only inside documented bounds.
 `bcrypt` and `PBKDF2` remain compatibility/deferred work unless a later PR explicitly
 selects and tests them.
 
@@ -153,8 +155,9 @@ streaming/offloaded hash work remains deferred.
 
 Password hashing and verification are always admitted to an offload path. Password work
 must copy cross-thread inputs into owned buffers, clean up exactly once, and settle
-Promises on the V8 owner thread. Late completion after cancellation or shutdown is
-cleanup-only.
+Promises on the V8 owner thread. CORE-CRYPTO-01.E implements that V8 path with
+worker-thread requests and owner-thread settlement through `SlAsyncLoop`. Late completion
+after cancellation or shutdown is cleanup-only.
 
 ## Feature and Plan Model
 
@@ -174,11 +177,13 @@ Compiler behavior:
 - Future PRs may add statically visible metadata for password hashing, HMAC, non-crypto
   hash use, and legacy/insecure algorithm warnings where the compiler can see them.
 
-Runtime behavior after CORE-CRYPTO-01.C/D/F/H:
+Runtime behavior after CORE-CRYPTO-01.E:
 
 - `stdlib.crypto` is known to the feature registry and available when its dependencies are
   available.
 - The V8 bridge registers `__sloppy.crypto` only for active `stdlib.crypto` plans.
+- `Password.hash`, `Password.verify`, and `Password.needsRehash` return promises and
+  offload native password work away from the V8 owner thread.
 - Non-V8 or inactive-feature lanes fail closed with runtime-feature or missing-bridge
   diagnostics.
 
