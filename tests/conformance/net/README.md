@@ -23,6 +23,10 @@ Network conformance is split by lane:
 - bootstrap JavaScript stdlib evidence: `bootstrap.stdlib.app_host_foundation` executes
   the ESM stdlib with deterministic native-hook fakes and verifies `TcpClient`,
   `TcpListener`, `TcpConnection`, and `NetworkAddress` surface behavior;
+- outbound HTTP client evidence: `bootstrap.stdlib.http_client` verifies the first
+  cleartext HTTP/1.1 request/response lane over the TCP bridge with deterministic loopback
+  status/header/body, body-consumption, malformed-response, body-limit, HTTPS-unavailable,
+  and ambiguous-body checks;
 - compiler/tooling evidence: Rust compiler tests cover `sloppy/net` import activation for
   `stdlib.net`, `features.network`, and `strongPlan.evidence.network`;
 - V8-gated evidence: `conformance.v8.runtime_bridge` covers active `__sloppy.net`
@@ -31,7 +35,8 @@ Network conformance is split by lane:
 
 CORE-NET-02.A/B/F adds local IPC API validation and stable diagnostic shapes under the
 same `stdlib.net` feature. This is not Unix domain socket or Windows named pipe backend
-execution, TLS, HTTP client/server behavior, UDP, WebSocket, Node/Bun/Deno compatibility,
-direct WinSock/epoll/kqueue/io_uring backend evidence, crypto implementation,
-package-manager behavior, public alpha documentation, benchmark evidence, stress/torture
-evidence, or external live-network proof.
+execution, TLS, pooled/redirecting HTTP client behavior, HTTP server behavior beyond the
+existing inbound lanes, UDP, WebSocket, Node/Bun/Deno compatibility, direct
+WinSock/epoll/kqueue/io_uring backend evidence, crypto implementation, package-manager
+behavior, public alpha documentation, benchmark evidence, stress/torture evidence, or
+external live-network proof.

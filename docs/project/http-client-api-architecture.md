@@ -1,7 +1,8 @@
 # HTTP Client API Architecture
 
-Status: CORE-HTTPCLIENT-01.A/B/C contract slice. This document defines the outbound HTTP
-client API and policy model before any HTTP/1.1 client transport is implemented.
+Status: CORE-HTTPCLIENT-01.A/B/C contract slice plus CORE-HTTPCLIENT-01.D partial
+HTTP/1.1 client transport. This document defines the outbound HTTP client API and policy
+model, and records the first executable cleartext HTTP/1.1 request/response lane.
 
 ## Goal
 
@@ -16,11 +17,13 @@ import { HttpClient } from "sloppy/net";
 
 Runtime feature id: `stdlib.httpclient`.
 
-`HttpClient` is contract-visible in this slice, but the executable transport remains
-deferred. Plans requiring `stdlib.httpclient` fail closed with
-`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` until the later implementation PRs provide the
-backend. Direct stdlib facade calls fail with `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE`
-in lanes that expose the JS object before native transport support exists.
+`HttpClient` is contract-visible and Plan-visible as `stdlib.httpclient`. The current
+runtime lane provides cleartext `http://` HTTP/1.1 request/response execution through the
+Slop-owned CORE-NET TCP bridge and activates the `stdlib.net` dependency automatically.
+Direct stdlib facade calls fail with `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE` only when
+the JS surface is reached without the required runtime bridge. HTTPS/TLS, redirects,
+pooling, streaming bodies, named-client doctor metadata, and convenience JSON helpers
+remain deferred to later CORE-HTTPCLIENT-01 slices.
 
 ## Public Shape
 
@@ -61,6 +64,10 @@ HttpClient
 HTTP/1.1 parser, socket, TLS, and pooling details are implementation details. The public
 API speaks in request, response, body, pipeline, policy, origin, deadline, and signal
 terms so HTTP/2 multiplexing can be added later without a public rewrite.
+
+The current HTTP/1.1 transport uses one request per TCP connection and closes the
+connection after the response. That is an implementation detail of the first transport
+lane, not a public pooling contract.
 
 ## Request Bodies
 

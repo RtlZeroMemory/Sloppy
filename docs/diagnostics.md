@@ -713,10 +713,11 @@ accept/read/write cancellation or timeout, disposed resources, backend unavailab
 unsupported permission/mode behavior. These diagnostics pin the intended local IPC failure
 shapes without claiming Unix socket or Windows named pipe backend execution.
 
-CORE-HTTPCLIENT-01.A/B/C reserves outbound HTTP client diagnostics without claiming an
-executable transport. Missing or inactive `stdlib.httpclient` uses runtime-feature
-diagnostics before startup. If the bootstrap facade is reached in a lane without native
-transport support it fails with `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE`. HTTP
+CORE-HTTPCLIENT-01.A/B/C reserves outbound HTTP client diagnostics, and
+CORE-HTTPCLIENT-01.D adds the first cleartext HTTP/1.1 request/response lane over the
+CORE-NET TCP bridge. Missing or inactive bridge support fails with
+`SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE`, while HTTPS still fails with
+`SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE` until the TLS backend slice lands. HTTP
 client-specific codes cover invalid URL/options, ambiguous body sources, consumed request
 or response bodies, response limits, malformed responses, connect/DNS/TLS failures,
 timeout versus cancellation, redirect loops/max redirects, sensitive header stripping,
