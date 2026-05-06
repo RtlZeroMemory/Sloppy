@@ -30,6 +30,7 @@
 
 struct SlV8TimeRequest;
 struct SlV8CryptoPasswordRequest;
+struct SlV8NetRequest;
 
 struct SlV8Engine
 {
@@ -61,6 +62,9 @@ struct SlV8Engine
     std::mutex crypto_mutex;
     std::vector<std::shared_ptr<SlV8CryptoPasswordRequest>> crypto_password_requests;
     bool crypto_shutting_down = false;
+    std::mutex net_mutex;
+    std::vector<std::shared_ptr<SlV8NetRequest>> net_requests;
+    bool net_shutting_down = false;
     SlProviderInstanceExecutor fs_executor = {};
     std::array<SlProviderExecutorSlot, 32U> fs_slots = {};
     bool fs_executor_initialized = false;
@@ -81,6 +85,10 @@ void sl_v8_time_dispose(SlV8Engine* backend);
 bool sl_v8_install_crypto_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> sloppy);
 void sl_v8_crypto_dispose(SlV8Engine* backend);
+
+bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
+                                  v8::Local<v8::Object> sloppy);
+void sl_v8_net_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);

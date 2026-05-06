@@ -215,7 +215,7 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     if (!sl_str_equal(net->stable_id, sl_str_from_cstr("stdlib.net")) ||
         !sl_str_equal(net->stdlib_import, sl_str_from_cstr("sloppy/net")) ||
         !sl_str_equal(net->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.net")) ||
-        !net->requires_v8_intrinsics || net->available ||
+        !net->requires_v8_intrinsics || !net->available ||
         (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_TRANSPORT_LIBUV)) == 0U ||
         (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
     {
@@ -465,7 +465,7 @@ static int test_explicit_net_required_feature_activates_when_available(void)
     return 0;
 }
 
-static int test_net_required_feature_unavailable_by_default(void)
+static int test_net_required_feature_activates_by_default_after_tcp_client_backend(void)
 {
     unsigned char diag_storage[2048];
     SlArena diag_arena = {0};
@@ -482,12 +482,14 @@ static int test_net_required_feature_unavailable_by_default(void)
 
     if (expect_status(
             sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
-            SL_STATUS_UNSUPPORTED) != 0)
+            SL_STATUS_OK) != 0)
     {
         return 1;
     }
-    if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
-        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.net")))
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_NET) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        diag.code != SL_DIAG_NONE)
     {
         return 2;
     }
@@ -853,7 +855,7 @@ int main(void)
         test_explicit_codec_required_feature_activates_when_available,
         test_codec_required_feature_unavailable_by_default,
         test_explicit_net_required_feature_activates_when_available,
-        test_net_required_feature_unavailable_by_default,
+        test_net_required_feature_activates_by_default_after_tcp_client_backend,
         test_minimal_route_activates_expected_features,
         test_sqlite_provider_metadata_activates_sqlite,
         test_unavailable_postgres_required_feature_fails,

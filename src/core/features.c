@@ -251,9 +251,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.provider_sqlserver = false;
     availability.stdlib_crypto = true;
     availability.stdlib_codec = false;
-    /* Known-but-unavailable by default keeps sloppy/net import diagnostics deterministic until the
-       V8/libuv TCP backend is explicitly wired by the implementation PRs. */
-    availability.stdlib_net = false;
+    availability.stdlib_net = true;
     return availability;
 }
 
@@ -337,7 +335,7 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-         false, true, true}};
+         true, true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;

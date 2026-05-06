@@ -72,11 +72,12 @@ CORE-CRYPTO-01.E registers the private `__sloppy.crypto` namespace for active
 and password helpers used by `stdlib/sloppy/crypto.js`; it does not expose raw native
 pointers or backend handles. `Password.hash`, `Password.verify`, and
 `Password.needsRehash` use worker-thread requests and settle on the V8 owner thread.
-CORE-NET-01.A/B reserves the private `__sloppy.net` namespace for active `stdlib.net`
-plans and documents the TCP policy/diagnostic contract. The namespace is not registered in
-this contract PR; runtime availability stays false until native TCP/libuv resources,
-owned async completions, and owner-thread Promise settlement are implemented in later
-CORE-NET PRs.
+CORE-NET-01.C/D/H registers the private `__sloppy.net` namespace for active `stdlib.net`
+plans. The bridge exposes TCP client/connection operations through JS-safe resource IDs;
+blocking connect/read/write/close work runs on owned native worker threads, and Promise
+settlement happens through the engine async loop on the V8 owner thread. Listener/accept,
+DNS policy, richer socket options, and deadline/cancellation hardening remain later
+CORE-NET slices.
 CORE-CODEC-01.A/B reserves the private `__sloppy.codec` namespace for active
 `stdlib.codec` plans and documents the transform/diagnostic contract. The namespace is not
 registered in this contract PR; runtime availability stays false until encoding, text,

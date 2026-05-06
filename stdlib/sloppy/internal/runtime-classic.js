@@ -2350,6 +2350,154 @@ Reason:
         },
     });
 
+    class NetworkAddress {
+        constructor(host, port) {
+            if (typeof host !== "string" || host.length === 0) {
+                throw new TypeError("NetworkAddress host must be a non-empty string.");
+            }
+            if (!Number.isInteger(port) || port < 0 || port > 65535) {
+                throw new TypeError("NetworkAddress port must be an integer from 0 to 65535.");
+            }
+            this.host = host;
+            this.port = port;
+            Object.freeze(this);
+        }
+
+        static parse(value) {
+            if (value instanceof NetworkAddress) {
+                return value;
+            }
+            if (value === null || typeof value !== "object") {
+                throw new TypeError("NetworkAddress.parse requires an address object.");
+            }
+            return new NetworkAddress(value.host, value.port);
+        }
+
+        toString() {
+            return this.host.includes(":")
+                ? `[${this.host}]:${this.port}`
+                : `${this.host}:${this.port}`;
+        }
+    }
+
+    function sloppyNativeNet(operation) {
+        const bridge = globalThis.__sloppy?.net;
+        if (bridge === undefined) {
+            throw new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.net is inactive or unavailable
+
+Feature:
+  stdlib.net
+
+Operation:
+  ${operation}
+
+Reason:
+  The active Sloppy Plan did not enable the __sloppy.net V8 intrinsic namespace.`);
+        }
+        return bridge;
+    }
+
+    function sloppyNetPort(port, allowZero) {
+        const minimum = allowZero ? 0 : 1;
+        if (!Number.isInteger(port) || port < minimum || port > 65535) {
+            throw new TypeError(`TCP port must be an integer from ${minimum} to 65535.`);
+        }
+        return port;
+    }
+
+    function sloppyNetConnectOptions(options) {
+        if (!isPlainObject(options)) {
+            throw new TypeError("TcpClient.connect options must be a plain object.");
+        }
+        if (typeof options.host !== "string" || options.host.length === 0) {
+            throw new TypeError("TcpClient.connect host must be a non-empty string.");
+        }
+        const normalized = {
+            host: options.host,
+            port: sloppyNetPort(options.port, false),
+            noDelay: options.noDelay === true,
+        };
+        if (options.timeoutMs !== undefined) {
+            if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0) {
+                throw new TypeError("TcpClient.connect timeoutMs must be a non-negative number.");
+            }
+            normalized.timeoutMs = Math.ceil(options.timeoutMs);
+        }
+        return normalized;
+    }
+
+    class TcpConnection {
+        constructor(bridge, handle) {
+            this._bridge = bridge;
+            this._handle = handle;
+            this._closed = false;
+        }
+
+        async write(bytes) {
+            if (this._closed) {
+                throw new Error("SLOPPY_E_NET_CONNECTION_CLOSED: TCP connection is closed");
+            }
+            if (!(bytes instanceof Uint8Array)) {
+                throw new TypeError("TcpConnection.write requires a Uint8Array.");
+            }
+            await this._bridge.write(this._handle, bytes);
+        }
+
+        async writeText(text) {
+            if (typeof text !== "string") {
+                throw new TypeError("TcpConnection.writeText requires a string.");
+            }
+            await this.write(sloppyUtf8ToBytes(text));
+        }
+
+        read(options = undefined) {
+            return this._bridge.read(this._handle, options?.maxBytes ?? 8192);
+        }
+
+        readUntil(delimiter, options = undefined) {
+            const delimiterBytes =
+                typeof delimiter === "string" ? sloppyUtf8ToBytes(delimiter) : delimiter;
+            if (!(delimiterBytes instanceof Uint8Array) || delimiterBytes.byteLength === 0) {
+                throw new TypeError("TcpConnection.readUntil delimiter must be non-empty bytes.");
+            }
+            return this._bridge.readUntil(this._handle, delimiterBytes, options?.maxBytes ?? 8192);
+        }
+
+        readLine(options = undefined) {
+            return this._bridge.readLine(this._handle, options?.maxBytes ?? 8192);
+        }
+
+        async close() {
+            if (this._closed) {
+                return;
+            }
+            this._closed = true;
+            await this._bridge.close(this._handle);
+        }
+
+        async abort() {
+            if (this._closed) {
+                return;
+            }
+            this._closed = true;
+            await this._bridge.abort(this._handle);
+        }
+    }
+
+    const TcpClient = Object.freeze({
+        async connect(options) {
+            const bridge = sloppyNativeNet("connect");
+            const handle = await bridge.connect(sloppyNetConnectOptions(options));
+            return new TcpConnection(bridge, handle);
+        },
+    });
+
+    const TcpListener = Object.freeze({
+        async listen() {
+            throw new Error("SLOPPY_E_NET_UNSUPPORTED_OPTION: TcpListener lands in CORE-NET-01.E/F.");
+        },
+    });
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         Random,
@@ -2372,5 +2520,9 @@ Reason:
         Path,
         FileHandle,
         FileWatcher,
+        TcpClient,
+        TcpListener,
+        TcpConnection,
+        NetworkAddress,
     });
 })();
