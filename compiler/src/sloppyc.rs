@@ -6104,7 +6104,7 @@ fn emit_plan(
         doctor_checks.push(json!({
             "id": "stdlib.httpclient.contract",
             "status": "warn",
-            "message": "HttpClient is contract-visible but the outbound HTTP transport is deferred until CORE-HTTPCLIENT implementation PRs"
+            "message": "HttpClient is Plan-visible; default compiler metadata does not infer static outbound targets yet"
         }));
     }
     if !required_features.is_empty() {

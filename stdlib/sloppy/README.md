@@ -67,6 +67,15 @@ listeners, local hostname/DNS resolution, async accept iteration, and close/abor
 `NetworkAddress.parse(...)` accepts object addresses, `host:port`, and bracketed
 `[ipv6]:port` text. CORE-NET-01.I adds source examples, doctor/audit metadata goldens,
 and conformance indexing. External live-network evidence remains outside the default lane.
+`HttpClient` is exported from `sloppy/net` as the outbound CORE-HTTPCLIENT-01 surface. It
+uses the private `__sloppy.net` TCP bridge for the first cleartext HTTP/1.1 lane, exposes
+reusable clients plus `get`, `post`, `request`, `text`, `json`, `bytes`, `getJson`, and
+`postJson` helpers, enforces one request body source, consumes response bodies once, and
+implements operation-wide timeout/deadline/cancellation, buffered response `stream()`,
+per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping, strict-network
+denial, and cross-origin sensitive-header strip/deny defaults. HTTPS/TLS, proxy policy,
+true socket-level streaming, automatic compiler target inference, and a dedicated
+HTTP-native V8 bridge remain future work.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the

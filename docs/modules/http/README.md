@@ -14,8 +14,10 @@ request `json` bodies, base URL/path joining, bounded async-iterable request bod
 consumption, response `stream()` iteration over buffered bodies, and operation-wide
 `timeoutMs`/`deadline`/`signal` handling. It implements bounded redirects, per-origin
 HTTP/1.1 pooling for reusable clients, strict-network preconnect denial, DNS-failure
-mapping, and cross-origin sensitive-header stripping/denial. It does not implement
-HTTPS/TLS, proxy policy, true socket-level streaming, or live external network evidence.
+mapping, cross-origin sensitive-header stripping/denial, source-shape examples, and
+doctor/audit goldens for named/static/dynamic outbound-client metadata. It does not
+implement HTTPS/TLS, proxy policy, true socket-level streaming, automatic compiler
+inference of static outbound target literals, or live external network evidence.
 
 Post-ENGINE-16 consolidation: the HTTP module is mature for bounded localhost transport
 correctness, not production application-server behavior. HTTP-25 completes sequential

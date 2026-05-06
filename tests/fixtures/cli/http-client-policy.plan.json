@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "requiredFeatures": [
+    "stdlib.httpclient"
+  ],
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/http-client-policy.js",
+    "id": "cli-http-client-policy-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/http-client-policy.js.map",
+    "id": "cli-http-client-policy-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "HttpClient.Policy"
+    }
+  ],
+  "capabilities": [
+    { "token": "net.billing", "kind": "network", "access": "connect" }
+  ],
+  "httpClients": [
+    {
+      "name": "billing",
+      "target": "static",
+      "baseUrl": "https://billing.example.test",
+      "strictNetwork": true
+    },
+    {
+      "name": "tenant-api",
+      "target": "dynamic"
+    }
+  ],
+  "doctorChecks": [
+    {
+      "id": "stdlib.httpclient.redaction",
+      "status": "ok",
+      "message": "HTTP client doctor metadata omits Authorization, Cookie, API key, bearer token, and TLS-sensitive values"
+    }
+  ]
+}

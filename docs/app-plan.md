@@ -238,9 +238,13 @@ stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/
 `HttpClient` named imports from `sloppy/net` map to the separate `stdlib.httpclient`
 feature because the outbound HTTP client has a distinct pipeline/transport/TLS policy
 from raw TCP. That feature is active for V8 plans after CORE-HTTPCLIENT-01.D and depends
-on `stdlib.net` for the first cleartext HTTP/1.1 request/response lane. HTTPS/TLS,
-pooling, redirects, streaming bodies, and named-client doctor metadata remain future
-CORE-HTTPCLIENT slices.
+on `stdlib.net` for the cleartext HTTP/1.1 request/response lane. The current lane also
+has helper methods, buffered stream helpers, operation-wide deadline/cancellation,
+per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping, strict-network
+denial, cross-origin sensitive-header strip/deny defaults, and doctor/audit metadata
+goldens for named/static/dynamic outbound HTTP client facts. HTTPS/TLS, proxy policy, true
+socket-level streaming, automatic compiler inference of static target literals, and a
+dedicated HTTP-native V8 bridge remain future CORE-HTTPCLIENT work.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
 Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.I
 registered vetted random/hash/HMAC/password/non-crypto hash backends, the

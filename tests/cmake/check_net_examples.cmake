@@ -26,13 +26,16 @@ set(policy_app "${PROJECT_SOURCE_DIR}/examples/net-policy-strict/app.js")
 set(policy_readme "${PROJECT_SOURCE_DIR}/examples/net-policy-strict/README.md")
 set(deadline_app "${PROJECT_SOURCE_DIR}/examples/net-deadline-cancel/app.js")
 set(deadline_readme "${PROJECT_SOURCE_DIR}/examples/net-deadline-cancel/README.md")
+set(http_client_app "${PROJECT_SOURCE_DIR}/examples/http-client-basic/app.js")
+set(http_client_readme "${PROJECT_SOURCE_DIR}/examples/http-client-basic/README.md")
 
 foreach(required_file IN ITEMS
         "${client_app}" "${client_readme}"
         "${server_app}" "${server_readme}"
         "${echo_app}" "${echo_readme}"
         "${policy_app}" "${policy_readme}"
-        "${deadline_app}" "${deadline_readme}")
+        "${deadline_app}" "${deadline_readme}"
+        "${http_client_app}" "${http_client_readme}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing Network example file: ${required_file}")
     endif()
@@ -48,6 +51,8 @@ file(READ "${policy_app}" policy_source)
 file(READ "${policy_readme}" policy_readme_source)
 file(READ "${deadline_app}" deadline_source)
 file(READ "${deadline_readme}" deadline_readme_source)
+file(READ "${http_client_app}" http_client_source)
+file(READ "${http_client_readme}" http_client_readme_source)
 
 foreach(required_pattern IN ITEMS
         "import { TcpClient, NetworkAddress } from \"sloppy/net\";"
@@ -111,9 +116,27 @@ foreach(required_pattern IN ITEMS
                       "examples/net-deadline-cancel/app.js is missing expected deadline/cancel shape")
 endforeach()
 
+foreach(required_pattern IN ITEMS
+        "import { HttpClient } from \"sloppy/net\";"
+        "HttpClient.create({"
+        "baseUrl: \"https://billing.example.test\""
+        "timeoutMs: 5000"
+        "maxResponseBytes: \"4mb\""
+        "crossOriginSensitiveHeaders: \"strip\""
+        "maxConnectionsPerOrigin: 8"
+        "network: {"
+        "strict: true"
+        "allow: [\"https://billing.example.test\"]"
+        "await billing.get(\"/health\", { timeoutMs: 2000 })"
+        "await billing.postJson(\"/invoices\", { customerId })"
+        "await HttpClient.text(\"http://127.0.0.1:8080/status\"")
+    require_substring("${http_client_source}" "${required_pattern}"
+                      "examples/http-client-basic/app.js is missing expected HTTP client API shape")
+endforeach()
+
 foreach(source IN ITEMS
         "${client_source}" "${server_source}" "${echo_source}" "${policy_source}"
-        "${deadline_source}")
+        "${deadline_source}" "${http_client_source}")
     foreach(forbidden_pattern IN ITEMS
             "node:net"
             "require(\"net\")"
@@ -137,7 +160,7 @@ endforeach()
 
 foreach(readme_source IN ITEMS
         "${client_readme_source}" "${server_readme_source}" "${echo_readme_source}"
-        "${policy_readme_source}" "${deadline_readme_source}")
+        "${policy_readme_source}" "${deadline_readme_source}" "${http_client_readme_source}")
     foreach(required_pattern IN ITEMS
             "TLS"
             "HTTP"
