@@ -259,6 +259,31 @@ static int expect_valid_filesystem_capability_accesses(const SlPlan* plan)
     return 0;
 }
 
+static int expect_valid_os_capability_accesses(const SlPlan* plan)
+{
+    static const char* expected_kinds[] = {"os",      "env",     "env",     "process",
+                                           "process", "process", "process", "signals"};
+    static const char* expected_accesses[] = {"info",  "read",   "list", "run",
+                                              "shell", "signal", "kill", "shutdown"};
+    const size_t expected_count = sizeof(expected_accesses) / sizeof(expected_accesses[0]);
+
+    if (plan->capability_count != expected_count) {
+        return 1;
+    }
+
+    for (size_t index = 0U; index < expected_count; ++index) {
+        if (!sl_str_equal(plan->capabilities[index].kind,
+                          sl_str_from_cstr(expected_kinds[index])) ||
+            !sl_str_equal(plan->capabilities[index].access,
+                          sl_str_from_cstr(expected_accesses[index])))
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static int test_valid_fixture_matrix(void)
 {
     static const ValidFixtureCase cases[] = {
@@ -398,6 +423,26 @@ static int test_valid_filesystem_capability_accesses_fixture(void)
         return 2;
     }
     return expect_valid_filesystem_capability_accesses(&plan);
+}
+
+static int test_valid_os_capability_accesses_fixture(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_fixture("tests/golden/plan/valid-os-capability-accesses.plan.json",
+                                    &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 2;
+    }
+    if (expect_single_required_feature(&plan, "stdlib.os") != 0) {
+        return 3;
+    }
+    return expect_valid_os_capability_accesses(&plan);
 }
 
 static int test_invalid_fixture_matrix(void)
@@ -639,6 +684,11 @@ int main(void)
     }
 
     result = test_valid_filesystem_capability_accesses_fixture();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_valid_os_capability_accesses_fixture();
     if (result != 0) {
         return result;
     }

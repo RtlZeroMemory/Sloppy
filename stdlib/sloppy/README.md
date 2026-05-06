@@ -82,6 +82,15 @@ per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping, strict-netw
 denial, and cross-origin sensitive-header strip/deny defaults. HTTPS/TLS, proxy policy,
 true socket-level streaming, automatic compiler target inference, and a separate
 HTTP-native V8 bridge remain future work.
+`System`, `Environment`, `Process`, and `Signals` are exported from `sloppy/os` as the
+CORE-OS-01 surface. `System` exposes platform, architecture, CPU count, temp directory,
+hostname, and line ending metadata. `Environment` exposes key validation, `get`, `has`,
+and redacted `list` behavior. The Process run/start helpers use explicit argv only,
+bounded text/byte capture or streaming pipe helpers, timeout/deadline/cancellation
+validation, and stable Sloppy OS diagnostics. `Signals.onShutdown` registers shutdown
+handlers through the Slop-owned bridge shape. The native System/Environment bridge is
+V8-wired; the native execution bridge and platform signal loop remain deferred until host
+work can be scheduled off the V8 owner thread.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the

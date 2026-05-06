@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "requiredFeatures": [
+    "stdlib.os"
+  ],
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/os-policy.js",
+    "id": "cli-os-policy-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/os-policy.js.map",
+    "id": "cli-os-policy-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "OS.Policy"
+    }
+  ],
+  "capabilities": [
+    { "token": "os.info", "kind": "os", "access": "info" },
+    { "token": "env.app", "kind": "env", "access": "read" },
+    { "token": "env.list", "kind": "env", "access": "list" },
+    { "token": "process.git", "kind": "process", "access": "run" },
+    { "token": "process.shell", "kind": "process", "access": "shell" },
+    { "token": "process.kill", "kind": "process", "access": "kill" },
+    { "token": "signals.shutdown", "kind": "signals", "access": "shutdown" }
+  ],
+  "doctorChecks": [
+    {
+      "id": "stdlib.os.redaction",
+      "status": "ok",
+      "message": "OS doctor metadata omits environment values, secret args, captured output, raw PIDs, and native handles"
+    }
+  ]
+}

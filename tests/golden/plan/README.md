@@ -15,6 +15,7 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `valid-capability-skeletons.plan.json` | success | `SLOPPY_NONE` | yes | Valid filesystem and network skeleton capability metadata. |
 | `valid-network-required-feature.plan.json` | success | `SLOPPY_NONE` | yes | Valid Plan metadata requiring the CORE-NET-01 `stdlib.net` feature. |
 | `valid-filesystem-capability-accesses.plan.json` | success | `SLOPPY_NONE` | yes | Valid CORE-FS-01 filesystem capability access vocabulary. |
+| `valid-os-capability-accesses.plan.json` | success | `SLOPPY_NONE` | yes | Valid CORE-OS-01 OS, environment, process, and shutdown signal capability access vocabulary. |
 | `unknown-future-field.plan.json` | success | `SLOPPY_NONE` | yes | Unknown top-level and nested fields are ignored in Plan v1. |
 | `malformed-json.plan.json` | failure | `SLOPPY_E_MALFORMED_JSON` | yes | Invalid JSON bytes produce a diagnostic instead of a crash. |
 | `invalid-version.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_VERSION` | yes | Unsupported `schemaVersion` is rejected. |
@@ -38,7 +39,7 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `duplicate-route-name.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Non-empty route names must be unique. |
 | `invalid-provider-kind.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Provider values are limited to `sqlite`, `postgres`, and `sqlserver`. |
 | `duplicate-provider-token.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Data provider tokens must be unique. |
-| `invalid-capability-kind.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability kinds are limited to `database`, `filesystem`, and `network`. |
+| `invalid-capability-kind.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability kinds are limited to the documented database, filesystem, network, OS, environment, process, and signal categories. |
 | `invalid-capability-access.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability access must match the capability kind. |
 | `missing-capability-token.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Capability entries require a token. |
 | `missing-capability-provider.plan.json` | failure | `SLOPPY_E_INVALID_PLAN_FIELD` | yes | Database capabilities require a provider reference. |

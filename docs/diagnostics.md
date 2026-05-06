@@ -777,6 +777,11 @@ feature/model slice. CORE-OS-01.C/H partial makes `stdlib.os` available for Syst
 Environment while preserving `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` coverage for runtimes
 that explicitly report the feature unavailable. `SLOPPY_E_OS_FEATURE_UNAVAILABLE` is used
 for already-reached OS API paths when a specific OS backend or deferred lane is inactive.
+CORE-OS-01.I adds CLI doctor/audit goldens for Plan-visible `stdlib.os` and OS capability
+metadata. Those goldens prove feature/capability metadata visibility and redaction
+boundaries only; they do not prove OS sandboxing, shell execution, raw PID authority,
+native handle exposure, package-manager behavior, public alpha readiness, benchmark
+evidence, or production performance.
 Other OS-specific codes are reserved for
 host-system API failures:
 
