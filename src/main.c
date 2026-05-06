@@ -655,6 +655,10 @@ static int sl_read_file_with_messages(const char* path, unsigned char* buffer, s
         sl_cli_write_error_with_value(not_found_prefix, path, "\n");
         return 1;
     }
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+        sl_cli_write_error_with_value(size_prefix, path, "\n");
+        return 1;
+    }
     if (!sl_status_is_ok(status)) {
         sl_cli_write_error_with_value(failed_read_prefix, path, "\n");
         return 1;
