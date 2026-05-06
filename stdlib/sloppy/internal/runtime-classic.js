@@ -5775,6 +5775,9 @@ Reason:
     }
 
     function sloppyWorkerSerializePayload(value, seen = new Set()) {
+        if (value === undefined) {
+            return null;
+        }
         if (value === null || typeof value === "string" || typeof value === "boolean") {
             return value;
         }

@@ -125,6 +125,33 @@ async function flush(count = 5) {
 }
 
 {
+    const queue = WorkQueue.create("backpressure-shutdown", {
+        maxQueued: 1,
+        concurrency: 1,
+        overflow: "backpressure",
+        maxBackpressureWaiters: 1,
+    });
+    let releaseActive;
+    queue.process((job) => {
+        if (job.data === "active") {
+            return new Promise((resolve) => {
+                releaseActive = () => resolve("active-ok");
+            });
+        }
+        return `${job.data}-ok`;
+    });
+    const active = queue.enqueue("active");
+    const queued = queue.enqueue("queued");
+    const waiting = queue.enqueue("waiting");
+    const stopped = queue.stop({ drain: false });
+    await assertRejectsWorkerCode(queued, "SLOPPY_E_WORKER_SHUTDOWN_CANCELLED");
+    await assertRejectsWorkerCode(waiting, "SLOPPY_E_WORKER_SHUTDOWN_CANCELLED");
+    releaseActive();
+    assert.equal(await active, "active-ok");
+    await stopped;
+}
+
+{
     const controller = new WorkerCancellationController();
     controller.cancel("caller");
     const queue = WorkQueue.create("cancel", { maxQueued: 1, concurrency: 1 });
@@ -142,8 +169,10 @@ async function flush(count = 5) {
         pool.run(async (ctx) => ctx.input + 1, { input: 2 }),
     ]);
     assert.deepEqual(values, [2, 3]);
+    assert.equal(await pool.run(async (ctx) => ctx.input === null), true);
     assert.equal(pool.state.workers, 2);
     await pool.stop();
+    await assertRejectsWorkerCode(pool.run(async () => "late"), "SLOPPY_E_WORK_QUEUE_STOPPED");
 }
 
 {
@@ -158,11 +187,15 @@ async function flush(count = 5) {
     const workerPath = join(directory, "parser.mjs");
     await writeFile(
         workerPath,
-        "export async function parse(payload) { return { tokens: payload.text.split(/\\s+/u).length }; }\n",
+        "export async function parse(payload) { return { tokens: payload.text.split(/\\s+/u).length }; }\n"
+            + "export function ping(payload) { return payload === null ? 'pong' : 'unexpected'; }\n"
+            + "export function onMessage(payload) { return payload === null ? 'posted-null' : 'unexpected'; }\n",
         "utf8",
     );
     const worker = await Worker.start(pathToFileURL(workerPath).href, { memoryLimitMb: 128 });
     assert.deepEqual(await worker.invoke("parse", { text: "one two three" }), { tokens: 3 });
+    assert.equal(await worker.invoke("ping"), "pong");
+    assert.equal(await worker.post(), "posted-null");
     await worker.stop();
     await assertRejectsWorkerCode(worker.invoke("parse", { text: "late" }), "SLOPPY_E_WORKER_STALE_HANDLE");
 }

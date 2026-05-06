@@ -45,6 +45,7 @@ for the service handler to observe cancellation or complete.
 
 - `stop({ drain: true })` rejects new admission and lets queued/running work finish.
 - `stop({ drain: false })` rejects new admission and cancels queued work.
+- pending backpressure waiters are rejected on stop because they have not been queued.
 - stale handles reject with `SLOPPY_E_WORKER_STALE_HANDLE`.
 - late completion after timeout/cancellation is cleanup-only from the caller's perspective.
 

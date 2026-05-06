@@ -233,6 +233,9 @@ function isPlainObject(value) {
 }
 
 function serializePayload(value, seen = new Set()) {
+    if (value === undefined) {
+        return null;
+    }
     if (value === null || typeof value === "string" || typeof value === "boolean") {
         return value;
     }
@@ -408,7 +411,14 @@ class WorkQueueHandle {
     }
 
     _enqueuePayload(payload, options = undefined) {
+        if (this._stopped) {
+            return Promise.reject(workerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
+        }
         const submit = () => new Promise((resolve, reject) => {
+            if (this._stopped) {
+                reject(workerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
+                return;
+            }
             const job = {
                 id: nextJobId++,
                 data: payload,
@@ -431,10 +441,23 @@ class WorkQueueHandle {
                 return Promise.reject(workerError("SLOPPY_E_WORK_QUEUE_FULL", "work queue backpressure waiters are full"));
             }
             return new Promise((resolve, reject) => {
-                this._waiters.push(() => submit().then(resolve, reject));
+                this._waiters.push({
+                    reject,
+                    resume: () => submit().then(resolve, reject),
+                });
             });
         }
         return submit();
+    }
+
+    _rejectWaiters(error, options = undefined) {
+        const countCancelled = options?.countCancelled !== false;
+        while (this._waiters.length > 0) {
+            this._waiters.shift().reject(error);
+            if (countCancelled) {
+                this._stats.cancelled += 1;
+            }
+        }
     }
 
     async drain() {
@@ -459,15 +482,19 @@ class WorkQueueHandle {
                 this._stats.cancelled += 1;
             }
         }
-        while (this._waiters.length > 0) {
-            this._waiters.shift()();
+        if (drain) {
+            this._rejectWaiters(workerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"), {
+                countCancelled: false,
+            });
+        } else {
+            this._rejectWaiters(workerError("SLOPPY_E_WORKER_SHUTDOWN_CANCELLED", "queued job was cancelled by shutdown"));
         }
         await this.drain();
     }
 
     _pump() {
         while (!this._stopped && this._waiters.length > 0 && this._queue.length < this.maxQueued) {
-            this._waiters.shift()();
+            this._waiters.shift().resume();
         }
         while (this._handler !== undefined && this._active < this.concurrency && this._queue.length > 0) {
             const job = this._queue.shift();
