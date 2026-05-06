@@ -1805,7 +1805,7 @@ static int test_keep_alive_idle_timeout_closes_once(void)
     SlDiag diag = {};
 
     config = keep_alive_config(nullptr);
-    config.keep_alive_idle_timeout_ms = 1U;
+    config.keep_alive_idle_timeout_ms = 25U;
     dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("ok\n"));
     config.dispatch = dispatch_hook;
     config.dispatch_user = &dispatch;
