@@ -128,6 +128,7 @@ static SlRuntimeFeatureDescriptor sl_feature_os_descriptor(SlRuntimeFeatureId id
 static SlRuntimeFeatureDescriptor sl_feature_http_client_descriptor(SlRuntimeFeatureId id,
                                                                     bool available)
 {
+    (void)available;
     return sl_feature_descriptor_make(
         id, SL_RUNTIME_FEATURE_KIND_STDLIB,
         sl_feature_literal("stdlib.httpclient", sizeof("stdlib.httpclient") - 1U),
@@ -135,11 +136,10 @@ static SlRuntimeFeatureDescriptor sl_feature_http_client_descriptor(SlRuntimeFea
         sl_feature_literal("sloppy/net", sizeof("sloppy/net") - 1U),
         sl_feature_literal("__sloppy.httpClient", sizeof("__sloppy.httpClient") - 1U),
         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_NET) |
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |
             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO),
-        available, true, true);
+        false, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_unknown_descriptor(SlRuntimeFeatureId id)
@@ -407,7 +407,6 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.httpclient"), SL_FEATURE_STR("HTTP client stdlib"),
          SL_FEATURE_STR("sloppy/net"), SL_FEATURE_STR("__sloppy.httpClient"),
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_NET) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO),

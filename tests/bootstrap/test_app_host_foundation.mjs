@@ -36,6 +36,13 @@ function assertThrowsMessage(fn, expected) {
     });
 }
 
+async function assertRejectsMessage(fn, expected) {
+    await assert.rejects(fn, (error) => {
+        assert.match(String(error.message), expected);
+        return true;
+    });
+}
+
 async function flushMicrotasks(count = 6) {
     for (let i = 0; i < count; i += 1) {
         await Promise.resolve();
@@ -219,11 +226,14 @@ async function flushMicrotasks(count = 6) {
     assert.equal(typeof HttpClient.get, "function");
     const client = HttpClient.create({ baseUrl: "https://api.example.test" });
     assert.equal(typeof client.getJson, "function");
-    assertThrowsMessage(
+    await assertRejectsMessage(
         () => HttpClient.get("https://api.example.test/health"),
         /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
     );
-    assertThrowsMessage(() => client.postJson("/items", { name: "test" }), /HttpClient\.postJson/);
+    await assertRejectsMessage(
+        () => client.postJson("/items", { name: "test" }),
+        /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
+    );
 }
 
 {

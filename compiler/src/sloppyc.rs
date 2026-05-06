@@ -1742,12 +1742,25 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
     }
 }
 
-fn mark_sloppy_net_runtime_import(state: &mut AppState, imported: &str) {
+fn mark_sloppy_net_runtime_usage(
+    net_runtime: &mut bool,
+    http_client_runtime: &mut bool,
+    imported: &str,
+) {
+    /* HttpClient is exported from sloppy/net but maps to stdlib.httpclient, not raw TCP stdlib.net. */
     if imported == "HttpClient" {
-        state.http_client_imported = true;
+        *http_client_runtime = true;
     } else {
-        state.net_imported = true;
+        *net_runtime = true;
     }
+}
+
+fn mark_sloppy_net_runtime_import(state: &mut AppState, imported: &str) {
+    mark_sloppy_net_runtime_usage(
+        &mut state.net_imported,
+        &mut state.http_client_imported,
+        imported,
+    );
 }
 
 fn handle_sloppy_stdlib_import(
@@ -3264,11 +3277,11 @@ fn extract_relative_module(
                             {
                                 if import_specifier_is_runtime_value(import, specifier) {
                                     let imported_name = specifier.imported.name().as_str();
-                                    if imported_name == "HttpClient" {
-                                        graph.uses_http_client_runtime = true;
-                                    } else {
-                                        graph.uses_net_runtime = true;
-                                    }
+                                    mark_sloppy_net_runtime_usage(
+                                        &mut graph.uses_net_runtime,
+                                        &mut graph.uses_http_client_runtime,
+                                        imported_name,
+                                    );
                                 }
                             }
                         }
@@ -7216,6 +7229,63 @@ export default app;
     }
 
     #[test]
+    fn function_module_sloppy_net_http_client_import_emits_http_client_required_feature() {
+        let root = fixture_temp_dir("function-module-http-client-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("billing.js"),
+            r#"import { Results } from "sloppy";
+import { HttpClient } from "sloppy/net";
+
+export function billingModule(app) {
+    app.get("/billing", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { billingModule } from "./modules/billing.js";
+
+const app = Sloppy.create();
+app.useModule(billingModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_http_client_runtime);
+        assert!(!app.uses_net_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(
+            plan["requiredFeatures"],
+            serde_json::json!(["stdlib.httpclient"])
+        );
+        assert_eq!(plan["features"]["httpClient"], serde_json::json!(true));
+        assert_eq!(
+            plan["strongPlan"]["evidence"]["httpClient"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            plan["doctorChecks"][0]["id"],
+            serde_json::json!("stdlib.httpclient.contract")
+        );
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
     fn function_module_sloppy_codec_import_emits_required_feature() {
         let root = fixture_temp_dir("function-module-codec-import");
         let modules = root.join("modules");
@@ -7305,6 +7375,56 @@ export default app;
         .expect("plan should emit");
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert!(plan.get("requiredFeatures").is_none());
+        assert!(plan["features"].get("network").is_none());
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn function_module_type_only_sloppy_net_http_client_import_does_not_emit_required_feature() {
+        let root = fixture_temp_dir("function-module-type-only-http-client-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("billing.ts"),
+            r#"import { Results } from "sloppy";
+import type { HttpClient } from "sloppy/net";
+
+export function billingModule(app) {
+    app.get("/billing", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { billingModule } from "./modules/billing.ts";
+
+const app = Sloppy.create();
+app.useModule(billingModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let input = root.join("input.ts");
+        fs::write(&input, source).expect("fixture input should be writable");
+        let app = extract(&input, source).expect("fixture should extract");
+        assert!(!app.uses_http_client_runtime);
+        assert!(!app.uses_net_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results } = __sloppyRuntime;"));
+        assert!(!emitted_js.source.contains("HttpClient"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert!(plan.get("requiredFeatures").is_none());
+        assert!(plan["features"].get("httpClient").is_none());
         assert!(plan["features"].get("network").is_none());
 
         fs::remove_dir_all(&root).expect("test directory should be removable");

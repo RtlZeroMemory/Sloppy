@@ -262,7 +262,8 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !sl_str_equal(http_client->v8_intrinsic_namespace,
                       sl_str_from_cstr("__sloppy.httpClient")) ||
         !http_client->requires_v8_intrinsics || http_client->available ||
-        (http_client->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_NET)) == 0U ||
+        (http_client->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_NET)) != 0U ||
+        (http_client->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U ||
         (http_client->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U ||
         (http_client->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CRYPTO)) == 0U)
     {

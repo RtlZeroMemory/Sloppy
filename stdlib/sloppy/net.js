@@ -490,28 +490,30 @@ const TcpListener = Object.freeze({
 });
 
 function httpClientUnavailable(operation) {
-    throw new SloppyNetError(
-        "HttpClientUnavailableError",
-        `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE: HttpClient.${operation} is contract-visible, but the outbound HTTP client transport is not implemented in this runtime lane.`,
+    return Promise.reject(
+        new SloppyNetError(
+            "HttpClientUnavailableError",
+            `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE: HttpClient.${operation} is contract-visible, but the outbound HTTP client transport is not implemented in this runtime lane.`,
+        ),
     );
 }
 
 function createHttpClientFacade(baseOptions = undefined) {
     const client = {
         request() {
-            httpClientUnavailable("request");
+            return httpClientUnavailable("request");
         },
         get() {
-            httpClientUnavailable("get");
+            return httpClientUnavailable("get");
         },
         post() {
-            httpClientUnavailable("post");
+            return httpClientUnavailable("post");
         },
         getJson() {
-            httpClientUnavailable("getJson");
+            return httpClientUnavailable("getJson");
         },
         postJson() {
-            httpClientUnavailable("postJson");
+            return httpClientUnavailable("postJson");
         },
     };
     Object.defineProperty(client, "__sloppyHttpClientOptions", {
@@ -526,19 +528,19 @@ const HttpClient = Object.freeze({
         return createHttpClientFacade(options);
     },
     request() {
-        httpClientUnavailable("request");
+        return httpClientUnavailable("request");
     },
     get() {
-        httpClientUnavailable("get");
+        return httpClientUnavailable("get");
     },
     post() {
-        httpClientUnavailable("post");
+        return httpClientUnavailable("post");
     },
     getJson() {
-        httpClientUnavailable("getJson");
+        return httpClientUnavailable("getJson");
     },
     postJson() {
-        httpClientUnavailable("postJson");
+        return httpClientUnavailable("postJson");
     },
 });
 
