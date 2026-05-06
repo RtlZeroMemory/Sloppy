@@ -129,8 +129,10 @@ fatal/replacement behavior, streaming partial sequences, BOM preservation, arbit
 roundtrips, deferred Compression/Checksum stubs, and V8-gated active/inactive
 `__sloppy.codec` namespace smoke coverage. CORE-CODEC-01.E adds Binary reader/writer
 endian, signed/unsigned width, 64-bit BigInt, bounds, seek, embedded-byte, and writer
-capacity vectors. Later implementation tests must still cover compression, streaming
-compression, and checksum vectors without claiming
+capacity vectors. CORE-CODEC-01.F/G adds JS stdlib tests for compression option
+validation, bounded async-iterable transform behavior, cancellation/deadline checks, and
+V8-gated zlib gzip/gunzip roundtrip, corrupt stream, and decompression-limit evidence.
+Later implementation tests must still cover checksum vectors and final conformance without claiming
 Node Buffer/Web Streams/Bun/Deno compatibility, benchmark performance, or public alpha
 readiness.
 

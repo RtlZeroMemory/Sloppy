@@ -12,6 +12,7 @@
     "libpq",
     "sqlite3",
     "xxhash",
-    "yyjson"
+    "yyjson",
+    "zlib"
   ]
 }

@@ -1,10 +1,11 @@
 # Codec API Architecture
 
-Status: CORE-CODEC-01.E implementation slice. CORE-CODEC-01.A/B defined the
+Status: CORE-CODEC-01.F/G implementation slice. CORE-CODEC-01.A/B defined the
 `sloppy/codec` surface, backend/dependency policy, feature metadata, diagnostics, and
 safety model; CORE-CODEC-01.C/D/I implements Base64, Base64Url, Hex, UTF-8 encode/decode,
 the streaming UTF-8 decoder, bootstrap exports, and the feature-gated V8 namespace marker.
-CORE-CODEC-01.E implements Binary reader/writer. Compression, Checksums, examples, and
+CORE-CODEC-01.E implements Binary reader/writer. CORE-CODEC-01.F/G implements zlib-backed
+gzip/gunzip and bounded async-iterable compression transforms. Checksums, examples, and
 final conformance goldens remain deferred.
 
 ## Goals
@@ -92,6 +93,7 @@ Compression and checksums:
 ```ts
 const gz = await Compression.gzip(bytes);
 const raw2 = await Compression.gunzip(gz);
+const stream = Compression.gzipStream(chunks, { signal, deadline });
 const crc = Checksums.crc32(bytes);
 ```
 
@@ -140,17 +142,24 @@ const crc = Checksums.crc32(bytes);
 ## Compression Policy
 
 - No custom compression algorithms.
-- Gzip/gunzip is the first selected required API.
-- Deflate/inflate is selected only if the same vetted backend can expose it cleanly.
+- Gzip/gunzip uses the vetted `zlib` backend selected for CORE-CODEC-01.F/G.
+- Deflate/inflate remains deferred until the same backend API is documented and tested
+  without expanding the first gzip/gunzip surface.
 - Brotli and zstd are deferred until a dependency is selected and default gates can report
   unavailable backends honestly.
-- Compression work that can materially block the V8 owner thread must run through a
-  Slop-owned offload/async path and settle Promises on the owner thread.
+- The native V8 gzip/gunzip bridge is capped to 1 MiB inline input; larger inputs fail
+  before entering zlib. Any future larger or incremental native backend must offload work
+  away from the V8 owner thread and settle Promises on that owner thread.
 - Decompression has an explicit maximum output policy to protect against decompression
-  bombs. Exceeding the limit fails before reporting partial success.
-- Streaming compression uses a Slop Transform-style API, not a Web Streams compatibility
-  promise. Backpressure, cancellation, deadline, terminal-state, late-completion, and
-  cleanup-once rules follow `docs/concurrency.md`.
+  bombs. `Compression.gunzip(bytes, { maxOutputBytes })` defaults to 64 MiB and exceeding
+  the configured limit fails before reporting partial success.
+- `Compression.gzip(bytes, { level })` accepts integer levels `0..9` and defaults to `6`.
+- Streaming compression uses a Slop async-iterable Transform-style API, not a Web Streams
+  compatibility promise. The current implementation accepts sync or async iterables of
+  `Uint8Array` chunks, copies them into a bounded input buffer, invokes the same native
+  gzip/gunzip backend once, and yields a single owned output chunk when the consumer pulls.
+  It checks `signal` and `deadline` before chunk reads, before backend invocation, and
+  after backend completion; cleanup is idempotent and no native handles are exposed.
 
 ## Checksums
 
@@ -169,10 +178,10 @@ Public import: `sloppy/codec`.
 
 Private V8 intrinsic namespace: `__sloppy.codec`.
 
-Dependencies: `core` and `v8`. The Base64/Base64Url/Hex/UTF-8 and Binary implementations
-are bootstrap stdlib helpers, while the private `__sloppy.codec` namespace marks active
-Plan-driven V8 registration. Later Compression slices may add native bridge functions
-under `src/engine/v8/*`.
+Dependencies: `core`, `v8`, and `zlib`. The Base64/Base64Url/Hex/UTF-8 and Binary
+implementations are bootstrap stdlib helpers. The private `__sloppy.codec` namespace is
+registered only for active Plan-driven V8 execution and exposes bounded native gzip/gunzip
+helpers under `src/engine/v8/*`.
 
 Compiler behavior:
 
@@ -182,7 +191,7 @@ Compiler behavior:
 - future PRs may record statically visible compression/checksum use and checksum
   security-context warnings.
 
-Runtime behavior through CORE-CODEC-01.E:
+Runtime behavior through CORE-CODEC-01.F/G:
 
 - `stdlib.codec` is known to the feature registry;
 - default availability is true when V8 is available;
@@ -190,8 +199,10 @@ Runtime behavior through CORE-CODEC-01.E:
   runtime-feature diagnostics;
 - `Base64`, `Base64Url`, `Hex`, `Text.utf8`, and `Binary` are implemented in
   `stdlib/sloppy/codec.js` and staged into the classic generated-app runtime;
-- `Compression` and `Checksums` expose deterministic deferred stubs until their dedicated
-  implementation PRs land.
+- `Compression.gzip`, `Compression.gunzip`, `Compression.gzipStream`, and
+  `Compression.gunzipStream` are implemented in the stdlib surface and call the active
+  `__sloppy.codec` V8 bridge for gzip/gunzip bytes;
+- `Checksums` exposes deterministic deferred stubs until CORE-CODEC-01.H/J lands.
 
 ## Diagnostics
 
@@ -219,11 +230,12 @@ pointers, V8 handles, OS handles, or package-manager state.
 
 Default tests now prove the RFC 4648 Base64/Base64Url vectors, Hex vectors, arbitrary-byte
 roundtrips, UTF-8 fatal/replacement behavior, streaming partial-sequence handling, BOM
-preservation, Binary reader/writer endian and bounds behavior, stdlib export shape, and
-deterministic Compression/Checksum deferred stubs. V8-gated tests prove only
-active/inactive `__sloppy.codec` namespace registration. They do not prove Compression,
-Checksums, compression backend availability, streaming compression backpressure,
-cancellation, performance, package readiness, or final conformance coverage.
+preservation, Binary reader/writer endian and bounds behavior, stdlib export shape, the JS
+compression option/backpressure/cancellation/deadline surface, and deterministic Checksum
+deferred stubs. V8-gated tests prove active/inactive `__sloppy.codec` registration plus
+real zlib-backed gzip/gunzip roundtrips, corrupt input, and decompression limit
+diagnostics. They do not prove Checksums, performance, package readiness, public streaming
+API compatibility, brotli/zstd/deflate support, or final conformance coverage.
 Evidence lanes remain separate: default, V8-gated, package, dependency-backed,
 streaming/stress, and benchmark.
 

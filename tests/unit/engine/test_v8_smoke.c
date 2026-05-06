@@ -1402,17 +1402,38 @@ static int test_codec_intrinsic_namespace_registered_when_active(void)
         return 422;
     }
 
-    if (expect_status(
-            sl_engine_eval_source(engine, sl_str_from_cstr("v8-codec-active.js"),
-                                  sl_str_from_cstr("globalThis.sloppy_codec_active = function "
-                                                   "() {"
-                                                   "  return globalThis.__sloppy.codec && "
-                                                   "typeof globalThis.__sloppy.codec === 'object'"
-                                                   "    ? 'codec-active-ok'"
-                                                   "    : 'codec-missing';"
-                                                   "};"),
-                                  &diag),
-            SL_STATUS_OK) != 0)
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-codec-active.js"),
+                          sl_str_from_cstr("globalThis.sloppy_codec_active = function "
+                                           "() {"
+                                           "  const c = globalThis.__sloppy.codec;"
+                                           "  if (!c || typeof c.gzip !== 'function' || "
+                                           "typeof c.gunzip !== 'function') {"
+                                           "    return 'codec-missing';"
+                                           "  }"
+                                           "  const input = new Uint8Array([0, 104, 105, "
+                                           "255]);"
+                                           "  const gz = c.gzip(input, 6);"
+                                           "  const out = c.gunzip(gz, 64);"
+                                           "  const same = out.length === input.length && "
+                                           "out.every((byte, index) => byte === "
+                                           "input[index]);"
+                                           "  const limited = (() => { try { c.gunzip(gz, "
+                                           "1); return false; } catch (error) { return "
+                                           "String(error.message).includes("
+                                           "'SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED'); "
+                                           "} })();"
+                                           "  const corrupt = (() => { try { c.gunzip(new "
+                                           "Uint8Array([1,2,3]), 64); return false; } "
+                                           "catch (error) { return String(error.message)"
+                                           ".includes('SLOPPY_E_CODEC_COMPRESSED_STREAM_"
+                                           "CORRUPT'); } })();"
+                                           "  return 'codec-active-ok:' + gz[0] + ':' + "
+                                           "gz[1] + ':' + same + ':' + limited + ':' + "
+                                           "corrupt;"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 423;
@@ -1428,7 +1449,7 @@ static int test_codec_intrinsic_namespace_registered_when_active(void)
     }
 
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("codec-active-ok")))
+        !sl_str_equal(result.text, sl_str_from_cstr("codec-active-ok:31:139:true:true:true")))
     {
         sl_engine_destroy(engine);
         return 425;

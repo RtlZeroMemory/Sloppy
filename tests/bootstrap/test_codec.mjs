@@ -145,6 +145,70 @@ assertCodecError(() => Binary.writer().u8(256), "SLOPPY_E_CODEC_BINARY_INVALID_E
 assertCodecError(() => Binary.writer().u64le(-1n), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
 assert.throws(() => Binary.reader([]), TypeError);
 
+async function collectAsyncBytes(stream) {
+    const chunks = [];
+    for await (const chunk of stream) {
+        chunks.push(chunk);
+    }
+    assert.equal(chunks.length, 1);
+    return chunks[0];
+}
+
+const previousSloppy = globalThis.__sloppy;
+try {
+    const fakeGzipPrefix = new Uint8Array([0x1f, 0x8b, 0x08, 0x00]);
+    globalThis.__sloppy = {
+        ...(previousSloppy ?? {}),
+        codec: {
+            gzip(bytes, level) {
+                assert(level >= 0 && level <= 9);
+                const output = new Uint8Array(fakeGzipPrefix.length + bytes.length);
+                output.set(fakeGzipPrefix, 0);
+                output.set(bytes, fakeGzipPrefix.length);
+                return output;
+            },
+            gunzip(bytes, maxOutputBytes) {
+                assert(maxOutputBytes >= 0);
+                assertBytes(bytes.slice(0, fakeGzipPrefix.length), fakeGzipPrefix);
+                if (bytes.length - fakeGzipPrefix.length > maxOutputBytes) {
+                    throw new Error("SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED: fake output exceeded limit");
+                }
+                return bytes.slice(fakeGzipPrefix.length);
+            },
+        },
+    };
+
+    const compressed = await Compression.gzip(arbitraryBytes, { level: 9 });
+    assertBytes(compressed.slice(0, 4), fakeGzipPrefix);
+    assertBytes(await Compression.gunzip(compressed), arbitraryBytes);
+    await assert.rejects(() => Compression.gunzip(compressed, { maxOutputBytes: 1 }), /SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED/);
+    await assert.rejects(() => Compression.gzip(new Uint8Array(2 ** 20 + 1)), TypeError);
+    await assert.rejects(() => Compression.gzip(arbitraryBytes, { level: 10 }), TypeError);
+    await assert.rejects(() => Compression.gunzip(compressed, { maxOutputBytes: 2 ** 40 }), TypeError);
+
+    const streamingCompressed = await collectAsyncBytes(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])]));
+    assertBytes(await collectAsyncBytes(Compression.gunzipStream([streamingCompressed])), new Uint8Array([1, 2]));
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])], { maxInputBytes: 1 })),
+        TypeError,
+    );
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gzipStream([new Uint8Array([1])], { signal: { aborted: true, reason: "stop" } })),
+        (error) => error.name === "CancelledError",
+    );
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gunzipStream([compressed], { deadline: { remainingMs: () => 0 } })),
+        (error) => error.name === "TimeoutError",
+    );
+    assert.throws(() => Compression.gzipStream(null), TypeError);
+} finally {
+    if (previousSloppy === undefined) {
+        delete globalThis.__sloppy;
+    } else {
+        globalThis.__sloppy = previousSloppy;
+    }
+}
+
 await assert.rejects(() => Compression.gzip(new Uint8Array(0)), /SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE/);
 assertCodecError(() => Checksums.crc32(new Uint8Array(0)), "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM");
 
