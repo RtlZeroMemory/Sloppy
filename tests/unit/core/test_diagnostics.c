@@ -708,7 +708,7 @@ static int test_codec_code_names(void)
         return 161;
     }
     if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING),
-                         sl_str_from_cstr("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT")) != 0)
+                         sl_str_from_cstr("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING")) != 0)
     {
         return 162;
     }
@@ -957,7 +957,8 @@ static int test_codec_diagnostic_json_goldens(void)
     if (expect_codec_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_FEATURE_UNAVAILABLE,
             "codec feature is unavailable",
-            "Enable stdlib.codec only in a runtime lane with registered codec backends.",
+            "Enable stdlib.codec only in a codec-enabled runtime lane; compression also "
+            "requires registered codec backends.",
             "tests/golden/diagnostics/codec_feature_unavailable.json") != 0)
     {
         return 170;

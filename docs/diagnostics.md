@@ -690,7 +690,7 @@ is inactive. Other codec-specific codes are reserved for transformation/API fail
 - `SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED` for decompression output limits;
 - `SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT` for corrupt compressed input;
 - `SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM` for unsupported checksum algorithms;
-- `SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT` for statically visible security-looking
+- `SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING` for statically visible security-looking
   checksum use.
 
 Codec diagnostics may name operation, encoding, checksum algorithm, backend family, byte

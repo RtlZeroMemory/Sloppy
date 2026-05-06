@@ -375,8 +375,8 @@ static SlStr sl_diag_codec_code_name(SlDiagCode code)
         return sl_diag_literal("SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM",
                                sizeof("SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM") - 1U);
     case SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING:
-        return sl_diag_literal("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT",
-                               sizeof("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT") - 1U);
+        return sl_diag_literal("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING",
+                               sizeof("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }

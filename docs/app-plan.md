@@ -105,8 +105,8 @@ install the first core `__sloppy.fs` V8 bridge and stdlib `File` wrappers.
 CORE-CRYPTO-01.A/B adds the `stdlib.crypto` descriptor and compiler activation for
 `sloppy/crypto`, while keeping it unavailable by default until implementations land.
 CORE-CODEC-01.A/B adds the `stdlib.codec` descriptor and compiler activation for
-`sloppy/codec`, while keeping it unavailable by default until Base64/Hex/Text/Binary/
-Compression/Checksum implementations land.
+`sloppy/codec`, while keeping it unavailable by default until Base64/Base64Url/Hex/Text/
+Binary/Compression/Checksum implementations land.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same

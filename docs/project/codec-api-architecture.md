@@ -201,7 +201,7 @@ Stable Codec diagnostics:
 - `SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED`
 - `SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT`
 - `SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM`
-- `SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT`
+- `SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING`
 
 Codec diagnostics may name operation, encoding, algorithm id, backend family, byte length,
 limit, and option shape. They must not include raw tokens, secret-like values, native
