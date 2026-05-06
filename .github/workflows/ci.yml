@@ -165,9 +165,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSVC developer environment
-        uses: ilammy/msvc-dev-cmd@v1
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -256,9 +253,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup MSVC developer environment
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -608,10 +602,6 @@ jobs:
           }
           "SLOPPY_V8_ROOT=$v8Root" | Out-File -FilePath $env:GITHUB_ENV -Append
           "configured=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Setup MSVC developer environment
-        if: steps.v8.outputs.configured == 'true'
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Setup Rust
         if: steps.v8.outputs.configured == 'true'

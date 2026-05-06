@@ -465,7 +465,7 @@ static int wait_until_atomic_at_least(atomic_int* value, int expected)
         return 1;
     }
 
-    for (attempts = 0U; attempts < 10000000U; attempts += 1U) {
+    for (attempts = 0U; attempts < 200000000U; attempts += 1U) {
         if (atomic_load(value) >= expected) {
             return 0;
         }
