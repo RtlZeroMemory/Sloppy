@@ -2768,12 +2768,338 @@ Reason:
         }),
     });
 
+    const DEFAULT_BINARY_WRITER_CAPACITY = 64;
+    const DEFAULT_BINARY_WRITER_MAX_CAPACITY = 64 * 1024 * 1024;
+    const UINT64_MAX = (1n << 64n) - 1n;
+    const INT64_MIN = -(1n << 63n);
+    const INT64_MAX = (1n << 63n) - 1n;
+
+    function binaryBoundsError(message) {
+        return codecError("SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS", message);
+    }
+
+    function binaryFieldError(message) {
+        return codecError("SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE", message);
+    }
+
+    function requireNonNegativeInteger(value, operation) {
+        if (!Number.isSafeInteger(value) || value < 0) {
+            throw binaryFieldError(`${operation} requires a non-negative safe integer.`);
+        }
+        return value;
+    }
+
+    function requireIntegerInRange(value, min, max, operation) {
+        if (!Number.isInteger(value) || value < min || value > max) {
+            throw binaryFieldError(`${operation} value is outside the supported field range.`);
+        }
+        return value;
+    }
+
+    function requireBigIntInRange(value, min, max, operation) {
+        if (typeof value !== "bigint" || value < min || value > max) {
+            throw binaryFieldError(`${operation} value is outside the supported field range.`);
+        }
+        return value;
+    }
+
+    function readUnsignedNumber(bytes, offset, width, littleEndian) {
+        let value = 0;
+        for (let index = 0; index < width; index += 1) {
+            const byte = littleEndian ? bytes[offset + index] : bytes[offset + width - 1 - index];
+            value += byte * 2 ** (8 * index);
+        }
+        return value;
+    }
+
+    function readUnsignedBigInt(bytes, offset, width, littleEndian) {
+        let value = 0n;
+        if (littleEndian) {
+            for (let index = width - 1; index >= 0; index -= 1) {
+                value = (value << 8n) | BigInt(bytes[offset + index]);
+            }
+        } else {
+            for (let index = 0; index < width; index += 1) {
+                value = (value << 8n) | BigInt(bytes[offset + index]);
+            }
+        }
+        return value;
+    }
+
+    function writeUnsignedNumber(bytes, offset, width, value, littleEndian) {
+        for (let index = 0; index < width; index += 1) {
+            const byte = Math.floor(value / 2 ** (8 * index)) & 0xff;
+            bytes[offset + (littleEndian ? index : width - 1 - index)] = byte;
+        }
+    }
+
+    function writeUnsignedBigInt(bytes, offset, width, value, littleEndian) {
+        for (let index = 0; index < width; index += 1) {
+            const byte = Number((value >> (8n * BigInt(index))) & 0xffn);
+            bytes[offset + (littleEndian ? index : width - 1 - index)] = byte;
+        }
+    }
+
+    class BinaryReader {
+        #bytes;
+        #offset = 0;
+
+        constructor(bytes) {
+            this.#bytes = new Uint8Array(requireBytes(bytes, "Binary.reader"));
+        }
+
+        position() {
+            return this.#offset;
+        }
+
+        remaining() {
+            return this.#bytes.length - this.#offset;
+        }
+
+        seek(position) {
+            position = requireNonNegativeInteger(position, "BinaryReader.seek");
+            if (position > this.#bytes.length) {
+                throw binaryBoundsError("BinaryReader.seek moved beyond the input length.");
+            }
+            this.#offset = position;
+            return this;
+        }
+
+        bytes(length) {
+            length = requireNonNegativeInteger(length, "BinaryReader.bytes");
+            const offset = this.#reserve(length, "BinaryReader.bytes");
+            return this.#bytes.slice(offset, offset + length);
+        }
+
+        u8() {
+            return this.#readNumber(1, false, false, "BinaryReader.u8");
+        }
+
+        i8() {
+            return this.#readNumber(1, true, false, "BinaryReader.i8");
+        }
+
+        u16le() {
+            return this.#readNumber(2, false, true, "BinaryReader.u16le");
+        }
+
+        u16be() {
+            return this.#readNumber(2, false, false, "BinaryReader.u16be");
+        }
+
+        i16le() {
+            return this.#readNumber(2, true, true, "BinaryReader.i16le");
+        }
+
+        i16be() {
+            return this.#readNumber(2, true, false, "BinaryReader.i16be");
+        }
+
+        u32le() {
+            return this.#readNumber(4, false, true, "BinaryReader.u32le");
+        }
+
+        u32be() {
+            return this.#readNumber(4, false, false, "BinaryReader.u32be");
+        }
+
+        i32le() {
+            return this.#readNumber(4, true, true, "BinaryReader.i32le");
+        }
+
+        i32be() {
+            return this.#readNumber(4, true, false, "BinaryReader.i32be");
+        }
+
+        u64le() {
+            return this.#readBigInt(false, true, "BinaryReader.u64le");
+        }
+
+        u64be() {
+            return this.#readBigInt(false, false, "BinaryReader.u64be");
+        }
+
+        i64le() {
+            return this.#readBigInt(true, true, "BinaryReader.i64le");
+        }
+
+        i64be() {
+            return this.#readBigInt(true, false, "BinaryReader.i64be");
+        }
+
+        #reserve(length, operation) {
+            if (length > this.remaining()) {
+                throw binaryBoundsError(`${operation} requires ${length} byte(s), but only ${this.remaining()} remain.`);
+            }
+            const offset = this.#offset;
+            this.#offset += length;
+            return offset;
+        }
+
+        #readNumber(width, signed, littleEndian, operation) {
+            const offset = this.#reserve(width, operation);
+            const unsigned = readUnsignedNumber(this.#bytes, offset, width, littleEndian);
+            if (!signed) {
+                return unsigned;
+            }
+            const signBoundary = 2 ** (width * 8 - 1);
+            const fullRange = 2 ** (width * 8);
+            return unsigned >= signBoundary ? unsigned - fullRange : unsigned;
+        }
+
+        #readBigInt(signed, littleEndian, operation) {
+            const offset = this.#reserve(8, operation);
+            const unsigned = readUnsignedBigInt(this.#bytes, offset, 8, littleEndian);
+            if (!signed) {
+                return unsigned;
+            }
+            return unsigned > INT64_MAX ? unsigned - (1n << 64n) : unsigned;
+        }
+    }
+
+    class BinaryWriter {
+        #bytes;
+        #length = 0;
+        #maxCapacity;
+
+        constructor(options = {}) {
+            options = validateOptionsObject(options, "Binary.writer");
+            rejectUnknownOptions(options, new Set(["initialCapacity", "maxCapacity"]), "Binary.writer");
+            const initialCapacity =
+                options.initialCapacity === undefined
+                    ? DEFAULT_BINARY_WRITER_CAPACITY
+                    : requireNonNegativeInteger(options.initialCapacity, "Binary.writer initialCapacity");
+            this.#maxCapacity =
+                options.maxCapacity === undefined
+                    ? DEFAULT_BINARY_WRITER_MAX_CAPACITY
+                    : requireNonNegativeInteger(options.maxCapacity, "Binary.writer maxCapacity");
+            if (initialCapacity > this.#maxCapacity) {
+                throw binaryFieldError("Binary.writer initialCapacity must not exceed maxCapacity.");
+            }
+            this.#bytes = new Uint8Array(initialCapacity);
+        }
+
+        position() {
+            return this.#length;
+        }
+
+        toBytes() {
+            return this.#bytes.slice(0, this.#length);
+        }
+
+        bytes(bytes) {
+            bytes = requireBytes(bytes, "BinaryWriter.bytes");
+            const offset = this.#reserve(bytes.length, "BinaryWriter.bytes");
+            this.#bytes.set(bytes, offset);
+            return this;
+        }
+
+        u8(value) {
+            return this.#writeNumber(1, requireIntegerInRange(value, 0, 0xff, "BinaryWriter.u8"), true);
+        }
+
+        i8(value) {
+            return this.#writeNumber(1, requireIntegerInRange(value, -0x80, 0x7f, "BinaryWriter.i8"), true);
+        }
+
+        u16le(value) {
+            return this.#writeNumber(2, requireIntegerInRange(value, 0, 0xffff, "BinaryWriter.u16le"), true);
+        }
+
+        u16be(value) {
+            return this.#writeNumber(2, requireIntegerInRange(value, 0, 0xffff, "BinaryWriter.u16be"), false);
+        }
+
+        i16le(value) {
+            return this.#writeNumber(2, requireIntegerInRange(value, -0x8000, 0x7fff, "BinaryWriter.i16le"), true);
+        }
+
+        i16be(value) {
+            return this.#writeNumber(2, requireIntegerInRange(value, -0x8000, 0x7fff, "BinaryWriter.i16be"), false);
+        }
+
+        u32le(value) {
+            return this.#writeNumber(4, requireIntegerInRange(value, 0, 0xffffffff, "BinaryWriter.u32le"), true);
+        }
+
+        u32be(value) {
+            return this.#writeNumber(4, requireIntegerInRange(value, 0, 0xffffffff, "BinaryWriter.u32be"), false);
+        }
+
+        i32le(value) {
+            return this.#writeNumber(4, requireIntegerInRange(value, -0x80000000, 0x7fffffff, "BinaryWriter.i32le"), true);
+        }
+
+        i32be(value) {
+            return this.#writeNumber(4, requireIntegerInRange(value, -0x80000000, 0x7fffffff, "BinaryWriter.i32be"), false);
+        }
+
+        u64le(value) {
+            return this.#writeBigInt(requireBigIntInRange(value, 0n, UINT64_MAX, "BinaryWriter.u64le"), true);
+        }
+
+        u64be(value) {
+            return this.#writeBigInt(requireBigIntInRange(value, 0n, UINT64_MAX, "BinaryWriter.u64be"), false);
+        }
+
+        i64le(value) {
+            value = requireBigIntInRange(value, INT64_MIN, INT64_MAX, "BinaryWriter.i64le");
+            return this.#writeBigInt(value < 0n ? value + (1n << 64n) : value, true);
+        }
+
+        i64be(value) {
+            value = requireBigIntInRange(value, INT64_MIN, INT64_MAX, "BinaryWriter.i64be");
+            return this.#writeBigInt(value < 0n ? value + (1n << 64n) : value, false);
+        }
+
+        #reserve(length, operation) {
+            if (length > this.#maxCapacity - this.#length) {
+                throw binaryFieldError(`${operation} would exceed Binary.writer maxCapacity.`);
+            }
+            const offset = this.#length;
+            this.#length += length;
+            this.#ensureCapacity(this.#length);
+            return offset;
+        }
+
+        #ensureCapacity(required) {
+            if (required <= this.#bytes.length) {
+                return;
+            }
+            let next = Math.max(1, this.#bytes.length);
+            while (next < required) {
+                next *= 2;
+                if (next > this.#maxCapacity) {
+                    next = this.#maxCapacity;
+                    break;
+                }
+            }
+            const grown = new Uint8Array(next);
+            grown.set(this.#bytes.subarray(0, this.#length));
+            this.#bytes = grown;
+        }
+
+        #writeNumber(width, value, littleEndian) {
+            const bits = width * 8;
+            const unsigned = value < 0 ? value + 2 ** bits : value;
+            const offset = this.#reserve(width, "BinaryWriter.writeNumber");
+            writeUnsignedNumber(this.#bytes, offset, width, unsigned, littleEndian);
+            return this;
+        }
+
+        #writeBigInt(value, littleEndian) {
+            const offset = this.#reserve(8, "BinaryWriter.writeBigInt");
+            writeUnsignedBigInt(this.#bytes, offset, 8, value, littleEndian);
+            return this;
+        }
+    }
+
     const Binary = Object.freeze({
-        reader() {
-            throw codecError("SLOPPY_E_CODEC_FEATURE_UNAVAILABLE", "Binary.reader lands in CORE-CODEC-01.E.");
+        reader(bytes) {
+            return new BinaryReader(bytes);
         },
-        writer() {
-            throw codecError("SLOPPY_E_CODEC_FEATURE_UNAVAILABLE", "Binary.writer lands in CORE-CODEC-01.E.");
+        writer(options) {
+            return new BinaryWriter(options);
         },
     });
 

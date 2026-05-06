@@ -118,10 +118,10 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   options, doctor/audit, examples, and final conformance goldens. Do not claim external
   network access, TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
   performance, or public alpha readiness from the client slice.
-- Codec API implementation after CORE-CODEC-01.C/D/I: `stdlib.codec`, the `sloppy/codec`
+- Codec API implementation after CORE-CODEC-01.E: `stdlib.codec`, the `sloppy/codec`
   import contract, backend/dependency policy, stable diagnostics, Base64/Base64Url/Hex,
   UTF-8 text and streaming decoder, bootstrap/runtime exports, and V8 namespace smoke
-  coverage exist. #626 through #631 must still implement Binary reader/writer,
+  coverage exist. #626 adds Binary reader/writer. #627 through #631 must still implement
   compression/decompression and streaming transforms, CRC32 checksums, examples, final
   vectors, and conformance goldens. Do not claim Node Buffer, Web Streams, Bun/Deno,
   compression backend, benchmark, or public alpha readiness from this slice.

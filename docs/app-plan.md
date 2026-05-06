@@ -105,8 +105,9 @@ install the first core `__sloppy.fs` V8 bridge and stdlib `File` wrappers.
 CORE-CRYPTO-01.A/B adds the `stdlib.crypto` descriptor and compiler activation for
 `sloppy/crypto`, while keeping it unavailable by default until implementations land.
 CORE-CODEC-01.A/B adds the `stdlib.codec` descriptor and compiler activation for
-`sloppy/codec`, while keeping it unavailable by default until Base64/Base64Url/Hex/Text/
-Binary/Compression/Checksum implementations land.
+`sloppy/codec`; CORE-CODEC-01.C/D/I enables Base64/Base64Url/Hex/Text helpers and
+CORE-CODEC-01.E adds Binary reader/writer while Compression/Checksum implementations
+remain future slices.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
@@ -229,8 +230,9 @@ registered vetted random/hash/HMAC/password/non-crypto hash backends and the
 `__sloppy.crypto` intrinsic namespace.
 The network descriptor is known but unavailable by default until CORE-NET implementation
 PRs register TCP backends and V8 intrinsics.
-The codec descriptor is known but unavailable by default until implementation PRs register
-vetted codec backends and V8 intrinsics.
+The codec descriptor is active for V8 plans after CORE-CODEC-01.C/D/I registered the
+`__sloppy.codec` namespace marker; Base64/Base64Url/Hex/Text and Binary are implemented in
+the bootstrap JS surface while Compression/Checksum backends remain future slices.
 
 ## Schema Sections
 

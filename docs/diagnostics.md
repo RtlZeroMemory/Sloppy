@@ -704,7 +704,8 @@ throughput, broad DNS behavior, or benchmark evidence.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
-UTF-8 JS-facing transformation errors. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the
+UTF-8 JS-facing transformation errors. CORE-CODEC-01.E uses the Binary diagnostics for
+bounds-checked reads and field/capacity validation. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the
 startup/Plan-gating diagnostic when `stdlib.codec` is required but the runtime feature is
 not enabled before execution begins. `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` is reserved for
 already-reached codec API paths when the API surface exists but a specific codec backend or
@@ -732,9 +733,9 @@ failures:
 Codec diagnostics may name operation, encoding, checksum algorithm, backend family, byte
 length, and configured limits. They must not include raw tokens, secret-looking values,
 native pointers, V8 handles, OS handles, or package-manager state. Default codec vectors
-prove Base64/Base64Url/Hex/UTF-8 behavior only for the current stdlib surface; they do not
-prove Binary, Compression, Checksums, compression backend availability, streaming
-compression behavior, performance, or final conformance coverage.
+prove Base64/Base64Url/Hex/UTF-8 and Binary reader/writer behavior only for the current
+stdlib surface; they do not prove Compression, Checksums, compression backend
+availability, streaming compression behavior, performance, or final conformance coverage.
 
 App/request lifecycle diagnostics:
 
