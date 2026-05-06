@@ -707,7 +707,8 @@ slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/
 UTF-8 JS-facing transformation errors. CORE-CODEC-01.E uses the Binary diagnostics for
 bounds-checked reads and field/capacity validation. CORE-CODEC-01.F/G uses compression
 backend, decompression-limit, and corrupt-stream diagnostics for zlib-backed gzip/gunzip
-paths. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the startup/Plan-gating diagnostic when `stdlib.codec` is required but the runtime feature is
+paths. CORE-CODEC-01.H/J adds the checksum security-context warning for statically visible
+`Checksums.crc32` use in security-looking contexts. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the startup/Plan-gating diagnostic when `stdlib.codec` is required but the runtime feature is
 not enabled before execution begins. `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` is reserved for
 already-reached codec API paths when the API surface exists but a specific codec backend or
 optional lane is inactive. Other codec-specific codes are reserved for transformation/API
@@ -737,8 +738,8 @@ native pointers, V8 handles, OS handles, or package-manager state. Default codec
 prove Base64/Base64Url/Hex/UTF-8, Binary reader/writer behavior, and JS compression
 surface behavior for the current stdlib surface. V8-gated codec vectors prove zlib-backed
 gzip/gunzip success, corrupt input, and decompression-limit failures. They do not prove
-Checksums, performance, public streaming compatibility, brotli/zstd/deflate support, or
-final conformance coverage.
+checksum security, performance, public streaming compatibility, brotli/zstd/deflate
+support, package readiness, or public alpha coverage.
 
 App/request lifecycle diagnostics:
 

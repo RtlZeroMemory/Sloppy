@@ -1093,10 +1093,31 @@ const Compression = Object.freeze({
     },
 });
 
+function makeCrc32Table() {
+    const table = new Uint32Array(256);
+    for (let index = 0; index < table.length; index += 1) {
+        let value = index;
+        for (let bit = 0; bit < 8; bit += 1) {
+            value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0);
+        }
+        table[index] = value >>> 0;
+    }
+    return table;
+}
+
+const CRC32_TABLE = makeCrc32Table();
+
+function crc32(bytes) {
+    bytes = requireBytes(bytes, "Checksums.crc32");
+    let crc = 0xffffffff;
+    for (let index = 0; index < bytes.byteLength; index += 1) {
+        crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ bytes[index]) & 0xff];
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+}
+
 const Checksums = Object.freeze({
-    crc32() {
-        throw codecError("SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM", "Checksums.crc32 lands in CORE-CODEC-01.H.");
-    },
+    crc32,
 });
 
 export { Base64, Base64Url, Binary, Checksums, Compression, Hex, Text };

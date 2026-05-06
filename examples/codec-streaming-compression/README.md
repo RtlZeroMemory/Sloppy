@@ -1,0 +1,15 @@
+# Codec Streaming Compression Example
+
+Status: CORE-CODEC-01.J source example. This example documents the async-iterable
+compression transform shape with Time deadline/cancellation options.
+
+```js
+import { Compression } from "sloppy/codec";
+import { Deadline } from "sloppy/time";
+
+const stream = Compression.gzipStream(chunks, { signal, deadline: Deadline.after(1000) });
+```
+
+The stream helpers are Slop async-iterable transforms, not Web Streams. They keep bounded
+buffering and terminal-state behavior explicit. This example has no Node, Bun, or Deno
+compatibility promise, no package-manager behavior, and no benchmark claim.

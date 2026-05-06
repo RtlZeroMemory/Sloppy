@@ -120,14 +120,15 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   examples, final conformance goldens, and broader stress/torture evidence. Do not claim
   external network access, TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
   performance, or public alpha readiness from the listener slice.
-- Codec API implementation after CORE-CODEC-01.F/G: `stdlib.codec`, the `sloppy/codec`
+- Codec API implementation after CORE-CODEC-01.H/J: `stdlib.codec`, the `sloppy/codec`
   import contract, backend/dependency policy, stable diagnostics, Base64/Base64Url/Hex,
   UTF-8 text and streaming decoder, bootstrap/runtime exports, and V8 namespace smoke
   coverage exist. Binary reader/writer, zlib-backed gzip/gunzip, and bounded
-  async-iterable gzip/gunzip transforms exist. #629/#631 must still implement CRC32
-  checksums, examples, final vectors, and conformance goldens. Do not claim Node Buffer,
-  Web Streams, Bun/Deno, broader compression algorithms, incremental native streaming,
-  benchmark, package, or public alpha readiness from this slice.
+  async-iterable gzip/gunzip transforms exist. CRC32, checksum security-context warnings,
+  source examples, final vectors, and the conformance evidence index now exist. Do not
+  claim Node Buffer, Web Streams, Bun/Deno, broader compression algorithms, incremental
+  native streaming, checksum security, benchmark, package, or public alpha readiness from
+  this slice.
 - Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded

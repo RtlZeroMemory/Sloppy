@@ -88,6 +88,12 @@ assert.throws(() => Base64Url.decode("", new Date()), TypeError);
 assert.throws(() => Text.utf8.decode(new Uint8Array(0), { ignoreBOM: true }), TypeError);
 assert.throws(() => Text.utf8.decoder(new Uint8Array(0)), TypeError);
 
+assert.equal(Checksums.crc32(new Uint8Array(0)), 0);
+assert.equal(Checksums.crc32(ascii("123456789")), 0xcbf43926);
+assert.equal(Checksums.crc32(ascii("hello")), 0x3610a686);
+assert.equal(Checksums.crc32(new Uint8Array([0, 1, 2, 3, 255])), 0x7b35f858);
+assert.throws(() => Checksums.crc32("123456789"), TypeError);
+
 const binaryReader = Binary.reader(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 255, 254, 253, 252, 0]));
 assert.equal(binaryReader.position(), 0);
 assert.equal(binaryReader.remaining(), 13);
@@ -294,13 +300,13 @@ try {
 }
 
 await assert.rejects(() => Compression.gzip(new Uint8Array(0)), /SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE/);
-assertCodecError(() => Checksums.crc32(new Uint8Array(0)), "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM");
 
 const previousRuntime = globalThis.__sloppy_runtime;
 await import("../../stdlib/sloppy/internal/runtime-classic.js");
 try {
     assert.equal(globalThis.__sloppy_runtime.Base64.encode(ascii("runtime")), "cnVudGltZQ==");
     assert.equal(globalThis.__sloppy_runtime.Text.utf8.decode(ascii("classic")), "classic");
+    assert.equal(globalThis.__sloppy_runtime.Checksums.crc32(ascii("123456789")), 0xcbf43926);
     const runtimeWriter = globalThis.__sloppy_runtime.Binary.writer();
     runtimeWriter.u16le(0x1234).bytes(new Uint8Array([0]));
     assertBytes(runtimeWriter.toBytes(), new Uint8Array([0x34, 0x12, 0]));

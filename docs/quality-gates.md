@@ -71,8 +71,9 @@ Base64/Hex/Text/Binary/Compression/Checksum correctness, V8 execution, package r
 streaming/backpressure behavior, compression backend availability, or performance.
 CORE-CODEC-01.F/G evidence is split between default JS compression-surface tests and
 V8-gated zlib backend tests; it still does not prove Web Streams compatibility, broader
-algorithms, package readiness, or performance. Later vector/example PRs must keep checksum
-evidence separate from `sloppy/crypto` security evidence.
+algorithms, package readiness, or performance. CORE-CODEC-01.H/J adds CRC32 vectors,
+example checks, and checksum security-context warnings; this evidence remains separate from
+`sloppy/crypto` security evidence.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS

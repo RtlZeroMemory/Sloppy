@@ -104,8 +104,9 @@ CORE-CODEC-01.A/B locks the first `sloppy/codec` contract around `Base64`,
 now makes `sloppy/codec` Plan-visible as `stdlib.codec`. The current runtime surface
 implements Base64/Base64Url/Hex/Text/Binary in JS and gzip/gunzip through the active
 V8 `__sloppy.codec` zlib bridge, with bounded async-iterable compression transforms.
-Checksums and final conformance vectors remain later. The API does not promise Node
-Buffer, Web Streams, Bun, or Deno compatibility.
+CORE-CODEC-01.H/J adds CRC32 as a non-security checksum, source examples, and final
+conformance evidence. The API does not promise Node Buffer, Web Streams, Bun, or Deno
+compatibility.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.

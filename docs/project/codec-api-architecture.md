@@ -1,12 +1,12 @@
 # Codec API Architecture
 
-Status: CORE-CODEC-01.F/G implementation slice. CORE-CODEC-01.A/B defined the
+Status: CORE-CODEC-01.H/J implementation slice. CORE-CODEC-01.A/B defined the
 `sloppy/codec` surface, backend/dependency policy, feature metadata, diagnostics, and
 safety model; CORE-CODEC-01.C/D/I implements Base64, Base64Url, Hex, UTF-8 encode/decode,
 the streaming UTF-8 decoder, bootstrap exports, and the feature-gated V8 namespace marker.
 CORE-CODEC-01.E implements Binary reader/writer. CORE-CODEC-01.F/G implements zlib-backed
-gzip/gunzip and bounded async-iterable compression transforms. Checksums, examples, and
-final conformance goldens remain deferred.
+gzip/gunzip and bounded async-iterable compression transforms. CORE-CODEC-01.H/J implements
+CRC32 checksums and final source examples/conformance evidence.
 
 ## Goals
 
@@ -94,10 +94,11 @@ Compression and checksums:
 const gz = await Compression.gzip(bytes);
 const raw2 = await Compression.gunzip(gz);
 const stream = Compression.gzipStream(chunks, { signal, deadline });
+const crc = Checksums.crc32(bytes);
 ```
 
-Checksum examples land with CORE-CODEC-01.H/J, after the non-security checksum surface is
-implemented.
+CRC32 is a non-security checksum only; it is not authentication or attacker-resistant
+integrity.
 
 ## Encoding Policy
 
@@ -190,10 +191,9 @@ Compiler behavior:
 - named unaliased imports add `stdlib.codec` to Plan `requiredFeatures[]`;
 - the compiler emits `features.codec = true`;
 - the strong Plan evidence block emits `strongPlan.evidence.codec = true`;
-- future PRs may record statically visible compression/checksum use and checksum
-  security-context warnings.
+- compiler/Plan tooling records statically visible checksum security-context warnings.
 
-Runtime behavior through CORE-CODEC-01.F/G:
+Runtime behavior through CORE-CODEC-01.H/J:
 
 - `stdlib.codec` is known to the feature registry;
 - default availability is true when V8 is available;
@@ -204,7 +204,7 @@ Runtime behavior through CORE-CODEC-01.F/G:
 - `Compression.gzip`, `Compression.gunzip`, `Compression.gzipStream`, and
   `Compression.gunzipStream` are implemented in the stdlib surface and call the active
   `__sloppy.codec` V8 bridge for gzip/gunzip bytes;
-- `Checksums` exposes deterministic deferred stubs until CORE-CODEC-01.H/J lands.
+- `Checksums.crc32` is implemented in the JS stdlib and generated-app runtime surfaces.
 
 ## Diagnostics
 
@@ -233,11 +233,12 @@ pointers, V8 handles, OS handles, or package-manager state.
 Default tests now prove the RFC 4648 Base64/Base64Url vectors, Hex vectors, arbitrary-byte
 roundtrips, UTF-8 fatal/replacement behavior, streaming partial-sequence handling, BOM
 preservation, Binary reader/writer endian and bounds behavior, stdlib export shape, the JS
-compression option/backpressure/cancellation/deadline surface, and deterministic Checksum
-deferred stubs. V8-gated tests prove active/inactive `__sloppy.codec` registration plus
-real zlib-backed gzip/gunzip roundtrips, corrupt input, and decompression limit
-diagnostics. They do not prove Checksums, performance, package readiness, public streaming
-API compatibility, brotli/zstd/deflate support, or final conformance coverage.
+compression option/backpressure/cancellation/deadline surface, CRC32 known-answer vectors,
+source examples, and checksum security-context doctor warning metadata. V8-gated tests
+prove active/inactive `__sloppy.codec` registration plus real zlib-backed gzip/gunzip
+roundtrips, corrupt input, and decompression limit diagnostics. They do not prove
+performance, package readiness, public streaming API compatibility, brotli/zstd/deflate
+support, or checksum security against attackers.
 Evidence lanes remain separate: default, V8-gated, package, dependency-backed,
 streaming/stress, and benchmark.
 

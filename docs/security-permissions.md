@@ -122,12 +122,12 @@ must not block the V8 owner thread, and doctor/audit output must redact sensitiv
 details where policy requires it.
 
 CORE-CODEC-01.A/B adds the codec API contract without adding a new permission grant type.
-`sloppy/codec` is Plan-visible as `stdlib.codec`; current encoding, text, binary, and
-compression helpers are data transforms, not permission grants. Checksums are explicitly
-non-security utilities: they must not be used or documented as authentication, HMAC,
-signatures, password hashing, tokens, or attacker-resistant integrity. Security-looking
-checksum use may become a compiler warning where statically visible; security APIs remain
-under `sloppy/crypto`.
+`sloppy/codec` is Plan-visible as `stdlib.codec`; encoding, text, binary, compression, and
+checksum helpers are data transforms, not permission grants. CORE-CODEC-01.H/J implements
+CRC32 as a non-security utility and emits a static doctor warning when `Checksums.crc32`
+is visible in security-looking contexts. Checksums must not be used or documented as
+authentication, HMAC, signatures, password hashing, tokens, cryptographic hashes, or
+attacker-resistant integrity. Security APIs remain under `sloppy/crypto`.
 
 COMPILER-30.E keeps this metadata-only: supported config reads, schema declarations,
 request bindings, and `Results.*` response facts are Plan-visible for later audit and
