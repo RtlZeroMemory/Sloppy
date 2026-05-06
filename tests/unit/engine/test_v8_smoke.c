@@ -1928,8 +1928,15 @@ static int test_os_intrinsic_process_run_start_and_signals(const char* self_path
         "  const os = globalThis.__sloppy.os;"
         "  const command = \"%s\";"
         "  const run = await os.processRun(command, ['--sloppy-os-child', 'echo'], {"
-        "    capture: 'text', maxStdoutBytes: 65536, maxStderrBytes: 65536, timeoutMs: 5000"
+        "    capture: 'text', maxStdoutBytes: 2097152, maxStderrBytes: 2097152, timeoutMs: 5000"
         "  });"
+        "  const pressure = [];"
+        "  for (let index = 0; index < 70; index++) {"
+        "    pressure.push(os.processRun(command, ['--sloppy-os-child', 'echo'], {"
+        "      capture: 'text', maxStdoutBytes: 1024, maxStderrBytes: 1024, timeoutMs: 5000"
+        "    }));"
+        "  }"
+        "  const pressureResults = await Promise.all(pressure);"
         "  const proc = await os.processStart(command, ['--sloppy-os-child', 'stdin'], {"
         "    stdin: 'pipe', stdout: 'pipe', stderr: 'ignore'"
         "  });"
@@ -1941,7 +1948,8 @@ static int test_os_intrinsic_process_run_start_and_signals(const char* self_path
         "  registration.dispose();"
         "  await os.processDispose(proc);"
         "  return run.exitCode + ':' + run.stdout.trim() + ':' +"
-        "    exit.exitCode + ':' + stdout.trim();"
+        "    exit.exitCode + ':' + stdout.trim() + ':' + pressureResults.length + ':' +"
+        "    pressureResults.every((item) => item.exitCode === 5);"
         "};",
         self_js);
     if (written < 0 || (size_t)written >= sizeof(source)) {
@@ -1974,7 +1982,7 @@ static int test_os_intrinsic_process_run_start_and_signals(const char* self_path
         return 460;
     }
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("5:v8-child-output:0:v8-stdin:hello")))
+        !sl_str_equal(result.text, sl_str_from_cstr("5:v8-child-output:0:v8-stdin:hello:70:true")))
     {
         sl_engine_destroy(engine);
         return 461;

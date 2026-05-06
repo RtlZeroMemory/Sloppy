@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <new>
@@ -23,6 +24,7 @@
 constexpr size_t kOsV8DefaultArenaBytes = 1024U * 1024U;
 constexpr size_t kOsV8MaxCaptureBytes = 16U * 1024U * 1024U;
 constexpr size_t kOsV8MaxPipeReadBytes = 1024U * 1024U;
+constexpr size_t kOsV8RequestArenaSlackBytes = 4096U;
 constexpr size_t kOsV8MaxArgCount = 256U;
 constexpr size_t kOsV8MaxArgBytes = 32768U;
 
@@ -405,6 +407,17 @@ bool os_v8_request_arena_init(const std::shared_ptr<SlV8OsRequest>& request, siz
         sl_arena_init(&request->arena, request->storage.data(), request->storage.size()));
 }
 
+size_t os_v8_process_run_arena_bytes(const SlV8OsRequest& request)
+{
+    size_t stdout_bytes = request.max_stdout_bytes == 0U ? 65536U : request.max_stdout_bytes;
+    size_t stderr_bytes = request.max_stderr_bytes == 0U ? 65536U : request.max_stderr_bytes;
+    size_t capacity = kOsV8RequestArenaSlackBytes;
+
+    capacity += stdout_bytes + 1U;
+    capacity += stderr_bytes + 1U;
+    return std::max(capacity, kOsV8DefaultArenaBytes);
+}
+
 std::shared_ptr<OsV8Process> os_v8_process_create(void)
 {
     std::shared_ptr<OsV8Process> process(new (std::nothrow) OsV8Process());
@@ -727,15 +740,31 @@ bool os_v8_post_completion(const std::shared_ptr<SlV8OsRequest>& request)
     completion.dispatch = os_v8_completion_dispatch;
     completion.cleanup = os_v8_completion_cleanup;
 
-    request->completion_posted.store(true);
-    SlStatus post_status = sl_async_loop_post(backend->async_loop, &completion);
-    if (sl_status_is_ok(post_status)) {
-        return true;
+    for (;;) {
+        {
+            std::lock_guard<std::mutex> lock(backend->os_mutex);
+            if (request->cancelled.load() || backend->os_shutting_down ||
+                backend->async_loop == nullptr)
+            {
+                request->cancelled.store(true);
+                delete payload;
+                return false;
+            }
+        }
+
+        request->completion_posted.store(true);
+        SlStatus post_status = sl_async_loop_post(backend->async_loop, &completion);
+        if (sl_status_is_ok(post_status)) {
+            return true;
+        }
+        request->completion_posted.store(false);
+        if (sl_status_code(post_status) != SL_STATUS_CAPACITY_EXCEEDED) {
+            request->cancelled.store(true);
+            delete payload;
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    request->completion_posted.store(false);
-    request->cancelled.store(true);
-    delete payload;
-    os_v8_remove_request(request);
     return false;
 }
 
@@ -1017,7 +1046,7 @@ void os_v8_process_run_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         !os_v8_string_arg(isolate, args[0], &request->command) ||
         !os_v8_array_to_strings(isolate, context, args[1], &request->args) ||
         !os_v8_parse_run_options(isolate, context, args[2], request.get()) ||
-        !os_v8_request_arena_init(request, kOsV8DefaultArenaBytes))
+        !os_v8_request_arena_init(request, os_v8_process_run_arena_bytes(*request)))
     {
         (void)os_v8_reject_promise(isolate, context, resolver,
                                    "SLOPPY_E_INVALID_ARGUMENT: Process.run arguments invalid",
