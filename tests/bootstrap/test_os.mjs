@@ -23,6 +23,7 @@ assert.throws(() => Environment.get(""), TypeError);
 assert.throws(() => Environment.has("A=B"), TypeError);
 assert.throws(() => Environment.list({ values: true }), TypeError);
 await assertOsRejects(Process.run("echo", []), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
+assert.throws(() => Signals.onShutdown("not-a-function"), TypeError);
 assertOsError(() => Signals.onShutdown(() => {}), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
 
 const previousSloppy = globalThis.__sloppy;
@@ -96,6 +97,14 @@ try {
                     },
                     dispose() {
                         disposed = true;
+                    },
+                };
+            },
+            signalsOnShutdown(handler) {
+                this.shutdownHandler = handler;
+                return {
+                    dispose() {
+                        globalThis.__sloppy.os.shutdownHandler = undefined;
                     },
                 };
             },
@@ -180,6 +189,23 @@ try {
         "SLOPPY_E_OS_PROCESS_CANCELLED",
     );
     await assert.rejects(Process.start("tool", [], { stdout: "inherit" }), TypeError);
+
+    const shutdownEvents = [];
+    const registration = Signals.onShutdown(async (ctx) => {
+        shutdownEvents.push(ctx);
+    });
+    await globalThis.__sloppy.os.shutdownHandler({ signal: "SIGTERM", forced: true, reason: "test" });
+    assert.deepEqual(shutdownEvents, [Object.freeze({ signal: "SIGTERM", forced: true, reason: "test" })]);
+    registration.dispose();
+    assert.equal(globalThis.__sloppy.os.shutdownHandler, undefined);
+
+    Signals.onShutdown(() => {
+        throw new Error("boom");
+    });
+    await assertOsRejects(
+        globalThis.__sloppy.os.shutdownHandler({ signal: "SIGINT" }),
+        "SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE",
+    );
 } finally {
     if (previousSloppy === undefined) {
         delete globalThis.__sloppy;

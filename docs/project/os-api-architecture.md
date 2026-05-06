@@ -38,9 +38,9 @@ CORE-OS-01.C/H makes `stdlib.os` available for the `System` and `Environment` ru
 surface. CORE-OS-01.D adds native `sl_os_process_run` and the bootstrap `Process.run`
 facade. CORE-OS-01.E/F adds native `sl_os_process_start`, an opaque ProcessHandle, pipe
 operations, wait timeout, terminate/kill/cancel, and the bootstrap `Process.start` facade.
-The V8 process bridge remains deferred until process work can be scheduled without
-blocking the V8 owner thread. Signals remain deferred to later CORE-OS-01 slices and fail
-closed through the JS facade.
+CORE-OS-01.G adds the bootstrap `Signals.onShutdown` facade over the Slop-owned bridge
+shape. The V8 process bridge and native platform signal loop remain deferred until host
+work can be scheduled without blocking the V8 owner thread.
 
 ## API Contract
 
@@ -246,11 +246,18 @@ feature/Plan/diagnostic/compiler metadata lane.
 - Bootstrap JS `Process.start`, `ProcessHandle`, pipe `read`, `readText`, `readLines`, and
   stdin `writeText` facade over the private bridge shape.
 
-## Deferred Beyond CORE-OS-01.E/F
+## Implemented In CORE-OS-01.G
+
+- Bootstrap JS `Signals.onShutdown` registration through the private OS bridge shape.
+- Normalized shutdown handler context with `signal`, `forced`, and `reason`.
+- Registration disposal forwarding and stable `SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE`
+  wrapping when user shutdown handlers throw or reject.
+
+## Deferred Beyond CORE-OS-01.G
 
 - V8 `processRun` intrinsic and owner-thread-safe native scheduling.
 - V8 `processStart` intrinsic and owner-thread-safe native scheduling.
+- Native platform signal registration and app-host dispatch wiring.
 - Shutdown-driven process cancellation and late-completion runtime hardening.
-- Signals and app lifecycle integration.
 - Doctor/audit examples, conformance, and goldens beyond diagnostic shape.
 - Public alpha docs and benchmark/performance claims.

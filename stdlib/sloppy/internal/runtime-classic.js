@@ -5512,6 +5512,28 @@ Reason:
         }
     }
 
+    function sloppyShutdownHandler(handler) {
+        if (typeof handler !== "function") {
+            throw new TypeError("Signals.onShutdown requires a function.");
+        }
+        return handler;
+    }
+
+    function sloppyShutdownContext(ctx = undefined) {
+        const source = ctx === null || typeof ctx !== "object" ? {} : ctx;
+        return Object.freeze({
+            signal: typeof source.signal === "string" ? source.signal : "shutdown",
+            forced: source.forced === true,
+            reason: source.reason,
+        });
+    }
+
+    function sloppySignalHandlerFailure(error) {
+        const failure = sloppyOsError("SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE", "shutdown signal handler failed");
+        failure.cause = error;
+        return failure;
+    }
+
     const System = Object.freeze({
         get platform() {
             return sloppyNativeOs().systemInfo().platform;
@@ -5573,8 +5595,19 @@ Reason:
     });
 
     const Signals = Object.freeze({
-        onShutdown() {
-            throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "Signals.onShutdown is deferred to CORE-OS-01.G.");
+        onShutdown(handler) {
+            handler = sloppyShutdownHandler(handler);
+            const bridge = sloppyNativeOs();
+            if (typeof bridge.signalsOnShutdown !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS shutdown signal bridge is unavailable.");
+            }
+            return bridge.signalsOnShutdown(async (ctx = undefined) => {
+                try {
+                    await handler(sloppyShutdownContext(ctx));
+                } catch (error) {
+                    throw sloppySignalHandlerFailure(error);
+                }
+            });
         },
     });
 
