@@ -176,7 +176,7 @@ int test_loopback_write_read_and_close()
     options = sl_tcp_connect_options_default(sl_str_from_cstr("127.0.0.1"), server.port);
     options.no_delay = true;
     options.keep_alive.enabled = true;
-    options.keep_alive.delay_ms = 30000U;
+    options.keep_alive.delay_ms = 1U;
 
     if (expect_status(sl_tcp_client_connect(&arena, &options, &connection, nullptr),
                       SL_STATUS_OK) != 0 ||

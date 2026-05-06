@@ -3172,6 +3172,27 @@ Reason:
             if (value instanceof NetworkAddress) {
                 return value;
             }
+            if (typeof value === "string") {
+                if (value.startsWith("[")) {
+                    const end = value.indexOf("]");
+                    if (end < 0 || value[end + 1] !== ":") {
+                        throw new TypeError("NetworkAddress IPv6 text must be [host]:port.");
+                    }
+                    return new NetworkAddress(
+                        value.slice(1, end),
+                        sloppyNetPort(Number(value.slice(end + 2)), true),
+                    );
+                }
+                const firstColon = value.indexOf(":");
+                const lastColon = value.lastIndexOf(":");
+                if (firstColon <= 0 || firstColon !== lastColon || lastColon === value.length - 1) {
+                    throw new TypeError("NetworkAddress text must be host:port or [ipv6]:port.");
+                }
+                return new NetworkAddress(
+                    value.slice(0, lastColon),
+                    sloppyNetPort(Number(value.slice(lastColon + 1)), true),
+                );
+            }
             if (value === null || typeof value !== "object") {
                 throw new TypeError("NetworkAddress.parse requires an address object.");
             }
@@ -3227,6 +3248,18 @@ Reason:
                 throw new TypeError("TcpClient.connect timeoutMs must be a non-negative number.");
             }
             normalized.timeoutMs = Math.ceil(options.timeoutMs);
+        }
+        if (options.keepAlive !== undefined) {
+            if (!isPlainObject(options.keepAlive) || typeof options.keepAlive.enabled !== "boolean") {
+                throw new TypeError("TcpClient.connect keepAlive must be { enabled, delayMs? }.");
+            }
+            normalized.keepAlive = { enabled: options.keepAlive.enabled };
+            if (options.keepAlive.delayMs !== undefined) {
+                if (!Number.isFinite(options.keepAlive.delayMs) || options.keepAlive.delayMs < 0) {
+                    throw new TypeError("TcpClient.connect keepAlive.delayMs must be non-negative.");
+                }
+                normalized.keepAlive.delayMs = Math.ceil(options.keepAlive.delayMs);
+            }
         }
         return normalized;
     }

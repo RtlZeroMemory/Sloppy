@@ -153,6 +153,14 @@ await import("../../stdlib/sloppy/internal/runtime-classic.js");
 try {
     assert.equal(globalThis.__sloppy_runtime.Base64.encode(ascii("runtime")), "cnVudGltZQ==");
     assert.equal(globalThis.__sloppy_runtime.Text.utf8.decode(ascii("classic")), "classic");
+    const runtimeAddress = globalThis.__sloppy_runtime.NetworkAddress.parse("[::1]:443");
+    assert.equal(runtimeAddress.host, "::1");
+    assert.equal(runtimeAddress.port, 443);
+    assert.equal(String(runtimeAddress), "[::1]:443");
+    assert.throws(
+        () => globalThis.__sloppy_runtime.NetworkAddress.parse("::1:443"),
+        /host:port/,
+    );
     const runtimeWriter = globalThis.__sloppy_runtime.Binary.writer();
     runtimeWriter.u16le(0x1234).bytes(new Uint8Array([0]));
     assertBytes(runtimeWriter.toBytes(), new Uint8Array([0x34, 0x12, 0]));

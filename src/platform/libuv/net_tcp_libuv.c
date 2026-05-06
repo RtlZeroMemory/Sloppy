@@ -612,6 +612,12 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
     }
     if (options->keep_alive.enabled) {
         unsigned int delay_seconds = options->keep_alive.delay_ms / 1000U;
+        if ((options->keep_alive.delay_ms % 1000U) != 0U) {
+            delay_seconds += 1U;
+        }
+        if (delay_seconds == 0U) {
+            delay_seconds = 1U;
+        }
         uv_status = uv_tcp_keepalive(&connection->handle, 1, delay_seconds);
         if (uv_status != 0) {
             connection->state = SL_TCP_CONNECTION_FAILED;
