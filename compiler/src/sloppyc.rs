@@ -9,7 +9,8 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BindingPattern, CallExpression, ChainElement, Declaration,
     Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
-    ImportDeclarationSpecifier, ObjectPropertyKind, PropertyKey, PropertyKind, Statement,
+    ImportDeclarationSpecifier, ImportOrExportKind, ObjectPropertyKind, PropertyKey, PropertyKind,
+    Statement,
 };
 use oxc_parser::Parser;
 use oxc_span::Span;
@@ -1417,6 +1418,26 @@ fn validate_module_sloppy_net_import(
     validate_module_sloppy_import(path, import, "sloppy/net", sloppy_net_import_name_supported)
 }
 
+fn import_specifier_is_runtime_value(
+    import: &ImportDeclaration<'_>,
+    specifier: &oxc_ast::ast::ImportSpecifier<'_>,
+) -> bool {
+    import.import_kind != ImportOrExportKind::Type
+        && specifier.import_kind != ImportOrExportKind::Type
+}
+
+fn import_has_runtime_value_specifier(import: &ImportDeclaration<'_>) -> bool {
+    let Some(specifiers) = &import.specifiers else {
+        return false;
+    };
+    specifiers.iter().any(|specifier| {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            return false;
+        };
+        import_specifier_is_runtime_value(import, specifier)
+    })
+}
+
 fn extract_import(
     path: &Path,
     graph: &ModuleGraph,
@@ -1500,7 +1521,9 @@ fn extract_import(
                     "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
                 ) && imported == local
                 {
-                    state.fs_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.fs_imported = true;
+                    }
                 } else {
                     if matches!(
                         imported,
@@ -1534,7 +1557,9 @@ fn extract_import(
                 let imported = specifier.imported.name().as_str();
                 let local = specifier.local.name.as_str();
                 if sloppy_time_import_name_supported(imported) && imported == local {
-                    state.time_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.time_imported = true;
+                    }
                 } else {
                     if sloppy_time_import_name_supported(imported) {
                         state.unsupported_import_alias = true;
@@ -1565,7 +1590,9 @@ fn extract_import(
                 let imported = specifier.imported.name().as_str();
                 let local = specifier.local.name.as_str();
                 if sloppy_crypto_import_name_supported(imported) && imported == local {
-                    state.crypto_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.crypto_imported = true;
+                    }
                 } else {
                     if sloppy_crypto_import_name_supported(imported) {
                         state.unsupported_import_alias = true;
@@ -1596,7 +1623,9 @@ fn extract_import(
                 let imported = specifier.imported.name().as_str();
                 let local = specifier.local.name.as_str();
                 if sloppy_net_import_name_supported(imported) && imported == local {
-                    state.net_imported = true;
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.net_imported = true;
+                    }
                 } else {
                     if sloppy_net_import_name_supported(imported) {
                         state.unsupported_import_alias = true;
@@ -2987,17 +3016,23 @@ fn extract_relative_module(
                 }
                 if import_source == "sloppy/time" {
                     validate_module_sloppy_time_import(&imported.path, import)?;
-                    graph.uses_time_runtime = true;
+                    if import_has_runtime_value_specifier(import) {
+                        graph.uses_time_runtime = true;
+                    }
                     continue;
                 }
                 if import_source == "sloppy/crypto" {
                     validate_module_sloppy_crypto_import(&imported.path, import)?;
-                    graph.uses_crypto_runtime = true;
+                    if import_has_runtime_value_specifier(import) {
+                        graph.uses_crypto_runtime = true;
+                    }
                     continue;
                 }
                 if import_source == "sloppy/net" {
                     validate_module_sloppy_net_import(&imported.path, import)?;
-                    graph.uses_net_runtime = true;
+                    if import_has_runtime_value_specifier(import) {
+                        graph.uses_net_runtime = true;
+                    }
                     continue;
                 }
                 if import_source.starts_with("./") || import_source.starts_with("../") {
@@ -6880,6 +6915,54 @@ export default app;
     }
 
     #[test]
+    fn function_module_type_only_sloppy_net_import_does_not_emit_required_feature() {
+        let root = fixture_temp_dir("function-module-type-only-net-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("tcp.ts"),
+            r#"import { Results } from "sloppy";
+import type { TcpClient } from "sloppy/net";
+
+export function tcpModule(app) {
+    app.get("/tcp", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { tcpModule } from "./modules/tcp.ts";
+
+const app = Sloppy.create();
+app.useModule(tcpModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let input = root.join("input.ts");
+        fs::write(&input, source).expect("fixture input should be writable");
+        let app = extract(&input, source).expect("fixture should extract");
+        assert!(!app.uses_net_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results } = __sloppyRuntime;"));
+        assert!(!emitted_js.source.contains("TcpClient"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert!(plan.get("requiredFeatures").is_none());
+        assert!(plan["features"].get("network").is_none());
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
     fn function_module_invalid_sloppy_time_import_uses_import_diagnostic() {
         let root = fixture_temp_dir("function-module-invalid-time-import");
         let modules = root.join("modules");
@@ -8104,6 +8187,37 @@ export default app;
             value["strongPlan"]["evidence"]["network"],
             serde_json::json!(true)
         );
+    }
+
+    #[test]
+    fn type_only_sloppy_net_import_does_not_emit_runtime_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import type { TcpClient } from "sloppy/net";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("type-only sloppy/net import should be recognized");
+        assert!(!app.uses_net_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results } = __sloppyRuntime;"));
+        assert!(!emitted_js.source.contains("TcpClient"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert!(value.get("requiredFeatures").is_none());
+        assert!(value["features"].get("network").is_none());
+        assert!(value["strongPlan"]["evidence"].get("network").is_none());
     }
 
     #[test]
