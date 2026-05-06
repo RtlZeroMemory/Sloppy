@@ -25,8 +25,10 @@ scope, so it does not prove V8 handler execution.
 
 ## Localhost Transport Cases
 
-`conformance.transport.localhost_mvp` runs the existing `core.http.transport` executable
-under an ENGINE-19 name. It proves the localhost transport lane:
+`core.http.transport` remains the detailed executable for the complete localhost transport
+suite. The conformance registrations run targeted cases from that executable so the
+default CI lane keeps the evidence names visible without rerunning the full transport
+suite under every alias. Together, those cases prove the localhost transport lane:
 
 - raw TCP bytes over `127.0.0.1` with an ephemeral port;
 - GET success, POST text body success, route miss, method mismatch, and safe dispatch
@@ -48,7 +50,7 @@ under an ENGINE-19 name. It proves the localhost transport lane:
   no-write-after-terminal cleanup paths;
 - client disconnect, timeout, shutdown, response-capacity failure, and cleanup-once paths.
 
-HTTP-25.F also registers matrix-aligned aliases over the same bounded executable:
+HTTP-25.F also registers matrix-aligned targeted aliases over the same bounded executable:
 
 - `conformance.transport.keep_alive`;
 - `conformance.transport.keep_alive_idle_timeout`;
