@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "lane": "source-input",
+  "mode": "negative",
+  "source": "src/app.ts",
+  "sloppyJson": "sloppy.json",
+  "environment": "Development",
+  "once": {
+    "method": "GET",
+    "target": "/users/ada"
+  },
+  "expectedExit": 1,
+  "expected": {
+    "stdoutContains": [],
+    "stderrContains": [
+      "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
+    ],
+    "artifactDir": ".sloppy/cache/dev/source-input",
+    "planContains": [],
+    "diagnosticCodes": [
+      "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
+    ]
+  },
+  "requiredFeatures": [
+    "http-routing"
+  ],
+  "requiresV8": false,
+  "requiresPlatform": "any",
+  "requiresDependency": "sloppyc"
+}

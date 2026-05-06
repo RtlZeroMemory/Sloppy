@@ -1,0 +1,11 @@
+{
+  "contract": "The source-input compiler emits a Plan with the declared route and handler identity.",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/hello/{name}",
+      "handler": "Hello.Get"
+    }
+  ],
+  "sourceMap": "present"
+}

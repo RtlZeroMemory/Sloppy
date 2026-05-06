@@ -4,6 +4,15 @@ This tracker records real deferred work after the EPIC-00 through EPIC-20 roadma
 It is not a wishlist for random expansion; items here are known gaps between current repo
 state and an honest public-alpha path.
 
+## TEST-PLATFORM-01 Deferred Test-Platform Work
+
+TEST-PLATFORM-01 adds the default-safe fuzz/property seed replay lane, opt-in libFuzzer
+targets, source-input/package metadata harnesses, cross-API indexing, V8 bridge templates,
+and static governance checks. Remaining test-platform debt is deliberately lane-separated:
+full #652 cross-API executable apps, long #493 torture/crash-resistance runs, live-provider
+service jobs, and sanitizer/memory-safety promotion are not default pass evidence until
+their own bounded tasks make them stable and reviewable.
+
 ## Strategic Engine Foundation Blockers
 
 These blockers now define the next Slop Engine phase. They supersede treating benchmark

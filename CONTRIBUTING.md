@@ -50,6 +50,29 @@ tooling lives under `tools/windows/`; future Unix tooling belongs under `tools/u
 - no ignored/generated artifacts are staged.
 - platform-boundary checks pass.
 
+## Evidence Lane Report
+
+Every implementation PR must report test evidence by lane and status. Use the lane names
+from `docs/testing-strategy.md` and `docs/quality-gates.md`: default non-V8,
+compiler/Plan, V8-gated, source-input, package outside-checkout, platform-specific,
+dependency-backed, live-network/live-provider, fuzz/property, stress/torture,
+sanitizer/memory-safety, and benchmark. Status values are PASS, FAIL, SKIPPED,
+UNAVAILABLE, DEFERRED, or NOT RUN. Skipped optional gates are not pass claims.
+
+The report must state:
+
+- expected behavior under test and the source-of-truth contract;
+- positive and negative paths covered;
+- evidence lanes run with exact commands;
+- skipped or unavailable lanes with exact reasons;
+- goldens changed and why the new output is intended;
+- secret/redaction checks run;
+- known deferred coverage with issue references.
+
+Benchmark results are never correctness evidence. V8, package, live-provider, fuzz,
+stress/torture, and platform-specific results must stay separate from default non-V8
+evidence.
+
 
 ## Project Issue Policy
 

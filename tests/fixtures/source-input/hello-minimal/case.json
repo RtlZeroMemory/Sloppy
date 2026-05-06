@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "lane": "source-input",
+  "mode": "positive",
+  "source": "src/app.ts",
+  "sloppyJson": "sloppy.json",
+  "environment": "Development",
+  "once": {
+    "method": "GET",
+    "target": "/hello/Ada"
+  },
+  "expectedExit": 0,
+  "expected": {
+    "stdoutContains": [
+      "\"hello\":\"Ada\""
+    ],
+    "stderrContains": [],
+    "artifactDir": ".sloppy/cache/dev/source-input",
+    "planContains": [
+      "Hello.Get",
+      "/hello/{name}"
+    ],
+    "diagnosticCodes": []
+  },
+  "requiredFeatures": [
+    "http-routing",
+    "codec-json"
+  ],
+  "requiresV8": true,
+  "requiresPlatform": "any",
+  "requiresDependency": "sloppyc"
+}

@@ -1,0 +1,9 @@
+POST /upload HTTP/1.1
+Host: example.invalid
+Transfer-Encoding: chunked
+
+5
+hello
+0
+
+ignored-trailer

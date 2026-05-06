@@ -1,0 +1,9 @@
+{
+  "contract": "The source-input fixture harness records the compiler diagnostic because no Plan exists for doctor.",
+  "status": "not-run",
+  "diagnostics": [
+    {
+      "code": "SLOPPYC_E_UNSUPPORTED_DYNAMIC_ROUTE_PATTERN"
+    }
+  ]
+}

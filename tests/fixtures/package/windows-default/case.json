@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "archiveKind": "windows-zip",
+  "lane": "package outside-checkout",
+  "requiresV8Runtime": false,
+  "requiredFiles": [
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "manifest.json"
+  ],
+  "requiredDirectories": [
+    "share/sloppy/licenses",
+    "share/sloppy/schemas"
+  ],
+  "requiredStdlibAssets": [
+    "index.js",
+    "app.js",
+    "results.js",
+    "schema.js",
+    "data.js",
+    "bootstrap.manifest.json",
+    "internal/intrinsics.js"
+  ],
+  "excludedPaths": [
+    ".git",
+    ".sdeps",
+    "build",
+    "compiler/target",
+    "target",
+    "vcpkg_installed"
+  ],
+  "excludedFiles": [
+    "lib/sloppy/engines/v8/include/v8.h",
+    "lib/sloppy/engines/v8/lib/v8_monolith.lib"
+  ],
+  "expectedManifest": {
+    "name": "sloppy",
+    "containsStdlib": true,
+    "containsV8Sdk": false
+  },
+  "outsideCheckoutCompile": false,
+  "expectedRun": {
+    "artifactMode": true,
+    "sourceCompileInRun": false,
+    "nonV8Result": "SKIPPED",
+    "v8Result": "separate lane"
+  },
+  "prebuiltArtifactFixture": {
+    "path": "compiler/tests/fixtures/hello-mapget/expected",
+    "once": {
+      "method": "GET",
+      "target": "/"
+    },
+    "stdoutContains": [
+      "Hello from Sloppy"
+    ]
+  },
+  "mustNotCompileSource": true
+}

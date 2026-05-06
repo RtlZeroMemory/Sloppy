@@ -2,11 +2,11 @@
 
 This directory owns the isolated C++ V8 bridge.
 
-TASK 07.A adds only SDK detection and build-option plumbing. TASK 07.B adds the
-engine-neutral C ABI outside this directory plus a noop engine stub. TASK 07.C adds the
-first opt-in smoke bridge: initialize V8, create one isolate/context, evaluate classic
-JavaScript source, call a named global zero-argument function, and copy string results back
-to C.
+The V8 bridge has grown beyond the initial TASK 07 smoke. It still remains opt-in and
+isolated under this directory. Current V8-gated evidence covers SDK detection, the
+engine-neutral C ABI, isolate/context lifecycle, classic-script evaluation, owner-thread
+checks, Promise scheduling, runtime bridge smoke, selected stdlib intrinsic registration,
+HTTP dispatch execution, and guarded provider/feature activation.
 
 Rules:
 
@@ -29,8 +29,9 @@ Rules:
   directly to `engine_v8.cc`.
 - `engine_v8_internal.h` is private to this directory. It exposes the V8 backend shape and
   resource table to sibling intrinsic modules without making V8 a public runtime type.
-- No ESM/module resolver, Sloppy Plan handler execution, event loop, workers, inspector,
-  snapshots, Node compatibility, or package-manager behavior belongs in TASK 07.C.
+- No Node compatibility, package-manager behavior, inspector, snapshots, or raw native
+  handle exposure belongs in this directory. Missing feature paths must report stable
+  diagnostics instead of fake-success placeholders.
 - Process-wide V8 platform state is initialized once and intentionally kept alive for the
   process lifetime until a future explicit runtime shutdown task decides disposal policy.
 - `sl_engine_destroy` releases per-engine isolate/context state only.

@@ -1,6 +1,16 @@
 # Integration Tests
 
-Integration tests will verify compiled Sloppy app artifacts running through the native host.
+Integration tests verify compiled Sloppy app artifacts, runtime artifact loading, source-map
+metadata, and selected V8-gated execution paths through the native host.
 
-No integration tests exist yet because the compiler, plan loader, route host, and V8 bridge
-are intentionally not implemented in this phase.
+Current integration coverage includes handwritten artifact execution, compiler-emitted
+artifact execution, HTTP dispatch execution, invalid descriptor failure behavior, source
+input handoff through `tests/cmake/check_source_input_run.cmake`, and runtime-artifact
+boundary tests that keep bootstrap artifact reads separate from public app filesystem
+policy.
+
+Integration evidence is lane-specific. Default non-V8 integration can prove artifact
+validation, source-input compiler handoff, and clear unsupported diagnostics. V8-gated
+integration proves execution only when the V8 SDK lane is configured. Package
+outside-checkout evidence lives in `tools/windows/test-package.ps1` and
+`tests/fixtures/package`.

@@ -1,0 +1,5 @@
+{
+  "contract": "The compiler rejects dynamic route inputs before runtime execution.",
+  "routes": [],
+  "sourceMap": "not emitted"
+}

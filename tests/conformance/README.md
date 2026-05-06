@@ -7,6 +7,10 @@ Evidence lanes and naming policy are defined by
 matrix owns default non-V8, V8-gated, localhost transport, SQLite/capability, package
 outside-checkout, live-provider optional, stress/smoke, and benchmark harness reporting
 rules.
+TEST-PLATFORM-01 extends the conformance index with source-input fixtures, package
+outside-checkout metadata, fuzz/property seed replay, resource/lifecycle aliases,
+cross-API scenario tracking, and the V8 bridge test template. Optional lane skips remain
+SKIPPED or UNAVAILABLE, not passing conformance evidence.
 
 This suite protects the alpha-supported workflow through the real toolchain:
 
