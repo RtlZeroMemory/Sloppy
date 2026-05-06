@@ -93,6 +93,11 @@ CORE-CRYPTO-01.C/D/F/H implements the first `sloppy/crypto` runtime surface arou
 `__sloppy.crypto` bridge. `Password` and `NonCryptoHash` remain visible but fail closed
 until their dedicated slices land. The API is Sloppy-shaped and does not promise
 WebCrypto, Node crypto, or Bun compatibility.
+CORE-NET-01.A/B locks the first `sloppy/net` TCP contract around `TcpClient`,
+`TcpListener`, `TcpConnection`, and `NetworkAddress`. The compiler now makes `sloppy/net`
+Plan-visible as `stdlib.net`, but the runtime feature remains unavailable by default until
+native TCP/libuv backends and the V8 bridge land. Development-mode loopback should stay
+easy, while strict mode remains able to require explicit external connect/listen policy.
 This facade is still in-memory and conceptual only. It does not run an app, emit a Sloppy
 Plan by itself, serve HTTP, validate requests, load module packages, or integrate native
 modules or call real database providers from JavaScript.

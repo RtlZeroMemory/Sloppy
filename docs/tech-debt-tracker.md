@@ -106,6 +106,14 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   `NonCryptoHash` support, final examples, vectors, docs, and conformance goldens. Do not
   claim randomness quality, password cost, timing resistance, performance, WebCrypto/Node/Bun
   compatibility, or public alpha readiness from the implemented shape/vector tests.
+- Network API implementation after CORE-NET-01.A/B: `stdlib.net`, the `sloppy/net` import
+  contract, development/strict network policy, lifecycle model, stable diagnostics, and
+  redaction policy exist. #586 through #592 must still implement the Slop-owned native TCP
+  contract, libuv backend, client/connection/listener APIs, streams/backpressure,
+  deadlines/cancellation, DNS/address/socket options, V8/stdlib integration,
+  doctor/audit, examples, and conformance goldens. Do not claim TCP execution, external
+  network access, TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
+  performance, or public alpha readiness from the contract slice.
 - Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded

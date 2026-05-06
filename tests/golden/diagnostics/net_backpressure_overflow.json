@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_BACKPRESSURE_OVERFLOW","severity":"error","message":"TCP backpressure buffer overflowed","hints":["Bounded network queues fail instead of growing without limit."]}

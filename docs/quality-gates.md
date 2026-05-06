@@ -59,6 +59,11 @@ lifecycle, and V8 bridge registration only. They do not prove random quality, pa
 cost, side-channel resistance, package readiness, or performance. Later vector/example PRs
 must keep secure `Hash`/`Hmac` evidence separate from explicitly non-security
 `NonCryptoHash` evidence.
+CORE-NET-01 gates must report network evidence by lane. PRs that only add the `stdlib.net`
+contract, Plan metadata, diagnostics, and policy model do not prove TCP execution, external
+network access, V8 execution, package readiness, throughput, or performance. Default tests
+must remain deterministic localhost/loopback only once TCP behavior lands; live-network and
+benchmark lanes stay optional and separately reported.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS

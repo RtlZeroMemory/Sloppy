@@ -72,6 +72,11 @@ CORE-CRYPTO-01.C/D/F/H registers the private `__sloppy.crypto` namespace for act
 constant-time helpers used by `stdlib/sloppy/crypto.js`; it does not expose raw native
 pointers or backend handles. Password hashing remains deferred because it must use the
 future offload path and settle on the V8 owner thread.
+CORE-NET-01.A/B reserves the private `__sloppy.net` namespace for active `stdlib.net`
+plans and documents the TCP policy/diagnostic contract. The namespace is not registered in
+this contract PR; runtime availability stays false until native TCP/libuv resources,
+owned async completions, and owner-thread Promise settlement are implemented in later
+CORE-NET PRs.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8

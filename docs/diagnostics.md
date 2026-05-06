@@ -667,6 +667,33 @@ Random-source, unsupported-algorithm, HMAC key, stale Secret, and constant-time 
 failures are surfaced with stable code-name strings in JS-facing errors. Shape tests and
 goldens may include operation names and algorithm ids, but never generated random bytes or
 secret material.
+CORE-NET-01.A/B adds stable Network diagnostics and JSON goldens for the contract-only
+feature/model slice. Missing or inactive `stdlib.net` uses the runtime-feature diagnostics
+above until implementation PRs register TCP backends and V8 intrinsics. Network-specific
+codes are reserved for TCP API, policy, lifecycle, and stream failures:
+
+- `SLOPPY_E_NET_FEATURE_UNAVAILABLE` for API use when the feature/backend lane is not
+  active;
+- `SLOPPY_E_NET_CONNECT_DENIED` for connect admission denied by policy;
+- `SLOPPY_E_NET_LISTEN_DENIED` for listen admission denied by policy;
+- `SLOPPY_E_NET_INVALID_HOST` for host validation or address parsing failures;
+- `SLOPPY_E_NET_INVALID_PORT` for invalid TCP port values;
+- `SLOPPY_E_NET_DNS_FAILURE` for DNS resolution failures;
+- `SLOPPY_E_NET_CONNECT_TIMEOUT` for connect deadline/timeout failures;
+- `SLOPPY_E_NET_CONNECT_CANCELLED` for caller cancellation during connect;
+- `SLOPPY_E_NET_CONNECTION_CLOSED` for operations on closed connections;
+- `SLOPPY_E_NET_STALE_HANDLE` for stale TCP resource handles;
+- `SLOPPY_E_NET_READ_WRITE_TIMEOUT` for read/write deadline failures;
+- `SLOPPY_E_NET_READ_WRITE_CANCELLED` for caller cancellation during read/write;
+- `SLOPPY_E_NET_BACKPRESSURE_OVERFLOW` for bounded queue overflow;
+- `SLOPPY_E_NET_UNSUPPORTED_OPTION` for unsupported socket options or platform behavior;
+- `SLOPPY_E_NET_BACKEND_UNAVAILABLE` for unavailable TCP backend operations.
+
+Network diagnostics may name operation, policy mode, loopback/external classification, and
+redacted endpoint shape. They must not include secrets, headers, tokens, raw sockets, libuv
+handles, OS handles, V8 handles, raw native pointers, or package-manager state. Default
+goldens prove deterministic diagnostic shape only; they do not prove TCP execution,
+external network access, throughput, V8 execution, or benchmark evidence.
 
 App/request lifecycle diagnostics:
 

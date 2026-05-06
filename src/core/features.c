@@ -70,6 +70,33 @@ static SlRuntimeFeatureDescriptor sl_feature_crypto_descriptor(SlRuntimeFeatureI
         true, true);
 }
 
+static SlRuntimeFeatureDescriptor sl_feature_fs_descriptor(SlRuntimeFeatureId id)
+{
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.fs", sizeof("stdlib.fs") - 1U),
+        sl_feature_literal("filesystem stdlib", sizeof("filesystem stdlib") - 1U),
+        sl_feature_literal("sloppy/fs", sizeof("sloppy/fs") - 1U),
+        sl_feature_literal("__sloppy.fs", sizeof("__sloppy.fs") - 1U),
+        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+        true, true, true);
+}
+
+static SlRuntimeFeatureDescriptor sl_feature_net_descriptor(SlRuntimeFeatureId id, bool available)
+{
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.net", sizeof("stdlib.net") - 1U),
+        sl_feature_literal("network stdlib", sizeof("network stdlib") - 1U),
+        sl_feature_literal("sloppy/net", sizeof("sloppy/net") - 1U),
+        sl_feature_literal("__sloppy.net", sizeof("__sloppy.net") - 1U),
+        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+        available, true, true);
+}
+
 static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
                                         const SlRuntimeFeatureAvailability* availability)
@@ -81,6 +108,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     const bool postgres = availability == NULL ? false : availability->provider_postgres;
     const bool sqlserver = availability == NULL ? false : availability->provider_sqlserver;
     const bool crypto = availability == NULL ? false : availability->stdlib_crypto;
+    const bool net = availability == NULL ? false : availability->stdlib_net;
     switch (id) {
     case SL_RUNTIME_FEATURE_CORE:
         return sl_feature_descriptor_make(
@@ -148,16 +176,10 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_time_descriptor(id);
     case SL_RUNTIME_FEATURE_STDLIB_CRYPTO:
         return sl_feature_crypto_descriptor(id, crypto);
+    case SL_RUNTIME_FEATURE_STDLIB_NET:
+        return sl_feature_net_descriptor(id, net);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
-        return sl_feature_descriptor_make(
-            id, SL_RUNTIME_FEATURE_KIND_STDLIB,
-            sl_feature_literal("stdlib.fs", sizeof("stdlib.fs") - 1U),
-            sl_feature_literal("filesystem stdlib", sizeof("filesystem stdlib") - 1U),
-            sl_feature_literal("sloppy/fs", sizeof("sloppy/fs") - 1U),
-            sl_feature_literal("__sloppy.fs", sizeof("__sloppy.fs") - 1U),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-                SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-            true, true, true);
+        return sl_feature_fs_descriptor(id);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
         return sl_feature_descriptor_make(
             id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
@@ -210,6 +232,9 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.provider_postgres = false;
     availability.provider_sqlserver = false;
     availability.stdlib_crypto = true;
+    /* Known-but-unavailable by default keeps sloppy/net import diagnostics deterministic until the
+       V8/libuv TCP backend is explicitly wired by the implementation PRs. */
+    availability.stdlib_net = false;
     return availability;
 }
 
@@ -281,7 +306,14 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.crypto"), SL_FEATURE_STR("crypto stdlib"),
          SL_FEATURE_STR("sloppy/crypto"), SL_FEATURE_STR("__sloppy.crypto"),
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
-         true, true}};
+         true, true},
+        {SL_RUNTIME_FEATURE_STDLIB_NET, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.net"), SL_FEATURE_STR("network stdlib"),
+         SL_FEATURE_STR("sloppy/net"), SL_FEATURE_STR("__sloppy.net"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+         false, true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;

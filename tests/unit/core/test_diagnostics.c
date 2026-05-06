@@ -634,14 +634,100 @@ static int test_crypto_code_names(void)
     return 0;
 }
 
-static int test_time_and_crypto_code_names(void)
+static int test_net_code_names(void)
+{
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_FEATURE_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_NET_FEATURE_UNAVAILABLE")) != 0)
+    {
+        return 140;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_DENIED),
+                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_DENIED")) != 0)
+    {
+        return 141;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_LISTEN_DENIED),
+                         sl_str_from_cstr("SLOPPY_E_NET_LISTEN_DENIED")) != 0)
+    {
+        return 142;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_INVALID_HOST),
+                         sl_str_from_cstr("SLOPPY_E_NET_INVALID_HOST")) != 0)
+    {
+        return 143;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_INVALID_PORT),
+                         sl_str_from_cstr("SLOPPY_E_NET_INVALID_PORT")) != 0)
+    {
+        return 144;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_DNS_FAILURE),
+                         sl_str_from_cstr("SLOPPY_E_NET_DNS_FAILURE")) != 0)
+    {
+        return 145;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_TIMEOUT),
+                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_TIMEOUT")) != 0)
+    {
+        return 146;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_CANCELLED),
+                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_CANCELLED")) != 0)
+    {
+        return 147;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECTION_CLOSED),
+                         sl_str_from_cstr("SLOPPY_E_NET_CONNECTION_CLOSED")) != 0)
+    {
+        return 148;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_STALE_HANDLE),
+                         sl_str_from_cstr("SLOPPY_E_NET_STALE_HANDLE")) != 0)
+    {
+        return 149;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_READ_WRITE_TIMEOUT),
+                         sl_str_from_cstr("SLOPPY_E_NET_READ_WRITE_TIMEOUT")) != 0)
+    {
+        return 150;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_READ_WRITE_CANCELLED),
+                         sl_str_from_cstr("SLOPPY_E_NET_READ_WRITE_CANCELLED")) != 0)
+    {
+        return 151;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_BACKPRESSURE_OVERFLOW),
+                         sl_str_from_cstr("SLOPPY_E_NET_BACKPRESSURE_OVERFLOW")) != 0)
+    {
+        return 152;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_UNSUPPORTED_OPTION),
+                         sl_str_from_cstr("SLOPPY_E_NET_UNSUPPORTED_OPTION")) != 0)
+    {
+        return 153;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_BACKEND_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_NET_BACKEND_UNAVAILABLE")) != 0)
+    {
+        return 154;
+    }
+
+    return 0;
+}
+
+static int test_time_crypto_and_net_code_names(void)
 {
     int result = test_time_code_names();
     if (result != 0) {
         return result;
     }
 
-    return test_crypto_code_names();
+    result = test_crypto_code_names();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_net_code_names();
 }
 
 static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
@@ -849,11 +935,157 @@ static int test_crypto_diagnostic_json_goldens(void)
     return 0;
 }
 
+static int expect_net_json_snapshot(SlDiagSeverity severity, SlDiagCode code, const char* message,
+                                    const char* hint, const char* snapshot)
+{
+    unsigned char buffer[2048];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlStr rendered;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 1;
+    }
+    if (expect_status(
+            sl_diag_builder_init(&builder, &arena, severity, code, sl_str_from_cstr(message)),
+            SL_STATUS_OK) != 0)
+    {
+        return 2;
+    }
+    if (expect_status(sl_diag_builder_add_hint(&builder, sl_str_from_cstr(hint)), SL_STATUS_OK) !=
+        0)
+    {
+        return 3;
+    }
+    if (expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0) {
+        return 4;
+    }
+    if (expect_status(sl_diag_render_json(&arena, &diag, &rendered), SL_STATUS_OK) != 0) {
+        return 5;
+    }
+    return expect_snapshot(rendered, snapshot);
+}
+
+static int test_net_diagnostic_json_goldens(void)
+{
+    if (expect_net_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_FEATURE_UNAVAILABLE,
+            "network feature is unavailable",
+            "Enable stdlib.net only in a runtime lane with registered TCP backends.",
+            "tests/golden/diagnostics/net_feature_unavailable.json") != 0)
+    {
+        return 160;
+    }
+    if (expect_net_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_CONNECT_DENIED,
+            "network connect was denied by policy",
+            "Strict network policy requires an allow rule for external connects.",
+            "tests/golden/diagnostics/net_connect_denied.json") != 0)
+    {
+        return 161;
+    }
+    if (expect_net_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LISTEN_DENIED,
+            "network listen was denied by policy",
+            "Strict network policy requires an allow rule for external listens.",
+            "tests/golden/diagnostics/net_listen_denied.json") != 0)
+    {
+        return 162;
+    }
+    if (expect_net_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_INVALID_HOST,
+                                 "network host is invalid",
+                                 "Validate host values before DNS resolution or address parsing.",
+                                 "tests/golden/diagnostics/net_invalid_host.json") != 0)
+    {
+        return 163;
+    }
+    if (expect_net_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_INVALID_PORT,
+                                 "network port is invalid",
+                                 "Ports must be integer values in the documented TCP range.",
+                                 "tests/golden/diagnostics/net_invalid_port.json") != 0)
+    {
+        return 164;
+    }
+    if (expect_net_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_DNS_FAILURE, "DNS resolution failed",
+            "DNS diagnostics must not leak sensitive endpoint details in strict policy reports.",
+            "tests/golden/diagnostics/net_dns_failure.json") != 0)
+    {
+        return 165;
+    }
+    if (expect_net_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_CONNECT_TIMEOUT,
+                                 "TCP connect timed out",
+                                 "TimeoutError is distinct from caller cancellation.",
+                                 "tests/golden/diagnostics/net_connect_timeout.json") != 0)
+    {
+        return 166;
+    }
+    if (expect_net_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_CONNECT_CANCELLED,
+                                 "TCP connect was cancelled",
+                                 "CancelledError preserves the explicit cancellation reason.",
+                                 "tests/golden/diagnostics/net_connect_cancelled.json") != 0)
+    {
+        return 167;
+    }
+    if (expect_net_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_CONNECTION_CLOSED, "TCP connection is closed",
+            "Closed connections reject further reads and writes deterministically.",
+            "tests/golden/diagnostics/net_connection_closed.json") != 0)
+    {
+        return 168;
+    }
+    if (expect_net_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_STALE_HANDLE,
+                                 "TCP handle is stale",
+                                 "Resource handles must not be reused after close or abort.",
+                                 "tests/golden/diagnostics/net_stale_handle.json") != 0)
+    {
+        return 169;
+    }
+    if (expect_net_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_READ_WRITE_TIMEOUT, "TCP read or write timed out",
+            "Read and write deadlines map to deterministic timeout diagnostics.",
+            "tests/golden/diagnostics/net_read_write_timeout.json") != 0)
+    {
+        return 170;
+    }
+    if (expect_net_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_READ_WRITE_CANCELLED,
+                                 "TCP read or write was cancelled",
+                                 "Cancellation must settle on the V8 owner thread.",
+                                 "tests/golden/diagnostics/net_read_write_cancelled.json") != 0)
+    {
+        return 171;
+    }
+    if (expect_net_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_BACKPRESSURE_OVERFLOW,
+                                 "TCP backpressure buffer overflowed",
+                                 "Bounded network queues fail instead of growing without limit.",
+                                 "tests/golden/diagnostics/net_backpressure_overflow.json") != 0)
+    {
+        return 172;
+    }
+    if (expect_net_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_UNSUPPORTED_OPTION,
+                                 "TCP option is unsupported",
+                                 "Unsupported socket options fail with platform-aware diagnostics.",
+                                 "tests/golden/diagnostics/net_unsupported_option.json") != 0)
+    {
+        return 173;
+    }
+    if (expect_net_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_BACKEND_UNAVAILABLE, "TCP backend is unavailable",
+            "Backend diagnostics name the operation without exposing raw handles.",
+            "tests/golden/diagnostics/net_backend_unavailable.json") != 0)
+    {
+        return 174;
+    }
+
+    return 0;
+}
+
 static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_NET_BACKEND_UNAVAILABLE; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -862,7 +1094,7 @@ static int test_stable_code_registry_complete(void)
     }
 
     if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE + 1U)),
+            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_NET_BACKEND_UNAVAILABLE + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
@@ -1480,6 +1712,21 @@ static int test_snapshots(void)
     return 0;
 }
 
+static int test_stdlib_diagnostic_json_goldens(void)
+{
+    int result = test_time_diagnostic_json_goldens();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_crypto_diagnostic_json_goldens();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_net_diagnostic_json_goldens();
+}
+
 int main(void)
 {
     int result = test_names_and_spans();
@@ -1496,7 +1743,7 @@ int main(void)
         return result;
     }
 
-    result = test_time_and_crypto_code_names();
+    result = test_time_crypto_and_net_code_names();
     if (result != 0) {
         return result;
     }
@@ -1541,12 +1788,7 @@ int main(void)
         return result;
     }
 
-    result = test_time_diagnostic_json_goldens();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_crypto_diagnostic_json_goldens();
+    result = test_stdlib_diagnostic_json_goldens();
     if (result != 0) {
         return result;
     }

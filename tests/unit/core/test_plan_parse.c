@@ -268,6 +268,8 @@ static int test_valid_fixture_matrix(void)
          NULL, NULL, 1U, 0U},
         {"tests/golden/plan/valid-capability-skeletons.plan.json", 1U, "__sloppy_handler_1", "Home",
          NULL, NULL, 1U, 0U},
+        {"tests/golden/plan/valid-network-required-feature.plan.json", 1U, "__sloppy_handler_1",
+         "Home", NULL, NULL, 1U, 0U},
         {"tests/golden/plan/unknown-required-feature.plan.json", 1U, "__sloppy_handler_1", "Home",
          NULL, NULL, 1U, 0U}};
     size_t index = 0U;
