@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_BACKEND_UNAVAILABLE","severity":"error","message":"TCP backend is unavailable","hints":["Backend diagnostics name the operation without exposing raw handles."]}

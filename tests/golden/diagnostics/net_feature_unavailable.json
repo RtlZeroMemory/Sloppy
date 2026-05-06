@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_FEATURE_UNAVAILABLE","severity":"error","message":"network feature is unavailable","hints":["Enable stdlib.net only in a runtime lane with registered TCP backends."]}

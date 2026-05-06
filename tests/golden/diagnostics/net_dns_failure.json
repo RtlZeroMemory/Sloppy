@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_DNS_FAILURE","severity":"error","message":"DNS resolution failed","hints":["DNS diagnostics must not leak sensitive endpoint details in strict policy reports."]}

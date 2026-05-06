@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_STALE_HANDLE","severity":"error","message":"TCP handle is stale","hints":["Resource handles must not be reused after close or abort."]}

@@ -106,6 +106,11 @@ coverage, and V8-gated owner-thread settlement evidence. Deterministic tests mus
 claim randomness quality, password cracking cost, timing resistance, benchmark
 performance, WebCrypto/Node/Bun compatibility, or public alpha readiness.
 
+CORE-NET-01 tests must keep evidence claims narrow. Contract tests may prove `sloppy/net`
+import recognition, `stdlib.net` Plan metadata, unavailable-feature diagnostics, stable
+network diagnostic names/goldens, and network policy documentation. Later implementation
+tests must use deterministic localhost/loopback by default and keep live-network,
+stress/torture, V8, package, and benchmark evidence separate.
 CORE-CODEC-01 tests must keep evidence claims narrow. Contract tests may prove
 `sloppy/codec` import recognition, `stdlib.codec` Plan metadata, unavailable-feature
 diagnostics, stable codec diagnostic names/goldens, backend policy, and checksum

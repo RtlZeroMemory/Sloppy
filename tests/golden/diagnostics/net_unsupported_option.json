@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_UNSUPPORTED_OPTION","severity":"error","message":"TCP option is unsupported","hints":["Unsupported socket options fail with platform-aware diagnostics."]}

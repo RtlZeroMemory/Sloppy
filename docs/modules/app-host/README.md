@@ -71,6 +71,9 @@ future public `"sloppy"` facade. Implemented bootstrap behavior is intentionally
     works only in V8-enabled contexts with the SQLite bridge installed;
 - `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` are exported from the
   staged `sloppy/fs` stdlib surface when `stdlib.fs` is enabled by Plan feature metadata;
+- `TcpClient`, `TcpListener`, `TcpConnection`, and `NetworkAddress` are reserved for the
+  staged `sloppy/net` stdlib surface when `stdlib.net` is enabled by Plan feature metadata,
+  but no TCP JavaScript surface is implemented in CORE-NET-01.A/B;
 - `Sloppy.create()` remains supported as a default builder plus `build()`;
 - `app.use(sqlite("main"))` accepts a provider descriptor, binds
   `Sloppy:Providers:sqlite:main`, and lets inline provider options override config

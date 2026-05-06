@@ -715,6 +715,86 @@ static int test_codec_code_names(void)
     return 0;
 }
 
+static int test_net_code_names(void)
+{
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_FEATURE_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_NET_FEATURE_UNAVAILABLE")) != 0)
+    {
+        return 180;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_DENIED),
+                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_DENIED")) != 0)
+    {
+        return 181;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_LISTEN_DENIED),
+                         sl_str_from_cstr("SLOPPY_E_NET_LISTEN_DENIED")) != 0)
+    {
+        return 182;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_INVALID_HOST),
+                         sl_str_from_cstr("SLOPPY_E_NET_INVALID_HOST")) != 0)
+    {
+        return 183;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_INVALID_PORT),
+                         sl_str_from_cstr("SLOPPY_E_NET_INVALID_PORT")) != 0)
+    {
+        return 184;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_DNS_FAILURE),
+                         sl_str_from_cstr("SLOPPY_E_NET_DNS_FAILURE")) != 0)
+    {
+        return 185;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_TIMEOUT),
+                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_TIMEOUT")) != 0)
+    {
+        return 186;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_CANCELLED),
+                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_CANCELLED")) != 0)
+    {
+        return 187;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECTION_CLOSED),
+                         sl_str_from_cstr("SLOPPY_E_NET_CONNECTION_CLOSED")) != 0)
+    {
+        return 188;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_STALE_HANDLE),
+                         sl_str_from_cstr("SLOPPY_E_NET_STALE_HANDLE")) != 0)
+    {
+        return 189;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_READ_WRITE_TIMEOUT),
+                         sl_str_from_cstr("SLOPPY_E_NET_READ_WRITE_TIMEOUT")) != 0)
+    {
+        return 190;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_READ_WRITE_CANCELLED),
+                         sl_str_from_cstr("SLOPPY_E_NET_READ_WRITE_CANCELLED")) != 0)
+    {
+        return 191;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_BACKPRESSURE_OVERFLOW),
+                         sl_str_from_cstr("SLOPPY_E_NET_BACKPRESSURE_OVERFLOW")) != 0)
+    {
+        return 192;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_UNSUPPORTED_OPTION),
+                         sl_str_from_cstr("SLOPPY_E_NET_UNSUPPORTED_OPTION")) != 0)
+    {
+        return 193;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_BACKEND_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_NET_BACKEND_UNAVAILABLE")) != 0)
+    {
+        return 194;
+    }
+    return 0;
+}
+
 static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
                                      const char* snapshot)
 {
@@ -805,7 +885,7 @@ static int test_time_diagnostic_json_goldens(void)
     return 0;
 }
 
-static int expect_crypto_json_snapshot(SlDiagSeverity severity, SlDiagCode code,
+static int expect_stdlib_json_snapshot(SlDiagSeverity severity, SlDiagCode code,
                                        const char* message, const char* hint, const char* snapshot)
 {
     unsigned char buffer[2048];
@@ -839,7 +919,7 @@ static int expect_crypto_json_snapshot(SlDiagSeverity severity, SlDiagCode code,
 
 static int test_crypto_diagnostic_json_goldens(void)
 {
-    if (expect_crypto_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_FEATURE_UNAVAILABLE,
             "crypto feature is unavailable",
             "Enable stdlib.crypto only in a runtime lane with registered crypto backends.",
@@ -847,14 +927,14 @@ static int test_crypto_diagnostic_json_goldens(void)
     {
         return 130;
     }
-    if (expect_crypto_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_UNSUPPORTED_ALGORITHM,
             "unsupported crypto algorithm", "Use a supported algorithm from sloppy/crypto.",
             "tests/golden/diagnostics/crypto_unsupported_algorithm.json") != 0)
     {
         return 131;
     }
-    if (expect_crypto_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_WARNING, SL_DIAG_CRYPTO_INSECURE_LEGACY_ALGORITHM,
             "insecure or legacy crypto algorithm",
             "Legacy algorithms require an explicit compatibility policy and are never defaults.",
@@ -862,14 +942,14 @@ static int test_crypto_diagnostic_json_goldens(void)
     {
         return 132;
     }
-    if (expect_crypto_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_INVALID_KEY_SECRET,
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_INVALID_KEY_SECRET,
                                     "invalid key or secret",
                                     "Diagnostics must describe shape, not secret contents.",
                                     "tests/golden/diagnostics/crypto_invalid_key_secret.json") != 0)
     {
         return 133;
     }
-    if (expect_crypto_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_PASSWORD_VERIFY_FAILED,
             "password verification failed",
             "Verification failures must not reveal password or encoded-hash internals.",
@@ -877,7 +957,7 @@ static int test_crypto_diagnostic_json_goldens(void)
     {
         return 134;
     }
-    if (expect_crypto_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_PASSWORD_HASH_UNSUPPORTED,
             "password hash format is unsupported",
             "Only documented encoded hash formats are accepted.",
@@ -885,7 +965,7 @@ static int test_crypto_diagnostic_json_goldens(void)
     {
         return 135;
     }
-    if (expect_crypto_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_RANDOM_SOURCE_UNAVAILABLE,
             "secure random source is unavailable",
             "Random APIs must fail closed instead of using weak fallback output.",
@@ -893,14 +973,14 @@ static int test_crypto_diagnostic_json_goldens(void)
     {
         return 136;
     }
-    if (expect_crypto_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_SECRET_DISPOSED,
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_SECRET_DISPOSED,
                                     "secret was disposed",
                                     "Disposed Secret values reject further use deterministically.",
                                     "tests/golden/diagnostics/crypto_secret_disposed.json") != 0)
     {
         return 137;
     }
-    if (expect_crypto_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_CONSTANT_TIME_INVALID_INPUT,
             "constant-time comparison input is invalid",
             "Validate byte lengths and owned input views before comparing.",
@@ -908,7 +988,7 @@ static int test_crypto_diagnostic_json_goldens(void)
     {
         return 138;
     }
-    if (expect_crypto_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE,
             "crypto backend is unavailable",
             "Backend diagnostics must name the operation without leaking secrets.",
@@ -920,41 +1000,9 @@ static int test_crypto_diagnostic_json_goldens(void)
     return 0;
 }
 
-static int expect_codec_json_snapshot(SlDiagSeverity severity, SlDiagCode code, const char* message,
-                                      const char* hint, const char* snapshot)
-{
-    unsigned char buffer[2048];
-    SlArena arena;
-    SlDiagBuilder builder;
-    SlDiag diag;
-    SlStr rendered;
-
-    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
-        return 1;
-    }
-    if (expect_status(
-            sl_diag_builder_init(&builder, &arena, severity, code, sl_str_from_cstr(message)),
-            SL_STATUS_OK) != 0)
-    {
-        return 2;
-    }
-    if (expect_status(sl_diag_builder_add_hint(&builder, sl_str_from_cstr(hint)), SL_STATUS_OK) !=
-        0)
-    {
-        return 3;
-    }
-    if (expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0) {
-        return 4;
-    }
-    if (expect_status(sl_diag_render_json(&arena, &diag, &rendered), SL_STATUS_OK) != 0) {
-        return 5;
-    }
-    return expect_snapshot(rendered, snapshot);
-}
-
 static int test_codec_diagnostic_json_goldens(void)
 {
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_FEATURE_UNAVAILABLE,
             "codec feature is unavailable",
             "Enable stdlib.codec only in a codec-enabled runtime lane; compression also "
@@ -963,42 +1011,42 @@ static int test_codec_diagnostic_json_goldens(void)
     {
         return 170;
     }
-    if (expect_codec_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_UNSUPPORTED_ENCODING,
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_UNSUPPORTED_ENCODING,
                                    "unsupported codec encoding",
                                    "Use a supported encoding from sloppy/codec.",
                                    "tests/golden/diagnostics/codec_unsupported_encoding.json") != 0)
     {
         return 171;
     }
-    if (expect_codec_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_BASE64,
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_BASE64,
                                    "invalid base64 input",
                                    "Base64 decoding is strict and reports malformed input.",
                                    "tests/golden/diagnostics/codec_invalid_base64.json") != 0)
     {
         return 172;
     }
-    if (expect_codec_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_BASE64URL,
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_BASE64URL,
                                    "invalid base64url input",
                                    "Base64Url decoding uses its own alphabet and padding policy.",
                                    "tests/golden/diagnostics/codec_invalid_base64url.json") != 0)
     {
         return 173;
     }
-    if (expect_codec_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_HEX,
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_HEX,
                                    "invalid hex input",
                                    "Hex input must use complete byte pairs in the selected policy.",
                                    "tests/golden/diagnostics/codec_invalid_hex.json") != 0)
     {
         return 174;
     }
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_MALFORMED_UTF8, "malformed UTF-8 input",
             "Fatal mode rejects malformed input; replacement mode is explicit.",
             "tests/golden/diagnostics/codec_malformed_utf8.json") != 0)
     {
         return 175;
     }
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_BINARY_READ_OUT_OF_BOUNDS,
             "binary read exceeded available bytes",
             "Binary readers must check remaining bytes before advancing.",
@@ -1006,7 +1054,7 @@ static int test_codec_diagnostic_json_goldens(void)
     {
         return 176;
     }
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE,
             "invalid binary endian or field size",
             "Binary APIs expose explicit endian and supported width methods only.",
@@ -1014,7 +1062,7 @@ static int test_codec_diagnostic_json_goldens(void)
     {
         return 177;
     }
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_COMPRESSION_BACKEND_UNAVAILABLE,
             "compression backend is unavailable",
             "Dependency-backed compression lanes must fail closed when unavailable.",
@@ -1022,7 +1070,7 @@ static int test_codec_diagnostic_json_goldens(void)
     {
         return 178;
     }
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_DECOMPRESSION_LIMIT_EXCEEDED,
             "decompression output limit exceeded",
             "Decompression must enforce the configured max output policy.",
@@ -1030,7 +1078,7 @@ static int test_codec_diagnostic_json_goldens(void)
     {
         return 179;
     }
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_COMPRESSED_STREAM_CORRUPT,
             "compressed stream is corrupt",
             "Corrupt compressed input fails deterministically without partial success.",
@@ -1038,7 +1086,7 @@ static int test_codec_diagnostic_json_goldens(void)
     {
         return 180;
     }
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM,
             "checksum algorithm is unsupported",
             "Checksums are non-security utilities and expose only documented algorithms.",
@@ -1046,7 +1094,7 @@ static int test_codec_diagnostic_json_goldens(void)
     {
         return 181;
     }
-    if (expect_codec_json_snapshot(
+    if (expect_stdlib_json_snapshot(
             SL_DIAG_SEVERITY_WARNING, SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING,
             "checksum used in a security-looking context",
             "Use sloppy/crypto Hash or Hmac for security or attacker-resistance.",
@@ -1057,11 +1105,124 @@ static int test_codec_diagnostic_json_goldens(void)
     return 0;
 }
 
+static int test_net_diagnostic_json_goldens(void)
+{
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_FEATURE_UNAVAILABLE,
+            "network feature is unavailable",
+            "Enable stdlib.net only in a runtime lane with registered TCP backends.",
+            "tests/golden/diagnostics/net_feature_unavailable.json") != 0)
+    {
+        return 200;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_CONNECT_DENIED,
+            "network connect was denied by policy",
+            "Strict network policy requires an allow rule for external connects.",
+            "tests/golden/diagnostics/net_connect_denied.json") != 0)
+    {
+        return 201;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LISTEN_DENIED,
+            "network listen was denied by policy",
+            "Strict network policy requires an allow rule for external listens.",
+            "tests/golden/diagnostics/net_listen_denied.json") != 0)
+    {
+        return 202;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_INVALID_HOST, "network host is invalid",
+            "Validate host values before DNS resolution or address parsing.",
+            "tests/golden/diagnostics/net_invalid_host.json") != 0)
+    {
+        return 203;
+    }
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_INVALID_PORT,
+                                    "network port is invalid",
+                                    "Ports must be integer values in the documented TCP range.",
+                                    "tests/golden/diagnostics/net_invalid_port.json") != 0)
+    {
+        return 204;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_DNS_FAILURE, "DNS resolution failed",
+            "DNS diagnostics must not leak sensitive endpoint details in strict policy reports.",
+            "tests/golden/diagnostics/net_dns_failure.json") != 0)
+    {
+        return 205;
+    }
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_CONNECT_TIMEOUT,
+                                    "TCP connect timed out",
+                                    "TimeoutError is distinct from caller cancellation.",
+                                    "tests/golden/diagnostics/net_connect_timeout.json") != 0)
+    {
+        return 206;
+    }
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_CONNECT_CANCELLED,
+                                    "TCP connect was cancelled",
+                                    "CancelledError preserves the explicit cancellation reason.",
+                                    "tests/golden/diagnostics/net_connect_cancelled.json") != 0)
+    {
+        return 207;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_CONNECTION_CLOSED, "TCP connection is closed",
+            "Closed connections reject further reads and writes deterministically.",
+            "tests/golden/diagnostics/net_connection_closed.json") != 0)
+    {
+        return 208;
+    }
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_STALE_HANDLE,
+                                    "TCP handle is stale",
+                                    "Resource handles must not be reused after close or abort.",
+                                    "tests/golden/diagnostics/net_stale_handle.json") != 0)
+    {
+        return 209;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_READ_WRITE_TIMEOUT, "TCP read or write timed out",
+            "Read and write deadlines map to deterministic timeout diagnostics.",
+            "tests/golden/diagnostics/net_read_write_timeout.json") != 0)
+    {
+        return 210;
+    }
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_READ_WRITE_CANCELLED,
+                                    "TCP read or write was cancelled",
+                                    "Cancellation must settle on the V8 owner thread.",
+                                    "tests/golden/diagnostics/net_read_write_cancelled.json") != 0)
+    {
+        return 211;
+    }
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_BACKPRESSURE_OVERFLOW,
+                                    "TCP backpressure buffer overflowed",
+                                    "Bounded network queues fail instead of growing without limit.",
+                                    "tests/golden/diagnostics/net_backpressure_overflow.json") != 0)
+    {
+        return 212;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_UNSUPPORTED_OPTION, "TCP option is unsupported",
+            "Unsupported socket options fail with platform-aware diagnostics.",
+            "tests/golden/diagnostics/net_unsupported_option.json") != 0)
+    {
+        return 213;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_BACKEND_UNAVAILABLE, "TCP backend is unavailable",
+            "Backend diagnostics name the operation without exposing raw handles.",
+            "tests/golden/diagnostics/net_backend_unavailable.json") != 0)
+    {
+        return 214;
+    }
+    return 0;
+}
+
 static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_NET_BACKEND_UNAVAILABLE; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1070,8 +1231,7 @@ static int test_stable_code_registry_complete(void)
     }
 
     if (expect_str_equal(
-            sl_diag_code_name(
-                (SlDiagCode)((size_t)SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING + 1U)),
+            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_NET_BACKEND_UNAVAILABLE + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
@@ -1713,6 +1873,10 @@ static int test_code_name_groups(void)
     if (result != 0) {
         return result;
     }
+    result = test_net_code_names();
+    if (result != 0) {
+        return result;
+    }
 
     result = test_engine_async_code_names();
     if (result != 0) {
@@ -1744,7 +1908,12 @@ static int test_diagnostic_json_golden_groups(void)
         return result;
     }
 
-    return test_codec_diagnostic_json_goldens();
+    result = test_codec_diagnostic_json_goldens();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_net_diagnostic_json_goldens();
 }
 
 int main(void)

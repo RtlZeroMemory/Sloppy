@@ -404,6 +404,82 @@ static bool sl_diag_is_codec_code(SlDiagCode code)
     }
 }
 
+static SlStr sl_diag_net_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_NET_FEATURE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_NET_FEATURE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_NET_FEATURE_UNAVAILABLE") - 1U);
+    case SL_DIAG_NET_CONNECT_DENIED:
+        return sl_diag_literal("SLOPPY_E_NET_CONNECT_DENIED",
+                               sizeof("SLOPPY_E_NET_CONNECT_DENIED") - 1U);
+    case SL_DIAG_NET_LISTEN_DENIED:
+        return sl_diag_literal("SLOPPY_E_NET_LISTEN_DENIED",
+                               sizeof("SLOPPY_E_NET_LISTEN_DENIED") - 1U);
+    case SL_DIAG_NET_INVALID_HOST:
+        return sl_diag_literal("SLOPPY_E_NET_INVALID_HOST",
+                               sizeof("SLOPPY_E_NET_INVALID_HOST") - 1U);
+    case SL_DIAG_NET_INVALID_PORT:
+        return sl_diag_literal("SLOPPY_E_NET_INVALID_PORT",
+                               sizeof("SLOPPY_E_NET_INVALID_PORT") - 1U);
+    case SL_DIAG_NET_DNS_FAILURE:
+        return sl_diag_literal("SLOPPY_E_NET_DNS_FAILURE", sizeof("SLOPPY_E_NET_DNS_FAILURE") - 1U);
+    case SL_DIAG_NET_CONNECT_TIMEOUT:
+        return sl_diag_literal("SLOPPY_E_NET_CONNECT_TIMEOUT",
+                               sizeof("SLOPPY_E_NET_CONNECT_TIMEOUT") - 1U);
+    case SL_DIAG_NET_CONNECT_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_NET_CONNECT_CANCELLED",
+                               sizeof("SLOPPY_E_NET_CONNECT_CANCELLED") - 1U);
+    case SL_DIAG_NET_CONNECTION_CLOSED:
+        return sl_diag_literal("SLOPPY_E_NET_CONNECTION_CLOSED",
+                               sizeof("SLOPPY_E_NET_CONNECTION_CLOSED") - 1U);
+    case SL_DIAG_NET_STALE_HANDLE:
+        return sl_diag_literal("SLOPPY_E_NET_STALE_HANDLE",
+                               sizeof("SLOPPY_E_NET_STALE_HANDLE") - 1U);
+    case SL_DIAG_NET_READ_WRITE_TIMEOUT:
+        return sl_diag_literal("SLOPPY_E_NET_READ_WRITE_TIMEOUT",
+                               sizeof("SLOPPY_E_NET_READ_WRITE_TIMEOUT") - 1U);
+    case SL_DIAG_NET_READ_WRITE_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_NET_READ_WRITE_CANCELLED",
+                               sizeof("SLOPPY_E_NET_READ_WRITE_CANCELLED") - 1U);
+    case SL_DIAG_NET_BACKPRESSURE_OVERFLOW:
+        return sl_diag_literal("SLOPPY_E_NET_BACKPRESSURE_OVERFLOW",
+                               sizeof("SLOPPY_E_NET_BACKPRESSURE_OVERFLOW") - 1U);
+    case SL_DIAG_NET_UNSUPPORTED_OPTION:
+        return sl_diag_literal("SLOPPY_E_NET_UNSUPPORTED_OPTION",
+                               sizeof("SLOPPY_E_NET_UNSUPPORTED_OPTION") - 1U);
+    case SL_DIAG_NET_BACKEND_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_NET_BACKEND_UNAVAILABLE",
+                               sizeof("SLOPPY_E_NET_BACKEND_UNAVAILABLE") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static bool sl_diag_is_net_code(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_NET_FEATURE_UNAVAILABLE:
+    case SL_DIAG_NET_CONNECT_DENIED:
+    case SL_DIAG_NET_LISTEN_DENIED:
+    case SL_DIAG_NET_INVALID_HOST:
+    case SL_DIAG_NET_INVALID_PORT:
+    case SL_DIAG_NET_DNS_FAILURE:
+    case SL_DIAG_NET_CONNECT_TIMEOUT:
+    case SL_DIAG_NET_CONNECT_CANCELLED:
+    case SL_DIAG_NET_CONNECTION_CLOSED:
+    case SL_DIAG_NET_STALE_HANDLE:
+    case SL_DIAG_NET_READ_WRITE_TIMEOUT:
+    case SL_DIAG_NET_READ_WRITE_CANCELLED:
+    case SL_DIAG_NET_BACKPRESSURE_OVERFLOW:
+    case SL_DIAG_NET_UNSUPPORTED_OPTION:
+    case SL_DIAG_NET_BACKEND_UNAVAILABLE:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static SlStr sl_diag_core_code_name(SlDiagCode code)
 {
     switch (code) {
@@ -833,6 +909,9 @@ SlStr sl_diag_code_name(SlDiagCode code)
     }
     if (sl_diag_is_codec_code(code)) {
         return sl_diag_codec_code_name(code);
+    }
+    if (sl_diag_is_net_code(code)) {
+        return sl_diag_net_code_name(code);
     }
 
     SlStr core_name = sl_diag_core_code_name(code);

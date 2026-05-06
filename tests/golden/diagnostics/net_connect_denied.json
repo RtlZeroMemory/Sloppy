@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_CONNECT_DENIED","severity":"error","message":"network connect was denied by policy","hints":["Strict network policy requires an allow rule for external connects."]}

@@ -13,6 +13,7 @@ directory, so fixture changes are reviewed as source-controlled test contract ch
 | `valid-provider-section.plan.json` | success | `SLOPPY_NONE` | yes | Valid minimal `dataProviders` metadata. |
 | `valid-capability-section.plan.json` | success | `SLOPPY_NONE` | yes | Valid minimal `capabilities` metadata tied to a provider token. |
 | `valid-capability-skeletons.plan.json` | success | `SLOPPY_NONE` | yes | Valid filesystem and network skeleton capability metadata. |
+| `valid-network-required-feature.plan.json` | success | `SLOPPY_NONE` | yes | Valid Plan metadata requiring the CORE-NET-01 `stdlib.net` feature. |
 | `valid-filesystem-capability-accesses.plan.json` | success | `SLOPPY_NONE` | yes | Valid CORE-FS-01 filesystem capability access vocabulary. |
 | `unknown-future-field.plan.json` | success | `SLOPPY_NONE` | yes | Unknown top-level and nested fields are ignored in Plan v1. |
 | `malformed-json.plan.json` | failure | `SLOPPY_E_MALFORMED_JSON` | yes | Invalid JSON bytes produce a diagnostic instead of a crash. |

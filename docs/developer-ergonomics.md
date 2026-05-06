@@ -93,6 +93,11 @@ CORE-CRYPTO-01.E implements the first `sloppy/crypto` runtime surface around
 `__sloppy.crypto` bridge. `NonCryptoHash` remains visible but fails closed until its
 dedicated slice lands. The API is Sloppy-shaped and does not promise
 WebCrypto, Node crypto, or Bun compatibility.
+CORE-NET-01.A/B locks the first `sloppy/net` TCP contract around `TcpClient`,
+`TcpListener`, `TcpConnection`, and `NetworkAddress`. The compiler now makes `sloppy/net`
+Plan-visible as `stdlib.net`, but the runtime feature remains unavailable by default until
+native TCP/libuv backends and the V8 bridge land. Development-mode loopback should stay
+easy, while strict mode remains able to require explicit external connect/listen policy.
 CORE-CODEC-01.A/B locks the first `sloppy/codec` contract around `Base64`,
 `Base64Url`, `Hex`, UTF-8 `Text`, `Binary`, `Compression`, and `Checksums`. The compiler
 now makes `sloppy/codec` Plan-visible as `stdlib.codec`, but the runtime feature remains

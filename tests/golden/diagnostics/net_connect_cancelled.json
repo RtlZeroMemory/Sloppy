@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_CONNECT_CANCELLED","severity":"error","message":"TCP connect was cancelled","hints":["CancelledError preserves the explicit cancellation reason."]}
