@@ -600,10 +600,9 @@ Runtime feature diagnostics:
 - `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is emitted when a known feature is required but
   unavailable in the current runtime lane, including non-V8 builds that receive V8-targeted
   runnable artifacts, unavailable/deferred PostgreSQL or SQL Server provider features,
-  disabled SQLite provider availability, missing transport availability, the current
-  contract-only `stdlib.crypto` feature, and stdlib code that reaches a provider bridge
-  whose V8 intrinsic was not registered because the active Plan did not enable that
-  feature.
+  disabled SQLite provider availability, missing transport availability, or stdlib code
+  that reaches a feature bridge such as `__sloppy.crypto` whose V8 intrinsic was not
+  registered because the active Plan did not enable that feature.
 - `SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING` is emitted when a known feature's
   dependency is unavailable.
 
@@ -639,10 +638,10 @@ Promise settlement. Bootstrap stdlib evidence covers fake-clock disposal, determ
 delay/timeout/interval completion, skipped scheduled runs, and filesystem pre-cancel /
 expired-deadline option behavior.
 
-CORE-CRYPTO-01.E keeps stable Crypto diagnostics and JSON goldens for the feature/model
-plus random/hash/HMAC/Secret/password surface. CORE-CRYPTO-01.G adds the non-security
-`NonCryptoHash` warning shape. Missing or inactive `stdlib.crypto` uses the runtime-feature
-or missing-bridge diagnostic path rather than raw JavaScript property failures.
+CORE-CRYPTO-01.I keeps stable Crypto diagnostics and JSON goldens for the feature/model
+plus random/hash/HMAC/Secret/password surface and the non-security `NonCryptoHash` warning
+shape. Missing or inactive `stdlib.crypto` uses the runtime-feature or missing-bridge
+diagnostic path rather than raw JavaScript property failures.
 Crypto-specific codes cover primitive/API failures:
 
 - `SLOPPY_E_CRYPTO_FEATURE_UNAVAILABLE` for crypto API use when the feature/backend lane is

@@ -1,10 +1,10 @@
 # Crypto API Architecture
 
-Status: CORE-CRYPTO-01.G implementation. The contract, feature model, OS random,
-SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, V8 bridge,
-Argon2id password hashing, and `NonCryptoHash.xxHash64` are now implemented. Final
-examples and the full conformance pass remain later CORE-CRYPTO slices. This document is not
-randomness-quality, password cracking-cost, timing-proof, or performance evidence.
+Status: CORE-CRYPTO-01.A/B/C/D/E/F/G/H/I source of truth. The contract, feature model,
+OS random, SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, V8 bridge,
+Argon2id password hashing, `NonCryptoHash.xxHash64`, source examples, diagnostic goldens,
+and conformance evidence index are implemented. This document is not randomness-quality,
+password cracking-cost, timing-proof, or performance evidence.
 
 ## Goals
 
@@ -39,7 +39,7 @@ import {
 ```
 
 The compiler recognizes only named, unaliased imports from `sloppy/crypto`. The import
-activates the `stdlib.crypto` runtime feature in emitted Plan metadata. CORE-CRYPTO-01.E
+activates the `stdlib.crypto` runtime feature in emitted Plan metadata. CORE-CRYPTO-01.G
 registers the V8 intrinsic namespace for active `stdlib.crypto` plans.
 
 ## API Contract
@@ -149,7 +149,7 @@ contract.
 
 ## Async and Owner-Thread Policy
 
-Small bounded hash/HMAC work runs inline through CORE-CRYPTO-01.E with a 1 MiB V8 bridge
+Small bounded hash/HMAC work runs inline through CORE-CRYPTO-01.C/D/F/H with a 1 MiB V8 bridge
 input cap. The public JS methods keep the async `Promise` return shape for `Hash`/`Hmac`,
 but the current bridge performs the bounded native work on the owner thread. Larger
 streaming/offloaded hash work remains deferred.
@@ -175,10 +175,12 @@ Compiler behavior:
 - `sloppy/crypto` named imports add `stdlib.crypto` to Plan `requiredFeatures[]`.
 - The compiler emits `features.crypto = true`.
 - The strong Plan evidence block emits `strongPlan.evidence.crypto = true`.
-- Future PRs may add statically visible metadata for password hashing, HMAC, non-crypto
-  hash use, and legacy/insecure algorithm warnings where the compiler can see them.
+- Later PRs may broaden statically visible metadata for password hashing, HMAC, and
+  legacy/insecure algorithm warnings where the compiler can see them. The current compiler
+  already emits bounded doctor warnings for visible `NonCryptoHash.xxHash64` use in
+  security-looking contexts.
 
-Runtime behavior after CORE-CRYPTO-01.E:
+Runtime behavior after CORE-CRYPTO-01.I:
 
 - `stdlib.crypto` is known to the feature registry and available when its dependencies are
   available.
@@ -187,6 +189,28 @@ Runtime behavior after CORE-CRYPTO-01.E:
   offload native password work away from the V8 owner thread.
 - Non-V8 or inactive-feature lanes fail closed with runtime-feature or missing-bridge
   diagnostics.
+
+## Examples and Conformance
+
+Source examples live under:
+
+- `examples/crypto-random-token/`;
+- `examples/crypto-hash-hmac/`;
+- `examples/crypto-password/`;
+- `examples/crypto-secret-constant-time/`.
+
+`examples.crypto.api_shape` checks those examples for the supported public API shape and
+for explicit non-goals: no weak random fallback, no WebCrypto/Node/Bun compatibility
+promise, no package-manager behavior, no public alpha claim, no benchmark claim, no custom
+crypto algorithm, no synchronous public password hashing API, no printed secret material,
+and no non-cryptographic hash helper in security-shaped examples.
+
+The conformance evidence index is `tests/conformance/crypto/README.md`. It maps native
+vectors, diagnostic goldens, compiler/doctor checks, bootstrap stdlib evidence, source
+examples, and optional V8-gated bridge evidence to their lanes. Random shape tests verify
+length/alphabet/UUID version and variant only; they do not claim randomness quality.
+Constant-time tests verify equality semantics only; they do not claim timing-proof
+behavior.
 
 ## Diagnostics
 
@@ -226,7 +250,7 @@ standard vectors, and lifecycle cleanup. They must not claim randomness quality,
 performance, resistance to side channels, password cracking cost, or production security
 hardening.
 
-Evidence lanes remain separate:
+CORE-CRYPTO-01.I evidence lanes remain separate:
 
 - default non-V8 lane;
 - V8-gated lane;
