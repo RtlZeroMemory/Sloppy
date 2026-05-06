@@ -8,4 +8,4 @@ Sloppy Doctor
 [warn] app.plan.routes: no route metadata present
 [warn] app.plan.providers: provider metadata not present
 [warn] app.plan.capabilities: capability metadata not present
-[warn] stdlib.crypto.noncrypto_hash.security_context: NonCryptoHash.xxHash64 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance
+[warn] stdlib.crypto.noncrypto_hash.security_context: NonCryptoHash.xxHash64 is visible in a security-looking context; use Password, Hash, or Hmac for security or attacker-resistance

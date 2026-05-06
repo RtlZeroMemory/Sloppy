@@ -8,6 +8,6 @@
     { "id": "app.plan.routes", "status": "warn", "message": "no route metadata present" },
     { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
     { "id": "app.plan.capabilities", "status": "warn", "message": "capability metadata not present" },
-    { "id": "stdlib.crypto.noncrypto_hash.security_context", "status": "warn", "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance" }
+    { "id": "stdlib.crypto.noncrypto_hash.security_context", "status": "warn", "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Password, Hash, or Hmac for security or attacker-resistance" }
   ]
 }

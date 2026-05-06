@@ -2344,8 +2344,8 @@ Reason:
 
     const NonCryptoHash = Object.freeze({
         xxHash64(data) {
-            return nativeCrypto("NonCryptoHash.xxHash64").nonCryptoXxHash64(
-                dataToBytes(data, "NonCryptoHash.xxHash64"),
+            return sloppyNativeCrypto("NonCryptoHash.xxHash64").nonCryptoXxHash64(
+                sloppyCryptoDataToBytes(data, "NonCryptoHash.xxHash64"),
             );
         },
     });

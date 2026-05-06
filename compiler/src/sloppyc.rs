@@ -1362,22 +1362,173 @@ fn sloppy_crypto_import_name_supported(name: &str) -> bool {
 }
 
 fn noncrypto_hash_security_context_visible(source: &str) -> bool {
-    let lowered = source.to_ascii_lowercase();
-    lowered.contains("noncryptohash.xxhash64")
-        && [
-            "auth",
-            "credential",
-            "hmac",
-            "integrity",
-            "mac",
-            "password",
-            "secret",
-            "signature",
-            "token",
-            "verify",
-        ]
-        .iter()
-        .any(|needle| lowered.contains(needle))
+    source_contains_noncrypto_xxhash64_member(source) && source_has_security_identifier(source)
+}
+
+fn source_contains_noncrypto_xxhash64_member(source: &str) -> bool {
+    let bytes = source.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if let Some(next_index) = skip_js_literal_or_comment(bytes, index) {
+            index = next_index;
+            continue;
+        }
+        let Some((identifier, next_index)) = read_ascii_js_identifier(source, index) else {
+            index += 1;
+            continue;
+        };
+        if identifier.eq_ignore_ascii_case("NonCryptoHash") {
+            let dot_index = skip_ascii_whitespace(bytes, next_index);
+            if bytes.get(dot_index) == Some(&b'.') {
+                let property_index = skip_ascii_whitespace(bytes, dot_index + 1);
+                if let Some((property, _)) = read_ascii_js_identifier(source, property_index) {
+                    if property.eq_ignore_ascii_case("xxHash64") {
+                        return true;
+                    }
+                }
+            }
+        }
+        index = next_index;
+    }
+    false
+}
+
+fn source_has_security_identifier(source: &str) -> bool {
+    let bytes = source.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if let Some(next_index) = skip_js_literal_or_comment(bytes, index) {
+            index = next_index;
+            continue;
+        }
+        let Some((identifier, next_index)) = read_ascii_js_identifier(source, index) else {
+            index += 1;
+            continue;
+        };
+        if identifier_has_security_part(identifier) {
+            return true;
+        }
+        index = next_index;
+    }
+    false
+}
+
+fn skip_js_literal_or_comment(bytes: &[u8], index: usize) -> Option<usize> {
+    match bytes.get(index).copied()? {
+        b'\'' | b'"' | b'`' => skip_js_quoted(bytes, index),
+        b'/' if bytes.get(index + 1) == Some(&b'/') => {
+            let mut end = index + 2;
+            while end < bytes.len() && bytes[end] != b'\n' {
+                end += 1;
+            }
+            Some(end)
+        }
+        b'/' if bytes.get(index + 1) == Some(&b'*') => {
+            let mut end = index + 2;
+            while end + 1 < bytes.len() {
+                if bytes[end] == b'*' && bytes[end + 1] == b'/' {
+                    return Some(end + 2);
+                }
+                end += 1;
+            }
+            Some(bytes.len())
+        }
+        _ => None,
+    }
+}
+
+fn skip_js_quoted(bytes: &[u8], index: usize) -> Option<usize> {
+    let quote = bytes.get(index).copied()?;
+    let mut end = index + 1;
+    while end < bytes.len() {
+        if bytes[end] == b'\\' {
+            end = (end + 2).min(bytes.len());
+        } else if bytes[end] == quote {
+            return Some(end + 1);
+        } else {
+            end += 1;
+        }
+    }
+    Some(bytes.len())
+}
+
+fn read_ascii_js_identifier(source: &str, start: usize) -> Option<(&str, usize)> {
+    let bytes = source.as_bytes();
+    let first = *bytes.get(start)?;
+    if !ascii_js_identifier_start(first) {
+        return None;
+    }
+    let mut end = start + 1;
+    while end < bytes.len() && ascii_js_identifier_part(bytes[end]) {
+        end += 1;
+    }
+    Some((&source[start..end], end))
+}
+
+fn skip_ascii_whitespace(bytes: &[u8], mut index: usize) -> usize {
+    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    index
+}
+
+fn ascii_js_identifier_start(byte: u8) -> bool {
+    byte == b'$' || byte == b'_' || byte.is_ascii_alphabetic()
+}
+
+fn ascii_js_identifier_part(byte: u8) -> bool {
+    ascii_js_identifier_start(byte) || byte.is_ascii_digit()
+}
+
+fn identifier_has_security_part(identifier: &str) -> bool {
+    let mut part = String::new();
+    let mut chars = identifier.chars().peekable();
+    let mut previous_was_upper = false;
+    while let Some(ch) = chars.next() {
+        if ch == '_' || ch == '$' || ch.is_ascii_digit() {
+            if security_identifier_part_matches(&part) {
+                return true;
+            }
+            part.clear();
+            previous_was_upper = false;
+            continue;
+        }
+
+        if ch.is_ascii_uppercase() {
+            let next_is_lower = chars
+                .peek()
+                .map(|next| next.is_ascii_lowercase())
+                .unwrap_or(false);
+            if !part.is_empty() && (!previous_was_upper || next_is_lower) {
+                if security_identifier_part_matches(&part) {
+                    return true;
+                }
+                part.clear();
+            }
+            part.push(ch.to_ascii_lowercase());
+            previous_was_upper = true;
+        } else {
+            part.push(ch.to_ascii_lowercase());
+            previous_was_upper = false;
+        }
+    }
+    security_identifier_part_matches(&part)
+}
+
+fn security_identifier_part_matches(part: &str) -> bool {
+    matches!(
+        part,
+        "auth"
+            | "credential"
+            | "hmac"
+            | "integrity"
+            | "mac"
+            | "password"
+            | "secret"
+            | "signature"
+            | "token"
+            | "verify"
+    )
 }
 
 fn sloppy_codec_import_name_supported(name: &str) -> bool {
@@ -5833,7 +5984,7 @@ fn emit_plan(
             {
                 "id": "stdlib.crypto.noncrypto_hash.security_context",
                 "status": "warn",
-                "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance"
+                "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Password, Hash, or Hmac for security or attacker-resistance"
             }
         ]);
     }
@@ -6432,8 +6583,8 @@ mod tests {
     };
 
     use super::{
-        canonical_config_key, command_from_args, extract, route_pattern_supported, CliCommand,
-        CompileOptions,
+        canonical_config_key, command_from_args, extract, noncrypto_hash_security_context_visible,
+        route_pattern_supported, CliCommand, CompileOptions,
     };
 
     fn fixture_temp_dir(name: &str) -> PathBuf {
@@ -8306,6 +8457,22 @@ export default app;
             value["doctorChecks"][0]["status"],
             serde_json::json!("warn")
         );
+    }
+
+    #[test]
+    fn sloppy_crypto_noncrypto_hash_security_context_scans_tokens() {
+        assert!(noncrypto_hash_security_context_visible(
+            r#"const tokenHash = NonCryptoHash . xxHash64(value);"#
+        ));
+        assert!(!noncrypto_hash_security_context_visible(
+            r#"const machineId = NonCryptoHash.xxHash64(value);"#
+        ));
+        assert!(!noncrypto_hash_security_context_visible(
+            r#"const cacheHash = NonCryptoHash.xxHash64("token");"#
+        ));
+        assert!(!noncrypto_hash_security_context_visible(
+            r#"const tokenHash = NonCryptoHashxxHash64(value);"#
+        ));
     }
 
     #[test]

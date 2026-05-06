@@ -104,7 +104,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   the bootstrap `sloppy/crypto` JS surface, and async/offloaded libsodium Argon2id
   password hashing exist. `NonCryptoHash.xxHash64` now exists as a dependency-backed,
   explicit non-security helper with static doctor-warning coverage for visible
-  security-looking use. #580 must still add final examples, docs, and conformance goldens.
+  security-looking use. #580 must still add final examples and the consolidated
+  conformance/docs/golden pass across the completed crypto surface.
   Do not claim randomness quality, password cracking cost, timing resistance, security from
   non-crypto hashes, performance, WebCrypto/Node/Bun compatibility, or public alpha
   readiness from the implemented shape/vector tests.

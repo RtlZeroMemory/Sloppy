@@ -28,7 +28,7 @@
     {
       "id": "stdlib.crypto.noncrypto_hash.security_context",
       "status": "warn",
-      "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance"
+      "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Password, Hash, or Hmac for security or attacker-resistance"
     }
   ]
 }

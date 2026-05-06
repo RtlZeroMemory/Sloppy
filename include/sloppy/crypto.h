@@ -67,7 +67,11 @@ SlStatus sl_crypto_password_verify(SlBytes password, SlStr encoded_hash, bool* o
 SlStatus sl_crypto_password_needs_rehash(SlStr encoded_hash, const SlCryptoPasswordOptions* options,
                                          bool* out_needs_rehash);
 
+/* Writes the 64-bit binary xxHash64 value to *out_hash. */
 SlStatus sl_crypto_noncrypto_xxhash64(SlBytes data, uint64_t* out_hash);
+/* Writes exactly SL_CRYPTO_XXHASH64_HEX_LENGTH lowercase hex chars. Requires
+ * out_length >= SL_CRYPTO_XXHASH64_HEX_LENGTH. This helper does not append a NUL
+ * terminator; callers that need a C string must append their own NUL. */
 SlStatus sl_crypto_noncrypto_xxhash64_hex(SlBytes data, char* out, size_t out_length);
 
 SlStatus sl_crypto_hex_encode(SlBytes data, char* out, size_t out_length);

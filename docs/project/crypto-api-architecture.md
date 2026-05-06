@@ -1,9 +1,9 @@
 # Crypto API Architecture
 
-Status: CORE-CRYPTO-01.E implementation. The contract, feature model, OS random,
-SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, V8 bridge, and
-Argon2id password hashing are now implemented. `NonCryptoHash`, final examples, and the
-full conformance pass remain later CORE-CRYPTO slices. This document is not
+Status: CORE-CRYPTO-01.G implementation. The contract, feature model, OS random,
+SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, V8 bridge,
+Argon2id password hashing, and `NonCryptoHash.xxHash64` are now implemented. Final
+examples and the full conformance pass remain later CORE-CRYPTO slices. This document is not
 randomness-quality, password cracking-cost, timing-proof, or performance evidence.
 
 ## Goals
@@ -108,7 +108,7 @@ registers the V8 intrinsic namespace for active `stdlib.crypto` plans.
 | Password compatibility | bcrypt | Deferred | Compatibility only if a vetted dependency and safe bounds are selected. |
 | Password legacy | PBKDF2 | Deferred | Interoperability only; never default for new hashes. |
 | Legacy crypto | MD5, SHA-1, weak ciphers | Rejected for secure APIs | May only appear as explicit warning/deferred compatibility policy. |
-| Non-crypto hash | xxHash64 | Supported target | Dependency-backed and visibly separate from `Hash`/`Hmac`. |
+| Non-crypto hash | xxHash64 | Supported | Dependency-backed and visibly separate from `Hash`/`Hmac`. |
 | BLAKE3 | Deferred | Not selected for this EPIC until use cases and dependency policy are scoped. |
 
 ## Backend Policy
