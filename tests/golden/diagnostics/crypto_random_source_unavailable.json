@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CRYPTO_RANDOM_SOURCE_UNAVAILABLE","severity":"error","message":"secure random source is unavailable","hints":["Random APIs must fail closed instead of using weak fallback output."]}

@@ -179,6 +179,7 @@ struct ExtractedApp {
     config_reads: Vec<ConfigReadMetadata>,
     uses_time_runtime: bool,
     uses_fs_runtime: bool,
+    uses_crypto_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -303,6 +304,7 @@ struct AppState {
     schema_imported: bool,
     time_imported: bool,
     fs_imported: bool,
+    crypto_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -335,6 +337,7 @@ impl AppState {
             schema_imported: false,
             time_imported: false,
             fs_imported: false,
+            crypto_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -1005,6 +1008,7 @@ struct ModuleGraph {
     modules: BTreeMap<PathBuf, CachedModule>,
     source_files: Vec<SourceFile>,
     uses_time_runtime: bool,
+    uses_crypto_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1025,6 +1029,7 @@ impl ModuleGraph {
             modules: BTreeMap::new(),
             source_files: Vec::new(),
             uses_time_runtime: false,
+            uses_crypto_runtime: false,
         }
     }
 
@@ -1121,7 +1126,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use import { Sloppy, Results } from \"sloppy\"; or add data only when provider metadata is needed."));
+        .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", or \"sloppy/crypto\"."));
     }
 
     if !state.sloppy_imported || !state.results_imported {
@@ -1270,6 +1275,7 @@ fn extract_entry(
         config_reads: state.config_reads,
         uses_time_runtime: state.time_imported || graph.uses_time_runtime,
         uses_fs_runtime: state.fs_imported,
+        uses_crypto_runtime: state.crypto_imported || graph.uses_crypto_runtime,
     })
 }
 
@@ -1317,6 +1323,13 @@ fn sloppy_time_import_name_supported(name: &str) -> bool {
     )
 }
 
+fn sloppy_crypto_import_name_supported(name: &str) -> bool {
+    matches!(
+        name,
+        "Random" | "Hash" | "Hmac" | "Password" | "ConstantTime" | "Secret" | "NonCryptoHash"
+    )
+}
+
 fn validate_module_sloppy_time_import(
     path: &Path,
     import: &ImportDeclaration<'_>,
@@ -1349,6 +1362,49 @@ fn validate_module_sloppy_time_import(
         let imported = specifier.imported.name().as_str();
         let local = specifier.local.name.as_str();
         if !sloppy_time_import_name_supported(imported) || imported != local {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT",
+                format!("unsupported sloppy import \"{imported}\""),
+            )
+            .with_path(path)
+            .with_span(specifier.span));
+        }
+    }
+    Ok(())
+}
+
+fn validate_module_sloppy_crypto_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    let Some(specifiers) = &import.specifiers else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy/crypto\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    };
+    if specifiers.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy/crypto\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    }
+    for specifier in specifiers {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                "unsupported import specifier \"sloppy/crypto\"",
+            )
+            .with_path(path)
+            .with_span(import.source.span));
+        };
+        let imported = specifier.imported.name().as_str();
+        let local = specifier.local.name.as_str();
+        if !sloppy_crypto_import_name_supported(imported) || imported != local {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_IMPORT",
                 format!("unsupported sloppy import \"{imported}\""),
@@ -1480,6 +1536,37 @@ fn extract_import(
                     state.time_imported = true;
                 } else {
                     if sloppy_time_import_name_supported(imported) {
+                        state.unsupported_import_alias = true;
+                    }
+                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
+                }
+            }
+        } else {
+            state.unsupported_import_specifier =
+                Some((import_source.to_string(), import.source.span));
+        }
+        return Ok(());
+    }
+
+    if import_source == "sloppy/crypto" {
+        if let Some(specifiers) = &import.specifiers {
+            if specifiers.is_empty() {
+                state.unsupported_import_specifier =
+                    Some((import_source.to_string(), import.source.span));
+                return Ok(());
+            }
+            for specifier in specifiers {
+                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                    state.unsupported_import_specifier =
+                        Some((import_source.to_string(), import.source.span));
+                    return Ok(());
+                };
+                let imported = specifier.imported.name().as_str();
+                let local = specifier.local.name.as_str();
+                if sloppy_crypto_import_name_supported(imported) && imported == local {
+                    state.crypto_imported = true;
+                } else {
+                    if sloppy_crypto_import_name_supported(imported) {
                         state.unsupported_import_alias = true;
                     }
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
@@ -2869,6 +2956,11 @@ fn extract_relative_module(
                 if import_source == "sloppy/time" {
                     validate_module_sloppy_time_import(&imported.path, import)?;
                     graph.uses_time_runtime = true;
+                    continue;
+                }
+                if import_source == "sloppy/crypto" {
+                    validate_module_sloppy_crypto_import(&imported.path, import)?;
+                    graph.uses_crypto_runtime = true;
                     continue;
                 }
                 if import_source.starts_with("./") || import_source.starts_with("../") {
@@ -5637,6 +5729,11 @@ fn emit_plan(
         value["strongPlan"]["evidence"]["filesystem"] = json!(true);
         value["features"]["fileSystem"] = json!(true);
     }
+    if app.uses_crypto_runtime {
+        required_features.push("stdlib.crypto");
+        value["strongPlan"]["evidence"]["crypto"] = json!(true);
+        value["features"]["crypto"] = json!(true);
+    }
     if !required_features.is_empty() {
         value["requiredFeatures"] = json!(required_features);
     }
@@ -5715,6 +5812,17 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_fs_runtime {
         runtime_exports.extend(["File", "Directory", "Path", "FileHandle", "FileWatcher"]);
+    }
+    if app.uses_crypto_runtime {
+        runtime_exports.extend([
+            "Random",
+            "Hash",
+            "Hmac",
+            "Password",
+            "ConstantTime",
+            "Secret",
+            "NonCryptoHash",
+        ]);
     }
     push_generated_line(
         &mut output,
@@ -6363,6 +6471,7 @@ mod tests {
             config_reads: Vec::new(),
             uses_time_runtime: false,
             uses_fs_runtime: false,
+            uses_crypto_runtime: false,
         };
         config
             .apply_to_app(&mut app)
@@ -7815,6 +7924,58 @@ export default app;
             value["strongPlan"]["evidence"]["time"],
             serde_json::json!(true)
         );
+    }
+
+    #[test]
+    fn sloppy_crypto_import_emits_plan_required_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash } from "sloppy/crypto";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/crypto import should be recognized");
+        assert!(app.uses_crypto_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(
+            "const { Results, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash } = __sloppyRuntime;"
+        ));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(
+            value["requiredFeatures"],
+            serde_json::json!(["stdlib.crypto"])
+        );
+        assert_eq!(value["features"]["crypto"], serde_json::json!(true));
+        assert_eq!(
+            value["strongPlan"]["evidence"]["crypto"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn sloppy_crypto_import_alias_is_rejected() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { Random as R } from "sloppy/crypto";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("aliased sloppy/crypto import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+        assert!(diagnostic
+            .message
+            .contains("unsupported sloppy import \"Random\""));
     }
 
     #[test]

@@ -384,7 +384,8 @@ Diagnostics must not print secret values. Secret key names such as `DATABASE_URL
 fix configuration; the environment variable value must not appear.
 
 The bounded C helper `sl_diag_redact_secrets` masks common diagnostic-risk strings:
-`password`, `pwd`, `token`, `secret`, `key`, `api_key`/`apikey`,
+`password`, `pwd`, `token`, `secret`, `passphrase`, `private_key`/`privatekey`,
+`secret_key`/`secretkey`, `client_secret`/`clientsecret`, `key`, `api_key`/`apikey`,
 `connectionString`/`connection_string`, and URI userinfo passwords such as
 `postgres://user:password@host/db`. Provider-specific redaction remains the first line of
 defense for PostgreSQL and SQL Server connection strings because those providers know their
@@ -599,9 +600,10 @@ Runtime feature diagnostics:
 - `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is emitted when a known feature is required but
   unavailable in the current runtime lane, including non-V8 builds that receive V8-targeted
   runnable artifacts, unavailable/deferred PostgreSQL or SQL Server provider features,
-  disabled SQLite provider availability, missing transport availability, and stdlib code
-  that reaches a provider bridge whose V8 intrinsic was not registered because the active
-  Plan did not enable that feature.
+  disabled SQLite provider availability, missing transport availability, the current
+  contract-only `stdlib.crypto` feature, and stdlib code that reaches a provider bridge
+  whose V8 intrinsic was not registered because the active Plan did not enable that
+  feature.
 - `SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING` is emitted when a known feature's
   dependency is unavailable.
 
@@ -636,6 +638,30 @@ V8-gated Time evidence covers inactive `__sloppy.time` registration and native d
 Promise settlement. Bootstrap stdlib evidence covers fake-clock disposal, deterministic
 delay/timeout/interval completion, skipped scheduled runs, and filesystem pre-cancel /
 expired-deadline option behavior.
+
+CORE-CRYPTO-01.A/B adds stable Crypto diagnostics and JSON goldens for the contract-only
+feature/model slice. Missing or inactive `stdlib.crypto` uses the runtime-feature
+diagnostics above until implementation PRs register real backends and V8 intrinsics.
+Crypto-specific codes are reserved for primitive/API failures:
+
+- `SLOPPY_E_CRYPTO_FEATURE_UNAVAILABLE` for crypto API use when the feature/backend lane is
+  not active;
+- `SLOPPY_E_CRYPTO_UNSUPPORTED_ALGORITHM` for algorithms outside the supported matrix;
+- `SLOPPY_E_CRYPTO_INSECURE_LEGACY_ALGORITHM` for legacy/insecure algorithm warnings;
+- `SLOPPY_E_CRYPTO_INVALID_KEY_SECRET` for invalid key or secret shape;
+- `SLOPPY_E_CRYPTO_PASSWORD_VERIFY_FAILED` for verification failure without password/hash
+  internals;
+- `SLOPPY_E_CRYPTO_PASSWORD_HASH_UNSUPPORTED` for unsupported encoded password-hash
+  formats;
+- `SLOPPY_E_CRYPTO_RANDOM_SOURCE_UNAVAILABLE` for fail-closed OS CSPRNG failures;
+- `SLOPPY_E_CRYPTO_SECRET_DISPOSED` for stale/disposed Secret use;
+- `SLOPPY_E_CRYPTO_CONSTANT_TIME_INVALID_INPUT` for invalid byte inputs;
+- `SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE` for unavailable vetted backend operations.
+
+Crypto diagnostics must not include passwords, secret bytes, encoded-hash internals, random
+output, raw native pointers, V8 handles, or backend-specific secret material. Default
+goldens prove deterministic diagnostic shape only; they do not prove randomness quality,
+side-channel resistance, password cost, performance, or V8 execution.
 
 App/request lifecycle diagnostics:
 

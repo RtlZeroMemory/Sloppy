@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CRYPTO_CONSTANT_TIME_INVALID_INPUT","severity":"error","message":"constant-time comparison input is invalid","hints":["Validate byte lengths and owned input views before comparing."]}

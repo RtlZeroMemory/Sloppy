@@ -94,6 +94,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.provider_sqlite = true;
     availability.provider_postgres = false;
     availability.provider_sqlserver = false;
+    availability.stdlib_crypto = true;
     return availability;
 }
 
@@ -157,16 +158,18 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_DATA);
     const SlRuntimeFeatureDescriptor* time =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_TIME);
+    const SlRuntimeFeatureDescriptor* crypto =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CRYPTO);
     const SlRuntimeFeatureDescriptor* fs =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FS);
     const SlRuntimeFeatureDescriptor* config =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 14) {
+    if (SL_RUNTIME_FEATURE_COUNT != 15) {
         return 60;
     }
-    if (sqlite == NULL || postgres == NULL || data == NULL || time == NULL || fs == NULL ||
-        config == NULL)
+    if (sqlite == NULL || postgres == NULL || data == NULL || time == NULL || crypto == NULL ||
+        fs == NULL || config == NULL)
     {
         return 61;
     }
@@ -188,6 +191,13 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !time->requires_v8_intrinsics)
     {
         return 67;
+    }
+    if (!sl_str_equal(crypto->stable_id, sl_str_from_cstr("stdlib.crypto")) ||
+        !sl_str_equal(crypto->stdlib_import, sl_str_from_cstr("sloppy/crypto")) ||
+        !sl_str_equal(crypto->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.crypto")) ||
+        !crypto->requires_v8_intrinsics || crypto->available)
+    {
+        return 68;
     }
     if (!sl_str_equal(fs->stable_id, sl_str_from_cstr("stdlib.fs")) ||
         !sl_str_equal(fs->stdlib_import, sl_str_from_cstr("sloppy/fs")) ||
@@ -272,6 +282,67 @@ static int test_explicit_fs_required_feature_activates_stdlib_fs(void)
     }
     if (diag.code != SL_DIAG_NONE) {
         return 3;
+    }
+    return 0;
+}
+
+static int test_explicit_crypto_required_feature_activates_when_available(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.crypto")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
+    {
+        return 2;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 3;
+    }
+    return 0;
+}
+
+static int test_crypto_required_feature_unavailable_by_default(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.crypto")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = sl_runtime_feature_default_availability();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.v8 = true;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
+        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.crypto")))
+    {
+        return 2;
     }
     return 0;
 }
@@ -567,12 +638,33 @@ static int test_missing_feature_diagnostic_goldens(void)
     return 0;
 }
 
+static int test_crypto_feature_diagnostic_golden(void)
+{
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.crypto")}};
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlPlan plan = target_only_plan();
+
+    availability.stdlib_crypto = false;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_crypto.json") != 0)
+    {
+        return 77;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     static const FeatureTestFn tests[] = {
         test_descriptors_publish_import_and_intrinsic_metadata,
         test_explicit_time_required_feature_activates_stdlib_time,
         test_explicit_fs_required_feature_activates_stdlib_fs,
+        test_explicit_crypto_required_feature_activates_when_available,
+        test_crypto_required_feature_unavailable_by_default,
         test_minimal_route_activates_expected_features,
         test_sqlite_provider_metadata_activates_sqlite,
         test_unavailable_postgres_required_feature_fails,
@@ -580,6 +672,7 @@ int main(void)
         test_missing_dependency_fails_deterministically,
         test_v8_disabled_fails_honestly,
         test_missing_feature_diagnostic_goldens,
+        test_crypto_feature_diagnostic_golden,
     };
     size_t index = 0U;
 

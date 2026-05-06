@@ -22,6 +22,7 @@ live-provider, package, stress, or benchmark evidence.
 | `runtime_feature_v8_disabled.json` | default | runtime features | V8 feature requested from a non-V8 runtime lane. |
 | `runtime_feature_missing_transport_dependency.json` | default | runtime features | HTTP activation with unavailable `transport.libuv` dependency. |
 | `runtime_feature_unavailable_transport.json` | default | runtime features | Direct `transport.libuv` required-feature availability failure. |
+| `runtime_feature_unavailable_crypto.json` | default | runtime features | Direct `stdlib.crypto` required-feature availability failure before crypto backends land. |
 | `runtime_feature_inactive_sqlite_intrinsic.snap` | default | stdlib/runtime features | Stdlib SQLite missing-intrinsic text when `provider.sqlite` is inactive. |
 | `time_timeout.json` | default | Time diagnostics | Timeout/deadline diagnostic JSON shape. |
 | `time_cancelled.json` | default | Time diagnostics | Caller cancellation diagnostic JSON shape. |
@@ -31,6 +32,16 @@ live-provider, package, stress, or benchmark evidence.
 | `time_interval_overflow.json` | default | Time diagnostics | Bounded interval overflow diagnostic JSON shape. |
 | `time_schedule_skipped.json` | default | Time diagnostics | No-overlap skipped scheduled run diagnostic JSON shape. |
 | `time_fake_clock_misuse.json` | default | Time diagnostics | Misused or disposed fake-clock diagnostic JSON shape. |
+| `crypto_feature_unavailable.json` | default | Crypto diagnostics | Crypto feature unavailable diagnostic JSON shape. |
+| `crypto_unsupported_algorithm.json` | default | Crypto diagnostics | Unsupported secure algorithm diagnostic JSON shape. |
+| `crypto_insecure_legacy_algorithm.json` | default | Crypto diagnostics | Legacy/insecure algorithm warning JSON shape. |
+| `crypto_invalid_key_secret.json` | default | Crypto diagnostics | Invalid key/secret shape diagnostic without secret contents. |
+| `crypto_password_verify_failed.json` | default | Crypto diagnostics | Password verification failure diagnostic without password or hash internals. |
+| `crypto_password_hash_unsupported.json` | default | Crypto diagnostics | Unsupported encoded password-hash format diagnostic. |
+| `crypto_random_source_unavailable.json` | default | Crypto diagnostics | Secure random source fail-closed diagnostic. |
+| `crypto_secret_disposed.json` | default | Crypto diagnostics | Disposed Secret stale-use diagnostic shape. |
+| `crypto_constant_time_invalid_input.json` | default | Crypto diagnostics | Constant-time comparison input validation diagnostic. |
+| `crypto_backend_unavailable.json` | default | Crypto diagnostics | Backend unavailable diagnostic without leaking backend secrets. |
 
 V8-gated exception, async, SQLite users API, and `sloppy run` diagnostic evidence stays in
 the V8-enabled CTest lane and its process tests. Default renderer goldens must not be

@@ -86,6 +86,20 @@ provider work. Application config may contain secrets later, but this slice does
 secrets manager, user secrets, remote providers, or raw environment access from JS.
 Secret-looking config values are redacted in diagnostics and Plan metadata.
 
+CORE-CRYPTO-01.A/B adds the crypto API contract without adding a new permission grant
+type. `sloppy/crypto` is Plan-visible as `stdlib.crypto` and unavailable by default until
+real backends land. Crypto backends may use OS random/crypto facilities or vetted
+dependencies behind Sloppy-owned platform/backend boundaries, but JavaScript never receives
+raw native pointers or backend handles. Secure `Hash`/`Hmac` APIs and `NonCryptoHash` are
+separate namespaces so non-security hashes are not confused with signatures, tokens,
+password hashes, or integrity checks.
+
+Secret-bearing crypto inputs must not appear in Plan metadata, diagnostics, logs, examples,
+or goldens. `Secret` disposal is best-effort cleanup of Sloppy-owned native buffers only:
+it cannot erase prior JS string copies, engine internals, caller-owned buffers, operating
+system paging, or crash dumps. Password hashing must run through an async/offload path and
+must not block the V8 owner thread.
+
 COMPILER-30.E keeps this metadata-only: supported config reads, schema declarations,
 request bindings, and `Results.*` response facts are Plan-visible for later audit and
 completeness work, but this slice does not enforce provider/capability effects or runtime
