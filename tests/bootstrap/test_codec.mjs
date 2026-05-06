@@ -16,6 +16,15 @@ function assertCodecError(fn, code) {
     });
 }
 
+function assertCodecErrorMessage(fn, code, messagePattern) {
+    assert.throws(fn, (error) => {
+        assert.equal(error.code, code);
+        assert.match(error.message, new RegExp(code));
+        assert.match(error.message, messagePattern);
+        return true;
+    });
+}
+
 const base64Vectors = [
     ["", ""],
     ["f", "Zg=="],
@@ -100,12 +109,10 @@ const payload = new Uint8Array([0, 65, 255]);
 const binaryWriter = Binary.writer({ initialCapacity: 1, maxCapacity: 64 });
 binaryWriter.u32le(1).u16be(payload.length).bytes(payload).i8(-1).i16le(-2).u64be(0x0102030405060708n).i64le(-2n);
 assert.equal(binaryWriter.position(), 28);
-assertBytes(
-    binaryWriter.toBytes(),
-    new Uint8Array([
-        1, 0, 0, 0, 0, 3, 0, 65, 255, 255, 254, 255, 1, 2, 3, 4, 5, 6, 7, 8, 254, 255, 255, 255, 255, 255, 255, 255,
-    ]),
-);
+const binaryWriterBytes = new Uint8Array([
+    1, 0, 0, 0, 0, 3, 0, 65, 255, 255, 254, 255, 1, 2, 3, 4, 5, 6, 7, 8, 254, 255, 255, 255, 255, 255, 255, 255,
+]);
+assertBytes(binaryWriter.toBytes(), binaryWriterBytes);
 const writtenReader = Binary.reader(binaryWriter.toBytes());
 assert.equal(writtenReader.u32le(), 1);
 assert.equal(writtenReader.u16be(), payload.length);
@@ -116,6 +123,12 @@ assert.equal(writtenReader.u64be(), 0x0102030405060708n);
 assert.equal(writtenReader.i64le(), -2n);
 assert.equal(writtenReader.remaining(), 0);
 
+const writerSnapshot = binaryWriter.toBytes();
+writerSnapshot[0] = 0xff;
+assert.equal(Binary.reader(writerSnapshot).u32le(), 0xff);
+assertBytes(binaryWriter.toBytes(), binaryWriterBytes);
+assert.equal(Binary.reader(binaryWriter.toBytes()).u32le(), 1);
+
 const shortReader = Binary.reader(new Uint8Array([1]));
 assertCodecError(() => shortReader.u16le(), "SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS");
 assert.equal(shortReader.position(), 0);
@@ -123,7 +136,7 @@ assertCodecError(() => shortReader.seek(2), "SLOPPY_E_CODEC_BINARY_READ_OUT_OF_B
 assertCodecError(() => Binary.reader(new Uint8Array([1])).bytes(2), "SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS");
 const cappedWriter = Binary.writer({ initialCapacity: 1, maxCapacity: 2 });
 cappedWriter.u8(1).u8(2);
-assertCodecError(() => cappedWriter.u8(3), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
+assertCodecErrorMessage(() => cappedWriter.u8(3), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE", /BinaryWriter\.u8/);
 assertBytes(cappedWriter.toBytes(), new Uint8Array([1, 2]));
 assertCodecError(() => Binary.writer({ initialCapacity: 3, maxCapacity: 2 }), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
 assertCodecError(() => Binary.writer({ initialCapacity: 2 ** 40 }), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");

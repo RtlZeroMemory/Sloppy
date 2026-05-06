@@ -2984,7 +2984,11 @@ Reason:
             if (initialCapacity > this.#maxCapacity) {
                 throw binaryFieldError("Binary.writer initialCapacity must not exceed maxCapacity.");
             }
-            this.#bytes = new Uint8Array(initialCapacity);
+            try {
+                this.#bytes = new Uint8Array(initialCapacity);
+            } catch {
+                throw binaryFieldError("Binary.writer initialCapacity could not be allocated.");
+            }
         }
 
         position() {
@@ -3003,61 +3007,61 @@ Reason:
         }
 
         u8(value) {
-            return this.#writeNumber(1, requireIntegerInRange(value, 0, 0xff, "BinaryWriter.u8"), true);
+            return this.#writeNumber(1, requireIntegerInRange(value, 0, 0xff, "BinaryWriter.u8"), true, "BinaryWriter.u8");
         }
 
         i8(value) {
-            return this.#writeNumber(1, requireIntegerInRange(value, -0x80, 0x7f, "BinaryWriter.i8"), true);
+            return this.#writeNumber(1, requireIntegerInRange(value, -0x80, 0x7f, "BinaryWriter.i8"), true, "BinaryWriter.i8");
         }
 
         u16le(value) {
-            return this.#writeNumber(2, requireIntegerInRange(value, 0, 0xffff, "BinaryWriter.u16le"), true);
+            return this.#writeNumber(2, requireIntegerInRange(value, 0, 0xffff, "BinaryWriter.u16le"), true, "BinaryWriter.u16le");
         }
 
         u16be(value) {
-            return this.#writeNumber(2, requireIntegerInRange(value, 0, 0xffff, "BinaryWriter.u16be"), false);
+            return this.#writeNumber(2, requireIntegerInRange(value, 0, 0xffff, "BinaryWriter.u16be"), false, "BinaryWriter.u16be");
         }
 
         i16le(value) {
-            return this.#writeNumber(2, requireIntegerInRange(value, -0x8000, 0x7fff, "BinaryWriter.i16le"), true);
+            return this.#writeNumber(2, requireIntegerInRange(value, -0x8000, 0x7fff, "BinaryWriter.i16le"), true, "BinaryWriter.i16le");
         }
 
         i16be(value) {
-            return this.#writeNumber(2, requireIntegerInRange(value, -0x8000, 0x7fff, "BinaryWriter.i16be"), false);
+            return this.#writeNumber(2, requireIntegerInRange(value, -0x8000, 0x7fff, "BinaryWriter.i16be"), false, "BinaryWriter.i16be");
         }
 
         u32le(value) {
-            return this.#writeNumber(4, requireIntegerInRange(value, 0, 0xffffffff, "BinaryWriter.u32le"), true);
+            return this.#writeNumber(4, requireIntegerInRange(value, 0, 0xffffffff, "BinaryWriter.u32le"), true, "BinaryWriter.u32le");
         }
 
         u32be(value) {
-            return this.#writeNumber(4, requireIntegerInRange(value, 0, 0xffffffff, "BinaryWriter.u32be"), false);
+            return this.#writeNumber(4, requireIntegerInRange(value, 0, 0xffffffff, "BinaryWriter.u32be"), false, "BinaryWriter.u32be");
         }
 
         i32le(value) {
-            return this.#writeNumber(4, requireIntegerInRange(value, -0x80000000, 0x7fffffff, "BinaryWriter.i32le"), true);
+            return this.#writeNumber(4, requireIntegerInRange(value, -0x80000000, 0x7fffffff, "BinaryWriter.i32le"), true, "BinaryWriter.i32le");
         }
 
         i32be(value) {
-            return this.#writeNumber(4, requireIntegerInRange(value, -0x80000000, 0x7fffffff, "BinaryWriter.i32be"), false);
+            return this.#writeNumber(4, requireIntegerInRange(value, -0x80000000, 0x7fffffff, "BinaryWriter.i32be"), false, "BinaryWriter.i32be");
         }
 
         u64le(value) {
-            return this.#writeBigInt(requireBigIntInRange(value, 0n, UINT64_MAX, "BinaryWriter.u64le"), true);
+            return this.#writeBigInt(requireBigIntInRange(value, 0n, UINT64_MAX, "BinaryWriter.u64le"), true, "BinaryWriter.u64le");
         }
 
         u64be(value) {
-            return this.#writeBigInt(requireBigIntInRange(value, 0n, UINT64_MAX, "BinaryWriter.u64be"), false);
+            return this.#writeBigInt(requireBigIntInRange(value, 0n, UINT64_MAX, "BinaryWriter.u64be"), false, "BinaryWriter.u64be");
         }
 
         i64le(value) {
             value = requireBigIntInRange(value, INT64_MIN, INT64_MAX, "BinaryWriter.i64le");
-            return this.#writeBigInt(value < 0n ? value + (1n << 64n) : value, true);
+            return this.#writeBigInt(value < 0n ? value + (1n << 64n) : value, true, "BinaryWriter.i64le");
         }
 
         i64be(value) {
             value = requireBigIntInRange(value, INT64_MIN, INT64_MAX, "BinaryWriter.i64be");
-            return this.#writeBigInt(value < 0n ? value + (1n << 64n) : value, false);
+            return this.#writeBigInt(value < 0n ? value + (1n << 64n) : value, false, "BinaryWriter.i64be");
         }
 
         #reserve(length, operation) {
@@ -3065,12 +3069,13 @@ Reason:
                 throw binaryFieldError(`${operation} would exceed Binary.writer maxCapacity.`);
             }
             const offset = this.#length;
-            this.#length += length;
-            this.#ensureCapacity(this.#length);
+            const required = offset + length;
+            this.#ensureCapacity(required, operation);
+            this.#length = required;
             return offset;
         }
 
-        #ensureCapacity(required) {
+        #ensureCapacity(required, operation) {
             if (required <= this.#bytes.length) {
                 return;
             }
@@ -3082,21 +3087,26 @@ Reason:
                     break;
                 }
             }
-            const grown = new Uint8Array(next);
+            let grown;
+            try {
+                grown = new Uint8Array(next);
+            } catch {
+                throw binaryFieldError(`${operation} could not grow Binary.writer capacity.`);
+            }
             grown.set(this.#bytes.subarray(0, this.#length));
             this.#bytes = grown;
         }
 
-        #writeNumber(width, value, littleEndian) {
+        #writeNumber(width, value, littleEndian, operation) {
             const bits = width * 8;
             const unsigned = value < 0 ? value + 2 ** bits : value;
-            const offset = this.#reserve(width, "BinaryWriter.writeNumber");
+            const offset = this.#reserve(width, operation);
             writeUnsignedNumber(this.#bytes, offset, width, unsigned, littleEndian);
             return this;
         }
 
-        #writeBigInt(value, littleEndian) {
-            const offset = this.#reserve(8, "BinaryWriter.writeBigInt");
+        #writeBigInt(value, littleEndian, operation) {
+            const offset = this.#reserve(8, operation);
             writeUnsignedBigInt(this.#bytes, offset, 8, value, littleEndian);
             return this;
         }
