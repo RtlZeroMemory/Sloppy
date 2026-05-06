@@ -69,11 +69,14 @@ methods/patterns/names, provider tokens/names, service/capability metadata, and 
 token/kind/access/provider metadata. It does not intern artifact paths, hashes, source-map
 paths, provider database names, secrets, request data, connection strings, or transient
 diagnostics.
-FRAMEWORK-01.B adds compiler-emitted configuration metadata. `sloppyc` records the
-selected environment, declared/effective config keys, each key's winning source layer, and
-provider bindings such as `Sloppy:Providers:sqlite:main`. Sensitive-looking values are
-redacted. The native Plan v1 parser intentionally ignores this metadata for now; broader
-typed Plan graph expansion remains a Strong Plan follow-up under #355-#359.
+FRAMEWORK-01.B adds compiler-emitted configuration metadata. CORE-CONFIG-01 expands that
+metadata into source precedence, static reads, typed bind requirements, provider-owned
+contracts, secret redaction, and package-manifest visibility. `sloppyc` records the
+selected environment, declared/effective config keys, each key's winning source layer,
+provider bindings such as `Sloppy:Providers:sqlite:main`, and
+`configuration.requirements[]` entries with present/missing/defaulted status. Sensitive
+values are redacted. The native Plan v1 parser intentionally ignores this metadata for
+runtime struct storage today; doctor/package tooling consumes it as optional metadata.
 
 COMPILER-30 (#460) defines the compiler-owned inference path that should feed the next
 Plan metadata expansion. The compiler, not the runtime, owns inference for routes, route
@@ -169,9 +172,10 @@ The implemented native C shape in `include/sloppy/plan.h` is deliberately small:
 - optional `capabilities[].token`, `capabilities[].kind`, `capabilities[].access`, and
   `capabilities[].provider`.
 - optional `requiredFeatures[]` / `SlPlan.required_features`;
-- optional compiler metadata `configuration.environment`, `configuration.keys[]`, and
-  `configuration.providers[]`. This is emitted for tooling/diagnostics and is not yet part
-  of the native `SlPlan` struct.
+- optional compiler metadata `configuration.environment`, `configuration.keys[]`,
+  `configuration.providers[]`, `configuration.requirements[]`, and
+  `configuration.packageManifest`. This is emitted for tooling/diagnostics/package
+  readiness and is not yet part of the native `SlPlan` struct.
 - optional compiler metadata `modules[]`, `sourceFiles[]`, route/plan `completeness`,
   route `bindings`, `response`, `effects`, `configReads[]`, `schemas[]`, and `strongPlan`.
   These fields are emitted for Strong Plan consumers and are intentionally ignored by the

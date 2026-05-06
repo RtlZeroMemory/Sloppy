@@ -1088,8 +1088,11 @@ static int test_custom_capability_hook_allows_non_database_provider(void)
     ProviderRecord record = {0};
     ProviderPolicyHook hook = {0};
     ProviderWorkPayload payload;
+    atomic_int started_count;
     SlProviderOperationDescriptor desc;
     SlProviderOperation* op = NULL;
+
+    atomic_init(&started_count, 0);
 
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
         0)
@@ -1125,6 +1128,7 @@ static int test_custom_capability_hook_allows_non_database_provider(void)
 
     payload = provider_payload_basic(&record, 55, SL_STATUS_OK, SL_DIAG_NONE,
                                      sl_str_from_cstr("image provider completed"), false);
+    payload.started_count = &started_count;
     desc = sl_provider_operation_descriptor_init(
         config.instance_id, config.provider_kind, SL_PROVIDER_OPERATION_KIND_INTERNAL,
         sl_str_from_cstr("resize"), config.mode, record_provider_completion, &record);
@@ -1145,7 +1149,7 @@ static int test_custom_capability_hook_allows_non_database_provider(void)
 
     if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op), SL_STATUS_OK) !=
             0 ||
-        op == NULL || hook.calls != 1U)
+        op == NULL || hook.calls != 1U || wait_until_atomic_at_least(&started_count, 1) != 0)
     {
         sl_provider_executor_dispose(&executor);
         sl_async_loop_dispose(loop);

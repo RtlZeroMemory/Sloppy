@@ -990,6 +990,8 @@ if(SLOPPY_ENABLE_TESTS)
     set(SLOPPY_DOCTOR_OS_JSON_GOLDEN tests/golden/cli/doctor-os-json.json)
     set(SLOPPY_DOCTOR_HTTP_CLIENT_TEXT_GOLDEN tests/golden/cli/doctor-http-client-text.txt)
     set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN tests/golden/cli/doctor-http-client-json.json)
+    set(SLOPPY_DOCTOR_CONFIG_TEXT_GOLDEN tests/golden/cli/doctor-config-text.txt)
+    set(SLOPPY_DOCTOR_CONFIG_JSON_GOLDEN tests/golden/cli/doctor-config-json.json)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
         tests/golden/cli/doctor-crypto-noncrypto-hash-text.txt)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -1013,6 +1015,8 @@ if(SLOPPY_ENABLE_TESTS)
             tests/golden/cli/doctor-http-client-text-v8.txt)
         set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN
             tests/golden/cli/doctor-http-client-json-v8.json)
+        set(SLOPPY_DOCTOR_CONFIG_TEXT_GOLDEN tests/golden/cli/doctor-config-text-v8.txt)
+        set(SLOPPY_DOCTOR_CONFIG_JSON_GOLDEN tests/golden/cli/doctor-config-json-v8.json)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
             tests/golden/cli/doctor-crypto-noncrypto-hash-text-v8.txt)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -1058,6 +1062,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_http_client_json ${SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN} doctor
         --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_config_text ${SLOPPY_DOCTOR_CONFIG_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/config.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_config_json ${SLOPPY_DOCTOR_CONFIG_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/config.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_crypto_noncrypto_hash_text
         ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN} doctor --plan
@@ -1865,6 +1875,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.os.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_os_examples.cmake")
+    add_test(
+        NAME examples.config.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_config_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

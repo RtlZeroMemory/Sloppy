@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-config-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-config-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Config.Index"
+    }
+  ],
+  "configuration": {
+    "environment": "Development",
+    "keys": [
+      {
+        "key": "Auth:JwtSecret",
+        "source": "env:Auth__JwtSecret",
+        "value": "<redacted>",
+        "sensitive": true
+      }
+    ],
+    "providers": [],
+    "requirements": [
+      {
+        "key": "Auth:JwtSecret",
+        "type": "secret",
+        "required": true,
+        "status": "present",
+        "source": "env:Auth__JwtSecret",
+        "requiredBy": "src/auth.ts:4",
+        "redaction": "secret",
+        "secret": true
+      },
+      {
+        "key": "Auth:Issuer",
+        "type": "string",
+        "required": true,
+        "status": "missing",
+        "source": null,
+        "requiredBy": "src/auth.ts:5",
+        "redaction": "none",
+        "secret": false
+      },
+      {
+        "key": "Auth:TokenTtlMinutes",
+        "type": "number",
+        "required": false,
+        "status": "defaulted",
+        "source": null,
+        "requiredBy": "src/auth.ts:6",
+        "default": 60,
+        "redaction": "none",
+        "secret": false
+      }
+    ],
+    "packageManifest": {
+      "required": [
+        {
+          "key": "Auth:JwtSecret",
+          "env": "Auth__JwtSecret",
+          "type": "secret",
+          "secret": true
+        },
+        {
+          "key": "Auth:Issuer",
+          "env": "Auth__Issuer",
+          "type": "string",
+          "secret": false
+        }
+      ],
+      "optional": [
+        {
+          "key": "Auth:TokenTtlMinutes",
+          "env": "Auth__TokenTtlMinutes",
+          "type": "number",
+          "secret": false,
+          "default": 60
+        }
+      ]
+    }
+  }
+}

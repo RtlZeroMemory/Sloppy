@@ -98,6 +98,14 @@ the policy is cross-cutting.
 Agents must read `AGENTS.md`, read relevant source docs, keep scope bounded, run checks,
 report honestly, and update the tech debt tracker when deferring work.
 
+On the primary Windows Codex machine, agents must also treat the compatible local V8 SDK as
+available through the repository scripts. Runtime, app-host, compiler, bootstrap,
+provider, and configuration implementation PRs should include the separate V8-enabled
+`windows-relwithdebinfo` configure/build/test lane from `AGENTS.md` and
+`docs/quality-gates.md`. If `tools/windows/resolve-v8-sdk.ps1` cannot resolve the SDK on
+that machine, report the failed resolution as an environment blocker rather than silently
+downgrading V8 evidence.
+
 ## Anti-patterns
 
 - Giant `AGENTS.md` encyclopedia.
