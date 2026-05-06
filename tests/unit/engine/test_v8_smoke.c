@@ -1259,11 +1259,22 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "passwordHash);"
                                  "  const passwordRehash = await c.passwordNeedsRehash("
                                  "passwordHash, 3, 67108864);"
+                                 "  const oversizedHashRejected = await (async () => {"
+                                 "    try { await c.passwordVerify(enc('password'), 'x'.repeat("
+                                 "129)); return false; }"
+                                 "    catch (error) { return error instanceof TypeError; }"
+                                 "  })();"
+                                 "  const oversizedRehashRejected = await (async () => {"
+                                 "    try { await c.passwordNeedsRehash('x'.repeat(129), 2, "
+                                 "67108864); return false; }"
+                                 "    catch (error) { return error instanceof TypeError; }"
+                                 "  })();"
                                  "  const equal = c.constantTimeEquals(sig, sig);"
                                  "  return digest + ':' + hex(sig).slice(0, 8) + ':' + "
                                  "uuid[14] + ':' + code.length + ':' + randomHexLength + ':' + "
                                  "emptyRandomText.length + ':' + passwordHash.startsWith("
                                  "'$argon2id$') + ':' + passwordOk + ':' + passwordRehash + ':' + "
+                                 "oversizedHashRejected + ':' + oversizedRehashRejected + ':' + "
                                  "equal;"
                                  "};"),
                 &diag),
@@ -1285,7 +1296,8 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(result.text, sl_str_from_cstr("ba7816bf8f01cfea414140de5dae2223"
                                                     "b00361a396177a9cb410ff61f20015ad:"
-                                                    "b0344c61:4:6:8:0:true:true:true:true")))
+                                                    "b0344c61:4:6:8:0:true:true:true:true:"
+                                                    "true:true")))
     {
         sl_engine_destroy(engine);
         return 415;

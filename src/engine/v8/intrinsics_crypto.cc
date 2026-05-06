@@ -168,6 +168,20 @@ bool crypto_v8_bytes_arg(v8::Local<v8::Value> value, size_t max, std::vector<uns
     return true;
 }
 
+bool crypto_v8_password_hash_arg(v8::Isolate* isolate, v8::Local<v8::Value> value, std::string* out)
+{
+    if (out == nullptr || value.IsEmpty() || !value->IsString()) {
+        return false;
+    }
+    if (value.As<v8::String>()->Length() >= static_cast<int>(SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX)) {
+        return false;
+    }
+    if (!sl_v8_std_string_from_value(isolate, value, out)) {
+        return false;
+    }
+    return out->size() < SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX;
+}
+
 void crypto_v8_zero_vector(std::vector<unsigned char>& bytes)
 {
     volatile unsigned char* data = bytes.empty() ? nullptr : bytes.data();
@@ -413,7 +427,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
     else if (operation == SlV8CryptoPasswordOperation::Verify) {
         if (args.Length() != 2 ||
             !crypto_v8_bytes_arg(args[0], kCryptoMaxPasswordBytes, &password) ||
-            !sl_v8_std_string_from_value(isolate, args[1], &encoded_hash))
+            !crypto_v8_password_hash_arg(isolate, args[1], &encoded_hash))
         {
             crypto_v8_zero_vector(password);
             crypto_v8_throw_type_error(
@@ -421,7 +435,7 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
             return;
         }
     }
-    else if (args.Length() != 3 || !sl_v8_std_string_from_value(isolate, args[0], &encoded_hash) ||
+    else if (args.Length() != 3 || !crypto_v8_password_hash_arg(isolate, args[0], &encoded_hash) ||
              !crypto_v8_password_options_args(args, 1, 2, &options))
     {
         crypto_v8_throw_type_error(

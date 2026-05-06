@@ -8,8 +8,6 @@
 
 #include <sodium.h>
 
-#include <string.h>
-
 static SlStatus sl_sodium_status(void)
 {
     return sodium_init() < 0 ? sl_status_from_code(SL_STATUS_UNSUPPORTED) : sl_status_ok();
@@ -18,9 +16,17 @@ static SlStatus sl_sodium_status(void)
 static bool sl_sodium_password_hash_format_supported(SlStr encoded_hash)
 {
     static const char prefix[] = "$argon2id$";
+    size_t index = 0U;
 
-    return encoded_hash.length >= sizeof(prefix) - 1U &&
-           memcmp(encoded_hash.ptr, prefix, sizeof(prefix) - 1U) == 0;
+    if (encoded_hash.length < sizeof(prefix) - 1U || encoded_hash.ptr == NULL) {
+        return false;
+    }
+    for (index = 0U; index < sizeof(prefix) - 1U; index += 1U) {
+        if (encoded_hash.ptr[index] != prefix[index]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static SlStatus sl_sodium_copy_encoded_hash(SlStr encoded_hash,
@@ -32,7 +38,9 @@ static SlStatus sl_sodium_copy_encoded_hash(SlStr encoded_hash,
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
 
-    memcpy(out, encoded_hash.ptr, encoded_hash.length);
+    for (size_t index = 0U; index < encoded_hash.length; index += 1U) {
+        out[index] = encoded_hash.ptr[index];
+    }
     out[encoded_hash.length] = '\0';
     return sl_status_ok();
 }
