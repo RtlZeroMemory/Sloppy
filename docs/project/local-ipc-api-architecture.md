@@ -155,18 +155,25 @@ work belongs under `src/platform/posix/*`, Windows named pipe work under
 `src/platform/win32/*`, and any libuv helper under `src/platform/libuv/*` without leaking
 libuv types into public headers or JavaScript.
 
+IPC-next-2 adds the native POSIX `AF_UNIX` stream backend behind `SlLocalConnection` and
+`SlLocalServer`. The backend accepts already-resolved filesystem paths, applies opt-in
+stale socket cleanup only for existing socket files, rejects ordinary files/directories as
+endpoint collisions, applies POSIX mode bits where `chmod` can enforce them, and keeps file
+descriptors private. Windows builds compile honest unsupported stubs until the named pipe
+backend lands.
+
 Cross-thread data is copied or owned before crossing domains. Promise settlement happens
 on the V8 owner thread. Cleanup is exactly once across success, failure, cancellation,
 timeout, disposal, shutdown, abort, and late completion. Late completion is cleanup-only.
 
 ## Evidence Boundaries
 
-This PR1 policy slice covers contract, option validation, diagnostics, and docs. It is not
-backend evidence and must not be reported as Unix socket or named pipe execution success.
+PR1 covers contract, option validation, diagnostics, and docs. IPC-next-2 adds POSIX
+native backend evidence only; it is not named pipe evidence and is not V8
+`LocalEndpoint` execution evidence.
 
 Deferred to later CORE-NET-02 PRs:
 
-- POSIX Unix socket backend;
 - Windows named pipe backend;
 - V8 bridge resource integration for executable local connections/servers;
 - streams, backpressure, deadline, and cancellation hardening;
