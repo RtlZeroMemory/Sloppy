@@ -256,31 +256,199 @@ static void sl_os_posix_capture_read(int fd, char* buffer, size_t capacity, size
                                      bool* out_truncated)
 {
     char chunk[4096];
+    ssize_t got;
 
     if (fd < 0) {
         return;
     }
-    for (;;) {
-        ssize_t got = read(fd, chunk, sizeof(chunk));
-        if (got > 0) {
-            size_t available = capacity > *inout_used ? capacity - *inout_used : 0U;
-            size_t copy = (size_t)got < available ? (size_t)got : available;
-            if (copy != 0U) {
-                for (size_t index = 0U; index < copy; index += 1U) {
-                    buffer[*inout_used + index] = chunk[index];
-                }
-                *inout_used += copy;
+    got = read(fd, chunk, sizeof(chunk));
+    if (got > 0) {
+        size_t available = capacity > *inout_used ? capacity - *inout_used : 0U;
+        size_t copy = (size_t)got < available ? (size_t)got : available;
+        if (copy != 0U) {
+            for (size_t index = 0U; index < copy; index += 1U) {
+                buffer[*inout_used + index] = chunk[index];
             }
-            if (copy != (size_t)got) {
-                *out_truncated = true;
-            }
-            continue;
+            *inout_used += copy;
         }
-        if (got == 0 || errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-            return;
+        if (copy != (size_t)got) {
+            *out_truncated = true;
         }
-        return;
     }
+}
+
+static bool sl_os_posix_env_entry_overridden(const char* entry,
+                                             const SlOsEnvironmentOverride* overrides,
+                                             size_t override_count)
+{
+    const char* equals = strchr(entry, '=');
+    SlStr key = {0};
+
+    if (equals == NULL || equals == entry) {
+        return false;
+    }
+    key = sl_str_from_parts(entry, (size_t)(equals - entry));
+    for (size_t index = 0U; index < override_count; index += 1U) {
+        if (sl_str_equal(key, overrides[index].key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static SlStatus sl_os_posix_env_assignment(SlArena* arena, SlOsEnvironmentOverride entry,
+                                           char** out)
+{
+    size_t length = entry.key.length + 1U + entry.value.length;
+    size_t offset = 0U;
+    void* memory = NULL;
+    SlStatus status = sl_arena_alloc(arena, length + 1U, _Alignof(char), &memory);
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = (char*)memory;
+    for (size_t index = 0U; index < entry.key.length; index += 1U) {
+        (*out)[offset++] = entry.key.ptr[index];
+    }
+    (*out)[offset++] = '=';
+    for (size_t index = 0U; index < entry.value.length; index += 1U) {
+        (*out)[offset++] = entry.value.ptr[index];
+    }
+    (*out)[offset] = '\0';
+    return sl_status_ok();
+}
+
+static SlStatus sl_os_posix_environment_block(SlArena* arena,
+                                              const SlOsEnvironmentOverride* overrides,
+                                              size_t override_count, char*** out)
+{
+    size_t inherited_count = 0U;
+    size_t offset = 0U;
+    void* memory = NULL;
+    SlStatus status;
+
+    for (char** cursor = environ; cursor != NULL && *cursor != NULL; cursor += 1) {
+        if (!sl_os_posix_env_entry_overridden(*cursor, overrides, override_count)) {
+            inherited_count += 1U;
+        }
+    }
+    status = sl_arena_alloc(arena, (inherited_count + override_count + 1U) * sizeof(char*),
+                            _Alignof(char*), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = (char**)memory;
+    for (char** cursor = environ; cursor != NULL && *cursor != NULL; cursor += 1) {
+        if (!sl_os_posix_env_entry_overridden(*cursor, overrides, override_count)) {
+            (*out)[offset++] = *cursor;
+        }
+    }
+    for (size_t index = 0U; index < override_count; index += 1U) {
+        status = sl_os_posix_env_assignment(arena, overrides[index], &(*out)[offset]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        offset += 1U;
+    }
+    (*out)[offset] = NULL;
+    return sl_status_ok();
+}
+
+static bool sl_os_posix_has_slash(const char* value)
+{
+    for (size_t index = 0U; value[index] != '\0'; index += 1U) {
+        if (value[index] == '/') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const char* sl_os_posix_env_value(char** envp, const char* key)
+{
+    size_t key_length = sl_str_from_cstr(key).length;
+
+    for (char** cursor = envp; cursor != NULL && *cursor != NULL; cursor += 1) {
+        if (strncmp(*cursor, key, key_length) == 0 && (*cursor)[key_length] == '=') {
+            return *cursor + key_length + 1U;
+        }
+    }
+    return NULL;
+}
+
+static SlStatus sl_os_posix_join_path(SlArena* arena, const char* directory, size_t directory_len,
+                                      const char* command, char** out)
+{
+    size_t command_len = sl_str_from_cstr(command).length;
+    size_t separator = directory_len == 0U ? 0U : 1U;
+    size_t offset = 0U;
+    void* memory = NULL;
+    SlStatus status = sl_arena_alloc(arena, directory_len + separator + command_len + 1U,
+                                     _Alignof(char), &memory);
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = (char*)memory;
+    for (size_t index = 0U; index < directory_len; index += 1U) {
+        (*out)[offset++] = directory[index];
+    }
+    if (separator != 0U) {
+        (*out)[offset++] = '/';
+    }
+    for (size_t index = 0U; index < command_len; index += 1U) {
+        (*out)[offset++] = command[index];
+    }
+    (*out)[offset] = '\0';
+    return sl_status_ok();
+}
+
+static SlStatus sl_os_posix_resolve_command(SlArena* arena, const char* command, char** envp,
+                                            char** out)
+{
+    const char* path = NULL;
+    const char* segment = NULL;
+
+    if (sl_os_posix_has_slash(command)) {
+        *out = (char*)command;
+        return sl_status_ok();
+    }
+    path = sl_os_posix_env_value(envp, "PATH");
+    if (path == NULL || path[0] == '\0') {
+        path = "/usr/bin:/bin";
+    }
+    segment = path;
+    for (;;) {
+        const char* end = segment;
+        char* candidate = NULL;
+        while (*end != '\0' && *end != ':') {
+            end += 1;
+        }
+        if (end == segment) {
+            SlStatus status = sl_os_posix_join_path(arena, ".", 1U, command, &candidate);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+        else {
+            SlStatus status =
+                sl_os_posix_join_path(arena, segment, (size_t)(end - segment), command, &candidate);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+        if (access(candidate, X_OK) == 0) {
+            *out = candidate;
+            return sl_status_ok();
+        }
+        if (*end == '\0') {
+            break;
+        }
+        segment = end + 1;
+    }
+    *out = NULL;
+    return sl_status_ok();
 }
 
 SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* args,
@@ -288,7 +456,9 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
                                     SlOsProcessRunResult* out, SlDiag* out_diag)
 {
     char** argv = NULL;
+    char** envp = NULL;
     char* command_cstr = NULL;
+    char* exec_path = NULL;
     char* cwd_cstr = NULL;
     char* stdout_buffer = NULL;
     char* stderr_buffer = NULL;
@@ -337,6 +507,20 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
                 sl_str_from_cstr("Validate cwd before process admission."));
         }
     }
+    status = sl_os_posix_environment_block(arena, options->environment_overrides,
+                                           options->environment_override_count, &envp);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_os_posix_resolve_command(arena, command_cstr, envp, &exec_path);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (exec_path == NULL) {
+        return sl_os_posix_process_fail(
+            SL_DIAG_OS_COMMAND_NOT_FOUND, out_diag, sl_str_from_cstr("command was not found"),
+            sl_str_from_cstr("Process APIs execute explicit argv only."));
+    }
     if (capture) {
         stdout_capacity = options->max_stdout_bytes == 0U ? 65536U : options->max_stdout_bytes;
         stderr_capacity = options->max_stderr_bytes == 0U ? 65536U : options->max_stderr_bytes;
@@ -371,20 +555,6 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
             (void)write(error_pipe[1], &err, sizeof(err));
             _exit(126);
         }
-        for (size_t index = 0U; index < options->environment_override_count; index += 1U) {
-            char* key = NULL;
-            char* value = NULL;
-            if (!sl_status_is_ok(
-                    sl_os_posix_copy_nul(arena, options->environment_overrides[index].key, &key)) ||
-                !sl_status_is_ok(sl_os_posix_copy_nul(
-                    arena, options->environment_overrides[index].value, &value)) ||
-                setenv(key, value, 1) != 0)
-            {
-                int err = errno == 0 ? EINVAL : errno;
-                (void)write(error_pipe[1], &err, sizeof(err));
-                _exit(126);
-            }
-        }
         if (capture) {
             (void)dup2(stdout_pipe[1], STDOUT_FILENO);
             (void)dup2(stderr_pipe[1], STDERR_FILENO);
@@ -396,7 +566,7 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
                 (void)dup2(devnull, STDERR_FILENO);
             }
         }
-        execvp(command_cstr, argv);
+        execve(exec_path, argv, envp);
         {
             int err = errno;
             (void)write(error_pipe[1], &err, sizeof(err));

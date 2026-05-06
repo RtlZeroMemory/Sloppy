@@ -286,29 +286,36 @@ static void sl_os_win32_capture_read(HANDLE pipe, char* buffer, size_t capacity,
                                      bool* out_truncated)
 {
     char chunk[4096];
+    DWORD available = 0U;
+    DWORD got = 0U;
+    DWORD remaining = 0U;
 
-    for (;;) {
-        DWORD available = 0U;
-        DWORD got = 0U;
-        if (!PeekNamedPipe(pipe, NULL, 0U, NULL, &available, NULL) || available == 0U) {
-            return;
-        }
-        if (!ReadFile(pipe, chunk, sizeof(chunk), &got, NULL) || got == 0U) {
-            return;
-        }
-        {
-            size_t open = capacity > *inout_used ? capacity - *inout_used : 0U;
-            size_t copy = (size_t)got < open ? (size_t)got : open;
-            if (copy != 0U) {
-                for (size_t index = 0U; index < copy; index += 1U) {
-                    buffer[*inout_used + index] = chunk[index];
-                }
-                *inout_used += copy;
+    if (!PeekNamedPipe(pipe, NULL, 0U, NULL, &available, NULL) || available == 0U) {
+        return;
+    }
+    if (!ReadFile(pipe, chunk, available < sizeof(chunk) ? available : (DWORD)sizeof(chunk), &got,
+                  NULL) ||
+        got == 0U)
+    {
+        return;
+    }
+    {
+        size_t open = capacity > *inout_used ? capacity - *inout_used : 0U;
+        size_t copy = (size_t)got < open ? (size_t)got : open;
+        if (copy != 0U) {
+            for (size_t index = 0U; index < copy; index += 1U) {
+                buffer[*inout_used + index] = chunk[index];
             }
-            if (copy != (size_t)got) {
-                *out_truncated = true;
-            }
+            *inout_used += copy;
         }
+        if (copy != (size_t)got) {
+            *out_truncated = true;
+        }
+    }
+    if (PeekNamedPipe(pipe, NULL, 0U, NULL, &remaining, NULL) && remaining != 0U &&
+        *inout_used >= capacity)
+    {
+        *out_truncated = true;
     }
 }
 
@@ -459,11 +466,20 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     }
     if (!sl_str_is_empty(options->cwd)) {
         SlOwnedStr owned = {0};
+        DWORD attributes = 0U;
         status = sl_str_copy_to_arena_nul(arena, options->cwd, &owned);
         if (!sl_status_is_ok(status)) {
             return status;
         }
         cwd = owned.ptr;
+        attributes = GetFileAttributesA(cwd);
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0U)
+        {
+            return sl_os_win32_process_fail(
+                SL_DIAG_OS_INVALID_CWD, out_diag,
+                sl_str_from_cstr("process working directory is invalid"),
+                sl_str_from_cstr("Validate cwd before process admission."));
+        }
     }
     status = sl_os_win32_environment_block(arena, options->environment_overrides,
                                            options->environment_override_count, &environment_block);
@@ -515,7 +531,7 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         if (devnull != INVALID_HANDLE_VALUE) {
             CloseHandle(devnull);
         }
-        if (cwd != NULL || error == ERROR_DIRECTORY) {
+        if (error == ERROR_DIRECTORY) {
             return sl_os_win32_process_fail(
                 SL_DIAG_OS_INVALID_CWD, out_diag,
                 sl_str_from_cstr("process working directory is invalid"),

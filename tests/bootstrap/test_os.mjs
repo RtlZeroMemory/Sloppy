@@ -90,6 +90,24 @@ try {
         stderr: "",
         timedOut: false,
     });
+    assert.deepEqual(await Process.run("tool", [], { deadline: { remainingMs: () => Infinity }, signal: {} }), {
+        command: "tool",
+        args: [],
+        options: {
+            capture: "text",
+            maxStdoutBytes: 65536,
+            maxStderrBytes: 65536,
+            timeoutMs: 0,
+        },
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        timedOut: false,
+    });
+    await assertOsRejects(
+        Process.run("tool", [], { deadline: { remainingMs: () => 0 } }),
+        "SLOPPY_E_OS_PROCESS_TIMEOUT",
+    );
     await assertOsRejects(
         Process.run("tool", [], { signal: { aborted: true } }),
         "SLOPPY_E_OS_PROCESS_CANCELLED",

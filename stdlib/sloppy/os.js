@@ -121,7 +121,16 @@ function validateRunOptions(options) {
         if (typeof options.deadline.remainingMs !== "function") {
             throw new TypeError("OS run deadline must come from sloppy/time Deadline.");
         }
-        normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.max(0, Math.ceil(options.deadline.remainingMs())));
+        const remaining = options.deadline.remainingMs();
+        if (remaining <= 0) {
+            throw osError("SLOPPY_E_OS_PROCESS_TIMEOUT", "deadline already expired");
+        }
+        if (remaining !== Infinity) {
+            if (!Number.isFinite(remaining)) {
+                throw new TypeError("OS run deadline remaining time must be finite or Infinity.");
+            }
+            normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.ceil(remaining));
+        }
     }
     if (options.signal !== undefined) {
         if (options.signal === null || typeof options.signal !== "object") {
@@ -130,7 +139,6 @@ function validateRunOptions(options) {
         if (options.signal.aborted === true) {
             throw osError("SLOPPY_E_OS_PROCESS_CANCELLED", "operation was cancelled");
         }
-        normalized.signal = options.signal;
     }
     return normalized;
 }

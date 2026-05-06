@@ -93,8 +93,12 @@ const exit = await proc.wait();
 ```
 
 `Process.run(command, args, options?)` is a convenience wrapper over explicit argv only.
-It has bounded stdout/stderr capture, stable result/error shape, timeout/deadline/signal
-support, and no shell default.
+CORE-OS-01.D implements bounded stdout/stderr capture, stable result/error shape, native
+timeout handling, and no shell default. The bootstrap facade validates deadline and signal
+options as preflight input only: expired deadlines fail closed before launch, never
+deadlines do not add a timeout, and raw JS signal objects are not passed to native code.
+Full deadline/cancellation/signal/shutdown hardening remains in `Deferred Beyond
+CORE-OS-01.D`.
 
 `Process.start(command, args, options?)` returns a `ProcessHandle` with JS-safe resource
 identity only. The handle may expose `stdin`, `stdout`, `stderr`, `wait`, `terminate`,
@@ -222,7 +226,8 @@ feature/Plan/diagnostic/compiler metadata lane.
   Deno compatibility surface.
 - Development-mode process execution and strict-policy `process.run` denial.
 - Bounded stdout/stderr capture with truncation flags.
-- Timeout terminal state distinct from command failure.
+- Timeout terminal state distinct from command failure; deadline and signal inputs are
+  preflight-only in the bootstrap facade.
 - Stable diagnostics for denied execution, command lookup failure, invalid cwd, invalid
   environment overrides, start failure, and timeout.
 - Bootstrap JS `Process.run` validation and result forwarding through the Slop-owned OS

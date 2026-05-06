@@ -5272,13 +5272,22 @@ Reason:
             if (typeof options.deadline.remainingMs !== "function") {
                 throw new TypeError("OS run deadline must come from sloppy/time Deadline.");
             }
-            normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.max(0, Math.ceil(options.deadline.remainingMs())));
-        }
-        if (options.signal?.aborted === true) {
-            throw sloppyOsError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
+            const remaining = options.deadline.remainingMs();
+            if (remaining <= 0) {
+                throw sloppyOsError("SLOPPY_E_OS_PROCESS_TIMEOUT", "deadline already expired");
+            }
+            if (remaining !== Infinity) {
+                if (!Number.isFinite(remaining)) {
+                    throw new TypeError("OS run deadline remaining time must be finite or Infinity.");
+                }
+                normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.ceil(remaining));
+            }
         }
         if (options.signal !== undefined && (options.signal === null || typeof options.signal !== "object")) {
             throw new TypeError("OS run signal must be a cancellation signal.");
+        }
+        if (options.signal?.aborted === true) {
+            throw sloppyOsError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
         }
         return normalized;
     }
