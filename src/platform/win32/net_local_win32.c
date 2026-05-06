@@ -243,6 +243,20 @@ static SlStatus sl_local_require_connected(SlLocalConnection* connection, SlDiag
     return sl_status_ok();
 }
 
+static DWORD sl_local_connect_remaining_ms(ULONGLONG start_ms, uint32_t timeout_ms,
+                                           bool* out_expired)
+{
+    ULONGLONG elapsed = GetTickCount64() - start_ms;
+
+    if (out_expired != NULL) {
+        *out_expired = elapsed >= timeout_ms;
+    }
+    if (elapsed >= timeout_ms) {
+        return 0U;
+    }
+    return (DWORD)(timeout_ms - elapsed);
+}
+
 SlLocalConnectOptions sl_local_connect_options_default(SlStr path)
 {
     SlLocalConnectOptions options = {0};
@@ -275,7 +289,7 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
 {
     SlLocalConnection* connection = NULL;
     char path[SL_LOCAL_MAX_PIPE_PATH];
-    DWORD wait_ms = NMPWAIT_WAIT_FOREVER;
+    ULONGLONG start_ms = GetTickCount64();
     HANDLE handle = INVALID_HANDLE_VALUE;
     DWORD mode = PIPE_READMODE_BYTE;
     SlStatus status;
@@ -296,31 +310,49 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (options->has_timeout_ms) {
-        wait_ms = options->timeout_ms;
-    }
-    if (!WaitNamedPipeA(path, wait_ms)) {
-        DWORD error = GetLastError();
-        if (error == ERROR_SEM_TIMEOUT) {
-            return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
-                                 SL_STATUS_DEADLINE_EXCEEDED,
-                                 sl_local_literal("local IPC connect failed"));
+    for (;;) {
+        handle = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0U, NULL, OPEN_EXISTING,
+                             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+        if (handle != INVALID_HANDLE_VALUE) {
+            break;
         }
-        return sl_local_windows_error_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
-                                             SL_STATUS_INVALID_STATE,
-                                             sl_local_literal("local IPC connect failed"));
+        {
+            DWORD error = GetLastError();
+            bool expired = false;
+            DWORD wait_ms = NMPWAIT_WAIT_FOREVER;
+
+            if (options->has_timeout_ms) {
+                wait_ms = sl_local_connect_remaining_ms(start_ms, options->timeout_ms, &expired);
+                if (expired) {
+                    return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
+                                         SL_STATUS_DEADLINE_EXCEEDED,
+                                         sl_local_literal("local IPC connect failed"));
+                }
+            }
+            if (error == ERROR_FILE_NOT_FOUND && options->has_timeout_ms) {
+                DWORD sleep_ms = wait_ms < 10U ? wait_ms : 10U;
+                Sleep(sleep_ms == 0U ? 1U : sleep_ms);
+                continue;
+            }
+            if (error != ERROR_PIPE_BUSY) {
+                return sl_local_windows_error_status(
+                    error, out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED, SL_STATUS_INVALID_STATE,
+                    sl_local_literal("local IPC connect failed"));
+            }
+            if (!WaitNamedPipeA(path, wait_ms)) {
+                error = GetLastError();
+                if (error != ERROR_SEM_TIMEOUT && error != ERROR_FILE_NOT_FOUND) {
+                    return sl_local_windows_error_status(
+                        error, out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
+                        SL_STATUS_INVALID_STATE, sl_local_literal("local IPC connect failed"));
+                }
+            }
+        }
     }
     status = sl_local_alloc_connection(arena, options->read_buffer_capacity, &connection);
     if (!sl_status_is_ok(status)) {
+        (void)CloseHandle(handle);
         return status;
-    }
-    handle = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0U, NULL, OPEN_EXISTING,
-                         FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
-    if (handle == INVALID_HANDLE_VALUE) {
-        connection->state = SL_LOCAL_CONNECTION_FAILED;
-        return sl_local_windows_error_status(
-            GetLastError(), out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED, SL_STATUS_INVALID_STATE,
-            sl_local_literal("local IPC connect failed"));
     }
     if (!SetNamedPipeHandleState(handle, &mode, NULL, NULL)) {
         DWORD error = GetLastError();
@@ -543,15 +575,15 @@ SlStatus sl_local_connection_write(SlLocalConnection* connection, SlBytes bytes,
                     sl_local_literal("local IPC read or write was cancelled or timed out"));
             }
         }
-        else if (GetLastError() != ERROR_IO_PENDING) {
-            DWORD error = GetLastError();
-            (void)CloseHandle(overlapped.hEvent);
-            return sl_local_windows_error_status(
-                error, out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
-                SL_STATUS_INVALID_STATE,
-                sl_local_literal("local IPC read or write was cancelled or timed out"));
-        }
         else {
+            DWORD error = GetLastError();
+            if (error != ERROR_IO_PENDING) {
+                (void)CloseHandle(overlapped.hEvent);
+                return sl_local_windows_error_status(
+                    error, out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
+                    SL_STATUS_INVALID_STATE,
+                    sl_local_literal("local IPC read or write was cancelled or timed out"));
+            }
             status = sl_local_wait_overlapped(
                 connection->handle, &overlapped, false, 0U, &transferred, out_diag,
                 SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,

@@ -130,6 +130,65 @@ int test_named_pipe_loopback_preserves_binary()
     return 0;
 }
 
+int test_connect_waits_for_late_server()
+{
+    unsigned char server_storage[32U * 1024U] = {};
+    unsigned char accepted_storage[64U * 1024U] = {};
+    SlArena server_arena = {};
+    SlArena accepted_arena = {};
+    SlLocalServer* server = nullptr;
+    SlLocalConnection* accepted = nullptr;
+    SlLocalListenOptions listen_options = {};
+    SlLocalAcceptOptions accept_options = {};
+    SlOwnedBytes bytes = {};
+    ClientExchange exchange = {};
+    std::string path = unique_pipe_path("late-server");
+
+    exchange.path = path;
+    std::thread client(run_client, &exchange);
+    Sleep(50U);
+
+    sl_arena_init(&server_arena, server_storage, sizeof(server_storage));
+    sl_arena_init(&accepted_arena, accepted_storage, sizeof(accepted_storage));
+    listen_options = sl_local_listen_options_default(sl_str_from_cstr(path.c_str()));
+    listen_options.backend = SL_LOCAL_ENDPOINT_BACKEND_NAMED_PIPE;
+    if (expect_status(sl_local_endpoint_listen(&server_arena, &listen_options, &server, nullptr),
+                      SL_STATUS_OK) != 0)
+    {
+        client.join();
+        return 1;
+    }
+    accept_options.has_timeout_ms = true;
+    accept_options.timeout_ms = 2000U;
+    if (expect_status(
+            sl_local_server_accept(server, &accepted_arena, &accept_options, &accepted, nullptr),
+            SL_STATUS_OK) != 0 ||
+        accepted == nullptr)
+    {
+        client.join();
+        (void)sl_local_server_abort(server, nullptr);
+        return 2;
+    }
+    if (expect_status(sl_local_connection_read(accepted, &accepted_arena, 4U, &bytes, nullptr),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_local_connection_write(accepted, sl_owned_bytes_as_view(bytes), nullptr),
+                      SL_STATUS_OK) != 0)
+    {
+        client.join();
+        (void)sl_local_connection_abort(accepted, nullptr);
+        (void)sl_local_server_abort(server, nullptr);
+        return 3;
+    }
+    client.join();
+    if (exchange.result != 0 ||
+        expect_status(sl_local_connection_close(accepted, nullptr), SL_STATUS_OK) != 0 ||
+        expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0)
+    {
+        return 4;
+    }
+    return 0;
+}
+
 int test_named_pipe_policy_and_unsupported_backend()
 {
     unsigned char server_storage[32U * 1024U] = {};
@@ -230,6 +289,9 @@ int test_accept_timeout_and_disposal()
 int main()
 {
     if (test_named_pipe_loopback_preserves_binary() != 0) {
+        return 1;
+    }
+    if (test_connect_waits_for_late_server() != 0) {
         return 1;
     }
     if (test_named_pipe_policy_and_unsupported_backend() != 0) {
