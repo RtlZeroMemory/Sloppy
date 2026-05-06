@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_MALFORMED_UTF8","severity":"error","message":"malformed UTF-8 input","hints":["Fatal mode rejects malformed input; replacement mode is explicit."]}

@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE","severity":"error","message":"invalid binary endian or field size","hints":["Binary APIs expose explicit endian and supported width methods only."]}

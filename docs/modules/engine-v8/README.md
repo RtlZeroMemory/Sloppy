@@ -72,6 +72,11 @@ CORE-CRYPTO-01.E registers the private `__sloppy.crypto` namespace for active
 and password helpers used by `stdlib/sloppy/crypto.js`; it does not expose raw native
 pointers or backend handles. `Password.hash`, `Password.verify`, and
 `Password.needsRehash` use worker-thread requests and settle on the V8 owner thread.
+CORE-CODEC-01.A/B reserves the private `__sloppy.codec` namespace for active
+`stdlib.codec` plans and documents the transform/diagnostic contract. The namespace is not
+registered in this contract PR; runtime availability stays false until encoding, text,
+binary, compression, checksum, and owner-thread Promise settlement paths are implemented in
+later CORE-CODEC PRs.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
@@ -200,6 +205,10 @@ Framework and provider bridge code belongs in sibling V8 modules:
   bounded hash/HMAC work inline; `Password.hash`, `Password.verify`, and
   `Password.needsRehash` offload away from the V8 owner thread and settle through the
   owner-thread async loop.
+- future `intrinsics_codec.cc` owns codec argument validation, byte/text/binary conversion,
+  compression backend dispatch, checksum helpers, and owner-thread Promise settlement for
+  active `stdlib.codec` plans. Compression work that can materially block must offload away
+  from the V8 owner thread.
 - Native provider, filesystem, HTTP, timer, or other future completions must pass any
   terminal-state guard before reaching owner-thread settlement; provider/libuv/offload
   domains still never enter V8 directly.

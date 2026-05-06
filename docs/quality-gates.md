@@ -59,6 +59,12 @@ lifecycle, and V8 bridge registration only. They do not prove random quality, pa
 cost, side-channel resistance, package readiness, or performance. Later vector/example PRs
 must keep secure `Hash`/`Hmac` evidence separate from explicitly non-security
 `NonCryptoHash` evidence.
+CORE-CODEC-01 gates must report codec evidence by lane. PRs that only add the
+`stdlib.codec` contract, Plan metadata, diagnostics, and backend policy do not prove
+Base64/Hex/Text/Binary/Compression/Checksum correctness, V8 execution, package readiness,
+streaming/backpressure behavior, compression backend availability, or performance. Later
+vector/example PRs must keep checksum evidence separate from `sloppy/crypto` security
+evidence.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS

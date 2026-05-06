@@ -102,6 +102,11 @@ dependency of `stdlib.fs` so numeric filesystem timeouts work for apps that impo
 `sloppy/fs`. CORE-TIME-01.I adds examples/conformance/golden evidence without changing
 the Plan schema or activation rules. CORE-FS-01.C/D/H consumes the active feature to
 install the first core `__sloppy.fs` V8 bridge and stdlib `File` wrappers.
+CORE-CRYPTO-01.A/B adds the `stdlib.crypto` descriptor and compiler activation for
+`sloppy/crypto`, while keeping it unavailable by default until implementations land.
+CORE-CODEC-01.A/B adds the `stdlib.codec` descriptor and compiler activation for
+`sloppy/codec`, while keeping it unavailable by default until Base64/Base64Url/Hex/Text/
+Binary/Compression/Checksum implementations land.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
@@ -215,11 +220,14 @@ Current descriptor import mapping is intentionally narrow and mirrors what the c
 stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/results` to
 `stdlib.results`, `sloppy/schema` to `stdlib.schema`, `sloppy/config` to `stdlib.config`,
 `sloppy/data` to `stdlib.data`, `sloppy/time` to `stdlib.time`, `sloppy/fs` to `stdlib.fs`,
-`sloppy/crypto` to `stdlib.crypto`, and `sloppy/providers/sqlite` to `provider.sqlite`.
+`sloppy/crypto` to `stdlib.crypto`, `sloppy/codec` to `stdlib.codec`, and
+`sloppy/providers/sqlite` to `provider.sqlite`.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
 Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.E
 registered vetted random/hash/HMAC/password backends and the `__sloppy.crypto` intrinsic
 namespace.
+The codec descriptor is known but unavailable by default until implementation PRs register
+vetted codec backends and V8 intrinsics.
 
 ## Schema Sections
 

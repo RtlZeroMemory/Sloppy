@@ -1,0 +1,1 @@
+{"code":"SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING","severity":"warning","message":"checksum used in a security-looking context","hints":["Use sloppy/crypto Hash or Hmac for security or attacker-resistance."]}

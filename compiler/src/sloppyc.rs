@@ -29,6 +29,18 @@ const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
 const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
 const STDLIB_VERSION: &str = "0.1.0";
 
+// CODEC_EXPORTS is the public codec contract shared by import validation and runtime
+// export emission.
+const CODEC_EXPORTS: &[&str] = &[
+    "Base64",
+    "Base64Url",
+    "Hex",
+    "Text",
+    "Binary",
+    "Compression",
+    "Checksums",
+];
+
 #[derive(Debug, Eq, PartialEq)]
 enum CliCommand {
     Help,
@@ -180,6 +192,7 @@ struct ExtractedApp {
     uses_time_runtime: bool,
     uses_fs_runtime: bool,
     uses_crypto_runtime: bool,
+    uses_codec_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -305,6 +318,7 @@ struct AppState {
     time_imported: bool,
     fs_imported: bool,
     crypto_imported: bool,
+    codec_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -338,6 +352,7 @@ impl AppState {
             time_imported: false,
             fs_imported: false,
             crypto_imported: false,
+            codec_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -1009,6 +1024,7 @@ struct ModuleGraph {
     source_files: Vec<SourceFile>,
     uses_time_runtime: bool,
     uses_crypto_runtime: bool,
+    uses_codec_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1030,6 +1046,7 @@ impl ModuleGraph {
             source_files: Vec::new(),
             uses_time_runtime: false,
             uses_crypto_runtime: false,
+            uses_codec_runtime: false,
         }
     }
 
@@ -1126,7 +1143,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", or \"sloppy/crypto\"."));
+        .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", or \"sloppy/codec\"."));
     }
 
     if !state.sloppy_imported || !state.results_imported {
@@ -1276,6 +1293,7 @@ fn extract_entry(
         uses_time_runtime: state.time_imported || graph.uses_time_runtime,
         uses_fs_runtime: state.fs_imported,
         uses_crypto_runtime: state.crypto_imported || graph.uses_crypto_runtime,
+        uses_codec_runtime: state.codec_imported || graph.uses_codec_runtime,
     })
 }
 
@@ -1328,6 +1346,10 @@ fn sloppy_crypto_import_name_supported(name: &str) -> bool {
         name,
         "Random" | "Hash" | "Hmac" | "Password" | "ConstantTime" | "Secret" | "NonCryptoHash"
     )
+}
+
+fn sloppy_codec_import_name_supported(name: &str) -> bool {
+    CODEC_EXPORTS.contains(&name)
 }
 
 fn validate_module_sloppy_time_import(
@@ -1405,6 +1427,49 @@ fn validate_module_sloppy_crypto_import(
         let imported = specifier.imported.name().as_str();
         let local = specifier.local.name.as_str();
         if !sloppy_crypto_import_name_supported(imported) || imported != local {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT",
+                format!("unsupported sloppy import \"{imported}\""),
+            )
+            .with_path(path)
+            .with_span(specifier.span));
+        }
+    }
+    Ok(())
+}
+
+fn validate_module_sloppy_codec_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    let Some(specifiers) = &import.specifiers else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy/codec\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    };
+    if specifiers.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+            "unsupported import specifier \"sloppy/codec\"",
+        )
+        .with_path(path)
+        .with_span(import.source.span));
+    }
+    for specifier in specifiers {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
+                "unsupported import specifier \"sloppy/codec\"",
+            )
+            .with_path(path)
+            .with_span(import.source.span));
+        };
+        let imported = specifier.imported.name().as_str();
+        let local = specifier.local.name.as_str();
+        if !sloppy_codec_import_name_supported(imported) || imported != local {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_IMPORT",
                 format!("unsupported sloppy import \"{imported}\""),
@@ -1567,6 +1632,37 @@ fn extract_import(
                     state.crypto_imported = true;
                 } else {
                     if sloppy_crypto_import_name_supported(imported) {
+                        state.unsupported_import_alias = true;
+                    }
+                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
+                }
+            }
+        } else {
+            state.unsupported_import_specifier =
+                Some((import_source.to_string(), import.source.span));
+        }
+        return Ok(());
+    }
+
+    if import_source == "sloppy/codec" {
+        if let Some(specifiers) = &import.specifiers {
+            if specifiers.is_empty() {
+                state.unsupported_import_specifier =
+                    Some((import_source.to_string(), import.source.span));
+                return Ok(());
+            }
+            for specifier in specifiers {
+                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                    state.unsupported_import_specifier =
+                        Some((import_source.to_string(), import.source.span));
+                    return Ok(());
+                };
+                let imported = specifier.imported.name().as_str();
+                let local = specifier.local.name.as_str();
+                if sloppy_codec_import_name_supported(imported) && imported == local {
+                    state.codec_imported = true;
+                } else {
+                    if sloppy_codec_import_name_supported(imported) {
                         state.unsupported_import_alias = true;
                     }
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
@@ -2961,6 +3057,11 @@ fn extract_relative_module(
                 if import_source == "sloppy/crypto" {
                     validate_module_sloppy_crypto_import(&imported.path, import)?;
                     graph.uses_crypto_runtime = true;
+                    continue;
+                }
+                if import_source == "sloppy/codec" {
+                    validate_module_sloppy_codec_import(&imported.path, import)?;
+                    graph.uses_codec_runtime = true;
                     continue;
                 }
                 if import_source.starts_with("./") || import_source.starts_with("../") {
@@ -5734,6 +5835,11 @@ fn emit_plan(
         value["strongPlan"]["evidence"]["crypto"] = json!(true);
         value["features"]["crypto"] = json!(true);
     }
+    if app.uses_codec_runtime {
+        required_features.push("stdlib.codec");
+        value["strongPlan"]["evidence"]["codec"] = json!(true);
+        value["features"]["codec"] = json!(true);
+    }
     if !required_features.is_empty() {
         value["requiredFeatures"] = json!(required_features);
     }
@@ -5823,6 +5929,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             "Secret",
             "NonCryptoHash",
         ]);
+    }
+    if app.uses_codec_runtime {
+        runtime_exports.extend(CODEC_EXPORTS.iter().copied());
     }
     push_generated_line(
         &mut output,
@@ -6472,6 +6581,7 @@ mod tests {
             uses_time_runtime: false,
             uses_fs_runtime: false,
             uses_crypto_runtime: false,
+            uses_codec_runtime: false,
         };
         config
             .apply_to_app(&mut app)
@@ -6780,6 +6890,56 @@ export default app;
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.time"]));
         assert_eq!(plan["features"]["time"], serde_json::json!(true));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn function_module_sloppy_codec_import_emits_required_feature() {
+        let root = fixture_temp_dir("function-module-codec-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("payloads.js"),
+            r#"import { Results } from "sloppy";
+import { Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } from "sloppy/codec";
+
+export function payloadsModule(app) {
+    app.get("/payloads", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { payloadsModule } from "./modules/payloads.js";
+
+const app = Sloppy.create();
+app.useModule(payloadsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_codec_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(&super::CODEC_EXPORTS.join(", ")));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(
+            plan["requiredFeatures"],
+            serde_json::json!(["stdlib.codec"])
+        );
+        assert_eq!(plan["features"]["codec"], serde_json::json!(true));
+        assert_eq!(
+            plan["strongPlan"]["evidence"]["codec"],
+            serde_json::json!(true)
+        );
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }
@@ -7976,6 +8136,58 @@ export default app;
         assert!(diagnostic
             .message
             .contains("unsupported sloppy import \"Random\""));
+    }
+
+    #[test]
+    fn sloppy_codec_import_emits_plan_required_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } from "sloppy/codec";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/codec import should be recognized");
+        assert!(app.uses_codec_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(
+            "const { Results, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } = __sloppyRuntime;"
+        ));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(
+            value["requiredFeatures"],
+            serde_json::json!(["stdlib.codec"])
+        );
+        assert_eq!(value["features"]["codec"], serde_json::json!(true));
+        assert_eq!(
+            value["strongPlan"]["evidence"]["codec"],
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn sloppy_codec_import_alias_is_rejected() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { Base64 as B64 } from "sloppy/codec";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("aliased sloppy/codec import should be rejected");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_IMPORT");
+        assert!(diagnostic
+            .message
+            .contains("unsupported sloppy import \"Base64\""));
     }
 
     #[test]

@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_INVALID_BASE64","severity":"error","message":"invalid base64 input","hints":["Base64 decoding is strict and reports malformed input."]}
