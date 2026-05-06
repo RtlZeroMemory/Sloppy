@@ -450,8 +450,6 @@ class LocalEndpointServer {
         }
         const promise = this._bridge.acceptLocal(this._handle, timing.timeoutMs);
         return raceLocalOperation(promise, timing, "LocalEndpoint.accept", {
-            onCancel: () => this.abort().catch(() => {}),
-            onTimeout: () => this.abort().catch(() => {}),
             onLateSuccess: (handle) => this._bridge.abortLocal?.(handle).catch(() => {}),
         }).then((handle) => new LocalEndpointConnection(this._bridge, handle));
     }
@@ -555,10 +553,6 @@ class LocalEndpointConnection {
             this._bridge.writeLocal(this._handle, bytes, timing.timeoutMs),
             timing,
             "LocalEndpoint.write",
-            {
-                onCancel: () => this.abort().catch(() => {}),
-                onTimeout: () => this.abort().catch(() => {}),
-            },
         );
     }
 
@@ -586,10 +580,6 @@ class LocalEndpointConnection {
             this._bridge.readLocal(this._handle, maxBytes, timing.timeoutMs),
             timing,
             "LocalEndpoint.read",
-            {
-                onCancel: () => this.abort().catch(() => {}),
-                onTimeout: () => this.abort().catch(() => {}),
-            },
         );
     }
 
@@ -615,10 +605,6 @@ class LocalEndpointConnection {
             this._bridge.readUntilLocal(this._handle, delimiterBytes, maxBytes, timing.timeoutMs),
             timing,
             "LocalEndpoint.readUntil",
-            {
-                onCancel: () => this.abort().catch(() => {}),
-                onTimeout: () => this.abort().catch(() => {}),
-            },
         );
     }
 
@@ -639,10 +625,6 @@ class LocalEndpointConnection {
             this._bridge.readLineLocal(this._handle, maxBytes, timing.timeoutMs),
             timing,
             "LocalEndpoint.readLine",
-            {
-                onCancel: () => this.abort().catch(() => {}),
-                onTimeout: () => this.abort().catch(() => {}),
-            },
         );
     }
 

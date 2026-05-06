@@ -177,9 +177,10 @@ descriptors private.
 
 The native Windows named pipe backend lives behind the same `SlLocalConnection`
 and `SlLocalServer` contract. The backend accepts explicit normalized pipe names in the
-`\\.\pipe\name` namespace, rejects nested or unsafe pipe names, keeps `HANDLE` values
-private, rejects POSIX Unix sockets on Windows, rejects named-root/relative path shapes
-before backend admission, and fails honestly for POSIX-style `permissions` and
+`\\.\pipe\name` namespace, rejects nested or unsafe pipe names, permits `~` only as an
+internal separator for already-validated multi-segment `runtime:/` paths, keeps `HANDLE`
+values private, rejects POSIX Unix sockets on Windows, rejects named-root/relative path
+shapes before backend admission, and fails honestly for POSIX-style `permissions` and
 `unlinkExisting`.
 
 Native stream deadline/cancellation options exist across both backend paths.

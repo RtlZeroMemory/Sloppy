@@ -98,7 +98,7 @@ static bool sl_local_path_has_pipe_prefix(SlStr path)
 
 static bool sl_local_pipe_name_char(char ch)
 {
-    return ch == '.' || ch == '_' || ch == '-' || (ch >= '0' && ch <= '9') ||
+    return ch == '.' || ch == '_' || ch == '-' || ch == '~' || (ch >= '0' && ch <= '9') ||
            (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
 }
 

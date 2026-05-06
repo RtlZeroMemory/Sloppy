@@ -221,8 +221,10 @@ int test_named_pipe_policy_and_unsupported_backend()
     SlArena server_arena = {};
     SlLocalServer* server = nullptr;
     SlLocalServer* duplicate = nullptr;
+    SlLocalServer* segmented = nullptr;
     SlLocalListenOptions options = {};
     std::string path = unique_pipe_path("policy");
+    std::string segmented_path = unique_pipe_path("policy-a~b");
 
     sl_arena_init(&server_arena, server_storage, sizeof(server_storage));
     options = sl_local_listen_options_default(sl_str_from_cstr(path.c_str()));
@@ -266,6 +268,13 @@ int test_named_pipe_policy_and_unsupported_backend()
     {
         return 6;
     }
+    options.path = sl_str_from_cstr(segmented_path.c_str());
+    if (expect_status(sl_local_endpoint_listen(&server_arena, &options, &segmented, nullptr),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_local_server_close(segmented, nullptr), SL_STATUS_OK) != 0)
+    {
+        return 7;
+    }
     options.path = sl_str_from_cstr(path.c_str());
     if (expect_status(sl_local_endpoint_listen(&server_arena, &options, &server, nullptr),
                       SL_STATUS_OK) != 0 ||
@@ -273,10 +282,10 @@ int test_named_pipe_policy_and_unsupported_backend()
                       SL_STATUS_INVALID_STATE) != 0)
     {
         (void)sl_local_server_abort(server, nullptr);
-        return 7;
+        return 8;
     }
     if (expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0) {
-        return 8;
+        return 9;
     }
     return 0;
 }
