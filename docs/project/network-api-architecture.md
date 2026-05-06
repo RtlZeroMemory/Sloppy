@@ -1,6 +1,6 @@
 # Network API Architecture
 
-Status: CORE-NET-01.G DNS/address/socket-option implementation. This document defines the low-level
+Status: CORE-NET-01.I conformance/examples/docs evidence. This document defines the low-level
 TCP/IP runtime API, policy model, feature metadata, diagnostics, and first native TCP
 client/connection/listener implementation. It is not execution evidence for live external
 network access, TLS, HTTP client behavior, UDP,
@@ -136,7 +136,7 @@ Future compiler/doctor behavior:
 - dynamic host/port values emit partial/dynamic metadata, not guessed endpoints;
 - source locations point to the API call or nearest literal option object where available.
 
-Runtime behavior after CORE-NET-01.G:
+Runtime behavior after CORE-NET-01.I:
 
 - `stdlib.net` is known to the feature registry;
 - default availability is true when the runtime lane has V8, libuv transport, and
@@ -158,6 +158,26 @@ Runtime behavior after CORE-NET-01.G:
   `SLOPPY_E_NET_UNSUPPORTED_OPTION`;
 - the V8 bridge exposes only JS-safe resource IDs and settles Promises on the owner thread
   after native worker-thread completion.
+
+## Doctor, Audit, Examples, And Conformance
+
+Final CORE-NET-01 evidence is intentionally split by lane:
+
+- `sloppy.cli.doctor_network_text`, `sloppy.cli.doctor_network_json`,
+  `sloppy.cli.audit_network_text`, and `sloppy.cli.audit_network_json` prove
+  Plan-visible `network` capabilities for `connect`, `listen`, and `connect-listen`.
+  The audit note is `SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE` and explicitly avoids an OS
+  sandbox or external live-network claim.
+- `examples.net.api_shape` checks `examples/net-tcp-client`, `examples/net-tcp-server`,
+  `examples/net-tcp-echo`, `examples/net-policy-strict`, and
+  `examples/net-deadline-cancel` for the supported source API shape and boundary text.
+- `tests/conformance/net/README.md` is the conformance index for default loopback,
+  diagnostics, CLI metadata, source examples, bootstrap stdlib, compiler/tooling, and
+  optional V8 lanes.
+
+Static compiler extraction of literal connect/listen targets remains a future
+Plan-lowering improvement. Until then, CLI doctor/audit consume explicit Plan capability
+metadata and examples document the literal source shape without guessing dynamic targets.
 
 ## Diagnostics
 

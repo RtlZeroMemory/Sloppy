@@ -65,8 +65,8 @@ connections, bounded byte/text writes, `read`, `readUntil`, `readLine`, close, a
 `TcpListener.listen` now uses the runtime `__sloppy.net` bridge for loopback TCP
 listeners, local hostname/DNS resolution, async accept iteration, and close/abort.
 `NetworkAddress.parse(...)` accepts object addresses, `host:port`, and bracketed
-`[ipv6]:port` text. External-network policy enforcement and final conformance/examples
-remain later CORE-NET slices.
+`[ipv6]:port` text. CORE-NET-01.I adds source examples, doctor/audit metadata goldens,
+and conformance indexing. External live-network evidence remains outside the default lane.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the

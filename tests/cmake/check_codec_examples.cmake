@@ -117,6 +117,17 @@ foreach(readme_source IN ITEMS
         require_substring("${readme_source}" "${required_pattern}"
                           "Codec example README is missing required boundary text")
     endforeach()
+    foreach(forbidden_pattern IN ITEMS
+            "compatible with Node"
+            "compatible with Web Streams"
+            "compatible with Bun"
+            "compatible with Deno"
+            "performance improvement"
+            "fastest"
+            "no overhead")
+        reject_substring("${readme_source}" "${forbidden_pattern}"
+                         "Codec example README must not claim unsupported compatibility or performance")
+    endforeach()
 endforeach()
 
 foreach(forbidden_pattern IN ITEMS
@@ -133,7 +144,7 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "not authentication"
         "attacker-resistant integrity"
-        "Use `sloppy/crypto` Hash or Hmac")
+        "appropriate `sloppy/crypto` primitive")
     require_substring("${checksum_readme_source}" "${required_pattern}"
                       "Checksum README is missing required non-security boundary text")
 endforeach()

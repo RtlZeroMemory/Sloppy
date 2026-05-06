@@ -50,9 +50,9 @@ resource-backed watch handles under the existing `fs.watch` capability. CORE-FS-
 adds deterministic filesystem doctor/audit goldens for Plan-visible `readwrite`,
 `watch`, and `delete` metadata. The runtime enforces the current development/strict path
 policy for implemented filesystem operations. Network capabilities remain
-metadata/check-only skeletons:
-they can be stored and checked by token/kind/access, but no network API, permission prompt,
-or OS sandbox exists.
+Plan-visible policy metadata:
+they can be stored and checked by token/kind/access, and CORE-NET-01.I adds TCP
+doctor/audit evidence, but no permission prompt or OS sandbox exists.
 
 ## Future Phase
 
@@ -116,15 +116,18 @@ visible literal host/port targets are future Plan-visible network capability met
 dynamic host/port values must be represented honestly as partial/dynamic metadata rather
 than guessed.
 
-CORE-NET-01.G adds native local DNS/address handling and JS `NetworkAddress` parsing, but
-does not broaden the permission claim: default tests remain loopback/local, and external
+CORE-NET-01.G adds native local DNS/address handling and JS `NetworkAddress` parsing.
+CORE-NET-01.I adds network doctor/audit goldens for explicit `connect`, `listen`, and
+`connect-listen` Plan capabilities plus source examples for strict policy shape, but does
+not broaden the permission claim: default tests remain loopback/local, and external
 network access still needs strict-mode policy/admission work before it can be treated as a
 completed security boundary.
 
 Network policy is not an OS sandbox claim. JavaScript never receives raw sockets, libuv
 handles, OS handles, raw native pointers, or backend resource internals. DNS/connect work
 must not block the V8 owner thread, and doctor/audit output must redact sensitive endpoint
-details where policy requires it.
+details where policy requires it. Current network doctor/audit goldens prove metadata
+visibility, not OS-level containment.
 
 CORE-CODEC-01.A/B adds the codec API contract without adding a new permission grant type.
 `sloppy/codec` is Plan-visible as `stdlib.codec`; encoding, text, binary, compression, and

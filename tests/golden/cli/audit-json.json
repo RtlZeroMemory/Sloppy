@@ -13,6 +13,6 @@
     { "severity": "error", "code": "SLOPPY_AUDIT_CAPABILITY_PROVIDER_REQUIRED", "message": "database capability is missing required provider reference", "path": "capabilities" },
     { "severity": "error", "code": "SLOPPY_AUDIT_CAPABILITY_PROVIDER_FORBIDDEN", "message": "filesystem/network capabilities must not declare providers", "path": "capabilities" },
     { "severity": "note", "code": "SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE", "message": "filesystem capabilities are policy-visible for sloppy/fs; no OS sandbox is implemented", "path": "capabilities" },
-    { "severity": "note", "code": "SLOPPY_AUDIT_NETWORK_SKELETON", "message": "network capabilities are metadata/check-only; no network API or OS sandbox is implemented", "path": "capabilities" }
+    { "severity": "note", "code": "SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE", "message": "network capabilities are policy-visible for sloppy/net; no OS sandbox or external live-network evidence is implemented", "path": "capabilities" }
   ]
 }

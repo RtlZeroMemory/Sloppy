@@ -939,6 +939,8 @@ if(SLOPPY_ENABLE_TESTS)
     set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json.json)
     set(SLOPPY_DOCTOR_FS_TEXT_GOLDEN tests/golden/cli/doctor-filesystem-text.txt)
     set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json.json)
+    set(SLOPPY_DOCTOR_NET_TEXT_GOLDEN tests/golden/cli/doctor-network-text.txt)
+    set(SLOPPY_DOCTOR_NET_JSON_GOLDEN tests/golden/cli/doctor-network-json.json)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
         tests/golden/cli/doctor-crypto-noncrypto-hash-text.txt)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -954,6 +956,8 @@ if(SLOPPY_ENABLE_TESTS)
         set(SLOPPY_DOCTOR_PARTIAL_JSON_GOLDEN tests/golden/cli/doctor-partial-json-v8.json)
         set(SLOPPY_DOCTOR_FS_TEXT_GOLDEN tests/golden/cli/doctor-filesystem-text-v8.txt)
         set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json-v8.json)
+        set(SLOPPY_DOCTOR_NET_TEXT_GOLDEN tests/golden/cli/doctor-network-text-v8.txt)
+        set(SLOPPY_DOCTOR_NET_JSON_GOLDEN tests/golden/cli/doctor-network-json-v8.json)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
             tests/golden/cli/doctor-crypto-noncrypto-hash-text-v8.txt)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -981,6 +985,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_filesystem_json ${SLOPPY_DOCTOR_FS_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/filesystem-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_network_text ${SLOPPY_DOCTOR_NET_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/network-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_network_json ${SLOPPY_DOCTOR_NET_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/network-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_crypto_noncrypto_hash_text
         ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN} doctor --plan
@@ -1018,6 +1028,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_filesystem_json tests/golden/cli/audit-filesystem-json.json audit --plan
         tests/fixtures/cli/filesystem-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_network_text tests/golden/cli/audit-network-text.txt audit --plan
+        tests/fixtures/cli/network-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_network_json tests/golden/cli/audit-network-json.json audit --plan
+        tests/fixtures/cli/network-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)
@@ -1762,6 +1778,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.codec.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_codec_examples.cmake")
+    add_test(
+        NAME examples.net.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_net_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

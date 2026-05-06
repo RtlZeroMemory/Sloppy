@@ -1397,12 +1397,12 @@ fn source_contains_ascii_member(source: &str, object_name: &str, property_name: 
             index += 1;
             continue;
         };
-        if identifier.eq_ignore_ascii_case(object_name) {
+        if identifier == object_name {
             let dot_index = skip_ascii_whitespace(bytes, next_index);
             if bytes.get(dot_index) == Some(&b'.') {
                 let property_index = skip_ascii_whitespace(bytes, dot_index + 1);
                 if let Some((property, _)) = read_ascii_js_identifier(source, property_index) {
-                    if property.eq_ignore_ascii_case(property_name) {
+                    if property == property_name {
                         return true;
                     }
                 }
@@ -8631,9 +8631,63 @@ export default app;
     }
 
     #[test]
+    fn sloppy_codec_checksum_security_context_flows_from_relative_module() {
+        let root = fixture_temp_dir("codec-checksum-module");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("checks.js"),
+            r#"import { Results } from "sloppy";
+import { Checksums } from "sloppy/codec";
+
+export function tokenChecksumModule(app) {
+    const tokenChecksum = Checksums.crc32(new Uint8Array([1, 2, 3]));
+    app.get("/token-checksum", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { tokenChecksumModule } from "./modules/checks.js";
+
+const app = Sloppy.create();
+app.useModule(tokenChecksumModule);
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_codec_runtime);
+        assert!(app.checksum_security_context_visible);
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+        assert_eq!(
+            value["strongPlan"]["evidence"]["checksumSecurityContext"],
+            serde_json::json!(true)
+        );
+        assert!(value["doctorChecks"].as_array().is_some_and(|checks| checks
+            .iter()
+            .any(|check| check["id"]
+                == serde_json::json!("stdlib.codec.checksum.security_context")
+                && check["status"] == serde_json::json!("warn"))));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
     fn sloppy_codec_checksum_security_context_scans_tokens() {
         assert!(checksum_security_context_visible(
             r#"const tokenChecksum = Checksums . crc32(value);"#
+        ));
+        assert!(!checksum_security_context_visible(
+            r#"const tokenChecksum = checksums.crc32(value);"#
         ));
         assert!(!checksum_security_context_visible(
             r#"const cacheChecksum = Checksums.crc32(value);"#

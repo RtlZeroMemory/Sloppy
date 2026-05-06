@@ -188,7 +188,8 @@ same checks to Directory, FileHandle, temp, atomic, symlink, and native lock ope
 project-relative and named-root paths are resolved through Slop-owned policy, named-root
 traversal is rejected, development absolute paths produce warnings, and strict-mode
 absolute paths are denied unless allowed. OS sandboxing remains out of scope. Network
-entries remain metadata/check-only until scoped APIs exist. CORE-FS-01.G maps V8
+entries are Plan-visible for scoped TCP policy and doctor/audit metadata evidence after
+CORE-NET-01.I, but they still do not create an OS sandbox. CORE-FS-01.G maps V8
 watch open/next/close through the existing `fs.watch` capability operation and the same
 path policy; recursive watch remains unsupported until the platform backend grows that
 contract deliberately.
@@ -232,9 +233,9 @@ Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-
 registered vetted random/hash/HMAC/password/non-crypto hash backends, the
 `__sloppy.crypto` intrinsic namespace, and source/conformance evidence for the scoped
 surface.
-The network descriptor is active for V8 plans after CORE-NET-01.G registered TCP
-client/listener backends, the `__sloppy.net` intrinsic namespace, and local address/DNS
-socket-option coverage for the scoped surface.
+The network descriptor is active for V8 plans after CORE-NET-01.I registered TCP
+client/listener backends, the `__sloppy.net` intrinsic namespace, local address/DNS
+socket-option coverage, and doctor/audit/source-example evidence for the scoped surface.
 The codec descriptor is active for V8 plans after CORE-CODEC-01.C/D/I registered the
 `__sloppy.codec` namespace; Base64/Base64Url/Hex/Text and Binary are implemented in the
 bootstrap JS surface, and Compression uses bounded native zlib gzip/gunzip helpers through
@@ -487,7 +488,8 @@ and database provider within the V8 SQLite bridge before provider calls. CORE-FS
 adds core, advanced, and FileHandle filesystem operations behind feature-gated V8
 registration; CORE-FS-01.G adds watch resources behind `fs.watch`; CORE-FS-01.I/J adds
 filesystem doctor/audit goldens and source examples that prove metadata visibility.
-Network entries remain skeleton checks only and no capability entry creates an OS sandbox.
+CORE-NET-01.I adds network doctor/audit goldens and source examples that prove
+`connect`/`listen` metadata visibility. No capability entry creates an OS sandbox.
 
 ### permissions
 

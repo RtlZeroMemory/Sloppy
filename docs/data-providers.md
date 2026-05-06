@@ -558,7 +558,8 @@ Capability status:
   provider errors may include SQL text and SQLite error text, but parameter values are kept
   out of diagnostics. SQL text is therefore not a secret-bearing channel; callers must not
   put secrets directly in SQL literals;
-- filesystem and network capabilities remain metadata/check-only skeletons.
+- filesystem and network capabilities remain Sloppy policy/metadata checks and do not
+  create an OS sandbox.
 
 Native PostgreSQL behavior:
 

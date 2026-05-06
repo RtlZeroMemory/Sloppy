@@ -702,6 +702,10 @@ goldens prove deterministic diagnostic shape only. Loopback client/listener test
 scoped TCP execution, local `localhost` DNS resolution, IPv4/IPv6 address parsing, and
 socket-option failure mapping; they do not prove external network access, throughput,
 live-provider DNS behavior, or benchmark evidence.
+CORE-NET-01.I adds CLI doctor/audit goldens for Plan-visible network capabilities:
+`stdlib.net.capabilities`, `stdlib.net.connect`, `stdlib.net.listen`, and
+`SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE`. Those goldens prove deterministic metadata
+visibility and no OS sandbox or external live-network evidence.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
@@ -736,11 +740,12 @@ failures:
 Codec diagnostics may name operation, encoding, checksum algorithm, backend family, byte
 length, and configured limits. They must not include raw tokens, secret-looking values,
 native pointers, V8 handles, OS handles, or package-manager state. Default codec vectors
-prove Base64/Base64Url/Hex/UTF-8, Binary reader/writer behavior, and JS compression
-surface behavior for the current stdlib surface. V8-gated codec vectors prove zlib-backed
-gzip/gunzip success, corrupt input, and decompression-limit failures. They do not prove
-checksum security, performance, public streaming compatibility, brotli/zstd/deflate
-support, package readiness, or public alpha coverage.
+prove Base64/Base64Url/Hex/UTF-8, Binary reader/writer behavior, CRC32 checksum behavior,
+checksum-warning coverage, and JS compression surface behavior for the current stdlib
+surface. V8-gated codec vectors prove zlib-backed gzip/gunzip success, corrupt input, and
+decompression-limit failures. They do not prove checksum security, performance, public
+streaming compatibility, brotli/zstd/deflate support, package readiness, or public alpha
+coverage.
 
 App/request lifecycle diagnostics:
 
