@@ -1509,7 +1509,7 @@ static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_HTTP_CLIENT_DYNAMIC_TARGET_METADATA; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1517,10 +1517,9 @@ static int test_stable_code_registry_complete(void)
         }
     }
 
-    if (expect_str_equal(
-            sl_diag_code_name(
-                (SlDiagCode)((size_t)SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED + 1U)),
-            sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
+    if (expect_str_equal(sl_diag_code_name((
+                             SlDiagCode)((size_t)SL_DIAG_HTTP_CLIENT_DYNAMIC_TARGET_METADATA + 1U)),
+                         sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
     }

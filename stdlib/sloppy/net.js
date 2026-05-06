@@ -489,7 +489,61 @@ const TcpListener = Object.freeze({
     },
 });
 
+function httpClientUnavailable(operation) {
+    throw new SloppyNetError(
+        "HttpClientUnavailableError",
+        `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE: HttpClient.${operation} is contract-visible, but the outbound HTTP client transport is not implemented in this runtime lane.`,
+    );
+}
+
+function createHttpClientFacade(baseOptions = undefined) {
+    const client = {
+        request() {
+            httpClientUnavailable("request");
+        },
+        get() {
+            httpClientUnavailable("get");
+        },
+        post() {
+            httpClientUnavailable("post");
+        },
+        getJson() {
+            httpClientUnavailable("getJson");
+        },
+        postJson() {
+            httpClientUnavailable("postJson");
+        },
+    };
+    Object.defineProperty(client, "__sloppyHttpClientOptions", {
+        value: baseOptions,
+        enumerable: false,
+    });
+    return Object.freeze(client);
+}
+
+const HttpClient = Object.freeze({
+    create(options = undefined) {
+        return createHttpClientFacade(options);
+    },
+    request() {
+        httpClientUnavailable("request");
+    },
+    get() {
+        httpClientUnavailable("get");
+    },
+    post() {
+        httpClientUnavailable("post");
+    },
+    getJson() {
+        httpClientUnavailable("getJson");
+    },
+    postJson() {
+        httpClientUnavailable("postJson");
+    },
+});
+
 export {
+    HttpClient,
     LocalEndpoint,
     NamedPipe,
     NetworkAddress,

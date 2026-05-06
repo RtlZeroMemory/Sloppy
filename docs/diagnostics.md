@@ -713,6 +713,17 @@ accept/read/write cancellation or timeout, disposed resources, backend unavailab
 unsupported permission/mode behavior. These diagnostics pin the intended local IPC failure
 shapes without claiming Unix socket or Windows named pipe backend execution.
 
+CORE-HTTPCLIENT-01.A/B/C reserves outbound HTTP client diagnostics without claiming an
+executable transport. Missing or inactive `stdlib.httpclient` uses runtime-feature
+diagnostics before startup. If the bootstrap facade is reached in a lane without native
+transport support it fails with `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE`. HTTP
+client-specific codes cover invalid URL/options, ambiguous body sources, consumed request
+or response bodies, response limits, malformed responses, connect/DNS/TLS failures,
+timeout versus cancellation, redirect loops/max redirects, sensitive header stripping,
+pool exhaustion, strict policy denial, and dynamic target metadata. These diagnostics must
+not include secrets, tokens, cookies, raw TLS material, native handles, V8 handles, OS
+handles, raw pointers, or unredacted query parameters marked secret.
+
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
 UTF-8 JS-facing transformation errors. CORE-CODEC-01.E uses the Binary diagnostics for

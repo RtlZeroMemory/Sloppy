@@ -118,6 +118,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.stdlib_codec = true;
     availability.stdlib_net = true;
     availability.stdlib_os = true;
+    availability.stdlib_http_client = true;
     return availability;
 }
 
@@ -189,16 +190,19 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_NET);
     const SlRuntimeFeatureDescriptor* os =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_OS);
+    const SlRuntimeFeatureDescriptor* http_client =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT);
     const SlRuntimeFeatureDescriptor* fs =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FS);
     const SlRuntimeFeatureDescriptor* config =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 18) {
+    if (SL_RUNTIME_FEATURE_COUNT != 19) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || data == NULL || time == NULL || crypto == NULL ||
-        codec == NULL || net == NULL || os == NULL || fs == NULL || config == NULL)
+        codec == NULL || net == NULL || os == NULL || http_client == NULL || fs == NULL ||
+        config == NULL)
     {
         return 61;
     }
@@ -252,6 +256,17 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         (os->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
     {
         return 71;
+    }
+    if (!sl_str_equal(http_client->stable_id, sl_str_from_cstr("stdlib.httpclient")) ||
+        !sl_str_equal(http_client->stdlib_import, sl_str_from_cstr("sloppy/net")) ||
+        !sl_str_equal(http_client->v8_intrinsic_namespace,
+                      sl_str_from_cstr("__sloppy.httpClient")) ||
+        !http_client->requires_v8_intrinsics || http_client->available ||
+        (http_client->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_NET)) == 0U ||
+        (http_client->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U ||
+        (http_client->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CRYPTO)) == 0U)
+    {
+        return 72;
     }
     if (!sl_str_equal(fs->stable_id, sl_str_from_cstr("stdlib.fs")) ||
         !sl_str_equal(fs->stdlib_import, sl_str_from_cstr("sloppy/fs")) ||
@@ -962,6 +977,35 @@ static int test_os_feature_diagnostic_golden(void)
     return 0;
 }
 
+static int test_http_client_required_feature_fails_until_backend_lands(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.httpclient")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = sl_runtime_feature_default_availability();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.v8 = true;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
+        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.httpclient")))
+    {
+        return 2;
+    }
+    return 0;
+}
+
 int main(void)
 {
     static const FeatureTestFn tests[] = {
@@ -987,6 +1031,7 @@ int main(void)
         test_codec_feature_diagnostic_golden,
         test_net_feature_diagnostic_golden,
         test_os_feature_diagnostic_golden,
+        test_http_client_required_feature_fails_until_backend_lands,
     };
     size_t index = 0U;
 

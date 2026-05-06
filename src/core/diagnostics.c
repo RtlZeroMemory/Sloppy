@@ -24,6 +24,107 @@ static SlStr sl_diag_literal(const char* ptr, size_t length)
     return sl_str_from_parts(ptr, length);
 }
 
+static SlStr sl_diag_http_client_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_HTTP_CLIENT_FEATURE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE") - 1U);
+    case SL_DIAG_HTTP_CLIENT_INVALID_URL:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_INVALID_URL") - 1U);
+    case SL_DIAG_HTTP_CLIENT_INVALID_OPTIONS:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS") - 1U);
+    case SL_DIAG_HTTP_CLIENT_AMBIGUOUS_BODY:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY") - 1U);
+    case SL_DIAG_HTTP_CLIENT_BODY_CONSUMED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_BODY_CONSUMED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_BODY_CONSUMED") - 1U);
+    case SL_DIAG_HTTP_CLIENT_RESPONSE_BODY_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT") - 1U);
+    case SL_DIAG_HTTP_CLIENT_MALFORMED_RESPONSE:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE") - 1U);
+    case SL_DIAG_HTTP_CLIENT_CONNECT_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED") - 1U);
+    case SL_DIAG_HTTP_CLIENT_DNS_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_DNS_FAILED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_DNS_FAILED") - 1U);
+    case SL_DIAG_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE") - 1U);
+    case SL_DIAG_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED") -
+                                   1U);
+    case SL_DIAG_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH") - 1U);
+    case SL_DIAG_HTTP_CLIENT_REQUEST_TIMEOUT:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT") - 1U);
+    case SL_DIAG_HTTP_CLIENT_REQUEST_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED") - 1U);
+    case SL_DIAG_HTTP_CLIENT_REDIRECT_LOOP:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_REDIRECT_LOOP",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_REDIRECT_LOOP") - 1U);
+    case SL_DIAG_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED") - 1U);
+    case SL_DIAG_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED") - 1U);
+    case SL_DIAG_HTTP_CLIENT_POOL_EXHAUSTED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED") - 1U);
+    case SL_DIAG_HTTP_CLIENT_STRICT_NETWORK_DENIED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_STRICT_NETWORK_DENIED",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_STRICT_NETWORK_DENIED") - 1U);
+    case SL_DIAG_HTTP_CLIENT_DYNAMIC_TARGET_METADATA:
+        return sl_diag_literal("SLOPPY_W_HTTP_CLIENT_DYNAMIC_TARGET_METADATA",
+                               sizeof("SLOPPY_W_HTTP_CLIENT_DYNAMIC_TARGET_METADATA") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static SlStr sl_diag_http_transport_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_HTTP_TRANSPORT_CONFIG:
+        return sl_diag_literal("SLOPPY_E_HTTP_TRANSPORT_CONFIG",
+                               sizeof("SLOPPY_E_HTTP_TRANSPORT_CONFIG") - 1U);
+    case SL_DIAG_HTTP_BIND_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_BIND_FAILED",
+                               sizeof("SLOPPY_E_HTTP_BIND_FAILED") - 1U);
+    case SL_DIAG_HTTP_LISTEN_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_LISTEN_FAILED",
+                               sizeof("SLOPPY_E_HTTP_LISTEN_FAILED") - 1U);
+    case SL_DIAG_HTTP_ACCEPT_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_ACCEPT_FAILED",
+                               sizeof("SLOPPY_E_HTTP_ACCEPT_FAILED") - 1U);
+    case SL_DIAG_HTTP_DISPATCH_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_DISPATCH_FAILED",
+                               sizeof("SLOPPY_E_HTTP_DISPATCH_FAILED") - 1U);
+    case SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED",
+                               sizeof("SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED") - 1U);
+    case SL_DIAG_HTTP_WRITE_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_WRITE_FAILED",
+                               sizeof("SLOPPY_E_HTTP_WRITE_FAILED") - 1U);
+    case SL_DIAG_HTTP_CLOSE_FAILED:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLOSE_FAILED",
+                               sizeof("SLOPPY_E_HTTP_CLOSE_FAILED") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
 static SlStr sl_diag_http_code_name(SlDiagCode code)
 {
     switch (code) {
@@ -92,29 +193,14 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_SHUTDOWN:
         return sl_diag_literal("SLOPPY_E_HTTP_SHUTDOWN", sizeof("SLOPPY_E_HTTP_SHUTDOWN") - 1U);
     case SL_DIAG_HTTP_TRANSPORT_CONFIG:
-        return sl_diag_literal("SLOPPY_E_HTTP_TRANSPORT_CONFIG",
-                               sizeof("SLOPPY_E_HTTP_TRANSPORT_CONFIG") - 1U);
     case SL_DIAG_HTTP_BIND_FAILED:
-        return sl_diag_literal("SLOPPY_E_HTTP_BIND_FAILED",
-                               sizeof("SLOPPY_E_HTTP_BIND_FAILED") - 1U);
     case SL_DIAG_HTTP_LISTEN_FAILED:
-        return sl_diag_literal("SLOPPY_E_HTTP_LISTEN_FAILED",
-                               sizeof("SLOPPY_E_HTTP_LISTEN_FAILED") - 1U);
     case SL_DIAG_HTTP_ACCEPT_FAILED:
-        return sl_diag_literal("SLOPPY_E_HTTP_ACCEPT_FAILED",
-                               sizeof("SLOPPY_E_HTTP_ACCEPT_FAILED") - 1U);
     case SL_DIAG_HTTP_DISPATCH_FAILED:
-        return sl_diag_literal("SLOPPY_E_HTTP_DISPATCH_FAILED",
-                               sizeof("SLOPPY_E_HTTP_DISPATCH_FAILED") - 1U);
     case SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED:
-        return sl_diag_literal("SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED",
-                               sizeof("SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED") - 1U);
     case SL_DIAG_HTTP_WRITE_FAILED:
-        return sl_diag_literal("SLOPPY_E_HTTP_WRITE_FAILED",
-                               sizeof("SLOPPY_E_HTTP_WRITE_FAILED") - 1U);
     case SL_DIAG_HTTP_CLOSE_FAILED:
-        return sl_diag_literal("SLOPPY_E_HTTP_CLOSE_FAILED",
-                               sizeof("SLOPPY_E_HTTP_CLOSE_FAILED") - 1U);
+        return sl_diag_http_transport_code_name(code);
     case SL_DIAG_HTTP_BODY_LIMIT:
         return sl_diag_literal("SLOPPY_E_HTTP_BODY_LIMIT", sizeof("SLOPPY_E_HTTP_BODY_LIMIT") - 1U);
     case SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE:
@@ -126,6 +212,27 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
     case SL_DIAG_INVALID_HTTP_RESULT:
         return sl_diag_literal("SLOPPY_E_INVALID_HTTP_RESULT",
                                sizeof("SLOPPY_E_INVALID_HTTP_RESULT") - 1U);
+    case SL_DIAG_HTTP_CLIENT_FEATURE_UNAVAILABLE:
+    case SL_DIAG_HTTP_CLIENT_INVALID_URL:
+    case SL_DIAG_HTTP_CLIENT_INVALID_OPTIONS:
+    case SL_DIAG_HTTP_CLIENT_AMBIGUOUS_BODY:
+    case SL_DIAG_HTTP_CLIENT_BODY_CONSUMED:
+    case SL_DIAG_HTTP_CLIENT_RESPONSE_BODY_LIMIT:
+    case SL_DIAG_HTTP_CLIENT_MALFORMED_RESPONSE:
+    case SL_DIAG_HTTP_CLIENT_CONNECT_FAILED:
+    case SL_DIAG_HTTP_CLIENT_DNS_FAILED:
+    case SL_DIAG_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE:
+    case SL_DIAG_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED:
+    case SL_DIAG_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH:
+    case SL_DIAG_HTTP_CLIENT_REQUEST_TIMEOUT:
+    case SL_DIAG_HTTP_CLIENT_REQUEST_CANCELLED:
+    case SL_DIAG_HTTP_CLIENT_REDIRECT_LOOP:
+    case SL_DIAG_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED:
+    case SL_DIAG_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED:
+    case SL_DIAG_HTTP_CLIENT_POOL_EXHAUSTED:
+    case SL_DIAG_HTTP_CLIENT_STRICT_NETWORK_DENIED:
+    case SL_DIAG_HTTP_CLIENT_DYNAMIC_TARGET_METADATA:
+        return sl_diag_http_client_code_name(code);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }
@@ -168,6 +275,26 @@ static bool sl_diag_is_http_code(SlDiagCode code)
     case SL_DIAG_HTTP_ROUTE_NOT_FOUND:
     case SL_DIAG_HTTP_UNSUPPORTED_BODY:
     case SL_DIAG_INVALID_HTTP_RESULT:
+    case SL_DIAG_HTTP_CLIENT_FEATURE_UNAVAILABLE:
+    case SL_DIAG_HTTP_CLIENT_INVALID_URL:
+    case SL_DIAG_HTTP_CLIENT_INVALID_OPTIONS:
+    case SL_DIAG_HTTP_CLIENT_AMBIGUOUS_BODY:
+    case SL_DIAG_HTTP_CLIENT_BODY_CONSUMED:
+    case SL_DIAG_HTTP_CLIENT_RESPONSE_BODY_LIMIT:
+    case SL_DIAG_HTTP_CLIENT_MALFORMED_RESPONSE:
+    case SL_DIAG_HTTP_CLIENT_CONNECT_FAILED:
+    case SL_DIAG_HTTP_CLIENT_DNS_FAILED:
+    case SL_DIAG_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE:
+    case SL_DIAG_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED:
+    case SL_DIAG_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH:
+    case SL_DIAG_HTTP_CLIENT_REQUEST_TIMEOUT:
+    case SL_DIAG_HTTP_CLIENT_REQUEST_CANCELLED:
+    case SL_DIAG_HTTP_CLIENT_REDIRECT_LOOP:
+    case SL_DIAG_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED:
+    case SL_DIAG_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED:
+    case SL_DIAG_HTTP_CLIENT_POOL_EXHAUSTED:
+    case SL_DIAG_HTTP_CLIENT_STRICT_NETWORK_DENIED:
+    case SL_DIAG_HTTP_CLIENT_DYNAMIC_TARGET_METADATA:
         return true;
     default:
         return false;

@@ -4,6 +4,13 @@
 
 Partially implemented.
 
+Outbound HTTP client note: CORE-HTTPCLIENT-01 starts in
+`docs/project/http-client-api-architecture.md`. That work is separate from the inbound
+HTTP server/runtime path described below. The first contract slice makes `HttpClient` from
+`sloppy/net` Plan-visible as `stdlib.httpclient` and fail-closed, but it does not implement
+the outbound HTTP/1.1 transport, HTTPS/TLS backend, redirects, pooling, streaming bodies,
+or live external network evidence.
+
 Post-ENGINE-16 consolidation: the HTTP module is mature for bounded localhost transport
 correctness, not production application-server behavior. HTTP-25 completes sequential
 keep-alive, bounded chunked request decoding, internal/native chunked response writing,

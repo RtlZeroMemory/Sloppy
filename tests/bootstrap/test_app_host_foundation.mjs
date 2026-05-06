@@ -10,6 +10,7 @@ import {
     FileHandle,
     Hash,
     Hmac,
+    HttpClient,
     InvalidDeadlineError,
     LocalEndpoint,
     NetworkAddress,
@@ -211,6 +212,18 @@ async function flushMicrotasks(count = 6) {
             globalThis.__sloppy = previousSloppy;
         }
     }
+}
+
+{
+    assert.equal(typeof HttpClient.create, "function");
+    assert.equal(typeof HttpClient.get, "function");
+    const client = HttpClient.create({ baseUrl: "https://api.example.test" });
+    assert.equal(typeof client.getJson, "function");
+    assertThrowsMessage(
+        () => HttpClient.get("https://api.example.test/health"),
+        /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
+    );
+    assertThrowsMessage(() => client.postJson("/items", { name: "test" }), /HttpClient\.postJson/);
 }
 
 {
