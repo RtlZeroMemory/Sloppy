@@ -62,6 +62,18 @@ static SlStatus sl_local_fail(SlDiag* out_diag, SlDiagCode code, SlStatusCode st
     return sl_status_from_code(status);
 }
 
+static SlStatus sl_local_cancelled_status(const SlCancellationToken* cancellation, SlDiag* out_diag,
+                                          SlDiagCode code, SlStr message)
+{
+    SlCancellationReason reason;
+
+    if (!sl_cancellation_token_is_cancelled(cancellation)) {
+        return sl_status_ok();
+    }
+    reason = sl_cancellation_token_reason(cancellation);
+    return sl_local_fail(out_diag, code, sl_cancellation_status_code(reason), message);
+}
+
 static bool sl_local_backend_supported(SlLocalEndpointBackend backend)
 {
     return backend == SL_LOCAL_ENDPOINT_BACKEND_AUTO ||
@@ -284,6 +296,12 @@ SlLocalAcceptOptions sl_local_accept_options_default(void)
     return options;
 }
 
+SlLocalIoOptions sl_local_io_options_default(void)
+{
+    SlLocalIoOptions options = {0};
+    return options;
+}
+
 SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* options,
                                    SlLocalConnection** out_connection, SlDiag* out_diag)
 {
@@ -311,6 +329,12 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
         return status;
     }
     for (;;) {
+        status = sl_local_cancelled_status(options->cancellation, out_diag,
+                                           SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
+                                           sl_local_literal("local IPC connect failed"));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         handle = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0U, NULL, OPEN_EXISTING,
                              FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
         if (handle != INVALID_HANDLE_VALUE) {
@@ -445,6 +469,13 @@ SlStatus sl_local_server_accept(SlLocalServer* server, SlArena* arena,
         return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_DISPOSED, SL_STATUS_INVALID_STATE,
                              sl_local_literal("local IPC connection or server is disposed"));
     }
+    status =
+        sl_local_cancelled_status(options == NULL ? NULL : options->cancellation, out_diag,
+                                  SL_DIAG_NET_LOCAL_IPC_ACCEPT_CANCELLED,
+                                  sl_local_literal("local IPC accept was cancelled or timed out"));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     overlapped.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
     if (overlapped.hEvent == NULL) {
         return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
@@ -540,7 +571,8 @@ SlLocalConnectionState sl_local_connection_state(const SlLocalConnection* connec
     return connection == NULL ? SL_LOCAL_CONNECTION_FAILED : connection->state;
 }
 
-SlStatus sl_local_connection_write(SlLocalConnection* connection, SlBytes bytes, SlDiag* out_diag)
+SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes bytes,
+                                      const SlLocalIoOptions* options, SlDiag* out_diag)
 {
     SlStatus status = sl_local_require_connected(connection, out_diag);
     size_t written = 0U;
@@ -558,6 +590,13 @@ SlStatus sl_local_connection_write(SlLocalConnection* connection, SlBytes bytes,
         DWORD transferred = 0U;
         BOOL ok = FALSE;
 
+        status = sl_local_cancelled_status(
+            options == NULL ? NULL : options->cancellation, out_diag,
+            SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
+            sl_local_literal("local IPC read or write was cancelled or timed out"));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         overlapped.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
         if (overlapped.hEvent == NULL) {
             return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
@@ -585,7 +624,8 @@ SlStatus sl_local_connection_write(SlLocalConnection* connection, SlBytes bytes,
                     sl_local_literal("local IPC read or write was cancelled or timed out"));
             }
             status = sl_local_wait_overlapped(
-                connection->handle, &overlapped, false, 0U, &transferred, out_diag,
+                connection->handle, &overlapped, options != NULL && options->has_timeout_ms,
+                options == NULL ? 0U : options->timeout_ms, &transferred, out_diag,
                 SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
                 sl_local_literal("local IPC read or write was cancelled or timed out"));
         }
@@ -603,17 +643,35 @@ SlStatus sl_local_connection_write(SlLocalConnection* connection, SlBytes bytes,
     return sl_status_ok();
 }
 
+SlStatus sl_local_connection_write(SlLocalConnection* connection, SlBytes bytes, SlDiag* out_diag)
+{
+    return sl_local_connection_write_ex(connection, bytes, NULL, out_diag);
+}
+
 SlStatus sl_local_connection_write_text(SlLocalConnection* connection, SlStr text, SlDiag* out_diag)
 {
     if (text.length != 0U && text.ptr == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    return sl_local_connection_write(
-        connection, sl_bytes_from_parts((const unsigned char*)text.ptr, text.length), out_diag);
+    return sl_local_connection_write_ex(
+        connection, sl_bytes_from_parts((const unsigned char*)text.ptr, text.length), NULL,
+        out_diag);
 }
 
-SlStatus sl_local_connection_read(SlLocalConnection* connection, SlArena* arena, size_t max_bytes,
-                                  SlOwnedBytes* out, SlDiag* out_diag)
+SlStatus sl_local_connection_write_text_ex(SlLocalConnection* connection, SlStr text,
+                                           const SlLocalIoOptions* options, SlDiag* out_diag)
+{
+    if (text.length != 0U && text.ptr == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_local_connection_write_ex(
+        connection, sl_bytes_from_parts((const unsigned char*)text.ptr, text.length), options,
+        out_diag);
+}
+
+SlStatus sl_local_connection_read_ex(SlLocalConnection* connection, SlArena* arena,
+                                     size_t max_bytes, const SlLocalIoOptions* options,
+                                     SlOwnedBytes* out, SlDiag* out_diag)
 {
     OVERLAPPED overlapped = {0};
     SlStatus status = sl_local_require_connected(connection, out_diag);
@@ -633,6 +691,13 @@ SlStatus sl_local_connection_read(SlLocalConnection* connection, SlArena* arena,
                    ? connection->read_buffer_capacity
                    : max_bytes;
     requested = capacity > (size_t)UINT32_MAX ? UINT32_MAX : (DWORD)capacity;
+    status = sl_local_cancelled_status(
+        options == NULL ? NULL : options->cancellation, out_diag,
+        SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
+        sl_local_literal("local IPC read or write was cancelled or timed out"));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     overlapped.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
     if (overlapped.hEvent == NULL) {
         return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
@@ -666,7 +731,8 @@ SlStatus sl_local_connection_read(SlLocalConnection* connection, SlArena* arena,
                 sl_local_literal("local IPC read or write was cancelled or timed out"));
         }
         status = sl_local_wait_overlapped(
-            connection->handle, &overlapped, false, 0U, &transferred, out_diag,
+            connection->handle, &overlapped, options != NULL && options->has_timeout_ms,
+            options == NULL ? 0U : options->timeout_ms, &transferred, out_diag,
             SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
             sl_local_literal("local IPC read or write was cancelled or timed out"));
     }
@@ -683,9 +749,16 @@ SlStatus sl_local_connection_read(SlLocalConnection* connection, SlArena* arena,
         arena, sl_bytes_from_parts(connection->read_buffer, (size_t)transferred), out);
 }
 
-SlStatus sl_local_connection_read_until(SlLocalConnection* connection, SlArena* arena,
-                                        SlBytes delimiter, size_t max_bytes, SlOwnedBytes* out,
-                                        SlDiag* out_diag)
+SlStatus sl_local_connection_read(SlLocalConnection* connection, SlArena* arena, size_t max_bytes,
+                                  SlOwnedBytes* out, SlDiag* out_diag)
+{
+    return sl_local_connection_read_ex(connection, arena, max_bytes, NULL, out, out_diag);
+}
+
+SlStatus sl_local_connection_read_until_ex(SlLocalConnection* connection, SlArena* arena,
+                                           SlBytes delimiter, size_t max_bytes,
+                                           const SlLocalIoOptions* options, SlOwnedBytes* out,
+                                           SlDiag* out_diag)
 {
     SlByteBuilder builder;
     SlStatus status;
@@ -704,7 +777,7 @@ SlStatus sl_local_connection_read_until(SlLocalConnection* connection, SlArena* 
     while (sl_byte_builder_length(&builder) < limit) {
         SlOwnedBytes chunk = {0};
         SlBytes view;
-        status = sl_local_connection_read(connection, arena, 1U, &chunk, out_diag);
+        status = sl_local_connection_read_ex(connection, arena, 1U, options, &chunk, out_diag);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -724,8 +797,17 @@ SlStatus sl_local_connection_read_until(SlLocalConnection* connection, SlArena* 
                          sl_local_literal("local IPC read or write was cancelled or timed out"));
 }
 
-SlStatus sl_local_connection_read_line(SlLocalConnection* connection, SlArena* arena,
-                                       size_t max_bytes, SlOwnedStr* out, SlDiag* out_diag)
+SlStatus sl_local_connection_read_until(SlLocalConnection* connection, SlArena* arena,
+                                        SlBytes delimiter, size_t max_bytes, SlOwnedBytes* out,
+                                        SlDiag* out_diag)
+{
+    return sl_local_connection_read_until_ex(connection, arena, delimiter, max_bytes, NULL, out,
+                                             out_diag);
+}
+
+SlStatus sl_local_connection_read_line_ex(SlLocalConnection* connection, SlArena* arena,
+                                          size_t max_bytes, const SlLocalIoOptions* options,
+                                          SlOwnedStr* out, SlDiag* out_diag)
 {
     static const unsigned char newline = '\n';
     SlOwnedBytes bytes = {0};
@@ -735,8 +817,8 @@ SlStatus sl_local_connection_read_line(SlLocalConnection* connection, SlArena* a
     if (out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_local_connection_read_until(connection, arena, sl_bytes_from_parts(&newline, 1U),
-                                            max_bytes, &bytes, out_diag);
+    status = sl_local_connection_read_until_ex(connection, arena, sl_bytes_from_parts(&newline, 1U),
+                                               max_bytes, options, &bytes, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -748,6 +830,12 @@ SlStatus sl_local_connection_read_line(SlLocalConnection* connection, SlArena* a
         length -= 1U;
     }
     return sl_str_copy_to_arena(arena, sl_str_from_parts((const char*)bytes.ptr, length), out);
+}
+
+SlStatus sl_local_connection_read_line(SlLocalConnection* connection, SlArena* arena,
+                                       size_t max_bytes, SlOwnedStr* out, SlDiag* out_diag)
+{
+    return sl_local_connection_read_line_ex(connection, arena, max_bytes, NULL, out, out_diag);
 }
 
 static SlStatus sl_local_connection_finish_close(SlLocalConnection* connection,
