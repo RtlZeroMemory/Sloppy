@@ -35,7 +35,9 @@ unaliased imports from `sloppy/os`; runtime value imports add `stdlib.os` to Pla
 Type-only imports do not activate the runtime feature.
 
 CORE-OS-01.C/H makes `stdlib.os` available for the `System` and `Environment` runtime
-surface. Process execution and Signals remain deferred to later CORE-OS-01 slices and fail
+surface. CORE-OS-01.D adds native `sl_os_process_run` and the bootstrap `Process.run`
+facade. The V8 process bridge remains deferred until process work can be scheduled without
+blocking the V8 owner thread. Signals remain deferred to later CORE-OS-01 slices and fail
 closed through the JS facade.
 
 ## API Contract
@@ -214,9 +216,21 @@ feature/Plan/diagnostic/compiler metadata lane.
 - V8 private namespace `__sloppy.os` and bootstrap JS exports for `System` and
   `Environment`.
 
-## Deferred Beyond CORE-OS-01.C/H Partial
+## Implemented In CORE-OS-01.D
 
-- Process.run native implementation.
+- Native `sl_os_process_run` for explicit argv only; no shell interpolation and no Node or
+  Deno compatibility surface.
+- Development-mode process execution and strict-policy `process.run` denial.
+- Bounded stdout/stderr capture with truncation flags.
+- Timeout terminal state distinct from command failure.
+- Stable diagnostics for denied execution, command lookup failure, invalid cwd, invalid
+  environment overrides, start failure, and timeout.
+- Bootstrap JS `Process.run` validation and result forwarding through the Slop-owned OS
+  bridge shape.
+
+## Deferred Beyond CORE-OS-01.D
+
+- V8 `processRun` intrinsic and owner-thread-safe native scheduling.
 - Process.start, streaming pipes, and ProcessHandle lifecycle.
 - Deadlines, cancellation, kill, shutdown, and late-completion runtime hardening.
 - Signals and app lifecycle integration.

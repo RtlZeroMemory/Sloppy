@@ -10,11 +10,19 @@ function assertOsError(fn, code) {
     });
 }
 
+async function assertOsRejects(promise, code) {
+    await assert.rejects(promise, (error) => {
+        assert.equal(error.code, code);
+        assert.match(error.message, new RegExp(code));
+        return true;
+    });
+}
+
 assertOsError(() => System.platform, "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
 assert.throws(() => Environment.get(""), TypeError);
 assert.throws(() => Environment.has("A=B"), TypeError);
 assert.throws(() => Environment.list({ values: true }), TypeError);
-assertOsError(() => Process.run("echo", []), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
+await assertOsRejects(Process.run("echo", []), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
 assertOsError(() => Signals.onShutdown(() => {}), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
 
 const previousSloppy = globalThis.__sloppy;
@@ -41,6 +49,17 @@ try {
             environmentList(prefix) {
                 return ["SLOPPY_OS_TEST", "SLOPPY_OS_SECRET_TOKEN"].filter((key) => key.startsWith(prefix));
             },
+            processRun(command, args, options) {
+                return {
+                    command,
+                    args,
+                    options,
+                    exitCode: 0,
+                    stdout: "ok",
+                    stderr: "",
+                    timedOut: false,
+                };
+            },
         },
     };
 
@@ -57,6 +76,25 @@ try {
         "SLOPPY_OS_TEST",
         "SLOPPY_OS_SECRET_TOKEN",
     ]);
+    assert.deepEqual(await Process.run("tool", ["arg"], { timeoutMs: 5, capture: "text" }), {
+        command: "tool",
+        args: ["arg"],
+        options: {
+            capture: "text",
+            maxStdoutBytes: 65536,
+            maxStderrBytes: 65536,
+            timeoutMs: 5,
+        },
+        exitCode: 0,
+        stdout: "ok",
+        stderr: "",
+        timedOut: false,
+    });
+    await assertOsRejects(
+        Process.run("tool", [], { signal: { aborted: true } }),
+        "SLOPPY_E_OS_PROCESS_CANCELLED",
+    );
+    await assert.rejects(Process.run("tool", ["bad\0arg"]), TypeError);
 } finally {
     if (previousSloppy === undefined) {
         delete globalThis.__sloppy;

@@ -161,9 +161,11 @@ authentication, HMAC, signatures, password hashing, tokens, cryptographic hashes
 attacker-resistant integrity. Security APIs remain under `sloppy/crypto`.
 
 CORE-OS-01.A/B defines the OS API policy model. CORE-OS-01.C/H partial makes `sloppy/os`
-Plan-visible as `stdlib.os` for System and Environment runtime use. OS authority categories
-are `os.info`, `env.read`, `env.list`, `process.run`, `process.shell`, `process.signal`,
-`process.kill`, and `signals.shutdown`. Raw environment access is lower-level than app configuration, process
+Plan-visible as `stdlib.os` for System and Environment runtime use. CORE-OS-01.D adds
+explicit-argv `Process.run` admission under `process.run`; strict policy denies it unless
+that authority is explicitly enabled. OS authority categories are `os.info`, `env.read`,
+`env.list`, `process.run`, `process.shell`, `process.signal`, `process.kill`, and
+`signals.shutdown`. Raw environment access is lower-level than app configuration, process
 execution requires explicit argv, shell execution is absent or separately gated, and
 diagnostics must never print environment values, secret args, sensitive captured output,
 native process handles, pipe handles, raw PIDs-as-authority, libuv handles, OS handles, or

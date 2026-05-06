@@ -49,6 +49,92 @@ function validateListOptions(options) {
     return options.prefix;
 }
 
+function requireArgv(command, args) {
+    if (typeof command !== "string" || command.length === 0 || command.includes("\0")) {
+        throw new TypeError("OS run command must be a non-empty string without NUL.");
+    }
+    if (args === undefined) {
+        return [];
+    }
+    if (!Array.isArray(args)) {
+        throw new TypeError("OS run args must be an array when provided.");
+    }
+    return args.map((arg, index) => {
+        if (typeof arg !== "string" || arg.includes("\0")) {
+            throw new TypeError(`OS run args[${index}] must be a string without NUL.`);
+        }
+        return arg;
+    });
+}
+
+function validateRunOptions(options) {
+    const normalized = {
+        capture: "text",
+        maxStdoutBytes: 65536,
+        maxStderrBytes: 65536,
+        timeoutMs: 0,
+    };
+    if (options === undefined) {
+        return normalized;
+    }
+    if (options === null || typeof options !== "object" || Array.isArray(options)) {
+        throw new TypeError("OS run options must be an object when provided.");
+    }
+    for (const key of Object.keys(options)) {
+        if (!["cwd", "env", "capture", "maxStdoutBytes", "maxStderrBytes", "timeoutMs", "deadline", "signal"].includes(key)) {
+            throw new TypeError(`OS run does not support option ${key}.`);
+        }
+    }
+    if (options.cwd !== undefined) {
+        if (typeof options.cwd !== "string" || options.cwd.includes("\0")) {
+            throw new TypeError("OS run cwd must be a string without NUL.");
+        }
+        normalized.cwd = options.cwd;
+    }
+    if (options.env !== undefined) {
+        if (options.env === null || typeof options.env !== "object" || Array.isArray(options.env)) {
+            throw new TypeError("OS run env must be an object when provided.");
+        }
+        normalized.env = Object.freeze(Object.fromEntries(Object.entries(options.env).map(([key, value]) => {
+            requireKey(key, "OS run env");
+            if (typeof value !== "string" || value.includes("\0")) {
+                throw new TypeError(`OS run env.${key} must be a string without NUL.`);
+            }
+            return [key, value];
+        })));
+    }
+    if (options.capture !== undefined) {
+        if (!["none", "text", "bytes"].includes(options.capture)) {
+            throw new TypeError('OS run capture must be "none", "text", or "bytes".');
+        }
+        normalized.capture = options.capture;
+    }
+    for (const key of ["maxStdoutBytes", "maxStderrBytes", "timeoutMs"]) {
+        if (options[key] !== undefined) {
+            if (!Number.isFinite(options[key]) || options[key] < 0) {
+                throw new TypeError(`OS run ${key} must be a non-negative number.`);
+            }
+            normalized[key] = Math.ceil(options[key]);
+        }
+    }
+    if (options.deadline !== undefined && options.deadline !== null) {
+        if (typeof options.deadline.remainingMs !== "function") {
+            throw new TypeError("OS run deadline must come from sloppy/time Deadline.");
+        }
+        normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.max(0, Math.ceil(options.deadline.remainingMs())));
+    }
+    if (options.signal !== undefined) {
+        if (options.signal === null || typeof options.signal !== "object") {
+            throw new TypeError("OS run signal must be a cancellation signal.");
+        }
+        if (options.signal.aborted === true) {
+            throw osError("SLOPPY_E_OS_PROCESS_CANCELLED", "operation was cancelled");
+        }
+        normalized.signal = options.signal;
+    }
+    return normalized;
+}
+
 function systemInfo() {
     const info = bridge().systemInfo();
     if (info === null || typeof info !== "object") {
@@ -95,8 +181,14 @@ const Environment = Object.freeze({
 });
 
 const Process = Object.freeze({
-    run() {
-        throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS run API is deferred to CORE-OS-01.D.");
+    async run(command, args = [], options = undefined) {
+        const argv = requireArgv(command, args);
+        const runOptions = validateRunOptions(options);
+        const os = bridge();
+        if (typeof os.processRun !== "function") {
+            throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS run bridge is unavailable.");
+        }
+        return os.processRun(command, argv, runOptions);
     },
     start() {
         throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS start API is deferred to CORE-OS-01.E/F.");

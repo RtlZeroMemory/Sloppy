@@ -5200,6 +5200,89 @@ Reason:
         return key;
     }
 
+    function sloppyProcessRunArgs(command, args) {
+        if (typeof command !== "string" || command.length === 0 || command.includes("\0")) {
+            throw new TypeError("OS run command must be a non-empty string without NUL.");
+        }
+        if (args === undefined) {
+            return [];
+        }
+        if (!Array.isArray(args)) {
+            throw new TypeError("OS run args must be an array when provided.");
+        }
+        return args.map((arg, index) => {
+            if (typeof arg !== "string" || arg.includes("\0")) {
+                throw new TypeError(`OS run args[${index}] must be a string without NUL.`);
+            }
+            return arg;
+        });
+    }
+
+    function sloppyProcessRunOptions(options = undefined) {
+        const normalized = {
+            capture: "text",
+            maxStdoutBytes: 65536,
+            maxStderrBytes: 65536,
+            timeoutMs: 0,
+        };
+        if (options === undefined) {
+            return normalized;
+        }
+        if (options === null || typeof options !== "object" || Array.isArray(options)) {
+            throw new TypeError("OS run options must be an object when provided.");
+        }
+        for (const key of Object.keys(options)) {
+            if (!["cwd", "env", "capture", "maxStdoutBytes", "maxStderrBytes", "timeoutMs", "deadline", "signal"].includes(key)) {
+                throw new TypeError(`OS run does not support option ${key}.`);
+            }
+        }
+        if (options.cwd !== undefined) {
+            if (typeof options.cwd !== "string" || options.cwd.includes("\0")) {
+                throw new TypeError("OS run cwd must be a string without NUL.");
+            }
+            normalized.cwd = options.cwd;
+        }
+        if (options.env !== undefined) {
+            if (options.env === null || typeof options.env !== "object" || Array.isArray(options.env)) {
+                throw new TypeError("OS run env must be an object when provided.");
+            }
+            normalized.env = Object.freeze(Object.fromEntries(Object.entries(options.env).map(([key, value]) => {
+                sloppyOsKey(key, "OS run env");
+                if (typeof value !== "string" || value.includes("\0")) {
+                    throw new TypeError(`OS run env.${key} must be a string without NUL.`);
+                }
+                return [key, value];
+            })));
+        }
+        if (options.capture !== undefined) {
+            if (!["none", "text", "bytes"].includes(options.capture)) {
+                throw new TypeError('OS run capture must be "none", "text", or "bytes".');
+            }
+            normalized.capture = options.capture;
+        }
+        for (const key of ["maxStdoutBytes", "maxStderrBytes", "timeoutMs"]) {
+            if (options[key] !== undefined) {
+                if (!Number.isFinite(options[key]) || options[key] < 0) {
+                    throw new TypeError(`OS run ${key} must be a non-negative number.`);
+                }
+                normalized[key] = Math.ceil(options[key]);
+            }
+        }
+        if (options.deadline !== undefined && options.deadline !== null) {
+            if (typeof options.deadline.remainingMs !== "function") {
+                throw new TypeError("OS run deadline must come from sloppy/time Deadline.");
+            }
+            normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.max(0, Math.ceil(options.deadline.remainingMs())));
+        }
+        if (options.signal?.aborted === true) {
+            throw sloppyOsError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
+        }
+        if (options.signal !== undefined && (options.signal === null || typeof options.signal !== "object")) {
+            throw new TypeError("OS run signal must be a cancellation signal.");
+        }
+        return normalized;
+    }
+
     const System = Object.freeze({
         get platform() {
             return sloppyNativeOs().systemInfo().platform;
@@ -5240,8 +5323,12 @@ Reason:
     });
 
     const Process = Object.freeze({
-        run() {
-            throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS run API is deferred to CORE-OS-01.D.");
+        async run(command, args = [], options = undefined) {
+            const bridge = sloppyNativeOs();
+            if (typeof bridge.processRun !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS run bridge is unavailable.");
+            }
+            return bridge.processRun(command, sloppyProcessRunArgs(command, args), sloppyProcessRunOptions(options));
         },
         start() {
             throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS start API is deferred to CORE-OS-01.E/F.");

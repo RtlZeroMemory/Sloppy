@@ -5,9 +5,14 @@
 #include "../../core/os_platform.h"
 
 #include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 extern char** environ;
@@ -182,6 +187,298 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
             }
             index += 1U;
         }
+    }
+    return sl_status_ok();
+}
+
+static SlDiag sl_os_posix_process_diag(SlDiagCode code, SlStr message, SlStr hint)
+{
+    SlDiag diag = {0};
+
+    diag.severity = SL_DIAG_SEVERITY_ERROR;
+    diag.code = code;
+    diag.message = message;
+    diag.primary_span = sl_source_span_unknown();
+    if (!sl_str_is_empty(hint)) {
+        diag.hints[0] = hint;
+        diag.hint_count = 1U;
+    }
+    return diag;
+}
+
+static SlStatus sl_os_posix_process_fail(SlDiagCode code, SlDiag* out_diag, SlStr message,
+                                         SlStr hint)
+{
+    if (out_diag != NULL) {
+        *out_diag = sl_os_posix_process_diag(code, message, hint);
+    }
+    return sl_status_from_code(SL_STATUS_INVALID_STATE);
+}
+
+static uint64_t sl_os_posix_now_ms(void)
+{
+    struct timespec now;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+        return 0U;
+    }
+    return ((uint64_t)now.tv_sec * 1000U) + ((uint64_t)now.tv_nsec / 1000000U);
+}
+
+static void sl_os_posix_sleep_poll(void)
+{
+    struct timespec delay = {.tv_sec = 0, .tv_nsec = 5000000L};
+    (void)nanosleep(&delay, NULL);
+}
+
+static SlStatus sl_os_posix_copy_nul(SlArena* arena, SlStr value, char** out)
+{
+    SlOwnedStr owned = {0};
+    SlStatus status = sl_str_copy_to_arena_nul(arena, value, &owned);
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = owned.ptr;
+    return sl_status_ok();
+}
+
+static void sl_os_posix_set_nonblock(int fd)
+{
+    int flags = fcntl(fd, F_GETFL, 0);
+
+    if (flags >= 0) {
+        (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+}
+
+static void sl_os_posix_capture_read(int fd, char* buffer, size_t capacity, size_t* inout_used,
+                                     bool* out_truncated)
+{
+    char chunk[4096];
+
+    if (fd < 0) {
+        return;
+    }
+    for (;;) {
+        ssize_t got = read(fd, chunk, sizeof(chunk));
+        if (got > 0) {
+            size_t available = capacity > *inout_used ? capacity - *inout_used : 0U;
+            size_t copy = (size_t)got < available ? (size_t)got : available;
+            if (copy != 0U) {
+                for (size_t index = 0U; index < copy; index += 1U) {
+                    buffer[*inout_used + index] = chunk[index];
+                }
+                *inout_used += copy;
+            }
+            if (copy != (size_t)got) {
+                *out_truncated = true;
+            }
+            continue;
+        }
+        if (got == 0 || errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            return;
+        }
+        return;
+    }
+}
+
+SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* args,
+                                    size_t arg_count, const SlOsProcessRunOptions* options,
+                                    SlOsProcessRunResult* out, SlDiag* out_diag)
+{
+    char** argv = NULL;
+    char* command_cstr = NULL;
+    char* cwd_cstr = NULL;
+    char* stdout_buffer = NULL;
+    char* stderr_buffer = NULL;
+    size_t stdout_capacity = 0U;
+    size_t stderr_capacity = 0U;
+    size_t stdout_used = 0U;
+    size_t stderr_used = 0U;
+    int stdout_pipe[2] = {-1, -1};
+    int stderr_pipe[2] = {-1, -1};
+    int error_pipe[2] = {-1, -1};
+    pid_t child = -1;
+    uint64_t start_ms = 0U;
+    bool capture = options->capture != SL_OS_PROCESS_CAPTURE_NONE;
+    SlStatus status;
+    void* memory = NULL;
+
+    (void)out_diag;
+    *out = (SlOsProcessRunResult){0};
+    status = sl_os_posix_copy_nul(arena, command, &command_cstr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, (arg_count + 2U) * sizeof(char*), _Alignof(char*), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    argv = (char**)memory;
+    argv[0] = command_cstr;
+    for (size_t index = 0U; index < arg_count; index += 1U) {
+        status = sl_os_posix_copy_nul(arena, args[index], &argv[index + 1U]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    argv[arg_count + 1U] = NULL;
+    if (!sl_str_is_empty(options->cwd)) {
+        struct stat cwd_stat;
+        status = sl_os_posix_copy_nul(arena, options->cwd, &cwd_cstr);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (stat(cwd_cstr, &cwd_stat) != 0 || !S_ISDIR(cwd_stat.st_mode)) {
+            return sl_os_posix_process_fail(
+                SL_DIAG_OS_INVALID_CWD, out_diag,
+                sl_str_from_cstr("process working directory is invalid"),
+                sl_str_from_cstr("Validate cwd before process admission."));
+        }
+    }
+    if (capture) {
+        stdout_capacity = options->max_stdout_bytes == 0U ? 65536U : options->max_stdout_bytes;
+        stderr_capacity = options->max_stderr_bytes == 0U ? 65536U : options->max_stderr_bytes;
+        status = sl_arena_alloc(arena, stdout_capacity + 1U, _Alignof(char), &memory);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        stdout_buffer = (char*)memory;
+        status = sl_arena_alloc(arena, stderr_capacity + 1U, _Alignof(char), &memory);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        stderr_buffer = (char*)memory;
+        if (pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+    }
+    if (pipe(error_pipe) != 0) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    (void)fcntl(error_pipe[1], F_SETFD, FD_CLOEXEC);
+    child = fork();
+    if (child < 0) {
+        return sl_os_posix_process_fail(SL_DIAG_OS_PROCESS_START_FAILED, out_diag,
+                                        sl_str_from_cstr("process start failed"),
+                                        sl_str_from_cstr("fork failed before process admission."));
+    }
+    if (child == 0) {
+        int devnull = -1;
+        if (cwd_cstr != NULL && chdir(cwd_cstr) != 0) {
+            int err = errno;
+            (void)write(error_pipe[1], &err, sizeof(err));
+            _exit(126);
+        }
+        for (size_t index = 0U; index < options->environment_override_count; index += 1U) {
+            char* key = NULL;
+            char* value = NULL;
+            if (!sl_status_is_ok(
+                    sl_os_posix_copy_nul(arena, options->environment_overrides[index].key, &key)) ||
+                !sl_status_is_ok(sl_os_posix_copy_nul(
+                    arena, options->environment_overrides[index].value, &value)) ||
+                setenv(key, value, 1) != 0)
+            {
+                int err = errno == 0 ? EINVAL : errno;
+                (void)write(error_pipe[1], &err, sizeof(err));
+                _exit(126);
+            }
+        }
+        if (capture) {
+            (void)dup2(stdout_pipe[1], STDOUT_FILENO);
+            (void)dup2(stderr_pipe[1], STDERR_FILENO);
+        }
+        else {
+            devnull = open("/dev/null", O_WRONLY);
+            if (devnull >= 0) {
+                (void)dup2(devnull, STDOUT_FILENO);
+                (void)dup2(devnull, STDERR_FILENO);
+            }
+        }
+        execvp(command_cstr, argv);
+        {
+            int err = errno;
+            (void)write(error_pipe[1], &err, sizeof(err));
+            _exit(err == ENOENT ? 127 : 126);
+        }
+    }
+    if (capture) {
+        (void)close(stdout_pipe[1]);
+        (void)close(stderr_pipe[1]);
+        sl_os_posix_set_nonblock(stdout_pipe[0]);
+        sl_os_posix_set_nonblock(stderr_pipe[0]);
+    }
+    (void)close(error_pipe[1]);
+    start_ms = sl_os_posix_now_ms();
+    for (;;) {
+        int child_status = 0;
+        pid_t waited;
+        if (capture) {
+            sl_os_posix_capture_read(stdout_pipe[0], stdout_buffer, stdout_capacity, &stdout_used,
+                                     &out->stdout_truncated);
+            sl_os_posix_capture_read(stderr_pipe[0], stderr_buffer, stderr_capacity, &stderr_used,
+                                     &out->stderr_truncated);
+        }
+        waited = waitpid(child, &child_status, WNOHANG);
+        if (waited == child) {
+            if (WIFEXITED(child_status)) {
+                out->exit_code = (int32_t)WEXITSTATUS(child_status);
+            }
+            else if (WIFSIGNALED(child_status)) {
+                out->exit_code = 128 + (int32_t)WTERMSIG(child_status);
+            }
+            break;
+        }
+        if (options->timeout_ms != 0U && start_ms != 0U &&
+            sl_os_posix_now_ms() - start_ms >= options->timeout_ms)
+        {
+            (void)kill(child, SIGKILL);
+            (void)waitpid(child, &child_status, 0);
+            out->timed_out = true;
+            out->exit_code = 128 + SIGKILL;
+            break;
+        }
+        sl_os_posix_sleep_poll();
+    }
+    if (capture) {
+        sl_os_posix_capture_read(stdout_pipe[0], stdout_buffer, stdout_capacity, &stdout_used,
+                                 &out->stdout_truncated);
+        sl_os_posix_capture_read(stderr_pipe[0], stderr_buffer, stderr_capacity, &stderr_used,
+                                 &out->stderr_truncated);
+        stdout_buffer[stdout_used] = '\0';
+        stderr_buffer[stderr_used] = '\0';
+        out->stdout_text = (SlOwnedStr){.ptr = stdout_buffer, .length = stdout_used};
+        out->stderr_text = (SlOwnedStr){.ptr = stderr_buffer, .length = stderr_used};
+        (void)close(stdout_pipe[0]);
+        (void)close(stderr_pipe[0]);
+    }
+    {
+        int exec_error = 0;
+        ssize_t got = read(error_pipe[0], &exec_error, sizeof(exec_error));
+        (void)close(error_pipe[0]);
+        if (got == (ssize_t)sizeof(exec_error)) {
+            if (exec_error == ENOENT) {
+                return sl_os_posix_process_fail(
+                    SL_DIAG_OS_COMMAND_NOT_FOUND, out_diag,
+                    sl_str_from_cstr("command was not found"),
+                    sl_str_from_cstr("Process APIs execute explicit argv only."));
+            }
+            if (exec_error == ENOTDIR) {
+                return sl_os_posix_process_fail(
+                    SL_DIAG_OS_INVALID_CWD, out_diag,
+                    sl_str_from_cstr("process working directory is invalid"),
+                    sl_str_from_cstr("Validate cwd before process admission."));
+            }
+            return sl_os_posix_process_fail(SL_DIAG_OS_PROCESS_START_FAILED, out_diag,
+                                            sl_str_from_cstr("process start failed"),
+                                            sl_str_from_cstr("native process admission failed."));
+        }
+    }
+    if (out->timed_out) {
+        return sl_os_posix_process_fail(
+            SL_DIAG_OS_PROCESS_TIMEOUT, out_diag, sl_str_from_cstr("process timed out"),
+            sl_str_from_cstr("Timeout and caller cancellation remain distinguishable."));
     }
     return sl_status_ok();
 }
