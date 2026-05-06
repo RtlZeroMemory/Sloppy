@@ -1,10 +1,10 @@
 # Network API Architecture
 
-Status: CORE-NET-01.A/B contract. This document defines the intended low-level TCP/IP
-runtime API, policy model, feature metadata, and diagnostics before native TCP and V8
-implementation land. It is not execution evidence for TCP connect/listen behavior,
-throughput, external network access, TLS, HTTP client behavior, UDP, WebSocket, or local
-IPC.
+Status: CORE-NET-01.C/D/H client implementation. This document defines the low-level
+TCP/IP runtime API, policy model, feature metadata, diagnostics, and first native TCP
+client/connection implementation. It is not execution evidence for TCP listen/accept
+behavior, broad DNS policy, external network access, TLS, HTTP client behavior, UDP,
+WebSocket, or local IPC.
 
 ## Goals
 
@@ -34,8 +34,9 @@ import { TcpClient, TcpListener, TcpConnection, NetworkAddress } from "sloppy/ne
 
 The compiler recognizes only named, unaliased imports from `sloppy/net`. The import adds
 `stdlib.net` to emitted Plan `requiredFeatures[]`, emits `features.network = true`, and
-sets `strongPlan.evidence.network = true`. This PR keeps `stdlib.net` unavailable by
-default until the TCP backend, stdlib, and V8 bridge are implemented.
+sets `strongPlan.evidence.network = true`. CORE-NET-01.C/D/H makes `stdlib.net`
+available when its dependencies are available and installs the initial `__sloppy.net`
+client/connection bridge for active V8 plans.
 
 ## API Contract
 
@@ -133,11 +134,18 @@ Future compiler/doctor behavior:
 - dynamic host/port values emit partial/dynamic metadata, not guessed endpoints;
 - source locations point to the API call or nearest literal option object where available.
 
-Runtime behavior in this PR:
+Runtime behavior after CORE-NET-01.C/D/H:
 
 - `stdlib.net` is known to the feature registry;
-- default availability is false until native TCP and V8 implementations land;
-- required `stdlib.net` fails closed with runtime-feature diagnostics.
+- default availability is true when the runtime lane has V8, libuv transport, and
+  `stdlib.time`;
+- native `TcpClient` connections use a Slop-owned C API backed by private libuv TCP
+  handles;
+- `TcpConnection` supports bounded write, `writeText`, `read`, `readUntil`, `readLine`,
+  endpoint metadata, close, abort, stale/closed-handle diagnostics, and embedded-NUL byte
+  round trips;
+- the V8 bridge exposes only JS-safe resource IDs and settles Promises on the owner thread
+  after native worker-thread completion.
 
 ## Diagnostics
 

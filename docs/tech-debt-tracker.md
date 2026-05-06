@@ -107,14 +107,15 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   randomness quality, password cracking cost, timing resistance, performance,
   WebCrypto/Node/Bun compatibility, or public alpha readiness from the implemented
   shape/vector tests.
-- Network API implementation after CORE-NET-01.A/B: `stdlib.net`, the `sloppy/net` import
-  contract, development/strict network policy, lifecycle model, stable diagnostics, and
-  redaction policy exist. #586 through #592 must still implement the Slop-owned native TCP
-  contract, libuv backend, client/connection/listener APIs, streams/backpressure,
-  deadlines/cancellation, DNS/address/socket options, V8/stdlib integration,
-  doctor/audit, examples, and conformance goldens. Do not claim TCP execution, external
+- Network API implementation after CORE-NET-01.C/D/H: `stdlib.net`, the `sloppy/net`
+  import contract, development/strict network policy, lifecycle model, stable diagnostics,
+  native libuv-backed TCP client connections, `TcpClient`/`TcpConnection` JS facade,
+  feature-gated `__sloppy.net`, JS-safe TCP resource IDs, and deterministic loopback
+  client conformance exist. #588 through #592 must still implement listener/accept,
+  broader streams/backpressure/deadline/cancellation semantics, DNS/address/socket
+  options, doctor/audit, examples, and final conformance goldens. Do not claim external
   network access, TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
-  performance, or public alpha readiness from the contract slice.
+  performance, or public alpha readiness from the client slice.
 - Codec API implementation after CORE-CODEC-01.C/D/I: `stdlib.codec`, the `sloppy/codec`
   import contract, backend/dependency policy, stable diagnostics, Base64/Base64Url/Hex,
   UTF-8 text and streaming decoder, bootstrap/runtime exports, and V8 namespace smoke
