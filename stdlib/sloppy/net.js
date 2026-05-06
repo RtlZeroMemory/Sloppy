@@ -246,7 +246,7 @@ class LocalEndpointServer {
         if (typeof this._bridge.acceptLocal !== "function") {
             localIpcUnavailable();
         }
-        return this._bridge.acceptLocal(this._handle, timeoutMs);
+        return new LocalEndpointConnection(this._bridge, await this._bridge.acceptLocal(this._handle, timeoutMs));
     }
 
     acceptLoop(options = undefined) {
@@ -281,6 +281,101 @@ class LocalEndpointServer {
     }
 }
 
+class LocalEndpointConnection {
+    constructor(bridge, handle) {
+        this._bridge = bridge;
+        this._handle = handle;
+        this._closed = false;
+    }
+
+    get closed() {
+        return this._closed;
+    }
+
+    async write(bytes, options = undefined) {
+        if (this._closed) {
+            throw new SloppyNetError("LocalEndpointDisposedError", "Local endpoint connection is closed.");
+        }
+        if (!(bytes instanceof Uint8Array)) {
+            throw new TypeError("LocalEndpointConnection.write requires a Uint8Array.");
+        }
+        if (typeof this._bridge.writeLocal !== "function") {
+            localIpcUnavailable();
+        }
+        await this._bridge.writeLocal(this._handle, bytes, normalizeTimeoutOption(options, "LocalEndpoint.write"));
+    }
+
+    async writeText(text, options = undefined) {
+        if (typeof text !== "string") {
+            throw new TypeError("LocalEndpointConnection.writeText requires a string.");
+        }
+        await this.write(new TextEncoder().encode(text), options);
+    }
+
+    async read(options = undefined) {
+        if (this._closed) {
+            throw new SloppyNetError("LocalEndpointDisposedError", "Local endpoint connection is closed.");
+        }
+        const maxBytes = normalizeMaxBytesOption(options, "LocalEndpoint.read");
+        const timeoutMs = normalizeTimeoutOption(options, "LocalEndpoint.read", ["maxBytes"]);
+        if (typeof this._bridge.readLocal !== "function") {
+            localIpcUnavailable();
+        }
+        return this._bridge.readLocal(this._handle, maxBytes, timeoutMs);
+    }
+
+    async readUntil(delimiter, options = undefined) {
+        const delimiterBytes =
+            typeof delimiter === "string" ? new TextEncoder().encode(delimiter) : delimiter;
+        if (!(delimiterBytes instanceof Uint8Array) || delimiterBytes.byteLength === 0) {
+            throw new TypeError("LocalEndpointConnection.readUntil delimiter must be non-empty bytes.");
+        }
+        const maxBytes = normalizeMaxBytesOption(options, "LocalEndpoint.readUntil");
+        const timeoutMs = normalizeTimeoutOption(options, "LocalEndpoint.readUntil", ["maxBytes"]);
+        if (typeof this._bridge.readUntilLocal !== "function") {
+            localIpcUnavailable();
+        }
+        return this._bridge.readUntilLocal(this._handle, delimiterBytes, maxBytes, timeoutMs);
+    }
+
+    async readLine(options = undefined) {
+        const maxBytes = normalizeMaxBytesOption(options, "LocalEndpoint.readLine");
+        const timeoutMs = normalizeTimeoutOption(options, "LocalEndpoint.readLine", ["maxBytes"]);
+        if (typeof this._bridge.readLineLocal !== "function") {
+            localIpcUnavailable();
+        }
+        return this._bridge.readLineLocal(this._handle, maxBytes, timeoutMs);
+    }
+
+    async *readChunks(options = undefined) {
+        while (!this._closed) {
+            yield await this.read(options);
+        }
+    }
+
+    async close() {
+        if (this._closed) {
+            return;
+        }
+        this._closed = true;
+        if (typeof this._bridge.closeLocal !== "function") {
+            localIpcUnavailable();
+        }
+        await this._bridge.closeLocal(this._handle);
+    }
+
+    async abort() {
+        if (this._closed) {
+            return;
+        }
+        this._closed = true;
+        if (typeof this._bridge.abortLocal !== "function") {
+            localIpcUnavailable();
+        }
+        await this._bridge.abortLocal(this._handle);
+    }
+}
+
 const LocalEndpoint = Object.freeze({
     async connect(options) {
         const bridge = requireNetBridge();
@@ -288,7 +383,7 @@ const LocalEndpoint = Object.freeze({
         if (typeof bridge.connectLocal !== "function") {
             localIpcUnavailable();
         }
-        return bridge.connectLocal(normalized);
+        return new LocalEndpointConnection(bridge, await bridge.connectLocal(normalized));
     },
 
     async listen(options) {
@@ -321,15 +416,16 @@ const NamedPipe = Object.freeze({
     },
 });
 
-function normalizeTimeoutOption(options, operation) {
+function normalizeTimeoutOption(options, operation, extraKeys = []) {
     if (options === undefined) {
         return undefined;
     }
     if (!isPlainObject(options)) {
         throw new TypeError(`${operation} options must be a plain object.`);
     }
+    const allowed = new Set(["timeoutMs", ...extraKeys]);
     for (const key of Object.keys(options)) {
-        if (key !== "timeoutMs") {
+        if (!allowed.has(key)) {
             throw new TypeError(`${operation} option '${key}' is not supported.`);
         }
     }
@@ -340,6 +436,16 @@ function normalizeTimeoutOption(options, operation) {
         throw new TypeError(`${operation} timeoutMs must be a non-negative number.`);
     }
     return Math.ceil(options.timeoutMs);
+}
+
+function normalizeMaxBytesOption(options, operation) {
+    if (options === undefined || options.maxBytes === undefined) {
+        return 8192;
+    }
+    if (!Number.isInteger(options.maxBytes) || options.maxBytes < 1 || options.maxBytes > 64 * 1024) {
+        throw new TypeError(`${operation} maxBytes must be an integer from 1 to 65536.`);
+    }
+    return options.maxBytes;
 }
 
 class TcpConnection {

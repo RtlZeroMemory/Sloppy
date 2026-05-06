@@ -189,6 +189,14 @@ binary data, including embedded NUL bytes. POSIX connect timeouts remain unsuppo
 that backend has a nonblocking connect contract; the existing unsupported diagnostic is
 intentional.
 
+IPC-next-5 wires the validating `stdlib/sloppy/net.js` `LocalEndpoint` surface to V8
+bridge functions. JavaScript receives Slop-owned connection/server wrapper objects backed
+only by resource IDs; Unix socket, named pipe, OS, and libuv handles remain native-private.
+The bridge resolves `runtime:/...` local endpoint paths into backend-native Unix socket
+paths or Windows named pipe names before calling `SlLocalConnection` and `SlLocalServer`
+APIs. That runtime-path resolver is intentionally narrow and will be replaced by the
+shared filesystem named-root resolver when that policy API is available to the V8 bridge.
+
 Cross-thread data is copied or owned before crossing domains. Promise settlement happens
 on the V8 owner thread. Cleanup is exactly once across success, failure, cancellation,
 timeout, disposal, shutdown, abort, and late completion. Late completion is cleanup-only.
@@ -196,13 +204,13 @@ timeout, disposal, shutdown, abort, and late completion. Late completion is clea
 ## Evidence Boundaries
 
 PR1 covers contract, option validation, diagnostics, and docs. IPC-next-2 adds POSIX
-native backend evidence, and IPC-next-3 adds Windows named pipe native backend evidence.
-IPC-next-4 adds native deadline/cancellation and stream-bound evidence. These backend PRs
-are not V8 `LocalEndpoint` execution evidence.
+native backend evidence, IPC-next-3 adds Windows named pipe native backend evidence, and
+IPC-next-4 adds native deadline/cancellation and stream-bound evidence. IPC-next-5 adds
+V8 bridge wiring and bootstrap API-shape coverage; full V8 execution evidence remains
+dependent on V8-enabled lanes.
 
 Deferred to later CORE-NET-02 PRs:
 
-- V8 bridge resource integration for executable local connections/servers;
 - doctor/audit goldens;
 - source examples and conformance indexes;
 - platform-gated integration tests.
