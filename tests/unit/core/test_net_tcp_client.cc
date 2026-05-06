@@ -346,6 +346,8 @@ int test_listener_accept_ephemeral_and_close()
     }
     client.join();
     if (exchange.result != 0 ||
+        expect_status(sl_tcp_listener_close(listener, nullptr), SL_STATUS_INVALID_STATE) != 0 ||
+        sl_tcp_listener_state(listener) != SL_TCP_LISTENER_CLOSING ||
         expect_status(sl_tcp_connection_close(accepted, nullptr), SL_STATUS_OK) != 0 ||
         expect_status(sl_tcp_listener_close(listener, nullptr), SL_STATUS_OK) != 0 ||
         sl_tcp_listener_state(listener) != SL_TCP_LISTENER_CLOSED)

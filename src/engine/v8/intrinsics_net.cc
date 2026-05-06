@@ -23,6 +23,8 @@
 constexpr size_t kNetArenaBytes = 256U * 1024U;
 constexpr size_t kNetMaxBufferBytes = 64U * 1024U;
 
+struct NetV8Listener;
+
 enum class NetV8Operation
 {
     Connect,
@@ -44,6 +46,7 @@ struct NetV8Connection
     SlArena arena = {};
     SlTcpConnection* native = nullptr;
     std::mutex mutex;
+    std::shared_ptr<NetV8Listener> listener_owner;
     bool closed = false;
 
     NetV8Connection() : storage(kNetArenaBytes)
@@ -67,6 +70,9 @@ struct NetV8Listener
     SlTcpListener* native = nullptr;
     std::mutex mutex;
     bool closed = false;
+    bool accepting = false;
+    bool close_requested = false;
+    bool abort_requested = false;
 
     NetV8Listener() : storage(kNetArenaBytes)
     {
@@ -76,8 +82,9 @@ struct NetV8Listener
     ~NetV8Listener()
     {
         if (native != nullptr && !closed) {
-            (void)sl_tcp_listener_close(native, nullptr);
-            closed = true;
+            if (sl_status_is_ok(sl_tcp_listener_close(native, nullptr))) {
+                closed = true;
+            }
         }
     }
 };
@@ -201,8 +208,15 @@ void net_v8_listener_resource_cleanup(void* ptr, void* user)
         if (listener != nullptr) {
             std::lock_guard<std::mutex> lock(listener->mutex);
             if (listener->native != nullptr && !listener->closed) {
-                (void)sl_tcp_listener_close(listener->native, nullptr);
-                listener->closed = true;
+                if (listener->accepting) {
+                    listener->close_requested = true;
+                    listener->closed = true;
+                    delete holder;
+                    return;
+                }
+                if (sl_status_is_ok(sl_tcp_listener_close(listener->native, nullptr))) {
+                    listener->closed = true;
+                }
             }
         }
         delete holder;
@@ -368,32 +382,119 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             request->diag.message = sl_str_from_cstr("TCP listener handle is stale");
             return;
         }
-        std::lock_guard<std::mutex> lock(request->listener->mutex);
-        if (request->listener->closed && request->operation != NetV8Operation::CloseListener &&
-            request->operation != NetV8Operation::AbortListener)
-        {
-            request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
-            request->diag.code = SL_DIAG_NET_STALE_HANDLE;
-            request->diag.message = sl_str_from_cstr("TCP listener is closed");
-        }
-        else if (request->operation == NetV8Operation::Accept) {
+        if (request->operation == NetV8Operation::Accept) {
             auto connection = std::make_shared<NetV8Connection>();
             SlTcpAcceptOptions options = sl_tcp_accept_options_default();
-            options.has_timeout_ms = request->has_timeout_ms;
-            options.timeout_ms = request->timeout_ms;
-            request->status = sl_tcp_listener_accept(request->listener->native, &connection->arena,
-                                                     &options, &connection->native, &request->diag);
-            if (sl_status_is_ok(request->status)) {
-                request->connection = connection;
+            uint32_t remaining_timeout = request->timeout_ms;
+
+            {
+                std::lock_guard<std::mutex> lock(request->listener->mutex);
+                if (request->listener->closed || request->listener->accepting) {
+                    request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                    request->diag.code = SL_DIAG_NET_STALE_HANDLE;
+                    request->diag.message = sl_str_from_cstr("TCP listener is closed");
+                    return;
+                }
+                request->listener->accepting = true;
+            }
+
+            for (;;) {
+                uint32_t chunk_timeout = 100U;
+                if (request->has_timeout_ms && remaining_timeout < chunk_timeout) {
+                    chunk_timeout = remaining_timeout;
+                }
+                if (chunk_timeout == 0U) {
+                    request->status = sl_status_from_code(SL_STATUS_DEADLINE_EXCEEDED);
+                    request->diag.code = SL_DIAG_NET_READ_WRITE_TIMEOUT;
+                    request->diag.message = sl_str_from_cstr("TCP accept timed out");
+                    break;
+                }
+                options.has_timeout_ms = true;
+                options.timeout_ms = chunk_timeout;
+                request->status =
+                    sl_tcp_listener_accept(request->listener->native, &connection->arena, &options,
+                                           &connection->native, &request->diag);
+                if (sl_status_is_ok(request->status)) {
+                    break;
+                }
+                {
+                    std::lock_guard<std::mutex> lock(request->listener->mutex);
+                    if (request->listener->closed || request->listener->close_requested ||
+                        request->listener->abort_requested)
+                    {
+                        request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                        request->diag.code = SL_DIAG_NET_STALE_HANDLE;
+                        request->diag.message = sl_str_from_cstr("TCP listener is closed");
+                        break;
+                    }
+                }
+                if (!request->has_timeout_ms || request->status.code != SL_STATUS_DEADLINE_EXCEEDED)
+                {
+                    continue;
+                }
+                if (remaining_timeout <= chunk_timeout) {
+                    break;
+                }
+                remaining_timeout -= chunk_timeout;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(request->listener->mutex);
+                request->listener->accepting = false;
+                if (request->listener->close_requested || request->listener->abort_requested) {
+                    if (connection->native != nullptr) {
+                        (void)sl_tcp_connection_abort(connection->native, nullptr);
+                    }
+                    if (request->listener->abort_requested) {
+                        (void)sl_tcp_listener_abort(request->listener->native, nullptr);
+                    }
+                    else {
+                        (void)sl_tcp_listener_close(request->listener->native, nullptr);
+                    }
+                    request->listener->closed = true;
+                    request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                    request->diag.code = SL_DIAG_NET_STALE_HANDLE;
+                    request->diag.message = sl_str_from_cstr("TCP listener is closed");
+                }
+                else if (sl_status_is_ok(request->status)) {
+                    connection->listener_owner = request->listener;
+                    request->connection = connection;
+                }
             }
         }
         else if (request->operation == NetV8Operation::CloseListener) {
+            std::lock_guard<std::mutex> lock(request->listener->mutex);
+            if (request->listener->closed) {
+                request->status = sl_status_ok();
+                return;
+            }
+            if (request->listener->accepting) {
+                request->listener->close_requested = true;
+                request->listener->closed = true;
+                request->status = sl_status_ok();
+                return;
+            }
             request->status = sl_tcp_listener_close(request->listener->native, &request->diag);
-            request->listener->closed = true;
+            if (sl_status_is_ok(request->status)) {
+                request->listener->closed = true;
+            }
         }
         else if (request->operation == NetV8Operation::AbortListener) {
+            std::lock_guard<std::mutex> lock(request->listener->mutex);
+            if (request->listener->closed) {
+                request->status = sl_status_ok();
+                return;
+            }
+            if (request->listener->accepting) {
+                request->listener->abort_requested = true;
+                request->listener->closed = true;
+                request->status = sl_status_ok();
+                return;
+            }
             request->status = sl_tcp_listener_abort(request->listener->native, &request->diag);
-            request->listener->closed = true;
+            if (sl_status_is_ok(request->status)) {
+                request->listener->closed = true;
+            }
         }
         return;
     }

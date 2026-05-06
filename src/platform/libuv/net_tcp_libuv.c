@@ -723,8 +723,11 @@ SlStatus sl_tcp_listener_accept(SlTcpListener* listener, SlArena* arena,
     return sl_status_ok();
 }
 
-static SlStatus sl_tcp_listener_finish_close(SlTcpListener* listener, SlTcpListenerState state)
+static SlStatus sl_tcp_listener_finish_close(SlTcpListener* listener, SlTcpListenerState state,
+                                             SlDiag* out_diag)
 {
+    int uv_status = 0;
+
     if (listener == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -744,7 +747,11 @@ static SlStatus sl_tcp_listener_finish_close(SlTcpListener* listener, SlTcpListe
         (void)uv_run(&listener->loop, UV_RUN_NOWAIT);
     }
     if (listener->loop_initialized) {
-        (void)uv_loop_close(&listener->loop);
+        uv_status = uv_loop_close(&listener->loop);
+        if (uv_status != 0) {
+            return sl_tcp_fail(out_diag, SL_DIAG_NET_STALE_HANDLE, SL_STATUS_INVALID_STATE,
+                               sl_tcp_literal("TCP listener still owns active handles"));
+        }
         listener->loop_initialized = false;
     }
     listener->state = state;
@@ -753,14 +760,12 @@ static SlStatus sl_tcp_listener_finish_close(SlTcpListener* listener, SlTcpListe
 
 SlStatus sl_tcp_listener_close(SlTcpListener* listener, SlDiag* out_diag)
 {
-    (void)out_diag;
-    return sl_tcp_listener_finish_close(listener, SL_TCP_LISTENER_CLOSED);
+    return sl_tcp_listener_finish_close(listener, SL_TCP_LISTENER_CLOSED, out_diag);
 }
 
 SlStatus sl_tcp_listener_abort(SlTcpListener* listener, SlDiag* out_diag)
 {
-    (void)out_diag;
-    return sl_tcp_listener_finish_close(listener, SL_TCP_LISTENER_ABORTED);
+    return sl_tcp_listener_finish_close(listener, SL_TCP_LISTENER_ABORTED, out_diag);
 }
 
 SlTcpConnectionState sl_tcp_connection_state(const SlTcpConnection* connection)
