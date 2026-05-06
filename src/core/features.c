@@ -122,7 +122,7 @@ static SlRuntimeFeatureDescriptor sl_feature_os_descriptor(SlRuntimeFeatureId id
                                           SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
                                           SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
                                           SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-                                       available, true, true);
+                                      available, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_http_client_descriptor(SlRuntimeFeatureId id,
@@ -311,7 +311,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.stdlib_crypto = true;
     availability.stdlib_codec = true;
     availability.stdlib_net = true;
-    availability.stdlib_os = false;
+    availability.stdlib_os = true;
     availability.stdlib_http_client = false;
     return availability;
 }

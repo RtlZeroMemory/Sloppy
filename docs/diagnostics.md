@@ -765,10 +765,11 @@ streaming compatibility, brotli/zstd/deflate support, package readiness, or publ
 coverage.
 
 CORE-OS-01.A/B adds the OS diagnostic model and JSON goldens for the `sloppy/os`
-feature/model slice. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the startup/Plan-gating
-diagnostic while `stdlib.os` is known but unavailable by default.
-`SLOPPY_E_OS_FEATURE_UNAVAILABLE` is reserved for already-reached OS API paths when a
-specific OS backend or optional lane is inactive. Other OS-specific codes are reserved for
+feature/model slice. CORE-OS-01.C/H partial makes `stdlib.os` available for System and
+Environment while preserving `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` coverage for runtimes
+that explicitly report the feature unavailable. `SLOPPY_E_OS_FEATURE_UNAVAILABLE` is used
+for already-reached OS API paths when a specific OS backend or deferred lane is inactive.
+Other OS-specific codes are reserved for
 host-system API failures:
 
 - `SLOPPY_E_OS_FEATURE_UNAVAILABLE` for OS API use when the feature/backend lane is not

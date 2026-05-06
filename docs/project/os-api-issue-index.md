@@ -7,7 +7,7 @@ Parent EPIC: #611 CORE-OS-01 OS, Environment, Process, and Signals Runtime API.
 | Scope | Issues | Status |
 | --- | --- | --- |
 | CORE-OS-01.A/B | #612, #613 | API contract, host policy, `stdlib.os` feature descriptor, compiler Plan activation, capability model, and diagnostic skeleton. |
-| CORE-OS-01.C/H partial | #614, #619 | Deferred: System/Environment runtime API and V8/stdlib surface. |
+| CORE-OS-01.C/H partial | #614, #619 | Implemented: System/Environment runtime API plus V8/stdlib surface. Process and Signals exports remain deferred stubs. |
 | CORE-OS-01.D | #615 | Deferred: `Process.run` convenience API. |
 | CORE-OS-01.E/F | #616, #617 | Deferred: `Process.start`, ProcessHandle, streaming pipes, deadlines, cancellation, shutdown, and kill semantics. |
 | CORE-OS-01.G | #618 | Deferred: Signals and app lifecycle integration. |
@@ -21,6 +21,6 @@ Current identifiers:
 - Capability categories: `os.info`, `env.read`, `env.list`, `process.run`,
   `process.shell`, `process.signal`, `process.kill`, and `signals.shutdown`.
 
-`stdlib.os` is known but unavailable by default until the runtime implementation slices
-land. This lets Plan validation and diagnostics fail closed without implying that process
-execution, environment access, or signals are implemented.
+`stdlib.os` is available for System and Environment runtime use. Process execution and
+Signals are not implemented by that availability bit; their public methods fail closed until
+the later CORE-OS-01 process/signal slices land.

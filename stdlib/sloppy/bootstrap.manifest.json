@@ -9,6 +9,7 @@
     "sloppy/data.js",
     "sloppy/fs.js",
     "sloppy/net.js",
+    "sloppy/os.js",
     "sloppy/time.js",
     "sloppy/providers/sqlite.js",
     "sloppy/results.js",
