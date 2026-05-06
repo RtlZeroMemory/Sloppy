@@ -706,6 +706,16 @@ if(SLOPPY_ENABLE_TESTS)
             set_tests_properties(
                 conformance.net.local_ipc_posix
                 PROPERTIES LABELS "conformance;net;local-ipc;posix")
+        else()
+            sloppy_add_cxx_unit_test(
+                core_net_local_win32 core.net.local_win32
+                tests/unit/core/test_net_local_win32.cc)
+            add_test(
+                NAME conformance.net.local_ipc_win32
+                COMMAND $<TARGET_FILE:core_net_local_win32>)
+            set_tests_properties(
+                conformance.net.local_ipc_win32
+                PROPERTIES LABELS "conformance;net;local-ipc;win32")
         endif()
     endif()
     sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
