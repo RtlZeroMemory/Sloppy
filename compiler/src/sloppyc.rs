@@ -4291,13 +4291,12 @@ fn collect_expression_effects(
             }
             collect_expression_effects(&member.object, helper_effects, summary);
         }
-        Expression::Identifier(identifier) => {
+        Expression::Identifier(identifier)
             if summary
                 .provider_bindings
-                .contains_key(identifier.name.as_str())
-            {
-                summary.unknown_provider_usage = true;
-            }
+                .contains_key(identifier.name.as_str()) =>
+        {
+            summary.unknown_provider_usage = true;
         }
         _ => {}
     }
