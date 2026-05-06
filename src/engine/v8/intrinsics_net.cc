@@ -1,9 +1,9 @@
 /*
  * src/engine/v8/intrinsics_net.cc
  *
- * Installs the V8-internal TCP bridge under __sloppy.net. Blocking connect/read/write
- * work runs on owned native worker threads; completions settle Promises on the V8 owner
- * thread through SlAsyncLoop.
+ * Installs the V8-internal network bridge under __sloppy.net. Blocking local/TCP
+ * connect/read/write work runs on owned native worker threads; completions settle
+ * Promises on the V8 owner thread through SlAsyncLoop.
  */
 #include "engine_v8_internal.h"
 #include "string_interop.h"
@@ -24,6 +24,7 @@ constexpr size_t kNetArenaBytes = 256U * 1024U;
 constexpr size_t kNetMaxBufferBytes = 64U * 1024U;
 
 struct NetV8Listener;
+struct NetV8LocalServer;
 
 enum class NetV8Operation
 {
@@ -37,7 +38,18 @@ enum class NetV8Operation
     Close,
     Abort,
     CloseListener,
-    AbortListener
+    AbortListener,
+    LocalConnect,
+    LocalListen,
+    LocalAccept,
+    LocalWrite,
+    LocalRead,
+    LocalReadLine,
+    LocalReadUntil,
+    LocalClose,
+    LocalAbort,
+    LocalCloseServer,
+    LocalAbortServer
 };
 
 struct NetV8Connection
@@ -89,6 +101,55 @@ struct NetV8Listener
     }
 };
 
+struct NetV8LocalConnection
+{
+    std::vector<unsigned char> storage;
+    SlArena arena = {};
+    SlLocalConnection* native = nullptr;
+    std::mutex mutex;
+    std::shared_ptr<NetV8LocalServer> server_owner;
+    bool closed = false;
+
+    NetV8LocalConnection() : storage(kNetArenaBytes)
+    {
+        sl_arena_init(&arena, storage.data(), storage.size());
+    }
+
+    ~NetV8LocalConnection()
+    {
+        if (native != nullptr && !closed) {
+            (void)sl_local_connection_close(native, nullptr);
+            closed = true;
+        }
+    }
+};
+
+struct NetV8LocalServer
+{
+    std::vector<unsigned char> storage;
+    SlArena arena = {};
+    SlLocalServer* native = nullptr;
+    std::mutex mutex;
+    bool closed = false;
+    bool accepting = false;
+    bool close_requested = false;
+    bool abort_requested = false;
+
+    NetV8LocalServer() : storage(kNetArenaBytes)
+    {
+        sl_arena_init(&arena, storage.data(), storage.size());
+    }
+
+    ~NetV8LocalServer()
+    {
+        if (native != nullptr && !closed) {
+            if (sl_status_is_ok(sl_local_server_close(native, nullptr))) {
+                closed = true;
+            }
+        }
+    }
+};
+
 struct SlV8NetRequest
 {
     SlV8Engine* backend = nullptr;
@@ -99,10 +160,17 @@ struct SlV8NetRequest
     NetV8Operation operation = NetV8Operation::Connect;
     std::shared_ptr<NetV8Connection> connection;
     std::shared_ptr<NetV8Listener> listener;
+    std::shared_ptr<NetV8LocalConnection> local_connection;
+    std::shared_ptr<NetV8LocalServer> local_server;
     SlResourceId resource_id = {};
     std::string host;
+    std::string path;
     uint16_t port = 0U;
     uint32_t backlog = 128U;
+    SlLocalEndpointBackend local_backend = SL_LOCAL_ENDPOINT_BACKEND_AUTO;
+    bool unlink_existing = false;
+    bool has_permissions = false;
+    uint16_t permissions = 0U;
     bool has_timeout_ms = false;
     uint32_t timeout_ms = 0U;
     bool no_delay = false;
@@ -227,6 +295,51 @@ void net_v8_listener_resource_cleanup(void* ptr, void* user)
     }
 }
 
+void net_v8_local_resource_cleanup(void* ptr, void* user)
+{
+    auto* holder = static_cast<std::shared_ptr<NetV8LocalConnection>*>(ptr);
+    (void)user;
+    if (holder != nullptr) {
+        std::shared_ptr<NetV8LocalConnection> connection = *holder;
+        if (connection != nullptr) {
+            std::unique_lock<std::mutex> owner_lock;
+            if (connection->server_owner != nullptr) {
+                owner_lock = std::unique_lock<std::mutex>(connection->server_owner->mutex);
+            }
+            std::lock_guard<std::mutex> lock(connection->mutex);
+            if (connection->native != nullptr && !connection->closed) {
+                (void)sl_local_connection_close(connection->native, nullptr);
+                connection->closed = true;
+            }
+        }
+        delete holder;
+    }
+}
+
+void net_v8_local_server_resource_cleanup(void* ptr, void* user)
+{
+    auto* holder = static_cast<std::shared_ptr<NetV8LocalServer>*>(ptr);
+    (void)user;
+    if (holder != nullptr) {
+        std::shared_ptr<NetV8LocalServer> server = *holder;
+        if (server != nullptr) {
+            std::lock_guard<std::mutex> lock(server->mutex);
+            if (server->native != nullptr && !server->closed) {
+                if (server->accepting) {
+                    server->close_requested = true;
+                    server->closed = true;
+                    delete holder;
+                    return;
+                }
+                if (sl_status_is_ok(sl_local_server_close(server->native, nullptr))) {
+                    server->closed = true;
+                }
+            }
+        }
+        delete holder;
+    }
+}
+
 bool net_v8_handle_to_resource(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value, SlResourceId* out)
 {
@@ -342,6 +455,101 @@ bool net_v8_lookup_listener(SlV8Engine* backend, SlResourceId id,
     return true;
 }
 
+bool net_v8_lookup_local_connection(SlV8Engine* backend, SlResourceId id,
+                                    std::shared_ptr<NetV8LocalConnection>* out)
+{
+    void* ptr = nullptr;
+    if (backend == nullptr || out == nullptr ||
+        !sl_status_is_ok(sl_resource_table_get(&backend->resources, id,
+                                               SL_RESOURCE_KIND_LOCAL_CONNECTION, &ptr, nullptr)))
+    {
+        return false;
+    }
+    auto* holder = static_cast<std::shared_ptr<NetV8LocalConnection>*>(ptr);
+    if (holder == nullptr || *holder == nullptr) {
+        return false;
+    }
+    *out = *holder;
+    return true;
+}
+
+bool net_v8_lookup_local_server(SlV8Engine* backend, SlResourceId id,
+                                std::shared_ptr<NetV8LocalServer>* out)
+{
+    void* ptr = nullptr;
+    if (backend == nullptr || out == nullptr ||
+        !sl_status_is_ok(sl_resource_table_get(&backend->resources, id,
+                                               SL_RESOURCE_KIND_LOCAL_SERVER, &ptr, nullptr)))
+    {
+        return false;
+    }
+    auto* holder = static_cast<std::shared_ptr<NetV8LocalServer>*>(ptr);
+    if (holder == nullptr || *holder == nullptr) {
+        return false;
+    }
+    *out = *holder;
+    return true;
+}
+
+bool net_v8_is_local_operation(NetV8Operation operation)
+{
+    return operation == NetV8Operation::LocalConnect || operation == NetV8Operation::LocalListen ||
+           operation == NetV8Operation::LocalAccept || operation == NetV8Operation::LocalWrite ||
+           operation == NetV8Operation::LocalRead || operation == NetV8Operation::LocalReadLine ||
+           operation == NetV8Operation::LocalReadUntil || operation == NetV8Operation::LocalClose ||
+           operation == NetV8Operation::LocalAbort ||
+           operation == NetV8Operation::LocalCloseServer ||
+           operation == NetV8Operation::LocalAbortServer;
+}
+
+SlLocalEndpointBackend net_v8_default_local_backend(void)
+{
+#ifdef _WIN32
+    return SL_LOCAL_ENDPOINT_BACKEND_NAMED_PIPE;
+#else
+    return SL_LOCAL_ENDPOINT_BACKEND_UNIX;
+#endif
+}
+
+bool net_v8_runtime_path_to_local_path(const std::string& logical, SlLocalEndpointBackend backend,
+                                       std::string* out)
+{
+    constexpr const char* prefix = "runtime:/";
+    if (out == nullptr || logical.rfind(prefix, 0U) != 0U) {
+        return false;
+    }
+    std::string suffix = logical.substr(std::char_traits<char>::length(prefix));
+    if (suffix.empty()) {
+        return false;
+    }
+    for (char& ch : suffix) {
+        if (ch == '/') {
+            ch = '-';
+        }
+        else if (!(ch == '.' || ch == '_' || ch == '-' || (ch >= '0' && ch <= '9') ||
+                   (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')))
+        {
+            return false;
+        }
+    }
+    if (backend == SL_LOCAL_ENDPOINT_BACKEND_AUTO) {
+        backend = net_v8_default_local_backend();
+    }
+    if (backend == SL_LOCAL_ENDPOINT_BACKEND_NAMED_PIPE) {
+        *out = "\\\\.\\pipe\\sloppy-runtime-" + suffix;
+        return true;
+    }
+    if (backend == SL_LOCAL_ENDPOINT_BACKEND_UNIX) {
+#ifdef _WIN32
+        return false;
+#else
+        *out = "/tmp/sloppy-runtime-" + suffix;
+        return true;
+#endif
+    }
+    return false;
+}
+
 void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
 {
     if (request == nullptr || request->cancelled.load()) {
@@ -372,6 +580,268 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             sl_tcp_listener_listen(&listener->arena, &options, &listener->native, &request->diag);
         if (sl_status_is_ok(request->status)) {
             request->listener = listener;
+        }
+        return;
+    }
+
+    if (request->operation == NetV8Operation::LocalConnect) {
+        auto connection = std::make_shared<NetV8LocalConnection>();
+        std::string native_path;
+        if (!net_v8_runtime_path_to_local_path(request->path, request->local_backend, &native_path))
+        {
+            request->status = sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            request->diag.code = SL_DIAG_NET_LOCAL_IPC_INVALID_PATH;
+            request->diag.message = sl_str_from_cstr("local IPC endpoint path is invalid");
+            return;
+        }
+        SlLocalConnectOptions options = sl_local_connect_options_default(
+            sl_str_from_parts(native_path.data(), native_path.size()));
+        options.backend = request->local_backend == SL_LOCAL_ENDPOINT_BACKEND_AUTO
+                              ? net_v8_default_local_backend()
+                              : request->local_backend;
+        options.has_timeout_ms = request->has_timeout_ms;
+        options.timeout_ms = request->timeout_ms;
+        request->status = sl_local_endpoint_connect(&connection->arena, &options,
+                                                    &connection->native, &request->diag);
+        if (sl_status_is_ok(request->status)) {
+            request->local_connection = connection;
+        }
+        return;
+    }
+
+    if (request->operation == NetV8Operation::LocalListen) {
+        auto server = std::make_shared<NetV8LocalServer>();
+        std::string native_path;
+        if (!net_v8_runtime_path_to_local_path(request->path, request->local_backend, &native_path))
+        {
+            request->status = sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            request->diag.code = SL_DIAG_NET_LOCAL_IPC_INVALID_PATH;
+            request->diag.message = sl_str_from_cstr("local IPC endpoint path is invalid");
+            return;
+        }
+        SlLocalListenOptions options = sl_local_listen_options_default(
+            sl_str_from_parts(native_path.data(), native_path.size()));
+        options.backend = request->local_backend == SL_LOCAL_ENDPOINT_BACKEND_AUTO
+                              ? net_v8_default_local_backend()
+                              : request->local_backend;
+        options.unlink_existing = request->unlink_existing;
+        options.has_permissions = request->has_permissions;
+        options.permissions = request->permissions;
+        options.backlog = request->backlog;
+        request->status =
+            sl_local_endpoint_listen(&server->arena, &options, &server->native, &request->diag);
+        if (sl_status_is_ok(request->status)) {
+            request->local_server = server;
+        }
+        return;
+    }
+
+    if (request->operation == NetV8Operation::LocalAccept ||
+        request->operation == NetV8Operation::LocalCloseServer ||
+        request->operation == NetV8Operation::LocalAbortServer)
+    {
+        if (request->local_server == nullptr) {
+            request->status = sl_status_from_code(SL_STATUS_STALE_RESOURCE);
+            request->diag.code = SL_DIAG_NET_LOCAL_IPC_DISPOSED;
+            request->diag.message = sl_str_from_cstr("local IPC server handle is stale");
+            return;
+        }
+        if (request->operation == NetV8Operation::LocalAccept) {
+            auto connection = std::make_shared<NetV8LocalConnection>();
+            SlLocalAcceptOptions options = sl_local_accept_options_default();
+            uint32_t remaining_timeout = request->timeout_ms;
+
+            {
+                std::lock_guard<std::mutex> lock(request->local_server->mutex);
+                if (request->local_server->closed || request->local_server->accepting) {
+                    request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                    request->diag.code = SL_DIAG_NET_LOCAL_IPC_DISPOSED;
+                    request->diag.message = sl_str_from_cstr("local IPC server is closed");
+                    return;
+                }
+                request->local_server->accepting = true;
+            }
+
+            for (;;) {
+                uint32_t chunk_timeout = 100U;
+                if (request->has_timeout_ms && remaining_timeout < chunk_timeout) {
+                    chunk_timeout = remaining_timeout;
+                }
+                if (chunk_timeout == 0U) {
+                    request->status = sl_status_from_code(SL_STATUS_DEADLINE_EXCEEDED);
+                    request->diag.code = SL_DIAG_NET_LOCAL_IPC_ACCEPT_CANCELLED;
+                    request->diag.message =
+                        sl_str_from_cstr("local IPC accept was cancelled or timed out");
+                    break;
+                }
+                options.has_timeout_ms = true;
+                options.timeout_ms = chunk_timeout;
+                request->status =
+                    sl_local_server_accept(request->local_server->native, &connection->arena,
+                                           &options, &connection->native, &request->diag);
+                if (sl_status_is_ok(request->status)) {
+                    break;
+                }
+                {
+                    std::lock_guard<std::mutex> lock(request->local_server->mutex);
+                    if (request->local_server->closed || request->local_server->close_requested ||
+                        request->local_server->abort_requested)
+                    {
+                        request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                        request->diag.code = SL_DIAG_NET_LOCAL_IPC_DISPOSED;
+                        request->diag.message = sl_str_from_cstr("local IPC server is closed");
+                        break;
+                    }
+                }
+                if (!request->has_timeout_ms || request->status.code != SL_STATUS_DEADLINE_EXCEEDED)
+                {
+                    continue;
+                }
+                if (remaining_timeout <= chunk_timeout) {
+                    break;
+                }
+                remaining_timeout -= chunk_timeout;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(request->local_server->mutex);
+                request->local_server->accepting = false;
+                if (request->local_server->close_requested ||
+                    request->local_server->abort_requested)
+                {
+                    if (connection->native != nullptr) {
+                        (void)sl_local_connection_abort(connection->native, nullptr);
+                    }
+                    if (request->local_server->abort_requested) {
+                        (void)sl_local_server_abort(request->local_server->native, nullptr);
+                    }
+                    else {
+                        (void)sl_local_server_close(request->local_server->native, nullptr);
+                    }
+                    request->local_server->closed = true;
+                    request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                    request->diag.code = SL_DIAG_NET_LOCAL_IPC_DISPOSED;
+                    request->diag.message = sl_str_from_cstr("local IPC server is closed");
+                }
+                else if (sl_status_is_ok(request->status)) {
+                    connection->server_owner = request->local_server;
+                    request->local_connection = connection;
+                }
+            }
+        }
+        else if (request->operation == NetV8Operation::LocalCloseServer) {
+            std::lock_guard<std::mutex> lock(request->local_server->mutex);
+            if (request->local_server->closed) {
+                request->status = sl_status_ok();
+                return;
+            }
+            if (request->local_server->accepting) {
+                request->local_server->close_requested = true;
+                request->local_server->closed = true;
+                request->status = sl_status_ok();
+                return;
+            }
+            request->status = sl_local_server_close(request->local_server->native, &request->diag);
+            if (sl_status_is_ok(request->status)) {
+                request->local_server->closed = true;
+            }
+        }
+        else if (request->operation == NetV8Operation::LocalAbortServer) {
+            std::lock_guard<std::mutex> lock(request->local_server->mutex);
+            if (request->local_server->closed) {
+                request->status = sl_status_ok();
+                return;
+            }
+            if (request->local_server->accepting) {
+                request->local_server->abort_requested = true;
+                request->local_server->closed = true;
+                request->status = sl_status_ok();
+                return;
+            }
+            request->status = sl_local_server_abort(request->local_server->native, &request->diag);
+            if (sl_status_is_ok(request->status)) {
+                request->local_server->closed = true;
+            }
+        }
+        return;
+    }
+
+    if (net_v8_is_local_operation(request->operation)) {
+        if (request->local_connection == nullptr) {
+            request->status = sl_status_from_code(SL_STATUS_STALE_RESOURCE);
+            request->diag.code = SL_DIAG_NET_LOCAL_IPC_DISPOSED;
+            request->diag.message = sl_str_from_cstr("local IPC connection handle is stale");
+            return;
+        }
+
+        std::unique_lock<std::mutex> owner_lock;
+        if (request->local_connection->server_owner != nullptr) {
+            owner_lock =
+                std::unique_lock<std::mutex>(request->local_connection->server_owner->mutex);
+        }
+        std::lock_guard<std::mutex> lock(request->local_connection->mutex);
+        if (request->local_connection->closed && request->operation != NetV8Operation::LocalClose &&
+            request->operation != NetV8Operation::LocalAbort)
+        {
+            request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+            request->diag.code = SL_DIAG_NET_LOCAL_IPC_DISPOSED;
+            request->diag.message = sl_str_from_cstr("local IPC connection is closed");
+        }
+        else if (request->operation == NetV8Operation::LocalWrite) {
+            SlLocalIoOptions options = sl_local_io_options_default();
+            options.has_timeout_ms = request->has_timeout_ms;
+            options.timeout_ms = request->timeout_ms;
+            request->status = sl_local_connection_write_ex(
+                request->local_connection->native,
+                sl_bytes_from_parts(request->bytes.data(), request->bytes.size()), &options,
+                &request->diag);
+        }
+        else if (request->operation == NetV8Operation::LocalRead) {
+            SlOwnedBytes bytes = {};
+            SlLocalIoOptions options = sl_local_io_options_default();
+            options.has_timeout_ms = request->has_timeout_ms;
+            options.timeout_ms = request->timeout_ms;
+            request->status = sl_local_connection_read_ex(
+                request->local_connection->native, &request->local_connection->arena,
+                request->max_bytes, &options, &bytes, &request->diag);
+            if (sl_status_is_ok(request->status)) {
+                request->result_bytes.assign(bytes.ptr, bytes.ptr + bytes.length);
+            }
+        }
+        else if (request->operation == NetV8Operation::LocalReadUntil) {
+            SlOwnedBytes bytes = {};
+            SlLocalIoOptions options = sl_local_io_options_default();
+            options.has_timeout_ms = request->has_timeout_ms;
+            options.timeout_ms = request->timeout_ms;
+            request->status = sl_local_connection_read_until_ex(
+                request->local_connection->native, &request->local_connection->arena,
+                sl_bytes_from_parts(request->delimiter.data(), request->delimiter.size()),
+                request->max_bytes, &options, &bytes, &request->diag);
+            if (sl_status_is_ok(request->status)) {
+                request->result_bytes.assign(bytes.ptr, bytes.ptr + bytes.length);
+            }
+        }
+        else if (request->operation == NetV8Operation::LocalReadLine) {
+            SlOwnedStr line = {};
+            SlLocalIoOptions options = sl_local_io_options_default();
+            options.has_timeout_ms = request->has_timeout_ms;
+            options.timeout_ms = request->timeout_ms;
+            request->status = sl_local_connection_read_line_ex(
+                request->local_connection->native, &request->local_connection->arena,
+                request->max_bytes, &options, &line, &request->diag);
+            if (sl_status_is_ok(request->status)) {
+                request->result_text.assign(line.ptr, line.length);
+            }
+        }
+        else if (request->operation == NetV8Operation::LocalClose) {
+            request->status =
+                sl_local_connection_close(request->local_connection->native, &request->diag);
+            request->local_connection->closed = true;
+        }
+        else if (request->operation == NetV8Operation::LocalAbort) {
+            request->status =
+                sl_local_connection_abort(request->local_connection->native, &request->diag);
+            request->local_connection->closed = true;
         }
         return;
     }
@@ -599,8 +1069,35 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
         ok = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
     }
     else if (request->operation == NetV8Operation::Connect ||
-             request->operation == NetV8Operation::Accept)
+             request->operation == NetV8Operation::Accept ||
+             request->operation == NetV8Operation::LocalConnect ||
+             request->operation == NetV8Operation::LocalAccept)
     {
+        if (net_v8_is_local_operation(request->operation)) {
+            auto* holder =
+                new (std::nothrow) std::shared_ptr<NetV8LocalConnection>(request->local_connection);
+            SlResourceId id = {};
+            v8::Local<v8::Object> handle;
+            if (holder == nullptr ||
+                !sl_status_is_ok(sl_resource_table_insert(
+                    &backend->resources, SL_RESOURCE_KIND_LOCAL_CONNECTION, holder,
+                    net_v8_local_resource_cleanup, nullptr, &id, nullptr)) ||
+                !net_v8_resource_to_handle(isolate, context, id, &handle))
+            {
+                delete holder;
+                ok = resolver
+                         ->Reject(context,
+                                  v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                      isolate,
+                                      "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
+                         .FromMaybe(false);
+            }
+            else {
+                ok = resolver->Resolve(context, handle).FromMaybe(false);
+            }
+            isolate->PerformMicrotaskCheckpoint();
+            return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
         auto* holder = new (std::nothrow) std::shared_ptr<NetV8Connection>(request->connection);
         SlResourceId id = {};
         v8::Local<v8::Object> handle;
@@ -622,7 +1119,34 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             ok = resolver->Resolve(context, handle).FromMaybe(false);
         }
     }
-    else if (request->operation == NetV8Operation::Listen) {
+    else if (request->operation == NetV8Operation::Listen ||
+             request->operation == NetV8Operation::LocalListen)
+    {
+        if (request->operation == NetV8Operation::LocalListen) {
+            auto* holder =
+                new (std::nothrow) std::shared_ptr<NetV8LocalServer>(request->local_server);
+            SlResourceId id = {};
+            v8::Local<v8::Object> handle;
+            if (holder == nullptr ||
+                !sl_status_is_ok(sl_resource_table_insert(
+                    &backend->resources, SL_RESOURCE_KIND_LOCAL_SERVER, holder,
+                    net_v8_local_server_resource_cleanup, nullptr, &id, nullptr)) ||
+                !net_v8_resource_to_handle(isolate, context, id, &handle))
+            {
+                delete holder;
+                ok = resolver
+                         ->Reject(context,
+                                  v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                      isolate,
+                                      "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
+                         .FromMaybe(false);
+            }
+            else {
+                ok = resolver->Resolve(context, handle).FromMaybe(false);
+            }
+            isolate->PerformMicrotaskCheckpoint();
+            return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
         auto* holder = new (std::nothrow) std::shared_ptr<NetV8Listener>(request->listener);
         SlResourceId id = {};
         v8::Local<v8::Object> handle;
@@ -645,7 +1169,9 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
         }
     }
     else if (request->operation == NetV8Operation::Read ||
-             request->operation == NetV8Operation::ReadUntil)
+             request->operation == NetV8Operation::ReadUntil ||
+             request->operation == NetV8Operation::LocalRead ||
+             request->operation == NetV8Operation::LocalReadUntil)
     {
         std::unique_ptr<v8::BackingStore> backing =
             v8::ArrayBuffer::NewBackingStore(isolate, request->result_bytes.size());
@@ -661,7 +1187,9 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             v8::Uint8Array::New(buffer, 0U, request->result_bytes.size());
         ok = resolver->Resolve(context, view).FromMaybe(false);
     }
-    else if (request->operation == NetV8Operation::ReadLine) {
+    else if (request->operation == NetV8Operation::ReadLine ||
+             request->operation == NetV8Operation::LocalReadLine)
+    {
         v8::Local<v8::String> line;
         if (!sl_status_is_ok(net_v8_to_local_string(
                 isolate,
@@ -680,12 +1208,26 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
                                                SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
         }
+        if ((request->operation == NetV8Operation::LocalClose ||
+             request->operation == NetV8Operation::LocalAbort) &&
+            sl_resource_id_is_valid(request->resource_id))
+        {
+            (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                               SL_RESOURCE_KIND_LOCAL_CONNECTION, nullptr);
+        }
         if ((request->operation == NetV8Operation::CloseListener ||
              request->operation == NetV8Operation::AbortListener) &&
             sl_resource_id_is_valid(request->resource_id))
         {
             (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
                                                SL_RESOURCE_KIND_TCP_LISTENER, nullptr);
+        }
+        if ((request->operation == NetV8Operation::LocalCloseServer ||
+             request->operation == NetV8Operation::LocalAbortServer) &&
+            sl_resource_id_is_valid(request->resource_id))
+        {
+            (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                               SL_RESOURCE_KIND_LOCAL_SERVER, nullptr);
         }
         ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
     }
@@ -915,6 +1457,253 @@ void net_v8_listen(const v8::FunctionCallbackInfo<v8::Value>& args)
     args.GetReturnValue().Set(resolver->GetPromise());
 }
 
+bool net_v8_object_get(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                       v8::Local<v8::Object> object, const char* key, v8::Local<v8::Value>* out)
+{
+    v8::Local<v8::String> name;
+    return out != nullptr &&
+           sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr(key), &name)) &&
+           object->Get(context, name).ToLocal(out);
+}
+
+bool net_v8_parse_local_backend(v8::Isolate* isolate, v8::Local<v8::Value> value,
+                                SlLocalEndpointBackend* out)
+{
+    std::string text;
+    if (out == nullptr || value.IsEmpty() || value->IsUndefined()) {
+        if (out != nullptr) {
+            *out = SL_LOCAL_ENDPOINT_BACKEND_AUTO;
+        }
+        return true;
+    }
+    if (!sl_v8_std_string_from_value(isolate, value, &text)) {
+        return false;
+    }
+    if (text == "unix") {
+        *out = SL_LOCAL_ENDPOINT_BACKEND_UNIX;
+        return true;
+    }
+    if (text == "namedPipe") {
+        *out = SL_LOCAL_ENDPOINT_BACKEND_NAMED_PIPE;
+        return true;
+    }
+    return false;
+}
+
+bool net_v8_parse_octal_permissions(const std::string& text, uint16_t* out)
+{
+    uint16_t mode = 0U;
+    if (out == nullptr || text.size() != 4U || text[0] != '0') {
+        return false;
+    }
+    for (size_t index = 1U; index < text.size(); ++index) {
+        char ch = text[index];
+        if (ch < '0' || ch > '7') {
+            return false;
+        }
+        mode = static_cast<uint16_t>((mode << 3U) | static_cast<uint16_t>(ch - '0'));
+    }
+    *out = mode;
+    return true;
+}
+
+void net_v8_local_endpoint(const v8::FunctionCallbackInfo<v8::Value>& args,
+                           NetV8Operation operation)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Promise::Resolver> resolver;
+    auto request = net_v8_make_request(args, operation, &resolver);
+    v8::Local<v8::Object> options;
+    v8::Local<v8::Value> value;
+    uint32_t number = 0U;
+
+    if (request == nullptr) {
+        return;
+    }
+    if (args.Length() < 1 || !args[0]->IsObject()) {
+        net_v8_throw_type_error(isolate, "__sloppy.net local endpoint operation requires options");
+        return;
+    }
+    options = args[0].As<v8::Object>();
+    if (!net_v8_object_get(isolate, context, options, "path", &value) ||
+        !sl_v8_std_string_from_value(isolate, value, &request->path) || request->path.empty())
+    {
+        net_v8_throw_type_error(isolate, "__sloppy.net local endpoint path must be a string");
+        return;
+    }
+    if (net_v8_object_get(isolate, context, options, "backend", &value) &&
+        !net_v8_parse_local_backend(isolate, value, &request->local_backend))
+    {
+        net_v8_throw_type_error(isolate, "__sloppy.net local endpoint backend is invalid");
+        return;
+    }
+    if (net_v8_object_get(isolate, context, options, "timeoutMs", &value) && !value->IsUndefined())
+    {
+        if (!net_v8_parse_uint(value, 0U, UINT32_MAX, &number)) {
+            net_v8_throw_type_error(isolate, "__sloppy.net local endpoint timeoutMs is invalid");
+            return;
+        }
+        request->has_timeout_ms = true;
+        request->timeout_ms = number;
+    }
+    if (operation == NetV8Operation::LocalListen) {
+        if (net_v8_object_get(isolate, context, options, "unlinkExisting", &value) &&
+            value->IsBoolean())
+        {
+            request->unlink_existing = value.As<v8::Boolean>()->Value();
+        }
+        if (net_v8_object_get(isolate, context, options, "permissions", &value) &&
+            !value->IsUndefined())
+        {
+            std::string permissions;
+            if (!sl_v8_std_string_from_value(isolate, value, &permissions) ||
+                !net_v8_parse_octal_permissions(permissions, &request->permissions))
+            {
+                net_v8_throw_type_error(isolate,
+                                        "__sloppy.net local endpoint permissions are invalid");
+                return;
+            }
+            request->has_permissions = true;
+        }
+        if (net_v8_object_get(isolate, context, options, "backlog", &value) &&
+            !value->IsUndefined())
+        {
+            if (!net_v8_parse_uint(value, 1U, UINT32_MAX, &number)) {
+                net_v8_throw_type_error(isolate, "__sloppy.net local endpoint backlog is invalid");
+                return;
+            }
+            request->backlog = number;
+        }
+    }
+    if (!net_v8_start_request(request)) {
+        net_v8_throw_type_error(isolate,
+                                "__sloppy.net local endpoint operation could not start worker");
+        return;
+    }
+    args.GetReturnValue().Set(resolver->GetPromise());
+}
+
+void net_v8_with_local_server(const v8::FunctionCallbackInfo<v8::Value>& args,
+                              NetV8Operation operation)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Promise::Resolver> resolver;
+    auto request = net_v8_make_request(args, operation, &resolver);
+    SlResourceId id = {};
+    uint32_t timeout_ms = 0U;
+
+    if (request == nullptr) {
+        return;
+    }
+    if (args.Length() < 1 || !net_v8_handle_to_resource(isolate, context, args[0], &id) ||
+        !net_v8_lookup_local_server(request->backend, id, &request->local_server))
+    {
+        net_v8_throw_type_error(isolate, "__sloppy.net local server handle is stale or closed");
+        return;
+    }
+    request->resource_id = id;
+    if (operation == NetV8Operation::LocalAccept && args.Length() >= 2 && !args[1]->IsUndefined()) {
+        if (!net_v8_parse_uint(args[1], 0U, UINT32_MAX, &timeout_ms)) {
+            net_v8_throw_type_error(isolate, "__sloppy.net.acceptLocal timeoutMs is invalid");
+            return;
+        }
+        request->has_timeout_ms = true;
+        request->timeout_ms = timeout_ms;
+    }
+    if (!net_v8_start_request(request)) {
+        net_v8_throw_type_error(isolate,
+                                "__sloppy.net local server operation could not start worker");
+        return;
+    }
+    args.GetReturnValue().Set(resolver->GetPromise());
+}
+
+void net_v8_with_local_connection(const v8::FunctionCallbackInfo<v8::Value>& args,
+                                  NetV8Operation operation)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Promise::Resolver> resolver;
+    auto request = net_v8_make_request(args, operation, &resolver);
+    SlResourceId id = {};
+    uint32_t number = 0U;
+
+    if (request == nullptr) {
+        return;
+    }
+    if (args.Length() < 1 || !net_v8_handle_to_resource(isolate, context, args[0], &id) ||
+        !net_v8_lookup_local_connection(request->backend, id, &request->local_connection))
+    {
+        net_v8_throw_type_error(isolate, "__sloppy.net local connection handle is stale or closed");
+        return;
+    }
+    request->resource_id = id;
+    if (operation == NetV8Operation::LocalWrite) {
+        if (args.Length() < 2 || !net_v8_bytes_arg(args[1], kNetMaxBufferBytes, &request->bytes)) {
+            net_v8_throw_type_error(isolate, "__sloppy.net.writeLocal requires bounded bytes");
+            return;
+        }
+        if (args.Length() >= 3 && !args[2]->IsUndefined()) {
+            if (!net_v8_parse_uint(args[2], 0U, UINT32_MAX, &number)) {
+                net_v8_throw_type_error(isolate, "__sloppy.net.writeLocal timeoutMs is invalid");
+                return;
+            }
+            request->has_timeout_ms = true;
+            request->timeout_ms = number;
+        }
+    }
+    else if (operation == NetV8Operation::LocalRead || operation == NetV8Operation::LocalReadLine) {
+        uint32_t max_bytes = 8192U;
+        if (args.Length() >= 2 && !args[1]->IsUndefined() &&
+            !net_v8_parse_uint(args[1], 1U, kNetMaxBufferBytes, &max_bytes))
+        {
+            net_v8_throw_type_error(isolate, "__sloppy.net local read size is invalid");
+            return;
+        }
+        request->max_bytes = max_bytes;
+        if (args.Length() >= 3 && !args[2]->IsUndefined()) {
+            if (!net_v8_parse_uint(args[2], 0U, UINT32_MAX, &number)) {
+                net_v8_throw_type_error(isolate, "__sloppy.net local read timeoutMs is invalid");
+                return;
+            }
+            request->has_timeout_ms = true;
+            request->timeout_ms = number;
+        }
+    }
+    else if (operation == NetV8Operation::LocalReadUntil) {
+        uint32_t max_bytes = 8192U;
+        if (args.Length() < 2 ||
+            !net_v8_bytes_arg(args[1], kNetMaxBufferBytes, &request->delimiter))
+        {
+            net_v8_throw_type_error(isolate,
+                                    "__sloppy.net.readUntilLocal requires delimiter bytes");
+            return;
+        }
+        if (args.Length() >= 3 && !args[2]->IsUndefined() &&
+            !net_v8_parse_uint(args[2], 1U, kNetMaxBufferBytes, &max_bytes))
+        {
+            net_v8_throw_type_error(isolate, "__sloppy.net local read size is invalid");
+            return;
+        }
+        request->max_bytes = max_bytes;
+        if (args.Length() >= 4 && !args[3]->IsUndefined()) {
+            if (!net_v8_parse_uint(args[3], 0U, UINT32_MAX, &number)) {
+                net_v8_throw_type_error(isolate, "__sloppy.net local read timeoutMs is invalid");
+                return;
+            }
+            request->has_timeout_ms = true;
+            request->timeout_ms = number;
+        }
+    }
+    if (!net_v8_start_request(request)) {
+        net_v8_throw_type_error(isolate, "__sloppy.net local operation could not start worker");
+        return;
+    }
+    args.GetReturnValue().Set(resolver->GetPromise());
+}
+
 void net_v8_with_listener(const v8::FunctionCallbackInfo<v8::Value>& args, NetV8Operation operation)
 {
     v8::Isolate* isolate = args.GetIsolate();
@@ -1052,6 +1841,61 @@ void net_v8_abort_listener(const v8::FunctionCallbackInfo<v8::Value>& args)
     net_v8_with_listener(args, NetV8Operation::AbortListener);
 }
 
+void net_v8_connect_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_local_endpoint(args, NetV8Operation::LocalConnect);
+}
+
+void net_v8_listen_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_local_endpoint(args, NetV8Operation::LocalListen);
+}
+
+void net_v8_accept_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_server(args, NetV8Operation::LocalAccept);
+}
+
+void net_v8_close_local_server(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_server(args, NetV8Operation::LocalCloseServer);
+}
+
+void net_v8_abort_local_server(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_server(args, NetV8Operation::LocalAbortServer);
+}
+
+void net_v8_write_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_connection(args, NetV8Operation::LocalWrite);
+}
+
+void net_v8_read_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_connection(args, NetV8Operation::LocalRead);
+}
+
+void net_v8_read_line_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_connection(args, NetV8Operation::LocalReadLine);
+}
+
+void net_v8_read_until_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_connection(args, NetV8Operation::LocalReadUntil);
+}
+
+void net_v8_close_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_connection(args, NetV8Operation::LocalClose);
+}
+
+void net_v8_abort_local(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_local_connection(args, NetV8Operation::LocalAbort);
+}
+
 } // namespace
 
 bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
@@ -1081,6 +1925,19 @@ bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> co
         !net_v8_set_function(isolate, context, net, "abort", net_v8_abort) ||
         !net_v8_set_function(isolate, context, net, "closeListener", net_v8_close_listener) ||
         !net_v8_set_function(isolate, context, net, "abortListener", net_v8_abort_listener) ||
+        !net_v8_set_function(isolate, context, net, "connectLocal", net_v8_connect_local) ||
+        !net_v8_set_function(isolate, context, net, "listenLocal", net_v8_listen_local) ||
+        !net_v8_set_function(isolate, context, net, "acceptLocal", net_v8_accept_local) ||
+        !net_v8_set_function(isolate, context, net, "writeLocal", net_v8_write_local) ||
+        !net_v8_set_function(isolate, context, net, "readLocal", net_v8_read_local) ||
+        !net_v8_set_function(isolate, context, net, "readLineLocal", net_v8_read_line_local) ||
+        !net_v8_set_function(isolate, context, net, "readUntilLocal", net_v8_read_until_local) ||
+        !net_v8_set_function(isolate, context, net, "closeLocal", net_v8_close_local) ||
+        !net_v8_set_function(isolate, context, net, "abortLocal", net_v8_abort_local) ||
+        !net_v8_set_function(isolate, context, net, "closeLocalServer",
+                             net_v8_close_local_server) ||
+        !net_v8_set_function(isolate, context, net, "abortLocalServer",
+                             net_v8_abort_local_server) ||
         !sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr("net"), &key)))
     {
         return false;

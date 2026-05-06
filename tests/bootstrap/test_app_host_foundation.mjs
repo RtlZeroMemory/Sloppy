@@ -172,11 +172,43 @@ async function flushMicrotasks(count = 6) {
                 listenLocal(options) {
                     return Promise.resolve({ kind: "server", options });
                 },
+                writeLocal(handle, bytes, timeoutMs) {
+                    handle.lastWrite = { bytes, timeoutMs };
+                    return Promise.resolve();
+                },
+                readLocal(_handle, maxBytes, timeoutMs) {
+                    return Promise.resolve(new Uint8Array([maxBytes & 0xff, timeoutMs ?? 0]));
+                },
+                readLineLocal(_handle, maxBytes, timeoutMs) {
+                    return Promise.resolve(`${maxBytes}:${timeoutMs ?? "none"}`);
+                },
+                readUntilLocal(_handle, delimiter, maxBytes, timeoutMs) {
+                    return Promise.resolve(new Uint8Array([delimiter.byteLength, maxBytes, timeoutMs ?? 0]));
+                },
+                closeLocal() {
+                    return Promise.resolve();
+                },
+                abortLocal() {
+                    return Promise.resolve();
+                },
             },
         };
 
         const conn = await LocalEndpoint.connect({ path: "runtime:/my-app.sock", timeoutMs: 1 });
-        assert.deepEqual(conn.options, { path: "runtime:/my-app.sock", timeoutMs: 1 });
+        assert.equal(conn.closed, false);
+        assert.deepEqual(conn._handle.options, { path: "runtime:/my-app.sock", timeoutMs: 1 });
+        await conn.write(new Uint8Array([0, 1, 2]), { timeoutMs: 2 });
+        assert.deepEqual(Array.from(conn._handle.lastWrite.bytes), [0, 1, 2]);
+        assert.equal(conn._handle.lastWrite.timeoutMs, 2);
+        assert.deepEqual(Array.from(await conn.read({ maxBytes: 7, timeoutMs: 3 })), [7, 3]);
+        assert.equal(await conn.readLine({ maxBytes: 8, timeoutMs: 4 }), "8:4");
+        assert.deepEqual(Array.from(await conn.readUntil(new Uint8Array([10]), { maxBytes: 9, timeoutMs: 5 })), [
+            1,
+            9,
+            5,
+        ]);
+        await conn.close();
+        assert.equal(conn.closed, true);
 
         const server = await LocalEndpoint.listen({
             path: "runtime:/my-app.sock",
@@ -195,7 +227,7 @@ async function flushMicrotasks(count = 6) {
         assert.equal(server.closed, true);
 
         const unix = await UnixSocket.connect({ path: "runtime:/svc.sock" });
-        assert.equal(unix.options.backend, "unix");
+        assert.equal(unix._handle.options.backend, "unix");
         const pipe = await NamedPipe.listen({ path: "runtime:/svc.sock" });
         assert.equal(pipe._handle.options.backend, "namedPipe");
 
