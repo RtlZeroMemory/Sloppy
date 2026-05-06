@@ -1106,6 +1106,7 @@ function makeCrc32Table() {
 }
 
 const CRC32_TABLE = makeCrc32Table();
+const CHECKSUM_UNSUPPORTED_ALGORITHM_DIAGNOSTIC = "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM";
 
 function crc32(bytes) {
     bytes = requireBytes(bytes, "Checksums.crc32");

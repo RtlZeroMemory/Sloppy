@@ -116,6 +116,11 @@ visible literal host/port targets are future Plan-visible network capability met
 dynamic host/port values must be represented honestly as partial/dynamic metadata rather
 than guessed.
 
+CORE-NET-01.G adds native local DNS/address handling and JS `NetworkAddress` parsing, but
+does not broaden the permission claim: default tests remain loopback/local, and external
+network access still needs strict-mode policy/admission work before it can be treated as a
+completed security boundary.
+
 Network policy is not an OS sandbox claim. JavaScript never receives raw sockets, libuv
 handles, OS handles, raw native pointers, or backend resource internals. DNS/connect work
 must not block the V8 owner thread, and doctor/audit output must redact sensitive endpoint

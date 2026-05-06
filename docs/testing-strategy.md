@@ -119,8 +119,10 @@ embedded-NUL bytes. Default TCP execution tests must remain localhost/loopback o
 keep live-network, stress/torture, V8, package, and benchmark evidence separate.
 CORE-NET-01.E/F adds deterministic loopback listener tests for ephemeral listen, accept,
 accepted-connection ownership, listener close/stale behavior, and accept timeout. These
-tests still do not claim external network, DNS, TLS, HTTP client, UDP, WebSocket, or
-benchmark evidence.
+CORE-NET-01.G adds object/text `NetworkAddress` parsing, local `localhost` DNS-backed
+listener coverage, embedded-NUL host rejection, and socket-option error propagation.
+These tests still do not claim external network access, live-provider DNS breadth, TLS,
+HTTP client, UDP, WebSocket, or benchmark evidence.
 CORE-CODEC-01 tests must keep evidence claims narrow. Contract tests prove `sloppy/codec`
 import recognition, `stdlib.codec` Plan metadata, unavailable-feature diagnostics, stable
 codec diagnostic names/goldens, backend policy, and checksum non-security wording.

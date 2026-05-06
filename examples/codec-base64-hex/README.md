@@ -7,7 +7,7 @@ Base64, Base64Url, and Hex byte transform shape.
 import { Base64, Base64Url, Hex } from "sloppy/codec";
 
 const encoded = Base64.encode(bytes);
-const token = Base64Url.encode(bytes, { padding: false });
+const urlSafe = Base64Url.encode(bytes, { padding: false });
 const hex = Hex.encode(bytes);
 ```
 

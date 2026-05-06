@@ -11,6 +11,7 @@ import {
     Hash,
     Hmac,
     InvalidDeadlineError,
+    NetworkAddress,
     NonCryptoHash,
     Password,
     Random,
@@ -122,6 +123,31 @@ async function flushMicrotasks(count = 6) {
             globalThis.__sloppy = previousSloppy;
         }
     }
+}
+
+{
+    const ipv4 = NetworkAddress.parse("127.0.0.1:6379");
+    assert.equal(ipv4.host, "127.0.0.1");
+    assert.equal(ipv4.port, 6379);
+    assert.equal(String(ipv4), "127.0.0.1:6379");
+
+    const ipv6 = NetworkAddress.parse("[::1]:443");
+    assert.equal(ipv6.host, "::1");
+    assert.equal(ipv6.port, 443);
+    assert.equal(String(ipv6), "[::1]:443");
+
+    const objectAddress = NetworkAddress.parse({ host: "localhost", port: 9000 });
+    assert.equal(objectAddress.host, "localhost");
+    assert.equal(objectAddress.port, 9000);
+    assert.equal(NetworkAddress.parse(objectAddress), objectAddress);
+
+    assertThrowsMessage(() => NetworkAddress.parse("::1:443"), /host:port/);
+    assertThrowsMessage(() => NetworkAddress.parse("127.0.0.1"), /host:port/);
+    assertThrowsMessage(() => NetworkAddress.parse("[::1]443"), /\[host\]:port/);
+    assertThrowsMessage(() => NetworkAddress.parse("[::1]:"), /TCP port text/);
+    assertThrowsMessage(() => NetworkAddress.parse("localhost:1e3"), /TCP port text/);
+    assertThrowsMessage(() => NetworkAddress.parse("localhost:0x50"), /TCP port text/);
+    assertThrowsMessage(() => NetworkAddress.parse("localhost:70000"), /TCP port/);
 }
 
 {
