@@ -128,8 +128,9 @@ after the response is safely consumed or drained. Dirty, truncated, malformed, c
 timed-out, or partially consumed bodies discard the connection.
 
 `HEAD` responses and body-forbidden status responses (`1xx`, `204`, `304`) expose an empty
-body to callers. If the peer sends body metadata or bytes for those responses, the current
-HTTP/1.1 backend treats the connection as dirty and does not return it to the pool.
+body to callers. `HEAD` may carry ordinary body metadata such as `Content-Length`; only
+observed body bytes make that connection dirty. For body-forbidden statuses, body metadata
+or bytes make the current HTTP/1.1 connection dirty and keep it out of the pool.
 
 `HttpClient.text`, `HttpClient.json`, `HttpClient.bytes`, and `getJson` perform a GET and
 consume the response body once. Invalid response JSON fails with

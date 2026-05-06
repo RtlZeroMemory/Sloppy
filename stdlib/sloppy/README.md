@@ -81,9 +81,9 @@ implements operation-wide timeout/deadline/cancellation, buffered response `stre
 integer or explicit unit-string body/header limits, per-origin HTTP/1.1 pooling, bounded
 redirects, DNS failure mapping, strict-network denial, and cross-origin sensitive-header
 strip/deny defaults. `HEAD` and body-forbidden status responses expose empty bodies and
-dirty body metadata/bytes prevent pooled reuse. HTTPS/TLS, proxy policy, true socket-level
-streaming, automatic compiler target inference, and a separate HTTP-native V8 bridge
-remain future work.
+`HEAD` body metadata is allowed, while body bytes and body-forbidden status metadata/bytes
+prevent pooled reuse. HTTPS/TLS, proxy policy, true socket-level streaming, automatic
+compiler target inference, and a separate HTTP-native V8 bridge remain future work.
 `System`, `Environment`, `Process`, and `Signals` are exported from `sloppy/os` as the
 CORE-OS-01 surface. `System` exposes platform, architecture, CPU count, temp directory,
 hostname, and line ending metadata. `Environment` exposes key validation, `get`, `has`,

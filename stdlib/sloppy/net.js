@@ -1735,12 +1735,14 @@ function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = fa
         (httpMinorVersion === 1
             ? !httpConnectionHeaderHas(connectionHeader, "close")
             : httpConnectionHeaderHas(connectionHeader, "keep-alive"));
-    const bodyForbidden = requestMethod === "HEAD" || isHttpBodyForbiddenStatus(status);
+    const methodForbidsBody = requestMethod === "HEAD";
+    const statusForbidsBody = isHttpBodyForbiddenStatus(status);
+    const bodyForbidden = methodForbidsBody || statusForbidsBody;
     if (bodyForbidden) {
-        if (contentLength !== undefined && contentLength > 0) {
+        if (statusForbidsBody && contentLength !== undefined && contentLength > 0) {
             connectionReusable = false;
         }
-        if (transferEncoding !== undefined) {
+        if (statusForbidsBody && transferEncoding !== undefined) {
             connectionReusable = false;
         }
         if (bodyBytes.byteLength > 0) {

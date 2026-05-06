@@ -18,7 +18,8 @@ HTTP/1.1 pooling for reusable clients, safe-method-only stale pooled connection 
 strict-network preconnect denial, DNS-failure mapping, cross-origin sensitive-header
 stripping/denial, source-shape examples, and doctor/audit goldens for
 named/static/dynamic outbound-client metadata. `HEAD` and body-forbidden status responses
-expose empty bodies and dirty body metadata/bytes prevent pooled reuse. It does not
+expose empty bodies; `HEAD` body metadata is allowed, while body bytes and body-forbidden
+status metadata/bytes prevent pooled reuse. It does not
 implement HTTPS/TLS, proxy policy, true socket-level streaming, automatic compiler
 inference of static outbound target literals, or live external network evidence.
 

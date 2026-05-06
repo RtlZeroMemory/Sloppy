@@ -324,6 +324,28 @@ await withNodeNetBridge(async () => {
 });
 
 await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.deepEqual(await (await client.request({ url: "/head-one", method: "HEAD" })).bytes(), new Uint8Array(0));
+        assert.deepEqual(await (await client.request({ url: "/head-two", method: "HEAD" })).bytes(), new Uint8Array(0));
+
+        assert.deepEqual(observed.map((request) => request.target), ["/head-one", "/head-two"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 1);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
     const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n");
 
     try {
