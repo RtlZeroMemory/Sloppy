@@ -1,4 +1,5 @@
 export { Sloppy } from "./app.js";
+export { ConstantTime, Hash, Hmac, NonCryptoHash, Password, Random, Secret } from "./crypto.js";
 export { data, sql } from "./data.js";
 export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
 export { Results } from "./results.js";

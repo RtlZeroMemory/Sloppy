@@ -99,14 +99,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   policy runtime behavior. CORE-TIME-01.I adds source examples, final Time diagnostic
   goldens, and the conformance evidence index. Broader shutdown/cancellation integration
   remains a future consumer concern.
-- Crypto API implementation after CORE-CRYPTO-01.A/B: `stdlib.crypto`, the
-  `sloppy/crypto` import contract, backend/dependency policy, stable diagnostics, and
-  redaction policy exist. #574 through #580 must still implement OS CSPRNG random helpers,
-  SHA-2/HMAC through vetted backends, Secret/ConstantTime utilities, Argon2id password
-  hashing with offload and owner-thread settlement, explicit `NonCryptoHash` support,
-  V8/stdlib integration, examples, vectors, and conformance goldens. Do not claim
-  randomness quality, password cost, timing resistance, performance, WebCrypto/Node/Bun
-  compatibility, or public alpha readiness from the contract slice.
+- Crypto API implementation after CORE-CRYPTO-01.C/D/F/H: OS CSPRNG random helpers,
+  SHA-2/HMAC through vetted backends, ConstantTime, Secret cleanup, `__sloppy.crypto`, and
+  the bootstrap `sloppy/crypto` JS surface exist. #576, #578, and #580 must still implement
+  Argon2id password hashing with offload and owner-thread settlement, explicit
+  `NonCryptoHash` support, final examples, vectors, docs, and conformance goldens. Do not
+  claim randomness quality, password cost, timing resistance, performance, WebCrypto/Node/Bun
+  compatibility, or public alpha readiness from the implemented shape/vector tests.
 - Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded

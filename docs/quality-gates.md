@@ -53,11 +53,12 @@ Time conformance evidence index. These gates prove source examples and determini
 default-lane diagnostics/bootstrap behavior only; V8 Time owner-thread evidence remains in
 the V8-gated lane, and no Node timer compatibility, global fake timers, cron parser,
 package-manager behavior, public alpha readiness, or benchmark claims are implied.
-CORE-CRYPTO-01 gates must report crypto evidence by lane. PRs that only add the
-`stdlib.crypto` contract, Plan metadata, diagnostics, and backend policy do not prove OS
-random quality, SHA-2/HMAC correctness, password cost, side-channel resistance, V8
-execution, package readiness, or performance. Later vector/example PRs must keep secure
-`Hash`/`Hmac` evidence separate from explicitly non-security `NonCryptoHash` evidence.
+CORE-CRYPTO-01 gates must report crypto evidence by lane. PRs that add random/hash/HMAC/
+Secret/V8 support prove OS-source use, API shape, standard SHA-2/HMAC vectors, cleanup
+lifecycle, and V8 bridge registration only. They do not prove random quality, password
+cost, side-channel resistance, package readiness, or performance. Later vector/example PRs
+must keep secure `Hash`/`Hmac` evidence separate from explicitly non-security
+`NonCryptoHash` evidence.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS

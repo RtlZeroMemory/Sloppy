@@ -74,6 +74,9 @@ bool sl_v8_install_time_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> c
                                    v8::Local<v8::Object> sloppy);
 void sl_v8_time_dispose(SlV8Engine* backend);
 
+bool sl_v8_install_crypto_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
+                                     v8::Local<v8::Object> sloppy);
+
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);
 
