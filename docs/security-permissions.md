@@ -127,11 +127,13 @@ CORE-HTTPCLIENT-01.A/B/C adds an outbound HTTP client contract on top of the net
 policy vocabulary. `HttpClient` imports from `sloppy/net` are Plan-visible as
 `stdlib.httpclient`, separate from raw TCP `stdlib.net`, because named clients,
 pipeline/transport policy, TLS validation, redirects, pooling, and redaction have a
-different security surface. The first slice is fail-closed only: no outbound HTTP transport
-or HTTPS/TLS backend is implemented yet. Future doctor/audit output must represent static
-targets and dynamic/partial targets honestly and must redact authorization headers,
-cookies, API keys, bearer tokens, config-backed secret values, secret query parameters,
-and TLS-sensitive material.
+different security surface. CORE-HTTPCLIENT-01.D adds the first cleartext `http://`
+HTTP/1.1 request/response lane over the CORE-NET TCP bridge. HTTPS/TLS, redirects,
+pooling, streaming bodies, named-client doctor metadata, and external-network security
+evidence remain deferred. Future doctor/audit output must represent static targets and
+dynamic/partial targets honestly and must redact authorization headers, cookies, API keys,
+bearer tokens, config-backed secret values, secret query parameters, and TLS-sensitive
+material.
 
 Network policy is not an OS sandbox claim. JavaScript never receives raw sockets, libuv
 handles, OS handles, raw native pointers, or backend resource internals. DNS/connect work

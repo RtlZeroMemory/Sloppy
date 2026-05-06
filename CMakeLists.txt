@@ -1809,9 +1809,13 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(
             NAME bootstrap.stdlib.os
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_os.mjs")
+        add_test(
+            NAME bootstrap.stdlib.http_client
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_http_client.mjs")
         set_tests_properties(
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
-            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os PROPERTIES
+            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
+            bootstrap.stdlib.http_client PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 

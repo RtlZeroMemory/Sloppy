@@ -125,7 +125,10 @@ CORE-NET-01.I adds network doctor/audit goldens, `examples.net.api_shape`, and
 `tests/conformance/net/README.md` so metadata, source examples, and conformance indexing
 are explicit.
 These tests still do not claim external network access, live-provider DNS breadth, TLS,
-HTTP client, UDP, WebSocket, or benchmark evidence.
+pooled/redirecting HTTP client behavior, UDP, WebSocket, or benchmark evidence.
+CORE-HTTPCLIENT-01.D adds `bootstrap.stdlib.http_client` for deterministic cleartext
+HTTP/1.1 client loopback status/header/body, consumed-body, malformed-response,
+body-limit, HTTPS-unavailable, and ambiguous-body checks over the TCP bridge.
 CORE-CODEC-01 tests must keep evidence claims narrow. Contract tests prove `sloppy/codec`
 import recognition, `stdlib.codec` Plan metadata, unavailable-feature diagnostics, stable
 codec diagnostic names/goldens, backend policy, and checksum non-security wording.

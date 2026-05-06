@@ -237,8 +237,10 @@ stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/
 `sloppy/providers/sqlite` to `provider.sqlite`.
 `HttpClient` named imports from `sloppy/net` map to the separate `stdlib.httpclient`
 feature because the outbound HTTP client has a distinct pipeline/transport/TLS policy
-from raw TCP. That feature is known to Plan validation but unavailable until the
-CORE-HTTPCLIENT implementation PRs provide the native backend.
+from raw TCP. That feature is active for V8 plans after CORE-HTTPCLIENT-01.D and depends
+on `stdlib.net` for the first cleartext HTTP/1.1 request/response lane. HTTPS/TLS,
+pooling, redirects, streaming bodies, and named-client doctor metadata remain future
+CORE-HTTPCLIENT slices.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
 Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.I
 registered vetted random/hash/HMAC/password/non-crypto hash backends, the
