@@ -3191,7 +3191,15 @@ Reason:
         const codecOptions = {};
         for (const key of allowedCodecOptions) {
             if (Object.prototype.hasOwnProperty.call(options, key)) {
-                codecOptions[key] = options[key];
+                if (key === "level") {
+                    codecOptions.level = requireCompressionLevel(options.level, operation);
+                } else if (key === "maxOutputBytes") {
+                    codecOptions.maxOutputBytes = requireCompressionLimit(
+                        options.maxOutputBytes,
+                        `${operation} maxOutputBytes`,
+                        DEFAULT_DECOMPRESSION_MAX_OUTPUT_BYTES,
+                    );
+                }
             }
         }
         return {
@@ -3238,21 +3246,11 @@ Reason:
     }
 
     function compressionCancelledError(reason = undefined) {
-        const error = new Error("Sloppy codec compression operation was cancelled.");
-        error.name = "CancelledError";
-        if (reason !== undefined) {
-            error.reason = reason;
-        }
-        return error;
+        return cancelledError(reason);
     }
 
     function compressionTimeoutError(reason = undefined) {
-        const error = new Error("Sloppy codec compression operation exceeded its deadline.");
-        error.name = "TimeoutError";
-        if (reason !== undefined) {
-            error.reason = reason;
-        }
-        return error;
+        return timeoutError(reason);
     }
 
     function codecDeadlineRemainingMs(deadline, operation) {

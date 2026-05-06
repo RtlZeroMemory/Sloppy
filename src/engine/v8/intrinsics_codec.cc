@@ -88,9 +88,13 @@ bool codec_v8_bytes_arg(v8::Local<v8::Value> value, std::vector<unsigned char>* 
     {
         return false;
     }
+    if (length == 0U) {
+        out->clear();
+        return true;
+    }
 
     std::shared_ptr<v8::BackingStore> backing = view->Buffer()->GetBackingStore();
-    if (backing == nullptr || offset > backing->ByteLength() ||
+    if (backing == nullptr || backing->Data() == nullptr || offset > backing->ByteLength() ||
         length > backing->ByteLength() - offset)
     {
         return false;
@@ -248,9 +252,8 @@ void codec_v8_gzip_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     if (args.Length() != 2 || !codec_v8_bytes_arg(args[0], &input) ||
         !codec_v8_int_arg(args[1], 0, 9, &level))
     {
-        codec_v8_throw_type_error(
-            isolate,
-            "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE: Compression.gzip arguments invalid");
+        codec_v8_throw_type_error(isolate,
+                                  "SLOPPY_E_INVALID_ARGUMENT: Compression.gzip arguments invalid");
         return;
     }
 
@@ -277,8 +280,7 @@ void codec_v8_gunzip_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         !codec_v8_size_arg(args[1], kCodecMaxDecompressedBytes, &max_output))
     {
         codec_v8_throw_type_error(
-            isolate,
-            "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE: Compression.gunzip arguments invalid");
+            isolate, "SLOPPY_E_INVALID_ARGUMENT: Compression.gunzip arguments invalid");
         return;
     }
 

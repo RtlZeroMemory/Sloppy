@@ -94,8 +94,10 @@ Compression and checksums:
 const gz = await Compression.gzip(bytes);
 const raw2 = await Compression.gunzip(gz);
 const stream = Compression.gzipStream(chunks, { signal, deadline });
-const crc = Checksums.crc32(bytes);
 ```
+
+Checksum examples land with CORE-CODEC-01.H/J, after the non-security checksum surface is
+implemented.
 
 ## Encoding Policy
 

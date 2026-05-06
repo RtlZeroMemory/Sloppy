@@ -147,11 +147,18 @@ assert.throws(() => Binary.reader([]), TypeError);
 
 async function collectAsyncBytes(stream) {
     const chunks = [];
+    let total = 0;
     for await (const chunk of stream) {
+        total += chunk.byteLength;
         chunks.push(chunk);
     }
-    assert.equal(chunks.length, 1);
-    return chunks[0];
+    const output = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        output.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return output;
 }
 
 function createAbortSignal() {
@@ -189,6 +196,21 @@ function stalledAsyncIterable() {
                     return new Promise(() => {});
                 },
                 return() {
+                    return { done: true };
+                },
+            };
+        },
+    };
+}
+
+function sideEffectIterable() {
+    return {
+        reads: 0,
+        [Symbol.iterator]() {
+            const source = this;
+            return {
+                next() {
+                    source.reads += 1;
                     return { done: true };
                 },
             };
@@ -242,6 +264,18 @@ try {
         async () => collectAsyncBytes(Compression.gunzipStream([compressed], { deadline: { remainingMs: () => 0 } })),
         (error) => error.name === "TimeoutError",
     );
+    const invalidGzipOptionsInput = sideEffectIterable();
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gzipStream(invalidGzipOptionsInput, { level: 99 })),
+        TypeError,
+    );
+    assert.equal(invalidGzipOptionsInput.reads, 0);
+    const invalidGunzipOptionsInput = sideEffectIterable();
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gunzipStream(invalidGunzipOptionsInput, { maxOutputBytes: 2 ** 40 })),
+        TypeError,
+    );
+    assert.equal(invalidGunzipOptionsInput.reads, 0);
     const controller = createAbortSignal();
     const stalledCompression = collectAsyncBytes(Compression.gzipStream(stalledAsyncIterable(), { signal: controller.signal }));
     controller.abort("stop");
