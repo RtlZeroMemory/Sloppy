@@ -481,9 +481,11 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: |
           set -euo pipefail
+          ninja_path="$(command -v ninja)"
           cmake_args=(
             --preset "${{ matrix.preset }}"
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_MAKE_PROGRAM="$ninja_path"
             -DSLOPPY_ENABLE_WERROR=ON
             -DSLOPPY_ENABLE_V8=OFF
             -DSLOPPY_ENGINE=none
