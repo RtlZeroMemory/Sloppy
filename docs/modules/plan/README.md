@@ -41,8 +41,8 @@ Implemented now:
   example/conformance evidence for the implemented `sloppy/crypto`
   random/hash/HMAC/Password/Secret/NonCryptoHash surface;
 - CORE-NET-01.A/B `stdlib.net` feature metadata for the `sloppy/net` import. It is known
-  to Plan validation but unavailable by default until the TCP backend and V8
-  implementation PRs land;
+  to Plan validation and now covers the implemented TCP surface plus CORE-NET-02 local IPC
+  API-shape metadata under the same network stdlib feature;
 - CORE-CODEC-01.A/B `stdlib.codec` feature metadata for the `sloppy/codec` import. It is
   known to Plan validation but unavailable by default until the codec implementation and
   V8/stdlib PRs land;

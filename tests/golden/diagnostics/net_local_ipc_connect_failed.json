@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_CONNECT_FAILED","severity":"error","message":"local IPC connect failed","hints":["Connect diagnostics must not expose raw socket, pipe, or OS handles."]}

@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE","severity":"error","message":"local IPC feature is unavailable","hints":["Enable LocalEndpoint only in a runtime lane with Unix socket or named pipe backends."]}

@@ -456,6 +456,45 @@ static SlStr sl_diag_net_code_name(SlDiagCode code)
     case SL_DIAG_NET_BACKEND_UNAVAILABLE:
         return sl_diag_literal("SLOPPY_E_NET_BACKEND_UNAVAILABLE",
                                sizeof("SLOPPY_E_NET_BACKEND_UNAVAILABLE") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_FEATURE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_UNSUPPORTED_PLATFORM:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_UNSUPPORTED_PLATFORM",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_UNSUPPORTED_PLATFORM") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_INVALID_PATH:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_INVALID_PATH",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_INVALID_PATH") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_PATH_DENIED:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_PATH_DENIED",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_PATH_DENIED") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_STALE_CLEANUP_FAILED:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_STALE_CLEANUP_FAILED",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_STALE_CLEANUP_FAILED") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_ENDPOINT_EXISTS:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_ENDPOINT_EXISTS",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_ENDPOINT_EXISTS") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_CONNECT_FAILED",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_CONNECT_FAILED") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_LISTEN_FAILED:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_LISTEN_FAILED",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_LISTEN_FAILED") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_ACCEPT_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_ACCEPT_CANCELLED",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_ACCEPT_CANCELLED") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_READ_WRITE_CANCELLED",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_READ_WRITE_CANCELLED") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_DISPOSED:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_DISPOSED",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_DISPOSED") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_BACKEND_UNAVAILABLE",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_BACKEND_UNAVAILABLE") - 1U);
+    case SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED:
+        return sl_diag_literal("SLOPPY_E_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED",
+                               sizeof("SLOPPY_E_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }
@@ -479,6 +518,19 @@ static bool sl_diag_is_net_code(SlDiagCode code)
     case SL_DIAG_NET_BACKPRESSURE_OVERFLOW:
     case SL_DIAG_NET_UNSUPPORTED_OPTION:
     case SL_DIAG_NET_BACKEND_UNAVAILABLE:
+    case SL_DIAG_NET_LOCAL_IPC_FEATURE_UNAVAILABLE:
+    case SL_DIAG_NET_LOCAL_IPC_UNSUPPORTED_PLATFORM:
+    case SL_DIAG_NET_LOCAL_IPC_INVALID_PATH:
+    case SL_DIAG_NET_LOCAL_IPC_PATH_DENIED:
+    case SL_DIAG_NET_LOCAL_IPC_STALE_CLEANUP_FAILED:
+    case SL_DIAG_NET_LOCAL_IPC_ENDPOINT_EXISTS:
+    case SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED:
+    case SL_DIAG_NET_LOCAL_IPC_LISTEN_FAILED:
+    case SL_DIAG_NET_LOCAL_IPC_ACCEPT_CANCELLED:
+    case SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED:
+    case SL_DIAG_NET_LOCAL_IPC_DISPOSED:
+    case SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE:
+    case SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED:
         return true;
     default:
         return false;

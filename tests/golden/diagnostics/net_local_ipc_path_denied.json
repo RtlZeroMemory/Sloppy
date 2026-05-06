@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_PATH_DENIED","severity":"error","message":"local IPC path was denied by policy","hints":["Strict local IPC policy requires an allow rule for the named root and operation."]}

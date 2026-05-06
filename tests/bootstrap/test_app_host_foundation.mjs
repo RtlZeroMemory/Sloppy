@@ -11,7 +11,9 @@ import {
     Hash,
     Hmac,
     InvalidDeadlineError,
+    LocalEndpoint,
     NetworkAddress,
+    NamedPipe,
     NonCryptoHash,
     Password,
     Random,
@@ -22,6 +24,7 @@ import {
     TimerDisposedError,
     TimeoutError,
     schema,
+    UnixSocket,
 } from "../../stdlib/sloppy/index.js";
 import { sqlite } from "../../stdlib/sloppy/providers/sqlite.js";
 
@@ -148,6 +151,66 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => NetworkAddress.parse("localhost:1e3"), /TCP port text/);
     assertThrowsMessage(() => NetworkAddress.parse("localhost:0x50"), /TCP port text/);
     assertThrowsMessage(() => NetworkAddress.parse("localhost:70000"), /TCP port/);
+}
+
+{
+    const previousSloppy = globalThis.__sloppy;
+    try {
+        globalThis.__sloppy = {
+            net: {
+                connectLocal(options) {
+                    return Promise.resolve({ kind: "local", options });
+                },
+                listenLocal(options) {
+                    return Promise.resolve({ kind: "server", options });
+                },
+            },
+        };
+
+        const conn = await LocalEndpoint.connect({ path: "runtime:/my-app.sock", timeoutMs: 1 });
+        assert.deepEqual(conn.options, { path: "runtime:/my-app.sock", timeoutMs: 1 });
+
+        const server = await LocalEndpoint.listen({
+            path: "runtime:/my-app.sock",
+            unlinkExisting: true,
+            permissions: "0600",
+            backlog: 4,
+        });
+        assert.equal(server.closed, false);
+        assert.deepEqual(server._handle.options, {
+            path: "runtime:/my-app.sock",
+            unlinkExisting: true,
+            permissions: "0600",
+            backlog: 4,
+        });
+        await server.close();
+        assert.equal(server.closed, true);
+
+        const unix = await UnixSocket.connect({ path: "runtime:/svc.sock" });
+        assert.equal(unix.options.backend, "unix");
+        const pipe = await NamedPipe.listen({ path: "runtime:/svc.sock" });
+        assert.equal(pipe._handle.options.backend, "namedPipe");
+
+        await assert.rejects(LocalEndpoint.connect({ path: "../bad.sock" }), /named-root/);
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/../bad.sock" }), /named root/);
+        await assert.rejects(
+            LocalEndpoint.listen({ path: "runtime:/ok.sock", permissions: "600" }),
+            /octal/,
+        );
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/ok.sock", backend: "bad" }), /backend/);
+
+        globalThis.__sloppy = { net: {} };
+        await assert.rejects(
+            LocalEndpoint.connect({ path: "runtime:/future.sock" }),
+            /SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE/,
+        );
+    } finally {
+        if (previousSloppy === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previousSloppy;
+        }
+    }
 }
 
 {

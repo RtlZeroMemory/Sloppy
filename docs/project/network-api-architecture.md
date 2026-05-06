@@ -1,10 +1,11 @@
 # Network API Architecture
 
-Status: CORE-NET-01.I conformance/examples/docs evidence. This document defines the low-level
-TCP/IP runtime API, policy model, feature metadata, diagnostics, and first native TCP
-client/connection/listener implementation. It is not execution evidence for live external
-network access, TLS, HTTP client behavior, UDP,
-WebSocket, or local IPC.
+Status: CORE-NET-01.I conformance/examples/docs evidence plus CORE-NET-02.A/B/F local IPC
+policy split. This document defines the low-level TCP/IP runtime API, policy model, feature
+metadata, diagnostics, and first native TCP client/connection/listener implementation. The
+local IPC source of truth is `docs/project/local-ipc-api-architecture.md`. This document is
+not execution evidence for live external network access, TLS, HTTP client behavior, UDP,
+WebSocket, Unix domain socket execution, or Windows named pipe execution.
 
 ## Goals
 
@@ -21,8 +22,9 @@ listeners:
 - Plan-visible network access metadata where the compiler can see it.
 
 The API is intentionally lower-level than HTTP. HTTP client/server, TLS, UDP, WebSocket,
-Unix domain sockets, Windows named pipes, Node `net` compatibility, and package-manager
-behavior are outside CORE-NET-01.
+Node `net` compatibility, and package-manager behavior are outside CORE-NET-01. CORE-NET-02
+adds local IPC policy and API shape under the same `sloppy/net` feature without broadening
+TCP behavior.
 
 ## Public Module
 
@@ -233,3 +235,7 @@ CORE-NET-01 does not add CORE-NET-02 local IPC, Unix domain sockets, Windows nam
 TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility, direct WinSock/epoll/kqueue/
 io_uring backends, crypto implementation, package-manager behavior, public alpha docs, or
 benchmark/performance claims.
+
+CORE-NET-02.A/B/F now specifies the local IPC contract and path policy separately. That
+policy slice does not prove Unix socket or named pipe execution; backend evidence remains
+deferred to platform-gated CORE-NET-02 implementation PRs.

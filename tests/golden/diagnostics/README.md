@@ -89,6 +89,19 @@ live-provider, package, stress, or benchmark evidence.
 | `os_pipe_closed.json` | default | OS diagnostics | Closed process pipe diagnostic JSON shape. |
 | `os_unsupported_platform_signal.json` | default | OS diagnostics | Unsupported platform signal diagnostic JSON shape. |
 | `os_signal_handler_failure.json` | default | OS diagnostics | Signal/shutdown handler failure diagnostic JSON shape. |
+| `net_local_ipc_feature_unavailable.json` | default | Local IPC diagnostics | LocalEndpoint requested before a Unix socket or named pipe backend is active. |
+| `net_local_ipc_unsupported_platform.json` | default | Local IPC diagnostics | Platform-specific UnixSocket/NamedPipe unsupported behavior. |
+| `net_local_ipc_invalid_path.json` | default | Local IPC diagnostics | Invalid named-root local endpoint path. |
+| `net_local_ipc_path_denied.json` | default | Local IPC diagnostics | Strict local endpoint path policy denial. |
+| `net_local_ipc_stale_cleanup_failed.json` | default | Local IPC diagnostics | Stale socket cleanup failure or denial. |
+| `net_local_ipc_endpoint_exists.json` | default | Local IPC diagnostics | Existing endpoint without allowed stale cleanup. |
+| `net_local_ipc_connect_failed.json` | default | Local IPC diagnostics | Local IPC connect failure without handle exposure. |
+| `net_local_ipc_listen_failed.json` | default | Local IPC diagnostics | Local IPC listen failure without raw endpoint internals. |
+| `net_local_ipc_accept_cancelled.json` | default | Local IPC diagnostics | Accept cancellation/timeout diagnostic shape. |
+| `net_local_ipc_read_write_cancelled.json` | default | Local IPC diagnostics | Read/write cancellation/timeout diagnostic shape. |
+| `net_local_ipc_disposed.json` | default | Local IPC diagnostics | Disposed connection/server stale-use diagnostic shape. |
+| `net_local_ipc_backend_unavailable.json` | default | Local IPC diagnostics | Backend unavailable diagnostic for platform/backend gaps. |
+| `net_local_ipc_permission_unsupported.json` | default | Local IPC diagnostics | Permission/mode unsupported diagnostic shape. |
 
 V8-gated exception, async, SQLite users API, and `sloppy run` diagnostic evidence stays in
 the V8-enabled CTest lane and its process tests. Default renderer goldens must not be

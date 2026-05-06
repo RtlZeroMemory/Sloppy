@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_BACKEND_UNAVAILABLE","severity":"error","message":"local IPC backend is unavailable","hints":["Unsupported platform/backend combinations fail honestly before native admission."]}

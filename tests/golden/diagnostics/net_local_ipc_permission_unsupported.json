@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED","severity":"error","message":"local IPC permission mode is unsupported","hints":["POSIX mode strings are applied only where the backend can enforce them."]}

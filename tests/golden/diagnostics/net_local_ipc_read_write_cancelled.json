@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_READ_WRITE_CANCELLED","severity":"error","message":"local IPC read or write was cancelled or timed out","hints":["Read/write cancellation and timeout must not be conflated with backend failure."]}

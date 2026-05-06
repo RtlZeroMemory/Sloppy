@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_ENDPOINT_EXISTS","severity":"error","message":"local IPC endpoint already exists","hints":["Set unlinkExisting only when stale-socket cleanup is intended and policy-allowed."]}

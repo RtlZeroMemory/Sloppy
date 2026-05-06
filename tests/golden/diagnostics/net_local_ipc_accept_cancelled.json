@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_ACCEPT_CANCELLED","severity":"error","message":"local IPC accept was cancelled or timed out","hints":["Accept cancellation and timeout remain distinguishable at the JS error boundary."]}
