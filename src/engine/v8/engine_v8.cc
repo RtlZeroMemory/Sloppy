@@ -844,6 +844,7 @@ bool sl_v8_install_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> contex
         !sloppy->Set(context, data_key, data).FromMaybe(false) ||
         !sl_v8_install_fs_intrinsics(backend, context, sloppy) ||
         !sl_v8_install_crypto_intrinsics(backend, context, sloppy) ||
+        !sl_v8_install_codec_intrinsics(backend, context, sloppy) ||
         !sl_v8_install_time_intrinsics(backend, context, sloppy) ||
         !context->Global()->Set(context, sloppy_key, sloppy).FromMaybe(false))
     {

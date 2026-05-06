@@ -697,12 +697,14 @@ handles, OS handles, V8 handles, raw native pointers, or package-manager state. 
 goldens prove deterministic diagnostic shape only; they do not prove TCP execution,
 external network access, throughput, V8 execution, or benchmark evidence.
 
-CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the contract-only
-feature/model slice. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the startup/Plan-gating
-diagnostic when `stdlib.codec` is required but the runtime feature is not enabled before
-execution begins. `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` is reserved for already-reached
-codec API paths when the API surface exists but a specific codec backend or optional lane
-is inactive. Other codec-specific codes are reserved for transformation/API failures:
+CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
+slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
+UTF-8 JS-facing transformation errors. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the
+startup/Plan-gating diagnostic when `stdlib.codec` is required but the runtime feature is
+not enabled before execution begins. `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` is reserved for
+already-reached codec API paths when the API surface exists but a specific codec backend or
+optional lane is inactive. Other codec-specific codes are reserved for transformation/API
+failures:
 
 - `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` for codec API use when the feature/backend lane is
   not active;
@@ -724,9 +726,10 @@ is inactive. Other codec-specific codes are reserved for transformation/API fail
 
 Codec diagnostics may name operation, encoding, checksum algorithm, backend family, byte
 length, and configured limits. They must not include raw tokens, secret-looking values,
-native pointers, V8 handles, OS handles, or package-manager state. Default goldens prove
-deterministic diagnostic shape only; they do not prove V8 execution, compression backend
-availability, streaming behavior, performance, or conformance vectors.
+native pointers, V8 handles, OS handles, or package-manager state. Default codec vectors
+prove Base64/Base64Url/Hex/UTF-8 behavior only for the current stdlib surface; they do not
+prove Binary, Compression, Checksums, compression backend availability, streaming
+compression behavior, performance, or final conformance coverage.
 
 App/request lifecycle diagnostics:
 

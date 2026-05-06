@@ -2,6 +2,7 @@ set(required_bootstrap_assets
     README.md
     app.js
     bootstrap.manifest.json
+    codec.js
     data.js
     fs.js
     time.js
