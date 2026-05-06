@@ -1,9 +1,9 @@
 # Network API Architecture
 
-Status: CORE-NET-01.E/F listener and stream lifecycle implementation. This document defines the low-level
+Status: CORE-NET-01.G DNS/address/socket-option implementation. This document defines the low-level
 TCP/IP runtime API, policy model, feature metadata, diagnostics, and first native TCP
-client/connection/listener implementation. It is not execution evidence for broad DNS
-policy, external network access, TLS, HTTP client behavior, UDP,
+client/connection/listener implementation. It is not execution evidence for live external
+network access, TLS, HTTP client behavior, UDP,
 WebSocket, or local IPC.
 
 ## Goals
@@ -34,7 +34,7 @@ import { TcpClient, TcpListener, TcpConnection, NetworkAddress } from "sloppy/ne
 
 The compiler recognizes only named, unaliased imports from `sloppy/net`. The import adds
 `stdlib.net` to emitted Plan `requiredFeatures[]`, emits `features.network = true`, and
-sets `strongPlan.evidence.network = true`. CORE-NET-01.E/F keeps `stdlib.net`
+sets `strongPlan.evidence.network = true`. CORE-NET-01.G keeps `stdlib.net`
 available when its dependencies are available and installs the initial `__sloppy.net`
 client/connection/listener bridge for active V8 plans.
 
@@ -67,8 +67,10 @@ client/connection/listener bridge for active V8 plans.
 - `abort(reason?)` tears down pending work and closes once;
 - endpoint metadata exposes safe local/remote address and port values.
 
-`NetworkAddress` parses and formats host/port data without exposing sockets, OS handles,
-libuv handles, raw native pointers, or resource internals to JavaScript.
+`NetworkAddress` parses and formats object addresses, `host:port` text, and bracketed
+IPv6 `[host]:port` text without exposing sockets, OS handles, libuv handles, raw native
+pointers, or resource internals to JavaScript. Unbracketed IPv6 text is rejected as
+ambiguous.
 
 ## Lifecycle
 
@@ -134,7 +136,7 @@ Future compiler/doctor behavior:
 - dynamic host/port values emit partial/dynamic metadata, not guessed endpoints;
 - source locations point to the API call or nearest literal option object where available.
 
-Runtime behavior after CORE-NET-01.E/F:
+Runtime behavior after CORE-NET-01.G:
 
 - `stdlib.net` is known to the feature registry;
 - default availability is true when the runtime lane has V8, libuv transport, and
@@ -144,10 +146,16 @@ Runtime behavior after CORE-NET-01.E/F:
 - `TcpConnection` supports bounded write, `writeText`, `read`, `readUntil`, `readLine`,
   endpoint metadata, close, abort, stale/closed-handle diagnostics, and embedded-NUL byte
   round trips;
-- `TcpListener` supports numeric loopback listen, ephemeral ports, bounded backlog,
+- `TcpListener` supports loopback listen, hostname/DNS-backed listen, ephemeral ports,
+  bounded backlog,
   blocking native accept, JS async accept iteration, close, abort, stale-listener
   diagnostics, and accept timeout status mapping. Signal/deadline cancellation remains
   follow-up hardening for the final stream/cancellation slice;
+- native address handling accepts numeric IPv4/IPv6 addresses and platform DNS results;
+  DNS resolution happens inside the platform backend and the V8 path runs it on the native
+  worker thread, not on the V8 owner thread;
+- `noDelay` and `keepAlive` are applied through the backend and failures surface
+  `SLOPPY_E_NET_UNSUPPORTED_OPTION`;
 - the V8 bridge exposes only JS-safe resource IDs and settles Promises on the owner thread
   after native worker-thread completion.
 
@@ -188,9 +196,9 @@ exactly once across success, failure, timeout, cancellation, abort, and shutdown
 
 ## Evidence Boundaries
 
-Default tests use deterministic localhost/loopback behavior only once the backend lands.
-External live-network tests are optional and reported separately. Skipped live-network
-lanes are not pass evidence.
+Default tests use deterministic localhost/loopback behavior, including numeric addresses
+and `localhost` DNS where it resolves locally. External live-network tests are optional
+and reported separately. Skipped live-network lanes are not pass evidence.
 
 Evidence lanes remain separate:
 

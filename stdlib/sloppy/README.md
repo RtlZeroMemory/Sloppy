@@ -59,9 +59,11 @@ not claim recursive or OS-native coalescing semantics.
 active Plan enables `stdlib.net`, `TcpClient.connect(...)` and `TcpConnection` operations
 use the private `__sloppy.net` bridge. The current runtime slice covers TCP client
 connections, bounded byte/text writes, `read`, `readUntil`, `readLine`, close, and abort.
-`TcpListener.listen` now uses the runtime `__sloppy.net` bridge for loopback/numeric TCP
-listeners, async accept iteration, and close/abort. DNS, external-network policy
-enforcement, and final socket-option coverage remain later CORE-NET slices.
+`TcpListener.listen` now uses the runtime `__sloppy.net` bridge for loopback TCP
+listeners, local hostname/DNS resolution, async accept iteration, and close/abort.
+`NetworkAddress.parse(...)` accepts object addresses, `host:port`, and bracketed
+`[ipv6]:port` text. External-network policy enforcement and final conformance/examples
+remain later CORE-NET slices.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the

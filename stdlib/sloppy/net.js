@@ -25,6 +25,27 @@ class NetworkAddress {
         if (value instanceof NetworkAddress) {
             return value;
         }
+        if (typeof value === "string") {
+            if (value.startsWith("[")) {
+                const end = value.indexOf("]");
+                if (end < 0 || value[end + 1] !== ":") {
+                    throw new TypeError("NetworkAddress IPv6 text must be [host]:port.");
+                }
+                return new NetworkAddress(
+                    value.slice(1, end),
+                    normalizePort(Number(value.slice(end + 2)), true),
+                );
+            }
+            const firstColon = value.indexOf(":");
+            const lastColon = value.lastIndexOf(":");
+            if (firstColon <= 0 || firstColon !== lastColon || lastColon === value.length - 1) {
+                throw new TypeError("NetworkAddress text must be host:port or [ipv6]:port.");
+            }
+            return new NetworkAddress(
+                value.slice(0, lastColon),
+                normalizePort(Number(value.slice(lastColon + 1)), true),
+            );
+        }
         if (typeof value !== "object" || value === null) {
             throw new TypeError("NetworkAddress.parse requires an address object.");
         }

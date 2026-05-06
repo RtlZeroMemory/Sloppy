@@ -699,8 +699,9 @@ Network diagnostics may name operation, policy mode, loopback/external classific
 redacted endpoint shape. They must not include secrets, headers, tokens, raw sockets, libuv
 handles, OS handles, V8 handles, raw native pointers, or package-manager state. Default
 goldens prove deterministic diagnostic shape only. Loopback client/listener tests prove
-scoped TCP execution; they do not prove external network access, throughput, broad DNS
-behavior, or benchmark evidence.
+scoped TCP execution, local `localhost` DNS resolution, IPv4/IPv6 address parsing, and
+socket-option failure mapping; they do not prove external network access, throughput,
+live-provider DNS behavior, or benchmark evidence.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and

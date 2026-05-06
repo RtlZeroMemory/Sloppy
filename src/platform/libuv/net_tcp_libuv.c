@@ -27,6 +27,14 @@ typedef struct SlTcpIoState
     size_t read_length;
 } SlTcpIoState;
 
+typedef struct SlTcpResolveState
+{
+    bool done;
+    int status;
+    bool found;
+    struct sockaddr_storage addr;
+} SlTcpResolveState;
+
 struct SlTcpConnection
 {
     uv_loop_t owned_loop;
@@ -127,6 +135,9 @@ static bool sl_tcp_copy_host_to_cstr(SlStr host, char out[SL_TCP_MAX_HOST_BYTES 
         return false;
     }
     for (size_t index = 0U; index < host.length; index += 1U) {
+        if (host.ptr[index] == '\0') {
+            return false;
+        }
         out[index] = host.ptr[index];
     }
     out[host.length] = '\0';
@@ -229,6 +240,43 @@ static void sl_tcp_read_cb(uv_stream_t* stream, ssize_t nread, const uv_buf_t* b
         connection->io.done = true;
         (void)uv_read_stop(stream);
     }
+}
+
+static void sl_tcp_resolve_cb(uv_getaddrinfo_t* req, int status, struct addrinfo* result)
+{
+    SlTcpResolveState* state = req == NULL ? NULL : (SlTcpResolveState*)req->data;
+    const struct addrinfo* candidate = result;
+
+    if (state == NULL) {
+        if (result != NULL) {
+            uv_freeaddrinfo(result);
+        }
+        return;
+    }
+    state->status = status;
+    while (status == 0 && candidate != NULL) {
+        if (candidate->ai_addr != NULL &&
+            (candidate->ai_family == AF_INET || candidate->ai_family == AF_INET6) &&
+            candidate->ai_addrlen <= sizeof(state->addr))
+        {
+            const unsigned char* source = (const unsigned char*)candidate->ai_addr;
+            unsigned char* destination = (unsigned char*)&state->addr;
+            size_t index = 0U;
+
+            memset(&state->addr, 0, sizeof(state->addr));
+            while (index < (size_t)candidate->ai_addrlen) {
+                destination[index] = source[index];
+                index += 1U;
+            }
+            state->found = true;
+            break;
+        }
+        candidate = candidate->ai_next;
+    }
+    if (result != NULL) {
+        uv_freeaddrinfo(result);
+    }
+    state->done = true;
 }
 
 static SlNetworkAddressFamily sl_tcp_endpoint_from_sockaddr(const struct sockaddr* addr,
@@ -361,11 +409,17 @@ static void sl_tcp_refresh_listener_endpoint(SlTcpListener* listener)
 }
 
 static SlStatus sl_tcp_parse_sockaddr(SlStr host_value, uint16_t port, bool allow_zero_port,
-                                      struct sockaddr_storage* out_addr, SlDiag* out_diag)
+                                      bool passive, struct sockaddr_storage* out_addr,
+                                      SlDiag* out_diag)
 {
     char host[SL_TCP_MAX_HOST_BYTES + 1U];
     struct sockaddr_in addr4;
     struct sockaddr_in6 addr6;
+    struct addrinfo hints;
+    uv_getaddrinfo_t request;
+    uv_loop_t loop;
+    SlTcpResolveState state = {0};
+    int uv_status = 0;
 
     if (out_addr == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -388,8 +442,40 @@ static SlStatus sl_tcp_parse_sockaddr(SlStr host_value, uint16_t port, bool allo
         *((struct sockaddr_in6*)out_addr) = addr6;
         return sl_status_ok();
     }
-    return sl_tcp_fail(out_diag, SL_DIAG_NET_DNS_FAILURE, SL_STATUS_UNSUPPORTED,
-                       sl_tcp_literal("DNS resolution failed"));
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    if (passive) {
+        hints.ai_flags = AI_PASSIVE;
+    }
+    uv_status = uv_loop_init(&loop);
+    if (uv_status != 0) {
+        return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_BACKEND_UNAVAILABLE,
+                                     sl_tcp_literal("TCP backend is unavailable"));
+    }
+    memset(&request, 0, sizeof(request));
+    request.data = &state;
+    uv_status = uv_getaddrinfo(&loop, &request, sl_tcp_resolve_cb, host, NULL, &hints);
+    if (uv_status == 0) {
+        while (!state.done) {
+            (void)uv_run(&loop, UV_RUN_DEFAULT);
+        }
+        uv_status = state.status;
+    }
+    (void)uv_loop_close(&loop);
+    if (uv_status != 0 || !state.found) {
+        return sl_tcp_fail(out_diag, SL_DIAG_NET_DNS_FAILURE, SL_STATUS_UNSUPPORTED,
+                           sl_tcp_literal("DNS resolution failed"));
+    }
+    *out_addr = state.addr;
+    if (((struct sockaddr*)out_addr)->sa_family == AF_INET) {
+        ((struct sockaddr_in*)out_addr)->sin_port = htons(port);
+    }
+    else if (((struct sockaddr*)out_addr)->sa_family == AF_INET6) {
+        ((struct sockaddr_in6*)out_addr)->sin6_port = htons(port);
+    }
+    return sl_status_ok();
 }
 
 static SlStatus sl_tcp_alloc_connection(SlArena* arena, size_t read_capacity, SlTcpConnection** out)
@@ -482,7 +568,7 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
     if (options == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_tcp_parse_sockaddr(options->host, options->port, false, &addr, out_diag);
+    status = sl_tcp_parse_sockaddr(options->host, options->port, false, false, &addr, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -512,11 +598,31 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
     connection->handle.data = connection;
 
     if (options->no_delay) {
-        (void)uv_tcp_nodelay(&connection->handle, 1);
+        uv_status = uv_tcp_nodelay(&connection->handle, 1);
+        if (uv_status != 0) {
+            connection->state = SL_TCP_CONNECTION_FAILED;
+            uv_close((uv_handle_t*)&connection->handle, sl_tcp_close_cb);
+            while (!connection->close_done) {
+                (void)uv_run(connection->loop, UV_RUN_DEFAULT);
+            }
+            (void)uv_loop_close(connection->loop);
+            return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_UNSUPPORTED_OPTION,
+                                         sl_tcp_literal("TCP noDelay is unsupported"));
+        }
     }
     if (options->keep_alive.enabled) {
         unsigned int delay_seconds = options->keep_alive.delay_ms / 1000U;
-        (void)uv_tcp_keepalive(&connection->handle, 1, delay_seconds);
+        uv_status = uv_tcp_keepalive(&connection->handle, 1, delay_seconds);
+        if (uv_status != 0) {
+            connection->state = SL_TCP_CONNECTION_FAILED;
+            uv_close((uv_handle_t*)&connection->handle, sl_tcp_close_cb);
+            while (!connection->close_done) {
+                (void)uv_run(connection->loop, UV_RUN_DEFAULT);
+            }
+            (void)uv_loop_close(connection->loop);
+            return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_UNSUPPORTED_OPTION,
+                                         sl_tcp_literal("TCP keepAlive is unsupported"));
+        }
     }
 
     connection->connect_req.data = connection;
@@ -597,7 +703,7 @@ SlStatus sl_tcp_listener_listen(SlArena* arena, const SlTcpListenOptions* option
     if (options == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_tcp_parse_sockaddr(options->host, options->port, true, &addr, out_diag);
+    status = sl_tcp_parse_sockaddr(options->host, options->port, true, true, &addr, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
