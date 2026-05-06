@@ -3467,6 +3467,27 @@ Reason:
             if (value instanceof NetworkAddress) {
                 return value;
             }
+            if (typeof value === "string") {
+                if (value.startsWith("[")) {
+                    const end = value.indexOf("]");
+                    if (end < 0 || value[end + 1] !== ":") {
+                        throw new TypeError("NetworkAddress IPv6 text must be [host]:port.");
+                    }
+                    return new NetworkAddress(
+                        value.slice(1, end),
+                        sloppyNetPortText(value.slice(end + 2)),
+                    );
+                }
+                const firstColon = value.indexOf(":");
+                const lastColon = value.lastIndexOf(":");
+                if (firstColon <= 0 || firstColon !== lastColon || lastColon === value.length - 1) {
+                    throw new TypeError("NetworkAddress text must be host:port or [ipv6]:port.");
+                }
+                return new NetworkAddress(
+                    value.slice(0, lastColon),
+                    sloppyNetPortText(value.slice(lastColon + 1)),
+                );
+            }
             if (value === null || typeof value !== "object") {
                 throw new TypeError("NetworkAddress.parse requires an address object.");
             }
@@ -3505,6 +3526,13 @@ Reason:
         return port;
     }
 
+    function sloppyNetPortText(text) {
+        if (typeof text !== "string" || text.length === 0 || !/^[0-9]+$/.test(text)) {
+            throw new TypeError("TCP port text must contain decimal digits.");
+        }
+        return sloppyNetPort(Number(text), true);
+    }
+
     function sloppyNetConnectOptions(options) {
         if (!isPlainObject(options)) {
             throw new TypeError("TcpClient.connect options must be a plain object.");
@@ -3522,6 +3550,18 @@ Reason:
                 throw new TypeError("TcpClient.connect timeoutMs must be a non-negative number.");
             }
             normalized.timeoutMs = Math.ceil(options.timeoutMs);
+        }
+        if (options.keepAlive !== undefined) {
+            if (!isPlainObject(options.keepAlive) || typeof options.keepAlive.enabled !== "boolean") {
+                throw new TypeError("TcpClient.connect keepAlive must be { enabled, delayMs? }.");
+            }
+            normalized.keepAlive = { enabled: options.keepAlive.enabled };
+            if (options.keepAlive.delayMs !== undefined) {
+                if (!Number.isFinite(options.keepAlive.delayMs) || options.keepAlive.delayMs < 0) {
+                    throw new TypeError("TcpClient.connect keepAlive.delayMs must be non-negative.");
+                }
+                normalized.keepAlive.delayMs = Math.ceil(options.keepAlive.delayMs);
+            }
         }
         return normalized;
     }

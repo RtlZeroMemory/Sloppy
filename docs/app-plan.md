@@ -231,8 +231,9 @@ Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-
 registered vetted random/hash/HMAC/password/non-crypto hash backends, the
 `__sloppy.crypto` intrinsic namespace, and source/conformance evidence for the scoped
 surface.
-The network descriptor is known but unavailable by default until CORE-NET implementation
-PRs register TCP backends and V8 intrinsics.
+The network descriptor is active for V8 plans after CORE-NET-01.G registered TCP
+client/listener backends, the `__sloppy.net` intrinsic namespace, and local address/DNS
+socket-option coverage for the scoped surface.
 The codec descriptor is active for V8 plans after CORE-CODEC-01.C/D/I registered the
 `__sloppy.codec` namespace; Base64/Base64Url/Hex/Text and Binary are implemented in the
 bootstrap JS surface, and Compression uses bounded native zlib gzip/gunzip helpers through

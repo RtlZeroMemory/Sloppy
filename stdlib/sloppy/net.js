@@ -25,6 +25,27 @@ class NetworkAddress {
         if (value instanceof NetworkAddress) {
             return value;
         }
+        if (typeof value === "string") {
+            if (value.startsWith("[")) {
+                const end = value.indexOf("]");
+                if (end < 0 || value[end + 1] !== ":") {
+                    throw new TypeError("NetworkAddress IPv6 text must be [host]:port.");
+                }
+                return new NetworkAddress(
+                    value.slice(1, end),
+                    parsePortText(value.slice(end + 2)),
+                );
+            }
+            const firstColon = value.indexOf(":");
+            const lastColon = value.lastIndexOf(":");
+            if (firstColon <= 0 || firstColon !== lastColon || lastColon === value.length - 1) {
+                throw new TypeError("NetworkAddress text must be host:port or [ipv6]:port.");
+            }
+            return new NetworkAddress(
+                value.slice(0, lastColon),
+                parsePortText(value.slice(lastColon + 1)),
+            );
+        }
         if (typeof value !== "object" || value === null) {
             throw new TypeError("NetworkAddress.parse requires an address object.");
         }
@@ -66,6 +87,13 @@ function normalizePort(port, allowZero) {
         throw new TypeError(`TCP port must be an integer from ${minimum} to 65535.`);
     }
     return port;
+}
+
+function parsePortText(text) {
+    if (typeof text !== "string" || text.length === 0 || !/^[0-9]+$/.test(text)) {
+        throw new TypeError("TCP port text must contain decimal digits.");
+    }
+    return normalizePort(Number(text), true);
 }
 
 function normalizeConnectOptions(options) {

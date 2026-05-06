@@ -2,7 +2,7 @@
 
 Parent EPIC: #581 CORE-NET-01: TCP/IP Networking Runtime API.
 
-Status: PR 3 listener/accept and stream lifecycle implementation.
+Status: PR 4 DNS/address/socket-option implementation.
 
 | Issue | Slice | PR Group | Status |
 | --- | --- | --- | --- |
@@ -12,7 +12,7 @@ Status: PR 3 listener/accept and stream lifecycle implementation.
 | #587 | TcpClient and TcpConnection API | PR 2 | `TcpClient` and `TcpConnection` native/std/V8 surface landed. |
 | #588 | TcpListener and Accept Loop API | PR 3 | `TcpListener`, loopback listen, ephemeral ports, accept, close/abort, and JS async accept iteration landed. |
 | #589 | Streams, Backpressure, Deadlines, and Cancellation | PR 3 | Bounded connection stream helpers, accept timeout, stale/closed lifecycle checks, and cleanup-once listener/connection paths landed; broader stress/torture remains final evidence. |
-| #590 | DNS, Address Parsing, IPv4/IPv6, and Socket Options | PR 4 | Deferred until address parsing, DNS, endpoint metadata, and socket options land. |
+| #590 | DNS, Address Parsing, IPv4/IPv6, and Socket Options | PR 4 | `NetworkAddress` text/object parsing, local DNS-backed listen, IPv4/IPv6 address handling, endpoint metadata, and checked `noDelay`/`keepAlive` option propagation landed. |
 | #591 | V8/Stdlib Integration and JS Surface | PR 2 | Native intrinsics and bootstrap stdlib surface landed, extended by PR 3 listener methods. |
 | #592 | Doctor/Audit, Conformance, Examples, Docs, and Goldens | PR 5 | Deferred until the final evidence/examples pass. |
 
@@ -40,6 +40,6 @@ Status: PR 3 listener/accept and stream lifecycle implementation.
 
 ## Evidence Expected Later
 
-Future PRs must add DNS/address/socket-option tests, examples, doctor/audit goldens, final
-network conformance, and platform skip reporting. External live-network and benchmark
-lanes remain optional and separately reported.
+Future PRs must add examples, doctor/audit goldens, final network conformance, and
+platform skip reporting. External live-network and benchmark lanes remain optional and
+separately reported.

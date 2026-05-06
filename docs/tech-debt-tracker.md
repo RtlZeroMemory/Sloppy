@@ -116,10 +116,12 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   feature-gated `__sloppy.net`, JS-safe TCP resource IDs, and deterministic loopback
   client conformance exist. CORE-NET-01.E/F adds `TcpListener`, ephemeral loopback listen,
   accept, JS async accept iteration, listener close/abort, and accept-timeout evidence.
-  #590 through #592 must still implement DNS/address/socket options, doctor/audit,
-  examples, final conformance goldens, and broader stress/torture evidence. Do not claim
+  CORE-NET-01.G adds `NetworkAddress` object/text parsing, local DNS/hostname-backed listen
+  coverage, IPv4/IPv6 address handling, and checked `noDelay`/`keepAlive` option
+  propagation. #592 must still implement doctor/audit, examples, final conformance
+  goldens, and broader stress/torture evidence. Do not claim
   external network access, TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
-  performance, or public alpha readiness from the listener slice.
+  performance, or public alpha readiness from the current TCP slice.
 - Codec API implementation after CORE-CODEC-01.F/G: `stdlib.codec`, the `sloppy/codec`
   import contract, backend/dependency policy, stable diagnostics, Base64/Base64Url/Hex,
   UTF-8 text and streaming decoder, bootstrap/runtime exports, and V8 namespace smoke
