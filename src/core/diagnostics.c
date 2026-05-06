@@ -311,6 +311,10 @@ static SlStr sl_diag_crypto_code_name(SlDiagCode code)
     case SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE:
         return sl_diag_literal("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE",
                                sizeof("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE") - 1U);
+    case SL_DIAG_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING:
+        return sl_diag_literal("SLOPPY_W_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING",
+                               sizeof("SLOPPY_W_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING") -
+                                   1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }
@@ -329,6 +333,7 @@ static bool sl_diag_is_crypto_code(SlDiagCode code)
     case SL_DIAG_CRYPTO_SECRET_DISPOSED:
     case SL_DIAG_CRYPTO_CONSTANT_TIME_INVALID_INPUT:
     case SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE:
+    case SL_DIAG_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING:
         return true;
     default:
         return false;

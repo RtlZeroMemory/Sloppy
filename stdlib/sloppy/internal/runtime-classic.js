@@ -2343,9 +2343,9 @@ Reason:
     });
 
     const NonCryptoHash = Object.freeze({
-        xxHash64() {
-            throw new Error(
-                "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: NonCryptoHash.xxHash64 lands in CORE-CRYPTO-01.G.",
+        xxHash64(data) {
+            return nativeCrypto("NonCryptoHash.xxHash64").nonCryptoXxHash64(
+                dataToBytes(data, "NonCryptoHash.xxHash64"),
             );
         },
     });

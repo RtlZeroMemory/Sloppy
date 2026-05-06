@@ -43,6 +43,7 @@ live-provider, package, stress, or benchmark evidence.
 | `crypto_secret_disposed.json` | default | Crypto diagnostics | Disposed Secret stale-use diagnostic shape. |
 | `crypto_constant_time_invalid_input.json` | default | Crypto diagnostics | Constant-time comparison input validation diagnostic. |
 | `crypto_backend_unavailable.json` | default | Crypto diagnostics | Backend unavailable diagnostic without leaking backend secrets. |
+| `crypto_noncrypto_hash_security_context_warning.json` | default | Crypto diagnostics | Warning when NonCryptoHash use looks security-like. |
 | `codec_feature_unavailable.json` | default | Codec diagnostics | Codec feature unavailable diagnostic JSON shape. |
 | `codec_unsupported_encoding.json` | default | Codec diagnostics | Unsupported encoding diagnostic JSON shape. |
 | `codec_invalid_base64.json` | default | Codec diagnostics | Invalid standard Base64 diagnostic JSON shape. |

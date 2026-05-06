@@ -1,0 +1,11 @@
+Sloppy Doctor
+
+[ok] bootstrap.assets: bootstrap runtime asset found
+[warn] engine.v8: V8 bridge disabled in this build; V8 runtime tests not run
+[warn] providers.live: live provider checks are not configured by default and no live DB was contacted
+[warn] package.runtime: local CLI checks do not prove package release readiness
+[ok] app.plan.parse: app plan parsed by native Plan v1 parser
+[warn] app.plan.routes: no route metadata present
+[warn] app.plan.providers: provider metadata not present
+[warn] app.plan.capabilities: capability metadata not present
+[warn] stdlib.crypto.noncrypto_hash.security_context: NonCryptoHash.xxHash64 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance

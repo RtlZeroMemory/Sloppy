@@ -102,9 +102,11 @@ CORE-CRYPTO-01 tests must keep evidence claims narrow. Contract tests prove
 diagnostics, stable crypto diagnostic names/goldens, and redaction helper coverage.
 CORE-CRYPTO-01.E adds password hash/verify/needsRehash coverage for the selected
 `libsodium` Argon2id PHC backend, unsupported-format checks, bootstrap stdlib smoke
-coverage, and V8-gated owner-thread settlement evidence. Deterministic tests must not
-claim randomness quality, password cracking cost, timing resistance, benchmark
-performance, WebCrypto/Node/Bun compatibility, or public alpha readiness.
+coverage, and V8-gated owner-thread settlement evidence. CORE-CRYPTO-01.G adds
+dependency-backed xxHash64 known-answer vectors, JS/V8 `NonCryptoHash` smoke coverage, and
+doctor/golden coverage for security-looking static use. Deterministic tests must not claim
+randomness quality, password cracking cost, timing resistance, benchmark performance,
+WebCrypto/Node/Bun compatibility, or public alpha readiness.
 
 CORE-CODEC-01 tests must keep evidence claims narrow. Contract tests may prove
 `sloppy/codec` import recognition, `stdlib.codec` Plan metadata, unavailable-feature

@@ -324,6 +324,45 @@ static int test_password_rejects_unsupported_format(void)
     return 0;
 }
 
+static int test_noncrypto_xxhash64_vectors(void)
+{
+    static const unsigned char hello[] = {'h', 'e', 'l', 'l', 'o'};
+    uint64_t hash = 0U;
+    char hex[SL_CRYPTO_XXHASH64_HEX_LENGTH] = {0};
+
+    if (expect_status(sl_crypto_noncrypto_xxhash64(sl_bytes_empty(), &hash), SL_STATUS_OK) != 0 ||
+        hash != UINT64_C(0xef46db3751d8e999))
+    {
+        return 60;
+    }
+
+    if (expect_status(
+            sl_crypto_noncrypto_xxhash64(sl_bytes_from_parts(hello, sizeof(hello)), &hash),
+            SL_STATUS_OK) != 0 ||
+        hash != UINT64_C(0x26c7827d889f6da3))
+    {
+        return 61;
+    }
+
+    if (expect_status(sl_crypto_noncrypto_xxhash64_hex(sl_bytes_from_parts(hello, sizeof(hello)),
+                                                       hex, sizeof(hex)),
+                      SL_STATUS_OK) != 0 ||
+        expect_text_equal(hex, "26c7827d889f6da3", sizeof(hex)) != 0)
+    {
+        return 62;
+    }
+
+    if (expect_status(sl_crypto_noncrypto_xxhash64(sl_bytes_from_parts(NULL, 1U), &hash),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_crypto_noncrypto_xxhash64_hex(sl_bytes_empty(), hex, sizeof(hex) - 1U),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 63;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = test_random_shapes();
@@ -346,5 +385,9 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_password_rejects_unsupported_format();
+    result = test_password_rejects_unsupported_format();
+    if (result != 0) {
+        return result;
+    }
+    return test_noncrypto_xxhash64_vectors();
 }

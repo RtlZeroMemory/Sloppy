@@ -916,6 +916,14 @@ static int test_crypto_diagnostic_json_goldens(void)
     {
         return 139;
     }
+    if (expect_crypto_json_snapshot(
+            SL_DIAG_SEVERITY_WARNING, SL_DIAG_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING,
+            "non-cryptographic hash used in a security-looking context",
+            "Use Hash or Hmac for security or attacker-resistance.",
+            "tests/golden/diagnostics/crypto_noncrypto_hash_security_context_warning.json") != 0)
+    {
+        return 140;
+    }
 
     return 0;
 }
@@ -1061,7 +1069,7 @@ static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1071,7 +1079,7 @@ static int test_stable_code_registry_complete(void)
 
     if (expect_str_equal(
             sl_diag_code_name(
-                (SlDiagCode)((size_t)SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING + 1U)),
+                (SlDiagCode)((size_t)SL_DIAG_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;

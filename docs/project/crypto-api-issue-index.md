@@ -2,7 +2,7 @@
 
 Parent EPIC: #571 CORE-CRYPTO-01: Crypto, Random, Hashing, Password, and Secret Utilities.
 
-Status: PR 3 password hashing and V8 offload implementation.
+Status: PR 4 NonCryptoHash implementation.
 
 | Issue | Slice | PR Group | Status |
 | --- | --- | --- | --- |
@@ -12,7 +12,7 @@ Status: PR 3 password hashing and V8 offload implementation.
 | #575 | Hash and HMAC APIs | PR 2 | Implemented SHA-256/SHA-384/SHA-512 and HMAC-SHA-256/SHA-384/SHA-512 through vetted backends. |
 | #576 | Password Hashing and Verification | PR 3 | Implemented with libsodium Argon2id PHC strings and V8 owner-thread settlement. |
 | #577 | Constant-Time and Secret Buffer Utilities | PR 2 | Implemented constant-time equality helper and cleanup-once Secret utilities. |
-| #578 | Non-Cryptographic Hash Utilities | PR 4 | Deferred until dependency-backed `NonCryptoHash` implementation lands. |
+| #578 | Non-Cryptographic Hash Utilities | PR 4 | Implemented dependency-backed `NonCryptoHash.xxHash64` with security-separation warnings. |
 | #579 | V8/Stdlib Integration and JS Surface | PR 2 | Implemented `__sloppy.crypto`, `stdlib/sloppy/crypto.js`, bootstrap runtime exports, and V8 smoke coverage. |
 | #580 | Conformance, Test Vectors, Examples, Docs, and Goldens | PR 5 | Deferred until the final evidence/examples pass. |
 
@@ -56,9 +56,17 @@ Status: PR 3 password hashing and V8 offload implementation.
 - V8 password operations use worker-thread requests and settle promises on the V8 owner
   thread.
 
+## Implementation Decisions In PR 4
+
+- `NonCryptoHash.xxHash64(data)` uses the vetted `xxhash` dependency with seed `0`.
+- The JS API returns a lowercase 16-character hex string to avoid 64-bit number precision
+  traps.
+- Compiler-emitted doctor checks warn when static source visibility suggests
+  `NonCryptoHash.xxHash64` is being used in a security-looking context. The warning is a
+  bounded static cue, not comprehensive enforcement.
+
 ## Evidence Expected Later
 
-Future PRs must add standard hash/HMAC vectors, password format tests, random API shape and
-failure diagnostics, secret redaction/disposal tests, non-crypto known-answer vectors,
-V8-gated smoke where available, example source checks, and diagnostic goldens. Randomness
-quality and performance claims are explicitly out of scope for deterministic tests.
+Future PRs must add final example source checks and conformance/golden consolidation across
+the whole crypto surface. Randomness quality and performance claims are explicitly out of
+scope for deterministic tests.

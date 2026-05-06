@@ -11,6 +11,7 @@
     "openssl",
     "libpq",
     "sqlite3",
+    "xxhash",
     "yyjson"
   ]
 }

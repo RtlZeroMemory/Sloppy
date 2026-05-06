@@ -192,6 +192,7 @@ struct ExtractedApp {
     uses_time_runtime: bool,
     uses_fs_runtime: bool,
     uses_crypto_runtime: bool,
+    noncrypto_hash_security_context_visible: bool,
     uses_codec_runtime: bool,
 }
 
@@ -318,6 +319,7 @@ struct AppState {
     time_imported: bool,
     fs_imported: bool,
     crypto_imported: bool,
+    noncrypto_hash_security_context_visible: bool,
     codec_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
@@ -352,6 +354,7 @@ impl AppState {
             time_imported: false,
             fs_imported: false,
             crypto_imported: false,
+            noncrypto_hash_security_context_visible: false,
             codec_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
@@ -1024,6 +1027,7 @@ struct ModuleGraph {
     source_files: Vec<SourceFile>,
     uses_time_runtime: bool,
     uses_crypto_runtime: bool,
+    noncrypto_hash_security_context_visible: bool,
     uses_codec_runtime: bool,
 }
 
@@ -1046,6 +1050,7 @@ impl ModuleGraph {
             source_files: Vec::new(),
             uses_time_runtime: false,
             uses_crypto_runtime: false,
+            noncrypto_hash_security_context_visible: false,
             uses_codec_runtime: false,
         }
     }
@@ -1085,6 +1090,7 @@ fn extract_entry(
 
     let source_name = graph.record_source(path, source);
     let mut state = AppState::new();
+    state.noncrypto_hash_security_context_visible = noncrypto_hash_security_context_visible(source);
     state.schema_names = collect_schema_declaration_names(&parsed.program.body);
     for statement in &parsed.program.body {
         if state.dynamic_import.is_none() {
@@ -1293,6 +1299,8 @@ fn extract_entry(
         uses_time_runtime: state.time_imported || graph.uses_time_runtime,
         uses_fs_runtime: state.fs_imported,
         uses_crypto_runtime: state.crypto_imported || graph.uses_crypto_runtime,
+        noncrypto_hash_security_context_visible: state.noncrypto_hash_security_context_visible
+            || graph.noncrypto_hash_security_context_visible,
         uses_codec_runtime: state.codec_imported || graph.uses_codec_runtime,
     })
 }
@@ -1346,6 +1354,25 @@ fn sloppy_crypto_import_name_supported(name: &str) -> bool {
         name,
         "Random" | "Hash" | "Hmac" | "Password" | "ConstantTime" | "Secret" | "NonCryptoHash"
     )
+}
+
+fn noncrypto_hash_security_context_visible(source: &str) -> bool {
+    let lowered = source.to_ascii_lowercase();
+    lowered.contains("noncryptohash.xxhash64")
+        && [
+            "auth",
+            "credential",
+            "hmac",
+            "integrity",
+            "mac",
+            "password",
+            "secret",
+            "signature",
+            "token",
+            "verify",
+        ]
+        .iter()
+        .any(|needle| lowered.contains(needle))
 }
 
 fn sloppy_codec_import_name_supported(name: &str) -> bool {
@@ -3029,6 +3056,8 @@ fn extract_relative_module(
         .with_path(&imported.path)
     })?;
     let source_name = graph.record_source(&imported.path, &source);
+    graph.noncrypto_hash_security_context_visible |=
+        noncrypto_hash_security_context_visible(&source);
     let source_type = source_type_for_path(&imported.path, ParseContext::Module)?;
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, &source, source_type).parse();
@@ -5840,6 +5869,16 @@ fn emit_plan(
         value["strongPlan"]["evidence"]["codec"] = json!(true);
         value["features"]["codec"] = json!(true);
     }
+    if app.uses_crypto_runtime && app.noncrypto_hash_security_context_visible {
+        value["strongPlan"]["evidence"]["nonCryptoHashSecurityContext"] = json!(true);
+        value["doctorChecks"] = json!([
+            {
+                "id": "stdlib.crypto.noncrypto_hash.security_context",
+                "status": "warn",
+                "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance"
+            }
+        ]);
+    }
     if !required_features.is_empty() {
         value["requiredFeatures"] = json!(required_features);
     }
@@ -6581,6 +6620,7 @@ mod tests {
             uses_time_runtime: false,
             uses_fs_runtime: false,
             uses_crypto_runtime: false,
+            noncrypto_hash_security_context_visible: false,
             uses_codec_runtime: false,
         };
         config
@@ -8119,6 +8159,43 @@ export default app;
         assert_eq!(
             value["strongPlan"]["evidence"]["crypto"],
             serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn sloppy_crypto_noncrypto_hash_security_context_emits_doctor_warning() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { NonCryptoHash } from "sloppy/crypto";
+const app = Sloppy.create();
+const tokenHash = NonCryptoHash.xxHash64("token");
+app.mapGet("/token", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/crypto import should be recognized");
+        assert!(app.noncrypto_hash_security_context_visible);
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(
+            value["strongPlan"]["evidence"]["nonCryptoHashSecurityContext"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            value["doctorChecks"][0]["id"],
+            serde_json::json!("stdlib.crypto.noncrypto_hash.security_context")
+        );
+        assert_eq!(
+            value["doctorChecks"][0]["status"],
+            serde_json::json!("warn")
         );
     }
 

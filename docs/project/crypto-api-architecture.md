@@ -90,7 +90,8 @@ registers the V8 intrinsic namespace for active `stdlib.crypto` plans.
 `NonCryptoHash`:
 
 - Non-security hashes live only under `NonCryptoHash`.
-- `NonCryptoHash.xxHash64(data)` is the selected initial API when the dependency lands.
+- `NonCryptoHash.xxHash64(data)` returns a lowercase 16-character hex string for the
+  xxHash64 value computed with seed `0`.
 - Non-crypto helpers must not appear in security examples and must not be described as
   password, MAC, signature, token, or integrity primitives.
 
@@ -142,9 +143,9 @@ options are accepted only inside documented bounds.
 `bcrypt` and `PBKDF2` remain compatibility/deferred work unless a later PR explicitly
 selects and tests them.
 
-Non-cryptographic hashing uses a vetted `xxhash` dependency or equivalent approved
-implementation. It must not reuse the existing internal `SlStr`/`SlBytes` deterministic
-hash helpers as a public algorithm contract.
+Non-cryptographic hashing uses the vetted `xxhash` dependency. It does not reuse the
+existing internal `SlStr`/`SlBytes` deterministic hash helpers as a public algorithm
+contract.
 
 ## Async and Owner-Thread Policy
 

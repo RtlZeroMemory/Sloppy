@@ -1,0 +1,1 @@
+{"code":"SLOPPY_W_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING","severity":"warning","message":"non-cryptographic hash used in a security-looking context","hints":["Use Hash or Hmac for security or attacker-resistance."]}

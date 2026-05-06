@@ -2,9 +2,8 @@
  * src/engine/v8/intrinsics_crypto.cc
  *
  * Installs the V8-internal crypto bridge under __sloppy.crypto. This bridge exposes
- * bounded synchronous primitives only; public stdlib functions keep async return shapes
- * where the contract requires them. Password hashing is intentionally absent until the
- * dedicated offload PR.
+ * bounded synchronous primitives and password offload entrypoints. Public stdlib
+ * functions keep async return shapes where the contract requires them.
  */
 #include "engine_v8_internal.h"
 #include "string_interop.h"
@@ -727,6 +726,32 @@ void crypto_v8_constant_time_equals_callback(const v8::FunctionCallbackInfo<v8::
     args.GetReturnValue().Set(v8::Boolean::New(isolate, equal));
 }
 
+void crypto_v8_noncrypto_xxhash64_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    std::vector<unsigned char> data;
+    char hex[SL_CRYPTO_XXHASH64_HEX_LENGTH] = {0};
+    v8::Local<v8::String> result;
+
+    if (args.Length() != 1 || !crypto_v8_bytes_arg(args[0], kCryptoMaxInlineBytes, &data)) {
+        crypto_v8_throw_type_error(
+            isolate, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: NonCryptoHash.xxHash64 requires "
+                     "bounded Uint8Array data");
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_crypto_noncrypto_xxhash64_hex(
+            sl_bytes_from_parts(data.data(), data.size()), hex, sizeof(hex))) ||
+        !sl_status_is_ok(crypto_v8_to_local_string(
+            isolate, sl_str_from_parts(hex, SL_CRYPTO_XXHASH64_HEX_LENGTH), &result)))
+    {
+        crypto_v8_throw_error(isolate,
+                              "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: xxHash64 backend unavailable");
+        return;
+    }
+    args.GetReturnValue().Set(result);
+}
+
 void crypto_v8_password_hash_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     crypto_v8_start_password_request(args, SlV8CryptoPasswordOperation::Hash);
@@ -777,6 +802,8 @@ bool sl_v8_install_crypto_intrinsics(SlV8Engine* backend, v8::Local<v8::Context>
         !crypto_v8_set_function(isolate, context, crypto, "hmac", crypto_v8_hmac_callback) ||
         !crypto_v8_set_function(isolate, context, crypto, "constantTimeEquals",
                                 crypto_v8_constant_time_equals_callback) ||
+        !crypto_v8_set_function(isolate, context, crypto, "nonCryptoXxHash64",
+                                crypto_v8_noncrypto_xxhash64_callback) ||
         !crypto_v8_set_function(isolate, context, crypto, "passwordHash",
                                 crypto_v8_password_hash_callback) ||
         !crypto_v8_set_function(isolate, context, crypto, "passwordVerify",

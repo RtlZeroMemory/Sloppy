@@ -37,8 +37,8 @@ Implemented now:
   V8 intrinsic namespaces where implemented;
 - CORE-TIME-01.A/B `stdlib.time` feature metadata for the `sloppy/time` import;
 - CORE-FS-01.A/B `stdlib.fs` feature metadata for the `sloppy/fs` import;
-- CORE-CRYPTO-01.E `stdlib.crypto` feature metadata and V8 intrinsic activation for the
-  implemented `sloppy/crypto` random/hash/HMAC/Password/Secret surface;
+- CORE-CRYPTO-01.G `stdlib.crypto` feature metadata and V8 intrinsic activation for the
+  implemented `sloppy/crypto` random/hash/HMAC/Password/Secret/NonCryptoHash surface;
 - CORE-CODEC-01.A/B `stdlib.codec` feature metadata for the `sloppy/codec` import. It is
   known to Plan validation but unavailable by default until the codec implementation and
   V8/stdlib PRs land;
