@@ -977,6 +977,25 @@ static int test_os_feature_diagnostic_golden(void)
     return 0;
 }
 
+static int test_http_client_feature_diagnostic_golden(void)
+{
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.httpclient")}};
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlPlan plan = target_only_plan();
+
+    availability.stdlib_http_client = false;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_http_client.json") != 0)
+    {
+        return 81;
+    }
+
+    return 0;
+}
+
 static int test_http_client_required_feature_activates_tcp_dependency(void)
 {
     unsigned char diag_storage[2048];
@@ -1037,6 +1056,7 @@ int main(void)
         test_codec_feature_diagnostic_golden,
         test_net_feature_diagnostic_golden,
         test_os_feature_diagnostic_golden,
+        test_http_client_feature_diagnostic_golden,
         test_http_client_required_feature_activates_tcp_dependency,
     };
     size_t index = 0U;

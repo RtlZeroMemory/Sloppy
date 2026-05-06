@@ -520,6 +520,16 @@ function parseHttpSize(value, operation) {
     );
 }
 
+function hasHttpControlChars(value) {
+    for (let index = 0; index < value.length; index += 1) {
+        const code = value.charCodeAt(index);
+        if (code < 0x20 || code === 0x7f) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function parseHttpPort(text, operation) {
     if (text === undefined || text === "") {
         return undefined;
@@ -637,26 +647,41 @@ function parseAbsoluteHttpUrl(url, operation) {
         portText = firstColon < 0 ? undefined : authority.slice(firstColon + 1);
         hostHeader = host;
     }
-    if (host.length === 0 || host.includes("\0")) {
+    if (host.length === 0 || hasHttpControlChars(host)) {
         throw httpClientError(
             "HttpClientInvalidUrlError",
             "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
-            `${operation} URL host is invalid.`,
+            `${operation} URL contains invalid control characters.`,
         );
     }
 
     const port = parseHttpPort(portText, operation) ?? 80;
     const headerPort = port === 80 ? "" : `:${port}`;
+    const resolvedHostHeader = `${hostHeader}${headerPort}`;
+    if (hasHttpControlChars(resolvedHostHeader) || hasHttpControlChars(target)) {
+        throw httpClientError(
+            "HttpClientInvalidUrlError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+            `${operation} URL contains invalid control characters.`,
+        );
+    }
     return Object.freeze({
         scheme,
         host,
         port,
-        hostHeader: `${hostHeader}${headerPort}`,
+        hostHeader: resolvedHostHeader,
         target,
     });
 }
 
 function resolveHttpUrl(baseOptions, requestUrl, operation) {
+    if (typeof requestUrl === "string" && hasHttpControlChars(requestUrl)) {
+        throw httpClientError(
+            "HttpClientInvalidUrlError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+            `${operation} URL contains invalid control characters.`,
+        );
+    }
     if (typeof requestUrl === "string" && requestUrl.includes("://")) {
         return parseAbsoluteHttpUrl(requestUrl, operation);
     }
@@ -781,6 +806,90 @@ function findHttpHeaderEnd(bytes) {
     return -1;
 }
 
+function findHttpCrlf(bytes, start) {
+    for (let index = start + 1; index < bytes.byteLength; index += 1) {
+        if (bytes[index - 1] === 13 && bytes[index] === 10) {
+            return index - 1;
+        }
+    }
+    return -1;
+}
+
+function incompleteHttpChunk(complete, message) {
+    if (!complete) {
+        return undefined;
+    }
+    throw httpClientError(
+        "HttpClientMalformedResponseError",
+        "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+        message,
+    );
+}
+
+function parseHttpChunkedBody(bodyBytes, maxResponseBytes, complete) {
+    const chunks = [];
+    let totalLength = 0;
+    let offset = 0;
+
+    while (true) {
+        const sizeLineEnd = findHttpCrlf(bodyBytes, offset);
+        if (sizeLineEnd < 0) {
+            return incompleteHttpChunk(complete, "HTTP chunked response ended before a chunk size.");
+        }
+        const sizeLine = httpBytesToAscii(bodyBytes.slice(offset, sizeLineEnd));
+        const sizeText = sizeLine.split(";", 1)[0].trim();
+        if (!/^[0-9A-Fa-f]+$/.test(sizeText)) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP chunked response chunk size is malformed.",
+            );
+        }
+        const size = Number.parseInt(sizeText, 16);
+        if (!Number.isSafeInteger(size)) {
+            throw httpClientError(
+                "HttpClientResponseLimitError",
+                "SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT",
+                "HTTP response body exceeded the configured limit.",
+            );
+        }
+        offset = sizeLineEnd + 2;
+        if (size === 0) {
+            if (offset + 2 > bodyBytes.byteLength) {
+                return incompleteHttpChunk(complete, "HTTP chunked response ended before trailers.");
+            }
+            if (bodyBytes[offset] === 13 && bodyBytes[offset + 1] === 10) {
+                return concatHttpBytes(chunks, totalLength);
+            }
+            const trailerEnd = findHttpHeaderEnd(bodyBytes.slice(offset));
+            if (trailerEnd < 0) {
+                return incompleteHttpChunk(complete, "HTTP chunked response trailers are incomplete.");
+            }
+            return concatHttpBytes(chunks, totalLength);
+        }
+        if (totalLength + size > maxResponseBytes) {
+            throw httpClientError(
+                "HttpClientResponseLimitError",
+                "SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT",
+                "HTTP response body exceeded the configured limit.",
+            );
+        }
+        if (offset + size + 2 > bodyBytes.byteLength) {
+            return incompleteHttpChunk(complete, "HTTP chunked response ended before a complete chunk.");
+        }
+        if (bodyBytes[offset + size] !== 13 || bodyBytes[offset + size + 1] !== 10) {
+            throw httpClientError(
+                "HttpClientMalformedResponseError",
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP chunked response chunk terminator is malformed.",
+            );
+        }
+        chunks.push(bodyBytes.slice(offset, offset + size));
+        totalLength += size;
+        offset += size + 2;
+    }
+}
+
 class HttpHeaderBag {
     constructor(entries) {
         this._entries = entries;
@@ -879,14 +988,19 @@ function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = fa
             transferEncoding = value.toLowerCase();
         }
     }
-    if (transferEncoding !== undefined && transferEncoding !== "identity") {
+    if (transferEncoding === "chunked") {
+        const decoded = parseHttpChunkedBody(bodyBytes, maxResponseBytes, complete);
+        if (decoded === undefined) {
+            return undefined;
+        }
+        bodyBytes = decoded;
+    } else if (transferEncoding !== undefined && transferEncoding !== "identity") {
         throw httpClientError(
             "HttpClientMalformedResponseError",
             "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
             "HTTP response Transfer-Encoding is not supported in this slice.",
         );
-    }
-    if (contentLength !== undefined) {
+    } else if (contentLength !== undefined) {
         if (contentLength > maxResponseBytes) {
             throw httpClientError(
                 "HttpClientResponseLimitError",
@@ -1072,7 +1186,9 @@ function mapHttpTransportError(error) {
 async function sendHttpRequest(baseOptions, request, options = undefined, defaultMethod = undefined) {
     let connection;
     const normalized = normalizeHttpRequest(baseOptions, request, options, defaultMethod);
-    try {
+    let timeoutId;
+    let timedOut = false;
+    const run = async () => {
         if (typeof globalThis.__sloppy?.net?.connect !== "function") {
             return await httpClientUnavailable("request");
         }
@@ -1084,12 +1200,47 @@ async function sendHttpRequest(baseOptions, request, options = undefined, defaul
         });
         await connection.write(serializeHttpRequest(normalized));
         return await readHttpResponse(connection, normalized);
+    };
+
+    try {
+        if (normalized.timeoutMs === undefined) {
+            return await run();
+        }
+        return await Promise.race([
+            run(),
+            new Promise((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    timedOut = true;
+                    if (connection !== undefined) {
+                        connection.abort().catch(() => {});
+                    }
+                    reject(
+                        httpClientError(
+                            "HttpClientTimeoutError",
+                            "SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT",
+                            "HTTP client request timed out.",
+                        ),
+                    );
+                }, normalized.timeoutMs);
+            }),
+        ]);
     } catch (error) {
         if (error instanceof SloppyNetError && String(error.message).startsWith("SLOPPY_E_HTTP_CLIENT_")) {
             throw error;
         }
+        if (timedOut) {
+            throw httpClientError(
+                "HttpClientTimeoutError",
+                "SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT",
+                "HTTP client request timed out.",
+                { cause: error },
+            );
+        }
         throw mapHttpTransportError(error);
     } finally {
+        if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+        }
         if (connection !== undefined) {
             await connection.close().catch(() => {});
         }

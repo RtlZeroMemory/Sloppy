@@ -104,6 +104,14 @@ function createNodeNetBridge() {
         return first.subarray(0, maxBytes);
     }
 
+    function requireHandle(handleRef) {
+        const handle = handles.get(handleRef.id);
+        if (handle === undefined) {
+            throw new Error("SLOPPY_E_NET_CONNECTION_CLOSED");
+        }
+        return handle;
+    }
+
     return {
         connect(options) {
             return new Promise((resolve, reject) => {
@@ -145,7 +153,12 @@ function createNodeNetBridge() {
         },
 
         write(handleRef, bytes) {
-            const handle = handles.get(handleRef.id);
+            let handle;
+            try {
+                handle = requireHandle(handleRef);
+            } catch (error) {
+                return Promise.reject(error);
+            }
             return new Promise((resolve, reject) => {
                 handle.socket.write(Buffer.from(bytes), (error) => {
                     if (error != null) {
@@ -158,7 +171,12 @@ function createNodeNetBridge() {
         },
 
         read(handleRef, maxBytes) {
-            const handle = handles.get(handleRef.id);
+            let handle;
+            try {
+                handle = requireHandle(handleRef);
+            } catch (error) {
+                return Promise.reject(error);
+            }
             if (handle.chunks.length > 0) {
                 return Promise.resolve(readFromHandle(handle, maxBytes));
             }
@@ -171,9 +189,14 @@ function createNodeNetBridge() {
         },
 
         close(handleRef) {
-            const handle = handles.get(handleRef.id);
+            let handle;
+            try {
+                handle = requireHandle(handleRef);
+            } catch (error) {
+                return Promise.reject(error);
+            }
             handles.delete(handleRef.id);
-            handle?.socket.destroy();
+            handle.socket.destroy();
             return Promise.resolve();
         },
 
@@ -238,6 +261,19 @@ await withNodeNetBridge(async () => {
 });
 
 await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n");
+
+    try {
+        const response = await HttpClient.get(`${server.url}/chunked`);
+
+        assert.equal(response.status, 200);
+        assert.equal(await response.text(), "hello");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
     let observed;
     const server = await startHttpServer((request) => {
         observed = request;
@@ -273,6 +309,16 @@ await assertRejectsMessage(
     /SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY/,
 );
 
+await assertRejectsMessage(
+    () => HttpClient.get("http://127.0.0.1/\r\nx-test: injected"),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_URL/,
+);
+
+await assertRejectsMessage(
+    () => HttpClient.create({ baseUrl: "http://127.0.0.1" }).get("/ok\r\nx-test: injected"),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_URL/,
+);
+
 await withNodeNetBridge(async () => {
     const server = await startHttpServer(() => "wat\r\n\r\n");
     try {
@@ -282,6 +328,30 @@ await withNodeNetBridge(async () => {
         );
     } finally {
         await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = net.createServer(async (socket) => {
+        socket.on("error", () => {});
+        await readSocketRequest(socket);
+    });
+    const baseUrl = await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            server.off("error", reject);
+            const address = server.address();
+            resolve(`http://127.0.0.1:${address.port}`);
+        });
+    });
+
+    try {
+        await assertRejectsMessage(
+            () => HttpClient.get(`${baseUrl}/timeout`, { timeoutMs: 20 }),
+            /SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT/,
+        );
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
     }
 });
 
