@@ -4,6 +4,26 @@
 
 typedef int (*FeatureTestFn)(void);
 
+static SlPlanDataProvider empty_data_provider(void)
+{
+    SlPlanDataProvider provider;
+
+    provider.token = sl_str_empty();
+    provider.provider = sl_str_empty();
+    provider.capability = sl_str_empty();
+    provider.service = sl_str_empty();
+    provider.database = sl_str_empty();
+    return provider;
+}
+
+static SlPlanRequiredFeature empty_required_feature(void)
+{
+    SlPlanRequiredFeature feature;
+
+    feature.id = sl_str_empty();
+    return feature;
+}
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
@@ -622,7 +642,7 @@ static int test_sqlite_provider_metadata_activates_sqlite(void)
     SlArena diag_arena = {0};
     SlPlanHandler handlers[1];
     SlPlanRoute routes[1];
-    SlPlanDataProvider providers[1] = {{0}};
+    SlPlanDataProvider providers[1] = {empty_data_provider()};
     SlPlan plan = base_plan(handlers, routes);
     SlRuntimeFeatureAvailability availability = all_available();
     SlRuntimeFeatureSet set = {0};
@@ -782,8 +802,8 @@ static int test_missing_feature_diagnostic_goldens(void)
 {
     SlPlanHandler handlers[1];
     SlPlanRoute routes[1];
-    SlPlanDataProvider providers[1] = {{0}};
-    SlPlanRequiredFeature required[1] = {{0}};
+    SlPlanDataProvider providers[1] = {empty_data_provider()};
+    SlPlanRequiredFeature required[1] = {empty_required_feature()};
     SlRuntimeFeatureAvailability availability = all_available();
     SlPlan plan = base_plan(handlers, routes);
 

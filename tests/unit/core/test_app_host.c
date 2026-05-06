@@ -42,6 +42,18 @@ typedef struct LifecycleCleanupPayload
 
 typedef int (*AppHostTestFn)(void);
 
+static SlPlanDataProvider empty_data_provider(void)
+{
+    SlPlanDataProvider provider;
+
+    provider.token = sl_str_empty();
+    provider.provider = sl_str_empty();
+    provider.capability = sl_str_empty();
+    provider.service = sl_str_empty();
+    provider.database = sl_str_empty();
+    return provider;
+}
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
@@ -282,7 +294,7 @@ static int test_duplicate_service_token_fails_startup(void)
     SlArena diag_arena = {0};
     SlPlanHandler handlers[1];
     SlPlanRoute routes[1];
-    SlPlanDataProvider providers[2] = {{0}};
+    SlPlanDataProvider providers[2] = {empty_data_provider(), empty_data_provider()};
     SlPlan plan = valid_plan(handlers, routes);
     SlDiag diag = {0};
     SlAppHostStartupValidation options;
@@ -317,7 +329,7 @@ static int test_startup_reports_plan_driven_runtime_features(void)
     SlArena diag_arena = {0};
     SlPlanHandler handlers[1];
     SlPlanRoute routes[1];
-    SlPlanDataProvider providers[1] = {{0}};
+    SlPlanDataProvider providers[1] = {empty_data_provider()};
     SlPlan plan = valid_plan(handlers, routes);
     SlDiag diag = {0};
     SlRuntimeFeatureSet features = {0};
