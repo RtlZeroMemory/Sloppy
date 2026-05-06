@@ -1011,31 +1011,31 @@ static int test_codec_diagnostic_json_goldens(void)
     {
         return 170;
     }
-    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_UNSUPPORTED_ENCODING,
-                                   "unsupported codec encoding",
-                                   "Use a supported encoding from sloppy/codec.",
-                                   "tests/golden/diagnostics/codec_unsupported_encoding.json") != 0)
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_UNSUPPORTED_ENCODING,
+            "unsupported codec encoding", "Use a supported encoding from sloppy/codec.",
+            "tests/golden/diagnostics/codec_unsupported_encoding.json") != 0)
     {
         return 171;
     }
     if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_BASE64,
-                                   "invalid base64 input",
-                                   "Base64 decoding is strict and reports malformed input.",
-                                   "tests/golden/diagnostics/codec_invalid_base64.json") != 0)
+                                    "invalid base64 input",
+                                    "Base64 decoding is strict and reports malformed input.",
+                                    "tests/golden/diagnostics/codec_invalid_base64.json") != 0)
     {
         return 172;
     }
     if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_BASE64URL,
-                                   "invalid base64url input",
-                                   "Base64Url decoding uses its own alphabet and padding policy.",
-                                   "tests/golden/diagnostics/codec_invalid_base64url.json") != 0)
+                                    "invalid base64url input",
+                                    "Base64Url decoding uses its own alphabet and padding policy.",
+                                    "tests/golden/diagnostics/codec_invalid_base64url.json") != 0)
     {
         return 173;
     }
-    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_HEX,
-                                   "invalid hex input",
-                                   "Hex input must use complete byte pairs in the selected policy.",
-                                   "tests/golden/diagnostics/codec_invalid_hex.json") != 0)
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_HEX, "invalid hex input",
+            "Hex input must use complete byte pairs in the selected policy.",
+            "tests/golden/diagnostics/codec_invalid_hex.json") != 0)
     {
         return 174;
     }
