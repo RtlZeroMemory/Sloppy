@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_INVALID_HEX","severity":"error","message":"invalid hex input","hints":["Hex input must use complete byte pairs in the selected policy."]}

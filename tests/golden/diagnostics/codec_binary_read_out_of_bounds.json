@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS","severity":"error","message":"binary read exceeded available bytes","hints":["Binary readers must check remaining bytes before advancing."]}

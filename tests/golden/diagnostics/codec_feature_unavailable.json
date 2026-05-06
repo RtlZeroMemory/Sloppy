@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_FEATURE_UNAVAILABLE","severity":"error","message":"codec feature is unavailable","hints":["Enable stdlib.codec only in a runtime lane with registered codec backends."]}

@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_INVALID_BASE64URL","severity":"error","message":"invalid base64url input","hints":["Base64Url decoding uses its own alphabet and padding policy."]}

@@ -644,6 +644,77 @@ static int test_time_and_crypto_code_names(void)
     return test_crypto_code_names();
 }
 
+static int test_codec_code_names(void)
+{
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_FEATURE_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_FEATURE_UNAVAILABLE")) != 0)
+    {
+        return 150;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_UNSUPPORTED_ENCODING),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_UNSUPPORTED_ENCODING")) != 0)
+    {
+        return 151;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_INVALID_BASE64),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_INVALID_BASE64")) != 0)
+    {
+        return 152;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_INVALID_BASE64URL),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_INVALID_BASE64URL")) != 0)
+    {
+        return 153;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_INVALID_HEX),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_INVALID_HEX")) != 0)
+    {
+        return 154;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_MALFORMED_UTF8),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_MALFORMED_UTF8")) != 0)
+    {
+        return 155;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_BINARY_READ_OUT_OF_BOUNDS),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS")) != 0)
+    {
+        return 156;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE")) !=
+        0)
+    {
+        return 157;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_COMPRESSION_BACKEND_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE")) != 0)
+    {
+        return 158;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_DECOMPRESSION_LIMIT_EXCEEDED),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED")) != 0)
+    {
+        return 159;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_COMPRESSED_STREAM_CORRUPT),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT")) != 0)
+    {
+        return 160;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM),
+                         sl_str_from_cstr("SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM")) != 0)
+    {
+        return 161;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING),
+                         sl_str_from_cstr("SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT")) != 0)
+    {
+        return 162;
+    }
+    return 0;
+}
+
 static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
                                      const char* snapshot)
 {
@@ -849,11 +920,147 @@ static int test_crypto_diagnostic_json_goldens(void)
     return 0;
 }
 
+static int expect_codec_json_snapshot(SlDiagSeverity severity, SlDiagCode code, const char* message,
+                                      const char* hint, const char* snapshot)
+{
+    unsigned char buffer[2048];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlStr rendered;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 1;
+    }
+    if (expect_status(
+            sl_diag_builder_init(&builder, &arena, severity, code, sl_str_from_cstr(message)),
+            SL_STATUS_OK) != 0)
+    {
+        return 2;
+    }
+    if (expect_status(sl_diag_builder_add_hint(&builder, sl_str_from_cstr(hint)), SL_STATUS_OK) !=
+        0)
+    {
+        return 3;
+    }
+    if (expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0) {
+        return 4;
+    }
+    if (expect_status(sl_diag_render_json(&arena, &diag, &rendered), SL_STATUS_OK) != 0) {
+        return 5;
+    }
+    return expect_snapshot(rendered, snapshot);
+}
+
+static int test_codec_diagnostic_json_goldens(void)
+{
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_FEATURE_UNAVAILABLE,
+            "codec feature is unavailable",
+            "Enable stdlib.codec only in a runtime lane with registered codec backends.",
+            "tests/golden/diagnostics/codec_feature_unavailable.json") != 0)
+    {
+        return 170;
+    }
+    if (expect_codec_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_UNSUPPORTED_ENCODING,
+                                   "unsupported codec encoding",
+                                   "Use a supported encoding from sloppy/codec.",
+                                   "tests/golden/diagnostics/codec_unsupported_encoding.json") != 0)
+    {
+        return 171;
+    }
+    if (expect_codec_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_BASE64,
+                                   "invalid base64 input",
+                                   "Base64 decoding is strict and reports malformed input.",
+                                   "tests/golden/diagnostics/codec_invalid_base64.json") != 0)
+    {
+        return 172;
+    }
+    if (expect_codec_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_BASE64URL,
+                                   "invalid base64url input",
+                                   "Base64Url decoding uses its own alphabet and padding policy.",
+                                   "tests/golden/diagnostics/codec_invalid_base64url.json") != 0)
+    {
+        return 173;
+    }
+    if (expect_codec_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_INVALID_HEX,
+                                   "invalid hex input",
+                                   "Hex input must use complete byte pairs in the selected policy.",
+                                   "tests/golden/diagnostics/codec_invalid_hex.json") != 0)
+    {
+        return 174;
+    }
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_MALFORMED_UTF8, "malformed UTF-8 input",
+            "Fatal mode rejects malformed input; replacement mode is explicit.",
+            "tests/golden/diagnostics/codec_malformed_utf8.json") != 0)
+    {
+        return 175;
+    }
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_BINARY_READ_OUT_OF_BOUNDS,
+            "binary read exceeded available bytes",
+            "Binary readers must check remaining bytes before advancing.",
+            "tests/golden/diagnostics/codec_binary_read_out_of_bounds.json") != 0)
+    {
+        return 176;
+    }
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE,
+            "invalid binary endian or field size",
+            "Binary APIs expose explicit endian and supported width methods only.",
+            "tests/golden/diagnostics/codec_binary_invalid_endian_or_field_size.json") != 0)
+    {
+        return 177;
+    }
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_COMPRESSION_BACKEND_UNAVAILABLE,
+            "compression backend is unavailable",
+            "Dependency-backed compression lanes must fail closed when unavailable.",
+            "tests/golden/diagnostics/codec_compression_backend_unavailable.json") != 0)
+    {
+        return 178;
+    }
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_DECOMPRESSION_LIMIT_EXCEEDED,
+            "decompression output limit exceeded",
+            "Decompression must enforce the configured max output policy.",
+            "tests/golden/diagnostics/codec_decompression_limit_exceeded.json") != 0)
+    {
+        return 179;
+    }
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_COMPRESSED_STREAM_CORRUPT,
+            "compressed stream is corrupt",
+            "Corrupt compressed input fails deterministically without partial success.",
+            "tests/golden/diagnostics/codec_compressed_stream_corrupt.json") != 0)
+    {
+        return 180;
+    }
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM,
+            "checksum algorithm is unsupported",
+            "Checksums are non-security utilities and expose only documented algorithms.",
+            "tests/golden/diagnostics/codec_checksum_unsupported_algorithm.json") != 0)
+    {
+        return 181;
+    }
+    if (expect_codec_json_snapshot(
+            SL_DIAG_SEVERITY_WARNING, SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING,
+            "checksum used in a security-looking context",
+            "Use sloppy/crypto Hash or Hmac for security or attacker-resistance.",
+            "tests/golden/diagnostics/codec_checksum_security_context_warning.json") != 0)
+    {
+        return 182;
+    }
+    return 0;
+}
+
 static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -862,7 +1069,8 @@ static int test_stable_code_registry_complete(void)
     }
 
     if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_CRYPTO_BACKEND_UNAVAILABLE + 1U)),
+            sl_diag_code_name(
+                (SlDiagCode)((size_t)SL_DIAG_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
@@ -1480,7 +1688,7 @@ static int test_snapshots(void)
     return 0;
 }
 
-int main(void)
+static int test_code_name_groups(void)
 {
     int result = test_names_and_spans();
     if (result != 0) {
@@ -1500,6 +1708,10 @@ int main(void)
     if (result != 0) {
         return result;
     }
+    result = test_codec_code_names();
+    if (result != 0) {
+        return result;
+    }
 
     result = test_engine_async_code_names();
     if (result != 0) {
@@ -1507,6 +1719,36 @@ int main(void)
     }
 
     result = test_stable_code_registry_complete();
+    if (result != 0) {
+        return result;
+    }
+
+    return 0;
+}
+
+static int test_diagnostic_json_golden_groups(void)
+{
+    int result = test_diagnostic_golden_suite_expansion();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_time_diagnostic_json_goldens();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_crypto_diagnostic_json_goldens();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_codec_diagnostic_json_goldens();
+}
+
+int main(void)
+{
+    int result = test_code_name_groups();
     if (result != 0) {
         return result;
     }
@@ -1536,17 +1778,7 @@ int main(void)
         return result;
     }
 
-    result = test_diagnostic_golden_suite_expansion();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_time_diagnostic_json_goldens();
-    if (result != 0) {
-        return result;
-    }
-
-    result = test_crypto_diagnostic_json_goldens();
+    result = test_diagnostic_json_golden_groups();
     if (result != 0) {
         return result;
     }
