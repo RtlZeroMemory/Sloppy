@@ -945,6 +945,10 @@ if(SLOPPY_ENABLE_TESTS)
         tests/golden/cli/doctor-crypto-noncrypto-hash-text.txt)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
         tests/golden/cli/doctor-crypto-noncrypto-hash-json.json)
+    set(SLOPPY_DOCTOR_CODEC_CHECKSUM_TEXT_GOLDEN
+        tests/golden/cli/doctor-codec-checksum-text.txt)
+    set(SLOPPY_DOCTOR_CODEC_CHECKSUM_JSON_GOLDEN
+        tests/golden/cli/doctor-codec-checksum-json.json)
     if(SLOPPY_ENABLE_V8)
         set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text-v8.txt)
         set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json-v8.json)
@@ -958,6 +962,10 @@ if(SLOPPY_ENABLE_TESTS)
             tests/golden/cli/doctor-crypto-noncrypto-hash-text-v8.txt)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
             tests/golden/cli/doctor-crypto-noncrypto-hash-json-v8.json)
+        set(SLOPPY_DOCTOR_CODEC_CHECKSUM_TEXT_GOLDEN
+            tests/golden/cli/doctor-codec-checksum-text-v8.txt)
+        set(SLOPPY_DOCTOR_CODEC_CHECKSUM_JSON_GOLDEN
+            tests/golden/cli/doctor-codec-checksum-json-v8.json)
     endif()
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_text ${SLOPPY_DOCTOR_TEXT_GOLDEN} doctor --plan
@@ -991,6 +999,14 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy.cli.doctor_crypto_noncrypto_hash_json
         ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/crypto-noncrypto-hash.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_codec_checksum_text
+        ${SLOPPY_DOCTOR_CODEC_CHECKSUM_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/codec-checksum.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_codec_checksum_json
+        ${SLOPPY_DOCTOR_CODEC_CHECKSUM_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/codec-checksum.plan.json --format json)
     sloppy_add_cli_nonzero_golden_test(
         sloppy.cli.audit_text tests/golden/cli/audit-text.txt audit --plan
         tests/fixtures/cli/audit-problems.plan.json --format text)
@@ -1758,6 +1774,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.crypto.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_crypto_examples.cmake")
+    add_test(
+        NAME examples.codec.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_codec_examples.cmake")
     add_test(
         NAME examples.net.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P

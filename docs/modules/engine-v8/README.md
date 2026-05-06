@@ -85,9 +85,10 @@ CORE-CODEC-01.C/D/I registers the private `__sloppy.codec` namespace marker for 
 for this slice, and CORE-CODEC-01.E keeps Binary reader/writer behavior in that same JS
 surface. The namespace intentionally exposes no raw native handles and no public
 compatibility promise. CORE-CODEC-01.F/G adds bounded native zlib gzip/gunzip bridge
-functions under that namespace for the public stdlib compression helpers. Checksums,
-incremental native streaming, and any larger compression offload remain dedicated later
-CORE-CODEC work.
+functions under that namespace for the public stdlib compression helpers. CORE-CODEC-01.H/J
+keeps CRC32 in the JS stdlib/runtime layer because it does not need native handles or
+owner-thread Promise settlement. Incremental native streaming and any larger compression
+offload remain dedicated later CORE-CODEC work.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
@@ -218,8 +219,8 @@ Framework and provider bridge code belongs in sibling V8 modules:
   settle through the owner-thread async loop.
 - `intrinsics_codec.cc` owns the active `stdlib.codec` namespace and the bounded zlib
   gzip/gunzip bridge functions. Base64/Base64Url/Hex/Text and Binary stay in the bootstrap
-  JS surface for the current slices. Later Checksum bridge functions, incremental native
-  compression, or any future native Binary acceleration must stay in this V8 module,
+  JS surface for the current slices, and CRC32 remains JS-owned. Incremental native
+  compression or any future native Binary acceleration must stay in this V8 module,
   preserve owned byte/text boundaries, and settle any async work on the owner thread.
   Compression work that can materially block must offload away from the V8 owner thread.
 - Native provider, filesystem, HTTP, timer, or other future completions must pass any

@@ -137,9 +137,11 @@ endian, signed/unsigned width, 64-bit BigInt, bounds, seek, embedded-byte, and w
 capacity vectors. CORE-CODEC-01.F/G adds JS stdlib tests for compression option
 validation, bounded async-iterable transform behavior, cancellation/deadline checks, and
 V8-gated zlib gzip/gunzip roundtrip, corrupt stream, and decompression-limit evidence.
-Later implementation tests must still cover checksum vectors and final conformance without claiming
-Node Buffer/Web Streams/Bun/Deno compatibility, benchmark performance, or public alpha
-readiness.
+CORE-CODEC-01.H/J adds CRC32 known-answer vectors, source example shape checks,
+checksum security-context compiler warnings, and `tests/conformance/codec/README.md` as
+the evidence index. These tests still do not claim Node Buffer/Web Streams/Bun/Deno
+compatibility, checksum security, benchmark performance, package readiness, or public
+alpha readiness.
 
 FRAMEWORK-01.B adds configuration coverage across Rust compiler tests, JS stdlib tests,
 compiler golden artifacts, source-input process tests, and the SQLite users API fixture.

@@ -3441,13 +3441,36 @@ Reason:
         },
     });
 
+    function makeCrc32Table() {
+        const table = new Uint32Array(256);
+        for (let index = 0; index < table.length; index += 1) {
+            let value = index;
+            for (let bit = 0; bit < 8; bit += 1) {
+                value = (value >>> 1) ^ (value & 1 ? CRC32_POLYNOMIAL_REFLECTED : 0);
+            }
+            table[index] = value >>> 0;
+        }
+        return table;
+    }
+
+    // CRC-32/ISO-HDLC uses the reflected IEEE 802.3 polynomial, all-ones init, and final xor.
+    const CRC32_POLYNOMIAL_REFLECTED = 0xedb88320;
+    const CRC32_INITIAL = 0xffffffff;
+    const CRC32_FINAL_XOR = 0xffffffff;
+    const CRC32_TABLE = makeCrc32Table();
+    const CHECKSUM_UNSUPPORTED_ALGORITHM_DIAGNOSTIC = "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM";
+
+    function crc32(bytes) {
+        bytes = requireBytes(bytes, "Checksums.crc32");
+        let crc = CRC32_INITIAL;
+        for (let index = 0; index < bytes.byteLength; index += 1) {
+            crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ bytes[index]) & 0xff];
+        }
+        return (crc ^ CRC32_FINAL_XOR) >>> 0;
+    }
+
     const Checksums = Object.freeze({
-        crc32() {
-            throw codecError(
-                "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM",
-                "Checksums.crc32 lands in CORE-CODEC-01.H.",
-            );
-        },
+        crc32,
     });
 
     class NetworkAddress {

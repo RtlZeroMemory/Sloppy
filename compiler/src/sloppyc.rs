@@ -195,6 +195,7 @@ struct ExtractedApp {
     uses_crypto_runtime: bool,
     noncrypto_hash_security_context_visible: bool,
     uses_codec_runtime: bool,
+    checksum_security_context_visible: bool,
     uses_net_runtime: bool,
 }
 
@@ -323,6 +324,7 @@ struct AppState {
     crypto_imported: bool,
     noncrypto_hash_security_context_visible: bool,
     codec_imported: bool,
+    checksum_security_context_visible: bool,
     net_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
@@ -359,6 +361,7 @@ impl AppState {
             crypto_imported: false,
             noncrypto_hash_security_context_visible: false,
             codec_imported: false,
+            checksum_security_context_visible: false,
             net_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
@@ -1033,6 +1036,7 @@ struct ModuleGraph {
     uses_crypto_runtime: bool,
     noncrypto_hash_security_context_visible: bool,
     uses_codec_runtime: bool,
+    checksum_security_context_visible: bool,
     uses_net_runtime: bool,
 }
 
@@ -1057,6 +1061,7 @@ impl ModuleGraph {
             uses_crypto_runtime: false,
             noncrypto_hash_security_context_visible: false,
             uses_codec_runtime: false,
+            checksum_security_context_visible: false,
             uses_net_runtime: false,
         }
     }
@@ -1097,6 +1102,7 @@ fn extract_entry(
     let source_name = graph.record_source(path, source);
     let mut state = AppState::new();
     state.noncrypto_hash_security_context_visible = noncrypto_hash_security_context_visible(source);
+    state.checksum_security_context_visible = checksum_security_context_visible(source);
     state.schema_names = collect_schema_declaration_names(&parsed.program.body);
     for statement in &parsed.program.body {
         if state.dynamic_import.is_none() {
@@ -1306,6 +1312,8 @@ fn extract_entry(
         noncrypto_hash_security_context_visible: state.noncrypto_hash_security_context_visible
             || graph.noncrypto_hash_security_context_visible,
         uses_codec_runtime: state.codec_imported || graph.uses_codec_runtime,
+        checksum_security_context_visible: state.checksum_security_context_visible
+            || graph.checksum_security_context_visible,
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
     })
 }
@@ -1366,6 +1374,18 @@ fn noncrypto_hash_security_context_visible(source: &str) -> bool {
 }
 
 fn source_contains_noncrypto_xxhash64_member(source: &str) -> bool {
+    source_contains_ascii_member(source, "NonCryptoHash", "xxHash64")
+}
+
+fn checksum_security_context_visible(source: &str) -> bool {
+    source_contains_checksum_crc32_member(source) && source_has_security_identifier(source)
+}
+
+fn source_contains_checksum_crc32_member(source: &str) -> bool {
+    source_contains_ascii_member(source, "Checksums", "crc32")
+}
+
+fn source_contains_ascii_member(source: &str, object_name: &str, property_name: &str) -> bool {
     let bytes = source.as_bytes();
     let mut index = 0;
     while index < bytes.len() {
@@ -1377,12 +1397,12 @@ fn source_contains_noncrypto_xxhash64_member(source: &str) -> bool {
             index += 1;
             continue;
         };
-        if identifier.eq_ignore_ascii_case("NonCryptoHash") {
+        if identifier == object_name {
             let dot_index = skip_ascii_whitespace(bytes, next_index);
             if bytes.get(dot_index) == Some(&b'.') {
                 let property_index = skip_ascii_whitespace(bytes, dot_index + 1);
                 if let Some((property, _)) = read_ascii_js_identifier(source, property_index) {
-                    if property.eq_ignore_ascii_case("xxHash64") {
+                    if property == property_name {
                         return true;
                     }
                 }
@@ -3154,6 +3174,7 @@ fn extract_relative_module(
     let source_name = graph.record_source(&imported.path, &source);
     graph.noncrypto_hash_security_context_visible |=
         noncrypto_hash_security_context_visible(&source);
+    graph.checksum_security_context_visible |= checksum_security_context_visible(&source);
     let source_type = source_type_for_path(&imported.path, ParseContext::Module)?;
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, &source, source_type).parse();
@@ -5958,6 +5979,7 @@ fn emit_plan(
         }
     });
     let mut required_features = Vec::new();
+    let mut doctor_checks = Vec::new();
     if app.uses_time_runtime {
         required_features.push("stdlib.time");
         value["strongPlan"]["evidence"]["time"] = json!(true);
@@ -5980,13 +6002,19 @@ fn emit_plan(
     }
     if app.uses_crypto_runtime && app.noncrypto_hash_security_context_visible {
         value["strongPlan"]["evidence"]["nonCryptoHashSecurityContext"] = json!(true);
-        value["doctorChecks"] = json!([
-            {
-                "id": "stdlib.crypto.noncrypto_hash.security_context",
-                "status": "warn",
-                "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Password, Hash, or Hmac for security or attacker-resistance"
-            }
-        ]);
+        doctor_checks.push(json!({
+            "id": "stdlib.crypto.noncrypto_hash.security_context",
+            "status": "warn",
+            "message": "NonCryptoHash.xxHash64 is visible in a security-looking context; use Password, Hash, or Hmac for security or attacker-resistance"
+        }));
+    }
+    if app.uses_codec_runtime && app.checksum_security_context_visible {
+        value["strongPlan"]["evidence"]["checksumSecurityContext"] = json!(true);
+        doctor_checks.push(json!({
+            "id": "stdlib.codec.checksum.security_context",
+            "status": "warn",
+            "message": "Checksums.crc32 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance"
+        }));
     }
     if app.uses_net_runtime {
         required_features.push("stdlib.net");
@@ -5995,6 +6023,9 @@ fn emit_plan(
     }
     if !required_features.is_empty() {
         value["requiredFeatures"] = json!(required_features);
+    }
+    if !doctor_checks.is_empty() {
+        value["doctorChecks"] = json!(doctor_checks);
     }
     if let Some(configuration) = configuration {
         value["configuration"] = configuration;
@@ -6583,8 +6614,9 @@ mod tests {
     };
 
     use super::{
-        canonical_config_key, command_from_args, extract, noncrypto_hash_security_context_visible,
-        route_pattern_supported, CliCommand, CompileOptions,
+        canonical_config_key, checksum_security_context_visible, command_from_args, extract,
+        noncrypto_hash_security_context_visible, route_pattern_supported, CliCommand,
+        CompileOptions,
     };
 
     fn fixture_temp_dir(name: &str) -> PathBuf {
@@ -6744,6 +6776,7 @@ mod tests {
             uses_crypto_runtime: false,
             noncrypto_hash_security_context_visible: false,
             uses_codec_runtime: false,
+            checksum_security_context_visible: false,
             uses_net_runtime: false,
         };
         config
@@ -8558,6 +8591,113 @@ export default app;
             value["strongPlan"]["evidence"]["codec"],
             serde_json::json!(true)
         );
+    }
+
+    #[test]
+    fn sloppy_codec_checksum_security_context_emits_doctor_warning() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { Checksums } from "sloppy/codec";
+const app = Sloppy.create();
+const tokenChecksum = Checksums.crc32(Text.utf8.encode("token"));
+app.mapGet("/token", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/codec import should be recognized");
+        assert!(app.checksum_security_context_visible);
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(
+            value["strongPlan"]["evidence"]["checksumSecurityContext"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            value["doctorChecks"][0]["id"],
+            serde_json::json!("stdlib.codec.checksum.security_context")
+        );
+        assert_eq!(
+            value["doctorChecks"][0]["status"],
+            serde_json::json!("warn")
+        );
+    }
+
+    #[test]
+    fn sloppy_codec_checksum_security_context_flows_from_relative_module() {
+        let root = fixture_temp_dir("codec-checksum-module");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("checks.js"),
+            r#"import { Results } from "sloppy";
+import { Checksums } from "sloppy/codec";
+
+export function tokenChecksumModule(app) {
+    const tokenChecksum = Checksums.crc32(new Uint8Array([1, 2, 3]));
+    app.get("/token-checksum", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { tokenChecksumModule } from "./modules/checks.js";
+
+const app = Sloppy.create();
+app.useModule(tokenChecksumModule);
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_codec_runtime);
+        assert!(app.checksum_security_context_visible);
+
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+        assert_eq!(
+            value["strongPlan"]["evidence"]["checksumSecurityContext"],
+            serde_json::json!(true)
+        );
+        assert!(value["doctorChecks"].as_array().is_some_and(|checks| checks
+            .iter()
+            .any(|check| check["id"]
+                == serde_json::json!("stdlib.codec.checksum.security_context")
+                && check["status"] == serde_json::json!("warn"))));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn sloppy_codec_checksum_security_context_scans_tokens() {
+        assert!(checksum_security_context_visible(
+            r#"const tokenChecksum = Checksums . crc32(value);"#
+        ));
+        assert!(!checksum_security_context_visible(
+            r#"const tokenChecksum = checksums.crc32(value);"#
+        ));
+        assert!(!checksum_security_context_visible(
+            r#"const cacheChecksum = Checksums.crc32(value);"#
+        ));
+        assert!(!checksum_security_context_visible(
+            r#"const cacheChecksum = Checksums.crc32("token");"#
+        ));
+        assert!(!checksum_security_context_visible(
+            r#"const tokenChecksum = Checksumscrc32(value);"#
+        ));
     }
 
     #[test]

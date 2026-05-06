@@ -108,8 +108,9 @@ plans when the vetted backends are available.
 CORE-CODEC-01.A/B adds the `stdlib.codec` descriptor and compiler activation for
 `sloppy/codec`; CORE-CODEC-01.C/D/I enables Base64/Base64Url/Hex/Text helpers and
 CORE-CODEC-01.E adds Binary reader/writer. CORE-CODEC-01.F/G adds zlib-backed
-gzip/gunzip and bounded async-iterable gzip/gunzip transforms while Checksum
-implementations remain a future slice.
+gzip/gunzip and bounded async-iterable gzip/gunzip transforms. CORE-CODEC-01.H/J adds
+CRC32 plus a static doctor warning when checksum use is visible in security-looking
+contexts.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same

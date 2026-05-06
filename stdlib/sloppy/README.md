@@ -50,8 +50,8 @@ fatal/replacement policy, and Binary reads/writes are endian-explicit and bounds
 CORE-CODEC-01.F/G adds `Compression.gzip`, `Compression.gunzip`, `gzipStream`, and
 `gunzipStream`. These helpers require the active V8 `__sloppy.codec` bridge, use the
 selected zlib backend for gzip/gunzip bytes, keep input/output bounded, and expose an
-async-iterable transform surface rather than Web Streams compatibility. Checksums remain a
-deterministic deferred stub until CORE-CODEC-01.H/J lands.
+async-iterable transform surface rather than Web Streams compatibility. CORE-CODEC-01.H/J
+adds `Checksums.crc32` as a deterministic non-security checksum helper.
 `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` expose the CORE-FS-01.G filesystem
 surface when the V8 runtime installs the feature-gated `__sloppy.fs` bridge: async core
 file operations, directory create/list/delete/walk helpers, atomic writes, temp paths,
