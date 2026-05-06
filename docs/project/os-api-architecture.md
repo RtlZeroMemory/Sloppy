@@ -34,9 +34,9 @@ unaliased imports from `sloppy/os`; runtime value imports add `stdlib.os` to Pla
 `requiredFeatures[]`, emit `features.os = true`, and set `strongPlan.evidence.os = true`.
 Type-only imports do not activate the runtime feature.
 
-`stdlib.os` is known to the feature registry in CORE-OS-01.A/B but unavailable by default
-until later implementation slices register the V8/runtime surface. Requiring it today fails
-closed through `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`.
+CORE-OS-01.C/H makes `stdlib.os` available for the `System` and `Environment` runtime
+surface. Process execution and Signals remain deferred to later CORE-OS-01 slices and fail
+closed through the JS facade.
 
 ## API Contract
 
@@ -204,9 +204,18 @@ Evidence lanes stay separate:
 Skipped optional lanes are not pass evidence. CORE-OS-01.A/B covers only the default
 feature/Plan/diagnostic/compiler metadata lane.
 
-## Deferred Beyond CORE-OS-01.A/B
+## Implemented In CORE-OS-01.C/H Partial
 
-- System and Environment runtime implementation.
+- System metadata normalization for platform, architecture, CPU count, temp directory,
+  hostname, and end-of-line.
+- Environment get/has/list with development and strict host-policy admission.
+- Secret-key detection and deterministic redaction helper for diagnostics and future audit
+  output.
+- V8 private namespace `__sloppy.os` and bootstrap JS exports for `System` and
+  `Environment`.
+
+## Deferred Beyond CORE-OS-01.C/H Partial
+
 - Process.run native implementation.
 - Process.start, streaming pipes, and ProcessHandle lifecycle.
 - Deadlines, cancellation, kill, shutdown, and late-completion runtime hardening.

@@ -154,11 +154,10 @@ is visible in security-looking contexts. Checksums must not be used or documente
 authentication, HMAC, signatures, password hashing, tokens, cryptographic hashes, or
 attacker-resistant integrity. Security APIs remain under `sloppy/crypto`.
 
-CORE-OS-01.A/B defines the OS API policy model. `sloppy/os` is Plan-visible as
-`stdlib.os`, known to the runtime feature registry, and unavailable by default until the
-runtime implementation lands. OS authority categories are `os.info`, `env.read`,
-`env.list`, `process.run`, `process.shell`, `process.signal`, `process.kill`, and
-`signals.shutdown`. Raw environment access is lower-level than app configuration, process
+CORE-OS-01.A/B defines the OS API policy model. CORE-OS-01.C/H partial makes `sloppy/os`
+Plan-visible as `stdlib.os` for System and Environment runtime use. OS authority categories
+are `os.info`, `env.read`, `env.list`, `process.run`, `process.shell`, `process.signal`,
+`process.kill`, and `signals.shutdown`. Raw environment access is lower-level than app configuration, process
 execution requires explicit argv, shell execution is absent or separately gated, and
 diagnostics must never print environment values, secret args, sensitive captured output,
 native process handles, pipe handles, raw PIDs-as-authority, libuv handles, OS handles, or

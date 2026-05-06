@@ -4,6 +4,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int expect_true(bool condition)
@@ -50,6 +51,15 @@ static int expect_bytes_equal(SlBytes actual, const char* expected)
 
     return expect_true(actual.length == expected_length && actual.ptr != NULL &&
                        memcmp(actual.ptr, expected, expected_length) == 0);
+}
+
+static int set_test_env(const char* key, const char* value)
+{
+#ifdef _WIN32
+    return _putenv_s(key, value);
+#else
+    return setenv(key, value, 1);
+#endif
 }
 
 static int expect_response_header(const SlHttpResponse* response, const char* name,
@@ -1648,6 +1658,134 @@ static int test_net_intrinsic_inactive_feature_is_not_registered(void)
         return 440;
     }
 
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_os_intrinsic_system_and_environment(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.os")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (set_test_env("SLOPPY_OS_V8_TEST", "v8-env-ok") != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 445;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 446;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-os-active.js"),
+                          sl_str_from_cstr("globalThis.sloppy_os_active = function () {"
+                                           "  const os = globalThis.__sloppy.os;"
+                                           "  if (!os || typeof os.systemInfo !== 'function') {"
+                                           "    return 'os-missing';"
+                                           "  }"
+                                           "  const info = os.systemInfo();"
+                                           "  const env = os.environmentGet('SLOPPY_OS_V8_TEST');"
+                                           "  const has = os.environmentHas('SLOPPY_OS_V8_TEST');"
+                                           "  const listed = os.environmentList('SLOPPY_OS_V8_')"
+                                           "    .includes('SLOPPY_OS_V8_TEST');"
+                                           "  return info.platform + ':' + info.arch + ':' +"
+                                           "    (info.cpuCount > 0) + ':' + env + ':' + has + ':' +"
+                                           "    listed;"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 447;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_os_active"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 448;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_contains(result.text, sl_str_from_cstr(":true:v8-env-ok:true:true")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 449;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_os_intrinsic_inactive_feature_is_not_registered(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 450;
+    }
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 451;
+    }
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-os-inactive.js"),
+                                  sl_str_from_cstr("globalThis.sloppy_os_inactive = function () {"
+                                                   "  return globalThis.__sloppy.os === undefined"
+                                                   "    ? 'os-inactive-ok'"
+                                                   "    : 'os-unexpectedly-active';"
+                                                   "};"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 452;
+    }
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_os_inactive"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 453;
+    }
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("os-inactive-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 454;
+    }
     sl_engine_destroy(engine);
     return 0;
 }
@@ -3959,6 +4097,16 @@ int main(void)
     }
 
     result = test_net_intrinsic_inactive_feature_is_not_registered();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_os_intrinsic_system_and_environment();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_os_intrinsic_inactive_feature_is_not_registered();
     if (result != 0) {
         return result;
     }

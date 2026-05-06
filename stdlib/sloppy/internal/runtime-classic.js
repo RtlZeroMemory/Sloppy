@@ -3807,6 +3807,90 @@ Reason:
         },
     });
 
+    class OsError extends Error {
+        constructor(code, message) {
+            super(`${code}: ${message}`);
+            this.name = "OsError";
+            this.code = code;
+        }
+    }
+
+    function sloppyOsError(code, message) {
+        return new OsError(code, message);
+    }
+
+    function sloppyNativeOs() {
+        const bridge = globalThis.__sloppy?.os;
+        if (bridge === undefined) {
+            throw sloppyOsError(
+                "SLOPPY_E_OS_FEATURE_UNAVAILABLE",
+                "sloppy/os requires the stdlib.os runtime bridge.",
+            );
+        }
+        return bridge;
+    }
+
+    function sloppyOsKey(key, operation) {
+        if (typeof key !== "string" || key.length === 0 || key.includes("=") || key.includes("\0")) {
+            throw new TypeError(`${operation} requires a non-empty environment key string without '=' or NUL.`);
+        }
+        return key;
+    }
+
+    const System = Object.freeze({
+        get platform() {
+            return sloppyNativeOs().systemInfo().platform;
+        },
+        get arch() {
+            return sloppyNativeOs().systemInfo().arch;
+        },
+        get cpuCount() {
+            return sloppyNativeOs().systemInfo().cpuCount;
+        },
+        get tempDirectory() {
+            return sloppyNativeOs().systemInfo().tempDirectory;
+        },
+        get hostname() {
+            return sloppyNativeOs().systemInfo().hostname;
+        },
+        get endOfLine() {
+            return sloppyNativeOs().systemInfo().endOfLine;
+        },
+    });
+
+    const Environment = Object.freeze({
+        get(key) {
+            key = sloppyOsKey(key, "Environment.get");
+            const value = sloppyNativeOs().environmentGet(key);
+            return value === undefined ? undefined : String(value);
+        },
+        has(key) {
+            return sloppyNativeOs().environmentHas(sloppyOsKey(key, "Environment.has")) === true;
+        },
+        list(options = undefined) {
+            const prefix = options?.prefix ?? "";
+            if (typeof prefix !== "string") {
+                throw new TypeError("Environment.list prefix must be a string.");
+            }
+            return Object.freeze([...sloppyNativeOs().environmentList(prefix)].map(String));
+        },
+    });
+
+    const Process = Object.freeze({
+        run() {
+            throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS run API is deferred to CORE-OS-01.D.");
+        },
+        start() {
+            throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS start API is deferred to CORE-OS-01.E/F.");
+        },
+    });
+
+    const Signals = Object.freeze({
+        onShutdown() {
+            throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "Signals.onShutdown is deferred to CORE-OS-01.G.");
+        },
+    });
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         Random,
@@ -3841,5 +3925,10 @@ Reason:
         TcpConnection,
         NetworkAddress,
         HttpClient,
+        System,
+        Environment,
+        Process,
+        Signals,
+        OsError,
     });
 })();

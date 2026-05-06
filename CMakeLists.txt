@@ -42,6 +42,7 @@ set(
     fs.js
     crypto.js
     net.js
+    os.js
     time.js
     index.js
     providers/sqlite.js
@@ -316,6 +317,7 @@ set(
     src/core/crypto.c
     src/core/crypto_noncrypto_hash.c
     src/core/fs.c
+    src/core/os.c
     src/platform/crypto_password_sodium.c
     src/platform/libuv/net_tcp_libuv.c
     src/core/app_host.c
@@ -349,14 +351,16 @@ if(WIN32)
         SLOPPY_CORE_SOURCES
         src/platform/win32/time.c
         src/platform/win32/fs_win32.c
-        src/platform/win32/crypto_win32.c)
+        src/platform/win32/crypto_win32.c
+        src/platform/win32/os_win32.c)
 else()
     list(
         APPEND
         SLOPPY_CORE_SOURCES
         src/platform/posix/time.c
         src/platform/posix/fs_posix.c
-        src/platform/posix/crypto_posix.c)
+        src/platform/posix/crypto_posix.c
+        src/platform/posix/os_posix.c)
 endif()
 
 if(SLOPPY_ENABLE_V8)
@@ -372,6 +376,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/intrinsics_codec.cc
         src/engine/v8/intrinsics_fs.cc
         src/engine/v8/intrinsics_net.cc
+        src/engine/v8/intrinsics_os.cc
         src/engine/v8/intrinsics_time.cc
         src/engine/v8/intrinsics_sqlite.cc)
 endif()
@@ -395,6 +400,7 @@ set(
     tests/unit/core/test_execution_domain.c
     tests/unit/core/test_features.c
     tests/unit/core/test_crypto.c
+    tests/unit/core/test_os.c
     tests/unit/core/test_app_host.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
@@ -690,6 +696,8 @@ if(SLOPPY_ENABLE_TESTS)
             conformance.net.tcp_client_loopback PROPERTIES LABELS "conformance;net;tcp;smoke")
     endif()
     sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
+    sloppy_add_c_unit_test(core_os_system_environment core.os.system_environment
+                           tests/unit/core/test_os.c)
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
     sloppy_add_c_unit_test(
@@ -1798,9 +1806,12 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(
             NAME bootstrap.stdlib.codec
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
+        add_test(
+            NAME bootstrap.stdlib.os
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_os.mjs")
         set_tests_properties(
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
-            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec PROPERTIES
+            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 

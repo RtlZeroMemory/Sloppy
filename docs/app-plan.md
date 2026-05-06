@@ -112,9 +112,8 @@ gzip/gunzip and bounded async-iterable gzip/gunzip transforms. CORE-CODEC-01.H/J
 CRC32 plus a static doctor warning when checksum use is visible in security-looking
 contexts.
 CORE-OS-01.A/B adds the `stdlib.os` descriptor and compiler activation for `sloppy/os`.
-The feature is known but unavailable by default until later OS runtime slices register the
-V8/stdlib surface; requiring it today fails closed instead of pretending that environment
-access, process execution, or signals exist.
+CORE-OS-01.C/H partial makes the feature available for System and Environment runtime use;
+Process and Signals remain deferred behind failing JS facade methods.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
