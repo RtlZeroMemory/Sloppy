@@ -1,9 +1,10 @@
 # HTTP Client API Architecture
 
-Status: CORE-HTTPCLIENT-01.A/B/C contract slice plus CORE-HTTPCLIENT-01.D/E/F partial
-HTTP/1.1 client transport, helper surface, and bounded body/deadline semantics. This
-document defines the outbound HTTP client API and policy model, and records the first
-executable cleartext HTTP/1.1 request/response lane.
+Status: CORE-HTTPCLIENT-01.A/B/C contract slice plus CORE-HTTPCLIENT-01.D/E/F/G partial
+HTTP/1.1 client transport, helper surface, bounded body/deadline semantics, redirects,
+pooling, DNS failure mapping, strict network policy, and header redaction. This document
+defines the outbound HTTP client API and policy model, and records the first executable
+cleartext HTTP/1.1 request/response lane.
 
 ## Goal
 
@@ -26,8 +27,11 @@ the JS surface is reached without the required runtime bridge. The helper surfac
 includes one-shot `text`, `json`, `bytes`, `getJson`, and `postJson` convenience methods
 plus request `json` body serialization, bounded async-iterable request body consumption,
 response `stream()` iteration over the buffered body, `signal` cancellation, and
-`deadline` handling. HTTPS/TLS, redirects, pooling, true socket-level streaming, and
-named-client doctor metadata remain deferred to later CORE-HTTPCLIENT-01 slices.
+`deadline` handling. It also includes bounded redirects, reusable-client per-origin
+HTTP/1.1 pooling, strict-network preconnect denial, deterministic DNS-failure mapping, and
+cross-origin sensitive-header stripping. HTTPS/TLS, true socket-level streaming, proxy
+policy, and named-client doctor metadata remain deferred to later CORE-HTTPCLIENT-01
+slices.
 
 ## Public Shape
 
@@ -75,9 +79,13 @@ HTTP/1.1 parser, socket, TLS, and pooling details are implementation details. Th
 API speaks in request, response, body, pipeline, policy, origin, deadline, and signal
 terms so HTTP/2 multiplexing can be added later without a public rewrite.
 
-The current HTTP/1.1 transport uses one request per TCP connection and closes the
-connection after the response. That is an implementation detail of the first transport
-lane, not a public pooling contract.
+Reusable clients may opt into a bounded per-origin connection pool with
+`pool.maxConnectionsPerOrigin` and `pool.idleTimeoutMs`. The current HTTP/1.1 backend uses
+one in-flight request per connection and reuses only safely delimited responses
+(`Content-Length` or complete chunked bodies) when the peer does not send
+`Connection: close`. Protocol errors, timeout, cancellation, truncated responses, and
+close-delimited bodies discard the connection. Those details remain transport internals so
+HTTP/2 multiplexing can later replace the backend without changing the public API.
 
 ## Request Bodies
 
@@ -146,14 +154,28 @@ strict package/runtime mode, and impossible to mistake for production behavior.
 
 ## Redirects, Pooling, And Redaction
 
-Redirects are bounded and loop-aware. Cross-origin redirects strip or deny sensitive
-headers by default, including `Authorization`, `Cookie`, `Proxy-Authorization`, configured
-secret headers, bearer tokens, API keys, config-backed secret values, and TLS-sensitive
-material. POST redirect behavior must be explicit.
+Redirects are bounded and loop-aware. The current lane follows redirects by default with
+`redirects.max` defaulting to 5 and rejects loops with
+`SLOPPY_E_HTTP_CLIENT_REDIRECT_LOOP` or excess hops with
+`SLOPPY_E_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED`. `GET` and `HEAD` redirects are automatic;
+request-body method redirects require explicit `redirects.allowPost`.
 
-Pooling is per origin and bounded. Origin identity includes scheme, host, port, TLS policy,
-and proxy identity. HTTP/1.1 uses one in-flight request per connection as an internal
-detail. Pool exhaustion/backpressure is deterministic.
+Cross-origin redirects strip sensitive headers by default, including `Authorization`,
+`Cookie`, `Proxy-Authorization`, common API-key headers, configured `secretHeaders`, bearer
+tokens, and token/secret/API-key-shaped names. Callers may set
+`redirects.crossOriginSensitiveHeaders: "deny"` to fail with
+`SLOPPY_E_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED` instead of stripping.
+
+Pooling is per origin and bounded. Origin identity currently includes scheme, host, and
+port; future TLS/proxy identity extends that key when those backends exist. HTTP/1.1 uses
+one in-flight request per connection as an internal detail. If all per-origin slots are in
+use, the request fails deterministically with `SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED` rather
+than creating unbounded sockets.
+
+Strict network policy is opt-in through `network: { strict: true, allow: [...] }`. Strict
+mode denies disallowed origins before TCP connect with
+`SLOPPY_E_HTTP_CLIENT_STRICT_NETWORK_DENIED`. Ordinary development remains permissive
+unless strict policy is configured.
 
 ## Plan, Doctor, And Audit
 

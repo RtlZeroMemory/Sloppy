@@ -12,8 +12,10 @@ cleartext `http://` HTTP/1.1 request/response path for bounded loopback-tested u
 also exposes bounded helper methods for `text`, `json`, `bytes`, `getJson`, `postJson`,
 request `json` bodies, base URL/path joining, bounded async-iterable request body
 consumption, response `stream()` iteration over buffered bodies, and operation-wide
-`timeoutMs`/`deadline`/`signal` handling. It does not implement HTTPS/TLS, redirects,
-pooling, true socket-level streaming, or live external network evidence.
+`timeoutMs`/`deadline`/`signal` handling. It implements bounded redirects, per-origin
+HTTP/1.1 pooling for reusable clients, strict-network preconnect denial, DNS-failure
+mapping, and cross-origin sensitive-header stripping/denial. It does not implement
+HTTPS/TLS, proxy policy, true socket-level streaming, or live external network evidence.
 
 Post-ENGINE-16 consolidation: the HTTP module is mature for bounded localhost transport
 correctness, not production application-server behavior. HTTP-25 completes sequential

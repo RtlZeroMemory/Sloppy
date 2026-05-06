@@ -59,11 +59,14 @@ function readSocketRequest(socket) {
 }
 
 function startHttpServer(handler) {
+    let nextConnectionId = 1;
     const server = net.createServer(async (socket) => {
+        const connectionId = nextConnectionId;
+        nextConnectionId += 1;
         socket.on("error", () => {});
         try {
             const request = await readSocketRequest(socket);
-            const response = await handler(request);
+            const response = await handler(request, { connectionId });
             socket.end(response);
         } catch {
             socket.destroy();
@@ -78,6 +81,49 @@ function startHttpServer(handler) {
             resolve({
                 url: `http://127.0.0.1:${address.port}`,
                 close: () => new Promise((done) => server.close(done)),
+            });
+        });
+    });
+}
+
+function startPersistentHttpServer(handler) {
+    let nextConnectionId = 1;
+    const sockets = new Set();
+    const server = net.createServer(async (socket) => {
+        const connectionId = nextConnectionId;
+        nextConnectionId += 1;
+        sockets.add(socket);
+        socket.on("close", () => sockets.delete(socket));
+        socket.on("error", () => {});
+        try {
+            while (!socket.destroyed) {
+                const request = await readSocketRequest(socket);
+                const response = await handler(request, { connectionId });
+                socket.write(response);
+                if (request.headers.get("connection") === "close") {
+                    socket.end();
+                    break;
+                }
+            }
+        } catch {
+            socket.destroy();
+        }
+    });
+
+    return new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            server.off("error", reject);
+            const address = server.address();
+            resolve({
+                url: `http://127.0.0.1:${address.port}`,
+                close: () =>
+                    new Promise((done) => {
+                        for (const socket of sockets) {
+                            socket.destroy();
+                        }
+                        server.close(done);
+                    }),
             });
         });
     });
@@ -115,6 +161,10 @@ function createNodeNetBridge() {
     return {
         connect(options) {
             return new Promise((resolve, reject) => {
+                if (options.host === "dns.invalid") {
+                    reject(new Error("SLOPPY_E_NET_DNS_FAILURE: deterministic test host"));
+                    return;
+                }
                 const socket = net.createConnection({ host: options.host, port: options.port });
                 const id = nextId;
                 nextId += 1;
@@ -271,6 +321,243 @@ await withNodeNetBridge(async () => {
     } finally {
         await server.close();
     }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId, connection: request.headers.get("connection") });
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.equal(await (await client.get("/one")).text(), "ok");
+        assert.equal(await (await client.get("/two")).text(), "ok");
+
+        assert.deepEqual(observed.map((request) => request.target), ["/one", "/two"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 1);
+        assert.deepEqual(observed.map((request) => request.connection), ["keep-alive", "keep-alive"]);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.equal(await (await client.get("/first")).text(), "ok");
+        assert.equal(await (await client.get("/second")).text(), "ok");
+
+        assert.deepEqual(observed.map((request) => request.target), ["/first", "/second"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 2);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.1 204 No Content\r\n\r\n";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.deepEqual(await (await client.get("/empty-one", { timeoutMs: 1000 })).bytes(), new Uint8Array(0));
+        assert.deepEqual(await (await client.get("/empty-two", { timeoutMs: 1000 })).bytes(), new Uint8Array(0));
+
+        assert.deepEqual(observed.map((request) => request.target), ["/empty-one", "/empty-two"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 1);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.equal(await (await client.get("/stale-one")).text(), "ok");
+        assert.equal(await (await client.get("/stale-two")).text(), "ok");
+
+        assert.deepEqual(observed.map((request) => request.target), ["/stale-one", "/stale-two"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 2);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let releaseHold;
+    const holdReleased = new Promise((resolve) => {
+        releaseHold = resolve;
+    });
+    let observedHold;
+    const holdObserved = new Promise((resolve) => {
+        observedHold = resolve;
+    });
+    const server = await startPersistentHttpServer(async (request) => {
+        if (request.target === "/hold") {
+            observedHold();
+            await holdReleased;
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        const held = client.get("/hold");
+        await holdObserved;
+        await assertRejectsMessage(() => client.get("/second"), /SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED/);
+        releaseHold();
+        await held;
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let redirectedHeaders;
+    const target = await startHttpServer((request) => {
+        redirectedHeaders = request.headers;
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+    const redirect = await startHttpServer(() => `HTTP/1.1 302 Found\r\nLocation: ${target.url}/final\r\nContent-Length: 0\r\n\r\n`);
+
+    try {
+        const response = await HttpClient.get(`${redirect.url}/start`, {
+            headers: {
+                Authorization: "Bearer SECRET",
+                Cookie: "session=SECRET",
+                "X-Api-Key": "SECRET",
+                "X-Trace": "visible",
+            },
+        });
+
+        assert.equal(await response.text(), "ok");
+        assert.equal(redirectedHeaders.get("authorization"), undefined);
+        assert.equal(redirectedHeaders.get("cookie"), undefined);
+        assert.equal(redirectedHeaders.get("x-api-key"), undefined);
+        assert.equal(redirectedHeaders.get("x-trace"), "visible");
+    } finally {
+        await redirect.close();
+        await target.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let redirectedRequest;
+    const target = await startHttpServer((request) => {
+        redirectedRequest = request;
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+    const redirect = await startHttpServer(() => `HTTP/1.1 303 See Other\r\nLocation: ${target.url}/final\r\nContent-Length: 0\r\n\r\n`);
+
+    try {
+        const response = await HttpClient.post(`${redirect.url}/start`, {
+            text: "abc",
+            redirects: { allowPost: true },
+        });
+
+        assert.equal(await response.text(), "ok");
+        assert.equal(redirectedRequest.method, "GET");
+        assert.equal(redirectedRequest.body.byteLength, 0);
+        assert.equal(redirectedRequest.headers.get("content-length"), undefined);
+        assert.equal(redirectedRequest.headers.get("content-type"), undefined);
+    } finally {
+        await redirect.close();
+        await target.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const target = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+    const redirect = await startHttpServer(() => `HTTP/1.1 302 Found\r\nLocation: ${target.url}/final\r\nContent-Length: 0\r\n\r\n`);
+
+    try {
+        await assertRejectsMessage(
+            () =>
+                HttpClient.get(`${redirect.url}/start`, {
+                    headers: { Authorization: "Bearer SECRET" },
+                    redirects: { crossOriginSensitiveHeaders: "deny" },
+                }),
+            /SLOPPY_E_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED/,
+        );
+    } finally {
+        await redirect.close();
+        await target.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 302 Found\r\nLocation: /loop\r\nContent-Length: 0\r\n\r\n");
+
+    try {
+        await assertRejectsMessage(
+            () => HttpClient.get(`${server.url}/loop`),
+            /SLOPPY_E_HTTP_CLIENT_REDIRECT_LOOP/,
+        );
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttpServer((request) => {
+        const current = Number(request.target.slice("/r".length));
+        return `HTTP/1.1 302 Found\r\nLocation: /r${current + 1}\r\nContent-Length: 0\r\n\r\n`;
+    });
+
+    try {
+        await assertRejectsMessage(
+            () => HttpClient.get(`${server.url}/r1`, { redirects: { max: 2 } }),
+            /SLOPPY_E_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED/,
+        );
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    await assertRejectsMessage(
+        () => HttpClient.get("http://127.0.0.1:9/denied", { network: { strict: true, allow: [] } }),
+        /SLOPPY_E_HTTP_CLIENT_STRICT_NETWORK_DENIED/,
+    );
+});
+
+await withNodeNetBridge(async () => {
+    await assertRejectsMessage(
+        () => HttpClient.get("http://dns.invalid/"),
+        /SLOPPY_E_HTTP_CLIENT_DNS_FAILED/,
+    );
 });
 
 await withNodeNetBridge(async () => {
@@ -477,6 +764,18 @@ await withNodeNetBridge(async () => {
     try {
         await assertRejectsMessage(
             () => HttpClient.get(`${server.url}/malformed`),
+            /SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE/,
+        );
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nbo");
+    try {
+        await assertRejectsMessage(
+            () => HttpClient.get(`${server.url}/truncated`),
             /SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE/,
         );
     } finally {
