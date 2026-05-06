@@ -351,6 +351,7 @@ if(WIN32)
         SLOPPY_CORE_SOURCES
         src/platform/win32/time.c
         src/platform/win32/fs_win32.c
+        src/platform/win32/net_local_win32.c
         src/platform/win32/crypto_win32.c
         src/platform/win32/os_win32.c)
 else()
@@ -359,6 +360,7 @@ else()
         SLOPPY_CORE_SOURCES
         src/platform/posix/time.c
         src/platform/posix/fs_posix.c
+        src/platform/posix/net_local_posix.c
         src/platform/posix/crypto_posix.c
         src/platform/posix/os_posix.c)
 endif()
@@ -694,6 +696,17 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(NAME conformance.net.tcp_client_loopback COMMAND $<TARGET_FILE:core_net_tcp_client>)
         set_tests_properties(
             conformance.net.tcp_client_loopback PROPERTIES LABELS "conformance;net;tcp;smoke")
+        if(NOT WIN32)
+            sloppy_add_cxx_unit_test(
+                core_net_local_posix core.net.local_posix
+                tests/unit/core/test_net_local_posix.cc)
+            add_test(
+                NAME conformance.net.local_ipc_posix
+                COMMAND $<TARGET_FILE:core_net_local_posix>)
+            set_tests_properties(
+                conformance.net.local_ipc_posix
+                PROPERTIES LABELS "conformance;net;local-ipc;posix")
+        endif()
     endif()
     sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
     sloppy_add_c_unit_test(core_os_system_environment core.os.system_environment
