@@ -92,14 +92,6 @@ static SlStatus sl_sqlsrv_copy_str(SlArena* arena, SlStr src, SlStr* out)
     return sl_status_ok();
 }
 
-static bool sl_sqlsrv_ascii_equal_ci(char actual, char expected_lower)
-{
-    if (actual >= 'A' && actual <= 'Z') {
-        actual = (char)(actual - 'A' + 'a');
-    }
-    return actual == expected_lower;
-}
-
 #ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
 static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
 {
@@ -130,17 +122,17 @@ static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
 
 static bool sl_sqlsrv_has_case_insensitive_at(SlStr text, size_t index, const char* word)
 {
-    size_t offset = 0U;
+    const char* start = text.ptr;
 
-    while (word[offset] != '\0') {
-        if (index + offset >= text.length ||
-            !sl_sqlsrv_ascii_equal_ci(text.ptr[index + offset], word[offset]))
-        {
-            return false;
-        }
-        offset += 1U;
+    if (word == NULL || index > text.length || !sl_sqlsrv_str_valid(text)) {
+        return false;
     }
-    return true;
+    if (index < text.length) {
+        start = text.ptr + index;
+    }
+
+    return sl_str_starts_with_ci_ascii(sl_str_from_parts(start, text.length - index),
+                                       sl_str_from_cstr(word));
 }
 #endif
 
@@ -162,17 +154,16 @@ static size_t sl_sqlsrv_trim_trailing_spaces(SlStr text, size_t start, size_t en
 
 static bool sl_sqlsrv_key_equal_ci(SlStr text, size_t start, size_t end, const char* key)
 {
-    size_t offset = 0U;
+    const char* key_ptr = text.ptr;
 
-    while (key[offset] != '\0') {
-        if (start + offset >= end ||
-            !sl_sqlsrv_ascii_equal_ci(text.ptr[start + offset], key[offset]))
-        {
-            return false;
-        }
-        offset += 1U;
+    if (key == NULL || start > end || end > text.length || !sl_sqlsrv_str_valid(text)) {
+        return false;
     }
-    return start + offset == end;
+    if (start < text.length) {
+        key_ptr = text.ptr + start;
+    }
+
+    return sl_str_equal_ci_ascii(sl_str_from_parts(key_ptr, end - start), sl_str_from_cstr(key));
 }
 
 static bool sl_sqlsrv_is_secret_key(SlStr text, size_t key_start, size_t key_end)
@@ -695,18 +686,11 @@ static SlStatus sl_sqlsrv_alloc_env(SQLHENV* out_env, SlDiag* out_diag, SlArena*
 
 static bool sl_sqlsrv_driver_name_equal(const char* actual, SlStr expected)
 {
-    size_t index = 0U;
-
-    if (actual == NULL) {
+    if (actual == NULL || !sl_sqlsrv_str_valid(expected)) {
         return false;
     }
-    while (actual[index] != '\0' && index < expected.length) {
-        if (!sl_sqlsrv_ascii_equal_ci(actual[index], expected.ptr[index])) {
-            return false;
-        }
-        index += 1U;
-    }
-    return actual[index] == '\0' && index == expected.length;
+
+    return sl_str_equal_ci_ascii(sl_str_from_cstr(actual), expected);
 }
 
 static SlStatus sl_sqlsrv_driver_visible(SlArena* arena, SQLHENV env, SlStr driver_name,

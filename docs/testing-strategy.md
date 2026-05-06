@@ -149,6 +149,16 @@ alpha readiness.
 CORE-CONFIG-01 adds configuration coverage across Rust compiler tests, JS stdlib tests,
 compiler golden artifacts, source-input process tests, doctor text/JSON goldens, and the
 SQLite users API fixture.
+CORE-INTEGRATION-01 adds cross-API conformance coverage for shared primitives instead of
+per-module happy paths. The default lane includes `bootstrap.stdlib.core_integration` for
+Codec adoption in Crypto/FS/Net/OS, HTTP request-stream cleanup, Worker backpressure
+deadline/cancellation behavior, and stable JS error codes where the stdlib emits
+`SLOPPY_E_*`. It also adds `examples.core_integration.api_shape` and the
+`check-core-api-integration` scanner for high-priority duplicate helpers. These tests prove
+documented interop and guardrails only; deferred strict FS/run policy, raw TCP
+deadline/signal coverage, OS live process cancellation, V8 process-pipe binary return,
+worker module path policy, live-network/provider behavior, package smoke, stress/torture,
+and benchmark lanes remain separate.
 FRAMEWORK-01.F extends example coverage with compile-artifact tests for hello-minimal,
 configured-api, modules-api, validation-errors, and users-api-sqlite, plus Plan-driven
 routes/doctor/audit/capabilities/OpenAPI tooling checks for representative examples.

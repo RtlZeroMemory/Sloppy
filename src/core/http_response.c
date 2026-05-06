@@ -131,35 +131,6 @@ static bool sl_http_response_content_type_valid(SlStr content_type)
     return true;
 }
 
-static int sl_http_response_ascii_lower(int ch)
-{
-    if (ch >= 'A' && ch <= 'Z') {
-        return ch - 'A' + 'a';
-    }
-    return ch;
-}
-
-static bool sl_http_response_str_iequal(SlStr left, SlStr right)
-{
-    size_t index = 0U;
-
-    if ((left.ptr == NULL && left.length != 0U) || (right.ptr == NULL && right.length != 0U) ||
-        left.length != right.length)
-    {
-        return false;
-    }
-
-    for (index = 0U; index < left.length; index += 1U) {
-        if (sl_http_response_ascii_lower((unsigned char)left.ptr[index]) !=
-            sl_http_response_ascii_lower((unsigned char)right.ptr[index]))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 static bool sl_http_response_header_name_char_valid(char ch)
 {
     return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
@@ -204,10 +175,10 @@ static bool sl_http_response_header_value_valid(SlStr value)
 
 static bool sl_http_response_header_managed(SlStr name)
 {
-    return sl_http_response_str_iequal(name, sl_str_from_cstr("Connection")) ||
-           sl_http_response_str_iequal(name, sl_str_from_cstr("Content-Type")) ||
-           sl_http_response_str_iequal(name, sl_str_from_cstr("Transfer-Encoding")) ||
-           sl_http_response_str_iequal(name, sl_str_from_cstr("Content-Length"));
+    return sl_str_equal_ci_ascii(name, sl_str_from_cstr("Connection")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Content-Type")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Transfer-Encoding")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Content-Length"));
 }
 
 static bool sl_http_response_headers_valid(const SlHttpResponse* response)

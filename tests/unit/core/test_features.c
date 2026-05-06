@@ -229,7 +229,8 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     if (!sl_str_equal(crypto->stable_id, sl_str_from_cstr("stdlib.crypto")) ||
         !sl_str_equal(crypto->stdlib_import, sl_str_from_cstr("sloppy/crypto")) ||
         !sl_str_equal(crypto->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.crypto")) ||
-        !crypto->requires_v8_intrinsics || !crypto->available)
+        !crypto->requires_v8_intrinsics || !crypto->available ||
+        (crypto->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U)
     {
         return 68;
     }
@@ -245,7 +246,8 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !sl_str_equal(net->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.net")) ||
         !net->requires_v8_intrinsics || !net->available ||
         (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_TRANSPORT_LIBUV)) == 0U ||
-        (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
+        (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U ||
+        (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U)
     {
         return 70;
     }
@@ -254,7 +256,8 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !sl_str_equal(os->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.os")) ||
         !os->requires_v8_intrinsics || os->available ||
         (os->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_TRANSPORT_LIBUV)) == 0U ||
-        (os->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
+        (os->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U ||
+        (os->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U)
     {
         return 71;
     }
@@ -273,7 +276,8 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !sl_str_equal(fs->stdlib_import, sl_str_from_cstr("sloppy/fs")) ||
         !sl_str_equal(fs->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.fs")) ||
         !fs->requires_v8_intrinsics ||
-        (fs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
+        (fs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U ||
+        (fs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U)
     {
         return 66;
     }
@@ -421,6 +425,7 @@ static int test_explicit_fs_required_feature_activates_stdlib_fs(void)
     if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_FS))
     {
         return 2;
@@ -453,6 +458,7 @@ static int test_explicit_crypto_required_feature_activates_when_available(void)
     }
     if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
     {
         return 2;
@@ -579,6 +585,7 @@ static int test_explicit_net_required_feature_activates_when_available(void)
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_NET))
     {
         return 2;
@@ -613,6 +620,7 @@ static int test_net_required_feature_activates_by_default_after_tcp_client_backe
     if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_NET) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC) ||
         diag.code != SL_DIAG_NONE)
     {
         return 2;
@@ -644,6 +652,7 @@ static int test_explicit_os_required_feature_activates_when_available(void)
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_OS))
     {
         return 2;
@@ -676,6 +685,7 @@ static int test_os_required_feature_activates_with_default_runtime_surface(void)
         return 1;
     }
     if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_OS) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC) ||
         diag.code != SL_DIAG_NONE)
     {
         return 2;

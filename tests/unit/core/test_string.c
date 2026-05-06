@@ -88,6 +88,45 @@ static int test_hashing(void)
     return 0;
 }
 
+static int test_ascii_case_helpers(void)
+{
+    const char mixed[] = {'H', 'e', 'A', 'D', 'e', 'R', '\0', 'X'};
+    const char lower[] = {'h', 'e', 'a', 'd', 'e', 'r', '\0', 'x'};
+    const char prefix[] = {'h', 'E', 'A'};
+    const char suffix[] = {'\0', 'x'};
+    const char non_ascii_left[] = {(char)0xc3, (char)0xa9};
+    const char non_ascii_right[] = {(char)0xc3, (char)0x89};
+
+    if (expect_true(sl_str_equal_ci_ascii(sl_str_from_cstr("Content-Type"),
+                                          sl_str_from_cstr("content-type"))) != 0 ||
+        expect_true(sl_str_equal_ci_ascii(sl_str_from_parts(mixed, sizeof(mixed)),
+                                          sl_str_from_parts(lower, sizeof(lower)))) != 0)
+    {
+        return 30;
+    }
+
+    if (expect_true(sl_str_starts_with_ci_ascii(sl_str_from_parts(mixed, sizeof(mixed)),
+                                                sl_str_from_parts(prefix, sizeof(prefix)))) != 0 ||
+        expect_true(sl_str_ends_with_ci_ascii(sl_str_from_parts(mixed, sizeof(mixed)),
+                                              sl_str_from_parts(suffix, sizeof(suffix)))) != 0)
+    {
+        return 31;
+    }
+
+    if (expect_true(!sl_str_equal_ci_ascii(
+            sl_str_from_parts(non_ascii_left, sizeof(non_ascii_left)),
+            sl_str_from_parts(non_ascii_right, sizeof(non_ascii_right)))) != 0 ||
+        expect_true(!sl_str_equal_ci_ascii(sl_str_from_parts(NULL, 1U),
+                                           sl_str_from_parts(NULL, 1U))) != 0 ||
+        expect_true(sl_str_starts_with_ci_ascii(sl_str_from_cstr("abc"), sl_str_empty())) != 0 ||
+        expect_true(sl_str_ends_with_ci_ascii(sl_str_from_cstr("abc"), sl_str_empty())) != 0)
+    {
+        return 32;
+    }
+
+    return 0;
+}
+
 static int test_arena_copies(void)
 {
     const char embedded[] = {'a', '\0', 'b'};
@@ -170,6 +209,11 @@ int main(void)
     }
 
     result = test_hashing();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_ascii_case_helpers();
     if (result != 0) {
         return result;
     }

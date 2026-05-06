@@ -59,6 +59,8 @@ Do not include `.git/`, `build/`, `compiler/target/`, or other generated artifac
 - `docs/project/codec-api-architecture.md` records the CORE-CODEC-01 API contract,
   backend/dependency policy, feature/Plan model, diagnostics, and safety boundaries.
 - `docs/project/codec-api-issue-index.md` maps CORE-CODEC-01 issue slices #622-#631.
+- `docs/project/core-api-platform-map.md` records the CORE-INTEGRATION-01 dependency,
+  primitive ownership, option-shape, stream, diagnostics, scanner, and evidence-lane map.
 
 ## Historical Post-Core Reset
 

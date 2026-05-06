@@ -387,34 +387,6 @@ static SlStatus sl_http_transport_connection_diag(SlHttpTransportConnection* con
     return status;
 }
 
-static int sl_http_transport_ascii_lower(int ch)
-{
-    if (ch >= 'A' && ch <= 'Z') {
-        return ch - 'A' + 'a';
-    }
-    return ch;
-}
-
-static bool sl_http_transport_str_iequal(SlStr left, SlStr right)
-{
-    size_t index = 0U;
-
-    if ((left.ptr == NULL && left.length != 0U) || (right.ptr == NULL && right.length != 0U) ||
-        left.length != right.length)
-    {
-        return false;
-    }
-
-    for (index = 0U; index < left.length; index += 1U) {
-        if (sl_http_transport_ascii_lower((unsigned char)left.ptr[index]) !=
-            sl_http_transport_ascii_lower((unsigned char)right.ptr[index]))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 static SlStr sl_http_transport_trim_ascii_space(SlStr value)
 {
     size_t begin = 0U;
@@ -444,7 +416,7 @@ static bool sl_http_transport_header_value(const SlHttpRequestHead* head, SlStr 
         return false;
     }
     for (index = 0U; index < head->header_count; index += 1U) {
-        if (sl_http_transport_str_iequal(head->headers[index].name, name)) {
+        if (sl_str_equal_ci_ascii(head->headers[index].name, name)) {
             *out_value = head->headers[index].value;
             return true;
         }
@@ -493,8 +465,7 @@ static bool sl_http_transport_connection_header_has_token(SlStr value, SlStr tok
         while (end > start && (value.ptr[end - 1U] == ' ' || value.ptr[end - 1U] == '\t')) {
             end -= 1U;
         }
-        if (sl_http_transport_str_iequal(sl_str_from_parts(value.ptr + start, end - start), token))
-        {
+        if (sl_str_equal_ci_ascii(sl_str_from_parts(value.ptr + start, end - start), token)) {
             return true;
         }
         if (end == value.length) {
@@ -1581,7 +1552,7 @@ static bool sl_http_transport_header_line_has_name(SlStr line, SlStr name, SlStr
     line_name = sl_http_transport_trim_ascii_space(sl_str_from_parts(line.ptr, index));
     line_value = sl_http_transport_trim_ascii_space(
         sl_str_from_parts(line.ptr + index + 1U, line.length - index - 1U));
-    if (!sl_http_transport_str_iequal(line_name, name)) {
+    if (!sl_str_equal_ci_ascii(line_name, name)) {
         return false;
     }
     if (out_value != NULL) {
@@ -1638,7 +1609,7 @@ static bool sl_http_transport_head_header_value(SlBytes head, SlStr name, SlStr*
 static bool sl_http_transport_transfer_encoding_is_chunked(SlStr value)
 {
     value = sl_http_transport_trim_ascii_space(value);
-    return sl_http_transport_str_iequal(value, sl_str_from_cstr("chunked"));
+    return sl_str_equal_ci_ascii(value, sl_str_from_cstr("chunked"));
 }
 
 static size_t sl_http_transport_find_header_end(SlBytes bytes)

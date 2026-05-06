@@ -20,6 +20,14 @@ static bool sl_str_has_valid_storage(SlStr str)
     return str.length == 0U || str.ptr != NULL;
 }
 
+static unsigned char sl_str_ascii_lower(unsigned char ch)
+{
+    if (ch >= (unsigned char)'A' && ch <= (unsigned char)'Z') {
+        return (unsigned char)(ch - (unsigned char)'A' + (unsigned char)'a');
+    }
+    return ch;
+}
+
 SlStr sl_str_from_parts(const char* ptr, size_t length)
 {
     SlStr str = {ptr, length};
@@ -94,6 +102,77 @@ bool sl_str_ends_with(SlStr str, SlStr suffix)
 
     offset = str.length - suffix.length;
     return memcmp(str.ptr + offset, suffix.ptr, suffix.length) == 0;
+}
+
+bool sl_str_equal_ci_ascii(SlStr left, SlStr right)
+{
+    size_t index = 0U;
+
+    if (left.length != right.length) {
+        return false;
+    }
+    if (left.length == 0U) {
+        return true;
+    }
+    if (left.ptr == NULL || right.ptr == NULL) {
+        return false;
+    }
+    if (left.ptr == right.ptr) {
+        return true;
+    }
+
+    for (index = 0U; index < left.length; index += 1U) {
+        if (sl_str_ascii_lower((unsigned char)left.ptr[index]) !=
+            sl_str_ascii_lower((unsigned char)right.ptr[index]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool sl_str_starts_with_ci_ascii(SlStr str, SlStr prefix)
+{
+    size_t index = 0U;
+
+    if (prefix.length == 0U) {
+        return true;
+    }
+    if (str.length < prefix.length || str.ptr == NULL || prefix.ptr == NULL) {
+        return false;
+    }
+
+    for (index = 0U; index < prefix.length; index += 1U) {
+        if (sl_str_ascii_lower((unsigned char)str.ptr[index]) !=
+            sl_str_ascii_lower((unsigned char)prefix.ptr[index]))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool sl_str_ends_with_ci_ascii(SlStr str, SlStr suffix)
+{
+    size_t offset = 0U;
+    size_t index = 0U;
+
+    if (suffix.length == 0U) {
+        return true;
+    }
+    if (str.length < suffix.length || str.ptr == NULL || suffix.ptr == NULL) {
+        return false;
+    }
+
+    offset = str.length - suffix.length;
+    for (index = 0U; index < suffix.length; index += 1U) {
+        if (sl_str_ascii_lower((unsigned char)str.ptr[offset + index]) !=
+            sl_str_ascii_lower((unsigned char)suffix.ptr[index]))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 SlStr sl_owned_str_as_view(SlOwnedStr str)

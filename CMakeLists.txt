@@ -1901,6 +1901,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.config.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_config_examples.cmake")
+    add_test(
+        NAME examples.core_integration.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_core_integration_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(
@@ -1926,10 +1930,15 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(
             NAME bootstrap.stdlib.workers
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_workers.mjs")
+        add_test(
+            NAME bootstrap.stdlib.core_integration
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_core_integration.mjs")
         set_tests_properties(
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
-            bootstrap.stdlib.http_client bootstrap.stdlib.workers PROPERTIES
+            bootstrap.stdlib.http_client bootstrap.stdlib.workers
+            bootstrap.stdlib.core_integration PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 
