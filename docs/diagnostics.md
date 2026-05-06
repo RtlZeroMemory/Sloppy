@@ -721,9 +721,9 @@ bridge support fails with
 `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE`, while HTTPS still fails with
 `SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE` until the TLS backend slice lands. HTTP
 client-specific codes cover invalid URL/options, ambiguous body sources, consumed request
-or response bodies, invalid JSON, response limits, malformed responses, connect/DNS/TLS
-failures, timeout versus cancellation, redirect loops/max redirects, sensitive header
-stripping, pool exhaustion, strict policy denial, and dynamic target metadata. These
+or response bodies, invalid JSON, request/response body limits, malformed responses,
+connect/DNS/TLS failures, timeout versus cancellation, redirect loops/max redirects,
+sensitive header stripping, pool exhaustion, strict policy denial, and dynamic target metadata. These
 diagnostics must not include secrets, tokens, cookies, raw TLS material, native handles,
 V8 handles, OS handles, raw pointers, or unredacted query parameters marked secret.
 

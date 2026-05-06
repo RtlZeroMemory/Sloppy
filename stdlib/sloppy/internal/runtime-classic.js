@@ -3755,6 +3755,7 @@ Reason:
 
     const HTTP_CLIENT_DEFAULT_MAX_HEADER_BYTES = 16 * 1024;
     const HTTP_CLIENT_DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
+    const HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
 
     function httpClientError(code, message, options = undefined) {
         return new Error(`${code}: ${message}`, options);
@@ -3797,6 +3798,66 @@ Reason:
         if (!headers.has(normalizedName)) {
             headers.set(normalizedName, { name, value });
         }
+    }
+
+    function isHttpCancellationSignal(value) {
+        return (
+            value !== undefined &&
+            value !== null &&
+            typeof value === "object" &&
+            typeof value.aborted === "boolean"
+        );
+    }
+
+    function subscribeHttpCancellation(signal, listener) {
+        if (!isHttpCancellationSignal(signal)) {
+            return () => {};
+        }
+        if (signal.aborted) {
+            listener(signal.reason);
+            return () => {};
+        }
+        if (typeof signal._subscribe === "function") {
+            return signal._subscribe(listener);
+        }
+        if (typeof signal.addEventListener === "function") {
+            const wrapped = () => listener(signal.reason);
+            signal.addEventListener("abort", wrapped);
+            return () => signal.removeEventListener?.("abort", wrapped);
+        }
+        return () => {};
+    }
+
+    function httpDeadlineRemainingMs(deadline, operation) {
+        if (deadline === undefined) {
+            return Infinity;
+        }
+        if (typeof deadline !== "object" || deadline === null || typeof deadline.remainingMs !== "function") {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} deadline must come from sloppy/time Deadline.`,
+            );
+        }
+        const remainingMs = deadline.remainingMs();
+        if (!Number.isFinite(remainingMs) && remainingMs !== Infinity) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} deadline remaining time must be finite or Infinity.`,
+            );
+        }
+        return Math.max(0, remainingMs);
+    }
+
+    function httpRequestTimeoutError() {
+        return httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT", "HTTP client request timed out.");
+    }
+
+    function httpRequestCancelledError() {
+        return httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED", "HTTP client request was cancelled.");
+    }
+
+    function httpRemainingMs(expiresAtMs) {
+        return expiresAtMs === Infinity ? Infinity : Math.max(0, expiresAtMs - Date.now());
     }
 
     function parseHttpPort(text, operation) {
@@ -4025,7 +4086,87 @@ Reason:
         }
     }
 
-    function normalizeHttpBody(options, headers, operation) {
+    function enforceHttpRequestBodyLimit(bytes, maxRequestBytes) {
+        if (bytes.byteLength > maxRequestBytes) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+                "HTTP request body exceeded the configured limit.",
+            );
+        }
+        return bytes;
+    }
+
+    function isHttpAsyncIterable(value) {
+        return value !== undefined && value !== null && typeof value[Symbol.asyncIterator] === "function";
+    }
+
+    async function readHttpStreamChunk(iterator, signal, expiresAtMs) {
+        if (isHttpCancellationSignal(signal) && signal.aborted) {
+            throw httpRequestCancelledError();
+        }
+        const remainingMs = httpRemainingMs(expiresAtMs);
+        if (remainingMs <= 0) {
+            throw httpRequestTimeoutError();
+        }
+        if (remainingMs === Infinity && signal === undefined) {
+            return await iterator.next();
+        }
+        let timeoutId;
+        let cleanupCancellation = () => {};
+        try {
+            return await Promise.race([
+                iterator.next(),
+                new Promise((_, reject) => {
+                    cleanupCancellation = subscribeHttpCancellation(signal, () => reject(httpRequestCancelledError()));
+                    if (remainingMs !== Infinity) {
+                        timeoutId = setTimeout(() => reject(httpRequestTimeoutError()), remainingMs);
+                    }
+                }),
+            ]);
+        } finally {
+            cleanupCancellation();
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
+
+    async function consumeHttpRequestStream(stream, maxRequestBytes, headers, operation, timing) {
+        if (!isHttpAsyncIterable(stream)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} stream body must be an async iterable of Uint8Array chunks.`,
+            );
+        }
+        const chunks = [];
+        let totalLength = 0;
+        const iterator = stream[Symbol.asyncIterator]();
+        while (true) {
+            const result = await readHttpStreamChunk(iterator, timing.signal, timing.expiresAtMs);
+            if (result.done) {
+                break;
+            }
+            const chunk = result.value;
+            if (!(chunk instanceof Uint8Array)) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    `${operation} stream body chunks must be Uint8Array values.`,
+                );
+            }
+            totalLength += chunk.byteLength;
+            if (totalLength > maxRequestBytes) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+                    "HTTP request body exceeded the configured limit.",
+                );
+            }
+            chunks.push(chunk.slice());
+        }
+        setHttpDefaultHeader(headers, "Content-Type", "application/octet-stream");
+        return concatHttpBytes(chunks, totalLength);
+    }
+
+    async function normalizeHttpBody(options, headers, operation, maxRequestBytes, timing) {
         const sources = ["json", "text", "bytes", "stream"].filter((key) => options?.[key] !== undefined);
         if (sources.length > 1) {
             throw httpClientError("SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY", `${operation} accepts only one request body source.`);
@@ -4046,25 +4187,22 @@ Reason:
                 throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_JSON", `${operation} JSON body must serialize to a JSON value.`);
             }
             setHttpDefaultHeader(headers, "Content-Type", "application/json");
-            return sloppyUtf8ToBytes(text);
+            return enforceHttpRequestBodyLimit(sloppyUtf8ToBytes(text), maxRequestBytes);
         }
         if (sources[0] === "text") {
             if (typeof options.text !== "string") {
                 throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} text body must be a string.`);
             }
             setHttpDefaultHeader(headers, "Content-Type", "text/plain; charset=utf-8");
-            return sloppyUtf8ToBytes(options.text);
+            return enforceHttpRequestBodyLimit(sloppyUtf8ToBytes(options.text), maxRequestBytes);
         }
         if (sources[0] === "stream") {
-            throw httpClientError(
-                "SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE",
-                "HTTP client stream request bodies are not available in this runtime slice.",
-            );
+            return await consumeHttpRequestStream(options.stream, maxRequestBytes, headers, operation, timing);
         }
         if (!(options.bytes instanceof Uint8Array)) {
             throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} bytes body must be a Uint8Array.`);
         }
-        return options.bytes.slice();
+        return enforceHttpRequestBodyLimit(options.bytes.slice(), maxRequestBytes);
     }
 
     function concatHttpBytes(chunks, totalLength) {
@@ -4208,6 +4346,22 @@ Reason:
                 throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_JSON", "HTTP response body is not valid JSON.", { cause: error });
             }
         }
+
+        stream(options = undefined) {
+            const chunkSize = options?.chunkSize ?? 8192;
+            if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    "HTTP response stream chunkSize must be a positive integer.",
+                );
+            }
+            const body = this._consume();
+            return (async function* streamHttpResponseBody() {
+                for (let offset = 0; offset < body.byteLength; offset += chunkSize) {
+                    yield body.slice(offset, Math.min(body.byteLength, offset + chunkSize));
+                }
+            })();
+        }
     }
 
     function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = false) {
@@ -4313,7 +4467,7 @@ Reason:
         return parsed;
     }
 
-    function normalizeHttpRequest(baseOptions, request, options, defaultMethod) {
+    async function normalizeHttpRequest(baseOptions, request, options, defaultMethod) {
         const operation = "HttpClient.request";
         const requestObject = typeof request === "string" ? { ...(options ?? {}), url: request } : request;
         if (!isPlainObject(requestObject)) {
@@ -4324,7 +4478,9 @@ Reason:
         const headers = new Map();
         appendHttpHeaders(headers, baseOptions?.headers, operation);
         appendHttpHeaders(headers, requestObject.headers, operation);
-        const body = normalizeHttpBody(requestObject, headers, operation);
+        const maxRequestBytes =
+            parseHttpSize(requestObject.maxRequestBytes ?? baseOptions?.maxRequestBytes, operation) ??
+            HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES;
         const maxResponseBytes =
             parseHttpSize(requestObject.maxResponseBytes ?? baseOptions?.maxResponseBytes, operation) ??
             HTTP_CLIENT_DEFAULT_MAX_RESPONSE_BYTES;
@@ -4335,13 +4491,32 @@ Reason:
         if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) {
             throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} timeoutMs must be a non-negative number.`);
         }
+        const deadlineMs = httpDeadlineRemainingMs(requestObject.deadline ?? baseOptions?.deadline, operation);
+        const signal = requestObject.signal ?? baseOptions?.signal;
+        if (signal !== undefined && !isHttpCancellationSignal(signal)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} signal must be a Sloppy cancellation signal or AbortSignal-like object.`,
+            );
+        }
+        const timeoutBudgetMs = timeoutMs === undefined ? Infinity : Math.ceil(timeoutMs);
+        const timeoutDelayMs = Math.min(timeoutBudgetMs, Math.ceil(deadlineMs));
+        const expiresAtMs = timeoutDelayMs === Infinity ? Infinity : Date.now() + timeoutDelayMs;
+        const body = await normalizeHttpBody(requestObject, headers, operation, maxRequestBytes, {
+            signal,
+            expiresAtMs,
+        });
+        const remainingTimeoutMs = httpRemainingMs(expiresAtMs);
         return Object.freeze({
             url,
             method,
             headers,
             body,
-            timeoutMs: timeoutMs === undefined ? undefined : Math.ceil(timeoutMs),
+            signal,
+            timeoutMs: timeoutBudgetMs === Infinity ? undefined : timeoutBudgetMs,
+            timeoutDelayMs: remainingTimeoutMs,
             maxHeaderBytes,
+            maxRequestBytes,
             maxResponseBytes,
         });
     }
@@ -4385,9 +4560,12 @@ Reason:
 
     async function sendHttpRequest(baseOptions, request, options = undefined, defaultMethod = undefined) {
         let connection;
-        const normalized = normalizeHttpRequest(baseOptions, request, options, defaultMethod);
+        const normalized = await normalizeHttpRequest(baseOptions, request, options, defaultMethod);
         let timeoutId;
         let timedOut = false;
+        let cancelled = false;
+        let cancelReason;
+        let cleanupCancellation = () => {};
         const run = async () => {
             if (typeof globalThis.__sloppy?.net?.connect !== "function") {
                 return await httpClientUnavailable("request");
@@ -4403,24 +4581,48 @@ Reason:
         };
 
         try {
-            if (normalized.timeoutMs === undefined) {
+            if (isHttpCancellationSignal(normalized.signal) && normalized.signal.aborted) {
+                cancelled = true;
+                cancelReason = normalized.signal.reason;
+                throw httpRequestCancelledError();
+            }
+            if (normalized.timeoutDelayMs <= 0) {
+                throw httpRequestTimeoutError();
+            }
+            if (normalized.timeoutDelayMs === Infinity && normalized.signal === undefined) {
                 return await run();
             }
             return await Promise.race([
                 run(),
                 new Promise((_, reject) => {
-                    timeoutId = setTimeout(() => {
-                        timedOut = true;
+                    cleanupCancellation = subscribeHttpCancellation(normalized.signal, (reason) => {
+                        cancelled = true;
+                        cancelReason = reason;
                         if (connection !== undefined) {
                             connection.abort().catch(() => {});
                         }
-                        reject(httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT", "HTTP client request timed out."));
-                    }, normalized.timeoutMs);
+                        reject(httpRequestCancelledError());
+                    });
+                    if (normalized.timeoutDelayMs !== Infinity) {
+                        timeoutId = setTimeout(() => {
+                            timedOut = true;
+                            if (connection !== undefined) {
+                                connection.abort().catch(() => {});
+                            }
+                            reject(httpRequestTimeoutError());
+                        }, normalized.timeoutDelayMs);
+                    }
                 }),
             ]);
         } catch (error) {
             if (String(error?.message ?? "").startsWith("SLOPPY_E_HTTP_CLIENT_")) {
                 throw error;
+            }
+            if (cancelled) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED", "HTTP client request was cancelled.", {
+                    cause: error,
+                    reason: cancelReason,
+                });
             }
             if (timedOut) {
                 throw httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT", "HTTP client request timed out.", {
@@ -4429,6 +4631,7 @@ Reason:
             }
             throw mapHttpTransportError(error);
         } finally {
+            cleanupCancellation();
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
             }
