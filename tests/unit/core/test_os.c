@@ -1,8 +1,15 @@
 #include "sloppy/os.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <time.h>
+#endif
 
 static int expect_true(bool condition)
 {
@@ -39,6 +46,74 @@ static int set_test_env(const char* key, const char* value)
 #else
     return setenv(key, value, 1);
 #endif
+}
+
+static void sleep_ms(unsigned int ms)
+{
+#ifdef _WIN32
+    Sleep((DWORD)ms);
+#else
+    struct timespec delay = {.tv_sec = (time_t)(ms / 1000U),
+                             .tv_nsec = (long)((ms % 1000U) * 1000000U)};
+    (void)nanosleep(&delay, NULL);
+#endif
+}
+
+static int process_child_main(int argc, char** argv)
+{
+    if (argc >= 3 && strcmp(argv[2], "echo") == 0) {
+        printf("child-output\n");
+        fputs("child-error\n", stderr);
+        return 7;
+    }
+    if (argc >= 4 && strcmp(argv[2], "argv") == 0) {
+        printf("%s\n", argv[3]);
+        return 0;
+    }
+    if (argc >= 3 && strcmp(argv[2], "long") == 0) {
+        for (int index = 0; index < 8192; index += 1) {
+            putchar('x');
+        }
+        return 0;
+    }
+    if (argc >= 3 && strcmp(argv[2], "sleep") == 0) {
+        sleep_ms(250U);
+        return 0;
+    }
+    if (argc >= 4 && strcmp(argv[2], "env") == 0) {
+#ifdef _WIN32
+        char* value = NULL;
+        size_t value_length = 0U;
+        if (_dupenv_s(&value, &value_length, argv[3]) == 0 && value != NULL) {
+            printf("%s\n", value);
+            free(value);
+            return 0;
+        }
+        free(value);
+        return 4;
+#else
+        const char* value = getenv(argv[3]);
+        if (value != NULL) {
+            printf("%s\n", value);
+        }
+        return value == NULL ? 4 : 0;
+#endif
+    }
+    return 3;
+}
+
+static SlStr self_process_path(char* buffer, size_t capacity, const char* fallback)
+{
+#ifdef _WIN32
+    DWORD length = GetModuleFileNameA(NULL, buffer, (DWORD)capacity);
+    if (length != 0U && length < capacity) {
+        return sl_str_from_parts(buffer, (size_t)length);
+    }
+#else
+    (void)buffer;
+    (void)capacity;
+#endif
+    return sl_str_from_cstr(fallback);
 }
 
 static int test_system_info_is_normalized(void)
@@ -238,8 +313,185 @@ static int test_secret_redaction_helper_never_returns_value(void)
     return 0;
 }
 
-int main(void)
+static int test_process_run_captures_explicit_argv(const char* self_path)
 {
+    unsigned char storage[524288];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    char self_storage[4096];
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("echo")};
+    SlStr argv_args[3] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("argv"),
+                          sl_str_from_cstr("quote\"and\\")};
+    SlOsProcessRunOptions options = {.capture = SL_OS_PROCESS_CAPTURE_TEXT};
+    SlOsProcessRunResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 60;
+    }
+    status = sl_os_process_run(&arena, &policy, self, args, 2U, &options, &result, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 60;
+    }
+    if (result.exit_code != 7 ||
+        !str_contains(sl_owned_str_as_view(result.stdout_text), "child-output") ||
+        !str_contains(sl_owned_str_as_view(result.stderr_text), "child-error"))
+    {
+        return 61;
+    }
+    result = (SlOsProcessRunResult){0};
+    status = sl_os_process_run(&arena, &policy, self, argv_args, 3U, &options, &result, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        !str_contains(sl_owned_str_as_view(result.stdout_text), "quote\"and\\"))
+    {
+        return 62;
+    }
+    return 0;
+}
+
+static int test_process_run_timeout_is_distinct(const char* self_path)
+{
+    unsigned char storage[524288];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    char self_storage[4096];
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("sleep")};
+    SlOsProcessRunOptions options = {.capture = SL_OS_PROCESS_CAPTURE_TEXT, .timeout_ms = 20U};
+    SlOsProcessRunResult result = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_run(&arena, &policy, self, args, 2U, &options, &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        return 70;
+    }
+    if (!result.timed_out || diag.code != SL_DIAG_OS_PROCESS_TIMEOUT) {
+        return 71;
+    }
+    return 0;
+}
+
+static int test_process_run_negative_paths(const char* self_path)
+{
+    unsigned char storage[524288];
+    SlArena arena = {0};
+    SlOsPolicy strict = sl_os_strict_policy(NULL, 0U, false, sl_str_empty());
+    SlOsPolicy policy = sl_os_development_policy();
+    char self_storage[4096];
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("echo")};
+    SlOsProcessRunOptions options = {.capture = SL_OS_PROCESS_CAPTURE_TEXT};
+    SlOsProcessRunResult result = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 80;
+    }
+    if (expect_status(sl_os_process_run(&arena, &strict, self, args, 2U, &options, &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_OS_PROCESS_EXECUTION_DENIED)
+    {
+        return 81;
+    }
+    diag = (SlDiag){0};
+    if (expect_status(sl_os_process_run(&arena, &policy,
+                                        sl_str_from_cstr("sloppy-definitely-missing-command-xyz"),
+                                        NULL, 0U, &options, &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_OS_COMMAND_NOT_FOUND)
+    {
+        return 82;
+    }
+    diag = (SlDiag){0};
+    options.cwd = sl_str_from_cstr("Z:/sloppy/definitely/missing/cwd");
+    SlStatus cwd_status =
+        sl_os_process_run(&arena, &policy, self, args, 2U, &options, &result, &diag);
+    if (expect_status(cwd_status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_OS_INVALID_CWD)
+    {
+        return 83;
+    }
+    return 0;
+}
+
+static int test_process_run_env_override_and_strict_grant(const char* self_path)
+{
+    unsigned char storage[524288];
+    SlArena arena = {0};
+    SlOsPolicy strict = sl_os_strict_policy(NULL, 0U, false, sl_str_empty());
+    char self_storage[4096];
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    SlStr args[3] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("env"),
+                     sl_str_from_cstr("SLOPPY_PROCESS_RUN_TEST_VALUE")};
+    SlOsEnvironmentOverride overrides[1] = {
+        {.key = sl_str_from_cstr("SLOPPY_PROCESS_RUN_TEST_VALUE"),
+         .value = sl_str_from_cstr("visible-override")}};
+    SlOsProcessRunOptions options = {.environment_overrides = overrides,
+                                     .environment_override_count = 1U,
+                                     .capture = SL_OS_PROCESS_CAPTURE_TEXT};
+    SlOsProcessRunResult result = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 90;
+    }
+    sl_os_policy_set_process_run(&strict, true);
+    if (expect_status(sl_os_process_run(&arena, &strict, self, args, 3U, &options, &result, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 91;
+    }
+    if (result.exit_code != 0 ||
+        !str_contains(sl_owned_str_as_view(result.stdout_text), "visible-override"))
+    {
+        return 92;
+    }
+    return 0;
+}
+
+static int test_process_run_capture_bound(const char* self_path)
+{
+    unsigned char storage[196608];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    char self_storage[4096];
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("long")};
+    SlOsProcessRunOptions options = {
+        .capture = SL_OS_PROCESS_CAPTURE_TEXT, .max_stdout_bytes = 12U, .max_stderr_bytes = 12U};
+    SlOsProcessRunResult result = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_run(&arena, &policy, self, args, 2U, &options, &result, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 100;
+    }
+    if (!result.stdout_truncated || result.stdout_text.length != 12U) {
+        return 101;
+    }
+    result = (SlOsProcessRunResult){0};
+    options.max_stdout_bytes = 9000U;
+    options.max_stderr_bytes = 12U;
+    if (expect_status(sl_os_process_run(&arena, &policy, self, args, 2U, &options, &result, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 102;
+    }
+    if (result.stdout_truncated || result.stdout_text.length != 8192U) {
+        return 103;
+    }
+    return 0;
+}
+
+int main(int argc, char** argv)
+{
+    if (argc >= 2 && strcmp(argv[1], "--sloppy-os-child") == 0) {
+        return process_child_main(argc, argv);
+    }
     int result = test_system_info_is_normalized();
     if (result != 0) {
         return result;
@@ -260,5 +512,25 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_secret_redaction_helper_never_returns_value();
+    result = test_secret_redaction_helper_never_returns_value();
+    if (result != 0) {
+        return result;
+    }
+    result = test_process_run_captures_explicit_argv(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+    result = test_process_run_timeout_is_distinct(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+    result = test_process_run_negative_paths(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+    result = test_process_run_env_override_and_strict_grant(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+    return test_process_run_capture_bound(argv[0]);
 }

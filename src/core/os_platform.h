@@ -9,5 +9,8 @@ SlStatus sl_os_platform_environment_get(SlArena* arena, SlStr key, SlOwnedStr* o
 SlStatus sl_os_platform_environment_has(SlStr key, bool* out_found, SlDiag* out_diag);
 SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvironmentList* out,
                                          SlDiag* out_diag);
+SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* args,
+                                    size_t arg_count, const SlOsProcessRunOptions* options,
+                                    SlOsProcessRunResult* out, SlDiag* out_diag);
 
 #endif

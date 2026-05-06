@@ -56,6 +56,7 @@ SlOsPolicy sl_os_development_policy(void)
     SlOsPolicy policy = {.mode = SL_OS_POLICY_DEVELOPMENT,
                          .allow_system_info = true,
                          .allow_environment_list = true,
+                         .allow_process_run = true,
                          .environment_list_prefix = sl_str_empty(),
                          .environment_grants = NULL,
                          .environment_grant_count = 0U};
@@ -68,10 +69,18 @@ SlOsPolicy sl_os_strict_policy(const SlOsEnvironmentGrant* grants, size_t grant_
     SlOsPolicy policy = {.mode = SL_OS_POLICY_STRICT,
                          .allow_system_info = false,
                          .allow_environment_list = allow_environment_list,
+                         .allow_process_run = false,
                          .environment_list_prefix = environment_list_prefix,
                          .environment_grants = grants,
                          .environment_grant_count = grant_count};
     return policy;
+}
+
+void sl_os_policy_set_process_run(SlOsPolicy* policy, bool allowed)
+{
+    if (policy != NULL) {
+        policy->allow_process_run = allowed;
+    }
 }
 
 bool sl_os_environment_key_is_secret(SlStr key)
@@ -200,4 +209,90 @@ SlStatus sl_os_environment_list(SlArena* arena, const SlOsPolicy* policy, SlStr 
         }
     }
     return sl_os_platform_environment_list(arena, effective_prefix, out, out_diag);
+}
+
+static bool sl_os_str_contains_nul(SlStr value)
+{
+    size_t index = 0U;
+
+    if (value.ptr == NULL) {
+        return false;
+    }
+    for (index = 0U; index < value.length; index += 1U) {
+        if (value.ptr[index] == '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_os_process_env_override_valid(const SlOsEnvironmentOverride* entry)
+{
+    size_t index = 0U;
+
+    if (entry == NULL || entry->key.ptr == NULL || entry->key.length == 0U ||
+        entry->value.ptr == NULL)
+    {
+        return false;
+    }
+    if (sl_os_str_contains_nul(entry->key) || sl_os_str_contains_nul(entry->value)) {
+        return false;
+    }
+    for (index = 0U; index < entry->key.length; index += 1U) {
+        if (entry->key.ptr[index] == '=') {
+            return false;
+        }
+    }
+    return true;
+}
+
+SlStatus sl_os_process_run(SlArena* arena, const SlOsPolicy* policy, SlStr command,
+                           const SlStr* args, size_t arg_count,
+                           const SlOsProcessRunOptions* options, SlOsProcessRunResult* out,
+                           SlDiag* out_diag)
+{
+    size_t index = 0U;
+    SlOsProcessRunOptions defaults = {0};
+
+    if (arena == NULL || out == NULL || command.ptr == NULL || command.length == 0U ||
+        sl_os_str_contains_nul(command) || (arg_count != 0U && args == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = (SlOsProcessRunResult){0};
+    if (policy != NULL && policy->mode == SL_OS_POLICY_STRICT && !policy->allow_process_run) {
+        return sl_os_denied(
+            SL_DIAG_OS_PROCESS_EXECUTION_DENIED, out_diag,
+            sl_str_from_cstr("process execution was denied"),
+            sl_str_from_cstr("Grant process.run before admitting native process work."));
+    }
+    for (index = 0U; index < arg_count; index += 1U) {
+        if (args[index].ptr == NULL || sl_os_str_contains_nul(args[index])) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+    }
+    if (options == NULL) {
+        options = &defaults;
+    }
+    if (!sl_str_is_empty(options->cwd) &&
+        (options->cwd.ptr == NULL || sl_os_str_contains_nul(options->cwd)))
+    {
+        return sl_os_denied(SL_DIAG_OS_INVALID_CWD, out_diag,
+                            sl_str_from_cstr("process working directory is invalid"),
+                            sl_str_from_cstr("Validate cwd before process admission."));
+    }
+    if (options->environment_override_count != 0U && options->environment_overrides == NULL) {
+        return sl_os_denied(SL_DIAG_OS_INVALID_ENV_OVERRIDE, out_diag,
+                            sl_str_from_cstr("process environment override is invalid"),
+                            sl_str_from_cstr("Environment overrides require key/value entries."));
+    }
+    for (index = 0U; index < options->environment_override_count; index += 1U) {
+        if (!sl_os_process_env_override_valid(&options->environment_overrides[index])) {
+            return sl_os_denied(
+                SL_DIAG_OS_INVALID_ENV_OVERRIDE, out_diag,
+                sl_str_from_cstr("process environment override is invalid"),
+                sl_str_from_cstr("Environment override diagnostics must not print values."));
+        }
+    }
+    return sl_os_platform_process_run(arena, command, args, arg_count, options, out, out_diag);
 }
