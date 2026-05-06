@@ -572,6 +572,8 @@ static int test_codec_dependents_fail_closed_when_codec_unavailable(void)
         {"stdlib.crypto", SL_RUNTIME_FEATURE_STDLIB_CRYPTO},
         {"stdlib.net", SL_RUNTIME_FEATURE_STDLIB_NET},
         {"stdlib.os", SL_RUNTIME_FEATURE_STDLIB_OS},
+        {"stdlib.httpclient", SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT},
+        {"stdlib.workers", SL_RUNTIME_FEATURE_STDLIB_WORKERS},
     };
     size_t index = 0U;
 

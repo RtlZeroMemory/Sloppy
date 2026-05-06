@@ -108,6 +108,21 @@ try {
     }
     assert.deepEqual(trailingCarriageReturnLines, ["abc"]);
 
+    readCount = 0;
+    globalThis.__sloppy.fs.handleRead = () => {
+        readCount += 1;
+        return readCount === 1 ? Text.utf8.encode("abc\r--") : new Uint8Array(0);
+    };
+    const customDelimiterLines = [];
+    for await (const line of new FileHandle({ slot: 1, generation: 1 }).readLines({
+        chunkSize: 64,
+        maxLineLength: 4,
+        newline: "--",
+    })) {
+        customDelimiterLines.push(line);
+    }
+    assert.deepEqual(customDelimiterLines, ["abc\r"]);
+
     globalThis.__sloppy = {
         ...(globalThis.__sloppy ?? {}),
         os: {
@@ -191,6 +206,36 @@ try {
         "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
     );
     assert.equal(streamReturned, 1);
+
+    let delayedCleanupFinished = false;
+    const delayedCleanupStream = {
+        [Symbol.asyncIterator]() {
+            let step = 0;
+            return {
+                async next() {
+                    step += 1;
+                    return {
+                        done: false,
+                        value: step === 1 ? new Uint8Array([1, 2]) : new Uint8Array([3, 4]),
+                    };
+                },
+                async return() {
+                    await new Promise((resolve) => setTimeout(resolve, 5));
+                    delayedCleanupFinished = true;
+                    return { done: true, value: undefined };
+                },
+            };
+        },
+    };
+    await assertRejectsCode(
+        HttpClient.request({
+            url: "http://127.0.0.1/",
+            stream: delayedCleanupStream,
+            maxRequestBytes: 3,
+        }),
+        "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+    );
+    assert.equal(delayedCleanupFinished, true);
 
     const invalidChunk = oneShotStream("not-bytes");
     await assertRejectsCode(

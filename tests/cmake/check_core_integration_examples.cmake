@@ -113,6 +113,8 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "Sloppy.module"
+        "export const policyMetadata"
+        "export default app"
         "capabilities.addDatabase"
         "mode: \"strict\""
         "Audit-only")

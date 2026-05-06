@@ -11,23 +11,24 @@ fi
 check_file() {
     path=$1
     file=$2
+    failed=0
     case "$path" in
         stdlib/sloppy/*)
             if [ "$path" != "stdlib/sloppy/codec.js" ] &&
                 [ "$path" != "stdlib/sloppy/internal/runtime-classic.js" ] &&
                 grep -Eq 'new[[:space:]]+Text(Encoder|Decoder)[[:space:]]*\(' "$file"; then
                 printf '%s\n' "$path uses TextEncoder/TextDecoder directly; route text conversions through sloppy/codec Text."
-                return 1
+                failed=1
             fi
             if [ "$path" != "stdlib/sloppy/internal/runtime-classic.js" ] &&
                 grep -Eq '^[[:space:]]*(export[[:space:]]+)?(function|const|let|var)[[:space:]]+(utf8ToBytes|bytesToHex|bytesToBase64)\b' "$file"; then
                 printf '%s\n' "$path defines local UTF-8/hex/base64 helpers; use sloppy/codec instead."
-                return 1
+                failed=1
             fi
             if [ "$path" != "stdlib/sloppy/internal/runtime-classic.js" ] &&
                 grep -Eq '\bMath\.random[[:space:]]*\(' "$file"; then
                 printf '%s\n' "$path uses Math.random for runtime API behavior; use sloppy/crypto Random or document a non-security exception."
-                return 1
+                failed=1
             fi
             ;;
     esac
@@ -49,9 +50,9 @@ check_file() {
                 ;;
           esac; }; then
         printf '%s\n' "$path defines a local ASCII comparison helper; use sloppy/string case-insensitive helpers."
-        return 1
+        failed=1
     fi
-    return 0
+    return "$failed"
 }
 
 if [ "$SELF_TEST" -eq 1 ]; then

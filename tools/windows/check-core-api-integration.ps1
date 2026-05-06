@@ -5,6 +5,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$AllowedSourceFilePattern = "\.(c|h|cc|cpp|js|mjs|ts|md|json|cmake|ps1|sh|rs)$"
 
 function Convert-ToRepoPath {
     param([string]$Path)
@@ -19,7 +20,7 @@ function Get-TrackedFileSet {
         $files = & git -C $Root ls-files --cached --others --exclude-standard 2>$null
         if ($LASTEXITCODE -eq 0) {
             return @($files | Where-Object {
-                $_ -match "\.(c|h|cc|cpp|js|mjs|ts|md|json|cmake|ps1|sh|rs)$"
+                $_ -match $AllowedSourceFilePattern
             } | Where-Object {
                 Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf
             } | ForEach-Object {
@@ -32,7 +33,9 @@ function Get-TrackedFileSet {
         }
     }
 
-    return @(Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object {
+    return @(Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object {
+        $_.Name -match $AllowedSourceFilePattern
+    } | ForEach-Object {
         [pscustomobject]@{
             Path = Convert-ToRepoPath $_.FullName
             Content = Get-Content -LiteralPath $_.FullName -Raw

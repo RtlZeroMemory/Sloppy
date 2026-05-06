@@ -1695,6 +1695,30 @@ async function readHttpStreamChunk(iterator, signal, expiresAtMs) {
     }
 }
 
+function isHttpRequestStreamTimingError(error) {
+    return error?.code === "SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT" ||
+        error?.code === "SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED";
+}
+
+async function closeHttpRequestStreamIterator(iterator, shouldAwaitCleanup) {
+    if (typeof iterator.return !== "function") {
+        return;
+    }
+    try {
+        const cleanup = Promise.resolve(iterator.return());
+        if (shouldAwaitCleanup) {
+            await cleanup;
+            return;
+        }
+
+        // Timed-out or cancelled async generators can remain suspended in next(); observe
+        // cleanup failures without letting a non-interruptible iterator block settlement.
+        cleanup.catch(() => {});
+        await Promise.race([cleanup, Promise.resolve()]);
+    } catch {
+    }
+}
+
 async function consumeHttpRequestStream(stream, maxRequestBytes, headers, operation, timing) {
     if (!isHttpAsyncIterable(stream)) {
         throw httpClientError(
@@ -1707,6 +1731,7 @@ async function consumeHttpRequestStream(stream, maxRequestBytes, headers, operat
     let totalLength = 0;
     const iterator = stream[Symbol.asyncIterator]();
     let completed = false;
+    let terminalError;
     try {
         while (true) {
             const result = await readHttpStreamChunk(iterator, timing.signal, timing.expiresAtMs);
@@ -1732,12 +1757,15 @@ async function consumeHttpRequestStream(stream, maxRequestBytes, headers, operat
             }
             chunks.push(chunk.slice());
         }
+    } catch (error) {
+        terminalError = error;
+        throw error;
     } finally {
-        if (!completed && typeof iterator.return === "function") {
-            try {
-                Promise.resolve(iterator.return()).catch(() => {});
-            } catch {
-            }
+        if (!completed) {
+            await closeHttpRequestStreamIterator(
+                iterator,
+                !isHttpRequestStreamTimingError(terminalError),
+            );
         }
     }
     setHttpDefaultHeader(headers, "Content-Type", "application/octet-stream");
