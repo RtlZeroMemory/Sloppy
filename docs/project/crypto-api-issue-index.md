@@ -2,18 +2,18 @@
 
 Parent EPIC: #571 CORE-CRYPTO-01: Crypto, Random, Hashing, Password, and Secret Utilities.
 
-Status: PR 1 contract and feature/diagnostic model.
+Status: PR 2 random/hash/HMAC/Secret/V8 surface implementation.
 
 | Issue | Slice | PR Group | Status |
 | --- | --- | --- | --- |
 | #572 | API Contract and Backend Policy | PR 1 | Contract source docs, backend policy, and API surface locked. |
 | #573 | Feature, Plan, Diagnostics, and Secret Redaction Model | PR 1 | `stdlib.crypto` feature, compiler Plan activation, diagnostics, and redaction model defined. |
-| #574 | OS Random, UUID, Token, and Entropy Helpers | PR 2 | Deferred until OS random backends and JS/V8 surface land. |
-| #575 | Hash and HMAC APIs | PR 2 | Deferred until vetted backend integration and test vectors land. |
+| #574 | OS Random, UUID, Token, and Entropy Helpers | PR 2 | Implemented with OS CSPRNG backends, UUID v4, hex, URL-safe token, and numeric-code helpers. |
+| #575 | Hash and HMAC APIs | PR 2 | Implemented SHA-256/SHA-384/SHA-512 and HMAC-SHA-256/SHA-384/SHA-512 through vetted backends. |
 | #576 | Password Hashing and Verification | PR 3 | Deferred until Argon2id/offload implementation lands. |
-| #577 | Constant-Time and Secret Buffer Utilities | PR 2 | Deferred until native/JS Secret and ConstantTime utilities land. |
+| #577 | Constant-Time and Secret Buffer Utilities | PR 2 | Implemented constant-time equality helper and cleanup-once Secret utilities. |
 | #578 | Non-Cryptographic Hash Utilities | PR 4 | Deferred until dependency-backed `NonCryptoHash` implementation lands. |
-| #579 | V8/Stdlib Integration and JS Surface | PR 2 | Deferred until native intrinsics and bootstrap stdlib surface land. |
+| #579 | V8/Stdlib Integration and JS Surface | PR 2 | Implemented `__sloppy.crypto`, `stdlib/sloppy/crypto.js`, bootstrap runtime exports, and V8 smoke coverage. |
 | #580 | Conformance, Test Vectors, Examples, Docs, and Goldens | PR 5 | Deferred until the final evidence/examples pass. |
 
 ## PR Order
@@ -40,6 +40,16 @@ Status: PR 1 contract and feature/diagnostic model.
 - `xxHash64` is the selected first non-crypto hash target.
 - No WebCrypto, Node, Bun, package-manager, public alpha, benchmark, or custom algorithm
   claims are made by this EPIC.
+
+## Implementation Decisions In PR 2
+
+- Windows uses CNG for OS random, SHA-2, and HMAC.
+- Linux uses `getrandom` for random; macOS uses `SecRandomCopyBytes`.
+- Non-Windows SHA-2/HMAC uses OpenSSL 3 through the vetted dependency toolchain.
+- Token and numeric-code helpers use rejection sampling; tests verify API shape and
+  alphabet/UUID constraints only.
+- V8 hash/HMAC inputs are capped at 1 MiB for the inline bridge. Password hashing remains
+  deferred because it requires offload.
 
 ## Evidence Expected Later
 

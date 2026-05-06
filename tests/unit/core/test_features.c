@@ -195,7 +195,7 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     if (!sl_str_equal(crypto->stable_id, sl_str_from_cstr("stdlib.crypto")) ||
         !sl_str_equal(crypto->stdlib_import, sl_str_from_cstr("sloppy/crypto")) ||
         !sl_str_equal(crypto->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.crypto")) ||
-        !crypto->requires_v8_intrinsics || crypto->available)
+        !crypto->requires_v8_intrinsics || !crypto->available)
     {
         return 68;
     }
@@ -318,7 +318,7 @@ static int test_explicit_crypto_required_feature_activates_when_available(void)
     return 0;
 }
 
-static int test_crypto_required_feature_unavailable_by_default(void)
+static int test_crypto_required_feature_fails_when_backend_unavailable(void)
 {
     unsigned char diag_storage[2048];
     SlArena diag_arena = {0};
@@ -329,6 +329,7 @@ static int test_crypto_required_feature_unavailable_by_default(void)
     SlDiag diag = {0};
 
     availability.v8 = true;
+    availability.stdlib_crypto = false;
     plan.required_features = required;
     plan.required_feature_count = 1U;
     (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
@@ -664,7 +665,7 @@ int main(void)
         test_explicit_time_required_feature_activates_stdlib_time,
         test_explicit_fs_required_feature_activates_stdlib_fs,
         test_explicit_crypto_required_feature_activates_when_available,
-        test_crypto_required_feature_unavailable_by_default,
+        test_crypto_required_feature_fails_when_backend_unavailable,
         test_minimal_route_activates_expected_features,
         test_sqlite_provider_metadata_activates_sqlite,
         test_unavailable_postgres_required_feature_fails,

@@ -3,12 +3,17 @@ import assert from "node:assert/strict";
 import {
     CancelledError,
     CancellationController,
+    ConstantTime,
     Deadline,
     Directory,
     File,
     FileHandle,
+    Hash,
+    Hmac,
     InvalidDeadlineError,
+    Random,
     Results,
+    Secret,
     Sloppy,
     Time,
     TimerDisposedError,
@@ -27,6 +32,67 @@ function assertThrowsMessage(fn, expected) {
 async function flushMicrotasks(count = 6) {
     for (let i = 0; i < count; i += 1) {
         await Promise.resolve();
+    }
+}
+
+{
+    const previousSloppy = globalThis.__sloppy;
+    const encodeAscii = (value) => new Uint8Array(Array.from(value).map((char) => char.charCodeAt(0)));
+    try {
+        globalThis.__sloppy = {
+            crypto: {
+                randomBytes(length) {
+                    return new Uint8Array(length);
+                },
+                randomUuid() {
+                    return "00000000-0000-4000-8000-000000000000";
+                },
+                randomToken(length) {
+                    return "A".repeat(length);
+                },
+                randomHex(length) {
+                    return "00".repeat(length);
+                },
+                randomNumericCode(length) {
+                    return "0".repeat(length);
+                },
+                hash(algorithm, bytes) {
+                    assert.equal(algorithm, "sha256");
+                    assert.deepEqual(bytes, encodeAscii("abc"));
+                    return new Uint8Array([0xba, 0x78]);
+                },
+                hmac(algorithm, secret, bytes) {
+                    assert.equal(algorithm, "sha256");
+                    assert.deepEqual(secret, encodeAscii("key"));
+                    assert.deepEqual(bytes, encodeAscii("abc"));
+                    return new Uint8Array([1, 2, 3]);
+                },
+                constantTimeEquals(left, right) {
+                    return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
+                },
+            },
+        };
+
+        assert.equal(Random.uuid(), "00000000-0000-4000-8000-000000000000");
+        assert.equal(Random.token(4), "AAAA");
+        assert.equal(Random.hex(2), "0000");
+        assert.equal(Random.numericCode(3), "000");
+        assert.equal(Random.bytes(2).byteLength, 2);
+        assert.equal(await Hash.sha256Hex("abc"), "ba78");
+        assert.deepEqual(await Hmac.sha256("key", "abc"), new Uint8Array([1, 2, 3]));
+        assert.equal(await Hmac.verifySha256("key", "abc", new Uint8Array([1, 2, 3])), true);
+        assert.equal(ConstantTime.equals(new Uint8Array([1]), new Uint8Array([1])), true);
+        const secret = Secret.fromUtf8("key");
+        assert.deepEqual(secret.bytes(), encodeAscii("key"));
+        assert.equal(String(secret), "[Secret redacted]");
+        secret.dispose();
+        assert.throws(() => secret.bytes(), /SLOPPY_E_CRYPTO_SECRET_DISPOSED/);
+    } finally {
+        if (previousSloppy === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previousSloppy;
+        }
     }
 }
 

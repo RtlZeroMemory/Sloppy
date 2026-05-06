@@ -37,9 +37,8 @@ Implemented now:
   V8 intrinsic namespaces where implemented;
 - CORE-TIME-01.A/B `stdlib.time` feature metadata for the `sloppy/time` import;
 - CORE-FS-01.A/B `stdlib.fs` feature metadata for the `sloppy/fs` import;
-- CORE-CRYPTO-01.A/B `stdlib.crypto` feature metadata for the `sloppy/crypto` import.
-  It is known to Plan validation but unavailable by default until the crypto backend and
-  V8 implementation PRs land;
+- CORE-CRYPTO-01.C/D/F/H `stdlib.crypto` feature metadata and V8 intrinsic activation for
+  the implemented `sloppy/crypto` random/hash/HMAC/Secret surface;
 - arena-owned parsed plan storage;
 - basic diagnostics for invalid plan JSON and validation failures;
 - documented golden plan fixture matrix;

@@ -1,9 +1,10 @@
 # Crypto API Architecture
 
-Status: CORE-CRYPTO-01.A/B contract. This document defines the intended
-`sloppy/crypto` surface and backend policy before primitive implementation. It is not
-implementation evidence for random quality, hash throughput, password cost behavior, or V8
-runtime execution.
+Status: CORE-CRYPTO-01.C/D/F/H implementation. The contract, feature model, OS random,
+SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, and V8 bridge are now
+implemented. Password hashing, `NonCryptoHash`, final examples, and the full conformance
+pass remain later CORE-CRYPTO slices. This document is not randomness-quality,
+password-cost, timing-proof, or performance evidence.
 
 ## Goals
 
@@ -38,9 +39,8 @@ import {
 ```
 
 The compiler recognizes only named, unaliased imports from `sloppy/crypto`. The import
-activates the `stdlib.crypto` runtime feature in emitted Plan metadata. The current
-contract PR keeps `stdlib.crypto` unavailable by default until the implementation PRs
-register real backends and V8 intrinsics.
+activates the `stdlib.crypto` runtime feature in emitted Plan metadata. CORE-CRYPTO-01.C/D/F/H
+registers the V8 intrinsic namespace for active `stdlib.crypto` plans.
 
 ## API Contract
 
@@ -124,6 +124,17 @@ OpenSSL 3 through the dependency toolchain because there is no single portable k
 API. Backend selection must stay behind Sloppy-owned C interfaces; public headers and JS
 must not expose OpenSSL, CNG, Security.framework, or provider-native types.
 
+Implemented backend choices:
+
+- Windows random/hash/HMAC use CNG (`BCryptGenRandom`, SHA-2, and HMAC providers) behind
+  `src/platform/win32/crypto_win32.c`.
+- Linux random uses `getrandom`; macOS random uses `SecRandomCopyBytes`.
+- Non-Windows SHA-2/HMAC use OpenSSL 3 EVP/HMAC through `OpenSSL::Crypto` and the POSIX
+  platform backend.
+- Random text helpers use rejection sampling for token and numeric-code alphabets. Shape
+  tests verify length/alphabet/UUID version/variant only; they make no randomness-quality
+  claim.
+
 Password hashing uses a vetted dependency. The selected default is Argon2id with PHC
 encoded output, safe memory/time/parallelism defaults, and documented upper/lower bounds.
 `bcrypt` and `PBKDF2` remain compatibility/deferred work unless a later PR explicitly
@@ -135,9 +146,10 @@ hash helpers as a public algorithm contract.
 
 ## Async and Owner-Thread Policy
 
-Small bounded hash/HMAC work may run inline only when a later implementation PR documents
-the size cap and evidence. Large hash/HMAC work should offload when it can otherwise block
-the V8 owner thread.
+Small bounded hash/HMAC work runs inline in CORE-CRYPTO-01.C/D/F/H with a 1 MiB V8 bridge
+input cap. The public JS methods keep the async `Promise` return shape for `Hash`/`Hmac`,
+but the current bridge performs the bounded native work on the owner thread. Larger
+streaming/offloaded hash work remains deferred.
 
 Password hashing and verification are always admitted to an offload path. Password work
 must copy cross-thread inputs into owned buffers, clean up exactly once, and settle
@@ -162,11 +174,13 @@ Compiler behavior:
 - Future PRs may add statically visible metadata for password hashing, HMAC, non-crypto
   hash use, and legacy/insecure algorithm warnings where the compiler can see them.
 
-Runtime behavior in this PR:
+Runtime behavior after CORE-CRYPTO-01.C/D/F/H:
 
-- `stdlib.crypto` is known to the feature registry.
-- Default availability is false until native and V8 implementations land.
-- Required `stdlib.crypto` fails closed with runtime-feature diagnostics.
+- `stdlib.crypto` is known to the feature registry and available when its dependencies are
+  available.
+- The V8 bridge registers `__sloppy.crypto` only for active `stdlib.crypto` plans.
+- Non-V8 or inactive-feature lanes fail closed with runtime-feature or missing-bridge
+  diagnostics.
 
 ## Diagnostics
 
@@ -194,10 +208,10 @@ redaction helper recognizes common password/token/key/secret labels, connection 
 URI user-info passwords, and crypto-specific labels such as `clientSecret`, `private_key`,
 `secret_key`, and `passphrase`.
 
-`Secret` disposal is best-effort zeroization of Sloppy-owned native buffers. It cannot
-erase prior JavaScript string copies, engine internals, operating-system paging, crash
-dumps, or caller-owned buffers. API docs and examples must describe that limitation
-plainly.
+`Secret` disposal is best-effort zeroization of Sloppy-owned native buffers and the
+bootstrap JS `Uint8Array` copy. It cannot erase prior JavaScript string copies, engine
+internals, operating-system paging, crash dumps, or caller-owned buffers. API docs and
+examples must describe that limitation plainly.
 
 ## Evidence Boundaries
 

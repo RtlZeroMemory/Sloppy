@@ -86,11 +86,11 @@ provider work. Application config may contain secrets later, but this slice does
 secrets manager, user secrets, remote providers, or raw environment access from JS.
 Secret-looking config values are redacted in diagnostics and Plan metadata.
 
-CORE-CRYPTO-01.A/B adds the crypto API contract without adding a new permission grant
-type. `sloppy/crypto` is Plan-visible as `stdlib.crypto` and unavailable by default until
-real backends land. Crypto backends may use OS random/crypto facilities or vetted
-dependencies behind Sloppy-owned platform/backend boundaries, but JavaScript never receives
-raw native pointers or backend handles. Secure `Hash`/`Hmac` APIs and `NonCryptoHash` are
+CORE-CRYPTO-01.C/D/F/H adds the first implemented crypto API slice without adding a new
+permission grant type. `sloppy/crypto` is Plan-visible as `stdlib.crypto` and registers
+`__sloppy.crypto` only for active V8 plans. Crypto backends use OS random/crypto
+facilities or vetted dependencies behind Sloppy-owned platform/backend boundaries, but
+JavaScript never receives raw native pointers or backend handles. Secure `Hash`/`Hmac` APIs and `NonCryptoHash` are
 separate namespaces so non-security hashes are not confused with signatures, tokens,
 password hashes, or integrity checks.
 
@@ -99,6 +99,10 @@ or goldens. `Secret` disposal is best-effort cleanup of Sloppy-owned native buff
 it cannot erase prior JS string copies, engine internals, caller-owned buffers, operating
 system paging, or crash dumps. Password hashing must run through an async/offload path and
 must not block the V8 owner thread.
+
+Current random evidence is limited to OS-source use and API shape: UUID version/variant,
+token/hex/numeric alphabets, and rejection-sampling implementation. Deterministic tests do
+not claim random quality.
 
 COMPILER-30.E keeps this metadata-only: supported config reads, schema declarations,
 request bindings, and `Results.*` response facts are Plan-visible for later audit and
