@@ -71,8 +71,9 @@ and conformance indexing. External live-network evidence remains outside the def
 under the same `stdlib.net` feature. The API uses named-root endpoint paths such as
 `runtime:/my-app.sock`, returns Slop-owned connection/server wrappers, keeps native Unix
 socket and named pipe handles private, and preserves bounded binary reads/writes with
-deadline options. Unix domain sockets remain POSIX-specific and named pipes remain
-Windows-specific; Windows AF_UNIX support is not claimed.
+deadline/cancellation options. `server.accept(options)` is awaitable for one connection and
+async-iterable for accept loops. Unix domain sockets remain POSIX-specific and named pipes
+remain Windows-specific; Windows AF_UNIX support is not claimed.
 `HttpClient` is exported from `sloppy/net` as the outbound CORE-HTTPCLIENT-01 surface. It
 uses the private `__sloppy.net` TCP bridge for the first cleartext HTTP/1.1 lane, exposes
 reusable clients plus `get`, `post`, `request`, `text`, `json`, `bytes`, `getJson`, and

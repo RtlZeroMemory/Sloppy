@@ -163,32 +163,96 @@ async function flushMicrotasks(count = 6) {
 
 {
     const previousSloppy = globalThis.__sloppy;
+    let connectLocalCalls = 0;
+    const delayedConnectHandles = [];
+    const delayedAcceptedHandles = [];
     try {
         globalThis.__sloppy = {
             net: {
                 connectLocal(options) {
+                    connectLocalCalls += 1;
+                    if (options.path === "runtime:/late.sock") {
+                        return new Promise((resolve) => {
+                            setTimeout(() => {
+                                const handle = { kind: "late-local", options };
+                                delayedConnectHandles.push(handle);
+                                resolve(handle);
+                            }, 20);
+                        });
+                    }
                     return Promise.resolve({ kind: "local", options });
                 },
                 listenLocal(options) {
                     return Promise.resolve({ kind: "server", options });
                 },
+                acceptLocal(server, timeoutMs) {
+                    if (timeoutMs === 1) {
+                        return new Promise((resolve) => {
+                            setTimeout(() => {
+                                const handle = { kind: "late-accepted", server, timeoutMs };
+                                delayedAcceptedHandles.push(handle);
+                                resolve(handle);
+                            }, 20);
+                        });
+                    }
+                    return Promise.resolve({ kind: "accepted", server, timeoutMs });
+                },
                 writeLocal(handle, bytes, timeoutMs) {
+                    if (timeoutMs === 1) {
+                        return new Promise((resolve) => {
+                            setTimeout(() => {
+                                handle.lastWrite = { bytes, timeoutMs };
+                                resolve();
+                            }, 20);
+                        });
+                    }
                     handle.lastWrite = { bytes, timeoutMs };
                     return Promise.resolve();
                 },
-                readLocal(_handle, maxBytes, timeoutMs) {
+                readLocal(handle, maxBytes, timeoutMs) {
+                    if (timeoutMs === 1) {
+                        return new Promise((resolve) => {
+                            setTimeout(() => {
+                                handle.delayedReadResolved = true;
+                                resolve(new Uint8Array([maxBytes & 0xff, timeoutMs ?? 0]));
+                            }, 20);
+                        });
+                    }
                     return Promise.resolve(new Uint8Array([maxBytes & 0xff, timeoutMs ?? 0]));
                 },
-                readLineLocal(_handle, maxBytes, timeoutMs) {
+                readLineLocal(handle, maxBytes, timeoutMs) {
+                    if (timeoutMs === 1) {
+                        return new Promise((resolve) => {
+                            setTimeout(() => {
+                                handle.delayedReadLineResolved = true;
+                                resolve(`${maxBytes}:${timeoutMs ?? "none"}`);
+                            }, 20);
+                        });
+                    }
                     return Promise.resolve(`${maxBytes}:${timeoutMs ?? "none"}`);
                 },
-                readUntilLocal(_handle, delimiter, maxBytes, timeoutMs) {
+                readUntilLocal(handle, delimiter, maxBytes, timeoutMs) {
+                    if (timeoutMs === 1) {
+                        return new Promise((resolve) => {
+                            setTimeout(() => {
+                                handle.delayedReadUntilResolved = true;
+                                resolve(new Uint8Array([delimiter.byteLength, maxBytes, timeoutMs ?? 0]));
+                            }, 20);
+                        });
+                    }
                     return Promise.resolve(new Uint8Array([delimiter.byteLength, maxBytes, timeoutMs ?? 0]));
                 },
                 closeLocal() {
                     return Promise.resolve();
                 },
-                abortLocal() {
+                abortLocal(handle) {
+                    handle.aborted = true;
+                    return Promise.resolve();
+                },
+                closeLocalServer() {
+                    return Promise.resolve();
+                },
+                abortLocalServer() {
                     return Promise.resolve();
                 },
             },
@@ -197,6 +261,22 @@ async function flushMicrotasks(count = 6) {
         const conn = await LocalEndpoint.connect({ path: "runtime:/my-app.sock", timeoutMs: 1 });
         assert.equal(conn.closed, false);
         assert.deepEqual(conn._handle.options, { path: "runtime:/my-app.sock", timeoutMs: 1 });
+        await assert.rejects(conn.read({ maxBytes: 1, timeoutMs: 1 }), /timed out/);
+        assert.equal(conn.closed, false);
+        await assert.rejects(conn.readLine({ maxBytes: 1, timeoutMs: 1 }), /timed out/);
+        assert.equal(conn.closed, false);
+        await assert.rejects(
+            conn.readUntil(new Uint8Array([10]), { maxBytes: 1, timeoutMs: 1 }),
+            /timed out/,
+        );
+        assert.equal(conn.closed, false);
+        await assert.rejects(conn.write(new Uint8Array([9]), { timeoutMs: 1 }), /timed out/);
+        assert.equal(conn.closed, false);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(conn.closed, false);
+        assert.equal(conn._handle.delayedReadResolved, true);
+        assert.equal(conn._handle.delayedReadLineResolved, true);
+        assert.equal(conn._handle.delayedReadUntilResolved, true);
         await conn.write(new Uint8Array([0, 1, 2]), { timeoutMs: 2 });
         assert.deepEqual(Array.from(conn._handle.lastWrite.bytes), [0, 1, 2]);
         assert.equal(conn._handle.lastWrite.timeoutMs, 2);
@@ -209,6 +289,35 @@ async function flushMicrotasks(count = 6) {
         ]);
         await conn.close();
         assert.equal(conn.closed, true);
+        await assert.rejects(conn.readUntil(new Uint8Array([10])), /closed/);
+        await assert.rejects(conn.readLine(), /closed/);
+
+        const neverDeadlineConn = await LocalEndpoint.connect({
+            path: "runtime:/deadline-never.sock",
+            deadline: Deadline.never(),
+        });
+        assert.deepEqual(neverDeadlineConn._handle.options, { path: "runtime:/deadline-never.sock" });
+        await neverDeadlineConn.close();
+
+        const cancelledConnect = new CancellationController();
+        cancelledConnect.cancel("caller stopped");
+        const callsBeforeCancelledConnect = connectLocalCalls;
+        await assert.rejects(
+            LocalEndpoint.connect({ path: "runtime:/cancelled.sock", signal: cancelledConnect.signal }),
+            /cancelled/,
+        );
+        assert.equal(connectLocalCalls, callsBeforeCancelledConnect);
+
+        await assert.rejects(
+            LocalEndpoint.connect({ path: "runtime:/expired.sock", deadline: Deadline.after(0) }),
+            /timed out/,
+        );
+        assert.equal(connectLocalCalls, callsBeforeCancelledConnect);
+
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/late.sock", timeoutMs: 1 }), /timed out/);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(delayedConnectHandles.length, 1);
+        assert.equal(delayedConnectHandles[0].aborted, true);
 
         const server = await LocalEndpoint.listen({
             path: "runtime:/my-app.sock",
@@ -223,8 +332,29 @@ async function flushMicrotasks(count = 6) {
             permissions: "0600",
             backlog: 4,
         });
+        const accepted = await server.accept({ timeoutMs: 6 });
+        assert.equal(accepted._handle.server, server._handle);
+        assert.equal(accepted._handle.timeoutMs, 6);
+        assert.equal(typeof server.accept({ timeoutMs: 7 })[Symbol.asyncIterator], "function");
+        const acceptIterator = server.accept({ timeoutMs: 7 })[Symbol.asyncIterator]();
+        const iterated = await acceptIterator.next();
+        assert.equal(iterated.done, false);
+        assert.equal(iterated.value._handle.timeoutMs, 7);
+        await iterated.value.close();
+        await accepted.close();
         await server.close();
         assert.equal(server.closed, true);
+
+        const retryServer = await LocalEndpoint.listen({ path: "runtime:/retry.sock" });
+        await assert.rejects(retryServer.accept({ timeoutMs: 1 }), /timed out/);
+        assert.equal(retryServer.closed, false);
+        const retriedAccept = await retryServer.accept({ timeoutMs: 6 });
+        assert.equal(retriedAccept._handle.timeoutMs, 6);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(delayedAcceptedHandles.length, 1);
+        assert.equal(delayedAcceptedHandles[0].aborted, true);
+        await retriedAccept.close();
+        await retryServer.close();
 
         const unix = await UnixSocket.connect({ path: "runtime:/svc.sock" });
         assert.equal(unix._handle.options.backend, "unix");
@@ -233,6 +363,9 @@ async function flushMicrotasks(count = 6) {
 
         await assert.rejects(LocalEndpoint.connect({ path: "../bad.sock" }), /named-root/);
         await assert.rejects(LocalEndpoint.connect({ path: "runtime:/../bad.sock" }), /named root/);
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/bad//sock" }), /named root/);
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/bad/." }), /named root/);
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/bad name.sock" }), /named root/);
         await assert.rejects(
             LocalEndpoint.listen({ path: "runtime:/ok.sock", permissions: "600" }),
             /octal/,

@@ -168,10 +168,180 @@ function normalizeLocalEndpointPath(path, operation) {
     if (!/^[A-Za-z][A-Za-z0-9_.-]*$/.test(root)) {
         throw new TypeError(`${operation} named root is invalid.`);
     }
-    if (rest.length === 0 || rest.startsWith("/") || rest.includes("\\") || rest.split("/").includes("..")) {
+    const segments = rest.split("/");
+    if (
+        rest.length === 0 ||
+        rest.startsWith("/") ||
+        rest.endsWith("/") ||
+        rest.includes("\\") ||
+        segments.some(
+            (segment) =>
+                segment.length === 0 ||
+                segment === "." ||
+                segment === ".." ||
+                !/^[A-Za-z0-9_.-]+$/.test(segment),
+        )
+    ) {
         throw new TypeError(`${operation} path must stay inside the named root.`);
     }
     return path;
+}
+
+function isLocalCancellationSignal(value) {
+    return (
+        value !== undefined &&
+        value !== null &&
+        typeof value === "object" &&
+        typeof value.aborted === "boolean"
+    );
+}
+
+function subscribeLocalCancellation(signal, listener) {
+    if (!isLocalCancellationSignal(signal)) {
+        return () => {};
+    }
+    if (signal.aborted) {
+        listener(signal.reason);
+        return () => {};
+    }
+    if (typeof signal._subscribe === "function") {
+        return signal._subscribe(listener);
+    }
+    if (typeof signal.addEventListener === "function") {
+        const wrapped = () => listener(signal.reason);
+        signal.addEventListener("abort", wrapped);
+        return () => signal.removeEventListener?.("abort", wrapped);
+    }
+    return () => {};
+}
+
+function localOperationCode(operation) {
+    if (operation.includes(".accept")) {
+        return "SLOPPY_E_NET_LOCAL_IPC_ACCEPT_CANCELLED";
+    }
+    if (operation.includes(".read") || operation.includes(".write")) {
+        return "SLOPPY_E_NET_LOCAL_IPC_READ_WRITE_CANCELLED";
+    }
+    if (operation.includes(".listen")) {
+        return "SLOPPY_E_NET_LOCAL_IPC_LISTEN_FAILED";
+    }
+    return "SLOPPY_E_NET_LOCAL_IPC_CONNECT_FAILED";
+}
+
+function localCancelledError(operation, reason = undefined) {
+    return new SloppyNetError(
+        "LocalEndpointCancelledError",
+        `${localOperationCode(operation)}: local IPC operation was cancelled.`,
+        { cause: reason },
+    );
+}
+
+function localTimeoutError(operation) {
+    return new SloppyNetError(
+        "LocalEndpointTimeoutError",
+        `${localOperationCode(operation)}: local IPC operation timed out.`,
+    );
+}
+
+function localDeadlineRemainingMs(deadline, operation) {
+    if (deadline === undefined || deadline === null) {
+        return Infinity;
+    }
+    if (typeof deadline !== "object" || typeof deadline.remainingMs !== "function") {
+        throw new TypeError(`${operation} deadline must come from sloppy/time Deadline.`);
+    }
+    const remainingMs = deadline.remainingMs();
+    if (!Number.isFinite(remainingMs) && remainingMs !== Infinity) {
+        throw new TypeError(`${operation} deadline remaining time must be finite or Infinity.`);
+    }
+    return Math.max(0, Math.ceil(remainingMs));
+}
+
+function normalizeLocalTimingOptions(options, operation, allowedKeys) {
+    let timeoutMs = Infinity;
+    const signal = options?.signal;
+
+    if (options !== undefined) {
+        if (!isPlainObject(options)) {
+            throw new TypeError(`${operation} options must be a plain object.`);
+        }
+        for (const key of Object.keys(options)) {
+            if (!allowedKeys.has(key)) {
+                throw new TypeError(`${operation} option '${key}' is not supported.`);
+            }
+        }
+    }
+    if (signal !== undefined && !isLocalCancellationSignal(signal)) {
+        throw new TypeError(`${operation} signal must be a Sloppy cancellation signal or AbortSignal-like object.`);
+    }
+    if (signal?.aborted === true) {
+        throw localCancelledError(operation, signal.reason);
+    }
+    if (options?.timeoutMs !== undefined) {
+        if (
+            !Number.isFinite(options.timeoutMs) ||
+            options.timeoutMs < 0 ||
+            options.timeoutMs > 0xffffffff
+        ) {
+            throw new TypeError(`${operation} timeoutMs must be a non-negative uint32 value.`);
+        }
+        timeoutMs = Math.ceil(options.timeoutMs);
+    }
+    timeoutMs = Math.min(timeoutMs, localDeadlineRemainingMs(options?.deadline, operation));
+    if (timeoutMs <= 0) {
+        throw localTimeoutError(operation);
+    }
+    return {
+        signal,
+        timeoutMs: timeoutMs === Infinity ? undefined : timeoutMs,
+    };
+}
+
+function raceLocalOperation(promise, timing, operation, hooks = {}) {
+    if (timing.signal === undefined && timing.timeoutMs === undefined) {
+        return promise;
+    }
+    let settled = false;
+    let timeoutId = undefined;
+    let cleanupSignal = () => {};
+    return new Promise((resolve, reject) => {
+        const finish = (callback, value) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanupSignal();
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+            callback(value);
+        };
+        cleanupSignal = subscribeLocalCancellation(timing.signal, (reason) => {
+            hooks.onCancel?.();
+            finish(reject, localCancelledError(operation, reason));
+        });
+        if (timing.timeoutMs !== undefined) {
+            timeoutId = setTimeout(() => {
+                hooks.onTimeout?.();
+                finish(reject, localTimeoutError(operation));
+            }, timing.timeoutMs);
+        }
+        promise.then(
+            (value) => {
+                if (settled) {
+                    hooks.onLateSuccess?.(value);
+                    return;
+                }
+                finish(resolve, value);
+            },
+            (error) => {
+                if (settled) {
+                    return;
+                }
+                finish(reject, error);
+            },
+        );
+    });
 }
 
 function normalizePermissionMode(value, operation) {
@@ -188,6 +358,11 @@ function normalizeLocalConnectOptions(options, operation) {
     if (!isPlainObject(options)) {
         throw new TypeError(`${operation} options must be a plain object.`);
     }
+    const timing = normalizeLocalTimingOptions(
+        options,
+        operation,
+        new Set(["path", "backend", "timeoutMs", "deadline", "signal"]),
+    );
     const normalized = { path: normalizeLocalEndpointPath(options.path, operation) };
     if (options.backend !== undefined) {
         if (options.backend !== "unix" && options.backend !== "namedPipe") {
@@ -195,17 +370,37 @@ function normalizeLocalConnectOptions(options, operation) {
         }
         normalized.backend = options.backend;
     }
-    if (options.timeoutMs !== undefined) {
-        if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0) {
-            throw new TypeError(`${operation} timeoutMs must be a non-negative number.`);
-        }
-        normalized.timeoutMs = Math.ceil(options.timeoutMs);
+    if (timing.timeoutMs !== undefined) {
+        normalized.timeoutMs = timing.timeoutMs;
     }
-    return normalized;
+    return { bridgeOptions: normalized, timing };
 }
 
 function normalizeLocalListenOptions(options, operation) {
-    const normalized = normalizeLocalConnectOptions(options, operation);
+    if (!isPlainObject(options)) {
+        throw new TypeError(`${operation} options must be a plain object.`);
+    }
+    const timing = normalizeLocalTimingOptions(
+        options,
+        operation,
+        new Set([
+            "path",
+            "backend",
+            "timeoutMs",
+            "deadline",
+            "signal",
+            "unlinkExisting",
+            "permissions",
+            "backlog",
+        ]),
+    );
+    const normalized = { path: normalizeLocalEndpointPath(options.path, operation) };
+    if (options.backend !== undefined) {
+        if (options.backend !== "unix" && options.backend !== "namedPipe") {
+            throw new TypeError(`${operation} backend must be "unix" or "namedPipe" when specified.`);
+        }
+        normalized.backend = options.backend;
+    }
     if (options.unlinkExisting !== undefined && typeof options.unlinkExisting !== "boolean") {
         throw new TypeError(`${operation} unlinkExisting must be a boolean.`);
     }
@@ -217,7 +412,10 @@ function normalizeLocalListenOptions(options, operation) {
     if (options.backlog !== undefined) {
         normalized.backlog = options.backlog;
     }
-    return normalized;
+    if (timing.timeoutMs !== undefined) {
+        normalized.timeoutMs = timing.timeoutMs;
+    }
+    return { bridgeOptions: normalized, timing };
 }
 
 function localIpcUnavailable() {
@@ -238,26 +436,30 @@ class LocalEndpointServer {
         return this._closed;
     }
 
-    async accept(options = undefined) {
+    _acceptOne(options = undefined) {
         if (this._closed) {
             throw new SloppyNetError("LocalEndpointDisposedError", "Local endpoint server is closed.");
         }
-        const timeoutMs = normalizeTimeoutOption(options, "LocalEndpoint.accept");
+        const timing = normalizeLocalTimingOptions(
+            options,
+            "LocalEndpoint.accept",
+            new Set(["timeoutMs", "deadline", "signal"]),
+        );
         if (typeof this._bridge.acceptLocal !== "function") {
             localIpcUnavailable();
         }
-        return new LocalEndpointConnection(this._bridge, await this._bridge.acceptLocal(this._handle, timeoutMs));
+        const promise = this._bridge.acceptLocal(this._handle, timing.timeoutMs);
+        return raceLocalOperation(promise, timing, "LocalEndpoint.accept", {
+            onLateSuccess: (handle) => this._bridge.abortLocal?.(handle).catch(() => {}),
+        }).then((handle) => new LocalEndpointConnection(this._bridge, handle));
+    }
+
+    accept(options = undefined) {
+        return new LocalEndpointAcceptOperation(this, options);
     }
 
     acceptLoop(options = undefined) {
-        const server = this;
-        return {
-            async *[Symbol.asyncIterator]() {
-                while (!server.closed) {
-                    yield await server.accept(options);
-                }
-            },
-        };
+        return this.accept(options);
     }
 
     async close() {
@@ -281,6 +483,46 @@ class LocalEndpointServer {
     }
 }
 
+class LocalEndpointAcceptOperation {
+    constructor(server, options) {
+        this._server = server;
+        this._options = options;
+        this._promise = undefined;
+    }
+
+    _one() {
+        if (this._promise === undefined) {
+            this._promise = this._server._acceptOne(this._options);
+        }
+        return this._promise;
+    }
+
+    then(onFulfilled, onRejected) {
+        return this._one().then(onFulfilled, onRejected);
+    }
+
+    catch(onRejected) {
+        return this._one().catch(onRejected);
+    }
+
+    finally(onFinally) {
+        return this._one().finally(onFinally);
+    }
+
+    [Symbol.asyncIterator]() {
+        const server = this._server;
+        const options = this._options;
+        return {
+            async next() {
+                if (server.closed) {
+                    return { done: true, value: undefined };
+                }
+                return { done: false, value: await server._acceptOne(options) };
+            },
+        };
+    }
+}
+
 class LocalEndpointConnection {
     constructor(bridge, handle) {
         this._bridge = bridge;
@@ -299,10 +541,19 @@ class LocalEndpointConnection {
         if (!(bytes instanceof Uint8Array)) {
             throw new TypeError("LocalEndpointConnection.write requires a Uint8Array.");
         }
+        const timing = normalizeLocalTimingOptions(
+            options,
+            "LocalEndpoint.write",
+            new Set(["timeoutMs", "deadline", "signal"]),
+        );
         if (typeof this._bridge.writeLocal !== "function") {
             localIpcUnavailable();
         }
-        await this._bridge.writeLocal(this._handle, bytes, normalizeTimeoutOption(options, "LocalEndpoint.write"));
+        await raceLocalOperation(
+            this._bridge.writeLocal(this._handle, bytes, timing.timeoutMs),
+            timing,
+            "LocalEndpoint.write",
+        );
     }
 
     async writeText(text, options = undefined) {
@@ -317,34 +568,64 @@ class LocalEndpointConnection {
             throw new SloppyNetError("LocalEndpointDisposedError", "Local endpoint connection is closed.");
         }
         const maxBytes = normalizeMaxBytesOption(options, "LocalEndpoint.read");
-        const timeoutMs = normalizeTimeoutOption(options, "LocalEndpoint.read", ["maxBytes"]);
+        const timing = normalizeLocalTimingOptions(
+            options,
+            "LocalEndpoint.read",
+            new Set(["maxBytes", "timeoutMs", "deadline", "signal"]),
+        );
         if (typeof this._bridge.readLocal !== "function") {
             localIpcUnavailable();
         }
-        return this._bridge.readLocal(this._handle, maxBytes, timeoutMs);
+        return raceLocalOperation(
+            this._bridge.readLocal(this._handle, maxBytes, timing.timeoutMs),
+            timing,
+            "LocalEndpoint.read",
+        );
     }
 
     async readUntil(delimiter, options = undefined) {
+        if (this._closed) {
+            throw new SloppyNetError("LocalEndpointDisposedError", "Local endpoint connection is closed.");
+        }
         const delimiterBytes =
             typeof delimiter === "string" ? new TextEncoder().encode(delimiter) : delimiter;
         if (!(delimiterBytes instanceof Uint8Array) || delimiterBytes.byteLength === 0) {
             throw new TypeError("LocalEndpointConnection.readUntil delimiter must be non-empty bytes.");
         }
         const maxBytes = normalizeMaxBytesOption(options, "LocalEndpoint.readUntil");
-        const timeoutMs = normalizeTimeoutOption(options, "LocalEndpoint.readUntil", ["maxBytes"]);
+        const timing = normalizeLocalTimingOptions(
+            options,
+            "LocalEndpoint.readUntil",
+            new Set(["maxBytes", "timeoutMs", "deadline", "signal"]),
+        );
         if (typeof this._bridge.readUntilLocal !== "function") {
             localIpcUnavailable();
         }
-        return this._bridge.readUntilLocal(this._handle, delimiterBytes, maxBytes, timeoutMs);
+        return raceLocalOperation(
+            this._bridge.readUntilLocal(this._handle, delimiterBytes, maxBytes, timing.timeoutMs),
+            timing,
+            "LocalEndpoint.readUntil",
+        );
     }
 
     async readLine(options = undefined) {
+        if (this._closed) {
+            throw new SloppyNetError("LocalEndpointDisposedError", "Local endpoint connection is closed.");
+        }
         const maxBytes = normalizeMaxBytesOption(options, "LocalEndpoint.readLine");
-        const timeoutMs = normalizeTimeoutOption(options, "LocalEndpoint.readLine", ["maxBytes"]);
+        const timing = normalizeLocalTimingOptions(
+            options,
+            "LocalEndpoint.readLine",
+            new Set(["maxBytes", "timeoutMs", "deadline", "signal"]),
+        );
         if (typeof this._bridge.readLineLocal !== "function") {
             localIpcUnavailable();
         }
-        return this._bridge.readLineLocal(this._handle, maxBytes, timeoutMs);
+        return raceLocalOperation(
+            this._bridge.readLineLocal(this._handle, maxBytes, timing.timeoutMs),
+            timing,
+            "LocalEndpoint.readLine",
+        );
     }
 
     async *readChunks(options = undefined) {
@@ -379,20 +660,36 @@ class LocalEndpointConnection {
 const LocalEndpoint = Object.freeze({
     async connect(options) {
         const bridge = requireNetBridge();
-        const normalized = normalizeLocalConnectOptions(options, "LocalEndpoint.connect");
+        const { bridgeOptions, timing } = normalizeLocalConnectOptions(options, "LocalEndpoint.connect");
         if (typeof bridge.connectLocal !== "function") {
             localIpcUnavailable();
         }
-        return new LocalEndpointConnection(bridge, await bridge.connectLocal(normalized));
+        const handle = await raceLocalOperation(
+            bridge.connectLocal(bridgeOptions),
+            timing,
+            "LocalEndpoint.connect",
+            {
+                onLateSuccess: (lateHandle) => bridge.abortLocal?.(lateHandle).catch(() => {}),
+            },
+        );
+        return new LocalEndpointConnection(bridge, handle);
     },
 
     async listen(options) {
         const bridge = requireNetBridge();
-        const normalized = normalizeLocalListenOptions(options, "LocalEndpoint.listen");
+        const { bridgeOptions, timing } = normalizeLocalListenOptions(options, "LocalEndpoint.listen");
         if (typeof bridge.listenLocal !== "function") {
             localIpcUnavailable();
         }
-        return new LocalEndpointServer(bridge, await bridge.listenLocal(normalized));
+        const handle = await raceLocalOperation(
+            bridge.listenLocal(bridgeOptions),
+            timing,
+            "LocalEndpoint.listen",
+            {
+                onLateSuccess: (lateHandle) => bridge.abortLocalServer?.(lateHandle).catch(() => {}),
+            },
+        );
+        return new LocalEndpointServer(bridge, handle);
     },
 });
 

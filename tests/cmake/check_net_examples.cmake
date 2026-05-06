@@ -123,15 +123,16 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "import { LocalEndpoint, NamedPipe, UnixSocket } from \"sloppy/net\";"
+        "import { CancellationController, Deadline } from \"sloppy/time\";"
         "LocalEndpoint.listen({"
         "path: \"runtime:/local-echo.sock\""
         "unlinkExisting: true"
         "permissions: \"0600\""
-        "server.accept({ timeoutMs: 1000 })"
+        "for await (const conn of server.accept({ signal, deadline }))"
         "readUntil(new Uint8Array([0]), { maxBytes: 65536"
-        "await conn.write(payload, { timeoutMs: 1000 })"
-        "LocalEndpoint.connect({ path: \"runtime:/local-echo.sock\", timeoutMs: 1000 })"
-        "await client.read({ maxBytes: 3, timeoutMs: 1000 })"
+        "await conn.write(payload, { deadline, signal })"
+        "LocalEndpoint.connect({ path: \"runtime:/local-echo.sock\", deadline, signal })"
+        "await client.read({ maxBytes: 3, deadline, signal })"
         "UnixSocket.connect({ path: \"runtime:/daemon.sock\" })"
         "NamedPipe.connect({ path: \"runtime:/daemon.sock\" })")
     require_substring("${local_ipc_source}" "${required_pattern}"

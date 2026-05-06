@@ -239,6 +239,11 @@ if(SLOPPY_ENABLE_V8)
                 $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/include>)
     endif()
     target_link_libraries(Sloppy::V8 INTERFACE ${SLOPPY_V8_LIBS})
+    if(WIN32 AND SLOPPY_V8_MONOLITH_LIBS)
+        # Chromium's monolithic Windows V8 library carries allocator-shim overrides for
+        # CRT allocation symbols. lld-link requires the override policy to be explicit.
+        target_link_options(Sloppy::V8 INTERFACE "/FORCE:MULTIPLE")
+    endif()
     if(WIN32)
         target_link_libraries(
             Sloppy::V8
@@ -453,6 +458,12 @@ target_link_libraries(
             PostgreSQL::PostgreSQL
             unofficial::sqlite3::sqlite3
             ZLIB::ZLIB)
+
+if(UNIX AND NOT APPLE)
+    # vcpkg's static libpq may leave libpgcommon's math symbols to the consumer.
+    # Keep libm after the PostgreSQL archive for GNU ld's left-to-right resolution.
+    target_link_libraries(sloppy_core PRIVATE m)
+endif()
 
 if(WIN32)
     target_link_libraries(sloppy_core PRIVATE bcrypt)
@@ -815,7 +826,7 @@ if(SLOPPY_ENABLE_TESTS)
             engine_v8_smoke engine.v8.smoke tests/unit/engine/test_v8_smoke.c)
         add_test(NAME conformance.v8.runtime_bridge COMMAND $<TARGET_FILE:engine_v8_smoke>)
         set_tests_properties(
-            conformance.v8.runtime_bridge PROPERTIES LABELS "conformance;v8;http;async")
+            conformance.v8.runtime_bridge PROPERTIES LABELS "conformance;v8;http;async;net;local-ipc")
         sloppy_add_cxx_unit_test(
             engine_v8_owner_thread engine.v8.owner_thread
             tests/unit/engine/test_v8_owner_thread.cc)

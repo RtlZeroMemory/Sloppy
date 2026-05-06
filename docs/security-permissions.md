@@ -147,12 +147,11 @@ must not block the V8 owner thread, and doctor/audit output must redact sensitiv
 details where policy requires it. Current network doctor/audit goldens prove metadata
 visibility, not OS-level containment.
 
-CORE-NET-02.A/B/F extends the same network permission model to local IPC policy. Local
-endpoints use named-root paths such as `runtime:/my-app.sock`; strict policy must deny
-unallowed local endpoint connect/listen before native backend admission, and dynamic paths
-must be marked partial/dynamic rather than guessed. Unix domain socket and Windows named
-pipe backends are not OS sandbox evidence, and this policy slice does not claim executable
-backend success.
+CORE-NET-02 extends the same network permission model to local IPC policy. Local endpoints
+use named-root paths such as `runtime:/my-app.sock`; strict policy must deny unallowed
+local endpoint connect/listen before native backend admission, and dynamic paths must be
+marked partial/dynamic rather than guessed. Unix domain socket and Windows named pipe
+backends are platform-gated execution evidence, not OS sandbox evidence.
 
 CORE-CODEC-01.A/B adds the codec API contract without adding a new permission grant type.
 `sloppy/codec` is Plan-visible as `stdlib.codec`; encoding, text, binary, compression, and

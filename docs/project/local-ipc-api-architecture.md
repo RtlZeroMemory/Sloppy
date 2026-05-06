@@ -1,9 +1,8 @@
 # Local IPC API Architecture
 
-Status: CORE-NET-02.A/B/F/G source of truth. This document defines the first local IPC
-API contract, platform policy, diagnostics, filesystem path policy, and native stream
-lifecycle policy for `sloppy/net`. Doctor/audit output, examples, and final conformance
-evidence land in later CORE-NET-02 slices.
+Status: CORE-NET-02 stabilized source of truth. This document defines the local IPC API
+contract, platform policy, diagnostics, filesystem path policy, native stream lifecycle
+policy, examples, and conformance evidence for `sloppy/net`.
 
 ## Goals
 
@@ -25,8 +24,8 @@ import { LocalEndpoint, UnixSocket, NamedPipe } from "sloppy/net";
 ```
 
 The feature id remains `stdlib.net`. Local IPC is a sub-surface of the network stdlib, not
-a separate runtime feature. The private V8 bridge remains `__sloppy.net`; future local IPC
-backend functions must be registered only for active `stdlib.net` Plans.
+a separate runtime feature. The private V8 bridge remains `__sloppy.net`; local IPC bridge
+functions are registered only for active `stdlib.net` Plans.
 
 `LocalEndpoint` is the portable API. `UnixSocket` and `NamedPipe` are explicit
 platform-specific aliases that select the intended backend and must fail honestly when used
@@ -36,8 +35,7 @@ on unsupported platforms.
 
 ```ts
 const conn = await LocalEndpoint.connect({
-  path: "runtime:/my-app.sock",
-  timeoutMs: 500
+  path: "runtime:/my-app.sock"
 });
 
 const server = await LocalEndpoint.listen({
@@ -47,7 +45,7 @@ const server = await LocalEndpoint.listen({
   backlog: 128
 });
 
-for await (const conn of server.acceptLoop({ signal })) {
+for await (const conn of server.accept({ signal })) {
   await handle(conn);
 }
 ```
@@ -55,7 +53,8 @@ for await (const conn of server.acceptLoop({ signal })) {
 `connect` accepts:
 
 - `path`: required named-root endpoint path;
-- `timeoutMs`, `deadline`, and `signal`: Time-shaped options as backend slices land.
+- `timeoutMs`, `deadline`, and `signal`: Time-shaped operation bounds. JS pre-cancel and
+  expired-deadline paths fail before native admission; late native success is cleanup-only.
 
 `listen` accepts:
 
@@ -63,11 +62,12 @@ for await (const conn of server.acceptLoop({ signal })) {
 - `unlinkExisting`: POSIX stale socket cleanup request, default false;
 - `permissions`: POSIX octal mode string such as `"0600"`;
 - `backlog`: bounded pending-accept backlog where the backend supports it;
-- Time-shaped options as backend slices land.
+- `timeoutMs`, `deadline`, and `signal`: Time-shaped operation bounds.
 
-The JavaScript surface currently validates the API shape and fails with
+The JavaScript surface validates the API shape and fails with
 `SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE` when no local backend bridge is active. It does
-not fake backend success.
+not fake backend success. `server.accept(options)` is both awaitable for one accept and
+async-iterable for repeated accepts; `acceptLoop(options)` remains an alias.
 
 The native C surface keeps compatibility wrappers for existing callers and adds explicit
 I/O option forms for stream operations:
@@ -86,7 +86,8 @@ operations with no cancellation token.
 
 Local endpoint paths use filesystem named roots. `runtime:/my-app.sock` is the recommended
 shape for app-owned runtime IPC. Absolute paths, drive-root paths, UNC paths, backslashes,
-empty roots, and `..` traversal are rejected before backend admission.
+empty roots, empty path segments, `.` segments, `..` traversal, and characters outside
+`[A-Za-z0-9_.-]` path segments are rejected before backend admission.
 
 The named-root resolver must be shared with the CORE-FS-01 policy model where possible:
 
@@ -106,8 +107,8 @@ Permissions are honest:
 
 - POSIX `permissions` is a requested mode applied only where the backend can enforce it;
 - unsupported modes or platforms fail with `SLOPPY_E_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED`;
-- Windows named pipes must document security descriptor behavior in the Windows backend PR
-  before claiming an equivalent to POSIX modes.
+- Windows named pipes do not claim a POSIX-mode equivalent; POSIX-style `permissions`
+  fail honestly on the Windows backend.
 
 ## Platform Matrix
 
@@ -168,33 +169,36 @@ work belongs under `src/platform/posix/*`, Windows named pipe work under
 `src/platform/win32/*`, and any libuv helper under `src/platform/libuv/*` without leaking
 libuv types into public headers or JavaScript.
 
-IPC-next-2 adds the native POSIX `AF_UNIX` stream backend behind `SlLocalConnection` and
+The native POSIX `AF_UNIX` stream backend lives behind `SlLocalConnection` and
 `SlLocalServer`. The backend accepts already-resolved filesystem paths, applies opt-in
 stale socket cleanup only for existing socket files, rejects ordinary files/directories as
 endpoint collisions, applies POSIX mode bits where `chmod` can enforce them, and keeps file
 descriptors private.
 
-IPC-next-3 adds the native Windows named pipe backend behind the same `SlLocalConnection`
+The native Windows named pipe backend lives behind the same `SlLocalConnection`
 and `SlLocalServer` contract. The backend accepts explicit normalized pipe names in the
-`\\.\pipe\name` namespace, keeps `HANDLE` values private, rejects POSIX Unix sockets on
-Windows, rejects named-root/relative path shapes before backend admission, and fails
-honestly for POSIX-style `permissions` and `unlinkExisting`.
+`\\.\pipe\name` namespace, rejects nested or unsafe pipe names, permits `~` only as an
+internal separator for already-validated multi-segment `runtime:/` paths, keeps `HANDLE`
+values private, rejects POSIX Unix sockets on Windows, rejects named-root/relative path
+shapes before backend admission, and fails honestly for POSIX-style `permissions` and
+`unlinkExisting`.
 
-IPC-next-4 adds native stream deadline/cancellation options across both backend paths.
+Native stream deadline/cancellation options exist across both backend paths.
 Read/write options distinguish caller cancellation from deadline expiry by returning the
 `SlCancellationToken` status code for pre-cancelled tokens and
 `SL_STATUS_DEADLINE_EXCEEDED` for backend wait timeouts. Bounded read buffers and
 `read_until`/`read_line` maximums remain deterministic backpressure limits and preserve
-binary data, including embedded NUL bytes. POSIX connect timeouts remain unsupported until
-that backend has a nonblocking connect contract; the existing unsupported diagnostic is
-intentional.
+binary data, including embedded NUL bytes. POSIX connect timeouts use a nonblocking
+connect wait, and Windows named pipe connect timeouts distinguish unavailable endpoints
+from deadline expiry.
 
-IPC-next-5 wires the validating `stdlib/sloppy/net.js` `LocalEndpoint` surface to V8
+The validating `stdlib/sloppy/net.js` `LocalEndpoint` surface is wired to V8
 bridge functions. JavaScript receives Slop-owned connection/server wrapper objects backed
 only by resource IDs; Unix socket, named pipe, OS, and libuv handles remain native-private.
 The bridge resolves `runtime:/...` local endpoint paths into backend-native Unix socket
 paths or Windows named pipe names before calling `SlLocalConnection` and `SlLocalServer`
-APIs. That runtime-path resolver is intentionally narrow and will be replaced by the
+APIs. The runtime-path resolver rejects traversal and unsafe/colliding path spellings; it
+is intentionally narrow and will be replaced by the
 shared filesystem named-root resolver when that policy API is available to the V8 bridge.
 
 Cross-thread data is copied or owned before crossing domains. Promise settlement happens
@@ -203,14 +207,11 @@ timeout, disposal, shutdown, abort, and late completion. Late completion is clea
 
 ## Evidence Boundaries
 
-PR1 covers contract, option validation, diagnostics, and docs. IPC-next-2 adds POSIX
-native backend evidence, IPC-next-3 adds Windows named pipe native backend evidence, and
-IPC-next-4 adds native deadline/cancellation and stream-bound evidence. IPC-next-5 adds
-V8 bridge wiring and bootstrap API-shape coverage; full V8 execution evidence remains
-dependent on V8-enabled lanes.
+Default evidence covers Windows named pipe native behavior, bootstrap stdlib API shape,
+source examples, doctor/audit goldens, and conformance indexing. POSIX Unix domain socket
+behavior is covered by POSIX-gated tests in non-Windows lanes. V8 execution is covered only
+when a V8-enabled lane is configured and run; default non-V8 evidence must not be reported
+as V8 success.
 
-Deferred to later CORE-NET-02 PRs:
-
-- doctor/audit goldens;
-- source examples and conformance indexes;
-- platform-gated integration tests.
+CORE-NET-02 does not add TCP/IP, UDP, HTTP, WebSocket, TLS, Node compatibility, public
+alpha docs, package-manager behavior, benchmark evidence, or performance claims.

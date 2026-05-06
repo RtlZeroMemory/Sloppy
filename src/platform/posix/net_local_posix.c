@@ -378,6 +378,9 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
     size_t path_length = 0U;
     SlStatus status;
     int fd = -1;
+    int original_flags = 0;
+    int connect_result = 0;
+    bool restore_flags = false;
 
     if (out_connection == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -401,10 +404,6 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (options->has_timeout_ms) {
-        return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED, SL_STATUS_UNSUPPORTED,
-                             sl_local_literal("local IPC connect timeout is unsupported"));
-    }
     status = sl_local_alloc_connection(arena, options->read_buffer_capacity, &connection);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -422,14 +421,69 @@ SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* 
         connection->state = SL_LOCAL_CONNECTION_FAILED;
         return status;
     }
+    if (options->has_timeout_ms) {
+        original_flags = fcntl(fd, F_GETFL, 0);
+        if (original_flags < 0 || fcntl(fd, F_SETFL, original_flags | O_NONBLOCK) != 0) {
+            int error = errno;
+            (void)close(fd);
+            connection->state = SL_LOCAL_CONNECTION_FAILED;
+            return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
+                                         SL_STATUS_INTERNAL,
+                                         sl_local_literal("local IPC backend is unavailable"));
+        }
+        restore_flags = true;
+    }
     sl_local_make_addr(path, path_length, &addr, &addr_len);
-    if (connect(fd, (const struct sockaddr*)&addr, addr_len) != 0) {
+    do {
+        connect_result = connect(fd, (const struct sockaddr*)&addr, addr_len);
+    } while (connect_result != 0 && errno == EINTR && !options->has_timeout_ms);
+    if (connect_result != 0) {
+        int error = errno;
+        if (options->has_timeout_ms &&
+            (error == EINPROGRESS || error == EALREADY || error == EWOULDBLOCK || error == EINTR))
+        {
+            int socket_error = 0;
+            socklen_t socket_error_length = sizeof(socket_error);
+
+            status = sl_local_wait_fd(fd, true, options->timeout_ms, true, out_diag,
+                                      SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
+                                      sl_local_literal("local IPC connect timed out"));
+            if (!sl_status_is_ok(status)) {
+                (void)close(fd);
+                connection->state = SL_LOCAL_CONNECTION_FAILED;
+                return status;
+            }
+            if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &socket_error_length) != 0) {
+                error = errno;
+                (void)close(fd);
+                connection->state = SL_LOCAL_CONNECTION_FAILED;
+                return sl_local_errno_status(
+                    error, out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE, SL_STATUS_INTERNAL,
+                    sl_local_literal("local IPC backend is unavailable"));
+            }
+            if (socket_error != 0) {
+                (void)close(fd);
+                connection->state = SL_LOCAL_CONNECTION_FAILED;
+                return sl_local_errno_status(
+                    socket_error, out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
+                    SL_STATUS_INVALID_STATE, sl_local_literal("local IPC connect failed"));
+            }
+        }
+        else {
+            (void)close(fd);
+            connection->state = SL_LOCAL_CONNECTION_FAILED;
+            return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
+                                         SL_STATUS_INVALID_STATE,
+                                         sl_local_literal("local IPC connect failed"));
+        }
+    }
+    if (restore_flags && fcntl(fd, F_SETFL, original_flags) != 0) {
         int error = errno;
         (void)close(fd);
         connection->state = SL_LOCAL_CONNECTION_FAILED;
-        return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
-                                     SL_STATUS_INVALID_STATE,
-                                     sl_local_literal("local IPC connect failed"));
+        return sl_local_errno_status(error, out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
+                                     SL_STATUS_INTERNAL,
+                                     sl_local_literal("local IPC backend is unavailable"));
     }
     connection->fd = fd;
     connection->state = SL_LOCAL_CONNECTION_CONNECTED;

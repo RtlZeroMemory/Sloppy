@@ -92,7 +92,10 @@ or hardcode machine-local SDK paths.
 
 The current Windows source SDK is a monolithic release build with Chromium libc++ support.
 Use `windows-relwithdebinfo` for V8 execution tests with this SDK. The `windows-dev` Debug
-CRT preset remains the default non-V8 contributor path.
+CRT preset remains the default non-V8 contributor path. The monolithic Windows library
+contains Chromium allocator-shim overrides for CRT allocation symbols, so the CMake V8
+interface target applies the required Windows link override explicitly for V8-enabled
+executables.
 
 Use `.\tools\windows\resolve-v8-sdk.ps1` to check what a fresh worktree will use, then
 `.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8` for local V8

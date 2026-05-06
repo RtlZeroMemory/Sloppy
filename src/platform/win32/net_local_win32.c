@@ -96,9 +96,18 @@ static bool sl_local_path_has_pipe_prefix(SlStr path)
     return true;
 }
 
+static bool sl_local_pipe_name_char(char ch)
+{
+    return ch == '.' || ch == '_' || ch == '-' || ch == '~' || (ch >= '0' && ch <= '9') ||
+           (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+}
+
 static SlStatus sl_local_copy_pipe_path(SlStr path, char out[SL_LOCAL_MAX_PIPE_PATH],
                                         SlDiag* out_diag)
 {
+    static const char prefix[] = "\\\\.\\pipe\\";
+    const size_t prefix_length = sizeof(prefix) - 1U;
+
     if (out == NULL || !sl_local_path_has_pipe_prefix(path) ||
         path.length >= SL_LOCAL_MAX_PIPE_PATH)
     {
@@ -106,8 +115,21 @@ static SlStatus sl_local_copy_pipe_path(SlStr path, char out[SL_LOCAL_MAX_PIPE_P
                              SL_STATUS_INVALID_ARGUMENT,
                              sl_local_literal("local IPC endpoint path is invalid"));
     }
+    if ((path.length == prefix_length + 1U && path.ptr[prefix_length] == '.') ||
+        (path.length == prefix_length + 2U && path.ptr[prefix_length] == '.' &&
+         path.ptr[prefix_length + 1U] == '.'))
+    {
+        return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_INVALID_PATH,
+                             SL_STATUS_INVALID_ARGUMENT,
+                             sl_local_literal("local IPC endpoint path is invalid"));
+    }
     for (size_t index = 0U; index < path.length; index += 1U) {
         if (path.ptr[index] == '\0') {
+            return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_INVALID_PATH,
+                                 SL_STATUS_INVALID_ARGUMENT,
+                                 sl_local_literal("local IPC endpoint path is invalid"));
+        }
+        if (index >= prefix_length && !sl_local_pipe_name_char(path.ptr[index])) {
             return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_INVALID_PATH,
                                  SL_STATUS_INVALID_ARGUMENT,
                                  sl_local_literal("local IPC endpoint path is invalid"));

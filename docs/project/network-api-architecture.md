@@ -1,11 +1,11 @@
 # Network API Architecture
 
-Status: CORE-NET-01.I conformance/examples/docs evidence plus CORE-NET-02.A/B/F local IPC
-policy split. This document defines the low-level TCP/IP runtime API, policy model, feature
-metadata, diagnostics, and first native TCP client/connection/listener implementation. The
-local IPC source of truth is `docs/project/local-ipc-api-architecture.md`. This document is
-not execution evidence for live external network access, TLS, HTTP client behavior, UDP,
-WebSocket, Unix domain socket execution, or Windows named pipe execution.
+Status: CORE-NET-01.I conformance/examples/docs evidence plus CORE-NET-02 local IPC
+stabilization. This document defines the low-level TCP/IP runtime API, policy model,
+feature metadata, diagnostics, and first native TCP client/connection/listener
+implementation. The local IPC source of truth is
+`docs/project/local-ipc-api-architecture.md`. This document is not execution evidence for
+live external network access, TLS, HTTP client behavior, UDP, or WebSocket behavior.
 
 ## Goals
 
@@ -22,9 +22,10 @@ listeners:
 - Plan-visible network access metadata where the compiler can see it.
 
 The API is intentionally lower-level than HTTP. HTTP client/server, TLS, UDP, WebSocket,
-Node `net` compatibility, and package-manager behavior are outside CORE-NET-01. CORE-NET-02
-adds local IPC policy and API shape under the same `sloppy/net` feature without broadening
-TCP behavior.
+Node `net` compatibility, and package-manager behavior are outside CORE-NET-01.
+CORE-NET-02 adds local IPC policy, Unix domain socket and Windows named pipe backends, and
+the `LocalEndpoint` API under the same `sloppy/net` feature without broadening TCP
+behavior.
 
 ## Public Module
 
@@ -151,8 +152,7 @@ Runtime behavior after CORE-NET-01.I:
 - `TcpListener` supports loopback listen, hostname/DNS-backed listen, ephemeral ports,
   bounded backlog,
   blocking native accept, JS async accept iteration, close, abort, stale-listener
-  diagnostics, and accept timeout status mapping. Signal/deadline cancellation remains
-  follow-up hardening for the final stream/cancellation slice;
+  diagnostics, and accept timeout status mapping;
 - native address handling accepts numeric IPv4/IPv6 addresses and platform DNS results;
   DNS resolution happens inside the platform backend and the V8 path runs it on the native
   worker thread, not on the V8 owner thread;
@@ -176,6 +176,9 @@ Final CORE-NET-01 evidence is intentionally split by lane:
 - `tests/conformance/net/README.md` is the conformance index for default loopback,
   diagnostics, CLI metadata, source examples, bootstrap stdlib, compiler/tooling, and
   optional V8 lanes.
+- CORE-NET-02 local IPC evidence adds `examples/net-local-ipc`, POSIX-gated Unix socket
+  tests, Windows-gated named pipe tests, bootstrap `LocalEndpoint` API-shape tests, and the
+  same network doctor/audit metadata lane for Plan-visible local IPC capability metadata.
 
 Static compiler extraction of literal connect/listen targets remains a future
 Plan-lowering improvement. Until then, CLI doctor/audit consume explicit Plan capability
@@ -231,11 +234,10 @@ Evidence lanes remain separate:
 - stress/torture lane;
 - benchmark lane.
 
-CORE-NET-01 does not add CORE-NET-02 local IPC, Unix domain sockets, Windows named pipes,
-TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility, direct WinSock/epoll/kqueue/
-io_uring backends, crypto implementation, package-manager behavior, public alpha docs, or
-benchmark/performance claims.
+CORE-NET-01 does not add TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
+direct WinSock/epoll/kqueue/io_uring TCP backends, crypto implementation, package-manager
+behavior, public alpha docs, or benchmark/performance claims.
 
-CORE-NET-02.A/B/F now specifies the local IPC contract and path policy separately. That
-policy slice does not prove Unix socket or named pipe execution; backend evidence remains
-deferred to platform-gated CORE-NET-02 implementation PRs.
+CORE-NET-02 specifies and implements the local IPC contract and path policy separately.
+Unix socket and named pipe execution evidence is platform-gated; default non-V8 evidence
+must not be reported as V8 bridge execution.
