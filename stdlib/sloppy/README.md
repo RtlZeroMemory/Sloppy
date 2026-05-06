@@ -10,6 +10,8 @@ Source layout:
 ```text
 stdlib/sloppy/
   index.js
+  codec.js
+  crypto.js
   data.js
   fs.js
   time.js
@@ -31,14 +33,20 @@ lib/sloppy/bootstrap/sloppy/
 
 The current modules implement the first app-host foundation and developer ergonomics
 facade. `index.js` re-exports frozen `Sloppy`, `data`, `sql`, filesystem API namespaces,
-`Results`, and `schema`
-objects. The implemented `Results.*` helpers return plain frozen descriptor objects.
+Codec API namespaces, `Results`, and `schema` objects. The implemented `Results.*`
+helpers return plain frozen descriptor objects.
 `time.js` publishes the CORE-TIME-01 API names and stable error classes. In V8-enabled
 runtimes whose active Plan enables `stdlib.time`, it uses the private `__sloppy.time`
 bridge for native delay and monotonic deadline accounting; otherwise runtime scheduling
 fails closed with the existing missing-feature error.
 `schema` exposes a small validation skeleton for string, number, boolean, and object
 shapes.
+`codec.js` publishes the CORE-CODEC-01.C/D/I Base64, Base64Url, Hex, and UTF-8 text
+helpers plus the streaming UTF-8 decoder. The Base64/Base64Url/Hex decoders are strict and
+diagnostic-stable, arbitrary bytes and embedded NUL values are preserved, and UTF-8
+malformed input follows the documented fatal/replacement policy. Binary, Compression, and
+Checksums are present only as deterministic deferred stubs until their dedicated
+CORE-CODEC implementation PRs land.
 `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` expose the CORE-FS-01.G filesystem
 surface when the V8 runtime installs the feature-gated `__sloppy.fs` bridge: async core
 file operations, directory create/list/delete/walk helpers, atomic writes, temp paths,
@@ -70,8 +78,9 @@ storage, route metadata storage, `.withName(...)`, structural `app.freeze()`,
 `internal/runtime-classic.js` is the EPIC-24 V8-gated bridge asset for generated artifacts.
 It is not the public ESM stdlib and it is not a Node compatibility shim. `sloppy run`
 loads this classic script from the staged bootstrap stdlib root before evaluating generated
-`app.js`; generated code reads `globalThis.__sloppy_runtime.Results` and registers
-handlers through the V8-installed `__sloppy_register_handler(id, handler)` intrinsic.
+`app.js`; generated code reads `globalThis.__sloppy_runtime.Results` and other lowered
+stdlib exports such as `Base64`/`Text`, then registers handlers through the V8-installed
+`__sloppy_register_handler(id, handler)` intrinsic.
 
 Not implemented here:
 

@@ -1374,6 +1374,133 @@ static int test_crypto_intrinsic_inactive_feature_is_not_registered(void)
     return 0;
 }
 
+static int test_codec_intrinsic_namespace_registered_when_active(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.codec")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 421;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 422;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-codec-active.js"),
+                                  sl_str_from_cstr("globalThis.sloppy_codec_active = function "
+                                                   "() {"
+                                                   "  return globalThis.__sloppy.codec && "
+                                                   "typeof globalThis.__sloppy.codec === 'object'"
+                                                   "    ? 'codec-active-ok'"
+                                                   "    : 'codec-missing';"
+                                                   "};"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 423;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_codec_active"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 424;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("codec-active-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 425;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_codec_intrinsic_inactive_feature_is_not_registered(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 426;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 427;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(engine, sl_str_from_cstr("v8-codec-inactive.js"),
+                                  sl_str_from_cstr("globalThis.sloppy_codec_inactive = function "
+                                                   "() {"
+                                                   "  return globalThis.__sloppy.codec === "
+                                                   "undefined"
+                                                   "    ? 'codec-inactive-ok'"
+                                                   "    : 'codec-unexpectedly-active';"
+                                                   "};"),
+                                  &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 428;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_codec_inactive"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 429;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("codec-inactive-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 430;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_promise_result_settles_json_after_microtask(void)
 {
     unsigned char engine_storage[8192];
@@ -3661,6 +3788,16 @@ int main(void)
     }
 
     result = test_crypto_intrinsic_inactive_feature_is_not_registered();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_codec_intrinsic_namespace_registered_when_active();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_codec_intrinsic_inactive_feature_is_not_registered();
     if (result != 0) {
         return result;
     }
