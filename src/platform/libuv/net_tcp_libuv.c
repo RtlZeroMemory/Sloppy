@@ -29,17 +29,21 @@ typedef struct SlTcpIoState
 
 struct SlTcpConnection
 {
-    uv_loop_t loop;
+    uv_loop_t owned_loop;
+    uv_loop_t* loop;
     uv_tcp_t handle;
     uv_connect_t connect_req;
     uv_write_t write_req;
     uv_timer_t timer;
     bool loop_initialized;
+    bool owns_loop;
     bool handle_initialized;
     bool timer_initialized;
     bool close_started;
     bool close_done;
+    bool owner_listener_released;
     SlTcpConnectionState state;
+    struct SlTcpListener* owner_listener;
     unsigned char* read_buffer;
     size_t read_buffer_capacity;
     char local_host[INET6_ADDRSTRLEN];
@@ -49,6 +53,28 @@ struct SlTcpConnection
     SlNetworkAddressFamily local_family;
     SlNetworkAddressFamily remote_family;
     SlTcpIoState io;
+};
+
+struct SlTcpListener
+{
+    uv_loop_t loop;
+    uv_tcp_t server;
+    uv_timer_t timer;
+    bool loop_initialized;
+    bool server_initialized;
+    bool timer_initialized;
+    bool close_started;
+    bool close_done;
+    bool accept_done;
+    bool accept_timeout;
+    int accept_status;
+    size_t active_connections;
+    SlTcpListenerState state;
+    SlTcpConnection* pending_connection;
+    size_t read_buffer_capacity;
+    char local_host[INET6_ADDRSTRLEN];
+    uint16_t local_port;
+    SlNetworkAddressFamily local_family;
 };
 
 static SlStr sl_tcp_literal(const char* text)
@@ -262,30 +288,102 @@ static void sl_tcp_refresh_endpoints(SlTcpConnection* connection)
     }
 }
 
-static SlStatus sl_tcp_parse_sockaddr(const SlTcpConnectOptions* options,
+static void sl_tcp_listener_close_cb(uv_handle_t* handle)
+{
+    SlTcpListener* listener = handle == NULL ? NULL : (SlTcpListener*)handle->data;
+    if (listener != NULL) {
+        listener->close_done = true;
+    }
+}
+
+static void sl_tcp_listener_timer_close_cb(uv_handle_t* handle)
+{
+    SlTcpListener* listener = handle == NULL ? NULL : (SlTcpListener*)handle->data;
+    if (listener != NULL) {
+        listener->timer_initialized = false;
+    }
+}
+
+static void sl_tcp_listener_timer_cb(uv_timer_t* timer)
+{
+    SlTcpListener* listener = timer == NULL ? NULL : (SlTcpListener*)timer->data;
+    if (listener == NULL) {
+        return;
+    }
+    listener->accept_timeout = true;
+    listener->accept_status = UV_ETIMEDOUT;
+    listener->accept_done = true;
+}
+
+static void sl_tcp_listener_connection_cb(uv_stream_t* server, int status)
+{
+    SlTcpListener* listener = server == NULL ? NULL : (SlTcpListener*)server->data;
+    SlTcpConnection* connection = listener == NULL ? NULL : listener->pending_connection;
+    int uv_status = 0;
+
+    if (listener == NULL || listener->accept_done) {
+        return;
+    }
+    listener->accept_status = status;
+    if (status == 0 && connection != NULL) {
+        uv_status = uv_tcp_init(&listener->loop, &connection->handle);
+        if (uv_status == 0) {
+            connection->handle.data = connection;
+            uv_status = uv_accept(server, (uv_stream_t*)&connection->handle);
+        }
+        listener->accept_status = uv_status;
+        if (uv_status == 0) {
+            connection->loop = &listener->loop;
+            connection->owns_loop = false;
+            connection->loop_initialized = true;
+            connection->handle_initialized = true;
+            connection->owner_listener = listener;
+            listener->active_connections++;
+            connection->state = SL_TCP_CONNECTION_CONNECTED;
+            sl_tcp_refresh_endpoints(connection);
+        }
+    }
+    listener->accept_done = true;
+}
+
+static void sl_tcp_refresh_listener_endpoint(SlTcpListener* listener)
+{
+    struct sockaddr_storage local;
+    int local_len = (int)sizeof(local);
+
+    if (listener == NULL || !listener->server_initialized) {
+        return;
+    }
+    if (uv_tcp_getsockname(&listener->server, (struct sockaddr*)&local, &local_len) == 0) {
+        listener->local_family = sl_tcp_endpoint_from_sockaddr(
+            (const struct sockaddr*)&local, listener->local_host, &listener->local_port);
+    }
+}
+
+static SlStatus sl_tcp_parse_sockaddr(SlStr host_value, uint16_t port, bool allow_zero_port,
                                       struct sockaddr_storage* out_addr, SlDiag* out_diag)
 {
     char host[SL_TCP_MAX_HOST_BYTES + 1U];
     struct sockaddr_in addr4;
     struct sockaddr_in6 addr6;
 
-    if (options == NULL || out_addr == NULL) {
+    if (out_addr == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (!sl_tcp_copy_host_to_cstr(options->host, host)) {
+    if (!sl_tcp_copy_host_to_cstr(host_value, host)) {
         return sl_tcp_fail(out_diag, SL_DIAG_NET_INVALID_HOST, SL_STATUS_INVALID_ARGUMENT,
                            sl_tcp_literal("network host is invalid"));
     }
-    if (options->port == 0U) {
+    if (!allow_zero_port && port == 0U) {
         return sl_tcp_fail(out_diag, SL_DIAG_NET_INVALID_PORT, SL_STATUS_INVALID_ARGUMENT,
                            sl_tcp_literal("network port is invalid"));
     }
-    if (uv_ip4_addr(host, (int)options->port, &addr4) == 0) {
+    if (uv_ip4_addr(host, (int)port, &addr4) == 0) {
         memset(out_addr, 0, sizeof(*out_addr));
         *((struct sockaddr_in*)out_addr) = addr4;
         return sl_status_ok();
     }
-    if (uv_ip6_addr(host, (int)options->port, &addr6) == 0) {
+    if (uv_ip6_addr(host, (int)port, &addr6) == 0) {
         memset(out_addr, 0, sizeof(*out_addr));
         *((struct sockaddr_in6*)out_addr) = addr6;
         return sl_status_ok();
@@ -322,6 +420,26 @@ static SlStatus sl_tcp_alloc_connection(SlArena* arena, size_t read_capacity, Sl
     return sl_status_ok();
 }
 
+static SlStatus sl_tcp_alloc_listener(SlArena* arena, size_t read_capacity, SlTcpListener** out)
+{
+    void* memory = NULL;
+    SlStatus status;
+
+    if (arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_arena_alloc(arena, sizeof(SlTcpListener), _Alignof(SlTcpListener), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = (SlTcpListener*)memory;
+    **out = (SlTcpListener){0};
+    (*out)->read_buffer_capacity =
+        read_capacity == 0U ? SL_TCP_DEFAULT_READ_BUFFER_CAPACITY : read_capacity;
+    (*out)->state = SL_TCP_LISTENER_UNBOUND;
+    return sl_status_ok();
+}
+
 SlTcpConnectOptions sl_tcp_connect_options_default(SlStr host, uint16_t port)
 {
     SlTcpConnectOptions options = {0};
@@ -329,6 +447,23 @@ SlTcpConnectOptions sl_tcp_connect_options_default(SlStr host, uint16_t port)
     options.host = host;
     options.port = port;
     options.read_buffer_capacity = SL_TCP_DEFAULT_READ_BUFFER_CAPACITY;
+    return options;
+}
+
+SlTcpListenOptions sl_tcp_listen_options_default(SlStr host, uint16_t port)
+{
+    SlTcpListenOptions options = {0};
+
+    options.host = host;
+    options.port = port;
+    options.backlog = 128U;
+    options.read_buffer_capacity = SL_TCP_DEFAULT_READ_BUFFER_CAPACITY;
+    return options;
+}
+
+SlTcpAcceptOptions sl_tcp_accept_options_default(void)
+{
+    SlTcpAcceptOptions options = {0};
     return options;
 }
 
@@ -344,7 +479,10 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_connection = NULL;
-    status = sl_tcp_parse_sockaddr(options, &addr, out_diag);
+    if (options == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_tcp_parse_sockaddr(options->host, options->port, false, &addr, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -353,18 +491,20 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
         return status;
     }
 
-    uv_status = uv_loop_init(&connection->loop);
+    uv_status = uv_loop_init(&connection->owned_loop);
     if (uv_status != 0) {
         connection->state = SL_TCP_CONNECTION_FAILED;
         return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_BACKEND_UNAVAILABLE,
                                      sl_tcp_literal("TCP backend is unavailable"));
     }
+    connection->loop = &connection->owned_loop;
+    connection->owns_loop = true;
     connection->loop_initialized = true;
 
-    uv_status = uv_tcp_init(&connection->loop, &connection->handle);
+    uv_status = uv_tcp_init(connection->loop, &connection->handle);
     if (uv_status != 0) {
         connection->state = SL_TCP_CONNECTION_FAILED;
-        (void)uv_loop_close(&connection->loop);
+        (void)uv_loop_close(connection->loop);
         return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_BACKEND_UNAVAILABLE,
                                      sl_tcp_literal("TCP backend is unavailable"));
     }
@@ -381,14 +521,14 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
 
     connection->connect_req.data = connection;
     if (options->has_timeout_ms && options->timeout_ms > 0U) {
-        uv_status = uv_timer_init(&connection->loop, &connection->timer);
+        uv_status = uv_timer_init(connection->loop, &connection->timer);
         if (uv_status != 0) {
             connection->state = SL_TCP_CONNECTION_FAILED;
             uv_close((uv_handle_t*)&connection->handle, sl_tcp_close_cb);
             while (!connection->close_done) {
-                (void)uv_run(&connection->loop, UV_RUN_DEFAULT);
+                (void)uv_run(connection->loop, UV_RUN_DEFAULT);
             }
-            (void)uv_loop_close(&connection->loop);
+            (void)uv_loop_close(connection->loop);
             return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_BACKEND_UNAVAILABLE,
                                          sl_tcp_literal("TCP backend is unavailable"));
         }
@@ -403,21 +543,21 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
         connection->state = SL_TCP_CONNECTION_FAILED;
         uv_close((uv_handle_t*)&connection->handle, sl_tcp_close_cb);
         while (!connection->close_done) {
-            (void)uv_run(&connection->loop, UV_RUN_DEFAULT);
+            (void)uv_run(connection->loop, UV_RUN_DEFAULT);
         }
-        (void)uv_loop_close(&connection->loop);
+        (void)uv_loop_close(connection->loop);
         return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_DNS_FAILURE,
                                      sl_tcp_literal("DNS resolution failed"));
     }
 
     while (!connection->io.done) {
-        (void)uv_run(&connection->loop, UV_RUN_DEFAULT);
+        (void)uv_run(connection->loop, UV_RUN_DEFAULT);
     }
     if (connection->timer_initialized && !uv_is_closing((uv_handle_t*)&connection->timer)) {
         uv_timer_stop(&connection->timer);
         uv_close((uv_handle_t*)&connection->timer, sl_tcp_timer_close_cb);
         while (connection->timer_initialized) {
-            (void)uv_run(&connection->loop, UV_RUN_DEFAULT);
+            (void)uv_run(connection->loop, UV_RUN_DEFAULT);
         }
     }
     if (connection->io.status != 0) {
@@ -428,9 +568,9 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
             connection->close_started = true;
         }
         while (!connection->close_done) {
-            (void)uv_run(&connection->loop, UV_RUN_DEFAULT);
+            (void)uv_run(connection->loop, UV_RUN_DEFAULT);
         }
-        (void)uv_loop_close(&connection->loop);
+        (void)uv_loop_close(connection->loop);
         return sl_tcp_status_from_uv(connection->io.status, out_diag, SL_DIAG_NET_DNS_FAILURE,
                                      sl_tcp_literal("TCP connect failed"));
     }
@@ -439,6 +579,202 @@ SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* option
     sl_tcp_refresh_endpoints(connection);
     *out_connection = connection;
     return sl_status_ok();
+}
+
+SlStatus sl_tcp_listener_listen(SlArena* arena, const SlTcpListenOptions* options,
+                                SlTcpListener** out_listener, SlDiag* out_diag)
+{
+    SlTcpListener* listener = NULL;
+    struct sockaddr_storage addr;
+    SlStatus status;
+    int uv_status = 0;
+    int backlog = 0;
+
+    if (out_listener == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_listener = NULL;
+    if (options == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_tcp_parse_sockaddr(options->host, options->port, true, &addr, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_tcp_alloc_listener(arena, options->read_buffer_capacity, &listener);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    uv_status = uv_loop_init(&listener->loop);
+    if (uv_status != 0) {
+        listener->state = SL_TCP_LISTENER_FAILED;
+        return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_BACKEND_UNAVAILABLE,
+                                     sl_tcp_literal("TCP backend is unavailable"));
+    }
+    listener->loop_initialized = true;
+
+    uv_status = uv_tcp_init(&listener->loop, &listener->server);
+    if (uv_status != 0) {
+        listener->state = SL_TCP_LISTENER_FAILED;
+        (void)uv_loop_close(&listener->loop);
+        return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_BACKEND_UNAVAILABLE,
+                                     sl_tcp_literal("TCP backend is unavailable"));
+    }
+    listener->server_initialized = true;
+    listener->server.data = listener;
+
+    uv_status = uv_tcp_bind(&listener->server, (const struct sockaddr*)&addr, 0);
+    if (uv_status == 0) {
+        backlog = options->backlog == 0U ? 128 : (int)options->backlog;
+        uv_status =
+            uv_listen((uv_stream_t*)&listener->server, backlog, sl_tcp_listener_connection_cb);
+    }
+    if (uv_status != 0) {
+        listener->state = SL_TCP_LISTENER_FAILED;
+        uv_close((uv_handle_t*)&listener->server, sl_tcp_listener_close_cb);
+        while (!listener->close_done) {
+            (void)uv_run(&listener->loop, UV_RUN_DEFAULT);
+        }
+        (void)uv_loop_close(&listener->loop);
+        return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_LISTEN_DENIED,
+                                     sl_tcp_literal("TCP listen failed"));
+    }
+
+    listener->state = SL_TCP_LISTENER_LISTENING;
+    sl_tcp_refresh_listener_endpoint(listener);
+    *out_listener = listener;
+    return sl_status_ok();
+}
+
+SlTcpListenerState sl_tcp_listener_state(const SlTcpListener* listener)
+{
+    return listener == NULL ? SL_TCP_LISTENER_FAILED : listener->state;
+}
+
+SlStatus sl_tcp_listener_local_endpoint(const SlTcpListener* listener,
+                                        SlNetworkEndpoint* out_endpoint)
+{
+    if (listener == NULL || out_endpoint == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_endpoint = (SlNetworkEndpoint){
+        listener->local_family, sl_str_from_cstr(listener->local_host), listener->local_port};
+    return sl_status_ok();
+}
+
+SlStatus sl_tcp_listener_accept(SlTcpListener* listener, SlArena* arena,
+                                const SlTcpAcceptOptions* options, SlTcpConnection** out_connection,
+                                SlDiag* out_diag)
+{
+    SlTcpConnection* connection = NULL;
+    SlStatus status;
+    int uv_status = 0;
+
+    if (listener == NULL || arena == NULL || out_connection == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_connection = NULL;
+    if (listener->state != SL_TCP_LISTENER_LISTENING) {
+        return sl_tcp_fail(out_diag, SL_DIAG_NET_STALE_HANDLE, SL_STATUS_INVALID_STATE,
+                           sl_tcp_literal("TCP listener is closed"));
+    }
+    status = sl_tcp_alloc_connection(arena, listener->read_buffer_capacity, &connection);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    listener->pending_connection = connection;
+    listener->accept_done = false;
+    listener->accept_timeout = false;
+    listener->accept_status = 0;
+    if (options != NULL && options->has_timeout_ms && options->timeout_ms > 0U) {
+        uv_status = uv_timer_init(&listener->loop, &listener->timer);
+        if (uv_status != 0) {
+            listener->pending_connection = NULL;
+            return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_BACKEND_UNAVAILABLE,
+                                         sl_tcp_literal("TCP backend is unavailable"));
+        }
+        listener->timer_initialized = true;
+        listener->timer.data = listener;
+        (void)uv_timer_start(&listener->timer, sl_tcp_listener_timer_cb, options->timeout_ms, 0U);
+    }
+    while (!listener->accept_done) {
+        (void)uv_run(&listener->loop, UV_RUN_ONCE);
+    }
+    if (listener->timer_initialized && !uv_is_closing((uv_handle_t*)&listener->timer)) {
+        uv_timer_stop(&listener->timer);
+        uv_close((uv_handle_t*)&listener->timer, sl_tcp_listener_timer_close_cb);
+        while (listener->timer_initialized) {
+            (void)uv_run(&listener->loop, UV_RUN_NOWAIT);
+        }
+    }
+    listener->pending_connection = NULL;
+    if (listener->accept_status != 0) {
+        if (connection->handle_initialized && !uv_is_closing((uv_handle_t*)&connection->handle)) {
+            uv_close((uv_handle_t*)&connection->handle, sl_tcp_close_cb);
+            while (!connection->close_done) {
+                (void)uv_run(&listener->loop, UV_RUN_DEFAULT);
+            }
+        }
+        if (listener->accept_timeout) {
+            return sl_tcp_fail(out_diag, SL_DIAG_NET_READ_WRITE_TIMEOUT,
+                               SL_STATUS_DEADLINE_EXCEEDED, sl_tcp_literal("TCP accept timed out"));
+        }
+        return sl_tcp_status_from_uv(listener->accept_status, out_diag, SL_DIAG_NET_STALE_HANDLE,
+                                     sl_tcp_literal("TCP accept failed"));
+    }
+    *out_connection = connection;
+    return sl_status_ok();
+}
+
+static SlStatus sl_tcp_listener_finish_close(SlTcpListener* listener, SlTcpListenerState state,
+                                             SlDiag* out_diag)
+{
+    int uv_status = 0;
+
+    if (listener == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (listener->state == SL_TCP_LISTENER_CLOSED || listener->state == SL_TCP_LISTENER_ABORTED) {
+        return sl_status_ok();
+    }
+    listener->state = SL_TCP_LISTENER_CLOSING;
+    if (listener->timer_initialized && !uv_is_closing((uv_handle_t*)&listener->timer)) {
+        uv_timer_stop(&listener->timer);
+        uv_close((uv_handle_t*)&listener->timer, sl_tcp_listener_timer_close_cb);
+    }
+    if (listener->server_initialized && !uv_is_closing((uv_handle_t*)&listener->server)) {
+        uv_close((uv_handle_t*)&listener->server, sl_tcp_listener_close_cb);
+        listener->close_started = true;
+    }
+    while ((listener->timer_initialized || !listener->close_done) && listener->loop_initialized) {
+        (void)uv_run(&listener->loop, UV_RUN_NOWAIT);
+    }
+    if (listener->active_connections > 0U) {
+        return sl_tcp_fail(out_diag, SL_DIAG_NET_STALE_HANDLE, SL_STATUS_INVALID_STATE,
+                           sl_tcp_literal("TCP listener still owns active connections"));
+    }
+    if (listener->loop_initialized) {
+        uv_status = uv_loop_close(&listener->loop);
+        if (uv_status != 0) {
+            return sl_tcp_fail(out_diag, SL_DIAG_NET_STALE_HANDLE, SL_STATUS_INVALID_STATE,
+                               sl_tcp_literal("TCP listener still owns active handles"));
+        }
+        listener->loop_initialized = false;
+    }
+    listener->state = state;
+    return sl_status_ok();
+}
+
+SlStatus sl_tcp_listener_close(SlTcpListener* listener, SlDiag* out_diag)
+{
+    return sl_tcp_listener_finish_close(listener, SL_TCP_LISTENER_CLOSED, out_diag);
+}
+
+SlStatus sl_tcp_listener_abort(SlTcpListener* listener, SlDiag* out_diag)
+{
+    return sl_tcp_listener_finish_close(listener, SL_TCP_LISTENER_ABORTED, out_diag);
 }
 
 SlTcpConnectionState sl_tcp_connection_state(const SlTcpConnection* connection)
@@ -516,7 +852,7 @@ SlStatus sl_tcp_connection_write(SlTcpConnection* connection, SlBytes bytes, SlD
                                      sl_tcp_literal("TCP connection is closed"));
     }
     while (!connection->io.done) {
-        (void)uv_run(&connection->loop, UV_RUN_DEFAULT);
+        (void)uv_run(connection->loop, connection->owns_loop ? UV_RUN_DEFAULT : UV_RUN_ONCE);
     }
     if (connection->io.status != 0) {
         return sl_tcp_status_from_uv(connection->io.status, out_diag, SL_DIAG_NET_CONNECTION_CLOSED,
@@ -563,7 +899,7 @@ SlStatus sl_tcp_connection_read(SlTcpConnection* connection, SlArena* arena, siz
                                      sl_tcp_literal("TCP connection is closed"));
     }
     while (!connection->io.done) {
-        (void)uv_run(&connection->loop, UV_RUN_DEFAULT);
+        (void)uv_run(connection->loop, connection->owns_loop ? UV_RUN_DEFAULT : UV_RUN_ONCE);
     }
     if (connection->io.status != 0) {
         if (connection->io.status == UV_EOF) {
@@ -664,11 +1000,17 @@ static SlStatus sl_tcp_connection_finish_close(SlTcpConnection* connection,
     while ((connection->timer_initialized || !connection->close_done) &&
            connection->loop_initialized)
     {
-        (void)uv_run(&connection->loop, UV_RUN_DEFAULT);
+        (void)uv_run(connection->loop, connection->owns_loop ? UV_RUN_DEFAULT : UV_RUN_NOWAIT);
     }
-    if (connection->loop_initialized) {
-        (void)uv_loop_close(&connection->loop);
+    if (connection->loop_initialized && connection->owns_loop) {
+        (void)uv_loop_close(connection->loop);
         connection->loop_initialized = false;
+    }
+    if (connection->owner_listener != NULL && !connection->owner_listener_released) {
+        if (connection->owner_listener->active_connections > 0U) {
+            connection->owner_listener->active_connections--;
+        }
+        connection->owner_listener_released = true;
     }
     connection->state = state;
     return sl_status_ok();

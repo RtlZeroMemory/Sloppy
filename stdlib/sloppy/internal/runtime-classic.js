@@ -3231,6 +3231,42 @@ Reason:
         return normalized;
     }
 
+    function sloppyNetListenOptions(options) {
+        if (!isPlainObject(options)) {
+            throw new TypeError("TcpListener.listen options must be a plain object.");
+        }
+        if (typeof options.host !== "string" || options.host.length === 0) {
+            throw new TypeError("TcpListener.listen host must be a non-empty string.");
+        }
+        const normalized = {
+            host: options.host,
+            port: sloppyNetPort(options.port, true),
+        };
+        if (options.backlog !== undefined) {
+            if (!Number.isInteger(options.backlog) || options.backlog < 1) {
+                throw new TypeError("TcpListener.listen backlog must be a positive integer.");
+            }
+            normalized.backlog = options.backlog;
+        }
+        return normalized;
+    }
+
+    function sloppyNetTimeoutOption(options, operation) {
+        if (options === undefined) {
+            return undefined;
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError(`${operation} options must be a plain object.`);
+        }
+        if (options.timeoutMs === undefined) {
+            return undefined;
+        }
+        if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0) {
+            throw new TypeError(`${operation} timeoutMs must be a non-negative number.`);
+        }
+        return Math.ceil(options.timeoutMs);
+    }
+
     class TcpConnection {
         constructor(bridge, handle) {
             this._bridge = bridge;
@@ -3297,9 +3333,65 @@ Reason:
         },
     });
 
+    class TcpListenerResource {
+        constructor(bridge, handle) {
+            this._bridge = bridge;
+            this._handle = handle;
+            this._closed = false;
+        }
+
+        get closed() {
+            return this._closed;
+        }
+
+        async accept(options = undefined) {
+            if (this._closed) {
+                throw new Error("SLOPPY_E_NET_CONNECTION_CLOSED: TCP listener is closed");
+            }
+            const timeoutMs = sloppyNetTimeoutOption(options, "TcpListener.accept");
+            const handle = await this._bridge.accept(this._handle, timeoutMs);
+            return new TcpConnection(this._bridge, handle);
+        }
+
+        async *[Symbol.asyncIterator]() {
+            while (!this._closed) {
+                yield await this.accept();
+            }
+        }
+
+        acceptLoop(options = undefined) {
+            const listener = this;
+            return {
+                async *[Symbol.asyncIterator]() {
+                    while (!listener.closed) {
+                        yield await listener.accept(options);
+                    }
+                },
+            };
+        }
+
+        async close() {
+            if (this._closed) {
+                return;
+            }
+            this._closed = true;
+            await this._bridge.closeListener(this._handle);
+        }
+
+        async abort() {
+            if (this._closed) {
+                return;
+            }
+            this._closed = true;
+            await this._bridge.abortListener(this._handle);
+        }
+    }
+
     const TcpListener = Object.freeze({
-        async listen() {
-            throw new Error("SLOPPY_E_NET_UNSUPPORTED_OPTION: TcpListener lands in CORE-NET-01.E/F.");
+        async listen(options) {
+            const bridge = sloppyNativeNet("listen");
+            const handle = await bridge.listen(sloppyNetListenOptions(options));
+            return new TcpListenerResource(bridge, handle);
         },
     });
 

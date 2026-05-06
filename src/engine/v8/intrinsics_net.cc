@@ -23,15 +23,21 @@
 constexpr size_t kNetArenaBytes = 256U * 1024U;
 constexpr size_t kNetMaxBufferBytes = 64U * 1024U;
 
+struct NetV8Listener;
+
 enum class NetV8Operation
 {
     Connect,
+    Listen,
+    Accept,
     Write,
     Read,
     ReadLine,
     ReadUntil,
     Close,
-    Abort
+    Abort,
+    CloseListener,
+    AbortListener
 };
 
 struct NetV8Connection
@@ -40,6 +46,7 @@ struct NetV8Connection
     SlArena arena = {};
     SlTcpConnection* native = nullptr;
     std::mutex mutex;
+    std::shared_ptr<NetV8Listener> listener_owner;
     bool closed = false;
 
     NetV8Connection() : storage(kNetArenaBytes)
@@ -56,6 +63,32 @@ struct NetV8Connection
     }
 };
 
+struct NetV8Listener
+{
+    std::vector<unsigned char> storage;
+    SlArena arena = {};
+    SlTcpListener* native = nullptr;
+    std::mutex mutex;
+    bool closed = false;
+    bool accepting = false;
+    bool close_requested = false;
+    bool abort_requested = false;
+
+    NetV8Listener() : storage(kNetArenaBytes)
+    {
+        sl_arena_init(&arena, storage.data(), storage.size());
+    }
+
+    ~NetV8Listener()
+    {
+        if (native != nullptr && !closed) {
+            if (sl_status_is_ok(sl_tcp_listener_close(native, nullptr))) {
+                closed = true;
+            }
+        }
+    }
+};
+
 struct SlV8NetRequest
 {
     SlV8Engine* backend = nullptr;
@@ -65,9 +98,11 @@ struct SlV8NetRequest
     std::thread worker;
     NetV8Operation operation = NetV8Operation::Connect;
     std::shared_ptr<NetV8Connection> connection;
+    std::shared_ptr<NetV8Listener> listener;
     SlResourceId resource_id = {};
     std::string host;
     uint16_t port = 0U;
+    uint32_t backlog = 128U;
     bool has_timeout_ms = false;
     uint32_t timeout_ms = 0U;
     bool no_delay = false;
@@ -154,10 +189,38 @@ void net_v8_resource_cleanup(void* ptr, void* user)
     if (holder != nullptr) {
         std::shared_ptr<NetV8Connection> connection = *holder;
         if (connection != nullptr) {
+            std::unique_lock<std::mutex> owner_lock;
+            if (connection->listener_owner != nullptr) {
+                owner_lock = std::unique_lock<std::mutex>(connection->listener_owner->mutex);
+            }
             std::lock_guard<std::mutex> lock(connection->mutex);
             if (connection->native != nullptr && !connection->closed) {
                 (void)sl_tcp_connection_close(connection->native, nullptr);
                 connection->closed = true;
+            }
+        }
+        delete holder;
+    }
+}
+
+void net_v8_listener_resource_cleanup(void* ptr, void* user)
+{
+    auto* holder = static_cast<std::shared_ptr<NetV8Listener>*>(ptr);
+    (void)user;
+    if (holder != nullptr) {
+        std::shared_ptr<NetV8Listener> listener = *holder;
+        if (listener != nullptr) {
+            std::lock_guard<std::mutex> lock(listener->mutex);
+            if (listener->native != nullptr && !listener->closed) {
+                if (listener->accepting) {
+                    listener->close_requested = true;
+                    listener->closed = true;
+                    delete holder;
+                    return;
+                }
+                if (sl_status_is_ok(sl_tcp_listener_close(listener->native, nullptr))) {
+                    listener->closed = true;
+                }
             }
         }
         delete holder;
@@ -261,6 +324,24 @@ bool net_v8_lookup_connection(SlV8Engine* backend, SlResourceId id,
     return true;
 }
 
+bool net_v8_lookup_listener(SlV8Engine* backend, SlResourceId id,
+                            std::shared_ptr<NetV8Listener>* out)
+{
+    void* ptr = nullptr;
+    if (backend == nullptr || out == nullptr ||
+        !sl_status_is_ok(sl_resource_table_get(&backend->resources, id,
+                                               SL_RESOURCE_KIND_TCP_LISTENER, &ptr, nullptr)))
+    {
+        return false;
+    }
+    auto* holder = static_cast<std::shared_ptr<NetV8Listener>*>(ptr);
+    if (holder == nullptr || *holder == nullptr) {
+        return false;
+    }
+    *out = *holder;
+    return true;
+}
+
 void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
 {
     if (request == nullptr || request->cancelled.load()) {
@@ -282,6 +363,146 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
         return;
     }
 
+    if (request->operation == NetV8Operation::Listen) {
+        auto listener = std::make_shared<NetV8Listener>();
+        SlTcpListenOptions options = sl_tcp_listen_options_default(
+            sl_str_from_parts(request->host.data(), request->host.size()), request->port);
+        options.backlog = request->backlog;
+        request->status =
+            sl_tcp_listener_listen(&listener->arena, &options, &listener->native, &request->diag);
+        if (sl_status_is_ok(request->status)) {
+            request->listener = listener;
+        }
+        return;
+    }
+
+    if (request->operation == NetV8Operation::Accept ||
+        request->operation == NetV8Operation::CloseListener ||
+        request->operation == NetV8Operation::AbortListener)
+    {
+        if (request->listener == nullptr) {
+            request->status = sl_status_from_code(SL_STATUS_STALE_RESOURCE);
+            request->diag.code = SL_DIAG_NET_STALE_HANDLE;
+            request->diag.message = sl_str_from_cstr("TCP listener handle is stale");
+            return;
+        }
+        if (request->operation == NetV8Operation::Accept) {
+            auto connection = std::make_shared<NetV8Connection>();
+            SlTcpAcceptOptions options = sl_tcp_accept_options_default();
+            uint32_t remaining_timeout = request->timeout_ms;
+
+            {
+                std::lock_guard<std::mutex> lock(request->listener->mutex);
+                if (request->listener->closed || request->listener->accepting) {
+                    request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                    request->diag.code = SL_DIAG_NET_STALE_HANDLE;
+                    request->diag.message = sl_str_from_cstr("TCP listener is closed");
+                    return;
+                }
+                request->listener->accepting = true;
+            }
+
+            for (;;) {
+                uint32_t chunk_timeout = 100U;
+                if (request->has_timeout_ms && remaining_timeout < chunk_timeout) {
+                    chunk_timeout = remaining_timeout;
+                }
+                if (chunk_timeout == 0U) {
+                    request->status = sl_status_from_code(SL_STATUS_DEADLINE_EXCEEDED);
+                    request->diag.code = SL_DIAG_NET_READ_WRITE_TIMEOUT;
+                    request->diag.message = sl_str_from_cstr("TCP accept timed out");
+                    break;
+                }
+                options.has_timeout_ms = true;
+                options.timeout_ms = chunk_timeout;
+                request->status =
+                    sl_tcp_listener_accept(request->listener->native, &connection->arena, &options,
+                                           &connection->native, &request->diag);
+                if (sl_status_is_ok(request->status)) {
+                    break;
+                }
+                {
+                    std::lock_guard<std::mutex> lock(request->listener->mutex);
+                    if (request->listener->closed || request->listener->close_requested ||
+                        request->listener->abort_requested)
+                    {
+                        request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                        request->diag.code = SL_DIAG_NET_STALE_HANDLE;
+                        request->diag.message = sl_str_from_cstr("TCP listener is closed");
+                        break;
+                    }
+                }
+                if (!request->has_timeout_ms || request->status.code != SL_STATUS_DEADLINE_EXCEEDED)
+                {
+                    continue;
+                }
+                if (remaining_timeout <= chunk_timeout) {
+                    break;
+                }
+                remaining_timeout -= chunk_timeout;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(request->listener->mutex);
+                request->listener->accepting = false;
+                if (request->listener->close_requested || request->listener->abort_requested) {
+                    if (connection->native != nullptr) {
+                        (void)sl_tcp_connection_abort(connection->native, nullptr);
+                    }
+                    if (request->listener->abort_requested) {
+                        (void)sl_tcp_listener_abort(request->listener->native, nullptr);
+                    }
+                    else {
+                        (void)sl_tcp_listener_close(request->listener->native, nullptr);
+                    }
+                    request->listener->closed = true;
+                    request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+                    request->diag.code = SL_DIAG_NET_STALE_HANDLE;
+                    request->diag.message = sl_str_from_cstr("TCP listener is closed");
+                }
+                else if (sl_status_is_ok(request->status)) {
+                    connection->listener_owner = request->listener;
+                    request->connection = connection;
+                }
+            }
+        }
+        else if (request->operation == NetV8Operation::CloseListener) {
+            std::lock_guard<std::mutex> lock(request->listener->mutex);
+            if (request->listener->closed) {
+                request->status = sl_status_ok();
+                return;
+            }
+            if (request->listener->accepting) {
+                request->listener->close_requested = true;
+                request->listener->closed = true;
+                request->status = sl_status_ok();
+                return;
+            }
+            request->status = sl_tcp_listener_close(request->listener->native, &request->diag);
+            if (sl_status_is_ok(request->status)) {
+                request->listener->closed = true;
+            }
+        }
+        else if (request->operation == NetV8Operation::AbortListener) {
+            std::lock_guard<std::mutex> lock(request->listener->mutex);
+            if (request->listener->closed) {
+                request->status = sl_status_ok();
+                return;
+            }
+            if (request->listener->accepting) {
+                request->listener->abort_requested = true;
+                request->listener->closed = true;
+                request->status = sl_status_ok();
+                return;
+            }
+            request->status = sl_tcp_listener_abort(request->listener->native, &request->diag);
+            if (sl_status_is_ok(request->status)) {
+                request->listener->closed = true;
+            }
+        }
+        return;
+    }
+
     if (request->connection == nullptr) {
         request->status = sl_status_from_code(SL_STATUS_STALE_RESOURCE);
         request->diag.code = SL_DIAG_NET_STALE_HANDLE;
@@ -289,6 +510,10 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
         return;
     }
 
+    std::unique_lock<std::mutex> owner_lock;
+    if (request->connection->listener_owner != nullptr) {
+        owner_lock = std::unique_lock<std::mutex>(request->connection->listener_owner->mutex);
+    }
     std::lock_guard<std::mutex> lock(request->connection->mutex);
     if (request->connection->closed && request->operation != NetV8Operation::Close &&
         request->operation != NetV8Operation::Abort)
@@ -373,7 +598,9 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
         }
         ok = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
     }
-    else if (request->operation == NetV8Operation::Connect) {
+    else if (request->operation == NetV8Operation::Connect ||
+             request->operation == NetV8Operation::Accept)
+    {
         auto* holder = new (std::nothrow) std::shared_ptr<NetV8Connection>(request->connection);
         SlResourceId id = {};
         v8::Local<v8::Object> handle;
@@ -381,6 +608,28 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             !sl_status_is_ok(
                 sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_TCP_CONNECTION,
                                          holder, net_v8_resource_cleanup, nullptr, &id, nullptr)) ||
+            !net_v8_resource_to_handle(isolate, context, id, &handle))
+        {
+            delete holder;
+            ok = resolver
+                     ->Reject(
+                         context,
+                         v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                             isolate, "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
+                     .FromMaybe(false);
+        }
+        else {
+            ok = resolver->Resolve(context, handle).FromMaybe(false);
+        }
+    }
+    else if (request->operation == NetV8Operation::Listen) {
+        auto* holder = new (std::nothrow) std::shared_ptr<NetV8Listener>(request->listener);
+        SlResourceId id = {};
+        v8::Local<v8::Object> handle;
+        if (holder == nullptr ||
+            !sl_status_is_ok(sl_resource_table_insert(
+                &backend->resources, SL_RESOURCE_KIND_TCP_LISTENER, holder,
+                net_v8_listener_resource_cleanup, nullptr, &id, nullptr)) ||
             !net_v8_resource_to_handle(isolate, context, id, &handle))
         {
             delete holder;
@@ -430,6 +679,13 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
         {
             (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
                                                SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
+        }
+        if ((request->operation == NetV8Operation::CloseListener ||
+             request->operation == NetV8Operation::AbortListener) &&
+            sl_resource_id_is_valid(request->resource_id))
+        {
+            (void)sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                               SL_RESOURCE_KIND_TCP_LISTENER, nullptr);
         }
         ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
     }
@@ -611,6 +867,88 @@ void net_v8_connect(const v8::FunctionCallbackInfo<v8::Value>& args)
     args.GetReturnValue().Set(resolver->GetPromise());
 }
 
+void net_v8_listen(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Promise::Resolver> resolver;
+    auto request = net_v8_make_request(args, NetV8Operation::Listen, &resolver);
+    v8::Local<v8::Object> options;
+    v8::Local<v8::Value> value;
+    uint32_t number = 0U;
+
+    if (request == nullptr) {
+        return;
+    }
+    if (args.Length() < 1 || !args[0]->IsObject()) {
+        net_v8_throw_type_error(isolate, "__sloppy.net.listen requires options");
+        return;
+    }
+    options = args[0].As<v8::Object>();
+    auto get = [&](const char* key, v8::Local<v8::Value>* out) {
+        v8::Local<v8::String> name;
+        return sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr(key), &name)) &&
+               options->Get(context, name).ToLocal(out);
+    };
+    if (!get("host", &value) || !sl_v8_std_string_from_value(isolate, value, &request->host) ||
+        request->host.empty())
+    {
+        net_v8_throw_type_error(isolate, "__sloppy.net.listen host must be a string");
+        return;
+    }
+    if (!get("port", &value) || !net_v8_parse_uint(value, 0U, 65535U, &number)) {
+        net_v8_throw_type_error(isolate, "__sloppy.net.listen port is invalid");
+        return;
+    }
+    request->port = static_cast<uint16_t>(number);
+    if (get("backlog", &value) && !value->IsUndefined()) {
+        if (!net_v8_parse_uint(value, 1U, UINT32_MAX, &number)) {
+            net_v8_throw_type_error(isolate, "__sloppy.net.listen backlog is invalid");
+            return;
+        }
+        request->backlog = number;
+    }
+    if (!net_v8_start_request(request)) {
+        net_v8_throw_type_error(isolate, "__sloppy.net.listen could not start worker");
+        return;
+    }
+    args.GetReturnValue().Set(resolver->GetPromise());
+}
+
+void net_v8_with_listener(const v8::FunctionCallbackInfo<v8::Value>& args, NetV8Operation operation)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    v8::Local<v8::Promise::Resolver> resolver;
+    auto request = net_v8_make_request(args, operation, &resolver);
+    SlResourceId id = {};
+    uint32_t timeout_ms = 0U;
+
+    if (request == nullptr) {
+        return;
+    }
+    if (args.Length() < 1 || !net_v8_handle_to_resource(isolate, context, args[0], &id) ||
+        !net_v8_lookup_listener(request->backend, id, &request->listener))
+    {
+        net_v8_throw_type_error(isolate, "__sloppy.net listener handle is stale or closed");
+        return;
+    }
+    request->resource_id = id;
+    if (operation == NetV8Operation::Accept && args.Length() >= 2 && !args[1]->IsUndefined()) {
+        if (!net_v8_parse_uint(args[1], 0U, UINT32_MAX, &timeout_ms)) {
+            net_v8_throw_type_error(isolate, "__sloppy.net.accept timeoutMs is invalid");
+            return;
+        }
+        request->has_timeout_ms = true;
+        request->timeout_ms = timeout_ms;
+    }
+    if (!net_v8_start_request(request)) {
+        net_v8_throw_type_error(isolate, "__sloppy.net listener operation could not start worker");
+        return;
+    }
+    args.GetReturnValue().Set(resolver->GetPromise());
+}
+
 void net_v8_with_connection(const v8::FunctionCallbackInfo<v8::Value>& args,
                             NetV8Operation operation)
 {
@@ -699,6 +1037,21 @@ void net_v8_abort(const v8::FunctionCallbackInfo<v8::Value>& args)
     net_v8_with_connection(args, NetV8Operation::Abort);
 }
 
+void net_v8_accept(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_listener(args, NetV8Operation::Accept);
+}
+
+void net_v8_close_listener(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_listener(args, NetV8Operation::CloseListener);
+}
+
+void net_v8_abort_listener(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    net_v8_with_listener(args, NetV8Operation::AbortListener);
+}
+
 } // namespace
 
 bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
@@ -718,12 +1071,16 @@ bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> co
     }
     net = v8::Object::New(isolate);
     if (!net_v8_set_function(isolate, context, net, "connect", net_v8_connect) ||
+        !net_v8_set_function(isolate, context, net, "listen", net_v8_listen) ||
+        !net_v8_set_function(isolate, context, net, "accept", net_v8_accept) ||
         !net_v8_set_function(isolate, context, net, "write", net_v8_write) ||
         !net_v8_set_function(isolate, context, net, "read", net_v8_read) ||
         !net_v8_set_function(isolate, context, net, "readLine", net_v8_read_line) ||
         !net_v8_set_function(isolate, context, net, "readUntil", net_v8_read_until) ||
         !net_v8_set_function(isolate, context, net, "close", net_v8_close) ||
         !net_v8_set_function(isolate, context, net, "abort", net_v8_abort) ||
+        !net_v8_set_function(isolate, context, net, "closeListener", net_v8_close_listener) ||
+        !net_v8_set_function(isolate, context, net, "abortListener", net_v8_abort_listener) ||
         !sl_status_is_ok(net_v8_to_local_string(isolate, sl_str_from_cstr("net"), &key)))
     {
         return false;

@@ -1534,8 +1534,9 @@ static int test_net_intrinsic_namespace_is_registered(void)
                 engine, sl_str_from_cstr("v8-net-active.js"),
                 sl_str_from_cstr("globalThis.sloppy_net_active = function () {"
                                  "  const n = globalThis.__sloppy.net;"
-                                 "  const names = ['connect', 'write', 'read', 'readLine',"
-                                 "    'readUntil', 'close', 'abort'];"
+                                 "  const names = ['connect', 'listen', 'accept', 'write',"
+                                 "    'read', 'readLine', 'readUntil', 'close', 'abort',"
+                                 "    'closeListener', 'abortListener'];"
                                  "  return n && names.every((name) => typeof n[name] === "
                                  "'function')"
                                  "    ? 'net-active-ok'"
