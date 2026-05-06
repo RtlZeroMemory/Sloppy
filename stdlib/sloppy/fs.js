@@ -694,6 +694,28 @@ class FileHandle {
         const newline = options?.newline ?? "\n";
         const maxLineLength = options?.maxLineLength ?? 1024 * 1024;
         let buffered = "";
+        const limitError = () => new Error(
+            "SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.",
+        );
+        const normalizeLine = (line) => line.replace(/\r$/, "");
+        const pendingDelimiterCarryLength = () => {
+            const maxCarry = Math.min(buffered.length, newline.length - 1);
+            for (let length = maxCarry; length > 0; length -= 1) {
+                if (buffered.endsWith(newline.slice(0, length))) {
+                    return length;
+                }
+            }
+            return 0;
+        };
+        const checkPendingLineLength = () => {
+            const carryLength = pendingDelimiterCarryLength();
+            const pendingLine = carryLength > 0
+                ? buffered.slice(0, buffered.length - carryLength)
+                : buffered;
+            if (normalizeLine(pendingLine).length > maxLineLength) {
+                throw limitError();
+            }
+        };
         if (typeof newline !== "string" || newline.length === 0) {
             throw new TypeError(
                 "Sloppy FileHandle.readLines newline must be a non-empty string.",
@@ -703,24 +725,23 @@ class FileHandle {
             buffered += decoder.decode(chunk, { stream: true });
             let index = buffered.indexOf(newline);
             while (index !== -1) {
-                const line = buffered.slice(0, index).replace(/\r$/, "");
+                const line = normalizeLine(buffered.slice(0, index));
                 if (line.length > maxLineLength) {
-                    throw new Error("SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.");
+                    throw limitError();
                 }
                 yield line;
                 buffered = buffered.slice(index + newline.length);
                 index = buffered.indexOf(newline);
             }
-            if (buffered.length > maxLineLength) {
-                throw new Error("SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.");
-            }
+            checkPendingLineLength();
         }
         buffered += decoder.finish();
-        if (buffered.length > maxLineLength) {
-            throw new Error("SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.");
+        const trailingLine = normalizeLine(buffered);
+        if (trailingLine.length > maxLineLength) {
+            throw limitError();
         }
         if (buffered.length !== 0) {
-            yield buffered.replace(/\r$/, "");
+            yield trailingLine;
         }
     }
 }

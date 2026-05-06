@@ -658,6 +658,23 @@ static int test_body_reader_rejects_limits_and_unsupported_media(void)
         expect_status(
             sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
             SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_body_reader_begin(
+                          &request, sl_str_from_cstr("application/+json"), 3U, &reader, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE || backend.active_requests != 0U)
+    {
+        return 89;
+    }
+
+    connection.state = SL_HTTP_CONNECTION_STATE_OPEN;
+    sl_arena_reset(&arena);
+    request = (SlHttpRequestLifecycle){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        expect_status(
+            sl_http_request_parse_head(&request, bytes_from_cstr("POST / HTTP/1.1\r\n\r\n"), NULL),
+            SL_STATUS_OK) != 0 ||
         expect_status(sl_http_request_body_reader_begin(&request, sl_str_from_cstr("text/plain"),
                                                         3U, &reader, NULL),
                       SL_STATUS_OK) != 0 ||

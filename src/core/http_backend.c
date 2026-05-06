@@ -294,9 +294,13 @@ static SlStr sl_http_backend_media_type(SlStr content_type)
 
 static bool sl_http_backend_media_type_json(SlStr media_type)
 {
+    const SlStr application_prefix = sl_str_from_cstr("application/");
+    const SlStr json_suffix = sl_str_from_cstr("+json");
+
     return sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/json")) ||
-           (sl_str_starts_with_ci_ascii(media_type, sl_str_from_cstr("application/")) &&
-            sl_str_ends_with_ci_ascii(media_type, sl_str_from_cstr("+json")));
+           (media_type.length > application_prefix.length + json_suffix.length &&
+            sl_str_starts_with_ci_ascii(media_type, application_prefix) &&
+            sl_str_ends_with_ci_ascii(media_type, json_suffix));
 }
 
 static SlStatus sl_http_body_reader_classify(SlStr content_type, size_t content_length,

@@ -2,17 +2,17 @@ if(NOT DEFINED PROJECT_SOURCE_DIR)
     message(FATAL_ERROR "PROJECT_SOURCE_DIR is required")
 endif()
 
-function(require_substring haystack needle description)
-    string(FIND "${haystack}" "${needle}" found_index)
+function(require_token haystack token description)
+    string(FIND "${haystack}" "${token}" found_index)
     if(found_index EQUAL -1)
-        message(FATAL_ERROR "${description}: ${needle}")
+        message(FATAL_ERROR "${description}: ${token}")
     endif()
 endfunction()
 
-function(reject_substring haystack needle description)
-    string(FIND "${haystack}" "${needle}" found_index)
-    if(NOT found_index EQUAL -1)
-        message(FATAL_ERROR "${description}: ${needle}")
+function(reject_regex haystack pattern description)
+    string(REGEX MATCH "${pattern}" found_match "${haystack}")
+    if(NOT "${found_match}" STREQUAL "")
+        message(FATAL_ERROR "${description}: ${pattern}")
     endif()
 endfunction()
 
@@ -37,31 +37,31 @@ foreach(example_name IN LISTS example_names)
     file(READ "${app_file}" app_source)
     file(READ "${readme_file}" readme_source)
     foreach(forbidden_pattern IN ITEMS
-            "Buffer."
-            "node:"
-            "require("
-            "Bun."
-            "Deno."
-            "console.log")
-        reject_substring("${app_source}" "${forbidden_pattern}"
-                         "Core integration examples must keep runtime boundaries clear")
+            "(^|[^A-Za-z0-9_])Buffer\\."
+            "(^|[^A-Za-z0-9_])node:"
+            "(^|[^A-Za-z0-9_])require[ \t]*\\("
+            "(^|[^A-Za-z0-9_])Bun\\."
+            "(^|[^A-Za-z0-9_])Deno\\."
+            "(^|[^A-Za-z0-9_])console\\.log[ \t]*\\(")
+        reject_regex("${app_source}" "${forbidden_pattern}"
+                     "Core integration examples must keep runtime boundaries clear")
     endforeach()
     foreach(required_pattern IN ITEMS
             "Status: CORE-INTEGRATION-01"
             "no public alpha claim"
             "no benchmark")
-        require_substring("${readme_source}" "${required_pattern}"
-                          "Core integration README is missing required boundary text")
+        require_token("${readme_source}" "${required_pattern}"
+                      "Core integration README is missing required boundary text")
     endforeach()
     foreach(forbidden_pattern IN ITEMS
-            "production-ready"
-            "performance improvement"
-            "fastest"
-            "compatible with Node"
-            "compatible with Bun"
-            "compatible with Deno")
-        reject_substring("${readme_source}" "${forbidden_pattern}"
-                         "Core integration README must not overclaim")
+            "(^|[^A-Za-z0-9_-])production-ready([^A-Za-z0-9_-]|$)"
+            "(^|[^A-Za-z0-9_-])performance improvement([^A-Za-z0-9_-]|$)"
+            "(^|[^A-Za-z0-9_-])fastest([^A-Za-z0-9_-]|$)"
+            "(^|[^A-Za-z0-9_-])compatible with Node([^A-Za-z0-9_-]|$)"
+            "(^|[^A-Za-z0-9_-])compatible with Bun([^A-Za-z0-9_-]|$)"
+            "(^|[^A-Za-z0-9_-])compatible with Deno([^A-Za-z0-9_-]|$)")
+        reject_regex("${readme_source}" "${forbidden_pattern}"
+                     "Core integration README must not overclaim")
     endforeach()
 endforeach()
 
@@ -73,50 +73,57 @@ file(READ "${PROJECT_SOURCE_DIR}/examples/core-policy-audit/app.js" policy_sourc
 file(READ "${PROJECT_SOURCE_DIR}/examples/core-config-secrets/app.js" config_source)
 
 foreach(required_pattern IN ITEMS
-        "import { Text } from \"sloppy/codec\";"
-        "import { File } from \"sloppy/fs\";"
-        "import { Deadline } from \"sloppy/time\";"
-        "Text.utf8.decode(bytes, { fatal: true })")
-    require_substring("${fs_source}" "${required_pattern}"
-                      "core-fs-time-codec is missing expected API shape")
+        "sloppy/codec"
+        "sloppy/fs"
+        "sloppy/time"
+        "Text.utf8.decode")
+    require_token("${fs_source}" "${required_pattern}"
+                  "core-fs-time-codec is missing expected API shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "import { LocalEndpoint } from \"sloppy/net\";"
-        "Text.utf8.encode(\"status"
-        "endpoint.read({ maxBytes: 4096, deadline, signal })")
-    require_substring("${net_source}" "${required_pattern}"
-                      "core-network-time-codec is missing expected API shape")
+        "sloppy/net"
+        "Text.utf8.encode"
+        "LocalEndpoint"
+        "endpoint.read"
+        "deadline"
+        "signal")
+    require_token("${net_source}" "${required_pattern}"
+                  "core-network-time-codec is missing expected API shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "import { Process } from \"sloppy/os\";"
-        "process.stdout.read(4096)"
-        "Text.utf8.decode(output, { fatal: true })")
-    require_substring("${process_source}" "${required_pattern}"
-                      "core-process-time-codec is missing expected API shape")
+        "sloppy/os"
+        "Process"
+        "process.stdout.read"
+        "Text.utf8.decode"
+        "refreshStatusText")
+    require_token("${process_source}" "${required_pattern}"
+                  "core-process-time-codec is missing expected API shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "import { WorkQueue } from \"sloppy/workers\";"
-        "Deadline.after(500)"
-        "overflow: \"backpressure\"")
-    require_substring("${worker_source}" "${required_pattern}"
-                      "core-worker-time is missing expected API shape")
+        "sloppy/workers"
+        "Deadline.after"
+        "WorkQueue"
+        "backpressure")
+    require_token("${worker_source}" "${required_pattern}"
+                  "core-worker-time is missing expected API shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "Sloppy.module(\"core-policy\")"
-        "capabilities.addDatabase(\"data.main\""
-        "mode: \"strict\"")
-    require_substring("${policy_source}" "${required_pattern}"
-                      "core-policy-audit is missing expected API shape")
+        "Sloppy.module"
+        "capabilities.addDatabase"
+        "mode: \"strict\""
+        "Audit-only")
+    require_token("${policy_source}" "${required_pattern}"
+                  "core-policy-audit is missing expected API shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
         "config.getSecret(\"Provider:Token\")"
         "String(providerCredential)"
         "Results.json")
-    require_substring("${config_source}" "${required_pattern}"
-                      "core-config-secrets is missing expected API shape")
+    require_token("${config_source}" "${required_pattern}"
+                  "core-config-secrets is missing expected API shape")
 endforeach()

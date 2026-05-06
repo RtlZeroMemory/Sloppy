@@ -561,6 +561,55 @@ static int test_codec_required_feature_fails_when_runtime_unavailable(void)
     return 0;
 }
 
+static int test_codec_dependents_fail_closed_when_codec_unavailable(void)
+{
+    static const struct
+    {
+        const char* required_feature;
+        SlRuntimeFeatureId feature_id;
+    } cases[] = {
+        {"stdlib.fs", SL_RUNTIME_FEATURE_STDLIB_FS},
+        {"stdlib.crypto", SL_RUNTIME_FEATURE_STDLIB_CRYPTO},
+        {"stdlib.net", SL_RUNTIME_FEATURE_STDLIB_NET},
+        {"stdlib.os", SL_RUNTIME_FEATURE_STDLIB_OS},
+    };
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        unsigned char diag_storage[2048];
+        SlArena diag_arena = {0};
+        SlPlanRequiredFeature required[1] = {{sl_str_from_cstr(cases[index].required_feature)}};
+        SlPlan plan = target_only_plan();
+        SlRuntimeFeatureAvailability availability = all_available();
+        SlRuntimeFeatureSet set = {0};
+        SlDiag diag = {0};
+
+        availability.stdlib_codec = false;
+        plan.required_features = required;
+        plan.required_feature_count = 1U;
+        (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+        if (expect_status(
+                sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+                SL_STATUS_UNSUPPORTED) != 0)
+        {
+            return (int)(1U + index);
+        }
+        if (diag.code != SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING ||
+            !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.codec")))
+        {
+            return (int)(10U + index);
+        }
+        if (sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC) ||
+            sl_runtime_feature_set_contains(&set, cases[index].feature_id))
+        {
+            return (int)(20U + index);
+        }
+    }
+
+    return 0;
+}
+
 static int test_explicit_net_required_feature_activates_when_available(void)
 {
     unsigned char diag_storage[2048];
@@ -1128,6 +1177,7 @@ int main(void)
         test_crypto_required_feature_fails_when_backend_unavailable,
         test_explicit_codec_required_feature_activates_when_available,
         test_codec_required_feature_fails_when_runtime_unavailable,
+        test_codec_dependents_fail_closed_when_codec_unavailable,
         test_explicit_net_required_feature_activates_when_available,
         test_net_required_feature_activates_by_default_after_tcp_client_backend,
         test_explicit_os_required_feature_activates_when_available,

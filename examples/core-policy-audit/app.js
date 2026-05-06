@@ -8,6 +8,7 @@ const PolicyModule = Sloppy.module("core-policy").capabilities((capabilities) =>
     });
 });
 
+// Audit-only fixture metadata; current app construction does not enforce this object.
 export const policyMetadata = Object.freeze({
     filesystem: { mode: "strict", roots: ["data:/"] },
     network: { mode: "strict", connect: ["127.0.0.1:9000"] },

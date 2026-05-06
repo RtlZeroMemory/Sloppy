@@ -20,10 +20,13 @@ function Get-TrackedFileSet {
         if ($LASTEXITCODE -eq 0) {
             return @($files | Where-Object {
                 $_ -match "\.(c|h|cc|cpp|js|mjs|ts|md|json|cmake|ps1|sh|rs)$"
+            } | Where-Object {
+                Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf
             } | ForEach-Object {
+                $fullPath = Join-Path $Root $_
                 [pscustomobject]@{
                     Path = $_.Replace("\", "/")
-                    Content = Get-Content -LiteralPath (Join-Path $Root $_) -Raw
+                    Content = Get-Content -LiteralPath $fullPath -Raw
                 }
             })
         }

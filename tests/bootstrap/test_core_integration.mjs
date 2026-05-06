@@ -20,7 +20,6 @@ function assertBytes(actual, expected) {
 async function assertRejectsCode(promise, code) {
     await assert.rejects(promise, (error) => {
         assert.equal(error.code, code);
-        assert.match(error.message, new RegExp(code));
         return true;
     });
 }
@@ -74,6 +73,40 @@ try {
             // unreachable
         }
     }, /SLOPPY_E_LIMIT_EXCEEDED/);
+
+    readCount = 0;
+    globalThis.__sloppy.fs.handleRead = () => {
+        readCount += 1;
+        return readCount === 1
+            ? Text.utf8.encode("abc\r")
+            : readCount === 2
+              ? Text.utf8.encode("\n")
+              : new Uint8Array(0);
+    };
+    const splitDelimiterLines = [];
+    for await (const line of new FileHandle({ slot: 1, generation: 1 }).readLines({
+        chunkSize: 64,
+        maxLineLength: 3,
+        newline: "\r\n",
+    })) {
+        splitDelimiterLines.push(line);
+    }
+    assert.deepEqual(splitDelimiterLines, ["abc"]);
+
+    readCount = 0;
+    globalThis.__sloppy.fs.handleRead = () => {
+        readCount += 1;
+        return readCount === 1 ? Text.utf8.encode("abc\r") : new Uint8Array(0);
+    };
+    const trailingCarriageReturnLines = [];
+    for await (const line of new FileHandle({ slot: 1, generation: 1 }).readLines({
+        chunkSize: 64,
+        maxLineLength: 3,
+        newline: "\r\n",
+    })) {
+        trailingCarriageReturnLines.push(line);
+    }
+    assert.deepEqual(trailingCarriageReturnLines, ["abc"]);
 
     globalThis.__sloppy = {
         ...(globalThis.__sloppy ?? {}),

@@ -1735,9 +1735,7 @@ async function consumeHttpRequestStream(stream, maxRequestBytes, headers, operat
     } finally {
         if (!completed && typeof iterator.return === "function") {
             try {
-                const returned = Promise.resolve(iterator.return());
-                returned.catch(() => {});
-                await Promise.race([returned, Promise.resolve()]);
+                Promise.resolve(iterator.return()).catch(() => {});
             } catch {
             }
         }

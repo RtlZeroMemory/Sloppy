@@ -1905,6 +1905,9 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.core_integration.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_core_integration_examples.cmake")
+    set_tests_properties(
+        examples.core_integration.api_shape PROPERTIES LABELS
+                                                     "CORE-INTEGRATION-01;examples;conformance")
 
     if(NODE_EXECUTABLE)
         add_test(
@@ -1940,6 +1943,9 @@ if(SLOPPY_ENABLE_TESTS)
             bootstrap.stdlib.http_client bootstrap.stdlib.workers
             bootstrap.stdlib.core_integration PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+        set_tests_properties(
+            bootstrap.stdlib.core_integration PROPERTIES LABELS
+                                                       "CORE-INTEGRATION-01;bootstrap;conformance")
     endif()
 
     if(CARGO_EXECUTABLE)

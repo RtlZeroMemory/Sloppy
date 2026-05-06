@@ -1,5 +1,5 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 SELF_TEST=0
@@ -101,21 +101,35 @@ if [ "$SELF_TEST" -eq 1 ]; then
     exit 0
 fi
 
-violations=""
-if command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    files=$(git -C "$ROOT" ls-files --cached --others --exclude-standard)
-else
-    files=$(find "$ROOT" -type f | sed "s#^$ROOT/##")
-fi
+collect_files() {
+    if command -v git >/dev/null 2>&1 &&
+        git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git -C "$ROOT" ls-files -z --cached --others --exclude-standard
+        return
+    fi
 
-for path in $files; do
+    while IFS= read -r -d '' file; do
+        path=${file#"$ROOT"/}
+        printf '%s\0' "$path"
+    done < <(find "$ROOT" -type f -print0)
+}
+
+violations=""
+while IFS= read -r -d '' path; do
+    case "$path" in
+        *.c|*.h|*.cc|*.cpp|*.js|*.mjs|*.ts|*.md|*.json|*.cmake|*.ps1|*.sh|*.rs)
+            ;;
+        *)
+            continue
+            ;;
+    esac
     if [ -f "$ROOT/$path" ]; then
         if ! message=$(check_file "$path" "$ROOT/$path"); then
             violations="${violations}${message}
 "
         fi
     fi
-done
+done < <(collect_files)
 
 if [ -n "$violations" ]; then
     printf 'Core API integration check failed:\n%s' "$violations" >&2

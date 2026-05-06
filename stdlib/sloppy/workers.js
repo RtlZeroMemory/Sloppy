@@ -521,7 +521,24 @@ class WorkQueueHandle {
                 }
             },
             reject: (error) => finish(waiter, () => reject(error)),
-            resume: () => finish(waiter, () => submit().then(resolve, reject)),
+            resume: () => finish(waiter, () => {
+                try {
+                    if (signalCancelled(options.signal)) {
+                        this._stats.cancelled += 1;
+                        reject(rejectForCancellation(signalReason(options.signal)));
+                        return;
+                    }
+                    if (deadlineRemainingMs(options.deadline) <= 0) {
+                        this._stats.timedOut += 1;
+                        reject(rejectForCancellation("deadline"));
+                        return;
+                    }
+                } catch (error) {
+                    reject(error);
+                    return;
+                }
+                submit().then(resolve, reject);
+            }),
         };
 
         cleanupSignal = subscribeSignal(options.signal, (reason) => {
