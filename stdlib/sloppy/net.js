@@ -2577,7 +2577,10 @@ async function sendHttpRequest(baseOptions, request, options = undefined, defaul
                 { cause: error },
             );
         }
-        if (error instanceof SloppyNetError && String(error.message).startsWith("SLOPPY_E_HTTP_CLIENT_")) {
+        if (error instanceof SloppyNetError &&
+            typeof error.code === "string" &&
+            error.code.startsWith("SLOPPY_E_HTTP_CLIENT_"))
+        {
             throw error;
         }
         throw mapHttpTransportError(error);

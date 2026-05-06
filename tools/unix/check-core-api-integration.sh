@@ -56,7 +56,8 @@ check_file() {
 }
 
 if [ "$SELF_TEST" -eq 1 ]; then
-    tmp=${TMPDIR:-/tmp}/sloppy-core-integration-$$
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/sloppy-core-integration.XXXXXX")
+    trap 'rm -rf "$tmp"' EXIT
     mkdir -p "$tmp/stdlib/sloppy" "$tmp/src/core"
     printf "const bytes = new TextEncoder().encode('x');\n" > "$tmp/stdlib/sloppy/fs.js"
     printf "const owner = new TextEncoder();\n" > "$tmp/stdlib/sloppy/codec.js"
@@ -94,10 +95,8 @@ if [ "$SELF_TEST" -eq 1 ]; then
         cat "$expected" >&2
         printf 'Actual:\n' >&2
         cat "$tmp/actual.sorted" >&2
-        rm -rf "$tmp"
         exit 1
     fi
-    rm -rf "$tmp"
     printf 'core API integration scanner self-test passed.\n'
     exit 0
 fi

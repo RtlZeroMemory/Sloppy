@@ -694,9 +694,13 @@ class FileHandle {
         const newline = options?.newline ?? "\n";
         const maxLineLength = options?.maxLineLength ?? 1024 * 1024;
         let buffered = "";
-        const limitError = () => new Error(
-            "SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.",
-        );
+        const limitError = () => {
+            const error = new Error(
+                "SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.",
+            );
+            error.code = "SLOPPY_E_LIMIT_EXCEEDED";
+            return error;
+        };
         const shouldNormalizeCarriageReturn = newline === "\n" || newline === "\r\n";
         const normalizeLine = (line) => shouldNormalizeCarriageReturn ? line.replace(/\r$/, "") : line;
         const pendingDelimiterCarryLength = () => {

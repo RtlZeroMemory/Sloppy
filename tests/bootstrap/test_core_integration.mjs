@@ -24,6 +24,23 @@ async function assertRejectsCode(promise, code) {
     });
 }
 
+async function withTimeout(promise, label) {
+    let timeoutId;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timeoutId = setTimeout(
+                    () => reject(new Error(`Timed out waiting for ${label}.`)),
+                    500,
+                );
+            }),
+        ]);
+    } finally {
+        clearTimeout(timeoutId);
+    }
+}
+
 const previousSloppy = globalThis.__sloppy;
 
 try {
@@ -65,14 +82,17 @@ try {
         readCount += 1;
         return readCount === 1 ? Text.utf8.encode("aa") : new Uint8Array(0);
     };
-    await assert.rejects(async () => {
-        for await (const _line of new FileHandle({ slot: 1, generation: 1 }).readLines({
-            chunkSize: 64,
-            maxLineLength: 1,
-        })) {
-            // unreachable
-        }
-    }, /SLOPPY_E_LIMIT_EXCEEDED/);
+    await assertRejectsCode(
+        (async () => {
+            for await (const _line of new FileHandle({ slot: 1, generation: 1 }).readLines({
+                chunkSize: 64,
+                maxLineLength: 1,
+            })) {
+                // unreachable
+            }
+        })(),
+        "SLOPPY_E_LIMIT_EXCEEDED",
+    );
 
     readCount = 0;
     globalThis.__sloppy.fs.handleRead = () => {
@@ -162,10 +182,15 @@ try {
 
     function pendingStream() {
         let streamReturned = 0;
+        let resolveStarted;
+        const started = new Promise((resolve) => {
+            resolveStarted = resolve;
+        });
         const stream = {
             [Symbol.asyncIterator]() {
                 return {
                     async next() {
+                        resolveStarted();
                         return new Promise(() => {});
                     },
                     async return() {
@@ -175,7 +200,7 @@ try {
                 };
             },
         };
-        return { stream, returned: () => streamReturned };
+        return { stream, returned: () => streamReturned, started };
     }
 
     let streamReturned = 0;
@@ -197,13 +222,16 @@ try {
             };
         },
     };
-    await assertRejectsCode(
-        HttpClient.request({
-            url: "http://127.0.0.1/",
-            stream: tooLargeStream,
-            maxRequestBytes: 3,
-        }),
-        "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+    await withTimeout(
+        assertRejectsCode(
+            HttpClient.request({
+                url: "http://127.0.0.1/",
+                stream: tooLargeStream,
+                maxRequestBytes: 3,
+            }),
+            "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+        ),
+        "too-large stream cleanup",
     );
     assert.equal(streamReturned, 1);
 
@@ -227,34 +255,43 @@ try {
             };
         },
     };
-    await assertRejectsCode(
-        HttpClient.request({
-            url: "http://127.0.0.1/",
-            stream: delayedCleanupStream,
-            maxRequestBytes: 3,
-        }),
-        "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+    await withTimeout(
+        assertRejectsCode(
+            HttpClient.request({
+                url: "http://127.0.0.1/",
+                stream: delayedCleanupStream,
+                maxRequestBytes: 3,
+            }),
+            "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+        ),
+        "delayed stream cleanup",
     );
     assert.equal(delayedCleanupFinished, true);
 
     const invalidChunk = oneShotStream("not-bytes");
-    await assertRejectsCode(
-        HttpClient.request({
-            url: "http://127.0.0.1/",
-            stream: invalidChunk.stream,
-        }),
-        "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+    await withTimeout(
+        assertRejectsCode(
+            HttpClient.request({
+                url: "http://127.0.0.1/",
+                stream: invalidChunk.stream,
+            }),
+            "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+        ),
+        "invalid chunk cleanup",
     );
     assert.equal(invalidChunk.returned(), 1);
 
     const timedOutStream = pendingStream();
-    await assertRejectsCode(
-        HttpClient.request({
-            url: "http://127.0.0.1/",
-            stream: timedOutStream.stream,
-            timeoutMs: 1,
-        }),
-        "SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT",
+    await withTimeout(
+        assertRejectsCode(
+            HttpClient.request({
+                url: "http://127.0.0.1/",
+                stream: timedOutStream.stream,
+                timeoutMs: 1,
+            }),
+            "SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT",
+        ),
+        "timed-out stream cleanup",
     );
     assert.equal(timedOutStream.returned(), 1);
 
@@ -265,8 +302,12 @@ try {
         stream: cancelledStream.stream,
         signal: streamController.signal,
     });
+    await withTimeout(cancelledStream.started, "cancelled stream start");
     streamController.abort("caller");
-    await assertRejectsCode(cancelledRequest, "SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED");
+    await withTimeout(
+        assertRejectsCode(cancelledRequest, "SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED"),
+        "cancelled stream cleanup",
+    );
     assert.equal(cancelledStream.returned(), 1);
 
     await assertRejectsCode(
