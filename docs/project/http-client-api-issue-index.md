@@ -9,7 +9,7 @@ Parent epic: #583 CORE-HTTPCLIENT-01.
 | #603 | Feature, Plan, capability, and diagnostics model | Implemented `stdlib.httpclient`, compiler import activation, and stable diagnostic names. |
 | #604 | HTTP/1.1 client request/response core | Implemented for cleartext `http://` request/response execution over CORE-NET TCP; TLS, pooling, redirects, streaming, and full deadline/cancellation behavior remain deferred to sibling issues. |
 | #605 | Convenience APIs and JSON/text/bytes helpers | Implemented for `get`, `post`, `request`, `text`, `json`, `bytes`, `getJson`, `postJson`, response `text()`, `json()`, `bytes()`, request `json` bodies, and base URL/path joining. |
-| #606 | Streaming bodies, backpressure, deadlines, and cancellation | Deferred. |
+| #606 | Streaming bodies, backpressure, deadlines, and cancellation | Implemented for bounded async-iterable request body consumption, response `stream()` iteration over buffered bodies, operation-wide `timeoutMs`/`deadline`/`signal`, timeout/cancellation distinction, and cleanup-only late completion. True socket-level streaming remains a future transport evolution. |
 | #607 | Pooling, redirects, DNS, and header redaction | Deferred. |
 | #608 | V8/stdlib integration and JS surface | Partially implemented by the stdlib surface over the existing CORE-NET V8 bridge; dedicated HTTP-native bridge behavior remains deferred. |
 | #609 | Doctor/audit, conformance, examples, docs, and goldens | Deferred except for contract documentation and the first local stdlib loopback conformance test. |

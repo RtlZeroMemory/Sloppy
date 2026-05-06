@@ -10,8 +10,10 @@ HTTP server/runtime path described below. `HttpClient` from `sloppy/net` is Plan
 as `stdlib.httpclient`, depends on the CORE-NET TCP bridge, and implements the first
 cleartext `http://` HTTP/1.1 request/response path for bounded loopback-tested use. It
 also exposes bounded helper methods for `text`, `json`, `bytes`, `getJson`, `postJson`,
-request `json` bodies, and base URL/path joining. It does not implement HTTPS/TLS,
-redirects, pooling, streaming bodies, or live external network evidence.
+request `json` bodies, base URL/path joining, bounded async-iterable request body
+consumption, response `stream()` iteration over buffered bodies, and operation-wide
+`timeoutMs`/`deadline`/`signal` handling. It does not implement HTTPS/TLS, redirects,
+pooling, true socket-level streaming, or live external network evidence.
 
 Post-ENGINE-16 consolidation: the HTTP module is mature for bounded localhost transport
 correctness, not production application-server behavior. HTTP-25 completes sequential

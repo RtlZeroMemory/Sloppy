@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import net from "node:net";
 
-import { HttpClient } from "../../stdlib/sloppy/index.js";
+import { CancellationController, Deadline, HttpClient } from "../../stdlib/sloppy/index.js";
 
 async function assertRejectsMessage(fn, expected) {
     await assert.rejects(fn, (error) => {
@@ -361,6 +361,46 @@ await withNodeNetBridge(async () => {
     }
 });
 
+await withNodeNetBridge(async () => {
+    let observed;
+    async function* bodyStream() {
+        yield new Uint8Array([97, 98]);
+        yield new Uint8Array([99]);
+    }
+    const server = await startHttpServer((request) => {
+        observed = request;
+        return "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n";
+    });
+
+    try {
+        const response = await HttpClient.post(`${server.url}/stream`, { stream: bodyStream() });
+
+        assert.equal(response.status, 204);
+        assert.equal(observed.headers.get("content-type"), "application/octet-stream");
+        assert.equal(observed.headers.get("content-length"), "3");
+        assert.equal(observed.body.toString("utf8"), "abc");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+
+    try {
+        const response = await HttpClient.get(`${server.url}/response-stream`);
+        const chunks = [];
+        for await (const chunk of response.stream({ chunkSize: 2 })) {
+            chunks.push(Array.from(chunk));
+        }
+
+        assert.deepEqual(chunks, [[104, 101], [108, 108], [111]]);
+        await assertRejectsMessage(() => response.text(), /SLOPPY_E_HTTP_CLIENT_BODY_CONSUMED/);
+    } finally {
+        await server.close();
+    }
+});
+
 await assertRejectsMessage(
     () => HttpClient.get("https://127.0.0.1/"),
     /SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE/,
@@ -378,7 +418,34 @@ await assertRejectsMessage(
 
 await assertRejectsMessage(
     () => HttpClient.request({ url: "http://127.0.0.1/", stream: {} }),
-    /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
+await assertRejectsMessage(
+    () =>
+        HttpClient.request(
+            {
+                url: "http://127.0.0.1/",
+                stream: (async function* tooLargeStream() {
+                    yield new Uint8Array([1, 2]);
+                    yield new Uint8Array([3, 4]);
+                })(),
+                maxRequestBytes: 3,
+            },
+        ),
+    /SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT/,
+);
+
+await assertRejectsMessage(
+    () =>
+        HttpClient.request({
+            url: "http://127.0.0.1/",
+            stream: (async function* stalledStream() {
+                await new Promise(() => {});
+            })(),
+            timeoutMs: 10,
+        }),
+    /SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT/,
 );
 
 {
@@ -452,6 +519,35 @@ await withNodeNetBridge(async () => {
         await new Promise((resolve) => server.close(resolve));
     }
 });
+
+await withNodeNetBridge(async () => {
+    const server = net.createServer(async (socket) => {
+        socket.on("error", () => {});
+        await readSocketRequest(socket);
+    });
+    const baseUrl = await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            server.off("error", reject);
+            const address = server.address();
+            resolve(`http://127.0.0.1:${address.port}`);
+        });
+    });
+
+    try {
+        const controller = new CancellationController();
+        const request = HttpClient.get(`${baseUrl}/cancelled`, { signal: controller.signal });
+        controller.cancel("test cancellation");
+        await assertRejectsMessage(() => request, /SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED/);
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+    }
+});
+
+await assertRejectsMessage(
+    () => HttpClient.get("http://127.0.0.1/deadline", { deadline: Deadline.after(0) }),
+    /SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT/,
+);
 
 await withNodeNetBridge(async () => {
     const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nbody");
