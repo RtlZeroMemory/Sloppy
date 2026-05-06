@@ -67,10 +67,10 @@ thread resolves or rejects Promises during the normal native async drain. Interv
 scheduled jobs, and fake clocks are implemented in the JavaScript stdlib layer and are
 covered by bootstrap tests; native owner-thread Time evidence remains the V8-gated delay
 bridge.
-CORE-CRYPTO-01.E registers the private `__sloppy.crypto` namespace for active
+CORE-CRYPTO-01.G registers the private `__sloppy.crypto` namespace for active
 `stdlib.crypto` plans. The namespace exposes bounded random, SHA-2, HMAC, constant-time,
-and password helpers used by `stdlib/sloppy/crypto.js`; it does not expose raw native
-pointers or backend handles. `Password.hash`, `Password.verify`, and
+password, and explicit non-crypto hash helpers used by `stdlib/sloppy/crypto.js`; it does
+not expose raw native pointers or backend handles. `Password.hash`, `Password.verify`, and
 `Password.needsRehash` use worker-thread requests and settle on the V8 owner thread.
 CORE-NET-01.C/D/H registers the private `__sloppy.net` namespace for active `stdlib.net`
 plans. The bridge exposes TCP client/connection operations through JS-safe resource IDs;
@@ -207,10 +207,10 @@ Framework and provider bridge code belongs in sibling V8 modules:
   cancellation/deadline conversion, and owner-thread Promise settlement for active
   `stdlib.time` plans.
 - `intrinsics_crypto.cc` owns crypto argument validation and bounded random/hash/HMAC/
-  constant-time dispatch for active `stdlib.crypto` plans. The bridge performs only small
-  bounded hash/HMAC work inline; `Password.hash`, `Password.verify`, and
-  `Password.needsRehash` offload away from the V8 owner thread and settle through the
-  owner-thread async loop.
+  constant-time/non-crypto hash dispatch for active `stdlib.crypto` plans. The bridge
+  performs only small bounded hash/HMAC/xxHash64 work inline; `Password.hash`,
+  `Password.verify`, and `Password.needsRehash` offload away from the V8 owner thread and
+  settle through the owner-thread async loop.
 - `intrinsics_codec.cc` owns the active `stdlib.codec` namespace marker today. Later
   Binary/Compression/Checksum bridge functions must stay in this V8 module, preserve owned
   byte/text boundaries, and settle any async work on the owner thread. Compression work

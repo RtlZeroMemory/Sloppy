@@ -99,14 +99,16 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   policy runtime behavior. CORE-TIME-01.I adds source examples, final Time diagnostic
   goldens, and the conformance evidence index. Broader shutdown/cancellation integration
   remains a future consumer concern.
-- Crypto API implementation after CORE-CRYPTO-01.E: OS CSPRNG random helpers,
+- Crypto API implementation after CORE-CRYPTO-01.G: OS CSPRNG random helpers,
   SHA-2/HMAC through vetted backends, ConstantTime, Secret cleanup, `__sloppy.crypto`,
   the bootstrap `sloppy/crypto` JS surface, and async/offloaded libsodium Argon2id
-  password hashing exist. #578 and #580 must still implement explicit `NonCryptoHash`
-  support, final examples, vectors, docs, and conformance goldens. Do not claim
-  randomness quality, password cracking cost, timing resistance, performance,
-  WebCrypto/Node/Bun compatibility, or public alpha readiness from the implemented
-  shape/vector tests.
+  password hashing exist. `NonCryptoHash.xxHash64` now exists as a dependency-backed,
+  explicit non-security helper with static doctor-warning coverage for visible
+  security-looking use. #580 must still add final examples and the consolidated
+  conformance/docs/golden pass across the completed crypto surface.
+  Do not claim randomness quality, password cracking cost, timing resistance, security from
+  non-crypto hashes, performance, WebCrypto/Node/Bun compatibility, or public alpha
+  readiness from the implemented shape/vector tests.
 - Network API implementation after CORE-NET-01.C/D/H: `stdlib.net`, the `sloppy/net`
   import contract, development/strict network policy, lifecycle model, stable diagnostics,
   native libuv-backed TCP client connections, `TcpClient`/`TcpConnection` JS facade,

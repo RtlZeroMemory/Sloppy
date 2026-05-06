@@ -1,9 +1,9 @@
 # Crypto API Architecture
 
-Status: CORE-CRYPTO-01.E implementation. The contract, feature model, OS random,
-SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, V8 bridge, and
-Argon2id password hashing are now implemented. `NonCryptoHash`, final examples, and the
-full conformance pass remain later CORE-CRYPTO slices. This document is not
+Status: CORE-CRYPTO-01.G implementation. The contract, feature model, OS random,
+SHA-2/HMAC, constant-time helper, Secret utility, stdlib wrapper, V8 bridge,
+Argon2id password hashing, and `NonCryptoHash.xxHash64` are now implemented. Final
+examples and the full conformance pass remain later CORE-CRYPTO slices. This document is not
 randomness-quality, password cracking-cost, timing-proof, or performance evidence.
 
 ## Goals
@@ -90,7 +90,8 @@ registers the V8 intrinsic namespace for active `stdlib.crypto` plans.
 `NonCryptoHash`:
 
 - Non-security hashes live only under `NonCryptoHash`.
-- `NonCryptoHash.xxHash64(data)` is the selected initial API when the dependency lands.
+- `NonCryptoHash.xxHash64(data)` returns a lowercase 16-character hex string for the
+  xxHash64 value computed with seed `0`.
 - Non-crypto helpers must not appear in security examples and must not be described as
   password, MAC, signature, token, or integrity primitives.
 
@@ -107,7 +108,7 @@ registers the V8 intrinsic namespace for active `stdlib.crypto` plans.
 | Password compatibility | bcrypt | Deferred | Compatibility only if a vetted dependency and safe bounds are selected. |
 | Password legacy | PBKDF2 | Deferred | Interoperability only; never default for new hashes. |
 | Legacy crypto | MD5, SHA-1, weak ciphers | Rejected for secure APIs | May only appear as explicit warning/deferred compatibility policy. |
-| Non-crypto hash | xxHash64 | Supported target | Dependency-backed and visibly separate from `Hash`/`Hmac`. |
+| Non-crypto hash | xxHash64 | Supported | Dependency-backed and visibly separate from `Hash`/`Hmac`. |
 | BLAKE3 | Deferred | Not selected for this EPIC until use cases and dependency policy are scoped. |
 
 ## Backend Policy
@@ -142,9 +143,9 @@ options are accepted only inside documented bounds.
 `bcrypt` and `PBKDF2` remain compatibility/deferred work unless a later PR explicitly
 selects and tests them.
 
-Non-cryptographic hashing uses a vetted `xxhash` dependency or equivalent approved
-implementation. It must not reuse the existing internal `SlStr`/`SlBytes` deterministic
-hash helpers as a public algorithm contract.
+Non-cryptographic hashing uses the vetted `xxhash` dependency. It does not reuse the
+existing internal `SlStr`/`SlBytes` deterministic hash helpers as a public algorithm
+contract.
 
 ## Async and Owner-Thread Policy
 

@@ -11,6 +11,7 @@ import {
     Hash,
     Hmac,
     InvalidDeadlineError,
+    NonCryptoHash,
     Password,
     Random,
     Results,
@@ -88,6 +89,10 @@ async function flushMicrotasks(count = 6) {
                     assert.equal(memoryLimitBytes, 67108864);
                     return Promise.resolve(true);
                 },
+                nonCryptoXxHash64(bytes) {
+                    assert.deepEqual(bytes, encodeAscii("hello"));
+                    return "26c7827d889f6da3";
+                },
             },
         };
 
@@ -103,6 +108,7 @@ async function flushMicrotasks(count = 6) {
         assert.equal(encoded.startsWith("$argon2id$"), true);
         assert.equal(await Password.verify("password", encoded), true);
         assert.equal(await Password.needsRehash(encoded, { opsLimit: 3 }), true);
+        assert.equal(NonCryptoHash.xxHash64("hello"), "26c7827d889f6da3");
         assert.equal(ConstantTime.equals(new Uint8Array([1]), new Uint8Array([1])), true);
         const secret = Secret.fromUtf8("key");
         assert.deepEqual(secret.bytes(), encodeAscii("key"));
