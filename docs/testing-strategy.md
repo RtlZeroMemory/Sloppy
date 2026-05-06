@@ -197,6 +197,24 @@ Resource table:
 - leak reporting;
 - generation counter wrap strategy if relevant.
 
+Time/deadline/cancellation:
+
+- import-driven `stdlib.time` Plan activation and inactive-feature gating;
+- native timer completion posts through `SlAsyncLoop` and settles only on the V8 owner
+  thread;
+- `Time.delay`, `Time.timeout`, `Deadline`, `CancellationController`, and `Time.yield`
+  behavior in the V8-gated lane;
+- deterministic JS stdlib validation for invalid delay and cancellation signal shape;
+- timeout and cancellation errors remain distinguishable;
+- interval async iteration, scheduled-job pause/resume/no-overlap skip behavior, and
+  fake-clock deterministic delay/timeout/cleanup behavior in bootstrap stdlib tests;
+- filesystem facade integration tests must cover pre-cancelled signals, expired deadlines,
+  invalid `timeoutMs`, pass-through `Deadline.never`, and cancellation races without
+  claiming native filesystem interruption;
+- source example API-shape checks must cover delay, timeout, deadline, cancellation,
+  interval, scheduled jobs, fake clocks, and filesystem Time options;
+- diagnostic goldens cover all stable Time diagnostic codes.
+
 Platform:
 
 - OS-specific implementation tests under platform-specific test groups;

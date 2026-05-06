@@ -205,8 +205,9 @@ The compiler extracts:
 Extraction must be deterministic. Import order must not silently decide module ordering.
 
 Unsupported input fails with diagnostics. The compiler accepts only
-`import { Sloppy, Results } from "sloppy";` plus optional unaliased `data` and `schema` as public import
-syntax and rejects arbitrary bare imports such as `"express"`, `"fs"`, and `"node:fs"` with
+`import { Sloppy, Results } from "sloppy";` plus optional unaliased `data`, `schema`,
+`sloppy/time`, and `sloppy/fs` named imports as public import syntax and rejects arbitrary
+bare imports such as `"express"`, `"fs"`, and `"node:fs"` with
 `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`. The compiler does not implement Node package
 resolution, npm resolution, import maps, dynamic imports, arbitrary module graphs, or
 package-manager behavior. It resolves only source-local relative function modules in the
@@ -284,7 +285,7 @@ a separate discovery model.
 The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is staged for
 runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler recognizes only the
 public bare import `import { Sloppy, Results } from "sloppy";` plus optional unaliased
-`data` as input syntax. EPIC-24
+`data`, `schema`, `sloppy/time`, and `sloppy/fs` imports as input syntax. EPIC-24
 rewrites that import away in generated `app.js`: the artifact reads `Results` from
 `globalThis.__sloppy_runtime`, which is installed by the runtime-loaded bootstrap asset,
 assigns each generated handler to its legacy `globalThis.__sloppy_handler_<id>` export name,

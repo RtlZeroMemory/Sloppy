@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_TIME_INVALID_DELAY","severity":"error","message":"delay must be finite and non-negative","hints":["Validate delay inputs before scheduling native timers."]}

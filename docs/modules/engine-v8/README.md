@@ -60,6 +60,13 @@ with bounded non-recursive events. The bridge uses an optional borrowed
 `SlEngineOptions.filesystem_policy` for path/root enforcement; when it is omitted, V8
 keeps the documented development fallback roots for low-level smoke/source-input tests
 until app-host config wiring supplies project policy.
+CORE-TIME-01.C/D/G installs the private `__sloppy.time` namespace when the active Plan
+enables `stdlib.time`. The native delay scheduler never enters V8; it posts owned
+`SL_ASYNC_OPERATION_TIMER` completions to the engine async loop, and the owning isolate
+thread resolves or rejects Promises during the normal native async drain. Intervals,
+scheduled jobs, and fake clocks are implemented in the JavaScript stdlib layer and are
+covered by bootstrap tests; native owner-thread Time evidence remains the V8-gated delay
+bridge.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
@@ -180,6 +187,9 @@ Framework and provider bridge code belongs in sibling V8 modules:
 - `intrinsics_fs.cc` owns filesystem argument validation, request ownership, offloaded
   native filesystem calls, and owner-thread Promise settlement for active `stdlib.fs`
   plans.
+- future `intrinsics_time.cc` owns Time argument validation, timer resource IDs,
+  cancellation/deadline conversion, and owner-thread Promise settlement for active
+  `stdlib.time` plans.
 - Native provider, filesystem, HTTP, timer, or other future completions must pass any
   terminal-state guard before reaching owner-thread settlement; provider/libuv/offload
   domains still never enter V8 directly.

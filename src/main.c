@@ -48,9 +48,11 @@
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_FILE_READ_SCRATCH_BYTES 65536U
-#define SL_CLI_FILE_READ_ARENA_BYTES (SL_CLI_FILE_MAX_BYTES + SL_CLI_FILE_READ_SCRATCH_BYTES)
 #define SL_CLI_ARENA_BYTES 65536U
 #define SL_RUN_FILE_MAX_BYTES 65536U
+#define SL_RUN_STDLIB_FILE_MAX_BYTES 131072U
+#define SL_CLI_FILE_READ_MAX_BYTES SL_RUN_STDLIB_FILE_MAX_BYTES
+#define SL_CLI_FILE_READ_ARENA_BYTES (SL_CLI_FILE_READ_MAX_BYTES + SL_CLI_FILE_READ_SCRATCH_BYTES)
 #define SL_RUN_ARENA_BYTES 65536U
 #define SL_RUN_MAX_ROUTES SL_CLI_MAX_ROUTES
 #define SL_RUN_MAX_CLIENTS 4U
@@ -633,7 +635,7 @@ static int sl_read_file_with_messages(const char* path, unsigned char* buffer, s
     SlStatus status;
 
     if (path == NULL || buffer == NULL || out == NULL || not_found_prefix == NULL ||
-        size_prefix == NULL || failed_read_prefix == NULL || capacity > SL_CLI_FILE_MAX_BYTES)
+        size_prefix == NULL || failed_read_prefix == NULL || capacity > SL_CLI_FILE_READ_MAX_BYTES)
     {
         return 1;
     }
@@ -1309,7 +1311,7 @@ typedef struct SlRunApp
 {
     unsigned char plan_json_storage[SL_RUN_FILE_MAX_BYTES];
     unsigned char metadata_json_storage[SL_RUN_FILE_MAX_BYTES];
-    unsigned char bootstrap_js_storage[SL_RUN_FILE_MAX_BYTES];
+    unsigned char bootstrap_js_storage[SL_RUN_STDLIB_FILE_MAX_BYTES];
     unsigned char app_js_storage[SL_RUN_FILE_MAX_BYTES];
     unsigned char plan_arena_storage[SL_RUN_ARENA_BYTES];
     unsigned char route_arena_storage[SL_RUN_ARENA_BYTES];

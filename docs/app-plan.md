@@ -92,8 +92,17 @@ metadata. Plan activation is still derived from supported Plan target/route/prov
 metadata plus explicit `requiredFeatures[]`; the runtime does not add package-manager
 semantics or arbitrary import resolution. CORE-FS-01.A/B adds the `stdlib.fs` descriptor
 and lets the compiler emit that required feature when source imports `sloppy/fs`.
-CORE-FS-01.C/D/H consumes the active feature to install the first core `__sloppy.fs`
-V8 bridge and stdlib `File` wrappers. CORE-FS-01.E/F extends the same feature-gated
+CORE-TIME-01.A/B adds the `stdlib.time` descriptor and lets the compiler emit that
+required feature when source imports `sloppy/time`. CORE-TIME-01.C/D/G consumes the active
+feature to install the private `__sloppy.time` V8 bridge for native delay and monotonic
+deadline accounting. CORE-TIME-01.H aligns filesystem stdlib options with Time concepts;
+it does not add new compiler-emitted Plan metadata beyond the existing `stdlib.fs` and
+`stdlib.time` feature activation. Runtime feature activation treats `stdlib.time` as a
+dependency of `stdlib.fs` so numeric filesystem timeouts work for apps that import only
+`sloppy/fs`. CORE-TIME-01.I adds examples/conformance/golden evidence without changing
+the Plan schema or activation rules. CORE-FS-01.C/D/H consumes the active feature to
+install the first core `__sloppy.fs` V8 bridge and stdlib `File` wrappers.
+CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
 feature with resource-backed non-recursive file/directory watch events.
@@ -205,7 +214,7 @@ Plan/requested-by context where the current Plan shape can provide it.
 Current descriptor import mapping is intentionally narrow and mirrors what the compiler and
 stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/results` to
 `stdlib.results`, `sloppy/schema` to `stdlib.schema`, `sloppy/config` to `stdlib.config`,
-`sloppy/data` to `stdlib.data`, `sloppy/fs` to `stdlib.fs`, and
+`sloppy/data` to `stdlib.data`, `sloppy/time` to `stdlib.time`, `sloppy/fs` to `stdlib.fs`, and
 `sloppy/providers/sqlite` to `provider.sqlite`.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
 Plan validation; they do not implement JavaScript bridges.

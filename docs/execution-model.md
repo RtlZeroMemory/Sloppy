@@ -126,6 +126,13 @@ still runs cleanup plus scope release exactly once. Cancellation reasons also ma
 backpressure, and shutdown diagnostics consistent for provider and future runtime
 completion owners.
 
+CORE-TIME-01.H aligns existing filesystem APIs with the shared Time vocabulary without
+changing the native filesystem execution model. The JavaScript filesystem facade accepts
+`signal`, `deadline`, and `timeoutMs` and can reject before bridge submission or
+terminalize the caller's Promise after submission. It does not claim that an already-running
+blocking filesystem operation is interrupted; late native completion remains governed by
+the existing owner-thread Promise settlement and cleanup rules.
+
 ENGINE-27.A/B adds a Plan-driven runtime feature activation check before runtime
 initialization. The registry derives active features from `target.engine`, route metadata,
 provider metadata, and explicit `requiredFeatures[]`. It activates only the current
@@ -1016,7 +1023,8 @@ The first execution milestone is accepted when:
 
 Framework MVP module loading is source-level ESM syntax with compiler-owned graph
 resolution and classic artifact execution. `sloppyc` resolves supported relative modules
-and Sloppy stdlib/provider imports, then emits the existing `app.js` artifact that the V8
+and Sloppy stdlib/provider imports, including Plan-visible `sloppy/time` feature
+activation, then emits the existing `app.js` artifact that the V8
 bootstrap runtime evaluates as a classic script. Full V8 native ESM loading, dynamic
 imports, Node/npm resolution, and package-manager behavior are not part of this execution
 model.
@@ -1026,3 +1034,18 @@ bootstrap manifest version and required classic runtime asset before evaluating 
 artifacts, and missing or incompatible assets fail closed instead of silently falling back.
 This bootstrap access is runtime-owned and does not depend on the app `stdlib.fs` feature
 or app filesystem policy.
+
+## CORE-TIME-01 Native Delay Execution
+
+`sloppy/time` is Plan-visible through `stdlib.time`. In a V8-enabled runtime with that
+feature active, the private `__sloppy.time` namespace exposes the native delay primitive
+used by `runtime-classic.js` and `stdlib/sloppy/time.js`. The shared Time scheduler never
+enters V8. It posts owned timer completions to the engine's `SlAsyncLoop`, and the
+owner-thread native async drain resolves JavaScript Promises. This preserves the existing
+V8 owner-thread rule and keeps native timer handles out of JavaScript.
+
+CORE-TIME-01.C/D/G implements `Time.delay`, `Time.timeout`, `Deadline`,
+`CancellationController`, and `Time.yield`. CORE-TIME-01.E/F layers async iterable
+intervals, interval-based scheduled jobs, and explicit fake clocks on top of the stdlib
+TimeProvider shape. Integration into FS/provider or request lifecycle APIs remains a
+separate CORE-TIME-01 slice.

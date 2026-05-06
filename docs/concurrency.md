@@ -168,6 +168,13 @@ request lifecycles through the backend shutdown path when present, close idle/re
 dispatching/writing transport connections, and drain close callbacks. This is not
 production graceful drain, keep-alive idle management, or scalable async HTTP evidence.
 
+CORE-TIME-01.H applies the same cancellation/deadline vocabulary to existing filesystem
+stdlib calls. Pre-cancelled and expired operations are rejected before bridge submission;
+submitted filesystem work may still run to completion in the native backend, with the
+caller-facing Promise terminalized and late completion treated as cleanup-only by the
+existing owner-thread rules. This is Time API alignment, not a new preemptive filesystem
+interruption primitive.
+
 ENGINE-24.G makes the keep-alive decision explicit: the ENGINE-24 transport MVP is
 close-after-response, one request per connection, no sequential second request, no
 pipelining, and no streaming response body. Future HTTP/1.1 keep-alive must resume the read
@@ -620,10 +627,18 @@ cancellation are provider-specific future integrations. Late provider completion
 cancellation is ignored for settlement and used only for safe cleanup.
 
 Timeout/deadline is distinct from caller cancellation. A timeout is a runtime deadline
-terminal state and uses a deterministic deadline/timeout status and diagnostic. Timers are
-owned by the backend layer when real timer wakeups are wired; the current ENGINE-12.CD
-provider source exposes deterministic native timeout completion without public timer APIs.
-Late completion after timeout is cleanup-only and must not double-settle.
+terminal state and uses a deterministic deadline/timeout status and diagnostic.
+CORE-TIME-01.A/B defines the public `sloppy/time` contract and reserves the stable
+diagnostics for timeout, cancellation, disposed timers, invalid delays, expired deadlines,
+interval overflow, skipped scheduled runs, and fake-clock misuse. CORE-TIME-01.C/D/G wires
+native delay wakeups through the V8 owner-thread scheduler: the shared Time scheduler posts
+`SL_ASYNC_OPERATION_TIMER` completions and never enters V8 directly. Late completion after
+JavaScript timeout/cancellation is cleanup-only and must not double-settle.
+
+CORE-TIME-01.E/F keeps intervals and scheduled jobs cleanup-safe in the JavaScript stdlib
+layer. Intervals are pull-based async iterables, so ticks are not queued without consumer
+demand. Scheduled jobs skip runs by policy when a no-overlap handler is still running.
+Fake clocks are explicit per-instance providers and do not mutate global runtime time.
 
 The HTTP backend foundation has read/header/request timeout configuration fields and an
 explicit request timeout hook. ENGINE-13.D/E makes body reads observe that request token:

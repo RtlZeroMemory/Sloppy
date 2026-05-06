@@ -23,6 +23,14 @@ live-provider, package, stress, or benchmark evidence.
 | `runtime_feature_missing_transport_dependency.json` | default | runtime features | HTTP activation with unavailable `transport.libuv` dependency. |
 | `runtime_feature_unavailable_transport.json` | default | runtime features | Direct `transport.libuv` required-feature availability failure. |
 | `runtime_feature_inactive_sqlite_intrinsic.snap` | default | stdlib/runtime features | Stdlib SQLite missing-intrinsic text when `provider.sqlite` is inactive. |
+| `time_timeout.json` | default | Time diagnostics | Timeout/deadline diagnostic JSON shape. |
+| `time_cancelled.json` | default | Time diagnostics | Caller cancellation diagnostic JSON shape. |
+| `time_timer_disposed.json` | default | Time diagnostics | Disposed timer diagnostic JSON shape. |
+| `time_invalid_delay.json` | default | Time diagnostics | Invalid delay diagnostic JSON shape. |
+| `time_deadline_expired.json` | default | Time diagnostics | Expired deadline diagnostic JSON shape. |
+| `time_interval_overflow.json` | default | Time diagnostics | Bounded interval overflow diagnostic JSON shape. |
+| `time_schedule_skipped.json` | default | Time diagnostics | No-overlap skipped scheduled run diagnostic JSON shape. |
+| `time_fake_clock_misuse.json` | default | Time diagnostics | Misused or disposed fake-clock diagnostic JSON shape. |
 
 V8-gated exception, async, SQLite users API, and `sloppy run` diagnostic evidence stays in
 the V8-enabled CTest lane and its process tests. Default renderer goldens must not be

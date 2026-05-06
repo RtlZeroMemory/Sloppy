@@ -532,11 +532,147 @@ static int test_http_code_names(void)
     return 0;
 }
 
+static int test_time_code_names(void)
+{
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_TIME_TIMEOUT),
+                         sl_str_from_cstr("SLOPPY_E_TIME_TIMEOUT")) != 0)
+    {
+        return 90;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_TIME_CANCELLED),
+                         sl_str_from_cstr("SLOPPY_E_TIME_CANCELLED")) != 0)
+    {
+        return 91;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_TIME_TIMER_DISPOSED),
+                         sl_str_from_cstr("SLOPPY_E_TIME_TIMER_DISPOSED")) != 0)
+    {
+        return 92;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_TIME_INVALID_DELAY),
+                         sl_str_from_cstr("SLOPPY_E_TIME_INVALID_DELAY")) != 0)
+    {
+        return 93;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_TIME_DEADLINE_EXPIRED),
+                         sl_str_from_cstr("SLOPPY_E_TIME_DEADLINE_EXPIRED")) != 0)
+    {
+        return 94;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_TIME_INTERVAL_OVERFLOW),
+                         sl_str_from_cstr("SLOPPY_E_TIME_INTERVAL_OVERFLOW")) != 0)
+    {
+        return 95;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_TIME_SCHEDULE_SKIPPED),
+                         sl_str_from_cstr("SLOPPY_E_TIME_SCHEDULE_SKIPPED")) != 0)
+    {
+        return 96;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_TIME_FAKE_CLOCK_MISUSE),
+                         sl_str_from_cstr("SLOPPY_E_TIME_FAKE_CLOCK_MISUSE")) != 0)
+    {
+        return 97;
+    }
+
+    return 0;
+}
+
+static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
+                                     const char* snapshot)
+{
+    unsigned char buffer[2048];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlStr rendered;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 1;
+    }
+    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR, code,
+                                           sl_str_from_cstr(message)),
+                      SL_STATUS_OK) != 0)
+    {
+        return 2;
+    }
+    if (expect_status(sl_diag_builder_add_hint(&builder, sl_str_from_cstr(hint)), SL_STATUS_OK) !=
+        0)
+    {
+        return 3;
+    }
+    if (expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0) {
+        return 4;
+    }
+    if (expect_status(sl_diag_render_json(&arena, &diag, &rendered), SL_STATUS_OK) != 0) {
+        return 5;
+    }
+    return expect_snapshot(rendered, snapshot);
+}
+
+static int test_time_diagnostic_json_goldens(void)
+{
+    if (expect_time_json_snapshot(SL_DIAG_TIME_TIMEOUT, "time operation exceeded deadline",
+                                  "TimeoutError is distinct from caller cancellation.",
+                                  "tests/golden/diagnostics/time_timeout.json") != 0)
+    {
+        return 100;
+    }
+    if (expect_time_json_snapshot(SL_DIAG_TIME_CANCELLED, "time operation was cancelled",
+                                  "CancelledError preserves the explicit cancellation reason.",
+                                  "tests/golden/diagnostics/time_cancelled.json") != 0)
+    {
+        return 101;
+    }
+    if (expect_time_json_snapshot(SL_DIAG_TIME_TIMER_DISPOSED, "timer handle was disposed",
+                                  "Late timer completion must be cleanup-only.",
+                                  "tests/golden/diagnostics/time_timer_disposed.json") != 0)
+    {
+        return 102;
+    }
+    if (expect_time_json_snapshot(SL_DIAG_TIME_INVALID_DELAY,
+                                  "delay must be finite and non-negative",
+                                  "Validate delay inputs before scheduling native timers.",
+                                  "tests/golden/diagnostics/time_invalid_delay.json") != 0)
+    {
+        return 103;
+    }
+    if (expect_time_json_snapshot(SL_DIAG_TIME_DEADLINE_EXPIRED,
+                                  "deadline expired before scheduling",
+                                  "Expired deadlines fail before native timer admission.",
+                                  "tests/golden/diagnostics/time_deadline_expired.json") != 0)
+    {
+        return 104;
+    }
+    if (expect_time_json_snapshot(
+            SL_DIAG_TIME_INTERVAL_OVERFLOW, "interval tick queue overflowed",
+            "Bounded interval queues skip or fail instead of growing without limit.",
+            "tests/golden/diagnostics/time_interval_overflow.json") != 0)
+    {
+        return 105;
+    }
+    if (expect_time_json_snapshot(
+            SL_DIAG_TIME_SCHEDULE_SKIPPED, "scheduled run was skipped",
+            "No-overlap scheduled jobs report skipped runs deterministically.",
+            "tests/golden/diagnostics/time_schedule_skipped.json") != 0)
+    {
+        return 106;
+    }
+    if (expect_time_json_snapshot(
+            SL_DIAG_TIME_FAKE_CLOCK_MISUSE, "fake clock was misused or disposed",
+            "Fake clocks are explicit test-scoped providers, not global timer mutation.",
+            "tests/golden/diagnostics/time_fake_clock_misuse.json") != 0)
+    {
+        return 107;
+    }
+    return 0;
+}
+
 static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_TIME_FAKE_CLOCK_MISUSE; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -544,9 +680,9 @@ static int test_stable_code_registry_complete(void)
         }
     }
 
-    if (expect_str_equal(sl_diag_code_name(
-                             (SlDiagCode)((size_t)SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING + 1U)),
-                         sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
+    if (expect_str_equal(
+            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_TIME_FAKE_CLOCK_MISUSE + 1U)),
+            sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
     }
@@ -1177,6 +1313,11 @@ int main(void)
         return result;
     }
 
+    result = test_time_code_names();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_engine_async_code_names();
     if (result != 0) {
         return result;
@@ -1213,6 +1354,11 @@ int main(void)
     }
 
     result = test_diagnostic_golden_suite_expansion();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_time_diagnostic_json_goldens();
     if (result != 0) {
         return result;
     }

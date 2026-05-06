@@ -29,7 +29,10 @@ import { File, Directory, Path } from "sloppy/fs";
 
 The runtime feature descriptor for this import is `stdlib.fs`. The compiler emits
 `requiredFeatures: ["stdlib.fs"]` when it sees the import, and the V8 bridge registers
-the private `__sloppy.fs` core-operation namespace only when that feature is active.
+the private `__sloppy.fs` core-operation namespace only when that feature is active. Since
+CORE-TIME-01.H, runtime activation treats `stdlib.time` as a dependency of `stdlib.fs` so
+filesystem `timeoutMs` and deadline wrappers can use the same Time scheduler without
+requiring app authors to add a separate import only for numeric filesystem timeouts.
 
 ## API Shape
 
@@ -227,6 +230,16 @@ stat/list filesystem boundary. It does not claim Node `fs.watch` semantics, OS-n
 coalescing behavior, or recursive watch support. Directory modify detection is based on
 entry kind/size changes visible through the current stat/list contract; richer mtime and
 rename fidelity belongs with the later diagnostics/conformance hardening slice.
+
+CORE-TIME-01.H integrates Time concept alignment into the JavaScript filesystem facade.
+`File.*`, `Directory.*`, FileHandle operations, watch open, and `FileWatcher.nextEvent`
+accept `signal`, `deadline`, and `timeoutMs` alongside their existing operation options. A
+pre-cancelled signal, expired deadline, or invalid timeout is rejected before the native
+filesystem bridge is touched. Once native filesystem work has been submitted, the wrapper
+can terminalize the user-facing Promise with `CancelledError` or `TimeoutError`, but this
+slice does not claim provider-style interruption for an already-running blocking
+filesystem backend operation. Runtime artifact loading remains independent from app
+filesystem policy, and filesystem behavior is not broadened beyond Time option alignment.
 
 Blocking file work is submitted through the Slop-owned executor/offload path. Worker
 callbacks operate on owned request data and settle JavaScript promises back on the V8

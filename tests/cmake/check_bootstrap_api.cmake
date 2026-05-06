@@ -2,10 +2,12 @@ set(results_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/results.js")
 set(schema_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/schema.js")
 set(data_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/data.js")
 set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
+set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
+set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${fs_source}" "${app_source}" "${index_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${fs_source}" "${time_source}" "${app_source}" "${index_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -15,8 +17,10 @@ file(READ "${results_source}" results_js)
 file(READ "${schema_source}" schema_js)
 file(READ "${data_source}" data_js)
 file(READ "${fs_source}" fs_js)
+file(READ "${time_source}" time_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
+file(READ "${runtime_classic_source}" runtime_classic_js)
 
 function(require_substring haystack needle description)
     string(FIND "${haystack}" "${needle}" found_index)
@@ -91,22 +95,42 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "const File = Object.freeze"
-        "readText(path)"
-        "readBytes(path)"
-        "readJson(path)"
+        "readText(path, options)"
+        "readBytes(path, options)"
+        "readJson(path, options)"
         "writeText(path, text, options)"
         "writeBytes(path, bytes, options)"
         "writeJson(path, value, options)"
-        "appendText(path, text)"
-        "appendBytes(path, bytes)"
-        "exists(path)"
-        "stat(path)"
+        "appendText(path, text, options)"
+        "appendBytes(path, bytes, options)"
+        "exists(path, options)"
+        "stat(path, options)"
         "copy(fromPath, toPath, options)"
         "move(fromPath, toPath, options)"
-        "delete(path)"
+        "delete(path, options)"
+        "async open(path, options)"
         "watch(path, options)"
+        "createSymlink(targetPath, linkPath, options)"
+        "readLink(path, options)"
+        "createTemp(directory, options)"
         "const Directory = Object.freeze"
+        "create(path, options)"
+        "list(path, options)"
+        "async *walk(path, options)"
+        "delete(path, options)"
+        "exists(path, options)"
+        "createTemp(directory, options)"
+        "watch(path, options)"
+        "applyTimeOptions"
         "class FileHandle"
+        "readBytes(maxBytes = 64 * 1024, options)"
+        "readText(maxBytes, options)"
+        "writeBytes(bytes, options)"
+        "writeText(text, options)"
+        "seek(offset, origin = \"start\", options)"
+        "truncate(size, options)"
+        "flush(options)"
+        "sync(options)"
         "readChunks(options)"
         "readLines(options)"
         "class FileWatcher"
@@ -114,6 +138,41 @@ foreach(required_pattern IN ITEMS
         "const Path = Object.freeze"
         "FileWatcher")
     require_substring("${fs_js}" "${required_pattern}" "fs.js is missing expected API shape pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "class TimeoutError"
+        "class CancelledError"
+        "class InvalidDeadlineError"
+        "class TimerDisposedError"
+        "const Deadline = Object.freeze"
+        "class CancellationController"
+        "const Time = Object.freeze"
+        "delay(ms, options"
+        "timeout(operationOrPromise, options"
+        "interval(ms, options"
+        "every(interval, handler"
+        "yield(options"
+        "systemClock()"
+        "fakeClock(options"
+        "nativeTime(\"Time.delay\")"
+        "stdlib.time")
+    require_substring("${time_js}" "${required_pattern}" "time.js is missing expected API contract pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "const Time = Object.freeze"
+        "const Deadline = Object.freeze"
+        "class CancellationController"
+        "Time,"
+        "Deadline,"
+        "CancellationController,"
+        "TimeoutError,"
+        "CancelledError,"
+        "InvalidDeadlineError,"
+        "TimerDisposedError,"
+        "SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.time")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected time runtime export pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS
@@ -166,7 +225,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Sloppy }" "export {" "data" "sql" "File" "Directory" "Path" "export { Results }" "export { schema }")
+foreach(required_pattern IN ITEMS "export { Sloppy }" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "export { Results }" "export { schema }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

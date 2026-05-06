@@ -39,6 +39,7 @@ set(
     bootstrap.manifest.json
     data.js
     fs.js
+    time.js
     index.js
     providers/sqlite.js
     results.js
@@ -339,6 +340,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/string_interop.cc
         src/engine/v8/intrinsics.cc
         src/engine/v8/intrinsics_fs.cc
+        src/engine/v8/intrinsics_time.cc
         src/engine/v8/intrinsics_sqlite.cc)
 endif()
 
@@ -1664,6 +1666,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.request_context.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_request_context_example.cmake")
+    add_test(
+        NAME examples.time.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_time_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

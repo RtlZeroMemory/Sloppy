@@ -48,6 +48,11 @@ behavior, stream behavior, package readiness, or performance.
 CORE-FS-01.I/J adds filesystem doctor/audit goldens for capability visibility and source
 examples for the implemented API; those gates do not prove OS sandboxing or public alpha
 readiness.
+CORE-TIME-01.I adds `examples.time.api_shape`, final Time diagnostic goldens, and the
+Time conformance evidence index. These gates prove source examples and deterministic
+default-lane diagnostics/bootstrap behavior only; V8 Time owner-thread evidence remains in
+the V8-gated lane, and no Node timer compatibility, global fake timers, cron parser,
+package-manager behavior, public alpha readiness, or benchmark claims are implied.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
