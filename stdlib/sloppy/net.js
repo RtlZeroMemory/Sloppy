@@ -128,6 +128,11 @@ function normalizeTimeoutOption(options, operation) {
     if (!isPlainObject(options)) {
         throw new TypeError(`${operation} options must be a plain object.`);
     }
+    for (const key of Object.keys(options)) {
+        if (key !== "timeoutMs") {
+            throw new TypeError(`${operation} option '${key}' is not supported.`);
+        }
+    }
     if (options.timeoutMs === undefined) {
         return undefined;
     }

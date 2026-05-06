@@ -189,6 +189,10 @@ void net_v8_resource_cleanup(void* ptr, void* user)
     if (holder != nullptr) {
         std::shared_ptr<NetV8Connection> connection = *holder;
         if (connection != nullptr) {
+            std::unique_lock<std::mutex> owner_lock;
+            if (connection->listener_owner != nullptr) {
+                owner_lock = std::unique_lock<std::mutex>(connection->listener_owner->mutex);
+            }
             std::lock_guard<std::mutex> lock(connection->mutex);
             if (connection->native != nullptr && !connection->closed) {
                 (void)sl_tcp_connection_close(connection->native, nullptr);
@@ -506,6 +510,10 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
         return;
     }
 
+    std::unique_lock<std::mutex> owner_lock;
+    if (request->connection->listener_owner != nullptr) {
+        owner_lock = std::unique_lock<std::mutex>(request->connection->listener_owner->mutex);
+    }
     std::lock_guard<std::mutex> lock(request->connection->mutex);
     if (request->connection->closed && request->operation != NetV8Operation::Close &&
         request->operation != NetV8Operation::Abort)

@@ -41,7 +41,9 @@ struct SlTcpConnection
     bool timer_initialized;
     bool close_started;
     bool close_done;
+    bool owner_listener_released;
     SlTcpConnectionState state;
+    struct SlTcpListener* owner_listener;
     unsigned char* read_buffer;
     size_t read_buffer_capacity;
     char local_host[INET6_ADDRSTRLEN];
@@ -66,6 +68,7 @@ struct SlTcpListener
     bool accept_done;
     bool accept_timeout;
     int accept_status;
+    size_t active_connections;
     SlTcpListenerState state;
     SlTcpConnection* pending_connection;
     size_t read_buffer_capacity;
@@ -334,6 +337,8 @@ static void sl_tcp_listener_connection_cb(uv_stream_t* server, int status)
             connection->owns_loop = false;
             connection->loop_initialized = true;
             connection->handle_initialized = true;
+            connection->owner_listener = listener;
+            listener->active_connections++;
             connection->state = SL_TCP_CONNECTION_CONNECTED;
             sl_tcp_refresh_endpoints(connection);
         }
@@ -746,6 +751,10 @@ static SlStatus sl_tcp_listener_finish_close(SlTcpListener* listener, SlTcpListe
     while ((listener->timer_initialized || !listener->close_done) && listener->loop_initialized) {
         (void)uv_run(&listener->loop, UV_RUN_NOWAIT);
     }
+    if (listener->active_connections > 0U) {
+        return sl_tcp_fail(out_diag, SL_DIAG_NET_STALE_HANDLE, SL_STATUS_INVALID_STATE,
+                           sl_tcp_literal("TCP listener still owns active connections"));
+    }
     if (listener->loop_initialized) {
         uv_status = uv_loop_close(&listener->loop);
         if (uv_status != 0) {
@@ -996,6 +1005,12 @@ static SlStatus sl_tcp_connection_finish_close(SlTcpConnection* connection,
     if (connection->loop_initialized && connection->owns_loop) {
         (void)uv_loop_close(connection->loop);
         connection->loop_initialized = false;
+    }
+    if (connection->owner_listener != NULL && !connection->owner_listener_released) {
+        if (connection->owner_listener->active_connections > 0U) {
+            connection->owner_listener->active_connections--;
+        }
+        connection->owner_listener_released = true;
     }
     connection->state = state;
     return sl_status_ok();

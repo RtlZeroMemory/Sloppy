@@ -377,7 +377,7 @@ int test_listener_accept_timeout_and_stale_handle()
         return 1;
     }
     accept_options.has_timeout_ms = true;
-    accept_options.timeout_ms = 1U;
+    accept_options.timeout_ms = 50U;
     if (expect_status(
             sl_tcp_listener_accept(listener, &accepted_arena, &accept_options, &accepted, nullptr),
             SL_STATUS_DEADLINE_EXCEEDED) != 0 ||
