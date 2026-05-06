@@ -98,12 +98,14 @@ Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, comp
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
 standards scanning, Rust standards scanning, and a lightweight docs freshness structure
 check.
-CI has a fast PR lane and a full validation lane. Draft/WIP pull requests run the fast
-lane so agents can iterate without burning the full platform matrix on stale commits. Ready
-pull requests, pushes to `main`, manual workflow runs, and draft pull requests explicitly
-labeled `full-ci` run the full non-V8 validation lane. A PR must not be treated as
-merge-ready until the full lane is green on the final branch state. Benchmark list/smoke
-checks may run as correctness smoke, but performance deltas are not a normal hard gate yet.
+CI currently favors pre-alpha iteration speed over always-on full-matrix coverage. Normal
+pull requests and pushes to `main` run the fast lane: static hygiene, standards/docs
+scanners, Rust checks for non-docs changes, and a Windows native configure/build/CTest
+smoke for non-docs changes. The full non-V8 matrix remains available through manual
+`workflow_dispatch` runs and pull requests explicitly labeled `full-ci`; it should be run
+before release-readiness decisions, risky cross-platform changes, or the Alpha MVP gate.
+Benchmark list/smoke checks may run as correctness smoke, but performance deltas are not a
+normal hard gate yet.
 
 Default gate success must be reported as default non-V8 evidence. It does not prove V8
 runtime execution, live PostgreSQL or SQL Server behavior, package release readiness,
@@ -345,19 +347,21 @@ CI behavior:
 
 ## CI Gates
 
-CI cancels stale runs for the same pull request or ref. The fast PR lane runs on pull
-request updates and covers:
+CI cancels stale runs for the same pull request or ref. The default fast lane runs on pull
+request updates and pushes to `main` and covers:
 
 - static/generated artifact hygiene and `git diff --check`;
 - platform, C, JS/TS, Rust standards, and docs freshness scanners;
-- Rust format, clippy, and tests once, outside the OS/compiler matrix;
-- a Windows clang-cl configure/build/CTest smoke for non-docs-only draft/WIP changes.
+- Rust format, clippy, and tests once for non-docs changes, outside the OS/compiler matrix;
+- a Windows clang-cl configure/build/CTest smoke plus C/C++ format check for non-docs
+  changes.
 
-Docs-only draft/WIP changes may skip native and Rust build jobs and run only the static
-fast checks. Mixed changes do not use the docs-only shortcut. This skip is not a merge
-readiness signal; ready PRs still run the full lane.
+Docs-only changes may skip native and Rust build jobs and run only the static fast checks.
+Mixed changes do not use the docs-only shortcut. This skip is an iteration-speed policy,
+not proof that native/runtime behavior was validated.
 
-Full CI runs the required non-V8 validation matrix:
+Full CI is opt-in during pre-alpha iteration. Manual `workflow_dispatch` runs and pull
+requests labeled `full-ci` run the non-V8 validation matrix:
 
 - `ci-full / windows`: Windows clang-cl through `windows-dev`;
 - `ci-full / linux-clang`: Linux clang through `linux-clang`;
@@ -365,16 +369,17 @@ Full CI runs the required non-V8 validation matrix:
 - `ci-full / macos`: macOS clang through `macos-clang`;
 - `rust`: Cargo format, clippy, and tests.
 
-The branch-protection target should be the full validation lane for merge readiness. Fast
-jobs are useful iteration signals, but they are not a replacement for full CI on the final
-branch state.
+When branch protection is reintroduced or the project reaches the Alpha MVP gate, the
+branch-protection target should move back toward the full validation lane. Until then, fast
+jobs are the default development signal and full jobs are explicit evidence runs.
 
 Each full platform job should run:
 
 - checkout;
 - platform toolchain setup;
 - Rust setup where CTest/compiler integration requires Cargo;
-- vcpkg bootstrap/restore;
+- vcpkg bootstrap/restore, with dependency caches saved immediately after configure so a
+  later build/test failure does not discard freshly built dependencies;
 - generated artifact tracking check;
 - CMake configure with `SLOPPY_ENABLE_WERROR=ON`;
 - CMake build;
