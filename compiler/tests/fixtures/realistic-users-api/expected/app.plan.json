@@ -26,6 +26,8 @@
     {
       "hasDefault": true,
       "key": "Sloppy:Server:Host",
+      "required": false,
+      "secret": false,
       "source": {
         "column": 14,
         "line": 15,
@@ -92,12 +94,54 @@
         "value": 30000
       }
     ],
+    "packageManifest": {
+      "optional": [
+        {
+          "default": "127.0.0.1",
+          "env": "SLOPPY_SERVER_HOST",
+          "key": "Sloppy:Server:Host",
+          "secret": false,
+          "type": "string"
+        }
+      ],
+      "required": [
+        {
+          "env": "SLOPPY_PROVIDERS_SQLITE_MAIN_DATABASE",
+          "key": "Sloppy:Providers:sqlite:main:database",
+          "secret": false,
+          "type": "string"
+        }
+      ]
+    },
     "providers": [
       {
         "name": "main",
         "prefix": "Sloppy:Providers:sqlite:main",
         "provider": "sqlite",
         "source": "inline"
+      }
+    ],
+    "requirements": [
+      {
+        "key": "Sloppy:Providers:sqlite:main:database",
+        "redaction": "none",
+        "required": true,
+        "requiredBy": "input.js:11",
+        "secret": false,
+        "source": "inline",
+        "status": "present",
+        "type": "string"
+      },
+      {
+        "default": "127.0.0.1",
+        "key": "Sloppy:Server:Host",
+        "redaction": "none",
+        "required": false,
+        "requiredBy": "input.js:15",
+        "secret": false,
+        "source": "built-in defaults",
+        "status": "present",
+        "type": "string"
       }
     ]
   },

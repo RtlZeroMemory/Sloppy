@@ -80,7 +80,30 @@
         "value": 30000
       }
     ],
-    "providers": []
+    "packageManifest": {
+      "optional": [],
+      "required": [
+        {
+          "env": "SLOPPY_PROVIDERS_SQLITE_USERS_DB_DATABASE",
+          "key": "Sloppy:Providers:sqlite:users.db:database",
+          "secret": false,
+          "type": "string"
+        }
+      ]
+    },
+    "providers": [],
+    "requirements": [
+      {
+        "key": "Sloppy:Providers:sqlite:users.db:database",
+        "redaction": "none",
+        "required": true,
+        "requiredBy": "input.js:4",
+        "secret": false,
+        "source": "inline provider options",
+        "status": "present",
+        "type": "string"
+      }
+    ]
   },
   "dataProviders": [
     {

@@ -288,71 +288,80 @@ Implementation notes:
 
 ## Application Configuration
 
-FRAMEWORK-01.B introduces the first Slop-owned configuration model. It is convention-first,
-layered, typed, provider-aware, and visible in compiler-emitted Plan metadata. It is not a
-Node/npm/package-manager system and does not expose `process.env` compatibility.
+CORE-CONFIG-01 promotes configuration from simple lookup to Plan-visible app metadata. It
+is layered, typed, provider-aware, redacted by default for secrets, and still separate from
+`sloppy.json` project/run configuration. It is not Node/npm/package-manager behavior and
+does not make raw environment variables the whole config system.
 
 Configuration source precedence is:
 
-1. built-in defaults;
+1. built-in runtime defaults;
 2. `appsettings.json`;
 3. `appsettings.{Environment}.json`;
-4. canonical Sloppy environment variables;
-5. selected CLI overrides;
-6. explicit runtime/test overrides only where a harness already owns them.
+4. `appsettings.local.json`;
+5. `appsettings.{Environment}.local.json`;
+6. `.sloppy/secrets.json` and `.sloppy/secrets.{Environment}.json` when explicitly present;
+7. environment variables using `__` hierarchy mapping;
+8. compiler CLI overrides such as `--config Auth:Issuer=cli`;
+9. explicit bootstrap/test overrides through `builder.config.addObject(...)`.
 
-`sloppy.json` is project/run configuration. It may choose `entry`, `outDir`, and
-`environment` for the source-input dev loop. `appsettings*.json` is application
-configuration. The selected environment overlays `appsettings.json` with
-`appsettings.{Environment}.json`; `sloppy run --environment Development` overrides the
-environment from `sloppy.json` for the compiler handoff. `--artifacts <dir>` remains an
-explicit/debuggable artifact path and does not require source-input config.
+`sloppy.json` may choose `entry`, `outDir`, and `environment` for the source-input dev
+loop. `appsettings*.json` and local secret files are application configuration. The local
+override files and `.sloppy/` secret store are ignored local state, not source-controlled
+defaults.
 
 Logical keys use colon separators and are looked up case-insensitively:
 
 ```text
-Sloppy:Server:Host
 Sloppy:Server:Port
-Sloppy:Server:MaxConnections
-Sloppy:Server:MaxRequestBodyBytes
-Sloppy:Server:RequestTimeoutMs
-Sloppy:Runtime:V8MicrotaskDrainLimit
 Sloppy:Providers:sqlite:main:database
-Sloppy:Providers:sqlite:main:queueCapacity
+Sloppy:Providers:postgres:main:connectionString
+Auth:JwtSecret
+Auth:TokenTtlMinutes
 ```
 
-Missing optional `appsettings*.json` files are allowed. Malformed JSON, invalid type
-conversion, missing required provider configuration, and invalid CLI/env overrides fail
-with diagnostics. When keys look like secrets, passwords, tokens, API keys, or connection
-strings, diagnostics and Plan metadata redact values.
-
-Canonical environment variables are uppercase and use `SLOPPY_` plus `__` separators, for
-example:
+Environment variables use `__` to map hierarchy. The legacy `SLOPPY_` prefix remains
+accepted for Sloppy-owned defaults, and static app roots such as `Auth` are accepted when
+the compiler can see the corresponding config read or file key:
 
 ```powershell
+$env:Sloppy__Server__Port = "5173"
+$env:Auth__JwtSecret = "not printed"
 $env:SLOPPY_SLOPPY__SERVER__PORT = "5173"
-$env:SLOPPY_SLOPPY__PROVIDERS__SQLITE__MAIN__DATABASE = ".\app.db"
 ```
-
-The currently supported CLI overrides are bounded: `--environment`, `--host`, and
-`--port`. They override JSON and environment variables for the compiler-visible
-configuration model. Broad arbitrary `--config:*` CLI binding is deferred.
 
 JavaScript config access is typed:
 
 ```ts
-const port = app.config.getInt("Sloppy:Server:Port", 5173);
-const host = app.config.getString("Sloppy:Server:Host", "127.0.0.1");
-const enabled = app.config.getBool("Feature:X", false);
-const limit = app.config.getNumber("Feature:Limit", 1.5);
-const options = app.config.bind("sqlite:main", SqliteOptions);
+const port = app.config.getNumber("Sloppy:Server:Port", 5173);
+const ttl = app.config.getDuration("Auth:TokenTtl", "15m");
+const limit = app.config.getBytes("Uploads:Limit", "4MiB");
+const jwt = app.config.getSecret("Auth:JwtSecret");
 ```
 
-`getString`, `getInt`, `getNumber`, and `getBool` return defaults when supplied. Without a
-default, a missing key is required and fails clearly. Invalid conversions fail clearly.
-`bind(prefix)` returns a plain object for the subtree under `prefix`; provider shorthand
-such as `sqlite:main` maps to `Sloppy:Providers:sqlite:main`. When a schema/constructor is
-supplied, Sloppy passes the bound object into that schema.
+`bind(prefix, descriptor)` supports required fields, defaults, typed conversion, secret
+redaction, enum/literal checks, and numeric range checks:
+
+```ts
+const auth = app.config.bind("Auth", {
+  jwtSecret: "secret",
+  tokenTtlMinutes: { type: "number", default: 60, min: 1, max: 1440 },
+  issuer: { type: "string", required: true },
+});
+```
+
+Static `app.config.get*` calls and static bind descriptors are emitted as `configReads[]`
+and `configuration.requirements[]` in `app.plan.json`. The Plan also carries a
+`configuration.packageManifest` split into required and optional configuration so package
+readiness checks can see missing values without reading secrets. Dynamic keys are not
+guessed; strict/package consumers must require explicit declarations before depending on
+runtime-only key construction.
+
+Provider-owned config contracts use the same metadata path instead of each provider
+inventing a parser. SQLite currently requires
+`Sloppy:Providers:sqlite:<name>:database`; PostgreSQL and SQL Server connection-string
+requirements can be represented as secret metadata without claiming that their JavaScript
+runtime bridges are executable.
 
 ## Route Groups
 

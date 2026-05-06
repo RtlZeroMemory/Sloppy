@@ -59,6 +59,7 @@ pub struct CompileOptions {
     pub environment: Option<String>,
     pub host: Option<String>,
     pub port: Option<u16>,
+    pub config_overrides: Vec<(String, String)>,
 }
 
 impl CompileOptions {
@@ -67,6 +68,7 @@ impl CompileOptions {
             environment: None,
             host: None,
             port: None,
+            config_overrides: Vec::new(),
         }
     }
 }
@@ -259,6 +261,9 @@ struct ConfigReadMetadata {
     key: String,
     value_type: String,
     has_default: bool,
+    default_value: Option<Value>,
+    required: bool,
+    sensitive: bool,
     source_name: String,
     source: String,
     span: Span,
@@ -277,6 +282,8 @@ struct ConfigurationPlan {
     environment: String,
     keys: Vec<ConfigurationPlanKey>,
     providers: Vec<ConfigurationProviderPlan>,
+    requirements: Vec<ConfigurationRequirementPlan>,
+    package_manifest: ConfigurationPackageManifest,
 }
 
 #[derive(Debug, Clone)]
@@ -293,6 +300,33 @@ struct ConfigurationProviderPlan {
     name: String,
     prefix: String,
     source: String,
+}
+
+#[derive(Debug, Clone)]
+struct ConfigurationRequirementPlan {
+    key: String,
+    value_type: String,
+    required: bool,
+    sensitive: bool,
+    status: String,
+    source: Option<String>,
+    required_by: String,
+    default_value: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ConfigurationPackageManifest {
+    required: Vec<ConfigurationPackageEntry>,
+    optional: Vec<ConfigurationPackageEntry>,
+}
+
+#[derive(Debug, Clone)]
+struct ConfigurationPackageEntry {
+    key: String,
+    env: String,
+    value_type: String,
+    sensitive: bool,
+    default_value: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -498,6 +532,23 @@ fn parse_build_args(values: Vec<OsString>) -> CliCommand {
                 ));
             };
             options.port = Some(port);
+        } else if arg == "--config" {
+            index += 1;
+            if index >= values.len() {
+                return CliCommand::Invalid("build requires KEY=VALUE after --config".to_string());
+            }
+            let Some(override_text) = values[index].to_str() else {
+                return CliCommand::Invalid("build --config value must be valid UTF-8".to_string());
+            };
+            let Some((key, value)) = override_text.split_once('=') else {
+                return CliCommand::Invalid("build --config expects KEY=VALUE".to_string());
+            };
+            if key.trim().is_empty() {
+                return CliCommand::Invalid("build --config key must not be empty".to_string());
+            }
+            options
+                .config_overrides
+                .push((key.to_string(), value.to_string()));
         } else if arg.starts_with('-') {
             return CliCommand::Invalid(format!("unsupported build option '{arg}'"));
         } else if input.is_none() {
@@ -533,7 +584,7 @@ fn help_text() -> String {
     text.push_str("  sloppyc --help\n");
     text.push_str("  sloppyc --version\n");
     text.push_str(
-        "  sloppyc build <input.js> --out <directory> [--environment <name>] [--host <host>] [--port <port>]\n",
+        "  sloppyc build <input.js> --out <directory> [--environment <name>] [--host <host>] [--port <port>] [--config <key=value>]\n",
     );
     text
 }
@@ -576,14 +627,16 @@ fn build(input: &Path, out_dir: &Path, options: &CompileOptions) -> Result<(), B
             source: diagnostic_source,
         })
     })?;
-    let configuration = ConfigurationModel::load(input, options).map_err(|diagnostic| {
-        let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
-        Box::new(CompileError {
-            code: 1,
-            diagnostic,
-            source: diagnostic_source,
-        })
-    })?;
+    let configuration = ConfigurationModel::load(input, options, &extracted.config_reads).map_err(
+        |diagnostic| {
+            let diagnostic_source = diagnostic_render_source(input, &source, &diagnostic);
+            Box::new(CompileError {
+                code: 1,
+                diagnostic,
+                source: diagnostic_source,
+            })
+        },
+    )?;
     configuration
         .apply_to_app(&mut extracted)
         .map_err(|diagnostic| {
@@ -674,7 +727,11 @@ struct ConfigurationModel {
 }
 
 impl ConfigurationModel {
-    fn load(input: &Path, options: &CompileOptions) -> Result<Self, Diagnostic> {
+    fn load(
+        input: &Path,
+        options: &CompileOptions,
+        config_reads: &[ConfigReadMetadata],
+    ) -> Result<Self, Diagnostic> {
         let environment = options
             .environment
             .clone()
@@ -689,7 +746,25 @@ impl ConfigurationModel {
         model.load_optional_json(&config_dir.join("appsettings.json"), "appsettings.json")?;
         let env_file_name = format!("appsettings.{}.json", model.environment);
         model.load_optional_json(&config_dir.join(&env_file_name), &env_file_name)?;
-        model.apply_environment_variables()?;
+        model.load_optional_json(
+            &config_dir.join("appsettings.local.json"),
+            "appsettings.local.json",
+        )?;
+        let env_local_file_name = format!("appsettings.{}.local.json", model.environment);
+        model.load_optional_json(&config_dir.join(&env_local_file_name), &env_local_file_name)?;
+        model.load_optional_json(
+            &config_dir.join(".sloppy").join("secrets.json"),
+            "user-secrets:.sloppy/secrets.json",
+        )?;
+        let env_secret_file_name =
+            format!("user-secrets:.sloppy/secrets.{}.json", model.environment);
+        model.load_optional_json(
+            &config_dir
+                .join(".sloppy")
+                .join(format!("secrets.{}.json", model.environment)),
+            &env_secret_file_name,
+        )?;
+        model.apply_environment_variables(config_reads)?;
         model.apply_cli_overrides(options);
         Ok(model)
     }
@@ -765,18 +840,31 @@ impl ConfigurationModel {
             if let Value::Object(child) = value {
                 self.flatten_json_object(next, child, source)?;
             } else {
-                self.set(&next.join(":"), value.clone(), source);
+                let key = next.join(":");
+                if let Some((resolved, resolved_source)) =
+                    resolve_json_config_value(&key, value, source)?
+                {
+                    self.set(&key, resolved, &resolved_source);
+                }
             }
         }
         Ok(())
     }
 
-    fn apply_environment_variables(&mut self) -> Result<(), Diagnostic> {
-        for (name, value) in std::env::vars() {
-            if !name.starts_with("SLOPPY_SLOPPY__") {
-                continue;
+    fn apply_environment_variables(
+        &mut self,
+        config_reads: &[ConfigReadMetadata],
+    ) -> Result<(), Diagnostic> {
+        let mut known_roots = self.known_roots();
+        for read in config_reads {
+            if let Some(root) = read.key.split(':').next() {
+                known_roots.insert(normalize_config_key(root));
             }
-            let logical = &name["SLOPPY_".len()..];
+        }
+        for (name, value) in std::env::vars() {
+            let Some(logical) = env_logical_name(&name, &known_roots) else {
+                continue;
+            };
             if logical.is_empty()
                 || logical.contains("___")
                 || logical.starts_with('_')
@@ -786,7 +874,9 @@ impl ConfigurationModel {
                     "SLOPPYC_E_CONFIG_ENV",
                     format!("invalid Sloppy environment variable name '{name}'"),
                 )
-                .with_hint("Use SLOPPY_SLOPPY__SERVER__PORT style names."));
+                .with_hint(
+                    "Use Sloppy__Server__Port or SLOPPY_SLOPPY__SERVER__PORT style names.",
+                ));
             }
             let key = logical
                 .split("__")
@@ -847,10 +937,20 @@ impl ConfigurationModel {
         if let Some(port) = options.port {
             self.set("Sloppy:Server:Port", json!(port), "CLI --port");
         }
+        for (key, value) in &options.config_overrides {
+            if normalize_config_key(key).split(':').any(str::is_empty) {
+                continue;
+            }
+            let parsed = self
+                .parse_env_value(key, value)
+                .unwrap_or_else(|_| json!(value));
+            self.set(key, parsed, "CLI --config");
+        }
     }
 
     fn apply_to_app(&self, app: &mut ExtractedApp) -> Result<(), Diagnostic> {
         let mut provider_plans = Vec::new();
+        let mut requirements = Vec::new();
         for capability in &mut app.capabilities {
             let provider_name = provider_config_name(capability);
             let prefix = format!("Sloppy:Providers:{}:{provider_name}", capability.provider);
@@ -887,14 +987,94 @@ impl ConfigurationModel {
                     source,
                 });
             }
+            requirements.extend(self.provider_requirements(capability)?);
         }
+        requirements.extend(self.config_read_requirements(&app.config_reads));
+        let package_manifest = package_manifest_for_requirements(&requirements);
 
         app.configuration = Some(ConfigurationPlan {
             environment: self.environment.clone(),
             keys: self.plan_keys(),
             providers: provider_plans,
+            requirements,
+            package_manifest,
         });
         Ok(())
+    }
+
+    fn provider_requirements(
+        &self,
+        capability: &DatabaseCapability,
+    ) -> Result<Vec<ConfigurationRequirementPlan>, Diagnostic> {
+        let provider_name = provider_config_name(capability);
+        let prefix = format!("Sloppy:Providers:{}:{provider_name}", capability.provider);
+        let contract = match capability.provider.as_str() {
+            "sqlite" => Some(("database", "string", false)),
+            "postgres" | "sqlserver" => Some(("connectionString", "secret", true)),
+            _ => None,
+        };
+        let Some((field, value_type, sensitive)) = contract else {
+            return Ok(Vec::new());
+        };
+        let key = format!("{prefix}:{field}");
+        let entry = self.get(&key);
+        let status = if capability.database.is_some() || entry.is_some() {
+            "present"
+        } else {
+            "missing"
+        };
+        Ok(vec![ConfigurationRequirementPlan {
+            key,
+            value_type: value_type.to_string(),
+            required: true,
+            sensitive,
+            status: status.to_string(),
+            source: capability
+                .config_source
+                .clone()
+                .or_else(|| entry.map(|entry| entry.source.clone()))
+                .or_else(|| {
+                    capability
+                        .database
+                        .as_ref()
+                        .map(|_| "inline provider options".to_string())
+                }),
+            required_by: source_location_label(
+                &capability.source_name,
+                &capability.source,
+                capability.span,
+            ),
+            default_value: None,
+        }])
+    }
+
+    fn config_read_requirements(
+        &self,
+        reads: &[ConfigReadMetadata],
+    ) -> Vec<ConfigurationRequirementPlan> {
+        reads
+            .iter()
+            .map(|read| {
+                let entry = self.get(&read.key);
+                let status = if entry.is_some() {
+                    "present"
+                } else if read.has_default {
+                    "defaulted"
+                } else {
+                    "missing"
+                };
+                ConfigurationRequirementPlan {
+                    key: canonical_config_key(&read.key),
+                    value_type: read.value_type.clone(),
+                    required: read.required,
+                    sensitive: read.sensitive || config_key_is_sensitive(&read.key),
+                    status: status.to_string(),
+                    source: entry.map(|entry| entry.source.clone()),
+                    required_by: source_location_label(&read.source_name, &read.source, read.span),
+                    default_value: read.default_value.clone(),
+                }
+            })
+            .collect()
     }
 
     fn plan_keys(&self) -> Vec<ConfigurationPlanKey> {
@@ -947,6 +1127,124 @@ impl ConfigurationModel {
             },
         );
     }
+
+    fn known_roots(&self) -> BTreeSet<String> {
+        self.values
+            .values()
+            .filter_map(|entry| entry.key.split(':').next().map(normalize_config_key))
+            .collect()
+    }
+}
+
+fn resolve_json_config_value(
+    key: &str,
+    value: &Value,
+    source: &str,
+) -> Result<Option<(Value, String)>, Diagnostic> {
+    let Value::String(text) = value else {
+        return Ok(Some((value.clone(), source.to_string())));
+    };
+    let Some(name) = env_placeholder_name(text) else {
+        return Ok(Some((value.clone(), source.to_string())));
+    };
+    if name.contains(':') || name.contains("__") || name.trim().is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_CONFIG_ENV",
+            format!("{source} contains invalid environment placeholder for {key}"),
+        )
+        .with_hint("Use ${NAME} placeholders with a single environment variable name."));
+    }
+    match std::env::var(name) {
+        Ok(resolved) => Ok(Some((json!(resolved), format!("{source}:${{{name}}}")))),
+        Err(_) => Ok(None),
+    }
+}
+
+fn env_placeholder_name(value: &str) -> Option<&str> {
+    value
+        .strip_prefix("${")
+        .and_then(|inner| inner.strip_suffix('}'))
+}
+
+fn env_logical_name(name: &str, known_roots: &BTreeSet<String>) -> Option<String> {
+    if let Some(stripped) = name.strip_prefix("SLOPPY_") {
+        if stripped.contains("__") {
+            return Some(stripped.to_string());
+        }
+    }
+    if !name.contains("__") {
+        return None;
+    }
+    let root = name.split("__").next().unwrap_or_default();
+    if normalize_config_key(root) == "SLOPPY" || known_roots.contains(&normalize_config_key(root)) {
+        return Some(name.to_string());
+    }
+    None
+}
+
+fn source_location_label(source_name: &str, source: &str, span: Span) -> String {
+    let (line, _) = line_column(source, span.start);
+    format!("{source_name}:{line}")
+}
+
+fn package_manifest_for_requirements(
+    requirements: &[ConfigurationRequirementPlan],
+) -> ConfigurationPackageManifest {
+    let mut manifest = ConfigurationPackageManifest::default();
+    let mut seen_required = BTreeSet::new();
+    let mut seen_optional = BTreeSet::new();
+
+    for requirement in requirements {
+        let entry = ConfigurationPackageEntry {
+            key: requirement.key.clone(),
+            env: config_key_to_env_name(&requirement.key),
+            value_type: requirement.value_type.clone(),
+            sensitive: requirement.sensitive,
+            default_value: requirement.default_value.clone(),
+        };
+        if requirement.required && !requirement.has_default() {
+            if seen_required.insert(requirement.key.clone()) {
+                manifest.required.push(entry);
+            }
+        } else if seen_optional.insert(requirement.key.clone()) {
+            manifest.optional.push(entry);
+        }
+    }
+
+    manifest
+}
+
+impl ConfigurationRequirementPlan {
+    fn has_default(&self) -> bool {
+        self.default_value.is_some()
+    }
+}
+
+fn config_key_to_env_name(key: &str) -> String {
+    key.split(':')
+        .map(config_segment_to_env_name)
+        .collect::<Vec<_>>()
+        .join("_")
+}
+
+fn config_segment_to_env_name(segment: &str) -> String {
+    let mut output = String::new();
+    let mut previous_was_lower_or_digit = false;
+    for ch in segment.chars() {
+        if matches!(ch, '-' | '.' | ' ') {
+            if !output.ends_with('_') {
+                output.push('_');
+            }
+            previous_was_lower_or_digit = false;
+            continue;
+        }
+        if ch.is_ascii_uppercase() && previous_was_lower_or_digit {
+            output.push('_');
+        }
+        output.push(ch.to_ascii_uppercase());
+        previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+    }
+    output
 }
 
 fn normalize_config_key(key: &str) -> String {
@@ -1011,18 +1309,24 @@ fn json_type_name(value: &Value) -> &'static str {
 }
 
 fn config_key_is_sensitive(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase();
-    let has_sensitive_segment = normalized
-        .split(':')
-        .any(|segment| matches!(segment, "pwd" | "passwd"));
-    normalized.contains("secret")
-        || normalized.contains("password")
-        || normalized.contains("token")
-        || normalized.contains("connectionstring")
-        || normalized.contains("connection_string")
-        || normalized.contains("apikey")
-        || normalized.contains("api_key")
-        || has_sensitive_segment
+    key.to_ascii_lowercase().split(':').any(|segment| {
+        matches!(
+            segment,
+            "pwd"
+                | "passwd"
+                | "secret"
+                | "password"
+                | "token"
+                | "apikey"
+                | "api_key"
+                | "connectionstring"
+                | "connection_string"
+        ) || segment.ends_with("secret")
+            || segment.ends_with("password")
+            || segment.ends_with("token")
+            || segment.ends_with("apikey")
+            || segment.ends_with("connectionstring")
+    })
 }
 
 fn redact_config_value(key: &str, value: &str) -> String {
@@ -1988,19 +2292,19 @@ fn extract_variable_declaration(
         } else if state.schema_imported {
             if let Some(schema) = schema_declaration(path, source, source_name, name, init)? {
                 state.schemas.push(schema);
-            } else if let Some(config_read) =
+            } else if let Some(config_reads) =
                 config_read_metadata(path, source, source_name, state, init)?
             {
-                state.config_reads.push(config_read);
+                state.config_reads.extend(config_reads);
             } else if let Some(diagnostic) = malformed_config_read_diagnostic(path, state, init) {
                 return Err(diagnostic);
             } else {
                 validate_supported_initializer(path, source, source_name, state, init)?;
             }
-        } else if let Some(config_read) =
+        } else if let Some(config_reads) =
             config_read_metadata(path, source, source_name, state, init)?
         {
-            state.config_reads.push(config_read);
+            state.config_reads.extend(config_reads);
         } else if let Some(diagnostic) = malformed_config_read_diagnostic(path, state, init) {
             return Err(diagnostic);
         } else {
@@ -2733,27 +3037,25 @@ fn config_read_metadata(
     source_name: &str,
     state: &AppState,
     expression: &Expression<'_>,
-) -> Result<Option<ConfigReadMetadata>, Diagnostic> {
+) -> Result<Option<Vec<ConfigReadMetadata>>, Diagnostic> {
     let Expression::CallExpression(call) = expression else {
         return Ok(None);
     };
-    let Some((key, value_type, has_default)) = config_call_metadata(call, state) else {
+    if let Some(read) = config_call_metadata(call, source, source_name, state) {
+        return Ok(Some(vec![read]));
+    }
+    let Some(reads) = config_bind_metadata(call, source, source_name, state) else {
         return Ok(None);
     };
-    Ok(Some(ConfigReadMetadata {
-        key,
-        value_type,
-        has_default,
-        source_name: source_name.to_string(),
-        source: source.to_string(),
-        span: call.span,
-    }))
+    Ok(Some(reads))
 }
 
 fn config_call_metadata(
     call: &CallExpression<'_>,
+    source: &str,
+    source_name: &str,
     state: &AppState,
-) -> Option<(String, String, bool)> {
+) -> Option<ConfigReadMetadata> {
     let Expression::StaticMemberExpression(method_member) = &call.callee else {
         return None;
     };
@@ -2775,10 +3077,183 @@ fn config_call_metadata(
         "getString" => "string",
         "getInt" => "int",
         "getNumber" => "number",
+        "getBoolean" => "bool",
         "getBool" => "bool",
+        "getDuration" => "duration",
+        "getSize" | "getBytes" => "size",
+        "getArray" => "array",
+        "getObject" => "object",
+        "getSecret" => "secret",
         _ => return None,
     };
-    Some((key, value_type.to_string(), call.arguments.len() > 1))
+    let default_value = call.arguments.get(1).and_then(argument_json_value);
+    let has_default = call.arguments.len() > 1;
+    Some(ConfigReadMetadata {
+        sensitive: method == "getSecret" || config_key_is_sensitive(&key),
+        required: !has_default,
+        key,
+        value_type: value_type.to_string(),
+        has_default,
+        default_value,
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+        span: call.span,
+    })
+}
+
+fn config_bind_metadata(
+    call: &CallExpression<'_>,
+    source: &str,
+    source_name: &str,
+    state: &AppState,
+) -> Option<Vec<ConfigReadMetadata>> {
+    let Expression::StaticMemberExpression(method_member) = &call.callee else {
+        return None;
+    };
+    if method_member.property.name.as_str() != "bind" {
+        return None;
+    }
+    let Expression::StaticMemberExpression(config_member) = &method_member.object else {
+        return None;
+    };
+    if config_member.property.name.as_str() != "config" {
+        return None;
+    }
+    let Expression::Identifier(app) = &config_member.object else {
+        return None;
+    };
+    if !state.app_vars.contains(app.name.as_str()) || call.arguments.is_empty() {
+        return None;
+    }
+    let prefix = string_argument(call.arguments.first()?)?;
+    let Some(schema) = call.arguments.get(1).and_then(object_argument) else {
+        return Some(vec![ConfigReadMetadata {
+            key: provider_config_prefix(prefix),
+            value_type: "object".to_string(),
+            has_default: false,
+            default_value: None,
+            required: false,
+            sensitive: false,
+            source_name: source_name.to_string(),
+            source: source.to_string(),
+            span: call.span,
+        }]);
+    };
+    let mut reads = Vec::new();
+    for property in &schema.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            continue;
+        };
+        if property.computed {
+            continue;
+        }
+        let name = property_key_name(&property.key)?;
+        let Some((value_type, has_default, default_value, required, sensitive)) =
+            bind_descriptor_metadata(&property.value)
+        else {
+            continue;
+        };
+        let key = format!(
+            "{}:{}",
+            provider_config_prefix(prefix),
+            config_bind_descriptor_segment(name)
+        );
+        reads.push(ConfigReadMetadata {
+            key,
+            value_type,
+            has_default,
+            default_value,
+            required,
+            sensitive,
+            source_name: source_name.to_string(),
+            source: source.to_string(),
+            span: property.span,
+        });
+    }
+    Some(reads)
+}
+
+fn bind_descriptor_metadata(
+    expression: &Expression<'_>,
+) -> Option<(String, bool, Option<Value>, bool, bool)> {
+    match expression {
+        Expression::StringLiteral(literal) => {
+            let value_type = literal.value.as_str();
+            if !config_value_type_supported(value_type) {
+                return None;
+            }
+            Some((
+                value_type.to_string(),
+                false,
+                None,
+                true,
+                value_type == "secret",
+            ))
+        }
+        Expression::ObjectExpression(object) => {
+            let value_type = object_string_property_value(object, "type")
+                .or_else(|| {
+                    object_bool_property_value(object, "secret")
+                        .filter(|secret| *secret)
+                        .map(|_| "secret")
+                })
+                .unwrap_or("string");
+            if !config_value_type_supported(value_type) {
+                return None;
+            }
+            let default_value = object_json_property_value(object, "default");
+            let has_default = default_value.is_some();
+            let required = object_bool_property_value(object, "required").unwrap_or(!has_default);
+            Some((
+                value_type.to_string(),
+                has_default,
+                default_value,
+                required,
+                value_type == "secret"
+                    || object_bool_property_value(object, "secret").unwrap_or(false),
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn config_value_type_supported(value_type: &str) -> bool {
+    matches!(
+        value_type,
+        "array"
+            | "bool"
+            | "boolean"
+            | "bytes"
+            | "duration"
+            | "int"
+            | "integer"
+            | "number"
+            | "object"
+            | "secret"
+            | "size"
+            | "string"
+    )
+}
+
+fn provider_config_prefix(prefix: &str) -> String {
+    if prefix.contains(':') && !prefix.starts_with("Sloppy:") && prefix.split(':').count() == 2 {
+        let mut segments = prefix.split(':');
+        let provider = segments.next().unwrap_or_default();
+        let name = segments.next().unwrap_or_default();
+        return format!("Sloppy:Providers:{provider}:{name}");
+    }
+    prefix.to_string()
+}
+
+fn config_bind_descriptor_segment(name: &str) -> String {
+    if name.contains(':') {
+        return name.to_string();
+    }
+    let mut chars = name.chars();
+    let Some(first) = chars.next() else {
+        return name.to_string();
+    };
+    first.to_ascii_uppercase().to_string() + chars.as_str()
 }
 
 fn malformed_config_read_diagnostic(
@@ -2793,7 +3268,21 @@ fn malformed_config_read_diagnostic(
         return None;
     };
     let method = method_member.property.name.as_str();
-    if !matches!(method, "getString" | "getInt" | "getNumber" | "getBool") {
+    if !matches!(
+        method,
+        "bind"
+            | "getArray"
+            | "getBool"
+            | "getBoolean"
+            | "getBytes"
+            | "getDuration"
+            | "getInt"
+            | "getNumber"
+            | "getObject"
+            | "getSecret"
+            | "getSize"
+            | "getString"
+    ) {
         return None;
     }
     let Expression::StaticMemberExpression(config_member) = &method_member.object else {
@@ -3757,6 +4246,119 @@ fn property_key_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
         PropertyKey::StringLiteral(literal) => Some(literal.value.as_str()),
         _ => None,
     }
+}
+
+fn object_string_property_value<'a>(
+    object: &'a oxc_ast::ast::ObjectExpression<'a>,
+    name: &str,
+) -> Option<&'a str> {
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            continue;
+        };
+        if property.computed || property_key_name(&property.key) != Some(name) {
+            continue;
+        }
+        let Expression::StringLiteral(value) = &property.value else {
+            return None;
+        };
+        return Some(value.value.as_str());
+    }
+    None
+}
+
+fn object_bool_property_value(
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+    name: &str,
+) -> Option<bool> {
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            continue;
+        };
+        if property.computed || property_key_name(&property.key) != Some(name) {
+            continue;
+        }
+        let Expression::BooleanLiteral(value) = &property.value else {
+            return None;
+        };
+        return Some(value.value);
+    }
+    None
+}
+
+fn object_json_property_value(
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+    name: &str,
+) -> Option<Value> {
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            continue;
+        };
+        if property.computed || property_key_name(&property.key) != Some(name) {
+            continue;
+        }
+        return expression_json_value(&property.value);
+    }
+    None
+}
+
+fn argument_json_value(argument: &Argument<'_>) -> Option<Value> {
+    match argument {
+        Argument::StringLiteral(value) => Some(json!(value.value.as_str())),
+        Argument::NumericLiteral(value) => Some(json!(value.value)),
+        Argument::BooleanLiteral(value) => Some(json!(value.value)),
+        Argument::NullLiteral(_) => Some(Value::Null),
+        Argument::ArrayExpression(array) => array_json_value(array),
+        Argument::ObjectExpression(object) => object_json_value(object),
+        _ => None,
+    }
+}
+
+fn expression_json_value(expression: &Expression<'_>) -> Option<Value> {
+    match expression {
+        Expression::StringLiteral(value) => Some(json!(value.value.as_str())),
+        Expression::NumericLiteral(value) => Some(json!(value.value)),
+        Expression::BooleanLiteral(value) => Some(json!(value.value)),
+        Expression::NullLiteral(_) => Some(Value::Null),
+        Expression::ArrayExpression(array) => array_json_value(array),
+        Expression::ObjectExpression(object) => object_json_value(object),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_json_value(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+fn array_json_value(array: &oxc_ast::ast::ArrayExpression<'_>) -> Option<Value> {
+    let mut values = Vec::new();
+    for element in &array.elements {
+        let value = match element {
+            ArrayExpressionElement::StringLiteral(value) => json!(value.value.as_str()),
+            ArrayExpressionElement::NumericLiteral(value) => json!(value.value),
+            ArrayExpressionElement::BooleanLiteral(value) => json!(value.value),
+            ArrayExpressionElement::NullLiteral(_) => Value::Null,
+            ArrayExpressionElement::ArrayExpression(array) => array_json_value(array)?,
+            ArrayExpressionElement::ObjectExpression(object) => object_json_value(object)?,
+            _ => return None,
+        };
+        values.push(value);
+    }
+    Some(Value::Array(values))
+}
+
+fn object_json_value(object: &oxc_ast::ast::ObjectExpression<'_>) -> Option<Value> {
+    let mut values = serde_json::Map::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return None;
+        };
+        if property.computed {
+            return None;
+        }
+        let key = property_key_name(&property.key)?.to_string();
+        values.insert(key, expression_json_value(&property.value)?);
+    }
+    Some(Value::Object(values))
 }
 
 fn plan_token_supported(token: &str) -> bool {
@@ -5956,11 +6558,57 @@ fn emit_plan(
                 })
             })
             .collect::<Vec<_>>();
-        json!({
+        let requirements = configuration
+            .requirements
+            .iter()
+            .map(|requirement| {
+                let mut value = json!({
+                    "key": requirement.key,
+                    "type": requirement.value_type,
+                    "required": requirement.required,
+                    "status": requirement.status,
+                    "source": requirement.source,
+                    "requiredBy": requirement.required_by,
+                    "redaction": if requirement.sensitive { "secret" } else { "none" },
+                    "secret": requirement.sensitive
+                });
+                if let Some(default_value) = &requirement.default_value {
+                    value["default"] = if requirement.sensitive {
+                        json!("<redacted>")
+                    } else {
+                        default_value.clone()
+                    };
+                }
+                value
+            })
+            .collect::<Vec<_>>();
+        let package_required = configuration
+            .package_manifest
+            .required
+            .iter()
+            .map(package_manifest_entry_json)
+            .collect::<Vec<_>>();
+        let package_optional = configuration
+            .package_manifest
+            .optional
+            .iter()
+            .map(package_manifest_entry_json)
+            .collect::<Vec<_>>();
+        let mut configuration_json = json!({
             "environment": configuration.environment,
             "keys": keys,
             "providers": providers
-        })
+        });
+        if !requirements.is_empty() {
+            configuration_json["requirements"] = json!(requirements);
+        }
+        if !package_required.is_empty() || !package_optional.is_empty() {
+            configuration_json["packageManifest"] = json!({
+                "required": package_required,
+                "optional": package_optional
+            });
+        }
+        configuration_json
     });
 
     let schemas = app
@@ -5989,6 +6637,8 @@ fn emit_plan(
                 "key": read.key,
                 "type": read.value_type,
                 "hasDefault": read.has_default,
+                "required": read.required,
+                "secret": read.sensitive,
                 "source": {
                     "path": read.source_name,
                     "line": line,
@@ -6451,6 +7101,23 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
     format!("{json}\n")
 }
 
+fn package_manifest_entry_json(entry: &ConfigurationPackageEntry) -> Value {
+    let mut value = json!({
+        "key": entry.key,
+        "env": entry.env,
+        "type": entry.value_type,
+        "secret": entry.sensitive
+    });
+    if let Some(default_value) = &entry.default_value {
+        value["default"] = if entry.sensitive {
+            json!("<redacted>")
+        } else {
+            default_value.clone()
+        };
+    }
+    value
+}
+
 fn generated_location_json(generated_line: usize, generated_column: usize) -> Value {
     json!({
         "line": generated_line + 1,
@@ -6764,6 +7431,8 @@ mod tests {
                 OsString::from("127.0.0.1"),
                 OsString::from("--port"),
                 OsString::from("5173"),
+                OsString::from("--config"),
+                OsString::from("Auth:Issuer=cli"),
             ]),
             CliCommand::Build {
                 input: std::path::PathBuf::from("app.js"),
@@ -6772,6 +7441,7 @@ mod tests {
                     environment: Some("Development".to_string()),
                     host: Some("127.0.0.1".to_string()),
                     port: Some(5173),
+                    config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
                 },
             }
         );
@@ -6817,9 +7487,10 @@ mod tests {
             environment: Some("Development".to_string()),
             host: Some("0.0.0.0".to_string()),
             port: Some(6000),
+            config_overrides: Vec::new(),
         };
-        let config =
-            super::ConfigurationModel::load(&input, &options).expect("configuration should load");
+        let config = super::ConfigurationModel::load(&input, &options, &[])
+            .expect("configuration should load");
         assert_eq!(
             config
                 .get_string("Sloppy:Providers:sqlite:main:database")
@@ -6880,6 +7551,157 @@ mod tests {
         assert!(app.configuration.is_some());
 
         fs::remove_dir_all(&root).expect("config test directory should be removable");
+    }
+
+    #[test]
+    fn configuration_precedence_includes_local_secrets_env_and_cli_overrides() {
+        let root = fixture_temp_dir("config-precedence");
+        let input = root.join("app.js");
+        fs::write(
+            &input,
+            r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const jwt = app.config.getSecret("Auth:JwtSecret");
+const issuer = app.config.getString("Auth:Issuer");
+app.get("/", () => Results.text("ok"));
+export default app;
+"#,
+        )
+        .expect("input should be written");
+        fs::write(
+            root.join("appsettings.json"),
+            r#"{"Auth":{"Issuer":"base","JwtSecret":"base-value"}}"#,
+        )
+        .expect("base appsettings should be written");
+        fs::write(
+            root.join("appsettings.Development.json"),
+            r#"{"Auth":{"Issuer":"environment"}}"#,
+        )
+        .expect("environment appsettings should be written");
+        fs::write(
+            root.join("appsettings.local.json"),
+            r#"{"Auth":{"Issuer":"local"}}"#,
+        )
+        .expect("local appsettings should be written");
+        fs::write(
+            root.join("appsettings.Development.local.json"),
+            r#"{"Auth":{"Issuer":"environment-local"}}"#,
+        )
+        .expect("environment local appsettings should be written");
+        fs::create_dir_all(root.join(".sloppy")).expect("secret directory should be created");
+        fs::write(
+            root.join(".sloppy").join("secrets.json"),
+            r#"{"Auth":{"JwtSecret":"store-value"}}"#,
+        )
+        .expect("user secrets should be written");
+
+        std::env::set_var("Auth__JwtSecret", "env-value");
+        let mut app = extract(
+            &input,
+            &fs::read_to_string(&input).expect("source should read"),
+        )
+        .expect("config app should extract");
+        let options = CompileOptions {
+            environment: Some("Development".to_string()),
+            host: None,
+            port: None,
+            config_overrides: vec![("Auth:Issuer".to_string(), "cli".to_string())],
+        };
+        let config = super::ConfigurationModel::load(&input, &options, &app.config_reads)
+            .expect("configuration should load");
+        assert_eq!(
+            config
+                .get_string("Auth:JwtSecret")
+                .expect("secret key should be string"),
+            Some("env-value".to_string())
+        );
+        assert_eq!(
+            config
+                .get_string("Auth:Issuer")
+                .expect("issuer key should be string"),
+            Some("cli".to_string())
+        );
+        config
+            .apply_to_app(&mut app)
+            .expect("configuration should apply");
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        assert!(!plan.contains("env-value"));
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert!(plan["configuration"]["requirements"]
+            .as_array()
+            .expect("requirements should be an array")
+            .iter()
+            .any(|requirement| requirement["key"] == "Auth:JwtSecret"
+                && requirement["status"] == "present"
+                && requirement["redaction"] == "secret"));
+        assert!(plan["configuration"]["packageManifest"]["required"]
+            .as_array()
+            .expect("required manifest should be an array")
+            .iter()
+            .any(|entry| entry["env"] == "AUTH_JWT_SECRET" && entry["secret"] == true));
+        std::env::remove_var("Auth__JwtSecret");
+        fs::remove_dir_all(&root).expect("config test directory should be removable");
+    }
+
+    #[test]
+    fn config_bind_descriptors_emit_required_optional_and_secret_metadata() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const auth = app.config.bind("Auth", {
+  jwtSecret: "secret",
+  tokenTtlMinutes: { type: "number", default: 60, min: 1, max: 1440 },
+  issuer: { type: "string", required: true }
+});
+app.get("/", () => Results.text("ok"));
+export default app;
+"#;
+        let mut app = extract(std::path::Path::new("app.js"), source)
+            .expect("bind descriptors should extract");
+        assert_eq!(app.config_reads.len(), 3);
+        assert!(app
+            .config_reads
+            .iter()
+            .any(|read| { read.key == "Auth:JwtSecret" && read.sensitive && read.required }));
+        assert!(app.config_reads.iter().any(|read| {
+            read.key == "Auth:TokenTtlMinutes" && read.has_default && !read.required
+        }));
+        let config = super::ConfigurationModel {
+            environment: "Development".to_string(),
+            values: std::collections::BTreeMap::new(),
+        };
+        config
+            .apply_to_app(&mut app)
+            .expect("bind metadata should apply without requiring dev values");
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        let requirements = plan["configuration"]["requirements"]
+            .as_array()
+            .expect("requirements should be an array");
+        assert!(requirements
+            .iter()
+            .any(|requirement| requirement["key"] == "Auth:JwtSecret"
+                && requirement["status"] == "missing"
+                && requirement["secret"] == true));
+        assert!(plan["configuration"]["packageManifest"]["optional"]
+            .as_array()
+            .expect("optional manifest should be an array")
+            .iter()
+            .any(|entry| entry["key"] == "Auth:TokenTtlMinutes"
+                && entry["default"].as_f64() == Some(60.0)));
     }
 
     #[test]
@@ -6994,8 +7816,9 @@ export default app;
         )
         .expect("appsettings should be written");
 
-        let diagnostic = super::ConfigurationModel::load(&input, &super::CompileOptions::new())
-            .expect_err("empty config key segment should fail");
+        let diagnostic =
+            super::ConfigurationModel::load(&input, &super::CompileOptions::new(), &[])
+                .expect_err("empty config key segment should fail");
         assert_eq!(diagnostic.code, "SLOPPYC_E_CONFIG_KEY");
         assert!(
             diagnostic.message.contains("empty config key segment"),
@@ -9299,7 +10122,7 @@ export default app;
                 .join("input.js");
             let source = fs::read_to_string(&fixture).expect("fixture input should exist");
             let mut app = extract(&fixture, &source).expect("fixture should extract");
-            super::ConfigurationModel::load(&fixture, &CompileOptions::new())
+            super::ConfigurationModel::load(&fixture, &CompileOptions::new(), &app.config_reads)
                 .expect("fixture configuration should load")
                 .apply_to_app(&mut app)
                 .expect("fixture configuration should apply");

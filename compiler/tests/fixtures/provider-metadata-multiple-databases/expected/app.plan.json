@@ -91,7 +91,46 @@
         "value": 30000
       }
     ],
-    "providers": []
+    "packageManifest": {
+      "optional": [],
+      "required": [
+        {
+          "env": "SLOPPY_PROVIDERS_POSTGRES_ANALYTICS_CONNECTION_STRING",
+          "key": "Sloppy:Providers:postgres:analytics:connectionString",
+          "secret": true,
+          "type": "secret"
+        },
+        {
+          "env": "SLOPPY_PROVIDERS_SQLSERVER_REPORTING_CONNECTION_STRING",
+          "key": "Sloppy:Providers:sqlserver:reporting:connectionString",
+          "secret": true,
+          "type": "secret"
+        }
+      ]
+    },
+    "providers": [],
+    "requirements": [
+      {
+        "key": "Sloppy:Providers:postgres:analytics:connectionString",
+        "redaction": "secret",
+        "required": true,
+        "requiredBy": "input.js:4",
+        "secret": true,
+        "source": "inline provider options",
+        "status": "present",
+        "type": "secret"
+      },
+      {
+        "key": "Sloppy:Providers:sqlserver:reporting:connectionString",
+        "redaction": "secret",
+        "required": true,
+        "requiredBy": "input.js:9",
+        "secret": true,
+        "source": "inline provider options",
+        "status": "present",
+        "type": "secret"
+      }
+    ]
   },
   "dataProviders": [
     {

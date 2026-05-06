@@ -146,15 +146,17 @@ the evidence index. These tests still do not claim Node Buffer/Web Streams/Bun/D
 compatibility, checksum security, benchmark performance, package readiness, or public
 alpha readiness.
 
-FRAMEWORK-01.B adds configuration coverage across Rust compiler tests, JS stdlib tests,
-compiler golden artifacts, source-input process tests, and the SQLite users API fixture.
+CORE-CONFIG-01 adds configuration coverage across Rust compiler tests, JS stdlib tests,
+compiler golden artifacts, source-input process tests, doctor text/JSON goldens, and the
+SQLite users API fixture.
 FRAMEWORK-01.F extends example coverage with compile-artifact tests for hello-minimal,
 configured-api, modules-api, validation-errors, and users-api-sqlite, plus Plan-driven
 routes/doctor/audit/capabilities/OpenAPI tooling checks for representative examples.
 V8-gated users API transport covers happy path, missing user, create, malformed JSON, and
 the current safe invalid-payload problem response.
-Tests should keep source precedence, typed conversion, `bind`, provider config, Plan
-metadata, redaction, and non-V8/V8 evidence boundaries separate.
+Tests should keep source precedence, typed conversion, descriptor `bind`, defaults,
+required/missing values, provider config, Plan/package metadata, dynamic-key honesty,
+redaction, negative paths, and non-V8/V8 evidence boundaries separate.
 
 ## Test Categories
 

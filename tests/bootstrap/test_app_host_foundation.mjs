@@ -776,6 +776,19 @@ async function flushMicrotasks(count = 6) {
     });
     builder.config.addObject({
         "app.name": "second",
+        Auth: {
+            JwtSecret: "opaque-value",
+            TokenTtlMinutes: "60",
+            Issuer: "sloppy-tests",
+            Audience: "api",
+        },
+        Feature: {
+            Mode: "strict",
+            Timeout: "2s",
+            UploadLimit: "4KiB",
+            Hosts: ["localhost"],
+            Metadata: { tier: "dev" },
+        },
     });
 
     assert.equal(builder.config.get("app.name"), "second");
@@ -786,7 +799,41 @@ async function flushMicrotasks(count = 6) {
     assert.equal(builder.config.getInt("server.port"), 3000);
     assert.equal(builder.config.getString("Sloppy:Server:Host", "127.0.0.1"), "127.0.0.1");
     assert.equal(builder.config.getBool("Feature:X", false), false);
+    assert.equal(builder.config.getBoolean("Feature:X", false), false);
     assert.equal(builder.config.getNumber("Feature:Limit", 1.5), 1.5);
+    assert.equal(builder.config.getDuration("Feature:Timeout"), 2000);
+    assert.equal(builder.config.getBytes("Feature:UploadLimit"), 4096);
+    assert.deepEqual(builder.config.getArray("Feature:Hosts"), ["localhost"]);
+    assert.deepEqual(builder.config.getObject("Feature:Metadata"), { tier: "dev" });
+    const secret = builder.config.getSecret("Auth:JwtSecret");
+    assert.equal(secret.value(), "opaque-value");
+    assert.equal(String(secret), "[Secret redacted]");
+    assert.equal(JSON.stringify({ secret }), "{\"secret\":\"[Secret redacted]\"}");
+    const auth = builder.config.bind("Auth", {
+        jwtSecret: "secret",
+        tokenTtlMinutes: {
+            type: "number",
+            default: 60,
+            min: 1,
+            max: 1440,
+        },
+        issuer: {
+            type: "string",
+            required: true,
+        },
+        audience: {
+            type: "string",
+            enum: ["api", "admin"],
+        },
+    });
+    assert.equal(auth.jwtSecret.value(), "opaque-value");
+    assert.equal(String(auth.jwtSecret), "[Secret redacted]");
+    assert.equal(auth.tokenTtlMinutes, 60);
+    assert.equal(auth.issuer, "sloppy-tests");
+    assert.equal(auth.audience, "api");
+    assertThrowsMessage(() => builder.config.bind("Auth", { missing: { type: "string", required: true } }), /required/);
+    assertThrowsMessage(() => builder.config.bind("Auth", { jwtSecret: { type: "secret", default: "unsafe" } }), /literal default/);
+    assertThrowsMessage(() => builder.config.bind("Feature", { mode: { type: "string", enum: ["safe"] } }), /declared values/);
     assertThrowsMessage(() => builder.config.getInt("app.name"), /number/);
     assertThrowsMessage(() => builder.config.require("missing"), /required/);
     assertThrowsMessage(() => builder.config.get(""), /non-empty string/);

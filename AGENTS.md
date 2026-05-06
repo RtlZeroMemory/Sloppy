@@ -124,6 +124,20 @@ Canonical Windows workflow:
 
 Root wrappers may exist, but `tools/windows` is canonical for the Windows workflow.
 
+Codex sessions on this machine must assume the compatible local V8 SDK is available through
+the repo scripts. For implementation PRs that touch runtime, app-host, compiler, bootstrap,
+provider, or configuration behavior, run and report a separate V8-enabled Windows lane:
+
+```powershell
+.\tools\windows\resolve-v8-sdk.ps1
+.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
+.\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
+.\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
+```
+
+If SDK resolution fails on this machine, treat that as a local environment blocker and
+report it honestly instead of counting the V8 lane as skipped or optional.
+
 ## Before opening a PR
 
 - Identify the source docs that govern the change.
