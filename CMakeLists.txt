@@ -1736,6 +1736,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.time.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_time_examples.cmake")
+    add_test(
+        NAME examples.crypto.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_crypto_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(

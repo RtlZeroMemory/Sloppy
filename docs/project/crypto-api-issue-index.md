@@ -2,7 +2,7 @@
 
 Parent EPIC: #571 CORE-CRYPTO-01: Crypto, Random, Hashing, Password, and Secret Utilities.
 
-Status: PR 4 NonCryptoHash implementation.
+Status: CORE-CRYPTO-01.A/B/C/D/E/F/G/H/I source-of-truth index.
 
 | Issue | Slice | PR Group | Status |
 | --- | --- | --- | --- |
@@ -14,7 +14,7 @@ Status: PR 4 NonCryptoHash implementation.
 | #577 | Constant-Time and Secret Buffer Utilities | PR 2 | Implemented constant-time equality helper and cleanup-once Secret utilities. |
 | #578 | Non-Cryptographic Hash Utilities | PR 4 | Implemented dependency-backed `NonCryptoHash.xxHash64` with security-separation warnings. |
 | #579 | V8/Stdlib Integration and JS Surface | PR 2 | Implemented `__sloppy.crypto`, `stdlib/sloppy/crypto.js`, bootstrap runtime exports, and V8 smoke coverage. |
-| #580 | Conformance, Test Vectors, Examples, Docs, and Goldens | PR 5 | Deferred until the final evidence/examples pass. |
+| #580 | Conformance, Test Vectors, Examples, Docs, and Goldens | PR 5 | Final source examples, conformance index, and evidence documentation. |
 
 ## PR Order
 
@@ -65,8 +65,18 @@ Status: PR 4 NonCryptoHash implementation.
   `NonCryptoHash.xxHash64` is being used in a security-looking context. The warning is a
   bounded static cue, not comprehensive enforcement.
 
-## Evidence Expected Later
+## Final Evidence
 
-Future PRs must add final example source checks and conformance/golden consolidation across
-the whole crypto surface. Randomness quality and performance claims are explicitly out of
-scope for deterministic tests.
+CORE-CRYPTO-01.I adds `examples.crypto.api_shape`, `tests/conformance/crypto/README.md`,
+four public Crypto source examples, and a consolidated evidence map across native vectors,
+diagnostic goldens, compiler/doctor checks, bootstrap stdlib tests, and V8-gated bridge
+smoke when the SDK is configured. Randomness quality, password cracking cost, timing-proof
+behavior, security from non-cryptographic hashes, WebCrypto/Node/Bun compatibility,
+package-manager behavior, public alpha readiness, and performance claims remain explicitly
+out of scope for deterministic tests.
+
+## Parent Completion Rule
+
+The parent EPIC can close only after #572-#580 are closed and the final PR records evidence
+for default gates, V8-gated Crypto tests where available, source examples, diagnostic
+goldens, the selected backend/dependency decisions, and the explicit non-goals above.

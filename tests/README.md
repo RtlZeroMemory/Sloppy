@@ -25,11 +25,12 @@ integration. This test is not a Node compatibility claim.
 CTest also registers `data.sqlite.provider`, which executes the native SQLite provider
 against `:memory:` databases and covers open/close, exec/query/queryOne, parameter binding,
 transactions, and diagnostics.
-The `examples.hello.api_shape`, `examples.ergonomics.api_shape`, and
-`examples.modules_basic.api_shape`, `examples.data_foundation.api_shape`, and
-`examples.sqlite_basic.api_shape` CTest checks statically verify the public examples use
-the current bootstrap API shape without requiring Node, npm, compiler extraction, app-plan
-emission, JavaScript data provider connections, or HTTP runtime behavior.
+The `examples.hello.api_shape`, `examples.ergonomics.api_shape`,
+`examples.modules_basic.api_shape`, `examples.data_foundation.api_shape`,
+`examples.sqlite_basic.api_shape`, `examples.time.api_shape`, and
+`examples.crypto.api_shape` CTest checks statically verify public examples use the current
+documented API shape without requiring Node, npm, compiler extraction, app-plan emission,
+JavaScript provider connections, or unrelated runtime behavior.
 
 Future suites:
 

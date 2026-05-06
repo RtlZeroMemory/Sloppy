@@ -104,9 +104,12 @@ CORE-CRYPTO-01.E adds password hash/verify/needsRehash coverage for the selected
 `libsodium` Argon2id PHC backend, unsupported-format checks, bootstrap stdlib smoke
 coverage, and V8-gated owner-thread settlement evidence. CORE-CRYPTO-01.G adds
 dependency-backed xxHash64 known-answer vectors, JS/V8 `NonCryptoHash` smoke coverage, and
-doctor/golden coverage for security-looking static use. Deterministic tests must not claim
-randomness quality, password cracking cost, timing resistance, benchmark performance,
-WebCrypto/Node/Bun compatibility, or public alpha readiness.
+doctor/golden coverage for security-looking static use. CORE-CRYPTO-01.I adds source
+example API-shape checks and `tests/conformance/crypto/README.md` as the evidence index
+across native vectors, diagnostic goldens, compiler/doctor checks, bootstrap stdlib tests,
+and optional V8-gated bridge evidence. Deterministic tests must not claim randomness
+quality, password cracking cost, timing resistance, benchmark performance, WebCrypto/Node/
+Bun compatibility, or public alpha readiness.
 
 CORE-NET-01 tests must keep evidence claims narrow. Contract tests prove `sloppy/net`
 import recognition, `stdlib.net` Plan metadata, unavailable-feature diagnostics, stable
@@ -244,6 +247,25 @@ Time/deadline/cancellation:
 - source example API-shape checks must cover delay, timeout, deadline, cancellation,
   interval, scheduled jobs, fake clocks, and filesystem Time options;
 - diagnostic goldens cover all stable Time diagnostic codes.
+
+Crypto:
+
+- import-driven `stdlib.crypto` Plan activation and inactive-feature gating;
+- OS-random shape tests must cover UUID v4 text shape, byte lengths, and token/hex/numeric
+  alphabets without claiming randomness quality;
+- SHA-256/SHA-384/SHA-512 and HMAC vectors must use vetted backends, not Sloppy custom
+  algorithms;
+- HMAC verification must use the constant-time comparison path;
+- password hash/verify/needsRehash tests cover the selected Argon2id PHC backend and
+  unsupported format diagnostics without logging passwords or encoded-hash internals;
+- Secret disposal tests cover cleanup-once and stale-use behavior without printing secret
+  bytes;
+- `NonCryptoHash` vector and doctor-warning tests stay visibly separate from secure
+  `Hash`/`Hmac` evidence;
+- source example API-shape checks cover Random, Hash, Hmac, Password, ConstantTime, and
+  Secret while rejecting weak-random fallbacks, compatibility claims, package-manager
+  behavior, public alpha wording, benchmark claims, printed secrets, and non-security hash
+  helpers in security examples.
 
 Platform:
 
