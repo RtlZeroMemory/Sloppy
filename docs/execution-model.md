@@ -215,6 +215,9 @@ GET/POST/PUT/PATCH/DELETE request paths through the native route matcher, passes
 `{ route, query, request, signal, deadline }` context with request headers and bounded
 JSON/text body access to the handler, converts supported `Results.*` descriptors, writes a
 deterministic HTTP/1.1 response, and closes the connection. The deterministic
+Plan/bundle/source-map/bootstrap reads are trusted runtime-owned access. They use native
+filesystem helpers below the app feature boundary, not the public `sloppy/fs` V8 namespace,
+so they do not require `stdlib.fs` or app filesystem capabilities.
 `--once METHOD TARGET` mode
 performs the same dispatch without opening a socket.
 
@@ -440,11 +443,13 @@ Current `sloppy run` flow:
    or accept source input through `<source.js>` / current-directory `sloppy.json`;
 2. for source input, invoke `sloppyc build` and write artifacts to
    `.sloppy/cache/dev/source-input` or the configured `outDir`;
-3. load `<dir>/app.plan.json` through the native Plan parser;
+3. load `<dir>/app.plan.json` through trusted runtime-owned file access and the native
+   Plan parser;
 4. validate parsed Plan route/provider/capability metadata where those sections are present;
 5. build a native dev route table from Plan GET/POST/PUT/PATCH/DELETE route patterns, ordered by
    literal-before-parameter precedence and stable source order when equal;
-6. read `bundle.path` and `sourceMap.path` and verify their `sha256:` hashes;
+6. read `bundle.path` and `sourceMap.path` through trusted runtime-owned file access and
+   verify their `sha256:` hashes;
 7. create a V8 engine, load the configured bootstrap stdlib root, and evaluate
    `internal/runtime-classic.js`;
 8. evaluate the artifact `app.js` and validate all plan handler IDs were registered;
@@ -1027,6 +1032,8 @@ model.
 Bootstrap assets are loaded from a deterministic stdlib root. `sloppy run` validates the
 bootstrap manifest version and required classic runtime asset before evaluating user
 artifacts, and missing or incompatible assets fail closed instead of silently falling back.
+This bootstrap access is runtime-owned and does not depend on the app `stdlib.fs` feature
+or app filesystem policy.
 
 ## CORE-TIME-01 Native Delay Execution
 

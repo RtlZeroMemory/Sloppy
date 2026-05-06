@@ -3,6 +3,10 @@
  *
  * POSIX filesystem backend. POSIX path and file-descriptor behavior stays here.
  */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "../../core/fs_platform.h"
 
 #include "sloppy/checked_math.h"
@@ -11,6 +15,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>

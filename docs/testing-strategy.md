@@ -69,7 +69,9 @@ the active `stdlib.fs` bridge. CORE-FS-01.E/F adds default native tests for dire
 temp, atomic, lock, binary FileHandle behavior, plus V8-gated smoke coverage for
 directory and handle intrinsics. CORE-FS-01.G adds default native watch coverage for
 create/modify/delete, stale close, no-event timeout, and unsupported recursive requests,
-plus V8-gated smoke coverage for watch open/next/close. Later CORE-FS slices must keep
+plus V8-gated smoke coverage for watch open/next/close. CORE-FS-02 adds default
+runtime-artifact boundary coverage showing Plan/bundle/source-map loading reaches the V8
+runtime boundary without an active app `stdlib.fs` feature. Later CORE-FS slices must keep
 security golden and example evidence separate.
 
 ENGINE-19.BC registers the current V8, HTTP, and async behavior under explicit conformance
@@ -91,6 +93,9 @@ ENGINE-02.E adds source-input process coverage. Default non-V8 tests prove
 V8-required runtime boundary. V8-gated conformance adds executable source-input hello and
 users-api-sqlite run-once cases. Source-input success in the default lane must not be
 reported as V8 execution success.
+CORE-FS-02 keeps fixture and trusted artifact reads separate from app filesystem policy:
+tests that read checked-in fixtures or runtime artifacts are bootstrap/tooling evidence,
+not proof that public `sloppy/fs` strict policy allowed or denied access.
 
 FRAMEWORK-01.B adds configuration coverage across Rust compiler tests, JS stdlib tests,
 compiler golden artifacts, source-input process tests, and the SQLite users API fixture.
@@ -353,6 +358,9 @@ Public API:
 - CORE-FS-01.I/J adds deterministic CLI doctor/audit filesystem goldens plus source
   examples for `fs-basic`, roots/policy, streams, and watch; these examples remain source
   evidence until compiler extraction supports the full app-facing `sloppy/fs` surface.
+- CORE-FS-02 adds runtime-artifact boundary coverage for artifact apps without
+  `stdlib.fs`; app-facing strict-policy behavior remains covered by filesystem policy
+  tests, not by trusted fixture reads.
 - bootstrap module examples are statically checked until compiler extraction, real plan
   emission, and runtime module loading exist.
 - bootstrap API-shape examples may be statically checked while compiler extraction, module

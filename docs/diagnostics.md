@@ -689,6 +689,13 @@ stable text and JSON goldens for doctor/audit output, permission-denied policy s
 unsupported platform behavior, watch overflow rendering, lock contention, and atomic-write
 cleanup failures.
 
+CORE-FS-02 separates runtime-owned artifact diagnostics from app-facing filesystem policy
+diagnostics. Missing `app.plan.json`, `app.js`, `app.js.map`, bootstrap stdlib assets, and
+source-input `sloppy.json` fail through stable CLI messages without exposing raw OS error
+strings. These trusted runtime reads may use low-level native filesystem helpers for
+platform path conversion, but they are not `stdlib.fs` capability denials and must not be
+reported as app filesystem policy evidence.
+
 ## Examples
 
 ### Permission Denied
@@ -880,6 +887,8 @@ Diagnostics foundation is accepted when:
 - CORE-FS-01.I/J covers filesystem capability visibility through
   `SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE`, `stdlib.fs.capabilities`, and
   `stdlib.fs.watch` doctor/audit goldens;
+- CORE-FS-02 covers trusted Plan/bundle/source-map/stdlib/config artifact loading as
+  runtime diagnostics rather than app filesystem diagnostics;
 - CORE-TIME-01.A/B covers the initial Time diagnostic code registry and representative
   JSON goldens for timeout, cancellation, disposed timer, and invalid delay;
 - CORE-TIME-01.C/D/G covers V8-gated native delay settlement, `Time.timeout` and

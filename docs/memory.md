@@ -57,7 +57,10 @@ primitives in the HTTP parser, request body accumulation, route-pattern copies, 
 matching edge tests, and dev response writer while preserving the current complete-buffer
 HTTP behavior. ENGINE-22.C has adopted shared arena string copies in Plan parsing, bounded
 string builders for artifact/source-map/stdlib path assembly in the current loader, and a
-post-parse bounded intern table for stable Plan metadata.
+post-parse bounded intern table for stable Plan metadata. CORE-FS-02 routes trusted CLI
+Plan/bundle/source-map/stdlib/config reads through the low-level native filesystem helper
+using caller-provided bounded storage, keeping that bootstrap access separate from the
+app-facing `sloppy/fs` V8 feature path.
 
 Allocator modules, a standalone heap-owned `SlBuf`, and remaining hot-path adoption remain
 deferred. ENGINE-21.D defines the narrow V8/native and SQLite/native string/blob interop
@@ -110,10 +113,12 @@ ENGINE-21 and ENGINE-22 are the strategic completion roadmap for this layer:
 - ENGINE-22 adopts those primitives in hot paths after they exist: HTTP parse/write/body
   adoption is implemented through ENGINE-22.A for current HTTP hot paths; Plan/artifact
   loader and stable parsed-Plan metadata adoption are implemented through ENGINE-22.C for
-  the current `sloppy run --artifacts` path; provider-neutral V8 bridge string conversion
-  adoption is implemented through ENGINE-22.D; SQLite row/result/parameter conversion is
-  implemented through ENGINE-22.E. Remaining diagnostics/source-frame expansion, broader
-  CLI output, and conformance/benchmark guards continue as later ENGINE-22 tasks.
+  the current `sloppy run --artifacts` path; CORE-FS-02 reuses the native filesystem
+  backend for trusted artifact reads without making those reads app `stdlib.fs`
+  operations; provider-neutral V8 bridge string conversion adoption is implemented through
+  ENGINE-22.D; SQLite row/result/parameter conversion is implemented through ENGINE-22.E.
+  Remaining diagnostics/source-frame expansion, broader CLI output, and conformance/
+  benchmark guards continue as later ENGINE-22 tasks.
 
 The current source audit and adoption map are
 `docs/project/post-core-mvp-memory-string-audit.md`. The archived primitive architecture

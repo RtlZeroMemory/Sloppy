@@ -15,6 +15,7 @@
 #include "sloppy/data_sqlserver.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/engine.h"
+#include "sloppy/fs.h"
 #include "sloppy/app_host.h"
 #include "sloppy/http.h"
 #include "sloppy/http_dispatch.h"
@@ -46,9 +47,12 @@
 #define SL_CLI_MAX_SCHEMA_PROPERTIES 32U
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
+#define SL_CLI_FILE_READ_SCRATCH_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
 #define SL_RUN_FILE_MAX_BYTES 65536U
 #define SL_RUN_STDLIB_FILE_MAX_BYTES 131072U
+#define SL_CLI_FILE_READ_MAX_BYTES SL_RUN_STDLIB_FILE_MAX_BYTES
+#define SL_CLI_FILE_READ_ARENA_BYTES (SL_CLI_FILE_READ_MAX_BYTES + SL_CLI_FILE_READ_SCRATCH_BYTES)
 #define SL_RUN_ARENA_BYTES 65536U
 #define SL_RUN_MAX_ROUTES SL_CLI_MAX_ROUTES
 #define SL_RUN_MAX_CLIENTS 4U
@@ -621,63 +625,67 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
 
 static int sl_read_file_with_messages(const char* path, unsigned char* buffer, size_t capacity,
                                       SlBytes* out, const char* not_found_prefix,
-                                      const char* size_prefix)
+                                      const char* size_prefix, const char* failed_read_prefix)
 {
-    FILE* file = NULL;
-    long size = 0L;
-    size_t bytes_read = 0U;
+    unsigned char read_storage[SL_CLI_FILE_READ_ARENA_BYTES];
+    SlArena arena = {0};
+    SlArena output_arena = {0};
+    SlOwnedBytes bytes = {0};
+    SlOwnedBytes copied = {0};
+    SlStatus status;
 
     if (path == NULL || buffer == NULL || out == NULL || not_found_prefix == NULL ||
-        size_prefix == NULL)
+        size_prefix == NULL || failed_read_prefix == NULL || capacity > SL_CLI_FILE_READ_MAX_BYTES)
     {
         return 1;
     }
+    *out = sl_bytes_from_parts(NULL, 0U);
 
-#ifdef _MSC_VER
-    if (fopen_s(&file, path, "rb") != 0) {
-        file = NULL;
+    status = sl_arena_init(&arena, read_storage, capacity + SL_CLI_FILE_READ_SCRATCH_BYTES);
+    if (!sl_status_is_ok(status)) {
+        return 1;
     }
-#else
-    file = fopen(path, "rb");
-#endif
 
-    if (file == NULL) {
+    /*
+     * Trusted runtime/tooling file reads use the Slop-owned native filesystem backend directly.
+     * They intentionally do not go through the public V8 `sloppy/fs` feature/capability path.
+     */
+    status = sl_fs_read_file(&arena, sl_str_from_cstr(path), &bytes, NULL);
+    if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
         sl_cli_write_error_with_value(not_found_prefix, path, "\n");
         return 1;
     }
-
-    if (fseek(file, 0L, SEEK_END) != 0) {
-        (void)fclose(file);
+    if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+        sl_cli_write_error_with_value(size_prefix, path, "\n");
+        return 1;
+    }
+    if (!sl_status_is_ok(status)) {
+        sl_cli_write_error_with_value(failed_read_prefix, path, "\n");
         return 1;
     }
 
-    size = ftell(file);
-    if (size <= 0L || (size_t)size > capacity) {
-        (void)fclose(file);
+    if (bytes.length == 0U || bytes.length > capacity) {
         sl_cli_write_error_with_value(size_prefix, path, "\n");
         return 1;
     }
 
-    if (fseek(file, 0L, SEEK_SET) != 0) {
-        (void)fclose(file);
+    status = sl_arena_init(&output_arena, buffer, capacity);
+    if (!sl_status_is_ok(status)) {
         return 1;
     }
-
-    bytes_read = fread(buffer, 1U, (size_t)size, file);
-    (void)fclose(file);
-    if (bytes_read != (size_t)size) {
+    status = sl_bytes_copy_to_arena(&output_arena, sl_owned_bytes_as_view(bytes), &copied);
+    if (!sl_status_is_ok(status)) {
         return 1;
     }
-
-    *out = sl_bytes_from_parts(buffer, bytes_read);
+    *out = sl_owned_bytes_as_view(copied);
     return 0;
 }
 
 static int sl_cli_read_file(const char* path, unsigned char* buffer, size_t capacity, SlBytes* out)
 {
     return sl_read_file_with_messages(
-        path, buffer, capacity, out,
-        "sloppy: metadata path not found: ", "sloppy: metadata file is empty or too large: ");
+        path, buffer, capacity, out, "sloppy: metadata path not found: ",
+        "sloppy: metadata file is empty or too large: ", "sloppy: metadata file read failed: ");
 }
 
 static bool sl_cli_write_span(FILE* file, SlCliSpan span)
@@ -1457,7 +1465,8 @@ static int sl_run_read_file(const char* path, unsigned char* buffer, size_t capa
 {
     return sl_read_file_with_messages(path, buffer, capacity, out,
                                       "sloppy run: artifact path not found: ",
-                                      "sloppy run: artifact file is empty or too large: ");
+                                      "sloppy run: artifact file is empty or too large: ",
+                                      "sloppy run: artifact file read failed: ");
 }
 
 static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size_t capacity,
@@ -1465,7 +1474,8 @@ static int sl_run_read_stdlib_file(const char* path, unsigned char* buffer, size
 {
     return sl_read_file_with_messages(
         path, buffer, capacity, out,
-        "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ");
+        "sloppy run: stdlib asset missing: ", "sloppy run: stdlib asset is empty or too large: ",
+        "sloppy run: stdlib asset read failed: ");
 }
 
 static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expected)
@@ -2771,25 +2781,14 @@ static bool sl_run_source_input_extension_supported(const char* path)
 
 static bool sl_run_file_exists(const char* path)
 {
-    FILE* file = NULL;
+    SlFsStat stat = {0};
 
     if (path == NULL || path[0] == '\0') {
         return false;
     }
 
-#ifdef _MSC_VER
-    if (fopen_s(&file, path, "rb") != 0) {
-        file = NULL;
-    }
-#else
-    file = fopen(path, "rb");
-#endif
-
-    if (file == NULL) {
-        return false;
-    }
-    (void)fclose(file);
-    return true;
+    return sl_status_is_ok(sl_fs_stat(sl_str_from_cstr(path), &stat, NULL)) && stat.exists &&
+           stat.kind == SL_FS_NODE_FILE;
 }
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value)
@@ -2908,7 +2907,8 @@ static int sl_run_parse_project_config(SlRunSourceConfig* out)
 
     if (sl_read_file_with_messages(SL_RUN_CONFIG_FILE, json_storage, sizeof(json_storage), &json,
                                    "sloppy run: project config not found: ",
-                                   "sloppy run: project config is empty or too large: ") != 0)
+                                   "sloppy run: project config is empty or too large: ",
+                                   "sloppy run: project config read failed: ") != 0)
     {
         return 1;
     }
@@ -3562,23 +3562,13 @@ static void sl_cli_doctor_emit_json(SlArena* arena, SlCliSpan id, SlCliSpan stat
 
 static bool sl_cli_path_exists(const char* path)
 {
-    FILE* file = NULL;
+    SlFsStat stat = {0};
 
     if (path == NULL || path[0] == '\0') {
         return false;
     }
-#ifdef _MSC_VER
-    if (fopen_s(&file, path, "rb") != 0) {
-        file = NULL;
-    }
-#else
-    file = fopen(path, "rb");
-#endif
-    if (file == NULL) {
-        return false;
-    }
-    (void)fclose(file);
-    return true;
+    return sl_status_is_ok(sl_fs_stat(sl_str_from_cstr(path), &stat, NULL)) && stat.exists &&
+           stat.kind == SL_FS_NODE_FILE;
 }
 
 static void sl_cli_doctor_emit(const SlCliOptions* options, SlArena* arena, SlCliSpan id,
