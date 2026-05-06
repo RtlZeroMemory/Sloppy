@@ -67,6 +67,15 @@ function requireArgv(command, args) {
     });
 }
 
+function isCancellationSignal(value) {
+    return (
+        value !== null &&
+        typeof value === "object" &&
+        typeof value.aborted === "boolean" &&
+        ("reason" in value || typeof value.addEventListener === "function")
+    );
+}
+
 function validateRunOptions(options) {
     const normalized = {
         capture: "text",
@@ -133,7 +142,7 @@ function validateRunOptions(options) {
         }
     }
     if (options.signal !== undefined) {
-        if (options.signal === null || typeof options.signal !== "object") {
+        if (!isCancellationSignal(options.signal)) {
             throw new TypeError("OS run signal must be a cancellation signal.");
         }
         if (options.signal.aborted === true) {

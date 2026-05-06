@@ -252,14 +252,41 @@ static void sl_os_posix_set_nonblock(int fd)
     }
 }
 
-static void sl_os_posix_capture_read(int fd, char* buffer, size_t capacity, size_t* inout_used,
+typedef enum SlOsPosixProcessErrorSource
+{
+    SL_OS_POSIX_PROCESS_ERROR_NONE = 0,
+    SL_OS_POSIX_PROCESS_ERROR_CHDIR = 1,
+    SL_OS_POSIX_PROCESS_ERROR_EXEC = 2,
+} SlOsPosixProcessErrorSource;
+
+typedef struct SlOsPosixProcessError
+{
+    int error;
+    uint8_t source;
+} SlOsPosixProcessError;
+
+static void sl_os_posix_close_fd(int* fd)
+{
+    if (*fd >= 0) {
+        (void)close(*fd);
+        *fd = -1;
+    }
+}
+
+static void sl_os_posix_close_pipe(int pipe_fds[2])
+{
+    sl_os_posix_close_fd(&pipe_fds[0]);
+    sl_os_posix_close_fd(&pipe_fds[1]);
+}
+
+static bool sl_os_posix_capture_read(int fd, char* buffer, size_t capacity, size_t* inout_used,
                                      bool* out_truncated)
 {
     char chunk[4096];
     ssize_t got;
 
     if (fd < 0) {
-        return;
+        return false;
     }
     got = read(fd, chunk, sizeof(chunk));
     if (got > 0) {
@@ -273,6 +300,19 @@ static void sl_os_posix_capture_read(int fd, char* buffer, size_t capacity, size
         }
         if (copy != (size_t)got) {
             *out_truncated = true;
+        }
+        return true;
+    }
+    return false;
+}
+
+static void sl_os_posix_capture_drain(int fd, char* buffer, size_t capacity, size_t* inout_used,
+                                      bool* out_truncated)
+{
+    while (sl_os_posix_capture_read(fd, buffer, capacity, inout_used, out_truncated)) {
+        if (*inout_used >= capacity) {
+            *out_truncated = true;
+            break;
         }
     }
 }
@@ -404,8 +444,34 @@ static SlStatus sl_os_posix_join_path(SlArena* arena, const char* directory, siz
     return sl_status_ok();
 }
 
+static SlStatus sl_os_posix_join_segment(SlArena* arena, const char* left, size_t left_len,
+                                         const char* right, size_t right_len, char** out)
+{
+    size_t separator = left_len == 0U ? 0U : 1U;
+    size_t offset = 0U;
+    void* memory = NULL;
+    SlStatus status =
+        sl_arena_alloc(arena, left_len + separator + right_len + 1U, _Alignof(char), &memory);
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = (char*)memory;
+    for (size_t index = 0U; index < left_len; index += 1U) {
+        (*out)[offset++] = left[index];
+    }
+    if (separator != 0U) {
+        (*out)[offset++] = '/';
+    }
+    for (size_t index = 0U; index < right_len; index += 1U) {
+        (*out)[offset++] = right[index];
+    }
+    (*out)[offset] = '\0';
+    return sl_status_ok();
+}
+
 static SlStatus sl_os_posix_resolve_command(SlArena* arena, const char* command, char** envp,
-                                            char** out)
+                                            const char* cwd, char** out)
 {
     const char* path = NULL;
     const char* segment = NULL;
@@ -426,16 +492,41 @@ static SlStatus sl_os_posix_resolve_command(SlArena* arena, const char* command,
             end += 1;
         }
         if (end == segment) {
-            SlStatus status = sl_os_posix_join_path(arena, ".", 1U, command, &candidate);
-            if (!sl_status_is_ok(status)) {
-                return status;
+            if (cwd != NULL) {
+                SlStatus status = sl_os_posix_join_path(arena, cwd, sl_str_from_cstr(cwd).length,
+                                                        command, &candidate);
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
+            }
+            else {
+                SlStatus status = sl_os_posix_join_path(arena, ".", 1U, command, &candidate);
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
             }
         }
         else {
-            SlStatus status =
-                sl_os_posix_join_path(arena, segment, (size_t)(end - segment), command, &candidate);
-            if (!sl_status_is_ok(status)) {
-                return status;
+            if (cwd != NULL && *segment != '/') {
+                char* cwd_segment = NULL;
+                SlStatus status =
+                    sl_os_posix_join_segment(arena, cwd, sl_str_from_cstr(cwd).length, segment,
+                                             (size_t)(end - segment), &cwd_segment);
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
+                status = sl_os_posix_join_path(
+                    arena, cwd_segment, sl_str_from_cstr(cwd_segment).length, command, &candidate);
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
+            }
+            else {
+                SlStatus status = sl_os_posix_join_path(arena, segment, (size_t)(end - segment),
+                                                        command, &candidate);
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
             }
         }
         if (access(candidate, X_OK) == 0) {
@@ -512,7 +603,7 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_os_posix_resolve_command(arena, command_cstr, envp, &exec_path);
+    status = sl_os_posix_resolve_command(arena, command_cstr, envp, cwd_cstr, &exec_path);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -534,16 +625,29 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
             return status;
         }
         stderr_buffer = (char*)memory;
-        if (pipe(stdout_pipe) != 0 || pipe(stderr_pipe) != 0) {
+        if (pipe(stdout_pipe) != 0) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        if (pipe(stderr_pipe) != 0) {
+            sl_os_posix_close_pipe(stdout_pipe);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
     }
     if (pipe(error_pipe) != 0) {
+        if (capture) {
+            sl_os_posix_close_pipe(stdout_pipe);
+            sl_os_posix_close_pipe(stderr_pipe);
+        }
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     (void)fcntl(error_pipe[1], F_SETFD, FD_CLOEXEC);
     child = fork();
     if (child < 0) {
+        if (capture) {
+            sl_os_posix_close_pipe(stdout_pipe);
+            sl_os_posix_close_pipe(stderr_pipe);
+        }
+        sl_os_posix_close_pipe(error_pipe);
         return sl_os_posix_process_fail(SL_DIAG_OS_PROCESS_START_FAILED, out_diag,
                                         sl_str_from_cstr("process start failed"),
                                         sl_str_from_cstr("fork failed before process admission."));
@@ -551,8 +655,9 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     if (child == 0) {
         int devnull = -1;
         if (cwd_cstr != NULL && chdir(cwd_cstr) != 0) {
-            int err = errno;
-            (void)write(error_pipe[1], &err, sizeof(err));
+            SlOsPosixProcessError error = {.error = errno,
+                                           .source = SL_OS_POSIX_PROCESS_ERROR_CHDIR};
+            (void)write(error_pipe[1], &error, sizeof(error));
             _exit(126);
         }
         if (capture) {
@@ -569,7 +674,8 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         execve(exec_path, argv, envp);
         {
             int err = errno;
-            (void)write(error_pipe[1], &err, sizeof(err));
+            SlOsPosixProcessError error = {.error = err, .source = SL_OS_POSIX_PROCESS_ERROR_EXEC};
+            (void)write(error_pipe[1], &error, sizeof(error));
             _exit(err == ENOENT ? 127 : 126);
         }
     }
@@ -612,10 +718,10 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         sl_os_posix_sleep_poll();
     }
     if (capture) {
-        sl_os_posix_capture_read(stdout_pipe[0], stdout_buffer, stdout_capacity, &stdout_used,
-                                 &out->stdout_truncated);
-        sl_os_posix_capture_read(stderr_pipe[0], stderr_buffer, stderr_capacity, &stderr_used,
-                                 &out->stderr_truncated);
+        sl_os_posix_capture_drain(stdout_pipe[0], stdout_buffer, stdout_capacity, &stdout_used,
+                                  &out->stdout_truncated);
+        sl_os_posix_capture_drain(stderr_pipe[0], stderr_buffer, stderr_capacity, &stderr_used,
+                                  &out->stderr_truncated);
         stdout_buffer[stdout_used] = '\0';
         stderr_buffer[stderr_used] = '\0';
         out->stdout_text = (SlOwnedStr){.ptr = stdout_buffer, .length = stdout_used};
@@ -624,17 +730,19 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         (void)close(stderr_pipe[0]);
     }
     {
-        int exec_error = 0;
-        ssize_t got = read(error_pipe[0], &exec_error, sizeof(exec_error));
+        SlOsPosixProcessError process_error = {0};
+        ssize_t got = read(error_pipe[0], &process_error, sizeof(process_error));
         (void)close(error_pipe[0]);
-        if (got == (ssize_t)sizeof(exec_error)) {
-            if (exec_error == ENOENT) {
+        if (got == (ssize_t)sizeof(process_error)) {
+            if (process_error.source == SL_OS_POSIX_PROCESS_ERROR_EXEC &&
+                (process_error.error == ENOENT || process_error.error == ENOTDIR))
+            {
                 return sl_os_posix_process_fail(
                     SL_DIAG_OS_COMMAND_NOT_FOUND, out_diag,
                     sl_str_from_cstr("command was not found"),
                     sl_str_from_cstr("Process APIs execute explicit argv only."));
             }
-            if (exec_error == ENOTDIR) {
+            if (process_error.source == SL_OS_POSIX_PROCESS_ERROR_CHDIR) {
                 return sl_os_posix_process_fail(
                     SL_DIAG_OS_INVALID_CWD, out_diag,
                     sl_str_from_cstr("process working directory is invalid"),

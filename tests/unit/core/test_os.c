@@ -71,7 +71,7 @@ static int process_child_main(int argc, char** argv)
         return 0;
     }
     if (argc >= 3 && strcmp(argv[2], "long") == 0) {
-        for (int index = 0; index < 128; index += 1) {
+        for (int index = 0; index < 8192; index += 1) {
             putchar('x');
         }
         return 0;
@@ -472,6 +472,17 @@ static int test_process_run_capture_bound(const char* self_path)
     }
     if (!result.stdout_truncated || result.stdout_text.length != 12U) {
         return 101;
+    }
+    result = (SlOsProcessRunResult){0};
+    options.max_stdout_bytes = 9000U;
+    options.max_stderr_bytes = 12U;
+    if (expect_status(sl_os_process_run(&arena, &policy, self, args, 2U, &options, &result, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 102;
+    }
+    if (result.stdout_truncated || result.stdout_text.length != 8192U) {
+        return 103;
     }
     return 0;
 }

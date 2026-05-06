@@ -90,7 +90,7 @@ try {
         stderr: "",
         timedOut: false,
     });
-    assert.deepEqual(await Process.run("tool", [], { deadline: { remainingMs: () => Infinity }, signal: {} }), {
+    assert.deepEqual(await Process.run("tool", [], { deadline: { remainingMs: () => Infinity }, signal: { aborted: false, reason: undefined } }), {
         command: "tool",
         args: [],
         options: {
@@ -109,9 +109,10 @@ try {
         "SLOPPY_E_OS_PROCESS_TIMEOUT",
     );
     await assertOsRejects(
-        Process.run("tool", [], { signal: { aborted: true } }),
+        Process.run("tool", [], { signal: { aborted: true, reason: "cancelled" } }),
         "SLOPPY_E_OS_PROCESS_CANCELLED",
     );
+    await assert.rejects(Process.run("tool", [], { signal: {} }), TypeError);
     await assert.rejects(Process.run("tool", ["bad\0arg"]), TypeError);
 } finally {
     if (previousSloppy === undefined) {

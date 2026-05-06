@@ -5283,8 +5283,10 @@ Reason:
                 normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.ceil(remaining));
             }
         }
-        if (options.signal !== undefined && (options.signal === null || typeof options.signal !== "object")) {
-            throw new TypeError("OS run signal must be a cancellation signal.");
+        if (options.signal !== undefined) {
+            if (!isCancellationSignal(options.signal)) {
+                throw new TypeError("OS run signal must be a cancellation signal.");
+            }
         }
         if (options.signal?.aborted === true) {
             throw sloppyOsError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
