@@ -1,3 +1,4 @@
+#include "sloppy/builder.h"
 #include "sloppy/os.h"
 
 #include <stdbool.h>
@@ -90,14 +91,12 @@ static int process_child_main(int argc, char** argv)
     }
     if (argc >= 4 && strcmp(argv[2], "env") == 0) {
 #ifdef _WIN32
-        char* value = NULL;
-        size_t value_length = 0U;
-        if (_dupenv_s(&value, &value_length, argv[3]) == 0 && value != NULL) {
+        char value[4096];
+        DWORD value_length = GetEnvironmentVariableA(argv[3], value, (DWORD)sizeof(value));
+        if (value_length != 0U && value_length < sizeof(value)) {
             printf("%s\n", value);
-            free(value);
             return 0;
         }
-        free(value);
         return 4;
 #else
         const char* value = getenv(argv[3]);
@@ -122,6 +121,219 @@ static SlStr self_process_path(char* buffer, size_t capacity, const char* fallba
     (void)capacity;
 #endif
     return sl_str_from_cstr(fallback);
+}
+
+#ifdef _WIN32
+static int win32_copy_nul_from_str(char* buffer, size_t capacity, SlStr value)
+{
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+
+    if (expect_status(sl_string_builder_init_fixed(&builder, buffer, capacity), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_string_builder_append_str(&builder, value), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_view_with_nul(&builder, &view), SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    return 0;
+}
+
+static int win32_build_probe_dir(char* probe_dir, size_t capacity)
+{
+    char temp_path[MAX_PATH + 1U];
+    DWORD temp_length = GetTempPathA((DWORD)sizeof(temp_path), temp_path);
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+
+    if (temp_length == 0U || temp_length >= sizeof(temp_path)) {
+        return 66;
+    }
+    if (expect_status(sl_string_builder_init_fixed(&builder, probe_dir, capacity), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_string_builder_append_cstr(&builder, temp_path), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_cstr(&builder, "SloppyOsPathProbe_"),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_u64(&builder, (uint64_t)GetCurrentProcessId()),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_view_with_nul(&builder, &view), SL_STATUS_OK) != 0)
+    {
+        return 67;
+    }
+    return 0;
+}
+
+static int win32_build_probe_path(char* probe_path, size_t capacity, const char* probe_dir,
+                                  const char* probe_name)
+{
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+
+    if (expect_status(sl_string_builder_init_fixed(&builder, probe_path, capacity), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_string_builder_append_cstr(&builder, probe_dir), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_char(&builder, '\\'), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_cstr(&builder, probe_name), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_view_with_nul(&builder, &view), SL_STATUS_OK) != 0)
+    {
+        return 69;
+    }
+    return 0;
+}
+
+static int win32_prepend_probe_dir_to_path(const char* probe_dir, char* old_path,
+                                           size_t old_path_capacity, bool* had_old_path,
+                                           char* new_path, size_t new_path_capacity)
+{
+    DWORD old_path_length = GetEnvironmentVariableA("PATH", old_path, (DWORD)old_path_capacity);
+    SlStringBuilder builder = {0};
+    SlStr view = {0};
+
+    *had_old_path = false;
+    if (old_path_length != 0U) {
+        if (old_path_length >= old_path_capacity) {
+            return 71;
+        }
+        *had_old_path = true;
+    }
+    if (expect_status(sl_string_builder_init_fixed(&builder, new_path, new_path_capacity),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_cstr(&builder, probe_dir), SL_STATUS_OK) != 0)
+    {
+        return 71;
+    }
+    if (*had_old_path &&
+        (expect_status(sl_string_builder_append_char(&builder, ';'), SL_STATUS_OK) != 0 ||
+         expect_status(sl_string_builder_append_cstr(&builder, old_path), SL_STATUS_OK) != 0))
+    {
+        return 71;
+    }
+    if (expect_status(sl_string_builder_view_with_nul(&builder, &view), SL_STATUS_OK) != 0) {
+        return 71;
+    }
+    return _putenv_s("PATH", new_path) == 0 ? 0 : 72;
+}
+
+static int win32_prepare_path_probe(const char* self_path, const char* probe_name, char* probe_dir,
+                                    size_t probe_dir_capacity, char* probe_path,
+                                    size_t probe_path_capacity, char* old_path,
+                                    size_t old_path_capacity, bool* had_old_path, char* new_path,
+                                    size_t new_path_capacity)
+{
+    int outcome = win32_build_probe_dir(probe_dir, probe_dir_capacity);
+
+    if (outcome != 0) {
+        return outcome;
+    }
+    if (!CreateDirectoryA(probe_dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
+        return 68;
+    }
+    outcome = win32_build_probe_path(probe_path, probe_path_capacity, probe_dir, probe_name);
+    if (outcome != 0) {
+        return outcome;
+    }
+    if (!CopyFileA(self_path, probe_path, FALSE)) {
+        return 70;
+    }
+    return win32_prepend_probe_dir_to_path(probe_dir, old_path, old_path_capacity, had_old_path,
+                                           new_path, new_path_capacity);
+}
+
+static int win32_run_path_lookup_probe(SlArena* arena, const SlOsPolicy* policy,
+                                       const char* probe_name)
+{
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("echo")};
+    SlOsProcessRunOptions run_options = {.capture = SL_OS_PROCESS_CAPTURE_TEXT};
+    SlOsProcessRunResult result = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_os_process_run(arena, policy, sl_str_from_cstr(probe_name), args, 2U,
+                                        &run_options, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.exit_code != 7 ||
+        !str_contains(sl_owned_str_as_view(result.stdout_text), "child-output"))
+    {
+        return 73;
+    }
+    return 0;
+}
+
+static int win32_start_path_lookup_probe(SlArena* arena, const SlOsPolicy* policy,
+                                         const char* probe_name)
+{
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("echo")};
+    SlOsProcessStartOptions start_options = {.stdout_mode = SL_OS_PROCESS_PIPE_PIPE};
+    SlOsProcessHandle* handle = NULL;
+    SlOsProcessPipeRead stdout_read = {0};
+    SlOsProcessExit exit = {0};
+    SlDiag diag = {0};
+    int outcome = 0;
+
+    if (expect_status(sl_os_process_start(arena, policy, sl_str_from_cstr(probe_name), args, 2U,
+                                          &start_options, &handle, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_wait(handle, NULL, &exit, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_stdout_read(arena, handle, 256U, &stdout_read, &diag),
+                      SL_STATUS_OK) != 0 ||
+        exit.exit_code != 7 ||
+        !str_contains(sl_owned_str_as_view(stdout_read.bytes), "child-output"))
+    {
+        outcome = 74;
+    }
+    sl_os_process_dispose(handle);
+    return outcome;
+}
+#endif
+
+static int test_process_windows_path_lookup(const char* self_path)
+{
+#ifdef _WIN32
+    const char* probe_name = "sloppy-os-path-probe.exe";
+    unsigned char storage[524288];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    char self_storage[4096];
+    char self_nul[4096];
+    char probe_dir[MAX_PATH + 1U] = {0};
+    char probe_path[MAX_PATH + 1U] = {0};
+    char new_path[32768];
+    char old_path[32768];
+    bool had_old_path = false;
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    int outcome = 0;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 64;
+    }
+    if (self.length == 0U || win32_copy_nul_from_str(self_nul, sizeof(self_nul), self) != 0) {
+        return 65;
+    }
+    outcome = win32_prepare_path_probe(self_nul, probe_name, probe_dir, sizeof(probe_dir),
+                                       probe_path, sizeof(probe_path), old_path, sizeof(old_path),
+                                       &had_old_path, new_path, sizeof(new_path));
+    if (outcome != 0) {
+        goto cleanup;
+    }
+    outcome = win32_run_path_lookup_probe(&arena, &policy, probe_name);
+    if (outcome != 0) {
+        goto cleanup;
+    }
+    outcome = win32_start_path_lookup_probe(&arena, &policy, probe_name);
+
+cleanup:
+    if (had_old_path) {
+        (void)_putenv_s("PATH", old_path);
+    }
+    else {
+        (void)_putenv_s("PATH", "");
+    }
+    (void)DeleteFileA(probe_path);
+    (void)RemoveDirectoryA(probe_dir);
+    return outcome;
+#else
+    (void)self_path;
+    return 0;
+#endif
 }
 
 static int test_system_info_is_normalized(void)
@@ -668,6 +880,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_process_run_captures_explicit_argv(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+    result = test_process_windows_path_lookup(argv[0]);
     if (result != 0) {
         return result;
     }

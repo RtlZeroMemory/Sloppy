@@ -31,6 +31,7 @@
 struct SlV8TimeRequest;
 struct SlV8CryptoPasswordRequest;
 struct SlV8NetRequest;
+struct SlV8OsRequest;
 
 struct SlV8Engine
 {
@@ -65,6 +66,9 @@ struct SlV8Engine
     std::mutex net_mutex;
     std::vector<std::shared_ptr<SlV8NetRequest>> net_requests;
     bool net_shutting_down = false;
+    std::mutex os_mutex;
+    std::vector<std::shared_ptr<SlV8OsRequest>> os_requests;
+    bool os_shutting_down = false;
     SlProviderInstanceExecutor fs_executor = {};
     std::array<SlProviderExecutorSlot, 32U> fs_slots = {};
     bool fs_executor_initialized = false;
@@ -92,6 +96,7 @@ void sl_v8_net_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_os_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                  v8::Local<v8::Object> sloppy);
+void sl_v8_os_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_codec_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                     v8::Local<v8::Object> sloppy);

@@ -28,6 +28,21 @@ assertOsError(() => Signals.onShutdown(() => {}), "SLOPPY_E_OS_FEATURE_UNAVAILAB
 
 const previousSloppy = globalThis.__sloppy;
 try {
+    const bridgeProcesses = new Map();
+    let nextProcessSlot = 1;
+
+    function processKey(handle) {
+        assert.equal(typeof handle?.slot, "number");
+        assert.equal(typeof handle?.generation, "number");
+        return `${handle.slot}:${handle.generation}`;
+    }
+
+    function processState(handle) {
+        const state = bridgeProcesses.get(processKey(handle));
+        assert.notEqual(state, undefined);
+        return state;
+    }
+
     globalThis.__sloppy = {
         ...(previousSloppy ?? {}),
         os: {
@@ -62,43 +77,54 @@ try {
                 };
             },
             processStart(command, args, options) {
-                let disposed = false;
-                let stdoutReads = 0;
-                return {
+                const handle = Object.freeze({ slot: nextProcessSlot++, generation: 1 });
+                bridgeProcesses.set(processKey(handle), {
                     command,
                     args,
                     options,
-                    readStdout(maxBytes) {
-                        assert.equal(maxBytes, 16);
-                        stdoutReads += 1;
-                        return disposed || stdoutReads > 2 ? "" : "alpha\nbeta\n";
-                    },
-                    readStderr() {
-                        return "";
-                    },
-                    writeStdin(value) {
-                        assert.equal(value, "input");
-                        return value.length;
-                    },
-                    closeStdin() {
-                        return undefined;
-                    },
-                    wait(waitOptions) {
-                        return { exitCode: 0, timedOut: waitOptions.timeoutMs === 1 };
-                    },
-                    terminate() {
-                        return { killed: true };
-                    },
-                    kill() {
-                        return { killed: true };
-                    },
-                    cancel() {
-                        return { cancelled: true };
-                    },
-                    dispose() {
-                        disposed = true;
-                    },
-                };
+                    disposed: false,
+                    stdoutReads: 0,
+                });
+                return handle;
+            },
+            processReadStdout(handle, maxBytes) {
+                const state = processState(handle);
+                assert.equal(maxBytes, 16);
+                state.stdoutReads += 1;
+                return state.disposed || state.stdoutReads > 2 ? "" : "alpha\nbeta\n";
+            },
+            processReadStderr() {
+                return "";
+            },
+            processWriteStdin(handle, value) {
+                processState(handle);
+                assert.equal(value, "input");
+                return value.length;
+            },
+            processCloseStdin(handle) {
+                processState(handle);
+                return undefined;
+            },
+            processWait(handle, waitOptions) {
+                processState(handle);
+                return { exitCode: 0, timedOut: waitOptions.timeoutMs === 1 };
+            },
+            processTerminate(handle) {
+                processState(handle);
+                return { killed: true };
+            },
+            processKill(handle) {
+                processState(handle);
+                return { killed: true };
+            },
+            processCancel(handle) {
+                processState(handle);
+                return { cancelled: true };
+            },
+            processDispose(handle) {
+                const state = processState(handle);
+                state.disposed = true;
+                bridgeProcesses.delete(processKey(handle));
             },
             signalsOnShutdown(handler) {
                 this.shutdownHandler = handler;
@@ -164,11 +190,18 @@ try {
     await assert.rejects(Process.run("tool", ["bad\0arg"]), TypeError);
 
     const proc = await Process.start("tool", ["arg"], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
-    assert.deepEqual(proc._handle.command, "tool");
-    assert.deepEqual(proc._handle.args, ["arg"]);
-    assert.deepEqual(proc._handle.options, { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    assert.deepEqual(proc._handle, { slot: 1, generation: 1 });
+    assert.equal(processState(proc._handle).command, "tool");
+    assert.deepEqual(processState(proc._handle).args, ["arg"]);
+    assert.deepEqual(processState(proc._handle).options, { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    await assert.rejects(proc.stdin.write(42), TypeError);
     assert.equal(await proc.stdin.writeText("input"), 5);
     assert.equal(await proc.stdout.readText(16), "alpha\nbeta\n");
+    await assert.rejects(async () => {
+        for await (const _line of proc.stdout.readLines("bad")) {
+            // unreachable
+        }
+    }, TypeError);
     const lines = [];
     for await (const line of proc.stdout.readLines({ chunkSize: 16 })) {
         lines.push(line);

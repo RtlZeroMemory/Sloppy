@@ -117,9 +117,10 @@ CORE-OS-01.D adds the explicit-argv `Process.run` facade and native run helper.
 CORE-OS-01.E/F adds the native `Process.start` foundation, opaque ProcessHandle, streaming
 pipe helpers, and bootstrap JS handle facade. CORE-OS-01.G adds the bootstrap
 `Signals.onShutdown` facade. CORE-OS-01.I adds OS doctor/audit goldens, source examples,
-and conformance indexing for the visible metadata/redaction lane. The V8 process bridge
-and native platform signal loop remain deferred until their bounded host-scheduling lanes
-land.
+and conformance indexing for the visible metadata/redaction lane. The CORE-OS-01
+stabilization sweep adds the V8 explicit-argv process bridge through owner-thread-safe
+async settlement; the native platform signal loop remains deferred until app-lifecycle
+integration can report platform support honestly.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
@@ -266,8 +267,8 @@ The codec descriptor is active for V8 plans after CORE-CODEC-01.C/D/I registered
 bootstrap JS surface, and Compression uses bounded native zlib gzip/gunzip helpers through
 that namespace. Checksum backends remain a future slice. The OS descriptor is Plan-visible
 and the bootstrap/native System, Environment, Process, and Signals surfaces are available
-for their scoped CORE-OS-01 lanes; the V8 process bridge and native platform signal loop
-remain deferred.
+for their scoped CORE-OS-01 lanes. The V8 process bridge is available for explicit-argv
+run/start when `stdlib.os` is active; the native platform signal loop remains deferred.
 
 ## Schema Sections
 

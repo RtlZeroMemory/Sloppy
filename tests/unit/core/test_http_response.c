@@ -240,7 +240,7 @@ static int test_capacity_failure_returns_empty_output(void)
 
 static int test_stream_descriptor_normalizes_null_chunks(void)
 {
-    SlHttpResponseStreamChunk chunks[1] = {{0}};
+    SlHttpResponseStreamChunk chunks[1] = {0};
     SlHttpResponse response =
         sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), NULL, 1U);
 

@@ -81,8 +81,9 @@ Environment API surface, explicit-argv process helper behavior, bootstrap proces
 and shutdown-handler facades, Plan-visible OS capability vocabulary, source example shape,
 and doctor/audit redaction metadata. They do not prove shell execution, Node
 `child_process` compatibility, Deno compatibility, PTY behavior, daemon supervision,
-native process bridge scheduling, platform signal loop integration, package readiness,
-public alpha status, benchmark evidence, or production performance.
+platform signal loop integration, package readiness, public alpha status, benchmark
+evidence, or production performance. V8-gated gates prove the OS process bridge only when
+the compatible V8 SDK is configured and `conformance.v8.runtime_bridge` runs.
 CORE-CODEC-01 gates must report codec evidence by lane. PRs that only add the
 `stdlib.codec` contract, Plan metadata, diagnostics, and backend policy do not prove
 Base64/Hex/Text/Binary/Compression/Checksum correctness, V8 execution, package readiness,
