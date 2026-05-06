@@ -1,9 +1,9 @@
 # Local IPC API Architecture
 
-Status: CORE-NET-02.A/B/F source of truth. This document defines the first local IPC API
-contract, platform policy, diagnostics, and filesystem path policy for `sloppy/net`.
-Backends, streams, doctor/audit output, examples, and conformance evidence land in later
-CORE-NET-02 slices.
+Status: CORE-NET-02.A/B/F/G source of truth. This document defines the first local IPC
+API contract, platform policy, diagnostics, filesystem path policy, and native stream
+lifecycle policy for `sloppy/net`. Doctor/audit output, examples, and final conformance
+evidence land in later CORE-NET-02 slices.
 
 ## Goals
 
@@ -68,6 +68,19 @@ for await (const conn of server.acceptLoop({ signal })) {
 The JavaScript surface currently validates the API shape and fails with
 `SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE` when no local backend bridge is active. It does
 not fake backend success.
+
+The native C surface keeps compatibility wrappers for existing callers and adds explicit
+I/O option forms for stream operations:
+
+- `sl_local_connection_read_ex`;
+- `sl_local_connection_write_ex`;
+- `sl_local_connection_read_until_ex`;
+- `sl_local_connection_read_line_ex`;
+- `sl_local_connection_write_text_ex`.
+
+`SlLocalIoOptions` carries per-operation `timeout_ms` and a caller-owned
+`SlCancellationToken` snapshot. Existing non-`_ex` functions behave as unbounded blocking
+operations with no cancellation token.
 
 ## Path And Filesystem Policy
 
@@ -167,6 +180,15 @@ and `SlLocalServer` contract. The backend accepts explicit normalized pipe names
 Windows, rejects named-root/relative path shapes before backend admission, and fails
 honestly for POSIX-style `permissions` and `unlinkExisting`.
 
+IPC-next-4 adds native stream deadline/cancellation options across both backend paths.
+Read/write options distinguish caller cancellation from deadline expiry by returning the
+`SlCancellationToken` status code for pre-cancelled tokens and
+`SL_STATUS_DEADLINE_EXCEEDED` for backend wait timeouts. Bounded read buffers and
+`read_until`/`read_line` maximums remain deterministic backpressure limits and preserve
+binary data, including embedded NUL bytes. POSIX connect timeouts remain unsupported until
+that backend has a nonblocking connect contract; the existing unsupported diagnostic is
+intentional.
+
 Cross-thread data is copied or owned before crossing domains. Promise settlement happens
 on the V8 owner thread. Cleanup is exactly once across success, failure, cancellation,
 timeout, disposal, shutdown, abort, and late completion. Late completion is cleanup-only.
@@ -175,12 +197,12 @@ timeout, disposal, shutdown, abort, and late completion. Late completion is clea
 
 PR1 covers contract, option validation, diagnostics, and docs. IPC-next-2 adds POSIX
 native backend evidence, and IPC-next-3 adds Windows named pipe native backend evidence.
-Neither backend PR is V8 `LocalEndpoint` execution evidence.
+IPC-next-4 adds native deadline/cancellation and stream-bound evidence. These backend PRs
+are not V8 `LocalEndpoint` execution evidence.
 
 Deferred to later CORE-NET-02 PRs:
 
 - V8 bridge resource integration for executable local connections/servers;
-- streams, backpressure, deadline, and cancellation hardening;
 - doctor/audit goldens;
 - source examples and conformance indexes;
 - platform-gated integration tests.
