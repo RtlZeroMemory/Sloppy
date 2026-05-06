@@ -159,8 +159,13 @@ IPC-next-2 adds the native POSIX `AF_UNIX` stream backend behind `SlLocalConnect
 `SlLocalServer`. The backend accepts already-resolved filesystem paths, applies opt-in
 stale socket cleanup only for existing socket files, rejects ordinary files/directories as
 endpoint collisions, applies POSIX mode bits where `chmod` can enforce them, and keeps file
-descriptors private. Windows builds compile honest unsupported stubs until the named pipe
-backend lands.
+descriptors private.
+
+IPC-next-3 adds the native Windows named pipe backend behind the same `SlLocalConnection`
+and `SlLocalServer` contract. The backend accepts explicit normalized pipe names in the
+`\\.\pipe\name` namespace, keeps `HANDLE` values private, rejects POSIX Unix sockets on
+Windows, rejects named-root/relative path shapes before backend admission, and fails
+honestly for POSIX-style `permissions` and `unlinkExisting`.
 
 Cross-thread data is copied or owned before crossing domains. Promise settlement happens
 on the V8 owner thread. Cleanup is exactly once across success, failure, cancellation,
@@ -169,12 +174,11 @@ timeout, disposal, shutdown, abort, and late completion. Late completion is clea
 ## Evidence Boundaries
 
 PR1 covers contract, option validation, diagnostics, and docs. IPC-next-2 adds POSIX
-native backend evidence only; it is not named pipe evidence and is not V8
-`LocalEndpoint` execution evidence.
+native backend evidence, and IPC-next-3 adds Windows named pipe native backend evidence.
+Neither backend PR is V8 `LocalEndpoint` execution evidence.
 
 Deferred to later CORE-NET-02 PRs:
 
-- Windows named pipe backend;
 - V8 bridge resource integration for executable local connections/servers;
 - streams, backpressure, deadline, and cancellation hardening;
 - doctor/audit goldens;

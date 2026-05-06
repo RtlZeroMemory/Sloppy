@@ -7,7 +7,7 @@ Parent EPIC: #582 CORE-NET-02: Local IPC: Unix Domain Sockets and Windows Named 
 | #593 | API contract and platform policy | PR IPC-1 defines `LocalEndpoint`, `UnixSocket`, `NamedPipe`, platform support, and non-goals. |
 | #594 | Feature, Plan, capability, and diagnostics model | PR IPC-1 keeps `stdlib.net`, network capability metadata, and adds stable local IPC diagnostics. |
 | #595 | Unix domain socket backend | IPC-next-2 adds the native POSIX Unix domain socket backend and POSIX-gated loopback/stale cleanup tests. V8 bridge execution remains deferred. |
-| #596 | Windows named pipe backend | Deferred to Windows backend PR. |
+| #596 | Windows named pipe backend | IPC-next-3 adds the native Win32 named pipe backend and Windows-gated tests. |
 | #597 | LocalEndpoint JS API | PR IPC-1 adds validating stdlib surface that fails honestly until backend bridge functions land. Backend integration is deferred. |
 | #598 | Path/FS policy, stale cleanup, permissions | PR IPC-1 defines named-root-only endpoint paths, stale cleanup rules, and permission-mode policy. |
 | #599 | Streams, backpressure, deadline, cancellation | Deferred to lifecycle/streams PR after both backend paths exist. |
@@ -15,10 +15,10 @@ Parent EPIC: #582 CORE-NET-02: Local IPC: Unix Domain Sockets and Windows Named 
 
 ## Current Completion Boundary
 
-IPC-1 is a policy and contract PR. IPC-next-2 adds native POSIX Unix socket execution but
-does not expose successful V8 `LocalEndpoint` calls yet. Windows named pipes, executable V8
-local IPC bridge calls, doctor/audit output, examples, public alpha docs, and
-benchmark/performance claims remain deferred.
+IPC-1 is a policy and contract PR. IPC-next-2 adds native POSIX Unix socket execution, and
+IPC-next-3 adds native Windows named pipe execution. Successful V8 `LocalEndpoint` bridge
+calls, doctor/audit output, examples, public alpha docs, and benchmark/performance claims
+remain deferred.
 
 ## PR Sequence
 
