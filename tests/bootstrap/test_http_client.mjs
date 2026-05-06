@@ -311,6 +311,19 @@ await withNodeNetBridge(async () => {
 });
 
 await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n");
+
+    try {
+        const response = await HttpClient.request({ url: `${server.url}/head`, method: "HEAD" });
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.bytes(), new Uint8Array(0));
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
     const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n");
 
     try {
@@ -392,6 +405,31 @@ await withNodeNetBridge(async () => {
 
 await withNodeNetBridge(async () => {
     const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        if (request.target === "/dirty-empty") {
+            return "HTTP/1.1 204 No Content\r\nContent-Length: 4\r\n\r\njunk";
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.deepEqual(await (await client.get("/dirty-empty", { timeoutMs: 1000 })).bytes(), new Uint8Array(0));
+        assert.equal(await (await client.get("/after-dirty", { timeoutMs: 1000 })).text(), "ok");
+
+        assert.deepEqual(observed.map((request) => request.target), ["/dirty-empty", "/after-dirty"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 2);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
     const server = await startHttpServer((request, context) => {
         observed.push({ target: request.target, connectionId: context.connectionId });
         return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
@@ -407,6 +445,30 @@ await withNodeNetBridge(async () => {
 
         assert.deepEqual(observed.map((request) => request.target), ["/stale-one", "/stale-two"]);
         assert.equal(new Set(observed.map((request) => request.connectionId)).size, 2);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.equal(await (await client.get("/warm")).text(), "ok");
+        await assertRejectsMessage(
+            () => client.post("/unsafe", { text: "abc", timeoutMs: 1000 }),
+            /SLOPPY_E_HTTP_CLIENT_/,
+        );
+
+        assert.deepEqual(observed.map((request) => request.target), ["/warm"]);
     } finally {
         await server.close();
     }
@@ -759,11 +821,39 @@ await assertRejectsMessage(
     /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
 );
 
+await assertRejectsMessage(
+    () => HttpClient.get("http://127.0.0.1/", "not options"),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
+assert.throws(
+    () => HttpClient.create("not options"),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
+await assertRejectsMessage(
+    () => HttpClient.get("http://127.0.0.1/", { headers: { "x-test": "a\0b" } }),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
+);
+
 await withNodeNetBridge(async () => {
     const server = await startHttpServer(() => "wat\r\n\r\n");
     try {
         await assertRejectsMessage(
             () => HttpClient.get(`${server.url}/malformed`),
+            /SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE/,
+        );
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const longHeader = "a".repeat(64);
+    const server = await startHttpServer(() => `HTTP/1.1 200 OK\r\nX-Long: ${longHeader}\r\nContent-Length: 0\r\n\r\n`);
+    try {
+        await assertRejectsMessage(
+            () => HttpClient.get(`${server.url}/too-many-headers`, { maxHeaderBytes: 32 }),
             /SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE/,
         );
     } finally {
@@ -846,6 +936,21 @@ await withNodeNetBridge(async () => {
 await assertRejectsMessage(
     () => HttpClient.get("http://127.0.0.1/deadline", { deadline: Deadline.after(0) }),
     /SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT/,
+);
+
+await withNodeNetBridge(async () => {
+    const body = "x".repeat(1024);
+    const server = await startHttpServer(() => `HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\n\r\n${body}`);
+    try {
+        assert.equal(await HttpClient.text(`${server.url}/size-string`, { maxResponseBytes: "1kb" }), body);
+    } finally {
+        await server.close();
+    }
+});
+
+await assertRejectsMessage(
+    () => HttpClient.get("http://127.0.0.1/", { maxResponseBytes: "4 parsecs" }),
+    /SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS/,
 );
 
 await withNodeNetBridge(async () => {

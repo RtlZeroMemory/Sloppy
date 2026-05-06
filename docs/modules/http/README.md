@@ -12,10 +12,13 @@ cleartext `http://` HTTP/1.1 request/response path for bounded loopback-tested u
 also exposes bounded helper methods for `text`, `json`, `bytes`, `getJson`, `postJson`,
 request `json` bodies, base URL/path joining, bounded async-iterable request body
 consumption, response `stream()` iteration over buffered bodies, and operation-wide
-`timeoutMs`/`deadline`/`signal` handling. It implements bounded redirects, per-origin
-HTTP/1.1 pooling for reusable clients, strict-network preconnect denial, DNS-failure
-mapping, cross-origin sensitive-header stripping/denial, source-shape examples, and
-doctor/audit goldens for named/static/dynamic outbound-client metadata. It does not
+`timeoutMs`/`deadline`/`signal` handling. Size options accept integer byte counts or
+explicit unit strings such as `"4mb"`. It implements bounded redirects, per-origin
+HTTP/1.1 pooling for reusable clients, safe-method-only stale pooled connection retry,
+strict-network preconnect denial, DNS-failure mapping, cross-origin sensitive-header
+stripping/denial, source-shape examples, and doctor/audit goldens for
+named/static/dynamic outbound-client metadata. `HEAD` and body-forbidden status responses
+expose empty bodies and dirty body metadata/bytes prevent pooled reuse. It does not
 implement HTTPS/TLS, proxy policy, true socket-level streaming, automatic compiler
 inference of static outbound target literals, or live external network evidence.
 
