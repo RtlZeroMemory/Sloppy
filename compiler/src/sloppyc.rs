@@ -1342,6 +1342,38 @@ fn sloppy_net_import_name_supported(name: &str) -> bool {
     )
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SloppyStdlibImport {
+    Fs,
+    Time,
+    Crypto,
+    Net,
+}
+
+impl SloppyStdlibImport {
+    fn from_source(source: &str) -> Option<Self> {
+        match source {
+            "sloppy/fs" => Some(Self::Fs),
+            "sloppy/time" => Some(Self::Time),
+            "sloppy/crypto" => Some(Self::Crypto),
+            "sloppy/net" => Some(Self::Net),
+            _ => None,
+        }
+    }
+
+    fn name_supported(self, name: &str) -> bool {
+        match self {
+            Self::Fs => matches!(
+                name,
+                "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
+            ),
+            Self::Time => sloppy_time_import_name_supported(name),
+            Self::Crypto => sloppy_crypto_import_name_supported(name),
+            Self::Net => sloppy_net_import_name_supported(name),
+        }
+    }
+}
+
 fn validate_module_sloppy_import(
     path: &Path,
     import: &ImportDeclaration<'_>,
@@ -1438,6 +1470,50 @@ fn import_has_runtime_value_specifier(import: &ImportDeclaration<'_>) -> bool {
     })
 }
 
+fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImport) {
+    match kind {
+        SloppyStdlibImport::Fs => state.fs_imported = true,
+        SloppyStdlibImport::Time => state.time_imported = true,
+        SloppyStdlibImport::Crypto => state.crypto_imported = true,
+        SloppyStdlibImport::Net => state.net_imported = true,
+    }
+}
+
+fn handle_sloppy_stdlib_import(
+    import_source: &str,
+    import: &ImportDeclaration<'_>,
+    state: &mut AppState,
+    kind: SloppyStdlibImport,
+) {
+    let Some(specifiers) = &import.specifiers else {
+        state.unsupported_import_specifier = Some((import_source.to_string(), import.source.span));
+        return;
+    };
+    if specifiers.is_empty() {
+        state.unsupported_import_specifier = Some((import_source.to_string(), import.source.span));
+        return;
+    }
+    for specifier in specifiers {
+        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+            state.unsupported_import_specifier =
+                Some((import_source.to_string(), import.source.span));
+            return;
+        };
+        let imported = specifier.imported.name().as_str();
+        let local = specifier.local.name.as_str();
+        if kind.name_supported(imported) && imported == local {
+            if import_specifier_is_runtime_value(import, specifier) {
+                mark_sloppy_stdlib_runtime_import(state, kind);
+            }
+        } else {
+            if kind.name_supported(imported) {
+                state.unsupported_import_alias = true;
+            }
+            state.unsupported_import_name = Some((imported.to_string(), specifier.span));
+        }
+    }
+}
+
 fn extract_import(
     path: &Path,
     graph: &ModuleGraph,
@@ -1501,142 +1577,8 @@ fn extract_import(
         return Ok(());
     }
 
-    if import_source == "sloppy/fs" {
-        if let Some(specifiers) = &import.specifiers {
-            if specifiers.is_empty() {
-                state.unsupported_import_specifier =
-                    Some((import_source.to_string(), import.source.span));
-                return Ok(());
-            }
-            for specifier in specifiers {
-                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
-                    state.unsupported_import_specifier =
-                        Some((import_source.to_string(), import.source.span));
-                    return Ok(());
-                };
-                let imported = specifier.imported.name().as_str();
-                let local = specifier.local.name.as_str();
-                if matches!(
-                    imported,
-                    "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
-                ) && imported == local
-                {
-                    if import_specifier_is_runtime_value(import, specifier) {
-                        state.fs_imported = true;
-                    }
-                } else {
-                    if matches!(
-                        imported,
-                        "File" | "Directory" | "Path" | "FileHandle" | "FileWatcher"
-                    ) {
-                        state.unsupported_import_alias = true;
-                    }
-                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
-                }
-            }
-        } else {
-            state.unsupported_import_specifier =
-                Some((import_source.to_string(), import.source.span));
-        }
-        return Ok(());
-    }
-
-    if import_source == "sloppy/time" {
-        if let Some(specifiers) = &import.specifiers {
-            if specifiers.is_empty() {
-                state.unsupported_import_specifier =
-                    Some((import_source.to_string(), import.source.span));
-                return Ok(());
-            }
-            for specifier in specifiers {
-                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
-                    state.unsupported_import_specifier =
-                        Some((import_source.to_string(), import.source.span));
-                    return Ok(());
-                };
-                let imported = specifier.imported.name().as_str();
-                let local = specifier.local.name.as_str();
-                if sloppy_time_import_name_supported(imported) && imported == local {
-                    if import_specifier_is_runtime_value(import, specifier) {
-                        state.time_imported = true;
-                    }
-                } else {
-                    if sloppy_time_import_name_supported(imported) {
-                        state.unsupported_import_alias = true;
-                    }
-                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
-                }
-            }
-        } else {
-            state.unsupported_import_specifier =
-                Some((import_source.to_string(), import.source.span));
-        }
-        return Ok(());
-    }
-
-    if import_source == "sloppy/crypto" {
-        if let Some(specifiers) = &import.specifiers {
-            if specifiers.is_empty() {
-                state.unsupported_import_specifier =
-                    Some((import_source.to_string(), import.source.span));
-                return Ok(());
-            }
-            for specifier in specifiers {
-                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
-                    state.unsupported_import_specifier =
-                        Some((import_source.to_string(), import.source.span));
-                    return Ok(());
-                };
-                let imported = specifier.imported.name().as_str();
-                let local = specifier.local.name.as_str();
-                if sloppy_crypto_import_name_supported(imported) && imported == local {
-                    if import_specifier_is_runtime_value(import, specifier) {
-                        state.crypto_imported = true;
-                    }
-                } else {
-                    if sloppy_crypto_import_name_supported(imported) {
-                        state.unsupported_import_alias = true;
-                    }
-                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
-                }
-            }
-        } else {
-            state.unsupported_import_specifier =
-                Some((import_source.to_string(), import.source.span));
-        }
-        return Ok(());
-    }
-
-    if import_source == "sloppy/net" {
-        if let Some(specifiers) = &import.specifiers {
-            if specifiers.is_empty() {
-                state.unsupported_import_specifier =
-                    Some((import_source.to_string(), import.source.span));
-                return Ok(());
-            }
-            for specifier in specifiers {
-                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
-                    state.unsupported_import_specifier =
-                        Some((import_source.to_string(), import.source.span));
-                    return Ok(());
-                };
-                let imported = specifier.imported.name().as_str();
-                let local = specifier.local.name.as_str();
-                if sloppy_net_import_name_supported(imported) && imported == local {
-                    if import_specifier_is_runtime_value(import, specifier) {
-                        state.net_imported = true;
-                    }
-                } else {
-                    if sloppy_net_import_name_supported(imported) {
-                        state.unsupported_import_alias = true;
-                    }
-                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
-                }
-            }
-        } else {
-            state.unsupported_import_specifier =
-                Some((import_source.to_string(), import.source.span));
-        }
+    if let Some(kind) = SloppyStdlibImport::from_source(import_source) {
+        handle_sloppy_stdlib_import(import_source, import, state, kind);
         return Ok(());
     }
 
@@ -6958,6 +6900,54 @@ export default app;
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert!(plan.get("requiredFeatures").is_none());
         assert!(plan["features"].get("network").is_none());
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn function_module_type_only_sloppy_time_import_does_not_emit_required_feature() {
+        let root = fixture_temp_dir("function-module-type-only-time-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("jobs.ts"),
+            r#"import { Results } from "sloppy";
+import type { Deadline } from "sloppy/time";
+
+export function jobsModule(app) {
+    app.get("/jobs", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { jobsModule } from "./modules/jobs.ts";
+
+const app = Sloppy.create();
+app.useModule(jobsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let input = root.join("input.ts");
+        fs::write(&input, source).expect("fixture input should be writable");
+        let app = extract(&input, source).expect("fixture should extract");
+        assert!(!app.uses_time_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results } = __sloppyRuntime;"));
+        assert!(!emitted_js.source.contains("Deadline"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert!(plan.get("requiredFeatures").is_none());
+        assert!(plan["features"].get("time").is_none());
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }
