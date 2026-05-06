@@ -98,14 +98,14 @@ Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, comp
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
 standards scanning, Rust standards scanning, and a lightweight docs freshness structure
 check.
-CI currently favors pre-alpha iteration speed over always-on full-matrix coverage. Normal
-pull requests and pushes to `main` run the fast lane: static hygiene, standards/docs
-scanners, Rust checks for non-docs changes, and a Windows native configure/build/CTest
-smoke for non-docs changes. The full non-V8 matrix remains available through manual
-`workflow_dispatch` runs and pull requests explicitly labeled `full-ci`; it should be run
-before release-readiness decisions, risky cross-platform changes, or the Alpha MVP gate.
-Benchmark list/smoke checks may run as correctness smoke, but performance deltas are not a
-normal hard gate yet.
+CI currently favors pre-alpha iteration speed while preserving default cross-platform
+evidence. Normal pull requests and pushes to `main` run static hygiene, standards/docs
+scanners, Rust checks for non-docs changes, a Windows native configure/build/CTest smoke,
+and the non-V8 Linux/macOS platform matrix for non-docs changes. Manual
+`workflow_dispatch` runs and pull requests explicitly labeled `full-ci` force the full
+non-V8 validation lane and should be used before release-readiness decisions, risky
+cross-platform changes, or the Alpha MVP gate. Benchmark list/smoke checks may run as
+correctness smoke, but performance deltas are not a normal hard gate yet.
 
 Default gate success must be reported as default non-V8 evidence. It does not prove V8
 runtime execution, live PostgreSQL or SQL Server behavior, package release readiness,
@@ -347,31 +347,34 @@ CI behavior:
 
 ## CI Gates
 
-CI cancels stale runs for the same pull request or ref. The default fast lane runs on pull
+CI cancels stale runs for the same pull request or ref. The default lane runs on pull
 request updates and pushes to `main` and covers:
 
 - static/generated artifact hygiene and `git diff --check`;
 - platform, C, JS/TS, Rust standards, and docs freshness scanners;
 - Rust format, clippy, and tests once for non-docs changes, outside the OS/compiler matrix;
 - a Windows clang-cl configure/build/CTest smoke plus C/C++ format check for non-docs
-  changes.
+  changes;
+- Linux clang, Linux gcc, and macOS clang configure/build/CTest plus POSIX standards
+  checks for non-docs changes.
 
 Docs-only changes may skip native and Rust build jobs and run only the static fast checks.
 Mixed changes do not use the docs-only shortcut. This skip is an iteration-speed policy,
 not proof that native/runtime behavior was validated.
 
-Full CI is opt-in during pre-alpha iteration. Manual `workflow_dispatch` runs and pull
-requests labeled `full-ci` run the non-V8 validation matrix:
+Manual `workflow_dispatch` runs and pull requests labeled `full-ci` force the non-V8
+validation matrix even when the changed-path classifier would otherwise treat the update as
+docs-only:
 
 - `ci-full / windows`: Windows clang-cl through `windows-dev`;
-- `ci-full / linux-clang`: Linux clang through `linux-clang`;
-- `ci-full / linux-gcc`: Linux gcc through `linux-gcc`;
-- `ci-full / macos`: macOS clang through `macos-clang`;
+- `ci-platform / linux-clang`: Linux clang through `linux-clang`;
+- `ci-platform / linux-gcc`: Linux gcc through `linux-gcc`;
+- `ci-platform / macos`: macOS clang through `macos-clang`;
 - `rust`: Cargo format, clippy, and tests.
 
 When branch protection is reintroduced or the project reaches the Alpha MVP gate, the
-branch-protection target should move back toward the full validation lane. Until then, fast
-jobs are the default development signal and full jobs are explicit evidence runs.
+branch-protection target should use the default cross-platform lane plus any additional
+release evidence that has become mandatory by then.
 
 Each full platform job should run:
 
