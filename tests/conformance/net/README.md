@@ -22,12 +22,13 @@ Network conformance is split by lane:
   static target, dynamic/partial target, and strict-network metadata without leaking
   URLs, headers, cookies, bearer tokens, API keys, or TLS-sensitive material;
 - default source examples: `examples.net.api_shape` checks TCP client, listener, echo,
-  strict-policy, deadline/cancellation, and HTTP client examples for the supported public
-  API shape and rejects obvious Node/Bun/Deno, package-manager, benchmark, and
+  strict-policy, deadline/cancellation, LocalEndpoint local IPC, and HTTP client examples
+  for the supported public API shape and rejects obvious Node/Bun/Deno, package-manager, benchmark, and
   adjacent-protocol claims;
 - bootstrap JavaScript stdlib evidence: `bootstrap.stdlib.app_host_foundation` executes
   the ESM stdlib with deterministic native-hook fakes and verifies `TcpClient`,
-  `TcpListener`, `TcpConnection`, and `NetworkAddress` surface behavior;
+  `TcpListener`, `TcpConnection`, `LocalEndpoint`, `UnixSocket`, `NamedPipe`, and
+  `NetworkAddress` surface behavior;
 - outbound HTTP client evidence: `bootstrap.stdlib.http_client` verifies the cleartext
   HTTP/1.1 request/response lane over the TCP bridge with deterministic loopback
   status/header/body, body-consumption, malformed-response, body-limit, HTTPS-unavailable,
@@ -41,10 +42,10 @@ Network conformance is split by lane:
   client/listener loopback smoke, promise settlement through the V8 owner-thread path, and
   inactive-feature gating when a V8 SDK is configured.
 
-CORE-NET-02.A/B/F adds local IPC API validation and stable diagnostic shapes under the
-same `stdlib.net` feature. This is not Unix domain socket or Windows named pipe backend
-execution, TLS, HTTP server behavior beyond the existing inbound lanes, UDP, WebSocket,
-Node/Bun/Deno compatibility, direct
-WinSock/epoll/kqueue/io_uring backend evidence, crypto implementation, package-manager
-behavior, public alpha documentation, benchmark evidence, stress/torture evidence, or
-external live-network proof.
+CORE-NET-02 adds POSIX-gated Unix domain socket native tests, Windows-gated named pipe
+native tests, local IPC API validation, stable diagnostic shapes, V8 bridge wiring, and
+doctor/audit/source-example evidence under the same `stdlib.net` feature. This is not TLS,
+HTTP server behavior beyond the existing inbound lanes, UDP, WebSocket, Node/Bun/Deno
+compatibility, direct WinSock/epoll/kqueue/io_uring public API exposure, crypto
+implementation, package-manager behavior, public alpha documentation, benchmark evidence,
+stress/torture evidence, or external live-network proof.

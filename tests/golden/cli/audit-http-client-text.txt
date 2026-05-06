@@ -1,6 +1,6 @@
 Sloppy Audit
 
-[note] SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE network capabilities are policy-visible for sloppy/net; no OS sandbox or external live-network evidence is implemented (capabilities)
+[note] SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE network capabilities are policy-visible for sloppy/net, including LocalEndpoint metadata; no OS sandbox or external live-network evidence is implemented (capabilities)
 [note] SLOPPY_AUDIT_HTTP_CLIENT_PLAN_VISIBLE HttpClient is Plan-visible as stdlib.httpclient (requiredFeatures)
 [note] SLOPPY_AUDIT_HTTP_CLIENTS_VISIBLE HTTP client named-client metadata is visible without secret values (httpClients)
 [note] SLOPPY_AUDIT_HTTP_CLIENT_STATIC_TARGET static outbound HTTP target metadata is visible without leaking URLs or headers (httpClients)

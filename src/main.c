@@ -4253,8 +4253,9 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
     }
     if (has_network) {
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE",
-                          "network capabilities are policy-visible for sloppy/net; no OS sandbox "
-                          "or external live-network evidence is implemented",
+                          "network capabilities are policy-visible for sloppy/net, including "
+                          "LocalEndpoint metadata; no OS sandbox or external live-network "
+                          "evidence is implemented",
                           "capabilities", findings, errors);
     }
 }

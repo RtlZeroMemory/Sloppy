@@ -1,5 +1,5 @@
 {
   "findings": [
-    { "severity": "note", "code": "SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE", "message": "network capabilities are policy-visible for sloppy/net; no OS sandbox or external live-network evidence is implemented", "path": "capabilities" }
+    { "severity": "note", "code": "SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE", "message": "network capabilities are policy-visible for sloppy/net, including LocalEndpoint metadata; no OS sandbox or external live-network evidence is implemented", "path": "capabilities" }
   ]
 }

@@ -11,6 +11,7 @@
     { "id": "stdlib.net.capabilities", "status": "ok", "message": "network capability metadata is visible to sloppy/net policy checks" },
     { "id": "stdlib.net.connect", "status": "ok", "message": "network connect capability metadata is present" },
     { "id": "stdlib.net.listen", "status": "ok", "message": "network listen capability metadata is present" },
-    { "id": "stdlib.net.policy", "status": "ok", "message": "network targets are policy-visible; doctor/audit goldens exercise connect/listen metadata without external network access" }
+    { "id": "stdlib.net.policy", "status": "ok", "message": "network targets are policy-visible; doctor/audit goldens exercise connect/listen metadata without external network access" },
+    { "id": "stdlib.net.local-ipc", "status": "ok", "message": "LocalEndpoint uses named-root local IPC paths and platform-specific Unix socket or named pipe backends without exposing native handles" }
   ]
 }

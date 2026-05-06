@@ -26,6 +26,8 @@ set(policy_app "${PROJECT_SOURCE_DIR}/examples/net-policy-strict/app.js")
 set(policy_readme "${PROJECT_SOURCE_DIR}/examples/net-policy-strict/README.md")
 set(deadline_app "${PROJECT_SOURCE_DIR}/examples/net-deadline-cancel/app.js")
 set(deadline_readme "${PROJECT_SOURCE_DIR}/examples/net-deadline-cancel/README.md")
+set(local_ipc_app "${PROJECT_SOURCE_DIR}/examples/net-local-ipc/app.js")
+set(local_ipc_readme "${PROJECT_SOURCE_DIR}/examples/net-local-ipc/README.md")
 set(http_client_app "${PROJECT_SOURCE_DIR}/examples/http-client-basic/app.js")
 set(http_client_readme "${PROJECT_SOURCE_DIR}/examples/http-client-basic/README.md")
 
@@ -35,6 +37,7 @@ foreach(required_file IN ITEMS
         "${echo_app}" "${echo_readme}"
         "${policy_app}" "${policy_readme}"
         "${deadline_app}" "${deadline_readme}"
+        "${local_ipc_app}" "${local_ipc_readme}"
         "${http_client_app}" "${http_client_readme}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing Network example file: ${required_file}")
@@ -51,6 +54,8 @@ file(READ "${policy_app}" policy_source)
 file(READ "${policy_readme}" policy_readme_source)
 file(READ "${deadline_app}" deadline_source)
 file(READ "${deadline_readme}" deadline_readme_source)
+file(READ "${local_ipc_app}" local_ipc_source)
+file(READ "${local_ipc_readme}" local_ipc_readme_source)
 file(READ "${http_client_app}" http_client_source)
 file(READ "${http_client_readme}" http_client_readme_source)
 
@@ -117,6 +122,23 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "import { LocalEndpoint, NamedPipe, UnixSocket } from \"sloppy/net\";"
+        "LocalEndpoint.listen({"
+        "path: \"runtime:/local-echo.sock\""
+        "unlinkExisting: true"
+        "permissions: \"0600\""
+        "server.accept({ timeoutMs: 1000 })"
+        "readUntil(new Uint8Array([0]), { maxBytes: 65536"
+        "await conn.write(payload, { timeoutMs: 1000 })"
+        "LocalEndpoint.connect({ path: \"runtime:/local-echo.sock\", timeoutMs: 1000 })"
+        "await client.read({ maxBytes: 3, timeoutMs: 1000 })"
+        "UnixSocket.connect({ path: \"runtime:/daemon.sock\" })"
+        "NamedPipe.connect({ path: \"runtime:/daemon.sock\" })")
+    require_substring("${local_ipc_source}" "${required_pattern}"
+                      "examples/net-local-ipc/app.js is missing expected local IPC API shape")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "import { HttpClient } from \"sloppy/net\";"
         "HttpClient.create({"
         "baseUrl: \"https://billing.example.test\""
@@ -136,7 +158,7 @@ endforeach()
 
 foreach(source IN ITEMS
         "${client_source}" "${server_source}" "${echo_source}" "${policy_source}"
-        "${deadline_source}" "${http_client_source}")
+        "${deadline_source}" "${local_ipc_source}" "${http_client_source}")
     foreach(forbidden_pattern IN ITEMS
             "node:net"
             "require(\"net\")"
@@ -160,7 +182,8 @@ endforeach()
 
 foreach(readme_source IN ITEMS
         "${client_readme_source}" "${server_readme_source}" "${echo_readme_source}"
-        "${policy_readme_source}" "${deadline_readme_source}" "${http_client_readme_source}")
+        "${policy_readme_source}" "${deadline_readme_source}" "${local_ipc_readme_source}"
+        "${http_client_readme_source}")
     foreach(required_pattern IN ITEMS
             "TLS"
             "HTTP"

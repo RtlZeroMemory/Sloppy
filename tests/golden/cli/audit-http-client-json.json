@@ -1,6 +1,6 @@
 {
   "findings": [
-    { "severity": "note", "code": "SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE", "message": "network capabilities are policy-visible for sloppy/net; no OS sandbox or external live-network evidence is implemented", "path": "capabilities" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE", "message": "network capabilities are policy-visible for sloppy/net, including LocalEndpoint metadata; no OS sandbox or external live-network evidence is implemented", "path": "capabilities" },
     { "severity": "note", "code": "SLOPPY_AUDIT_HTTP_CLIENT_PLAN_VISIBLE", "message": "HttpClient is Plan-visible as stdlib.httpclient", "path": "requiredFeatures" },
     { "severity": "note", "code": "SLOPPY_AUDIT_HTTP_CLIENTS_VISIBLE", "message": "HTTP client named-client metadata is visible without secret values", "path": "httpClients" },
     { "severity": "note", "code": "SLOPPY_AUDIT_HTTP_CLIENT_STATIC_TARGET", "message": "static outbound HTTP target metadata is visible without leaking URLs or headers", "path": "httpClients" },

@@ -34,6 +34,11 @@
       "id": "stdlib.net.policy",
       "status": "ok",
       "message": "network targets are policy-visible; doctor/audit goldens exercise connect/listen metadata without external network access"
+    },
+    {
+      "id": "stdlib.net.local-ipc",
+      "status": "ok",
+      "message": "LocalEndpoint uses named-root local IPC paths and platform-specific Unix socket or named pipe backends without exposing native handles"
     }
   ]
 }
