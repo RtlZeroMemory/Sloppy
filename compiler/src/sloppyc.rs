@@ -28,6 +28,9 @@ use crate::validation::{
 const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
 const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
 const STDLIB_VERSION: &str = "0.1.0";
+
+// CODEC_EXPORTS is the public codec contract shared by import validation and runtime
+// export emission.
 const CODEC_EXPORTS: &[&str] = &[
     "Base64",
     "Base64Url",

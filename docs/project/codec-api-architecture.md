@@ -124,11 +124,13 @@ const crc = Checksums.crc32(bytes);
 
 - `Binary.reader(bytes)` is bounds-checked and advances only after a successful read.
 - Endian is method-explicit: `u16le`, `u16be`, `u32le`, `u32be`, and matching signed forms.
-- `u8`, `i8`, `u16`, `i16`, `u32`, `i32`, `u64`, and `i64` are selected where the JS
-  surface can represent the result honestly. 64-bit integer behavior must be documented
-  before implementation, likely `bigint`.
-- Float32/Float64 are selected only if PR 3 adds IEEE-754 vectors and deterministic
-  cross-platform behavior.
+- `u8`, `i8`, `u16`, `i16`, `u32`, and `i32` return JavaScript `number`.
+- `u64` and `i64` return JavaScript `bigint`; writers accept `bigint` for those widths
+  and fail on values outside `0..=2^64-1` or `-(2^63)..=(2^63-1)` instead of wrapping or
+  truncating. Signed reads sign-extend into the documented `bigint` range, and endian
+  suffixes control byte order only.
+- Float32/Float64 are selected only if a future IEEE-754 validation PR adds deterministic
+  cross-platform vectors.
 - Reader position, seek, and remaining are explicit. Negative seeks and overflow fail.
 - Writer growth is bounded by an explicit max-capacity option or runtime default. Growth
   uses checked arithmetic and Slop buffer primitives.
