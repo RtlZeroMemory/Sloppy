@@ -733,7 +733,7 @@ if(SLOPPY_ENABLE_TESTS)
         target_link_libraries(core_http_transport PRIVATE ${SLOPPY_LIBUV_TARGET})
         add_test(
             NAME conformance.transport.localhost_mvp
-            COMMAND $<TARGET_FILE:core_http_transport>)
+            COMMAND $<TARGET_FILE:core_http_transport> --without-bounded-smoke)
         set_tests_properties(
             conformance.transport.localhost_mvp PROPERTIES LABELS "conformance;transport;http")
         foreach(
@@ -747,12 +747,12 @@ if(SLOPPY_ENABLE_TESTS)
                   conformance.transport.streaming_response
                   conformance.transport.backpressure
                   conformance.transport.shutdown_cancel)
-            add_test(NAME ${test_name} COMMAND $<TARGET_FILE:core_http_transport>)
+            add_test(NAME ${test_name} COMMAND $<TARGET_FILE:core_http_transport> --without-bounded-smoke)
             set_tests_properties(${test_name} PROPERTIES LABELS "conformance;transport;http")
         endforeach()
         add_test(
             NAME smoke.transport.keep_alive_streaming_bounded
-            COMMAND $<TARGET_FILE:core_http_transport>)
+            COMMAND $<TARGET_FILE:core_http_transport> --bounded-smoke-only)
         set_tests_properties(
             smoke.transport.keep_alive_streaming_bounded PROPERTIES LABELS "smoke;transport;http")
     endif()

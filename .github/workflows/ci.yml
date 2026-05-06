@@ -403,6 +403,9 @@ jobs:
               break
             fi
           done
+          if ! dpkg-query -W -f='${Status}' autoconf-archive 2>/dev/null | grep -q "install ok installed"; then
+            missing=("${packages[@]}")
+          fi
 
           if [ "${#missing[@]}" -gt 0 ]; then
             sudo apt-get update
