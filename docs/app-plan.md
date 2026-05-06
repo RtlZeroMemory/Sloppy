@@ -112,9 +112,14 @@ gzip/gunzip and bounded async-iterable gzip/gunzip transforms. CORE-CODEC-01.H/J
 CRC32 plus a static doctor warning when checksum use is visible in security-looking
 contexts.
 CORE-OS-01.A/B adds the `stdlib.os` descriptor and compiler activation for `sloppy/os`.
-The feature is known but unavailable by default until later OS runtime slices register the
-V8/stdlib surface; requiring it today fails closed instead of pretending that environment
-access, process execution, or signals exist.
+CORE-OS-01.C/H partial makes the feature available for System and Environment runtime use;
+CORE-OS-01.D adds the explicit-argv `Process.run` facade and native run helper.
+CORE-OS-01.E/F adds the native `Process.start` foundation, opaque ProcessHandle, streaming
+pipe helpers, and bootstrap JS handle facade. CORE-OS-01.G adds the bootstrap
+`Signals.onShutdown` facade. CORE-OS-01.I adds OS doctor/audit goldens, source examples,
+and conformance indexing for the visible metadata/redaction lane. The V8 process bridge
+and native platform signal loop remain deferred until their bounded host-scheduling lanes
+land.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
@@ -238,8 +243,16 @@ stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/
 `sloppy/providers/sqlite` to `provider.sqlite`.
 `HttpClient` named imports from `sloppy/net` map to the separate `stdlib.httpclient`
 feature because the outbound HTTP client has a distinct pipeline/transport/TLS policy
-from raw TCP. That feature is known to Plan validation but unavailable until the
-CORE-HTTPCLIENT implementation PRs provide the native backend.
+from raw TCP. That feature is active for V8 plans after CORE-HTTPCLIENT-01.D and depends
+on `stdlib.net` for the cleartext HTTP/1.1 request/response lane. The current lane also
+has helper methods, buffered stream helpers, operation-wide deadline/cancellation,
+per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping, strict-network
+denial, cross-origin sensitive-header strip/deny defaults, and doctor/audit metadata
+goldens for named/static/dynamic outbound HTTP client facts. V8 builds activate the
+existing private `__sloppy.net` bridge for `stdlib.httpclient`; a separate HTTP-native
+intrinsic namespace is not required for this HTTP/1.1-first surface. HTTPS/TLS, proxy
+policy, true socket-level streaming, and automatic compiler inference of static target
+literals remain future CORE-HTTPCLIENT work.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
 Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.I
 registered vetted random/hash/HMAC/password/non-crypto hash backends, the
@@ -252,8 +265,9 @@ The codec descriptor is active for V8 plans after CORE-CODEC-01.C/D/I registered
 `__sloppy.codec` namespace; Base64/Base64Url/Hex/Text and Binary are implemented in the
 bootstrap JS surface, and Compression uses bounded native zlib gzip/gunzip helpers through
 that namespace. Checksum backends remain a future slice. The OS descriptor is Plan-visible
-after CORE-OS-01.A/B, but remains unavailable until System, Environment, Process, and
-Signals implementation slices land.
+and the bootstrap/native System, Environment, Process, and Signals surfaces are available
+for their scoped CORE-OS-01 lanes; the V8 process bridge and native platform signal loop
+remain deferred.
 
 ## Schema Sections
 
@@ -503,7 +517,9 @@ adds core, advanced, and FileHandle filesystem operations behind feature-gated V
 registration; CORE-FS-01.G adds watch resources behind `fs.watch`; CORE-FS-01.I/J adds
 filesystem doctor/audit goldens and source examples that prove metadata visibility.
 CORE-NET-01.I adds network doctor/audit goldens and source examples that prove
-`connect`/`listen` metadata visibility. No capability entry creates an OS sandbox.
+`connect`/`listen` metadata visibility. CORE-OS-01.I adds OS doctor/audit goldens and
+source examples that prove OS/env/process/signal metadata visibility without values or
+native handles. No capability entry creates an OS sandbox.
 
 ### permissions
 

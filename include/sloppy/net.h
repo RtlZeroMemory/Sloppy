@@ -3,6 +3,7 @@
 
 #include "sloppy/arena.h"
 #include "sloppy/bytes.h"
+#include "sloppy/cancellation.h"
 #include "sloppy/diagnostics.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -17,6 +18,8 @@ extern "C" {
 
 typedef struct SlTcpConnection SlTcpConnection;
 typedef struct SlTcpListener SlTcpListener;
+typedef struct SlLocalConnection SlLocalConnection;
+typedef struct SlLocalServer SlLocalServer;
 
 typedef enum SlNetworkAddressFamily
 {
@@ -45,6 +48,33 @@ typedef enum SlTcpListenerState
     SL_TCP_LISTENER_ABORTED = 4,
     SL_TCP_LISTENER_FAILED = 5
 } SlTcpListenerState;
+
+typedef enum SlLocalEndpointBackend
+{
+    SL_LOCAL_ENDPOINT_BACKEND_AUTO = 0,
+    SL_LOCAL_ENDPOINT_BACKEND_UNIX = 1,
+    SL_LOCAL_ENDPOINT_BACKEND_NAMED_PIPE = 2
+} SlLocalEndpointBackend;
+
+typedef enum SlLocalConnectionState
+{
+    SL_LOCAL_CONNECTION_CONNECTING = 0,
+    SL_LOCAL_CONNECTION_CONNECTED = 1,
+    SL_LOCAL_CONNECTION_CLOSING = 2,
+    SL_LOCAL_CONNECTION_CLOSED = 3,
+    SL_LOCAL_CONNECTION_ABORTED = 4,
+    SL_LOCAL_CONNECTION_FAILED = 5
+} SlLocalConnectionState;
+
+typedef enum SlLocalServerState
+{
+    SL_LOCAL_SERVER_UNBOUND = 0,
+    SL_LOCAL_SERVER_LISTENING = 1,
+    SL_LOCAL_SERVER_CLOSING = 2,
+    SL_LOCAL_SERVER_CLOSED = 3,
+    SL_LOCAL_SERVER_ABORTED = 4,
+    SL_LOCAL_SERVER_FAILED = 5
+} SlLocalServerState;
 
 typedef struct SlNetworkEndpoint
 {
@@ -84,9 +114,88 @@ typedef struct SlTcpAcceptOptions
     uint32_t timeout_ms;
 } SlTcpAcceptOptions;
 
+typedef struct SlLocalConnectOptions
+{
+    SlStr path;
+    SlLocalEndpointBackend backend;
+    bool has_timeout_ms;
+    uint32_t timeout_ms;
+    size_t read_buffer_capacity;
+    const SlCancellationToken* cancellation;
+} SlLocalConnectOptions;
+
+typedef struct SlLocalListenOptions
+{
+    SlStr path;
+    SlLocalEndpointBackend backend;
+    bool unlink_existing;
+    bool has_permissions;
+    uint16_t permissions;
+    uint32_t backlog;
+    size_t read_buffer_capacity;
+} SlLocalListenOptions;
+
+typedef struct SlLocalAcceptOptions
+{
+    bool has_timeout_ms;
+    uint32_t timeout_ms;
+    const SlCancellationToken* cancellation;
+} SlLocalAcceptOptions;
+
+typedef struct SlLocalIoOptions
+{
+    bool has_timeout_ms;
+    uint32_t timeout_ms;
+    const SlCancellationToken* cancellation;
+} SlLocalIoOptions;
+
 SlTcpConnectOptions sl_tcp_connect_options_default(SlStr host, uint16_t port);
 SlTcpListenOptions sl_tcp_listen_options_default(SlStr host, uint16_t port);
 SlTcpAcceptOptions sl_tcp_accept_options_default(void);
+
+SlLocalConnectOptions sl_local_connect_options_default(SlStr path);
+SlLocalListenOptions sl_local_listen_options_default(SlStr path);
+SlLocalAcceptOptions sl_local_accept_options_default(void);
+SlLocalIoOptions sl_local_io_options_default(void);
+
+SlStatus sl_local_endpoint_connect(SlArena* arena, const SlLocalConnectOptions* options,
+                                   SlLocalConnection** out_connection, SlDiag* out_diag);
+SlStatus sl_local_endpoint_listen(SlArena* arena, const SlLocalListenOptions* options,
+                                  SlLocalServer** out_server, SlDiag* out_diag);
+SlLocalServerState sl_local_server_state(const SlLocalServer* server);
+SlStatus sl_local_server_accept(SlLocalServer* server, SlArena* arena,
+                                const SlLocalAcceptOptions* options,
+                                SlLocalConnection** out_connection, SlDiag* out_diag);
+SlStatus sl_local_server_close(SlLocalServer* server, SlDiag* out_diag);
+SlStatus sl_local_server_abort(SlLocalServer* server, SlDiag* out_diag);
+
+SlLocalConnectionState sl_local_connection_state(const SlLocalConnection* connection);
+SlStatus sl_local_connection_write(SlLocalConnection* connection, SlBytes bytes, SlDiag* out_diag);
+SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes bytes,
+                                      const SlLocalIoOptions* options, SlDiag* out_diag);
+SlStatus sl_local_connection_write_text(SlLocalConnection* connection, SlStr text,
+                                        SlDiag* out_diag);
+SlStatus sl_local_connection_write_text_ex(SlLocalConnection* connection, SlStr text,
+                                           const SlLocalIoOptions* options, SlDiag* out_diag);
+SlStatus sl_local_connection_read(SlLocalConnection* connection, SlArena* arena, size_t max_bytes,
+                                  SlOwnedBytes* out, SlDiag* out_diag);
+SlStatus sl_local_connection_read_ex(SlLocalConnection* connection, SlArena* arena,
+                                     size_t max_bytes, const SlLocalIoOptions* options,
+                                     SlOwnedBytes* out, SlDiag* out_diag);
+SlStatus sl_local_connection_read_until(SlLocalConnection* connection, SlArena* arena,
+                                        SlBytes delimiter, size_t max_bytes, SlOwnedBytes* out,
+                                        SlDiag* out_diag);
+SlStatus sl_local_connection_read_until_ex(SlLocalConnection* connection, SlArena* arena,
+                                           SlBytes delimiter, size_t max_bytes,
+                                           const SlLocalIoOptions* options, SlOwnedBytes* out,
+                                           SlDiag* out_diag);
+SlStatus sl_local_connection_read_line(SlLocalConnection* connection, SlArena* arena,
+                                       size_t max_bytes, SlOwnedStr* out, SlDiag* out_diag);
+SlStatus sl_local_connection_read_line_ex(SlLocalConnection* connection, SlArena* arena,
+                                          size_t max_bytes, const SlLocalIoOptions* options,
+                                          SlOwnedStr* out, SlDiag* out_diag);
+SlStatus sl_local_connection_close(SlLocalConnection* connection, SlDiag* out_diag);
+SlStatus sl_local_connection_abort(SlLocalConnection* connection, SlDiag* out_diag);
 
 SlStatus sl_tcp_client_connect(SlArena* arena, const SlTcpConnectOptions* options,
                                SlTcpConnection** out_connection, SlDiag* out_diag);

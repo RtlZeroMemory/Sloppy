@@ -1,9 +1,9 @@
 # Local IPC API Architecture
 
-Status: CORE-NET-02.A/B/F source of truth. This document defines the first local IPC API
-contract, platform policy, diagnostics, and filesystem path policy for `sloppy/net`.
-Backends, streams, doctor/audit output, examples, and conformance evidence land in later
-CORE-NET-02 slices.
+Status: CORE-NET-02.A/B/F/G source of truth. This document defines the first local IPC
+API contract, platform policy, diagnostics, filesystem path policy, and native stream
+lifecycle policy for `sloppy/net`. Doctor/audit output, examples, and final conformance
+evidence land in later CORE-NET-02 slices.
 
 ## Goals
 
@@ -68,6 +68,19 @@ for await (const conn of server.acceptLoop({ signal })) {
 The JavaScript surface currently validates the API shape and fails with
 `SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE` when no local backend bridge is active. It does
 not fake backend success.
+
+The native C surface keeps compatibility wrappers for existing callers and adds explicit
+I/O option forms for stream operations:
+
+- `sl_local_connection_read_ex`;
+- `sl_local_connection_write_ex`;
+- `sl_local_connection_read_until_ex`;
+- `sl_local_connection_read_line_ex`;
+- `sl_local_connection_write_text_ex`.
+
+`SlLocalIoOptions` carries per-operation `timeout_ms` and a caller-owned
+`SlCancellationToken` snapshot. Existing non-`_ex` functions behave as unbounded blocking
+operations with no cancellation token.
 
 ## Path And Filesystem Policy
 
@@ -155,21 +168,49 @@ work belongs under `src/platform/posix/*`, Windows named pipe work under
 `src/platform/win32/*`, and any libuv helper under `src/platform/libuv/*` without leaking
 libuv types into public headers or JavaScript.
 
+IPC-next-2 adds the native POSIX `AF_UNIX` stream backend behind `SlLocalConnection` and
+`SlLocalServer`. The backend accepts already-resolved filesystem paths, applies opt-in
+stale socket cleanup only for existing socket files, rejects ordinary files/directories as
+endpoint collisions, applies POSIX mode bits where `chmod` can enforce them, and keeps file
+descriptors private.
+
+IPC-next-3 adds the native Windows named pipe backend behind the same `SlLocalConnection`
+and `SlLocalServer` contract. The backend accepts explicit normalized pipe names in the
+`\\.\pipe\name` namespace, keeps `HANDLE` values private, rejects POSIX Unix sockets on
+Windows, rejects named-root/relative path shapes before backend admission, and fails
+honestly for POSIX-style `permissions` and `unlinkExisting`.
+
+IPC-next-4 adds native stream deadline/cancellation options across both backend paths.
+Read/write options distinguish caller cancellation from deadline expiry by returning the
+`SlCancellationToken` status code for pre-cancelled tokens and
+`SL_STATUS_DEADLINE_EXCEEDED` for backend wait timeouts. Bounded read buffers and
+`read_until`/`read_line` maximums remain deterministic backpressure limits and preserve
+binary data, including embedded NUL bytes. POSIX connect timeouts remain unsupported until
+that backend has a nonblocking connect contract; the existing unsupported diagnostic is
+intentional.
+
+IPC-next-5 wires the validating `stdlib/sloppy/net.js` `LocalEndpoint` surface to V8
+bridge functions. JavaScript receives Slop-owned connection/server wrapper objects backed
+only by resource IDs; Unix socket, named pipe, OS, and libuv handles remain native-private.
+The bridge resolves `runtime:/...` local endpoint paths into backend-native Unix socket
+paths or Windows named pipe names before calling `SlLocalConnection` and `SlLocalServer`
+APIs. That runtime-path resolver is intentionally narrow and will be replaced by the
+shared filesystem named-root resolver when that policy API is available to the V8 bridge.
+
 Cross-thread data is copied or owned before crossing domains. Promise settlement happens
 on the V8 owner thread. Cleanup is exactly once across success, failure, cancellation,
 timeout, disposal, shutdown, abort, and late completion. Late completion is cleanup-only.
 
 ## Evidence Boundaries
 
-This PR1 policy slice covers contract, option validation, diagnostics, and docs. It is not
-backend evidence and must not be reported as Unix socket or named pipe execution success.
+PR1 covers contract, option validation, diagnostics, and docs. IPC-next-2 adds POSIX
+native backend evidence, IPC-next-3 adds Windows named pipe native backend evidence, and
+IPC-next-4 adds native deadline/cancellation and stream-bound evidence. IPC-next-5 adds
+V8 bridge wiring and bootstrap API-shape coverage; full V8 execution evidence remains
+dependent on V8-enabled lanes.
 
 Deferred to later CORE-NET-02 PRs:
 
-- POSIX Unix socket backend;
-- Windows named pipe backend;
-- V8 bridge resource integration for executable local connections/servers;
-- streams, backpressure, deadline, and cancellation hardening;
 - doctor/audit goldens;
 - source examples and conformance indexes;
 - platform-gated integration tests.

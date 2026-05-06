@@ -6,6 +6,8 @@ set(required_bootstrap_assets
     crypto.js
     data.js
     fs.js
+    net.js
+    os.js
     time.js
     index.js
     providers/sqlite.js

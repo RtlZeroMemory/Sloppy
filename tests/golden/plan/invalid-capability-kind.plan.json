@@ -7,5 +7,5 @@
   "bundle": { "path": ".sloppy/app.js", "id": "app-js-test", "hash": "test-only" },
   "sourceMap": { "path": ".sloppy/app.js.map", "id": "app-js-map-test", "hash": "test-only" },
   "handlers": [{ "id": 1, "exportName": "__sloppy_handler_1", "displayName": "Home" }],
-  "capabilities": [{ "token": "data.main", "kind": "process", "access": "read" }]
+  "capabilities": [{ "token": "data.main", "kind": "native-handle", "access": "read" }]
 }

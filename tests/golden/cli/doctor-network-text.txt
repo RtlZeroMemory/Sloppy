@@ -12,3 +12,4 @@ Sloppy Doctor
 [ok] stdlib.net.connect: network connect capability metadata is present
 [ok] stdlib.net.listen: network listen capability metadata is present
 [ok] stdlib.net.policy: network targets are policy-visible; doctor/audit goldens exercise connect/listen metadata without external network access
+[ok] stdlib.net.local-ipc: LocalEndpoint uses named-root local IPC paths and platform-specific Unix socket or named pipe backends without exposing native handles

@@ -6,10 +6,18 @@ Partially implemented.
 
 Outbound HTTP client note: CORE-HTTPCLIENT-01 starts in
 `docs/project/http-client-api-architecture.md`. That work is separate from the inbound
-HTTP server/runtime path described below. The first contract slice makes `HttpClient` from
-`sloppy/net` Plan-visible as `stdlib.httpclient` and fail-closed, but it does not implement
-the outbound HTTP/1.1 transport, HTTPS/TLS backend, redirects, pooling, streaming bodies,
-or live external network evidence.
+HTTP server/runtime path described below. `HttpClient` from `sloppy/net` is Plan-visible
+as `stdlib.httpclient`, depends on the CORE-NET TCP bridge, and implements the first
+cleartext `http://` HTTP/1.1 request/response path for bounded loopback-tested use. It
+also exposes bounded helper methods for `text`, `json`, `bytes`, `getJson`, `postJson`,
+request `json` bodies, base URL/path joining, bounded async-iterable request body
+consumption, response `stream()` iteration over buffered bodies, and operation-wide
+`timeoutMs`/`deadline`/`signal` handling. It implements bounded redirects, per-origin
+HTTP/1.1 pooling for reusable clients, strict-network preconnect denial, DNS-failure
+mapping, cross-origin sensitive-header stripping/denial, source-shape examples, and
+doctor/audit goldens for named/static/dynamic outbound-client metadata. It does not
+implement HTTPS/TLS, proxy policy, true socket-level streaming, automatic compiler
+inference of static outbound target literals, or live external network evidence.
 
 Post-ENGINE-16 consolidation: the HTTP module is mature for bounded localhost transport
 correctness, not production application-server behavior. HTTP-25 completes sequential

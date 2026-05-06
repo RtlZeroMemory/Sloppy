@@ -127,11 +127,19 @@ CORE-HTTPCLIENT-01.A/B/C adds an outbound HTTP client contract on top of the net
 policy vocabulary. `HttpClient` imports from `sloppy/net` are Plan-visible as
 `stdlib.httpclient`, separate from raw TCP `stdlib.net`, because named clients,
 pipeline/transport policy, TLS validation, redirects, pooling, and redaction have a
-different security surface. The first slice is fail-closed only: no outbound HTTP transport
-or HTTPS/TLS backend is implemented yet. Future doctor/audit output must represent static
-targets and dynamic/partial targets honestly and must redact authorization headers,
-cookies, API keys, bearer tokens, config-backed secret values, secret query parameters,
-and TLS-sensitive material.
+different security surface. CORE-HTTPCLIENT-01.D adds the first cleartext `http://`
+HTTP/1.1 request/response lane over the CORE-NET TCP bridge. Later slices add bounded
+helper APIs, buffered request/response stream shapes, operation-wide timeout/deadline/
+cancellation, per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping,
+strict-network preconnect denial, cross-origin sensitive-header strip/deny defaults, and
+HTTP client doctor/audit metadata goldens. HTTPS/TLS, proxy policy, true socket-level
+streaming, automatic compiler inference of static target literals, external-network
+security evidence, and a separate HTTP-native V8 bridge remain deferred. The current V8
+surface activates `stdlib.httpclient` through the existing private `__sloppy.net` bridge.
+Doctor/audit
+output represents static targets and dynamic/partial targets honestly and must redact or
+omit authorization headers, cookies, API keys, bearer tokens, config-backed secret values,
+secret query parameters, and TLS-sensitive material.
 
 Network policy is not an OS sandbox claim. JavaScript never receives raw sockets, libuv
 handles, OS handles, raw native pointers, or backend resource internals. DNS/connect work
@@ -154,9 +162,10 @@ is visible in security-looking contexts. Checksums must not be used or documente
 authentication, HMAC, signatures, password hashing, tokens, cryptographic hashes, or
 attacker-resistant integrity. Security APIs remain under `sloppy/crypto`.
 
-CORE-OS-01.A/B defines the OS API policy model. `sloppy/os` is Plan-visible as
-`stdlib.os`, known to the runtime feature registry, and unavailable by default until the
-runtime implementation lands. OS authority categories are `os.info`, `env.read`,
+CORE-OS-01.A/B defines the OS API policy model. CORE-OS-01.C/H partial makes `sloppy/os`
+Plan-visible as `stdlib.os` for System and Environment runtime use. CORE-OS-01.D adds
+explicit-argv `Process.run` admission under `process.run`; strict policy denies it unless
+that authority is explicitly enabled. OS authority categories are `os.info`, `env.read`,
 `env.list`, `process.run`, `process.shell`, `process.signal`, `process.kill`, and
 `signals.shutdown`. Raw environment access is lower-level than app configuration, process
 execution requires explicit argv, shell execution is absent or separately gated, and

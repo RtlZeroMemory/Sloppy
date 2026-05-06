@@ -13,6 +13,7 @@ export {
     TcpListener,
     UnixSocket,
 } from "./net.js";
+export { Environment, OsError, Process, Signals, System } from "./os.js";
 export { Results } from "./results.js";
 export { schema } from "./schema.js";
 export {

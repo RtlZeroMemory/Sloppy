@@ -46,6 +46,8 @@
 #define SL_CLI_MAX_SCHEMAS 32U
 #define SL_CLI_MAX_SCHEMA_PROPERTIES 32U
 #define SL_CLI_MAX_DOCTOR_CHECKS 32U
+#define SL_CLI_MAX_REQUIRED_FEATURES 32U
+#define SL_CLI_MAX_HTTP_CLIENTS 32U
 #define SL_CLI_FILE_MAX_BYTES 65536U
 #define SL_CLI_FILE_READ_SCRATCH_BYTES 65536U
 #define SL_CLI_ARENA_BYTES 65536U
@@ -156,6 +158,14 @@ typedef struct SlCliDoctorCheck
     SlCliSpan message;
 } SlCliDoctorCheck;
 
+typedef struct SlCliHttpClient
+{
+    SlCliSpan name;
+    SlCliSpan target;
+    SlCliSpan base_url;
+    bool strict_network;
+} SlCliHttpClient;
+
 typedef struct SlCliSchemaProperty
 {
     SlCliSpan name;
@@ -193,6 +203,10 @@ typedef struct SlCliMetadata
     size_t schema_count;
     SlCliDoctorCheck doctor_checks[SL_CLI_MAX_DOCTOR_CHECKS];
     size_t doctor_check_count;
+    SlCliSpan required_features[SL_CLI_MAX_REQUIRED_FEATURES];
+    size_t required_feature_count;
+    SlCliHttpClient http_clients[SL_CLI_MAX_HTTP_CLIENTS];
+    size_t http_client_count;
     SlCliSpan completeness;
 } SlCliMetadata;
 
@@ -1227,6 +1241,82 @@ static int sl_cli_parse_doctor_checks(yyjson_val* root, SlCliMetadata* metadata)
     return 0;
 }
 
+static int sl_cli_parse_required_features(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* features = yyjson_obj_get(root, "requiredFeatures");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (features == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(features)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: requiredFeatures must be an array\n");
+        return 1;
+    }
+
+    yyjson_arr_iter_init(features, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(value)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy: malformed metadata: requiredFeatures entries must be strings\n");
+            return 1;
+        }
+        if (metadata->required_feature_count >= SL_CLI_MAX_REQUIRED_FEATURES) {
+            sl_cli_write_cstr(stderr, "sloppy: too many required features in metadata\n");
+            return 1;
+        }
+        metadata->required_features[metadata->required_feature_count] =
+            (SlCliSpan){yyjson_get_str(value), yyjson_get_len(value)};
+        metadata->required_feature_count += 1U;
+    }
+
+    return 0;
+}
+
+static int sl_cli_parse_http_clients(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* clients = yyjson_obj_get(root, "httpClients");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (clients == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(clients)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: httpClients must be an array\n");
+        return 1;
+    }
+
+    yyjson_arr_iter_init(clients, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliHttpClient client = {0};
+        yyjson_val* strict = NULL;
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr, "sloppy: malformed HTTP client metadata\n");
+            return 1;
+        }
+        if (metadata->http_client_count >= SL_CLI_MAX_HTTP_CLIENTS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many HTTP clients in metadata\n");
+            return 1;
+        }
+        client.name = sl_cli_json_span(value, "name");
+        client.target = sl_cli_json_span(value, "target");
+        if (sl_cli_span_empty(client.target)) {
+            client.target = sl_cli_json_span(value, "targetKind");
+        }
+        client.base_url = sl_cli_json_span(value, "baseUrl");
+        strict = yyjson_obj_get(value, "strictNetwork");
+        client.strict_network = strict != NULL && yyjson_is_bool(strict) && yyjson_get_bool(strict);
+        metadata->http_clients[metadata->http_client_count] = client;
+        metadata->http_client_count += 1U;
+    }
+
+    return 0;
+}
+
 static int sl_cli_validate_native_plan(const char* path, SlBytes json, SlArena* arena)
 {
     SlPlan plan = {0};
@@ -1290,7 +1380,9 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
         sl_cli_parse_providers(root, out_metadata) != 0 ||
         sl_cli_parse_capabilities(root, out_metadata) != 0 ||
         sl_cli_parse_schemas(root, out_metadata) != 0 ||
-        sl_cli_parse_doctor_checks(root, out_metadata) != 0)
+        sl_cli_parse_doctor_checks(root, out_metadata) != 0 ||
+        sl_cli_parse_required_features(root, out_metadata) != 0 ||
+        sl_cli_parse_http_clients(root, out_metadata) != 0)
     {
         return 1;
     }
@@ -3651,6 +3743,141 @@ static void sl_cli_doctor_emit_network_capabilities(const SlCliOptions* options,
     }
 }
 
+static bool sl_cli_metadata_requires_feature(const SlCliMetadata* metadata, const char* feature)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->required_feature_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(metadata->required_features[index], feature)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sl_cli_doctor_emit_os_capabilities(const SlCliOptions* options, SlArena* arena,
+                                               const SlCliMetadata* metadata, bool* emitted)
+{
+    bool has_os_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.os");
+    bool has_os_capability = false;
+    bool has_env_capability = false;
+    bool has_process_capability = false;
+    bool has_shell_capability = false;
+    bool has_signals_capability = false;
+
+    for (size_t index = 0U; index < metadata->capability_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "os")) {
+            has_os_capability = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "env")) {
+            has_env_capability = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "process")) {
+            has_process_capability = true;
+            if (sl_cli_span_equal_cstr(metadata->capabilities[index].access, "shell")) {
+                has_shell_capability = true;
+            }
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "signals")) {
+            has_signals_capability = true;
+        }
+    }
+
+    if (has_os_feature) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.required"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("OS runtime feature metadata is Plan-visible"), emitted);
+    }
+    if (has_os_capability || has_env_capability || has_process_capability || has_signals_capability)
+    {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.capabilities"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("OS capability metadata is visible without values or native handles"),
+            emitted);
+    }
+    if (has_env_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.environment"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("environment access metadata omits environment values"), emitted);
+    }
+    if (has_process_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.process"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("process metadata is explicit-argv and exposes no native handles"),
+            emitted);
+    }
+    if (has_shell_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.shell"), sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr("shell capability metadata is visible but shell execution is denied"),
+            emitted);
+    }
+    if (has_signals_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.signals"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("shutdown signal metadata is visible without platform signal claims"),
+            emitted);
+    }
+}
+
+static void sl_cli_doctor_emit_http_clients(const SlCliOptions* options, SlArena* arena,
+                                            const SlCliMetadata* metadata, bool* emitted)
+{
+    bool has_http_client_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.httpclient");
+    bool has_static_target = false;
+    bool has_dynamic_target = false;
+    bool has_strict_network = false;
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->http_client_count; index += 1U) {
+        const SlCliHttpClient* client = &metadata->http_clients[index];
+        if (sl_cli_span_equal_cstr(client->target, "static") ||
+            !sl_cli_span_empty(client->base_url))
+        {
+            has_static_target = true;
+        }
+        if (sl_cli_span_equal_cstr(client->target, "dynamic") ||
+            sl_cli_span_equal_cstr(client->target, "partial"))
+        {
+            has_dynamic_target = true;
+        }
+        if (client->strict_network) {
+            has_strict_network = true;
+        }
+    }
+
+    if (has_http_client_feature) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.httpclient.required"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("HttpClient feature metadata is Plan-visible"), emitted);
+    }
+    if (metadata->http_client_count > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.httpclient.clients"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("HTTP client named-client metadata is visible"), emitted);
+    }
+    if (has_static_target) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.httpclient.static-targets"),
+            sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("static outbound HTTP targets are visible without secret values"),
+            emitted);
+    }
+    if (has_dynamic_target) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.httpclient.dynamic-targets"),
+            sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr("dynamic outbound HTTP targets are marked partial, not guessed"),
+            emitted);
+    }
+    if (has_strict_network) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.httpclient.strict-network"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("strict HTTP network policy metadata is present"),
+                           emitted);
+    }
+}
+
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
@@ -3674,6 +3901,8 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         emitted);
     sl_cli_doctor_emit_fs_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_network_capabilities(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_os_capabilities(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_http_clients(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
         SlCliSpan message =
@@ -4090,9 +4319,117 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
     }
     if (has_network) {
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE",
-                          "network capabilities are policy-visible for sloppy/net; no OS sandbox "
-                          "or external live-network evidence is implemented",
+                          "network capabilities are policy-visible for sloppy/net, including "
+                          "LocalEndpoint metadata; no OS sandbox or external live-network "
+                          "evidence is implemented",
                           "capabilities", findings, errors);
+    }
+}
+
+static void sl_cli_audit_os_capabilities(const SlCliOptions* options, const SlCliMetadata* metadata,
+                                         size_t* findings, size_t* errors)
+{
+    bool has_os = false;
+    bool has_env = false;
+    bool has_process = false;
+    bool has_shell = false;
+    bool has_signals = false;
+
+    for (size_t index = 0U; index < metadata->capability_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "os")) {
+            has_os = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "env")) {
+            has_env = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "process")) {
+            has_process = true;
+            if (sl_cli_span_equal_cstr(metadata->capabilities[index].access, "shell")) {
+                has_shell = true;
+            }
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "signals")) {
+            has_signals = true;
+        }
+    }
+
+    if (has_os || has_env || has_process || has_signals) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_POLICY_VISIBLE",
+                          "OS capabilities are policy-visible for sloppy/os; no OS sandbox, "
+                          "environment values, native handles, or raw PIDs are exposed",
+                          "capabilities", findings, errors);
+    }
+    if (has_env) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_ENV_REDACTED",
+                          "environment metadata names access only and omits variable values",
+                          "capabilities", findings, errors);
+    }
+    if (has_process) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_PROCESS_EXPLICIT_ARGV",
+                          "process metadata is explicit-argv and does not imply shell execution",
+                          "capabilities", findings, errors);
+    }
+    if (has_shell) {
+        sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OS_SHELL_DENIED",
+                          "shell capability metadata is visible, but shell execution is denied "
+                          "unless a future explicit gate enables it",
+                          "capabilities", findings, errors);
+    }
+}
+
+static void sl_cli_audit_os_features(const SlCliOptions* options, const SlCliMetadata* metadata,
+                                     size_t* findings, size_t* errors)
+{
+    if (sl_cli_metadata_requires_feature(metadata, "stdlib.os")) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_PLAN_VISIBLE",
+                          "sloppy/os is Plan-visible as stdlib.os", "requiredFeatures", findings,
+                          errors);
+    }
+}
+
+static void sl_cli_audit_http_clients(const SlCliOptions* options, const SlCliMetadata* metadata,
+                                      size_t* findings, size_t* errors)
+{
+    bool has_http_client_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.httpclient");
+    bool has_static_target = false;
+    bool has_dynamic_target = false;
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->http_client_count; index += 1U) {
+        const SlCliHttpClient* client = &metadata->http_clients[index];
+        if (sl_cli_span_equal_cstr(client->target, "static") ||
+            !sl_cli_span_empty(client->base_url))
+        {
+            has_static_target = true;
+        }
+        if (sl_cli_span_equal_cstr(client->target, "dynamic") ||
+            sl_cli_span_equal_cstr(client->target, "partial"))
+        {
+            has_dynamic_target = true;
+        }
+    }
+
+    if (has_http_client_feature) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_HTTP_CLIENT_PLAN_VISIBLE",
+                          "HttpClient is Plan-visible as stdlib.httpclient", "requiredFeatures",
+                          findings, errors);
+    }
+    if (metadata->http_client_count > 0U) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_HTTP_CLIENTS_VISIBLE",
+                          "HTTP client named-client metadata is visible without secret values",
+                          "httpClients", findings, errors);
+    }
+    if (has_static_target) {
+        sl_cli_audit_emit(
+            options, "note", "SLOPPY_AUDIT_HTTP_CLIENT_STATIC_TARGET",
+            "static outbound HTTP target metadata is visible without leaking URLs or headers",
+            "httpClients", findings, errors);
+    }
+    if (has_dynamic_target) {
+        sl_cli_audit_emit(
+            options, "warn", "SLOPPY_AUDIT_HTTP_CLIENT_DYNAMIC_TARGET",
+            "dynamic outbound HTTP target metadata is partial and must be checked at runtime",
+            "httpClients", findings, errors);
     }
 }
 
@@ -4132,6 +4469,9 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_modules(options, &metadata, &findings, &errors);
     sl_cli_audit_providers(options, &metadata, &findings, &errors);
     sl_cli_audit_capabilities(options, &metadata, &findings, &errors);
+    sl_cli_audit_os_capabilities(options, &metadata, &findings, &errors);
+    sl_cli_audit_os_features(options, &metadata, &findings, &errors);
+    sl_cli_audit_http_clients(options, &metadata, &findings, &errors);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {
         (void)printf("No findings.\n");

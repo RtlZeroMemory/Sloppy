@@ -68,6 +68,21 @@ benchmark lanes stay optional and separately reported. CORE-NET-01.I adds
 `examples.net.api_shape`, `sloppy.cli.doctor_network_*`, `sloppy.cli.audit_network_*`, and
 `tests/conformance/net/README.md`; those gates prove source shape, metadata visibility, and
 evidence indexing only.
+CORE-HTTPCLIENT-01 gates must report outbound HTTP client evidence by lane. Default gates
+prove cleartext loopback HTTP/1.1 behavior over the CORE-NET bridge, helper/body
+semantics, timeout/cancellation distinction, pooling, redirects, DNS failure mapping,
+redaction defaults, strict-network denial, source example shape, and doctor/audit metadata
+visibility. They do not prove HTTPS/TLS execution, custom certificate validation, proxy
+policy, true socket-level streaming, external live-network access, Fetch or Node
+compatibility, package readiness, public alpha status, benchmark evidence, or production
+performance.
+CORE-OS-01 gates must report OS evidence by lane. Default gates prove the System and
+Environment API surface, explicit-argv process helper behavior, bootstrap process handle
+and shutdown-handler facades, Plan-visible OS capability vocabulary, source example shape,
+and doctor/audit redaction metadata. They do not prove shell execution, Node
+`child_process` compatibility, Deno compatibility, PTY behavior, daemon supervision,
+native process bridge scheduling, platform signal loop integration, package readiness,
+public alpha status, benchmark evidence, or production performance.
 CORE-CODEC-01 gates must report codec evidence by lane. PRs that only add the
 `stdlib.codec` contract, Plan metadata, diagnostics, and backend policy do not prove
 Base64/Hex/Text/Binary/Compression/Checksum correctness, V8 execution, package readiness,

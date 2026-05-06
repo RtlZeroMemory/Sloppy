@@ -42,6 +42,7 @@ set(
     fs.js
     crypto.js
     net.js
+    os.js
     time.js
     index.js
     providers/sqlite.js
@@ -316,6 +317,7 @@ set(
     src/core/crypto.c
     src/core/crypto_noncrypto_hash.c
     src/core/fs.c
+    src/core/os.c
     src/platform/crypto_password_sodium.c
     src/platform/libuv/net_tcp_libuv.c
     src/core/app_host.c
@@ -349,14 +351,18 @@ if(WIN32)
         SLOPPY_CORE_SOURCES
         src/platform/win32/time.c
         src/platform/win32/fs_win32.c
-        src/platform/win32/crypto_win32.c)
+        src/platform/win32/net_local_win32.c
+        src/platform/win32/crypto_win32.c
+        src/platform/win32/os_win32.c)
 else()
     list(
         APPEND
         SLOPPY_CORE_SOURCES
         src/platform/posix/time.c
         src/platform/posix/fs_posix.c
-        src/platform/posix/crypto_posix.c)
+        src/platform/posix/net_local_posix.c
+        src/platform/posix/crypto_posix.c
+        src/platform/posix/os_posix.c)
 endif()
 
 if(SLOPPY_ENABLE_V8)
@@ -372,6 +378,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/intrinsics_codec.cc
         src/engine/v8/intrinsics_fs.cc
         src/engine/v8/intrinsics_net.cc
+        src/engine/v8/intrinsics_os.cc
         src/engine/v8/intrinsics_time.cc
         src/engine/v8/intrinsics_sqlite.cc)
 endif()
@@ -395,6 +402,7 @@ set(
     tests/unit/core/test_execution_domain.c
     tests/unit/core/test_features.c
     tests/unit/core/test_crypto.c
+    tests/unit/core/test_os.c
     tests/unit/core/test_app_host.c
     tests/unit/core/test_loop.c
     tests/unit/core/test_async.c
@@ -688,8 +696,31 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(NAME conformance.net.tcp_client_loopback COMMAND $<TARGET_FILE:core_net_tcp_client>)
         set_tests_properties(
             conformance.net.tcp_client_loopback PROPERTIES LABELS "conformance;net;tcp;smoke")
+        if(NOT WIN32)
+            sloppy_add_cxx_unit_test(
+                core_net_local_posix core.net.local_posix
+                tests/unit/core/test_net_local_posix.cc)
+            add_test(
+                NAME conformance.net.local_ipc_posix
+                COMMAND $<TARGET_FILE:core_net_local_posix>)
+            set_tests_properties(
+                conformance.net.local_ipc_posix
+                PROPERTIES LABELS "conformance;net;local-ipc;posix")
+        else()
+            sloppy_add_cxx_unit_test(
+                core_net_local_win32 core.net.local_win32
+                tests/unit/core/test_net_local_win32.cc)
+            add_test(
+                NAME conformance.net.local_ipc_win32
+                COMMAND $<TARGET_FILE:core_net_local_win32>)
+            set_tests_properties(
+                conformance.net.local_ipc_win32
+                PROPERTIES LABELS "conformance;net;local-ipc;win32")
+        endif()
     endif()
     sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
+    sloppy_add_c_unit_test(core_os_system_environment core.os.system_environment
+                           tests/unit/core/test_os.c)
     sloppy_add_c_unit_test(core_app_host_hardening core.app_host.hardening
                            tests/unit/core/test_app_host.c)
     sloppy_add_c_unit_test(
@@ -941,6 +972,10 @@ if(SLOPPY_ENABLE_TESTS)
     set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json.json)
     set(SLOPPY_DOCTOR_NET_TEXT_GOLDEN tests/golden/cli/doctor-network-text.txt)
     set(SLOPPY_DOCTOR_NET_JSON_GOLDEN tests/golden/cli/doctor-network-json.json)
+    set(SLOPPY_DOCTOR_OS_TEXT_GOLDEN tests/golden/cli/doctor-os-text.txt)
+    set(SLOPPY_DOCTOR_OS_JSON_GOLDEN tests/golden/cli/doctor-os-json.json)
+    set(SLOPPY_DOCTOR_HTTP_CLIENT_TEXT_GOLDEN tests/golden/cli/doctor-http-client-text.txt)
+    set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN tests/golden/cli/doctor-http-client-json.json)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
         tests/golden/cli/doctor-crypto-noncrypto-hash-text.txt)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -958,6 +993,12 @@ if(SLOPPY_ENABLE_TESTS)
         set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json-v8.json)
         set(SLOPPY_DOCTOR_NET_TEXT_GOLDEN tests/golden/cli/doctor-network-text-v8.txt)
         set(SLOPPY_DOCTOR_NET_JSON_GOLDEN tests/golden/cli/doctor-network-json-v8.json)
+        set(SLOPPY_DOCTOR_OS_TEXT_GOLDEN tests/golden/cli/doctor-os-text-v8.txt)
+        set(SLOPPY_DOCTOR_OS_JSON_GOLDEN tests/golden/cli/doctor-os-json-v8.json)
+        set(SLOPPY_DOCTOR_HTTP_CLIENT_TEXT_GOLDEN
+            tests/golden/cli/doctor-http-client-text-v8.txt)
+        set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN
+            tests/golden/cli/doctor-http-client-json-v8.json)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
             tests/golden/cli/doctor-crypto-noncrypto-hash-text-v8.txt)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -991,6 +1032,18 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_network_json ${SLOPPY_DOCTOR_NET_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/network-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_os_text ${SLOPPY_DOCTOR_OS_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/os-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_os_json ${SLOPPY_DOCTOR_OS_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/os-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_http_client_text ${SLOPPY_DOCTOR_HTTP_CLIENT_TEXT_GOLDEN} doctor
+        --plan tests/fixtures/cli/http-client-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_http_client_json ${SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN} doctor
+        --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_crypto_noncrypto_hash_text
         ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN} doctor --plan
@@ -1034,6 +1087,18 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_network_json tests/golden/cli/audit-network-json.json audit --plan
         tests/fixtures/cli/network-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_os_text tests/golden/cli/audit-os-text.txt audit --plan
+        tests/fixtures/cli/os-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_os_json tests/golden/cli/audit-os-json.json audit --plan
+        tests/fixtures/cli/os-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_http_client_text tests/golden/cli/audit-http-client-text.txt audit
+        --plan tests/fixtures/cli/http-client-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_http_client_json tests/golden/cli/audit-http-client-json.json audit
+        --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)
@@ -1782,6 +1847,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.net.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_net_examples.cmake")
+    add_test(
+        NAME examples.os.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_os_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(
@@ -1798,9 +1867,16 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(
             NAME bootstrap.stdlib.codec
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
+        add_test(
+            NAME bootstrap.stdlib.os
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_os.mjs")
+        add_test(
+            NAME bootstrap.stdlib.http_client
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_http_client.mjs")
         set_tests_properties(
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
-            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec PROPERTIES
+            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
+            bootstrap.stdlib.http_client PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 

@@ -1000,9 +1000,10 @@ static SlStatus sl_plan_parse_one_capability(SlPlanParseContext* ctx, const SlPl
             sl_plan_parse_literal("unsupported app plan capability kind",
                                   sizeof("unsupported app plan capability kind") - 1U),
             sl_plan_parse_literal(
-                "supported capability kinds are database, filesystem, and network",
-                sizeof("supported capability kinds are database, filesystem, and "
-                       "network") -
+                "supported capability kinds are database, filesystem, network, os, env, process, "
+                "and signals",
+                sizeof("supported capability kinds are database, filesystem, network, os, env, "
+                       "process, and signals") -
                     1U));
     }
 

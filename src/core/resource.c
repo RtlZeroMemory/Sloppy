@@ -178,6 +178,10 @@ SlStr sl_resource_kind_name(SlResourceKind kind)
         return sl_resource_literal("tcp.connection", sizeof("tcp.connection") - 1U);
     case SL_RESOURCE_KIND_TCP_LISTENER:
         return sl_resource_literal("tcp.listener", sizeof("tcp.listener") - 1U);
+    case SL_RESOURCE_KIND_LOCAL_CONNECTION:
+        return sl_resource_literal("local.connection", sizeof("local.connection") - 1U);
+    case SL_RESOURCE_KIND_LOCAL_SERVER:
+        return sl_resource_literal("local.server", sizeof("local.server") - 1U);
     default:
         return sl_resource_literal("unknown", sizeof("unknown") - 1U);
     }

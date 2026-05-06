@@ -713,16 +713,24 @@ accept/read/write cancellation or timeout, disposed resources, backend unavailab
 unsupported permission/mode behavior. These diagnostics pin the intended local IPC failure
 shapes without claiming Unix socket or Windows named pipe backend execution.
 
-CORE-HTTPCLIENT-01.A/B/C reserves outbound HTTP client diagnostics without claiming an
-executable transport. Missing or inactive `stdlib.httpclient` uses runtime-feature
-diagnostics before startup. If the bootstrap facade is reached in a lane without native
-transport support it fails with `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE`. HTTP
+CORE-HTTPCLIENT-01.A/B/C reserves outbound HTTP client diagnostics,
+CORE-HTTPCLIENT-01.D adds the first cleartext HTTP/1.1 request/response lane over the
+CORE-NET TCP bridge, and CORE-HTTPCLIENT-01.E adds deterministic helper diagnostics for
+JSON body serialization/deserialization and body-source validation. Missing or inactive
+bridge support fails with
+`SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE`, while HTTPS still fails with
+`SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE` until the TLS backend slice lands. HTTP
 client-specific codes cover invalid URL/options, ambiguous body sources, consumed request
-or response bodies, response limits, malformed responses, connect/DNS/TLS failures,
-timeout versus cancellation, redirect loops/max redirects, sensitive header stripping,
-pool exhaustion, strict policy denial, and dynamic target metadata. These diagnostics must
-not include secrets, tokens, cookies, raw TLS material, native handles, V8 handles, OS
-handles, raw pointers, or unredacted query parameters marked secret.
+or response bodies, invalid JSON, request/response body limits, malformed responses,
+connect/DNS/TLS failures, timeout versus cancellation, redirect loops/max redirects,
+sensitive header stripping, pool exhaustion, strict policy denial, and dynamic target metadata. These
+diagnostics must not include secrets, tokens, cookies, raw TLS material, native handles,
+V8 handles, OS handles, raw pointers, or unredacted query parameters marked secret.
+CORE-HTTPCLIENT-01.I adds CLI doctor/audit goldens for Plan-visible `stdlib.httpclient`,
+named-client metadata, static target visibility, dynamic/partial target markers, and
+strict-network metadata. Those goldens prove metadata visibility and redaction/omission
+policy only; they do not prove TLS execution, external network access, package readiness,
+or benchmark behavior.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
@@ -765,10 +773,16 @@ streaming compatibility, brotli/zstd/deflate support, package readiness, or publ
 coverage.
 
 CORE-OS-01.A/B adds the OS diagnostic model and JSON goldens for the `sloppy/os`
-feature/model slice. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the startup/Plan-gating
-diagnostic while `stdlib.os` is known but unavailable by default.
-`SLOPPY_E_OS_FEATURE_UNAVAILABLE` is reserved for already-reached OS API paths when a
-specific OS backend or optional lane is inactive. Other OS-specific codes are reserved for
+feature/model slice. CORE-OS-01.C/H partial makes `stdlib.os` available for System and
+Environment while preserving `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` coverage for runtimes
+that explicitly report the feature unavailable. `SLOPPY_E_OS_FEATURE_UNAVAILABLE` is used
+for already-reached OS API paths when a specific OS backend or deferred lane is inactive.
+CORE-OS-01.I adds CLI doctor/audit goldens for Plan-visible `stdlib.os` and OS capability
+metadata. Those goldens prove feature/capability metadata visibility and redaction
+boundaries only; they do not prove OS sandboxing, shell execution, raw PID authority,
+native handle exposure, package-manager behavior, public alpha readiness, benchmark
+evidence, or production performance.
+Other OS-specific codes are reserved for
 host-system API failures:
 
 - `SLOPPY_E_OS_FEATURE_UNAVAILABLE` for OS API use when the feature/backend lane is not

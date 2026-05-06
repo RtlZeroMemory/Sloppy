@@ -90,6 +90,9 @@ bool sl_v8_install_net_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> co
                                   v8::Local<v8::Object> sloppy);
 void sl_v8_net_dispose(SlV8Engine* backend);
 
+bool sl_v8_install_os_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
+                                 v8::Local<v8::Object> sloppy);
+
 bool sl_v8_install_codec_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                     v8::Local<v8::Object> sloppy);
 

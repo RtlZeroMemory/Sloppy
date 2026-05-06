@@ -119,9 +119,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   CORE-NET-01.G adds `NetworkAddress` object/text parsing, local DNS/hostname-backed listen
   coverage, IPv4/IPv6 address handling, and checked `noDelay`/`keepAlive` option
   propagation. CORE-NET-01.I adds doctor/audit goldens, source examples, and a conformance
-  evidence index. Broader stress/torture evidence remains future work. Do not claim
-  external network access, TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
-  performance, or public alpha readiness from the current TCP slice.
+  evidence index. CORE-HTTPCLIENT-01.D/E/F/G/I adds a separate cleartext HTTP/1.1 loopback
+  client lane over the TCP bridge, helper/body semantics, deadline/cancellation handling,
+  per-origin pooling, redirects, DNS mapping, redaction defaults, strict-network denial,
+  doctor/audit goldens, and source examples. Broader stress/torture evidence remains
+  future work. Do not claim external network access, TLS, proxy policy, true socket-level
+  HTTP streaming, UDP, WebSocket, Node/Bun/Deno compatibility, performance, or public
+  alpha readiness from the current TCP/HTTP client slices.
 - Codec API implementation after CORE-CODEC-01.H/J: `stdlib.codec`, the `sloppy/codec`
   import contract, backend/dependency policy, stable diagnostics, Base64/Base64Url/Hex,
   UTF-8 text and streaming decoder, bootstrap/runtime exports, and V8 namespace smoke

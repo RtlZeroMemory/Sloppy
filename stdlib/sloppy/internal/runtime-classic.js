@@ -3753,30 +3753,1384 @@ Reason:
         },
     });
 
+    const HTTP_CLIENT_DEFAULT_MAX_HEADER_BYTES = 16 * 1024;
+    const HTTP_CLIENT_DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
+    const HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES = 1024 * 1024;
+    const HTTP_CLIENT_DEFAULT_MAX_REDIRECTS = 5;
+    const HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS = 30000;
+    const HTTP_CLIENT_DEFAULT_MAX_CONNECTIONS_PER_ORIGIN = 8;
+    const HTTP_CLIENT_SENSITIVE_HEADERS = new Set([
+        "authorization",
+        "cookie",
+        "proxy-authorization",
+        "x-api-key",
+        "api-key",
+    ]);
+
+    function httpClientError(code, message, options = undefined) {
+        return new Error(`${code}: ${message}`, options);
+    }
+
     function httpClientUnavailable(operation) {
         return Promise.reject(
-            new Error(
-                `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE: HttpClient.${operation} is contract-visible, but the outbound HTTP client transport is not implemented in this runtime lane.`,
+            httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE",
+                `HttpClient.${operation} requires the outbound HTTP client transport lane.`,
             ),
         );
     }
 
+    function parseHttpSize(value, operation) {
+        if (value === undefined) {
+            return undefined;
+        }
+        if (Number.isInteger(value) && value >= 0) {
+            return value;
+        }
+        throw httpClientError(
+            "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+            `${operation} size option must be a non-negative integer.`,
+        );
+    }
+
+    function hasHttpControlChars(value) {
+        for (let index = 0; index < value.length; index += 1) {
+            const code = value.charCodeAt(index);
+            if (code < 0x20 || code === 0x7f) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function setHttpDefaultHeader(headers, name, value) {
+        const normalizedName = name.toLowerCase();
+        if (!headers.has(normalizedName)) {
+            headers.set(normalizedName, { name, value });
+        }
+    }
+
+    function normalizeHttpHostHeaderForOrigin(hostHeader) {
+        if (hostHeader.startsWith("[")) {
+            const close = hostHeader.indexOf("]");
+            if (close > 0) {
+                return `[${hostHeader.slice(1, close).toLowerCase()}]${hostHeader.slice(close + 1)}`;
+            }
+        }
+        const colon = hostHeader.lastIndexOf(":");
+        if (colon > 0) {
+            return `${hostHeader.slice(0, colon).toLowerCase()}${hostHeader.slice(colon)}`;
+        }
+        return hostHeader.toLowerCase();
+    }
+
+    function httpOriginKey(url) {
+        return `${url.scheme}://${normalizeHttpHostHeaderForOrigin(url.hostHeader)}`;
+    }
+
+    function httpUrlToString(url) {
+        return `${url.scheme}://${url.hostHeader}${url.target}`;
+    }
+
+    function cloneHttpHeaders(headers) {
+        const cloned = new Map();
+        for (const [name, entry] of headers.entries()) {
+            cloned.set(name, { name: entry.name, value: entry.value });
+        }
+        return cloned;
+    }
+
+    function parseHttpSecretHeaders(value, operation) {
+        if (value === undefined) {
+            return [];
+        }
+        if (!Array.isArray(value)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} secretHeaders must be an array of header names.`);
+        }
+        return value.map((name) => {
+            if (typeof name !== "string" || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    `${operation} secretHeaders entries must be valid header names.`,
+                );
+            }
+            return name.toLowerCase();
+        });
+    }
+
+    function isHttpSensitiveHeader(name, value, secretHeaders) {
+        const normalized = name.toLowerCase();
+        return (
+            HTTP_CLIENT_SENSITIVE_HEADERS.has(normalized) ||
+            secretHeaders.has(normalized) ||
+            /token|secret|api[-_]?key/i.test(name) ||
+            /bearer\s+/i.test(value)
+        );
+    }
+
+    function stripHttpSensitiveHeaders(headers, policy) {
+        const stripped = [];
+        for (const [name, entry] of Array.from(headers.entries())) {
+            if (isHttpSensitiveHeader(name, entry.value, policy.secretHeaders)) {
+                stripped.push(entry.name);
+                headers.delete(name);
+            }
+        }
+        if (stripped.length > 0 && policy.crossOriginSensitiveHeaders === "deny") {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED",
+                "HTTP client cross-origin redirect refused sensitive headers.",
+            );
+        }
+        return stripped;
+    }
+
+    function normalizeHttpRedirectPolicy(baseOptions, requestObject, operation) {
+        const raw = requestObject.redirects ?? baseOptions?.redirects;
+        let enabled = true;
+        let max = HTTP_CLIENT_DEFAULT_MAX_REDIRECTS;
+        let allowPost = false;
+        let crossOriginSensitiveHeaders = "strip";
+        const secretHeaders = [
+            ...parseHttpSecretHeaders(baseOptions?.secretHeaders, operation),
+            ...parseHttpSecretHeaders(requestObject.secretHeaders, operation),
+        ];
+        if (raw === false) {
+            enabled = false;
+        } else if (raw === true || raw === undefined) {
+            enabled = true;
+        } else if (isPlainObject(raw)) {
+            if (raw.enabled !== undefined) {
+                if (typeof raw.enabled !== "boolean") {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} redirects.enabled must be a boolean.`);
+                }
+                enabled = raw.enabled;
+            }
+            if (raw.max !== undefined) {
+                if (!Number.isInteger(raw.max) || raw.max < 0 || raw.max > 20) {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} redirects.max must be an integer from 0 to 20.`);
+                }
+                max = raw.max;
+            }
+            if (raw.allowPost !== undefined) {
+                if (typeof raw.allowPost !== "boolean") {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} redirects.allowPost must be a boolean.`);
+                }
+                allowPost = raw.allowPost;
+            }
+            if (raw.crossOriginSensitiveHeaders !== undefined) {
+                if (raw.crossOriginSensitiveHeaders !== "strip" && raw.crossOriginSensitiveHeaders !== "deny") {
+                    throw httpClientError(
+                        "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                        `${operation} redirects.crossOriginSensitiveHeaders must be "strip" or "deny".`,
+                    );
+                }
+                crossOriginSensitiveHeaders = raw.crossOriginSensitiveHeaders;
+            }
+            secretHeaders.push(...parseHttpSecretHeaders(raw.secretHeaders, operation));
+        } else {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} redirects must be a boolean or policy object.`);
+        }
+        return Object.freeze({
+            enabled,
+            max,
+            allowPost,
+            crossOriginSensitiveHeaders,
+            secretHeaders: new Set(secretHeaders),
+        });
+    }
+
+    function normalizeHttpPoolOptions(value, operation) {
+        if (value === undefined || value === null || value === false) {
+            return undefined;
+        }
+        if (value !== true && !isPlainObject(value)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} pool must be a policy object.`);
+        }
+        const raw = value === true ? {} : value;
+        const maxConnectionsPerOrigin = raw.maxConnectionsPerOrigin ?? HTTP_CLIENT_DEFAULT_MAX_CONNECTIONS_PER_ORIGIN;
+        const idleTimeoutMs = raw.idleTimeoutMs ?? HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS;
+        if (!Number.isInteger(maxConnectionsPerOrigin) || maxConnectionsPerOrigin < 1 || maxConnectionsPerOrigin > 256) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} pool.maxConnectionsPerOrigin must be an integer from 1 to 256.`,
+            );
+        }
+        if (!Number.isInteger(idleTimeoutMs) || idleTimeoutMs < 0) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} pool.idleTimeoutMs must be a non-negative integer.`);
+        }
+        return Object.freeze({ maxConnectionsPerOrigin, idleTimeoutMs });
+    }
+
+    function normalizeHttpNetworkPolicy(baseOptions, requestObject, operation) {
+        const raw = requestObject.network ?? baseOptions?.network;
+        if (raw === undefined || raw === null || raw === false) {
+            return Object.freeze({ strict: false, allowedOrigins: new Set() });
+        }
+        if (!isPlainObject(raw)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} network must be a policy object.`);
+        }
+        const strict = raw.strict === true;
+        const allowed = raw.allow ?? raw.allowedOrigins ?? [];
+        if (!Array.isArray(allowed)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} network.allow must be an array of origins.`);
+        }
+        const allowedOrigins = new Set();
+        for (const origin of allowed) {
+            if (origin === "*") {
+                allowedOrigins.add("*");
+                continue;
+            }
+            const parsed = parseAbsoluteHttpUrl(origin, operation);
+            allowedOrigins.add(httpOriginKey(parsed));
+        }
+        return Object.freeze({ strict, allowedOrigins });
+    }
+
+    function assertHttpNetworkAllowed(policy, url) {
+        if (!policy.strict) {
+            return;
+        }
+        const origin = httpOriginKey(url);
+        if (!policy.allowedOrigins.has("*") && !policy.allowedOrigins.has(origin)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_STRICT_NETWORK_DENIED",
+                "HTTP client strict network policy denied the outbound origin.",
+            );
+        }
+    }
+
+    function isHttpRedirectStatus(status) {
+        return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+    }
+
+    function httpConnectionHeaderHas(value, token) {
+        return value.split(",").some((part) => part.trim().toLowerCase() === token);
+    }
+
+    function isHttpBodyForbiddenStatus(status) {
+        return (status >= 100 && status <= 199) || status === 204 || status === 304;
+    }
+
+    function resolveHttpRedirectUrl(currentUrl, location, operation) {
+        if (typeof location !== "string" || location.length === 0 || hasHttpControlChars(location)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                "HTTP redirect Location must be a non-empty URL without control characters.",
+            );
+        }
+        if (location.includes("://")) {
+            return parseAbsoluteHttpUrl(location, operation);
+        }
+        if (location.startsWith("//")) {
+            return parseAbsoluteHttpUrl(`${currentUrl.scheme}:${location}`, operation);
+        }
+        return Object.freeze({ ...currentUrl, target: joinHttpTarget(currentUrl.target, location, operation) });
+    }
+
+    class HttpConnectionPool {
+        constructor(options) {
+            this._options = options;
+            this._entries = new Map();
+        }
+
+        _entry(originKey) {
+            let entry = this._entries.get(originKey);
+            if (entry === undefined) {
+                entry = { idle: [], total: 0, inUse: 0 };
+                this._entries.set(originKey, entry);
+            }
+            return entry;
+        }
+
+        _prune(originKey, entry) {
+            if (entry.total === 0 && entry.inUse === 0 && entry.idle.length === 0) {
+                this._entries.delete(originKey);
+            }
+        }
+
+        async acquire(originKey, connect) {
+            const entry = this._entry(originKey);
+            const idle = entry.idle.pop();
+            if (idle !== undefined) {
+                clearTimeout(idle.timer);
+                entry.inUse += 1;
+                return { connection: idle.connection, reused: true };
+            }
+            if (entry.total >= this._options.maxConnectionsPerOrigin) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED", "HTTP client connection pool exhausted for origin.");
+            }
+            entry.total += 1;
+            entry.inUse += 1;
+            try {
+                return { connection: await connect(), reused: false };
+            } catch (error) {
+                entry.total -= 1;
+                entry.inUse -= 1;
+                this._prune(originKey, entry);
+                throw error;
+            }
+        }
+
+        async release(originKey, connection, reusable) {
+            const entry = this._entries.get(originKey);
+            if (entry === undefined) {
+                await connection.close().catch(() => {});
+                return;
+            }
+            entry.inUse -= 1;
+            if (reusable && this._options.idleTimeoutMs > 0) {
+                const timer = setTimeout(() => {
+                    const index = entry.idle.findIndex((idle) => idle.connection === connection);
+                    if (index >= 0) {
+                        entry.idle.splice(index, 1);
+                        entry.total -= 1;
+                        connection.close().catch(() => {});
+                        this._prune(originKey, entry);
+                    }
+                }, this._options.idleTimeoutMs);
+                entry.idle.push({ connection, timer });
+                return;
+            }
+            entry.total -= 1;
+            await connection.close().catch(() => {});
+            this._prune(originKey, entry);
+        }
+    }
+
+    function isHttpCancellationSignal(value) {
+        return (
+            value !== undefined &&
+            value !== null &&
+            typeof value === "object" &&
+            typeof value.aborted === "boolean"
+        );
+    }
+
+    function subscribeHttpCancellation(signal, listener) {
+        if (!isHttpCancellationSignal(signal)) {
+            return () => {};
+        }
+        if (signal.aborted) {
+            listener(signal.reason);
+            return () => {};
+        }
+        if (typeof signal._subscribe === "function") {
+            return signal._subscribe(listener);
+        }
+        if (typeof signal.addEventListener === "function") {
+            const wrapped = () => listener(signal.reason);
+            signal.addEventListener("abort", wrapped);
+            return () => signal.removeEventListener?.("abort", wrapped);
+        }
+        return () => {};
+    }
+
+    function httpDeadlineRemainingMs(deadline, operation) {
+        if (deadline === undefined) {
+            return Infinity;
+        }
+        if (typeof deadline !== "object" || deadline === null || typeof deadline.remainingMs !== "function") {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} deadline must come from sloppy/time Deadline.`,
+            );
+        }
+        const remainingMs = deadline.remainingMs();
+        if (!Number.isFinite(remainingMs) && remainingMs !== Infinity) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} deadline remaining time must be finite or Infinity.`,
+            );
+        }
+        return Math.max(0, remainingMs);
+    }
+
+    function httpRequestTimeoutError() {
+        return httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT", "HTTP client request timed out.");
+    }
+
+    function httpRequestCancelledError() {
+        return httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED", "HTTP client request was cancelled.");
+    }
+
+    function httpRemainingMs(expiresAtMs) {
+        return expiresAtMs === Infinity ? Infinity : Math.max(0, expiresAtMs - Date.now());
+    }
+
+    function parseHttpPort(text, operation) {
+        if (text === undefined || text === "") {
+            return undefined;
+        }
+        if (!/^[0-9]+$/.test(text)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                `${operation} URL port must contain decimal digits.`,
+            );
+        }
+        const port = Number(text);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                `${operation} URL port must be from 1 to 65535.`,
+            );
+        }
+        return port;
+    }
+
+    function parseAbsoluteHttpUrl(url, operation) {
+        if (typeof url !== "string" || url.length === 0) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_URL", `${operation} URL must be a non-empty string.`);
+        }
+        const schemeEnd = url.indexOf("://");
+        if (schemeEnd <= 0) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                `${operation} requires an absolute http:// URL or a baseUrl-relative path.`,
+            );
+        }
+        const scheme = url.slice(0, schemeEnd).toLowerCase();
+        if (scheme === "https") {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
+                "HTTPS requires the later TLS backend slice; no custom TLS fallback is available.",
+            );
+        }
+        if (scheme !== "http") {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_URL", `${operation} supports http:// URLs in this slice.`);
+        }
+
+        const rest = url.slice(schemeEnd + 3);
+        let pathStart = rest.length;
+        for (const marker of ["/", "?", "#"]) {
+            const index = rest.indexOf(marker);
+            if (index >= 0 && index < pathStart) {
+                pathStart = index;
+            }
+        }
+        const authority = rest.slice(0, pathStart);
+        let target = rest.slice(pathStart);
+        if (authority.length === 0 || authority.includes("@")) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_URL", `${operation} URL authority is invalid.`);
+        }
+
+        const fragment = target.indexOf("#");
+        if (fragment >= 0) {
+            target = target.slice(0, fragment);
+        }
+        if (target.length === 0) {
+            target = "/";
+        } else if (target.startsWith("?")) {
+            target = `/${target}`;
+        } else if (!target.startsWith("/")) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_URL", `${operation} URL target must be an origin-form path.`);
+        }
+
+        let host;
+        let portText;
+        let hostHeader;
+        if (authority.startsWith("[")) {
+            const close = authority.indexOf("]");
+            if (close <= 1 || (authority.length > close + 1 && authority[close + 1] !== ":")) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                    `${operation} IPv6 URL host must be bracketed as [host]:port.`,
+                );
+            }
+            host = authority.slice(1, close);
+            portText = authority.length > close + 1 ? authority.slice(close + 2) : undefined;
+            hostHeader = `[${host}]`;
+        } else {
+            const firstColon = authority.indexOf(":");
+            const lastColon = authority.lastIndexOf(":");
+            if (firstColon !== lastColon) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                    `${operation} unbracketed IPv6 URL hosts are ambiguous.`,
+                );
+            }
+            host = firstColon < 0 ? authority : authority.slice(0, firstColon);
+            portText = firstColon < 0 ? undefined : authority.slice(firstColon + 1);
+            hostHeader = host;
+        }
+        if (host.length === 0 || hasHttpControlChars(host)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                `${operation} URL contains invalid control characters.`,
+            );
+        }
+
+        const port = parseHttpPort(portText, operation) ?? 80;
+        const headerPort = port === 80 ? "" : `:${port}`;
+        const resolvedHostHeader = `${hostHeader}${headerPort}`;
+        if (hasHttpControlChars(resolvedHostHeader) || hasHttpControlChars(target)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                `${operation} URL contains invalid control characters.`,
+            );
+        }
+        return Object.freeze({
+            scheme,
+            host,
+            port,
+            hostHeader: resolvedHostHeader,
+            target,
+        });
+    }
+
+    function splitHttpTarget(target) {
+        const queryStart = target.indexOf("?");
+        if (queryStart < 0) {
+            return { path: target, suffix: "" };
+        }
+        return { path: target.slice(0, queryStart), suffix: target.slice(queryStart) };
+    }
+
+    function normalizeHttpTargetPath(path) {
+        const segments = [];
+        for (const segment of path.split("/")) {
+            if (segment === "" || segment === ".") {
+                continue;
+            }
+            if (segment === "..") {
+                segments.pop();
+                continue;
+            }
+            segments.push(segment);
+        }
+        return `/${segments.join("/")}`;
+    }
+
+    function joinHttpTarget(baseTarget, requestUrl, operation) {
+        if (hasHttpControlChars(requestUrl)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                `${operation} URL contains invalid control characters.`,
+            );
+        }
+        if (requestUrl.length === 0) {
+            const { path, suffix } = splitHttpTarget(baseTarget);
+            return `${normalizeHttpTargetPath(path)}${suffix}`;
+        }
+        if (requestUrl.startsWith("?")) {
+            const { path } = splitHttpTarget(baseTarget);
+            return `${normalizeHttpTargetPath(path)}${requestUrl}`;
+        }
+        if (requestUrl.startsWith("/")) {
+            const { path, suffix } = splitHttpTarget(requestUrl);
+            return `${normalizeHttpTargetPath(path)}${suffix}`;
+        }
+
+        const { path: basePath } = splitHttpTarget(baseTarget);
+        const baseDirectory = basePath.endsWith("/") ? basePath : basePath.slice(0, basePath.lastIndexOf("/") + 1);
+        const { path, suffix } = splitHttpTarget(`${baseDirectory}${requestUrl}`);
+        return `${normalizeHttpTargetPath(path)}${suffix}`;
+    }
+
+    function resolveHttpUrl(baseOptions, requestUrl, operation) {
+        if (typeof requestUrl === "string" && hasHttpControlChars(requestUrl)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                `${operation} URL contains invalid control characters.`,
+            );
+        }
+        if (typeof requestUrl === "string" && requestUrl.includes("://")) {
+            return parseAbsoluteHttpUrl(requestUrl, operation);
+        }
+        const baseUrl = baseOptions?.baseUrl;
+        if (typeof requestUrl !== "string" || typeof baseUrl !== "string") {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_URL",
+                `${operation} requires an absolute URL or a path with client baseUrl.`,
+            );
+        }
+        const base = parseAbsoluteHttpUrl(baseUrl, operation);
+        return Object.freeze({ ...base, target: joinHttpTarget(base.target, requestUrl, operation) });
+    }
+
+    function normalizeHttpMethod(method, operation) {
+        const resolved = method === undefined ? "GET" : method;
+        if (typeof resolved !== "string" || !/^[A-Za-z]+$/.test(resolved)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} method must be a token string.`);
+        }
+        return resolved.toUpperCase();
+    }
+
+    function appendHttpHeaders(target, headers, operation) {
+        if (headers === undefined) {
+            return;
+        }
+        if (!isPlainObject(headers)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} headers must be a plain object.`);
+        }
+        for (const [name, value] of Object.entries(headers)) {
+            const normalizedName = String(name).toLowerCase();
+            if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} header name is invalid.`);
+            }
+            if (normalizedName === "host" || normalizedName === "connection" || normalizedName === "content-length") {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    `${operation} manages Host, Connection, and Content-Length headers.`,
+                );
+            }
+            if (typeof value !== "string" || /[\r\n]/.test(value)) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    `${operation} header value must be a string without CR or LF.`,
+                );
+            }
+            target.set(normalizedName, { name, value });
+        }
+    }
+
+    function enforceHttpRequestBodyLimit(bytes, maxRequestBytes) {
+        if (bytes.byteLength > maxRequestBytes) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+                "HTTP request body exceeded the configured limit.",
+            );
+        }
+        return bytes;
+    }
+
+    function isHttpAsyncIterable(value) {
+        return value !== undefined && value !== null && typeof value[Symbol.asyncIterator] === "function";
+    }
+
+    async function readHttpStreamChunk(iterator, signal, expiresAtMs) {
+        if (isHttpCancellationSignal(signal) && signal.aborted) {
+            throw httpRequestCancelledError();
+        }
+        const remainingMs = httpRemainingMs(expiresAtMs);
+        if (remainingMs <= 0) {
+            throw httpRequestTimeoutError();
+        }
+        if (remainingMs === Infinity && signal === undefined) {
+            return await iterator.next();
+        }
+        let timeoutId;
+        let cleanupCancellation = () => {};
+        try {
+            return await Promise.race([
+                iterator.next(),
+                new Promise((_, reject) => {
+                    cleanupCancellation = subscribeHttpCancellation(signal, () => reject(httpRequestCancelledError()));
+                    if (remainingMs !== Infinity) {
+                        timeoutId = setTimeout(() => reject(httpRequestTimeoutError()), remainingMs);
+                    }
+                }),
+            ]);
+        } finally {
+            cleanupCancellation();
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
+
+    async function consumeHttpRequestStream(stream, maxRequestBytes, headers, operation, timing) {
+        if (!isHttpAsyncIterable(stream)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} stream body must be an async iterable of Uint8Array chunks.`,
+            );
+        }
+        const chunks = [];
+        let totalLength = 0;
+        const iterator = stream[Symbol.asyncIterator]();
+        while (true) {
+            const result = await readHttpStreamChunk(iterator, timing.signal, timing.expiresAtMs);
+            if (result.done) {
+                break;
+            }
+            const chunk = result.value;
+            if (!(chunk instanceof Uint8Array)) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    `${operation} stream body chunks must be Uint8Array values.`,
+                );
+            }
+            totalLength += chunk.byteLength;
+            if (totalLength > maxRequestBytes) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+                    "HTTP request body exceeded the configured limit.",
+                );
+            }
+            chunks.push(chunk.slice());
+        }
+        setHttpDefaultHeader(headers, "Content-Type", "application/octet-stream");
+        return concatHttpBytes(chunks, totalLength);
+    }
+
+    async function normalizeHttpBody(options, headers, operation, maxRequestBytes, timing) {
+        const sources = ["json", "text", "bytes", "stream"].filter((key) => options?.[key] !== undefined);
+        if (sources.length > 1) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY", `${operation} accepts only one request body source.`);
+        }
+        if (sources.length === 0) {
+            return new Uint8Array(0);
+        }
+        if (sources[0] === "json") {
+            let text;
+            try {
+                text = JSON.stringify(options.json);
+            } catch (error) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_JSON", `${operation} JSON body could not be serialized.`, {
+                    cause: error,
+                });
+            }
+            if (text === undefined) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_JSON", `${operation} JSON body must serialize to a JSON value.`);
+            }
+            setHttpDefaultHeader(headers, "Content-Type", "application/json");
+            return enforceHttpRequestBodyLimit(sloppyUtf8ToBytes(text), maxRequestBytes);
+        }
+        if (sources[0] === "text") {
+            if (typeof options.text !== "string") {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} text body must be a string.`);
+            }
+            setHttpDefaultHeader(headers, "Content-Type", "text/plain; charset=utf-8");
+            return enforceHttpRequestBodyLimit(sloppyUtf8ToBytes(options.text), maxRequestBytes);
+        }
+        if (sources[0] === "stream") {
+            return await consumeHttpRequestStream(options.stream, maxRequestBytes, headers, operation, timing);
+        }
+        if (!(options.bytes instanceof Uint8Array)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} bytes body must be a Uint8Array.`);
+        }
+        return enforceHttpRequestBodyLimit(options.bytes.slice(), maxRequestBytes);
+    }
+
+    function concatHttpBytes(chunks, totalLength) {
+        const out = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            out.set(chunk, offset);
+            offset += chunk.byteLength;
+        }
+        return out;
+    }
+
+    function httpBytesToAscii(bytes) {
+        let text = "";
+        for (const byte of bytes) {
+            text += String.fromCharCode(byte);
+        }
+        return text;
+    }
+
+    function findHttpHeaderEnd(bytes) {
+        for (let index = 3; index < bytes.byteLength; index += 1) {
+            if (bytes[index - 3] === 13 && bytes[index - 2] === 10 && bytes[index - 1] === 13 && bytes[index] === 10) {
+                return index + 1;
+            }
+        }
+        return -1;
+    }
+
+    function findHttpCrlf(bytes, start) {
+        for (let index = start + 1; index < bytes.byteLength; index += 1) {
+            if (bytes[index - 1] === 13 && bytes[index] === 10) {
+                return index - 1;
+            }
+        }
+        return -1;
+    }
+
+    function incompleteHttpChunk(complete, message) {
+        if (!complete) {
+            return undefined;
+        }
+        throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", message);
+    }
+
+    function parseHttpChunkedBody(bodyBytes, maxResponseBytes, complete) {
+        const chunks = [];
+        let totalLength = 0;
+        let offset = 0;
+        while (true) {
+            const sizeLineEnd = findHttpCrlf(bodyBytes, offset);
+            if (sizeLineEnd < 0) {
+                return incompleteHttpChunk(complete, "HTTP chunked response ended before a chunk size.");
+            }
+            const sizeLine = httpBytesToAscii(bodyBytes.slice(offset, sizeLineEnd));
+            const sizeText = sizeLine.split(";", 1)[0].trim();
+            if (!/^[0-9A-Fa-f]+$/.test(sizeText)) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP chunked response chunk size is malformed.");
+            }
+            const size = Number.parseInt(sizeText, 16);
+            if (!Number.isSafeInteger(size)) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT", "HTTP response body exceeded the configured limit.");
+            }
+            offset = sizeLineEnd + 2;
+            if (size === 0) {
+                if (offset + 2 > bodyBytes.byteLength) {
+                    return incompleteHttpChunk(complete, "HTTP chunked response ended before trailers.");
+                }
+                if (bodyBytes[offset] === 13 && bodyBytes[offset + 1] === 10) {
+                    return concatHttpBytes(chunks, totalLength);
+                }
+                const trailerEnd = findHttpHeaderEnd(bodyBytes.slice(offset));
+                if (trailerEnd < 0) {
+                    return incompleteHttpChunk(complete, "HTTP chunked response trailers are incomplete.");
+                }
+                return concatHttpBytes(chunks, totalLength);
+            }
+            if (totalLength + size > maxResponseBytes) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT", "HTTP response body exceeded the configured limit.");
+            }
+            if (offset + size + 2 > bodyBytes.byteLength) {
+                return incompleteHttpChunk(complete, "HTTP chunked response ended before a complete chunk.");
+            }
+            if (bodyBytes[offset + size] !== 13 || bodyBytes[offset + size + 1] !== 10) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP chunked response chunk terminator is malformed.");
+            }
+            chunks.push(bodyBytes.slice(offset, offset + size));
+            totalLength += size;
+            offset += size + 2;
+        }
+    }
+
+    class HttpHeaderBag {
+        constructor(entries) {
+            this._entries = entries;
+            this._map = new Map(entries.map(([name, value]) => [name.toLowerCase(), value]));
+            Object.freeze(this);
+        }
+
+        get(name) {
+            if (typeof name !== "string") {
+                throw new TypeError("HttpResponse.headers.get name must be a string.");
+            }
+            return this._map.get(name.toLowerCase()) ?? null;
+        }
+
+        entries() {
+            return this._entries.map(([name, value]) => [name, value]);
+        }
+    }
+
+    class HttpClientResponse {
+        constructor(status, statusText, headers, body, connectionReusable = false) {
+            this.status = status;
+            this.statusText = statusText;
+            this.headers = headers;
+            this._body = body;
+            this._consumed = false;
+            this._connectionReusable = connectionReusable;
+        }
+
+        _consume() {
+            if (this._consumed) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_BODY_CONSUMED", "HTTP response body was already consumed.");
+            }
+            this._consumed = true;
+            return this._body;
+        }
+
+        async bytes() {
+            return this._consume().slice();
+        }
+
+        async text() {
+            return new TextDecoder().decode(this._consume());
+        }
+
+        async json() {
+            try {
+                return JSON.parse(new TextDecoder().decode(this._consume()));
+            } catch (error) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_JSON", "HTTP response body is not valid JSON.", { cause: error });
+            }
+        }
+
+        stream(options = undefined) {
+            const chunkSize = options?.chunkSize ?? 8192;
+            if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    "HTTP response stream chunkSize must be a positive integer.",
+                );
+            }
+            const body = this._consume();
+            return (async function* streamHttpResponseBody() {
+                for (let offset = 0; offset < body.byteLength; offset += chunkSize) {
+                    yield body.slice(offset, Math.min(body.byteLength, offset + chunkSize));
+                }
+            })();
+        }
+    }
+
+    function parseHttpResponse(headBytes, bodyBytes, maxResponseBytes, complete = false) {
+        const head = httpBytesToAscii(headBytes);
+        const lines = head.split("\r\n");
+        const statusLine = lines.shift();
+        const match = /^HTTP\/1\.([01]) ([0-9]{3})(?: (.*))?$/.exec(statusLine ?? "");
+        const headers = [];
+        let contentLength = undefined;
+        let transferEncoding = undefined;
+        let connectionHeader = "";
+        if (match === null) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP response status line is malformed.");
+        }
+        const status = Number(match[2]);
+        for (const line of lines) {
+            if (line.length === 0) {
+                continue;
+            }
+            const colon = line.indexOf(":");
+            if (colon <= 0) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP response header is malformed.");
+            }
+            const name = line.slice(0, colon);
+            const value = line.slice(colon + 1).trimStart();
+            headers.push([name, value]);
+            if (name.toLowerCase() === "content-length") {
+                if (!/^[0-9]+$/.test(value)) {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP response Content-Length is malformed.");
+                }
+                contentLength = Number(value);
+            }
+            if (name.toLowerCase() === "transfer-encoding") {
+                transferEncoding = value.toLowerCase();
+            }
+            if (name.toLowerCase() === "connection") {
+                connectionHeader = value.toLowerCase();
+            }
+        }
+        const httpMinorVersion = match === null ? 1 : Number(match[1]);
+        let connectionReusable =
+            complete === false &&
+            (httpMinorVersion === 1
+                ? !httpConnectionHeaderHas(connectionHeader, "close")
+                : httpConnectionHeaderHas(connectionHeader, "keep-alive"));
+        if (isHttpBodyForbiddenStatus(status)) {
+            bodyBytes = bodyBytes.slice(0, 0);
+        } else if (transferEncoding === "chunked") {
+            const decoded = parseHttpChunkedBody(bodyBytes, maxResponseBytes, complete);
+            if (decoded === undefined) {
+                return undefined;
+            }
+            bodyBytes = decoded;
+        } else if (transferEncoding !== undefined && transferEncoding !== "identity") {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                "HTTP response Transfer-Encoding is not supported in this slice.",
+            );
+        } else if (contentLength !== undefined) {
+            if (contentLength > maxResponseBytes) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT", "HTTP response body exceeded the configured limit.");
+            }
+            if (bodyBytes.byteLength < contentLength) {
+                if (complete) {
+                    throw httpClientError(
+                        "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                        "HTTP response ended before the declared Content-Length body was fully received.",
+                    );
+                }
+                return undefined;
+            }
+            bodyBytes = bodyBytes.slice(0, contentLength);
+        } else {
+            if (bodyBytes.byteLength > maxResponseBytes) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT", "HTTP response body exceeded the configured limit.");
+            }
+            if (!complete) {
+                return undefined;
+            }
+            connectionReusable = false;
+        }
+        return new HttpClientResponse(status, match[3] ?? "", new HttpHeaderBag(headers), bodyBytes, connectionReusable);
+    }
+
+    async function readHttpResponse(connection, limits) {
+        const chunks = [];
+        let totalLength = 0;
+        let headerEnd = -1;
+        let parsed = undefined;
+        while (parsed === undefined) {
+            let chunk;
+            try {
+                chunk = await connection.read({ maxBytes: 8192 });
+            } catch (error) {
+                if (headerEnd >= 0) {
+                    break;
+                }
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                    "HTTP response ended before a complete head was received.",
+                    { cause: error },
+                );
+            }
+            chunks.push(chunk);
+            totalLength += chunk.byteLength;
+            if (totalLength > limits.maxHeaderBytes + limits.maxResponseBytes) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT", "HTTP response exceeded the configured limit.");
+            }
+            const received = concatHttpBytes(chunks, totalLength);
+            headerEnd = findHttpHeaderEnd(received);
+            if (headerEnd < 0) {
+                if (totalLength > limits.maxHeaderBytes) {
+                    throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP response headers exceeded the configured limit.");
+                }
+                continue;
+            }
+            parsed = parseHttpResponse(received.slice(0, headerEnd), received.slice(headerEnd), limits.maxResponseBytes);
+        }
+        if (parsed === undefined) {
+            const received = concatHttpBytes(chunks, totalLength);
+            parsed = parseHttpResponse(received.slice(0, headerEnd), received.slice(headerEnd), limits.maxResponseBytes, true);
+        }
+        return parsed;
+    }
+
+    async function normalizeHttpRequest(baseOptions, request, options, defaultMethod) {
+        const operation = "HttpClient.request";
+        const requestObject = typeof request === "string" ? { ...(options ?? {}), url: request } : request;
+        if (!isPlainObject(requestObject)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", "HttpClient.request requires a request object or URL string.");
+        }
+        const url = resolveHttpUrl(baseOptions, requestObject.url, operation);
+        const method = normalizeHttpMethod(defaultMethod ?? requestObject.method, operation);
+        const headers = new Map();
+        appendHttpHeaders(headers, baseOptions?.headers, operation);
+        appendHttpHeaders(headers, requestObject.headers, operation);
+        const redirects = normalizeHttpRedirectPolicy(baseOptions, requestObject, operation);
+        const network = normalizeHttpNetworkPolicy(baseOptions, requestObject, operation);
+        const maxRequestBytes =
+            parseHttpSize(requestObject.maxRequestBytes ?? baseOptions?.maxRequestBytes, operation) ??
+            HTTP_CLIENT_DEFAULT_MAX_REQUEST_BYTES;
+        const maxResponseBytes =
+            parseHttpSize(requestObject.maxResponseBytes ?? baseOptions?.maxResponseBytes, operation) ??
+            HTTP_CLIENT_DEFAULT_MAX_RESPONSE_BYTES;
+        const maxHeaderBytes =
+            parseHttpSize(requestObject.maxHeaderBytes ?? baseOptions?.maxHeaderBytes, operation) ??
+            HTTP_CLIENT_DEFAULT_MAX_HEADER_BYTES;
+        const timeoutMs = requestObject.timeoutMs ?? baseOptions?.timeoutMs;
+        if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) {
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS", `${operation} timeoutMs must be a non-negative number.`);
+        }
+        const deadlineMs = httpDeadlineRemainingMs(requestObject.deadline ?? baseOptions?.deadline, operation);
+        const signal = requestObject.signal ?? baseOptions?.signal;
+        if (signal !== undefined && !isHttpCancellationSignal(signal)) {
+            throw httpClientError(
+                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                `${operation} signal must be a Sloppy cancellation signal or AbortSignal-like object.`,
+            );
+        }
+        const timeoutBudgetMs = timeoutMs === undefined ? Infinity : Math.ceil(timeoutMs);
+        const timeoutDelayMs = Math.min(timeoutBudgetMs, Math.ceil(deadlineMs));
+        const expiresAtMs = timeoutDelayMs === Infinity ? Infinity : Date.now() + timeoutDelayMs;
+        const body = await normalizeHttpBody(requestObject, headers, operation, maxRequestBytes, {
+            signal,
+            expiresAtMs,
+        });
+        const remainingTimeoutMs = httpRemainingMs(expiresAtMs);
+        return Object.freeze({
+            url,
+            method,
+            headers,
+            body,
+            signal,
+            timeoutMs: timeoutBudgetMs === Infinity ? undefined : timeoutBudgetMs,
+            timeoutDelayMs: remainingTimeoutMs,
+            maxHeaderBytes,
+            maxRequestBytes,
+            maxResponseBytes,
+            redirects,
+            network,
+            operation,
+            expiresAtMs,
+        });
+    }
+
+    function serializeHttpRequest(request, keepAlive = false) {
+        const lines = [
+            `${request.method} ${request.url.target} HTTP/1.1`,
+            `Host: ${request.url.hostHeader}`,
+            keepAlive ? "Connection: keep-alive" : "Connection: close",
+        ];
+        if (!request.headers.has("accept")) {
+            lines.push("Accept: */*");
+        }
+        for (const { name, value } of request.headers.values()) {
+            lines.push(`${name}: ${value}`);
+        }
+        if (request.body.byteLength > 0) {
+            lines.push(`Content-Length: ${request.body.byteLength}`);
+        }
+        lines.push("", "");
+        const head = sloppyUtf8ToBytes(lines.join("\r\n"));
+        const bytes = new Uint8Array(head.byteLength + request.body.byteLength);
+        bytes.set(head, 0);
+        bytes.set(request.body, head.byteLength);
+        return bytes;
+    }
+
+    function mapHttpTransportError(error) {
+        const message = String(error?.message ?? error);
+        if (message.includes("SLOPPY_E_NET_DNS_FAILURE")) {
+            return httpClientError("SLOPPY_E_HTTP_CLIENT_DNS_FAILED", "HTTP client DNS resolution failed.", { cause: error });
+        }
+        if (message.includes("SLOPPY_E_NET_CONNECT_TIMEOUT")) {
+            return httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT", "HTTP client request timed out.", { cause: error });
+        }
+        if (message.includes("SLOPPY_E_NET_CONNECT_CANCELLED")) {
+            return httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED", "HTTP client request was cancelled.", { cause: error });
+        }
+        return httpClientError("SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED", "HTTP client transport operation failed.", { cause: error });
+    }
+
+    async function sendHttpRequestOnce(request, pool, lifecycle) {
+        let connection;
+        let originKey;
+        let reusable = false;
+        let released = false;
+        const acquireConnection = async () => {
+            assertHttpNetworkAllowed(request.network, request.url);
+            const remainingMs = httpRemainingMs(request.expiresAtMs);
+            if (remainingMs <= 0) {
+                throw httpRequestTimeoutError();
+            }
+            return await TcpClient.connect({
+                host: request.url.host,
+                port: request.url.port,
+                timeoutMs: remainingMs === Infinity ? request.timeoutMs : remainingMs,
+                noDelay: true,
+            });
+        };
+
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            connection = undefined;
+            reusable = false;
+            released = false;
+            let reused = false;
+            try {
+                originKey = httpOriginKey(request.url);
+                if (pool === undefined) {
+                    connection = await acquireConnection();
+                } else {
+                    const lease = await pool.acquire(originKey, acquireConnection);
+                    connection = lease.connection;
+                    reused = lease.reused;
+                }
+                lifecycle.connection = connection;
+                await connection.write(serializeHttpRequest(request, pool !== undefined));
+                const response = await readHttpResponse(connection, request);
+                reusable = response._connectionReusable === true;
+                return response;
+            } catch (error) {
+                if (connection !== undefined && pool !== undefined && reused && attempt === 0) {
+                    released = true;
+                    if (lifecycle.connection === connection) {
+                        lifecycle.connection = undefined;
+                    }
+                    await pool.release(originKey, connection, false).catch(() => {});
+                    continue;
+                }
+                throw error;
+            } finally {
+                if (lifecycle.connection === connection) {
+                    lifecycle.connection = undefined;
+                }
+                if (connection !== undefined && !released) {
+                    released = true;
+                    if (pool === undefined) {
+                        await connection.close().catch(() => {});
+                    } else {
+                        await pool.release(originKey, connection, reusable).catch(() => {});
+                    }
+                }
+            }
+        }
+        throw httpClientError("SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED", "HTTP client transport operation failed.");
+    }
+
+    async function sendHttpRequestWithRedirects(normalized, pool, lifecycle) {
+        if (typeof globalThis.__sloppy?.net?.connect !== "function") {
+            return await httpClientUnavailable("request");
+        }
+        let current = normalized;
+        const visited = new Set([httpUrlToString(current.url)]);
+        let redirectCount = 0;
+        while (true) {
+            const response = await sendHttpRequestOnce(current, pool, lifecycle);
+            if (!current.redirects.enabled || !isHttpRedirectStatus(response.status)) {
+                return response;
+            }
+            const location = response.headers.get("location");
+            if (location === null) {
+                return response;
+            }
+            if (redirectCount >= current.redirects.max) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED", "HTTP client exceeded the configured redirect limit.");
+            }
+            if (current.method !== "GET" && current.method !== "HEAD" && !current.redirects.allowPost) {
+                throw httpClientError(
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    "HTTP client redirect for request body methods requires redirects.allowPost.",
+                );
+            }
+            const nextUrl = resolveHttpRedirectUrl(current.url, location, current.operation);
+            const nextUrlText = httpUrlToString(nextUrl);
+            if (visited.has(nextUrlText)) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_REDIRECT_LOOP", "HTTP client detected a redirect loop.");
+            }
+            visited.add(nextUrlText);
+            redirectCount += 1;
+            const headers = cloneHttpHeaders(current.headers);
+            if (httpOriginKey(nextUrl) !== httpOriginKey(current.url)) {
+                stripHttpSensitiveHeaders(headers, current.redirects);
+            }
+            let method = current.method;
+            let body = current.body;
+            const hasBody = current.body.byteLength > 0;
+            if (
+                current.method !== "HEAD" &&
+                (response.status === 303 ||
+                    ((response.status === 301 || response.status === 302) &&
+                        (hasBody || current.method === "POST" || current.method === "PUT" || current.method === "PATCH")))
+            ) {
+                method = "GET";
+                body = new Uint8Array(0);
+                headers.delete("content-length");
+                headers.delete("content-type");
+            }
+            current = Object.freeze({ ...current, url: nextUrl, headers, method, body });
+        }
+    }
+
+    async function sendHttpRequest(baseOptions, request, options = undefined, defaultMethod = undefined, pool = undefined) {
+        const normalized = await normalizeHttpRequest(baseOptions, request, options, defaultMethod);
+        let timeoutId;
+        let timedOut = false;
+        let cancelled = false;
+        let cancelReason;
+        let cleanupCancellation = () => {};
+        const lifecycle = { connection: undefined };
+        const run = async () => {
+            return await sendHttpRequestWithRedirects(normalized, pool, lifecycle);
+        };
+
+        try {
+            if (isHttpCancellationSignal(normalized.signal) && normalized.signal.aborted) {
+                cancelled = true;
+                cancelReason = normalized.signal.reason;
+                throw httpRequestCancelledError();
+            }
+            if (normalized.timeoutDelayMs <= 0) {
+                throw httpRequestTimeoutError();
+            }
+            if (normalized.timeoutDelayMs === Infinity && normalized.signal === undefined) {
+                return await run();
+            }
+            return await Promise.race([
+                run(),
+                new Promise((_, reject) => {
+                    cleanupCancellation = subscribeHttpCancellation(normalized.signal, (reason) => {
+                        cancelled = true;
+                        cancelReason = reason;
+                        lifecycle.connection?.abort().catch(() => {});
+                        reject(httpRequestCancelledError());
+                    });
+                    if (normalized.timeoutDelayMs !== Infinity) {
+                        timeoutId = setTimeout(() => {
+                            timedOut = true;
+                            lifecycle.connection?.abort().catch(() => {});
+                            reject(httpRequestTimeoutError());
+                        }, normalized.timeoutDelayMs);
+                    }
+                }),
+            ]);
+        } catch (error) {
+            if (String(error?.message ?? "").startsWith("SLOPPY_E_HTTP_CLIENT_")) {
+                throw error;
+            }
+            if (cancelled) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED", "HTTP client request was cancelled.", {
+                    cause: error,
+                    reason: cancelReason,
+                });
+            }
+            if (timedOut) {
+                throw httpClientError("SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT", "HTTP client request timed out.", {
+                    cause: error,
+                });
+            }
+            throw mapHttpTransportError(error);
+        } finally {
+            cleanupCancellation();
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+        }
+    }
+
+    function withHttpDefaultHeader(options, name, value) {
+        const merged = { ...(options ?? {}) };
+        if (options?.headers !== undefined && !isPlainObject(options.headers)) {
+            return merged;
+        }
+        const headers = { ...(isPlainObject(options?.headers) ? options.headers : {}) };
+        const normalizedName = name.toLowerCase();
+        const hasHeader = Object.keys(headers).some((key) => key.toLowerCase() === normalizedName);
+        if (!hasHeader) {
+            headers[name] = value;
+        }
+        merged.headers = headers;
+        return merged;
+    }
+
+    async function readHttpResponseBody(response, kind) {
+        if (kind === "json") {
+            return await response.json();
+        }
+        if (kind === "text") {
+            return await response.text();
+        }
+        return await response.bytes();
+    }
+
+    async function sendHttpBodyRequest(baseOptions, url, options, kind, pool = undefined) {
+        const requestOptions =
+            kind === "json" ? withHttpDefaultHeader(options, "Accept", "application/json") : options;
+        const response = await sendHttpRequest(baseOptions, url, requestOptions, "GET", pool);
+        return await readHttpResponseBody(response, kind);
+    }
+
+    function postJsonRequest(baseOptions, url, value, options = undefined, pool = undefined) {
+        return sendHttpRequest(baseOptions, url, { ...(options ?? {}), json: value }, "POST", pool);
+    }
+
     function createHttpClientFacade(baseOptions = undefined) {
+        const poolOptions = normalizeHttpPoolOptions(baseOptions?.pool, "HttpClient.create");
+        const pool = poolOptions === undefined ? undefined : new HttpConnectionPool(poolOptions);
         const client = {
-            request() {
-                return httpClientUnavailable("request");
+            request(request, options = undefined) {
+                return sendHttpRequest(baseOptions, request, options, undefined, pool);
             },
-            get() {
-                return httpClientUnavailable("get");
+            get(url, options = undefined) {
+                return sendHttpRequest(baseOptions, url, options, "GET", pool);
             },
-            post() {
-                return httpClientUnavailable("post");
+            post(url, options = undefined) {
+                return sendHttpRequest(baseOptions, url, options, "POST", pool);
             },
-            getJson() {
-                return httpClientUnavailable("getJson");
+            getJson(url, options = undefined) {
+                return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
             },
-            postJson() {
-                return httpClientUnavailable("postJson");
+            postJson(url, value, options = undefined) {
+                return postJsonRequest(baseOptions, url, value, options, pool);
+            },
+            text(url, options = undefined) {
+                return sendHttpBodyRequest(baseOptions, url, options, "text", pool);
+            },
+            json(url, options = undefined) {
+                return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
+            },
+            bytes(url, options = undefined) {
+                return sendHttpBodyRequest(baseOptions, url, options, "bytes", pool);
             },
         };
         Object.defineProperty(client, "__sloppyHttpClientOptions", {
@@ -3790,20 +5144,470 @@ Reason:
         create(options = undefined) {
             return createHttpClientFacade(options);
         },
-        request() {
-            return httpClientUnavailable("request");
+        request(request, options = undefined) {
+            return sendHttpRequest(undefined, request, options);
         },
-        get() {
-            return httpClientUnavailable("get");
+        get(url, options = undefined) {
+            return sendHttpRequest(undefined, url, options, "GET");
         },
-        post() {
-            return httpClientUnavailable("post");
+        post(url, options = undefined) {
+            return sendHttpRequest(undefined, url, options, "POST");
         },
-        getJson() {
-            return httpClientUnavailable("getJson");
+        getJson(url, options = undefined) {
+            return sendHttpBodyRequest(undefined, url, options, "json");
         },
-        postJson() {
-            return httpClientUnavailable("postJson");
+        postJson(url, value, options = undefined) {
+            return postJsonRequest(undefined, url, value, options);
+        },
+        text(url, options = undefined) {
+            return sendHttpBodyRequest(undefined, url, options, "text");
+        },
+        json(url, options = undefined) {
+            return sendHttpBodyRequest(undefined, url, options, "json");
+        },
+        bytes(url, options = undefined) {
+            return sendHttpBodyRequest(undefined, url, options, "bytes");
+        },
+    });
+
+    class OsError extends Error {
+        constructor(code, message) {
+            super(`${code}: ${message}`);
+            this.name = "OsError";
+            this.code = code;
+        }
+    }
+
+    function sloppyOsError(code, message) {
+        return new OsError(code, message);
+    }
+
+    function sloppyNativeOs() {
+        const bridge = globalThis.__sloppy?.os;
+        if (bridge === undefined) {
+            throw sloppyOsError(
+                "SLOPPY_E_OS_FEATURE_UNAVAILABLE",
+                "sloppy/os requires the stdlib.os runtime bridge.",
+            );
+        }
+        return bridge;
+    }
+
+    function sloppyOsKey(key, operation) {
+        if (typeof key !== "string" || key.length === 0 || key.includes("=") || key.includes("\0")) {
+            throw new TypeError(`${operation} requires a non-empty environment key string without '=' or NUL.`);
+        }
+        return key;
+    }
+
+    function sloppyProcessRunArgs(command, args) {
+        if (typeof command !== "string" || command.length === 0 || command.includes("\0")) {
+            throw new TypeError("OS run command must be a non-empty string without NUL.");
+        }
+        if (args === undefined) {
+            return [];
+        }
+        if (!Array.isArray(args)) {
+            throw new TypeError("OS run args must be an array when provided.");
+        }
+        return args.map((arg, index) => {
+            if (typeof arg !== "string" || arg.includes("\0")) {
+                throw new TypeError(`OS run args[${index}] must be a string without NUL.`);
+            }
+            return arg;
+        });
+    }
+
+    function sloppyProcessRunOptions(options = undefined) {
+        const normalized = {
+            capture: "text",
+            maxStdoutBytes: 65536,
+            maxStderrBytes: 65536,
+            timeoutMs: 0,
+        };
+        if (options === undefined) {
+            return normalized;
+        }
+        if (options === null || typeof options !== "object" || Array.isArray(options)) {
+            throw new TypeError("OS run options must be an object when provided.");
+        }
+        for (const key of Object.keys(options)) {
+            if (!["cwd", "env", "capture", "maxStdoutBytes", "maxStderrBytes", "timeoutMs", "deadline", "signal"].includes(key)) {
+                throw new TypeError(`OS run does not support option ${key}.`);
+            }
+        }
+        if (options.cwd !== undefined) {
+            if (typeof options.cwd !== "string" || options.cwd.includes("\0")) {
+                throw new TypeError("OS run cwd must be a string without NUL.");
+            }
+            normalized.cwd = options.cwd;
+        }
+        if (options.env !== undefined) {
+            if (options.env === null || typeof options.env !== "object" || Array.isArray(options.env)) {
+                throw new TypeError("OS run env must be an object when provided.");
+            }
+            normalized.env = Object.freeze(Object.fromEntries(Object.entries(options.env).map(([key, value]) => {
+                sloppyOsKey(key, "OS run env");
+                if (typeof value !== "string" || value.includes("\0")) {
+                    throw new TypeError(`OS run env.${key} must be a string without NUL.`);
+                }
+                return [key, value];
+            })));
+        }
+        if (options.capture !== undefined) {
+            if (!["none", "text", "bytes"].includes(options.capture)) {
+                throw new TypeError('OS run capture must be "none", "text", or "bytes".');
+            }
+            normalized.capture = options.capture;
+        }
+        for (const key of ["maxStdoutBytes", "maxStderrBytes", "timeoutMs"]) {
+            if (options[key] !== undefined) {
+                if (!Number.isFinite(options[key]) || options[key] < 0) {
+                    throw new TypeError(`OS run ${key} must be a non-negative number.`);
+                }
+                normalized[key] = Math.ceil(options[key]);
+            }
+        }
+        if (options.deadline !== undefined && options.deadline !== null) {
+            if (typeof options.deadline.remainingMs !== "function") {
+                throw new TypeError("OS run deadline must come from sloppy/time Deadline.");
+            }
+            const remaining = options.deadline.remainingMs();
+            if (remaining <= 0) {
+                throw sloppyOsError("SLOPPY_E_OS_PROCESS_TIMEOUT", "deadline already expired");
+            }
+            if (remaining !== Infinity) {
+                if (!Number.isFinite(remaining)) {
+                    throw new TypeError("OS run deadline remaining time must be finite or Infinity.");
+                }
+                normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.ceil(remaining));
+            }
+        }
+        if (options.signal !== undefined) {
+            if (!isCancellationSignal(options.signal)) {
+                throw new TypeError("OS run signal must be a cancellation signal.");
+            }
+        }
+        if (options.signal?.aborted === true) {
+            throw sloppyOsError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
+        }
+        return normalized;
+    }
+
+    function sloppyProcessStartOptions(options = undefined) {
+        const normalized = { stdin: "ignore", stdout: "ignore", stderr: "ignore" };
+        if (options === undefined) {
+            return normalized;
+        }
+        if (options === null || typeof options !== "object" || Array.isArray(options)) {
+            throw new TypeError("OS start options must be an object when provided.");
+        }
+        for (const key of Object.keys(options)) {
+            if (!["cwd", "env", "stdin", "stdout", "stderr", "deadline", "signal"].includes(key)) {
+                throw new TypeError(`OS start does not support option ${key}.`);
+            }
+        }
+        if (options.cwd !== undefined) {
+            if (typeof options.cwd !== "string" || options.cwd.includes("\0")) {
+                throw new TypeError("OS start cwd must be a string without NUL.");
+            }
+            normalized.cwd = options.cwd;
+        }
+        if (options.env !== undefined) {
+            if (options.env === null || typeof options.env !== "object" || Array.isArray(options.env)) {
+                throw new TypeError("OS start env must be an object when provided.");
+            }
+            normalized.env = Object.freeze(Object.fromEntries(Object.entries(options.env).map(([key, value]) => {
+                sloppyOsKey(key, "OS start env");
+                if (typeof value !== "string" || value.includes("\0")) {
+                    throw new TypeError(`OS start env.${key} must be a string without NUL.`);
+                }
+                return [key, value];
+            })));
+        }
+        for (const key of ["stdin", "stdout", "stderr"]) {
+            if (options[key] !== undefined) {
+                if (!["ignore", "pipe"].includes(options[key])) {
+                    throw new TypeError(`OS start ${key} must be "ignore" or "pipe".`);
+                }
+                normalized[key] = options[key];
+            }
+        }
+        if (options.deadline !== undefined && options.deadline !== null) {
+            if (typeof options.deadline.remainingMs !== "function") {
+                throw new TypeError("OS start deadline must come from sloppy/time Deadline.");
+            }
+            if (options.deadline.remainingMs() <= 0) {
+                throw sloppyOsError("SLOPPY_E_OS_PROCESS_TIMEOUT", "deadline already expired");
+            }
+        }
+        if (options.signal !== undefined) {
+            if (!isCancellationSignal(options.signal)) {
+                throw new TypeError("OS start signal must be a cancellation signal.");
+            }
+            if (options.signal.aborted === true) {
+                throw sloppyOsError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
+            }
+        }
+        return normalized;
+    }
+
+    function sloppyProcessWaitOptions(options = undefined) {
+        const normalized = { timeoutMs: 0 };
+        if (options === undefined) {
+            return normalized;
+        }
+        if (options === null || typeof options !== "object" || Array.isArray(options)) {
+            throw new TypeError("ProcessHandle.wait options must be an object when provided.");
+        }
+        for (const key of Object.keys(options)) {
+            if (!["timeoutMs", "deadline", "signal"].includes(key)) {
+                throw new TypeError(`ProcessHandle.wait does not support option ${key}.`);
+            }
+        }
+        if (options.timeoutMs !== undefined) {
+            if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0) {
+                throw new TypeError("ProcessHandle.wait timeoutMs must be a non-negative number.");
+            }
+            normalized.timeoutMs = Math.ceil(options.timeoutMs);
+        }
+        if (options.deadline !== undefined && options.deadline !== null) {
+            if (typeof options.deadline.remainingMs !== "function") {
+                throw new TypeError("ProcessHandle.wait deadline must come from sloppy/time Deadline.");
+            }
+            const remaining = options.deadline.remainingMs();
+        if (remaining <= 0) {
+            throw sloppyOsError("SLOPPY_E_OS_PROCESS_TIMEOUT", "deadline already expired");
+        }
+        if (remaining !== Infinity) {
+            if (!Number.isFinite(remaining)) {
+                throw new TypeError("ProcessHandle.wait deadline remaining time must be finite or Infinity.");
+            }
+            normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.ceil(remaining));
+        }
+        }
+        if (options.signal !== undefined) {
+            if (!isCancellationSignal(options.signal)) {
+                throw new TypeError("ProcessHandle.wait signal must be a cancellation signal.");
+            }
+            if (options.signal.aborted === true) {
+                throw sloppyOsError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
+            }
+        }
+        return normalized;
+    }
+
+    class ProcessPipe {
+        constructor(handle, name) {
+            this._handle = handle;
+            this._name = name;
+        }
+
+        async read(maxBytes = 65536) {
+            if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+                throw new TypeError("Process pipe read maxBytes must be a positive number.");
+            }
+            const method = this._name === "stderr" ? "readStderr" : "readStdout";
+            if (typeof this._handle[method] !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
+            }
+            return this._handle[method](Math.ceil(maxBytes));
+        }
+
+        async readText(maxBytes = 65536) {
+            const value = await this.read(maxBytes);
+            if (typeof value === "string") {
+                return value;
+            }
+            return new TextDecoder().decode(value);
+        }
+
+        async *readLines(options = undefined) {
+            const chunkSize = options?.chunkSize ?? 4096;
+            const decoder = new TextDecoder();
+            let buffered = "";
+            for (;;) {
+                const value = await this.read(chunkSize);
+                const chunk = typeof value === "string" ? value : decoder.decode(value, { stream: true });
+                if (chunk.length === 0) {
+                    break;
+                }
+                buffered += chunk;
+                for (;;) {
+                    const newline = buffered.indexOf("\n");
+                    if (newline < 0) {
+                        break;
+                    }
+                    const line = buffered.slice(0, newline).replace(/\r$/, "");
+                    buffered = buffered.slice(newline + 1);
+                    yield line;
+                }
+            }
+            buffered += decoder.decode();
+            if (buffered.length !== 0) {
+                yield buffered.replace(/\r$/, "");
+            }
+        }
+    }
+
+    class ProcessInput {
+        constructor(handle) {
+            this._handle = handle;
+        }
+
+        async write(value) {
+            if (typeof this._handle.writeStdin !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
+            }
+            return this._handle.writeStdin(value);
+        }
+
+        async writeText(text) {
+            if (typeof text !== "string") {
+                throw new TypeError("Process stdin writeText requires a string.");
+            }
+            return this.write(text);
+        }
+
+        async close() {
+            if (typeof this._handle.closeStdin !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
+            }
+            return this._handle.closeStdin();
+        }
+    }
+
+    class ProcessHandle {
+        constructor(handle, options) {
+            this._handle = handle;
+            this.stdin = options.stdin === "pipe" ? new ProcessInput(handle) : undefined;
+            this.stdout = options.stdout === "pipe" ? new ProcessPipe(handle, "stdout") : undefined;
+            this.stderr = options.stderr === "pipe" ? new ProcessPipe(handle, "stderr") : undefined;
+        }
+
+        async wait(options = undefined) {
+            if (typeof this._handle.wait !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process wait bridge is unavailable.");
+            }
+            return this._handle.wait(sloppyProcessWaitOptions(options));
+        }
+
+        async terminate() {
+            return this._handle.terminate();
+        }
+
+        async kill() {
+            return this._handle.kill();
+        }
+
+        async cancel() {
+            return this._handle.cancel();
+        }
+
+        async dispose() {
+            if (typeof this._handle.dispose === "function") {
+                return this._handle.dispose();
+            }
+            return undefined;
+        }
+    }
+
+    function sloppyShutdownHandler(handler) {
+        if (typeof handler !== "function") {
+            throw new TypeError("Signals.onShutdown requires a function.");
+        }
+        return handler;
+    }
+
+    function sloppyShutdownContext(ctx = undefined) {
+        const source = ctx === null || typeof ctx !== "object" ? {} : ctx;
+        return Object.freeze({
+            signal: typeof source.signal === "string" ? source.signal : "shutdown",
+            forced: source.forced === true,
+            reason: source.reason,
+        });
+    }
+
+    function sloppySignalHandlerFailure(error) {
+        const failure = sloppyOsError("SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE", "shutdown signal handler failed");
+        failure.cause = error;
+        return failure;
+    }
+
+    const System = Object.freeze({
+        get platform() {
+            return sloppyNativeOs().systemInfo().platform;
+        },
+        get arch() {
+            return sloppyNativeOs().systemInfo().arch;
+        },
+        get cpuCount() {
+            return sloppyNativeOs().systemInfo().cpuCount;
+        },
+        get tempDirectory() {
+            return sloppyNativeOs().systemInfo().tempDirectory;
+        },
+        get hostname() {
+            return sloppyNativeOs().systemInfo().hostname;
+        },
+        get endOfLine() {
+            return sloppyNativeOs().systemInfo().endOfLine;
+        },
+    });
+
+    const Environment = Object.freeze({
+        get(key) {
+            key = sloppyOsKey(key, "Environment.get");
+            const value = sloppyNativeOs().environmentGet(key);
+            return value === undefined ? undefined : String(value);
+        },
+        has(key) {
+            return sloppyNativeOs().environmentHas(sloppyOsKey(key, "Environment.has")) === true;
+        },
+        list(options = undefined) {
+            const prefix = options?.prefix ?? "";
+            if (typeof prefix !== "string") {
+                throw new TypeError("Environment.list prefix must be a string.");
+            }
+            return Object.freeze([...sloppyNativeOs().environmentList(prefix)].map(String));
+        },
+    });
+
+    const Process = Object.freeze({
+        async run(command, args = [], options = undefined) {
+            const bridge = sloppyNativeOs();
+            if (typeof bridge.processRun !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS run bridge is unavailable.");
+            }
+            return bridge.processRun(command, sloppyProcessRunArgs(command, args), sloppyProcessRunOptions(options));
+        },
+        async start(command, args = [], options = undefined) {
+            const bridge = sloppyNativeOs();
+            if (typeof bridge.processStart !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS start bridge is unavailable.");
+            }
+            const startOptions = sloppyProcessStartOptions(options);
+            return new ProcessHandle(
+                await bridge.processStart(command, sloppyProcessRunArgs(command, args), startOptions),
+                startOptions,
+            );
+        },
+    });
+
+    const Signals = Object.freeze({
+        onShutdown(handler) {
+            handler = sloppyShutdownHandler(handler);
+            const bridge = sloppyNativeOs();
+            if (typeof bridge.signalsOnShutdown !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS shutdown signal bridge is unavailable.");
+            }
+            return bridge.signalsOnShutdown(async (ctx = undefined) => {
+                try {
+                    await handler(sloppyShutdownContext(ctx));
+                } catch (error) {
+                    throw sloppySignalHandlerFailure(error);
+                }
+            });
         },
     });
 
@@ -3841,5 +5645,10 @@ Reason:
         TcpConnection,
         NetworkAddress,
         HttpClient,
+        System,
+        Environment,
+        Process,
+        Signals,
+        OsError,
     });
 })();

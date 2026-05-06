@@ -67,6 +67,30 @@ listeners, local hostname/DNS resolution, async accept iteration, and close/abor
 `NetworkAddress.parse(...)` accepts object addresses, `host:port`, and bracketed
 `[ipv6]:port` text. CORE-NET-01.I adds source examples, doctor/audit metadata goldens,
 and conformance indexing. External live-network evidence remains outside the default lane.
+`LocalEndpoint`, `UnixSocket`, and `NamedPipe` expose the CORE-NET-02 local IPC surface
+under the same `stdlib.net` feature. The API uses named-root endpoint paths such as
+`runtime:/my-app.sock`, returns Slop-owned connection/server wrappers, keeps native Unix
+socket and named pipe handles private, and preserves bounded binary reads/writes with
+deadline options. Unix domain sockets remain POSIX-specific and named pipes remain
+Windows-specific; Windows AF_UNIX support is not claimed.
+`HttpClient` is exported from `sloppy/net` as the outbound CORE-HTTPCLIENT-01 surface. It
+uses the private `__sloppy.net` TCP bridge for the first cleartext HTTP/1.1 lane, exposes
+reusable clients plus `get`, `post`, `request`, `text`, `json`, `bytes`, `getJson`, and
+`postJson` helpers, enforces one request body source, consumes response bodies once, and
+implements operation-wide timeout/deadline/cancellation, buffered response `stream()`,
+per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping, strict-network
+denial, and cross-origin sensitive-header strip/deny defaults. HTTPS/TLS, proxy policy,
+true socket-level streaming, automatic compiler target inference, and a separate
+HTTP-native V8 bridge remain future work.
+`System`, `Environment`, `Process`, and `Signals` are exported from `sloppy/os` as the
+CORE-OS-01 surface. `System` exposes platform, architecture, CPU count, temp directory,
+hostname, and line ending metadata. `Environment` exposes key validation, `get`, `has`,
+and redacted `list` behavior. The Process run/start helpers use explicit argv only,
+bounded text/byte capture or streaming pipe helpers, timeout/deadline/cancellation
+validation, and stable Sloppy OS diagnostics. `Signals.onShutdown` registers shutdown
+handlers through the Slop-owned bridge shape. The native System/Environment bridge is
+V8-wired; the native execution bridge and platform signal loop remain deferred until host
+work can be scheduled off the V8 owner thread.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the

@@ -34,9 +34,13 @@ unaliased imports from `sloppy/os`; runtime value imports add `stdlib.os` to Pla
 `requiredFeatures[]`, emit `features.os = true`, and set `strongPlan.evidence.os = true`.
 Type-only imports do not activate the runtime feature.
 
-`stdlib.os` is known to the feature registry in CORE-OS-01.A/B but unavailable by default
-until later implementation slices register the V8/runtime surface. Requiring it today fails
-closed through `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE`.
+CORE-OS-01.C/H makes `stdlib.os` available for the `System` and `Environment` runtime
+surface. CORE-OS-01.D adds native `sl_os_process_run` and the bootstrap `Process.run`
+facade. CORE-OS-01.E/F adds native `sl_os_process_start`, an opaque ProcessHandle, pipe
+operations, wait timeout, terminate/kill/cancel, and the bootstrap `Process.start` facade.
+CORE-OS-01.G adds the bootstrap `Signals.onShutdown` facade over the Slop-owned bridge
+shape. The V8 process bridge and native platform signal loop remain deferred until host
+work can be scheduled without blocking the V8 owner thread.
 
 ## API Contract
 
@@ -91,14 +95,19 @@ const exit = await proc.wait();
 ```
 
 `Process.run(command, args, options?)` is a convenience wrapper over explicit argv only.
-It has bounded stdout/stderr capture, stable result/error shape, timeout/deadline/signal
-support, and no shell default.
+CORE-OS-01.D implements bounded stdout/stderr capture, stable result/error shape, native
+timeout handling, and no shell default. The bootstrap facade validates deadline and signal
+options as preflight input only: expired deadlines fail closed before launch, never
+deadlines do not add a timeout, and raw JS signal objects are not passed to native code.
+Full deadline/cancellation/signal/shutdown hardening remains in `Deferred Beyond
+CORE-OS-01.D`.
 
 `Process.start(command, args, options?)` returns a `ProcessHandle` with JS-safe resource
-identity only. The handle may expose `stdin`, `stdout`, `stderr`, `wait`, `terminate`,
-`kill`, `cancel`, and `dispose` semantics as the implementation slices land. JavaScript
-must never receive raw PIDs-as-capabilities, native process handles, pipe handles, libuv
-handles, OS handles, or native pointers.
+identity only. The bootstrap facade exposes `stdin`, `stdout`, `stderr`, `wait`,
+`terminate`, `kill`, `cancel`, and `dispose` over the Slop-owned bridge shape. Native C
+keeps the handle opaque to callers and keeps platform process and pipe handles private to
+the platform backend. JavaScript must never receive raw PIDs-as-capabilities, native
+process handles, pipe handles, libuv handles, OS handles, or native pointers.
 
 Signals:
 
@@ -204,12 +213,51 @@ Evidence lanes stay separate:
 Skipped optional lanes are not pass evidence. CORE-OS-01.A/B covers only the default
 feature/Plan/diagnostic/compiler metadata lane.
 
-## Deferred Beyond CORE-OS-01.A/B
+## Implemented In CORE-OS-01.C/H Partial
 
-- System and Environment runtime implementation.
-- Process.run native implementation.
-- Process.start, streaming pipes, and ProcessHandle lifecycle.
-- Deadlines, cancellation, kill, shutdown, and late-completion runtime hardening.
-- Signals and app lifecycle integration.
+- System metadata normalization for platform, architecture, CPU count, temp directory,
+  hostname, and end-of-line.
+- Environment get/has/list with development and strict host-policy admission.
+- Secret-key detection and deterministic redaction helper for diagnostics and future audit
+  output.
+- V8 private namespace `__sloppy.os` and bootstrap JS exports for `System` and
+  `Environment`.
+
+## Implemented In CORE-OS-01.D
+
+- Native `sl_os_process_run` for explicit argv only; no shell interpolation and no Node or
+  Deno compatibility surface.
+- Development-mode process execution and strict-policy `process.run` denial.
+- Bounded stdout/stderr capture with truncation flags.
+- Timeout terminal state distinct from command failure; deadline and signal inputs are
+  preflight-only in the bootstrap facade.
+- Stable diagnostics for denied execution, command lookup failure, invalid cwd, invalid
+  environment overrides, start failure, and timeout.
+- Bootstrap JS `Process.run` validation and result forwarding through the Slop-owned OS
+  bridge shape.
+
+## Implemented In CORE-OS-01.E/F
+
+- Native `sl_os_process_start` for explicit argv only, reusing the same no-shell process
+  contract as `Process.run`.
+- Opaque native `SlOsProcessHandle` plus stdin/stdout/stderr pipe read/write/close helpers.
+- Wait timeout, explicit terminate/kill/cancel helpers, stale pipe diagnostics, and
+  idempotent dispose cleanup.
+- Bootstrap JS `Process.start`, `ProcessHandle`, pipe `read`, `readText`, `readLines`, and
+  stdin `writeText` facade over the private bridge shape.
+
+## Implemented In CORE-OS-01.G
+
+- Bootstrap JS `Signals.onShutdown` registration through the private OS bridge shape.
+- Normalized shutdown handler context with `signal`, `forced`, and `reason`.
+- Registration disposal forwarding and stable `SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE`
+  wrapping when user shutdown handlers throw or reject.
+
+## Deferred Beyond CORE-OS-01.G
+
+- V8 `processRun` intrinsic and owner-thread-safe native scheduling.
+- V8 `processStart` intrinsic and owner-thread-safe native scheduling.
+- Native platform signal registration and app-host dispatch wiring.
+- Shutdown-driven process cancellation and late-completion runtime hardening.
 - Doctor/audit examples, conformance, and goldens beyond diagnostic shape.
 - Public alpha docs and benchmark/performance claims.
