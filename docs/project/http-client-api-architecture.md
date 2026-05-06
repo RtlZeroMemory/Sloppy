@@ -31,9 +31,12 @@ response `stream()` iteration over the buffered body, `signal` cancellation, and
 `deadline` handling. It also includes bounded redirects, reusable-client per-origin
 HTTP/1.1 pooling, strict-network preconnect denial, deterministic DNS-failure mapping, and
 cross-origin sensitive-header stripping plus doctor/audit metadata for named, static, and
-dynamic outbound clients. HTTPS/TLS, true socket-level streaming, proxy policy, automatic
-compiler target inference, and a dedicated HTTP-native V8 bridge remain deferred to later
-CORE-HTTPCLIENT-01 slices.
+dynamic outbound clients. V8-enabled builds activate the existing private `__sloppy.net`
+bridge when `stdlib.httpclient` is required, because the first HTTP/1.1 transport is built
+from the Slop-owned TCP bridge rather than a Fetch or Node adapter. HTTPS/TLS, true
+socket-level streaming, proxy policy, automatic compiler target inference, and a separate
+HTTP-native intrinsic namespace remain future transport evolution, not requirements for
+the HTTP/1.1-first public surface.
 
 ## Public Shape
 

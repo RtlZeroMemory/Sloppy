@@ -74,7 +74,7 @@ reusable clients plus `get`, `post`, `request`, `text`, `json`, `bytes`, `getJso
 implements operation-wide timeout/deadline/cancellation, buffered response `stream()`,
 per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping, strict-network
 denial, and cross-origin sensitive-header strip/deny defaults. HTTPS/TLS, proxy policy,
-true socket-level streaming, automatic compiler target inference, and a dedicated
+true socket-level streaming, automatic compiler target inference, and a separate
 HTTP-native V8 bridge remain future work.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and

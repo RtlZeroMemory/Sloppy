@@ -1600,6 +1600,73 @@ static int test_net_intrinsic_namespace_is_registered(void)
     return 0;
 }
 
+static int test_http_client_feature_activates_net_intrinsic_namespace(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.httpclient")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 441;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 442;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-http-client-net-bridge.js"),
+                sl_str_from_cstr("globalThis.sloppy_http_client_net_bridge = function () {"
+                                 "  const n = globalThis.__sloppy.net;"
+                                 "  return n && typeof n.connect === 'function' &&"
+                                 "    typeof n.write === 'function' &&"
+                                 "    typeof n.readUntil === 'function' &&"
+                                 "    typeof n.close === 'function'"
+                                 "      ? 'httpclient-net-bridge-ok'"
+                                 "      : 'httpclient-net-bridge-missing';"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 443;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_http_client_net_bridge"),
+                                               &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 444;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("httpclient-net-bridge-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 445;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_net_intrinsic_inactive_feature_is_not_registered(void)
 {
     unsigned char engine_storage[8192];
@@ -4092,6 +4159,11 @@ int main(void)
     }
 
     result = test_net_intrinsic_namespace_is_registered();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_http_client_feature_activates_net_intrinsic_namespace();
     if (result != 0) {
         return result;
     }

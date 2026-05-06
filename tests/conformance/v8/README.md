@@ -19,6 +19,8 @@ valid SDK. Default non-V8 gates do not prove this lane.
   microtasks;
 - native Time delay Promise settlement through the owner-thread scheduler and inactive
   `__sloppy.time` registration when `stdlib.time` is not active;
+- `stdlib.httpclient` feature activation reusing the private `__sloppy.net` bridge for the
+  first outbound HTTP/1.1 client surface;
 - request context method/header/body/signal/deadline materialization;
 - request-scope cleanup across sync and async outcomes;
 - registered handler validation and app-eval rollback.

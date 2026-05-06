@@ -244,9 +244,11 @@ on `stdlib.net` for the cleartext HTTP/1.1 request/response lane. The current la
 has helper methods, buffered stream helpers, operation-wide deadline/cancellation,
 per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping, strict-network
 denial, cross-origin sensitive-header strip/deny defaults, and doctor/audit metadata
-goldens for named/static/dynamic outbound HTTP client facts. HTTPS/TLS, proxy policy, true
-socket-level streaming, automatic compiler inference of static target literals, and a
-dedicated HTTP-native V8 bridge remain future CORE-HTTPCLIENT work.
+goldens for named/static/dynamic outbound HTTP client facts. V8 builds activate the
+existing private `__sloppy.net` bridge for `stdlib.httpclient`; a separate HTTP-native
+intrinsic namespace is not required for this HTTP/1.1-first surface. HTTPS/TLS, proxy
+policy, true socket-level streaming, and automatic compiler inference of static target
+literals remain future CORE-HTTPCLIENT work.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
 Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.I
 registered vetted random/hash/HMAC/password/non-crypto hash backends, the
