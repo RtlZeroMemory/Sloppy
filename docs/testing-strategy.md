@@ -108,11 +108,12 @@ doctor/golden coverage for security-looking static use. Deterministic tests must
 randomness quality, password cracking cost, timing resistance, benchmark performance,
 WebCrypto/Node/Bun compatibility, or public alpha readiness.
 
-CORE-NET-01 tests must keep evidence claims narrow. Contract tests may prove `sloppy/net`
+CORE-NET-01 tests must keep evidence claims narrow. Contract tests prove `sloppy/net`
 import recognition, `stdlib.net` Plan metadata, unavailable-feature diagnostics, stable
-network diagnostic names/goldens, and network policy documentation. Later implementation
-tests must use deterministic localhost/loopback by default and keep live-network,
-stress/torture, V8, package, and benchmark evidence separate.
+network diagnostic names/goldens, and network policy documentation. CORE-NET-01.C/D/H adds
+deterministic loopback TCP client execution for connect/write/read/readLine/close and
+embedded-NUL bytes. Default TCP execution tests must remain localhost/loopback only and
+keep live-network, stress/torture, V8, package, and benchmark evidence separate.
 CORE-CODEC-01 tests must keep evidence claims narrow. Contract tests prove `sloppy/codec`
 import recognition, `stdlib.codec` Plan metadata, unavailable-feature diagnostics, stable
 codec diagnostic names/goldens, backend policy, and checksum non-security wording.

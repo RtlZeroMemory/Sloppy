@@ -14,6 +14,7 @@ stdlib/sloppy/
   crypto.js
   data.js
   fs.js
+  net.js
   time.js
   results.js
   schema.js
@@ -53,6 +54,11 @@ file operations, directory create/list/delete/walk helpers, atomic writes, temp 
 symlink/readlink entry points, chunked FileHandle reads/writes, and bounded non-recursive
 file/directory watch events. Watch is not a Node `fs.watch` compatibility layer and does
 not claim recursive or OS-native coalescing semantics.
+`net.js` publishes the CORE-NET-01 TCP client API surface. In V8-enabled runtimes whose
+active Plan enables `stdlib.net`, `TcpClient.connect(...)` and `TcpConnection` operations
+use the private `__sloppy.net` bridge. The current runtime slice covers TCP client
+connections, bounded byte/text writes, `read`, `readUntil`, `readLine`, close, and abort.
+`TcpListener` remains a fail-closed placeholder until the listener/accept PR lands.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the

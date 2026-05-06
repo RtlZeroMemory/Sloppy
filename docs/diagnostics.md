@@ -672,10 +672,11 @@ Random-source, unsupported-algorithm, HMAC key, stale Secret, and constant-time 
 failures are surfaced with stable code-name strings in JS-facing errors. Shape tests and
 goldens may include operation names and algorithm ids, but never generated random bytes or
 secret material.
-CORE-NET-01.A/B adds stable Network diagnostics and JSON goldens for the contract-only
-feature/model slice. Missing or inactive `stdlib.net` uses the runtime-feature diagnostics
-above until implementation PRs register TCP backends and V8 intrinsics. Network-specific
-codes are reserved for TCP API, policy, lifecycle, and stream failures:
+CORE-NET-01.C/D/H adds the first executable Network diagnostics for TCP client and
+connection operations on top of the stable CORE-NET-01.A/B code set. Missing or inactive
+`stdlib.net` uses the runtime-feature diagnostics above before execution reaches the
+feature-gated API surface. Network-specific codes cover TCP API, policy, lifecycle, and
+stream failures:
 
 - `SLOPPY_E_NET_FEATURE_UNAVAILABLE` for API use when the feature/backend lane is not
   active;
@@ -697,8 +698,9 @@ codes are reserved for TCP API, policy, lifecycle, and stream failures:
 Network diagnostics may name operation, policy mode, loopback/external classification, and
 redacted endpoint shape. They must not include secrets, headers, tokens, raw sockets, libuv
 handles, OS handles, V8 handles, raw native pointers, or package-manager state. Default
-goldens prove deterministic diagnostic shape only; they do not prove TCP execution,
-external network access, throughput, V8 execution, or benchmark evidence.
+goldens prove deterministic diagnostic shape only. Loopback client tests prove scoped TCP
+client execution; they do not prove listener/accept behavior, external network access,
+throughput, broad DNS behavior, or benchmark evidence.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
