@@ -223,6 +223,16 @@ static int expect_valid_capability_skeletons(const SlPlan* plan)
     return 0;
 }
 
+static int expect_single_required_feature(const SlPlan* plan, const char* id)
+{
+    if (plan->required_feature_count != 1U ||
+        !sl_str_equal(plan->required_features[0].id, sl_str_from_cstr(id)))
+    {
+        return 1;
+    }
+    return 0;
+}
+
 static int expect_valid_filesystem_capability_accesses(const SlPlan* plan)
 {
     static const char* expected_tokens[] = {"files.append",   "files.delete", "files.list",
@@ -355,12 +365,17 @@ static int test_valid_fixture_matrix(void)
         }
         if (sl_str_equal(
                 sl_str_from_cstr(cases[index].path),
-                sl_str_from_cstr("tests/golden/plan/unknown-required-feature.plan.json")) &&
-            (plan.required_feature_count != 1U ||
-             !sl_str_equal(plan.required_features[0].id,
-                           sl_str_from_cstr("future.compiler.required.feature"))))
+                sl_str_from_cstr("tests/golden/plan/valid-network-required-feature.plan.json")) &&
+            expect_single_required_feature(&plan, "stdlib.net") != 0)
         {
             return 70 + (int)index;
+        }
+        if (sl_str_equal(
+                sl_str_from_cstr(cases[index].path),
+                sl_str_from_cstr("tests/golden/plan/unknown-required-feature.plan.json")) &&
+            expect_single_required_feature(&plan, "future.compiler.required.feature") != 0)
+        {
+            return 71 + (int)index;
         }
     }
 

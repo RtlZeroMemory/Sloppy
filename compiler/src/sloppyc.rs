@@ -1343,14 +1343,16 @@ fn sloppy_net_import_name_supported(name: &str) -> bool {
     )
 }
 
-fn validate_module_sloppy_time_import(
+fn validate_module_sloppy_import(
     path: &Path,
     import: &ImportDeclaration<'_>,
+    module_name: &str,
+    is_supported: fn(&str) -> bool,
 ) -> Result<(), Diagnostic> {
     let Some(specifiers) = &import.specifiers else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-            "unsupported import specifier \"sloppy/time\"",
+            format!("unsupported import specifier \"{module_name}\""),
         )
         .with_path(path)
         .with_span(import.source.span));
@@ -1358,7 +1360,7 @@ fn validate_module_sloppy_time_import(
     if specifiers.is_empty() {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-            "unsupported import specifier \"sloppy/time\"",
+            format!("unsupported import specifier \"{module_name}\""),
         )
         .with_path(path)
         .with_span(import.source.span));
@@ -1367,14 +1369,14 @@ fn validate_module_sloppy_time_import(
         let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-                "unsupported import specifier \"sloppy/time\"",
+                format!("unsupported import specifier \"{module_name}\""),
             )
             .with_path(path)
             .with_span(import.source.span));
         };
         let imported = specifier.imported.name().as_str();
         let local = specifier.local.name.as_str();
-        if !sloppy_time_import_name_supported(imported) || imported != local {
+        if !is_supported(imported) || imported != local {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_IMPORT",
                 format!("unsupported sloppy import \"{imported}\""),
@@ -1384,92 +1386,37 @@ fn validate_module_sloppy_time_import(
         }
     }
     Ok(())
+}
+
+fn validate_module_sloppy_time_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/time",
+        sloppy_time_import_name_supported,
+    )
 }
 
 fn validate_module_sloppy_crypto_import(
     path: &Path,
     import: &ImportDeclaration<'_>,
 ) -> Result<(), Diagnostic> {
-    let Some(specifiers) = &import.specifiers else {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-            "unsupported import specifier \"sloppy/crypto\"",
-        )
-        .with_path(path)
-        .with_span(import.source.span));
-    };
-    if specifiers.is_empty() {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-            "unsupported import specifier \"sloppy/crypto\"",
-        )
-        .with_path(path)
-        .with_span(import.source.span));
-    }
-    for specifier in specifiers {
-        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
-            return Err(Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-                "unsupported import specifier \"sloppy/crypto\"",
-            )
-            .with_path(path)
-            .with_span(import.source.span));
-        };
-        let imported = specifier.imported.name().as_str();
-        let local = specifier.local.name.as_str();
-        if !sloppy_crypto_import_name_supported(imported) || imported != local {
-            return Err(Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_IMPORT",
-                format!("unsupported sloppy import \"{imported}\""),
-            )
-            .with_path(path)
-            .with_span(specifier.span));
-        }
-    }
-    Ok(())
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/crypto",
+        sloppy_crypto_import_name_supported,
+    )
 }
 
 fn validate_module_sloppy_net_import(
     path: &Path,
     import: &ImportDeclaration<'_>,
 ) -> Result<(), Diagnostic> {
-    let Some(specifiers) = &import.specifiers else {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-            "unsupported import specifier \"sloppy/net\"",
-        )
-        .with_path(path)
-        .with_span(import.source.span));
-    };
-    if specifiers.is_empty() {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-            "unsupported import specifier \"sloppy/net\"",
-        )
-        .with_path(path)
-        .with_span(import.source.span));
-    }
-    for specifier in specifiers {
-        let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
-            return Err(Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER",
-                "unsupported import specifier \"sloppy/net\"",
-            )
-            .with_path(path)
-            .with_span(import.source.span));
-        };
-        let imported = specifier.imported.name().as_str();
-        let local = specifier.local.name.as_str();
-        if !sloppy_net_import_name_supported(imported) || imported != local {
-            return Err(Diagnostic::new(
-                "SLOPPYC_E_UNSUPPORTED_IMPORT",
-                format!("unsupported sloppy import \"{imported}\""),
-            )
-            .with_path(path)
-            .with_span(specifier.span));
-        }
-    }
-    Ok(())
+    validate_module_sloppy_import(path, import, "sloppy/net", sloppy_net_import_name_supported)
 }
 
 fn extract_import(
@@ -6886,6 +6833,50 @@ export default app;
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.time"]));
         assert_eq!(plan["features"]["time"], serde_json::json!(true));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn function_module_sloppy_net_import_emits_required_feature() {
+        let root = fixture_temp_dir("function-module-net-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("tcp.js"),
+            r#"import { Results } from "sloppy";
+import { TcpClient, TcpConnection } from "sloppy/net";
+
+export function tcpModule(app) {
+    app.get("/tcp", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { tcpModule } from "./modules/tcp.js";
+
+const app = Sloppy.create();
+app.useModule(tcpModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_net_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains("TcpClient"));
+        assert!(emitted_js.source.contains("TcpConnection"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.net"]));
+        assert_eq!(plan["features"]["network"], serde_json::json!(true));
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }

@@ -85,6 +85,8 @@ static SlRuntimeFeatureDescriptor sl_feature_fs_descriptor(SlRuntimeFeatureId id
 
 static SlRuntimeFeatureDescriptor sl_feature_net_descriptor(SlRuntimeFeatureId id, bool available)
 {
+    /* The TCP stdlib is Plan-visible before it is executable: sloppy/net remains known even when
+       unavailable, and depends on V8, libuv transport, and stdlib.time deadline semantics. */
     return sl_feature_descriptor_make(
         id, SL_RUNTIME_FEATURE_KIND_STDLIB,
         sl_feature_literal("stdlib.net", sizeof("stdlib.net") - 1U),
