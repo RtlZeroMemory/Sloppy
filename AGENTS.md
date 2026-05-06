@@ -169,7 +169,8 @@ Root wrappers may exist, but `tools/windows` is canonical for the Windows workfl
 
 Codex sessions on this machine must assume the compatible local V8 SDK is available through
 the repo scripts. For implementation PRs that touch runtime, app-host, compiler, bootstrap,
-provider, or configuration behavior, run and report a separate V8-enabled Windows lane:
+provider, configuration, or V8-adjacent behavior, run and report a separate V8-enabled
+Windows lane unless the resolver itself fails:
 
 ```powershell
 .\tools\windows\resolve-v8-sdk.ps1
@@ -179,7 +180,8 @@ provider, or configuration behavior, run and report a separate V8-enabled Window
 ```
 
 If SDK resolution fails on this machine, treat that as a local environment blocker and
-report it honestly instead of counting the V8 lane as skipped or optional.
+report it honestly, including the concrete resolver failure, instead of counting the V8
+lane as skipped, optional, or unavailable.
 
 ## Before opening a PR
 

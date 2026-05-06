@@ -119,6 +119,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.stdlib_net = true;
     availability.stdlib_os = true;
     availability.stdlib_http_client = true;
+    availability.stdlib_workers = true;
     return availability;
 }
 
@@ -197,7 +198,7 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     const SlRuntimeFeatureDescriptor* config =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 19) {
+    if (SL_RUNTIME_FEATURE_COUNT != 20) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || data == NULL || time == NULL || crypto == NULL ||
@@ -287,6 +288,81 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     {
         return 65;
     }
+    return 0;
+}
+
+static int test_workers_descriptor_metadata(void)
+{
+    const SlRuntimeFeatureDescriptor* workers =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_WORKERS);
+
+    if (workers == NULL) {
+        return 1;
+    }
+    if (!sl_str_equal(workers->stable_id, sl_str_from_cstr("stdlib.workers")) ||
+        !sl_str_equal(workers->stdlib_import, sl_str_from_cstr("sloppy/workers")) ||
+        !sl_str_equal(workers->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.workers")) ||
+        !workers->requires_v8_intrinsics || !workers->available ||
+        (workers->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_TRANSPORT_LIBUV)) == 0U ||
+        (workers->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U ||
+        (workers->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U)
+    {
+        return 2;
+    }
+
+    return 0;
+}
+
+static int test_workers_required_feature_activates_runtime_dependencies(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.workers")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = sl_runtime_feature_default_availability();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.v8 = true;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_WORKERS) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC))
+    {
+        return 2;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 3;
+    }
+    return 0;
+}
+
+static int test_workers_feature_diagnostic_golden(void)
+{
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.workers")}};
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlPlan plan = target_only_plan();
+
+    availability.stdlib_workers = false;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_workers.json") != 0)
+    {
+        return 82;
+    }
+
     return 0;
 }
 
@@ -1035,6 +1111,7 @@ int main(void)
 {
     static const FeatureTestFn tests[] = {
         test_descriptors_publish_import_and_intrinsic_metadata,
+        test_workers_descriptor_metadata,
         test_explicit_time_required_feature_activates_stdlib_time,
         test_explicit_fs_required_feature_activates_stdlib_fs,
         test_explicit_crypto_required_feature_activates_when_available,
@@ -1058,6 +1135,8 @@ int main(void)
         test_os_feature_diagnostic_golden,
         test_http_client_feature_diagnostic_golden,
         test_http_client_required_feature_activates_tcp_dependency,
+        test_workers_required_feature_activates_runtime_dependencies,
+        test_workers_feature_diagnostic_golden,
     };
     size_t index = 0U;
 

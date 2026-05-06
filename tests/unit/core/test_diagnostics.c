@@ -852,6 +852,32 @@ static int test_os_code_names(void)
     return 0;
 }
 
+static int test_workers_code_names(void)
+{
+    static const ExpectedDiagCodeName expected[] = {
+        {SL_DIAG_WORKERS_FEATURE_UNAVAILABLE, "SLOPPY_E_WORKERS_FEATURE_UNAVAILABLE"},
+        {SL_DIAG_BACKGROUND_SERVICE_START_FAILED, "SLOPPY_E_BACKGROUND_SERVICE_START_FAILED"},
+        {SL_DIAG_BACKGROUND_SERVICE_FAILED, "SLOPPY_E_BACKGROUND_SERVICE_FAILED"},
+        {SL_DIAG_WORK_QUEUE_FULL, "SLOPPY_E_WORK_QUEUE_FULL"},
+        {SL_DIAG_WORK_QUEUE_STOPPED, "SLOPPY_E_WORK_QUEUE_STOPPED"},
+        {SL_DIAG_WORK_JOB_CANCELLED, "SLOPPY_E_WORK_JOB_CANCELLED"},
+        {SL_DIAG_WORK_JOB_TIMEOUT, "SLOPPY_E_WORK_JOB_TIMEOUT"},
+        {SL_DIAG_WORK_JOB_FAILED, "SLOPPY_E_WORK_JOB_FAILED"},
+        {SL_DIAG_WORK_RETRY_EXHAUSTED, "SLOPPY_E_WORK_RETRY_EXHAUSTED"},
+        {SL_DIAG_WORKER_POOL_UNAVAILABLE, "SLOPPY_E_WORKER_POOL_UNAVAILABLE"},
+        {SL_DIAG_WORKER_POOL_SATURATED, "SLOPPY_E_WORKER_POOL_SATURATED"},
+        {SL_DIAG_WORKER_CRASHED, "SLOPPY_E_WORKER_CRASHED"},
+        {SL_DIAG_WORKER_RESOURCE_LIMIT_EXCEEDED, "SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED"},
+        {SL_DIAG_WORKER_MESSAGE_SERIALIZATION_FAILED,
+         "SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED"},
+        {SL_DIAG_WORKER_ISOLATE_STARTUP_FAILED, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED"},
+        {SL_DIAG_WORKER_UNSUPPORTED_PAYLOAD, "SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD"},
+        {SL_DIAG_WORKER_SHUTDOWN_CANCELLED, "SLOPPY_E_WORKER_SHUTDOWN_CANCELLED"},
+        {SL_DIAG_WORKER_STALE_HANDLE, "SLOPPY_E_WORKER_STALE_HANDLE"}};
+
+    return expect_diag_code_names(expected, sizeof(expected) / sizeof(expected[0]), 240);
+}
+
 static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
                                      const char* snapshot)
 {
@@ -1509,7 +1535,7 @@ static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_HTTP_CLIENT_DYNAMIC_TARGET_METADATA; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_WORKER_STALE_HANDLE; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1517,8 +1543,7 @@ static int test_stable_code_registry_complete(void)
         }
     }
 
-    if (expect_str_equal(sl_diag_code_name((
-                             SlDiagCode)((size_t)SL_DIAG_HTTP_CLIENT_DYNAMIC_TARGET_METADATA + 1U)),
+    if (expect_str_equal(sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_WORKER_STALE_HANDLE + 1U)),
                          sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
@@ -2165,6 +2190,10 @@ static int test_code_name_groups(void)
         return result;
     }
     result = test_os_code_names();
+    if (result != 0) {
+        return result;
+    }
+    result = test_workers_code_names();
     if (result != 0) {
         return result;
     }

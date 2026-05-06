@@ -11,6 +11,7 @@
     "sloppy/net.js",
     "sloppy/os.js",
     "sloppy/time.js",
+    "sloppy/workers.js",
     "sloppy/providers/sqlite.js",
     "sloppy/results.js",
     "sloppy/schema.js",

@@ -42,6 +42,18 @@ const CODEC_EXPORTS: &[&str] = &[
     "Checksums",
 ];
 
+// WORKER_EXPORTS is the public workers contract shared by import validation and runtime
+// export emission.
+const WORKER_EXPORTS: &[&str] = &[
+    "BackgroundService",
+    "WorkQueue",
+    "WorkerPool",
+    "Worker",
+    "WorkerCancellationController",
+    "WorkerCancellationSignal",
+    "SloppyWorkerError",
+];
+
 #[derive(Debug, Eq, PartialEq)]
 enum CliCommand {
     Help,
@@ -201,6 +213,7 @@ struct ExtractedApp {
     uses_net_runtime: bool,
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
+    uses_workers_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -364,6 +377,7 @@ struct AppState {
     net_imported: bool,
     os_imported: bool,
     http_client_imported: bool,
+    workers_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -403,6 +417,7 @@ impl AppState {
             net_imported: false,
             os_imported: false,
             http_client_imported: false,
+            workers_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -1327,6 +1342,7 @@ struct ModuleGraph {
     uses_net_runtime: bool,
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
+    uses_workers_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1354,6 +1370,7 @@ impl ModuleGraph {
             uses_net_runtime: false,
             uses_os_runtime: false,
             uses_http_client_runtime: false,
+            uses_workers_runtime: false,
         }
     }
 
@@ -1440,7 +1457,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-                .with_hint("Use documented named, unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", or \"sloppy/os\"; Sloppy does not implement Node or npm resolution."));
+                .with_hint("Use documented named, unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", or \"sloppy/workers\"; Sloppy does not implement Node or npm resolution."));
     }
 
     if let Some((specifier, span)) = &state.unsupported_import_name {
@@ -1450,7 +1467,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", or \"sloppy/os\"."));
+        .with_hint("Use documented unaliased imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", or \"sloppy/workers\"."));
     }
 
     if !state.sloppy_imported || !state.results_imported {
@@ -1608,6 +1625,7 @@ fn extract_entry(
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
         uses_os_runtime: state.os_imported || graph.uses_os_runtime,
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
+        uses_workers_runtime: state.workers_imported || graph.uses_workers_runtime,
     })
 }
 
@@ -1859,6 +1877,10 @@ fn sloppy_os_import_name_supported(name: &str) -> bool {
     matches!(name, "System" | "Environment" | "Process" | "Signals")
 }
 
+fn sloppy_workers_import_name_supported(name: &str) -> bool {
+    WORKER_EXPORTS.contains(&name)
+}
+
 #[derive(Debug, Clone, Copy)]
 enum SloppyStdlibImport {
     Fs,
@@ -1867,6 +1889,7 @@ enum SloppyStdlibImport {
     Codec,
     Net,
     Os,
+    Workers,
 }
 
 impl SloppyStdlibImport {
@@ -1878,6 +1901,7 @@ impl SloppyStdlibImport {
             "sloppy/codec" => Some(Self::Codec),
             "sloppy/net" => Some(Self::Net),
             "sloppy/os" => Some(Self::Os),
+            "sloppy/workers" => Some(Self::Workers),
             _ => None,
         }
     }
@@ -1893,6 +1917,7 @@ impl SloppyStdlibImport {
             Self::Codec => sloppy_codec_import_name_supported(name),
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
+            Self::Workers => sloppy_workers_import_name_supported(name),
         }
     }
 }
@@ -1992,6 +2017,18 @@ fn validate_module_sloppy_os_import(
     validate_module_sloppy_import(path, import, "sloppy/os", sloppy_os_import_name_supported)
 }
 
+fn validate_module_sloppy_workers_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/workers",
+        sloppy_workers_import_name_supported,
+    )
+}
+
 fn import_specifier_is_runtime_value(
     import: &ImportDeclaration<'_>,
     specifier: &oxc_ast::ast::ImportSpecifier<'_>,
@@ -2020,6 +2057,7 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Codec => state.codec_imported = true,
         SloppyStdlibImport::Net => state.net_imported = true,
         SloppyStdlibImport::Os => state.os_imported = true,
+        SloppyStdlibImport::Workers => state.workers_imported = true,
     }
 }
 
@@ -3760,6 +3798,13 @@ fn extract_relative_module(
                     validate_module_sloppy_os_import(&imported.path, import)?;
                     if import_has_runtime_value_specifier(import) {
                         graph.uses_os_runtime = true;
+                    }
+                    continue;
+                }
+                if import_source == "sloppy/workers" {
+                    validate_module_sloppy_workers_import(&imported.path, import)?;
+                    if import_has_runtime_value_specifier(import) {
+                        graph.uses_workers_runtime = true;
                     }
                     continue;
                 }
@@ -6736,6 +6781,11 @@ fn emit_plan(
             "message": "HttpClient is Plan-visible; default compiler metadata does not infer static outbound targets yet"
         }));
     }
+    if app.uses_workers_runtime {
+        required_features.push("stdlib.workers");
+        value["strongPlan"]["evidence"]["workers"] = json!(true);
+        value["features"]["workers"] = json!(true);
+    }
     if !required_features.is_empty() {
         value["requiredFeatures"] = json!(required_features);
     }
@@ -6845,6 +6895,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_http_client_runtime {
         runtime_exports.push("HttpClient");
+    }
+    if app.uses_workers_runtime {
+        runtime_exports.extend(WORKER_EXPORTS.iter().copied());
     }
     push_generated_line(
         &mut output,
@@ -7522,6 +7575,7 @@ mod tests {
             uses_net_runtime: false,
             uses_os_runtime: false,
             uses_http_client_runtime: false,
+            uses_workers_runtime: false,
         };
         config
             .apply_to_app(&mut app)
@@ -8091,6 +8145,56 @@ export default app;
         assert_eq!(
             plan["doctorChecks"][0]["id"],
             serde_json::json!("stdlib.httpclient.contract")
+        );
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn function_module_sloppy_workers_import_emits_required_feature() {
+        let root = fixture_temp_dir("function-module-workers-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("jobs.js"),
+            r#"import { Results } from "sloppy";
+import { WorkerPool } from "sloppy/workers";
+
+export function jobsModule(app) {
+    app.get("/jobs", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { jobsModule } from "./modules/jobs.js";
+
+const app = Sloppy.create();
+app.useModule(jobsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_workers_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains("WorkerPool"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(
+            plan["requiredFeatures"],
+            serde_json::json!(["stdlib.workers"])
+        );
+        assert_eq!(plan["features"]["workers"], serde_json::json!(true));
+        assert_eq!(
+            plan["strongPlan"]["evidence"]["workers"],
+            serde_json::json!(true)
         );
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
@@ -9641,6 +9745,67 @@ export default app;
             value["doctorChecks"][0]["id"],
             serde_json::json!("stdlib.httpclient.contract")
         );
+    }
+
+    #[test]
+    fn sloppy_workers_import_emits_plan_required_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { BackgroundService, WorkQueue, WorkerPool, Worker } from "sloppy/workers";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/workers import should be recognized");
+        assert!(app.uses_workers_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(
+            "const { Results, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;"
+        ));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(
+            value["requiredFeatures"],
+            serde_json::json!(["stdlib.workers"])
+        );
+        assert_eq!(value["features"]["workers"], serde_json::json!(true));
+        assert_eq!(
+            value["strongPlan"]["evidence"]["workers"],
+            serde_json::json!(true)
+        );
+        assert!(value.get("workers").is_none());
+        assert!(value.get("doctorChecks").is_none());
+    }
+
+    #[test]
+    fn sloppy_workers_type_only_import_does_not_require_runtime_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import type { WorkerPool } from "sloppy/workers";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("type-only sloppy/workers import should be recognized");
+        assert!(!app.uses_workers_runtime);
+        let emitted_js = super::emit_app_js(&app);
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+        assert!(value.get("requiredFeatures").is_none());
     }
 
     #[test]

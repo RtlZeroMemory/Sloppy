@@ -1,0 +1,5 @@
+Sloppy Audit
+
+[note] SLOPPY_AUDIT_WORKERS_PLAN_VISIBLE sloppy/workers is Plan-visible as stdlib.workers (requiredFeatures)
+[note] SLOPPY_AUDIT_WORKERS_BOUNDED worker queues, pools, services, and JS workers must declare bounded lifecycle policy before runtime admission (workers)
+[note] SLOPPY_AUDIT_WORKERS_PAYLOAD_REDACTED worker audit output reports policy metadata without payload values (workers)

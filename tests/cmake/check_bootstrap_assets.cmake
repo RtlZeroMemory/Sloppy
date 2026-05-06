@@ -9,6 +9,7 @@ set(required_bootstrap_assets
     net.js
     os.js
     time.js
+    workers.js
     index.js
     providers/sqlite.js
     results.js

@@ -94,6 +94,12 @@ ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reac
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
 intrinsic namespace. That is a missing-feature diagnostic, not a raw V8 property lookup
 failure.
+CORE-WORKER-01 registers `__sloppy.workers` only for active `stdlib.workers` plans. The
+namespace publishes policy metadata and bridge functions for WorkerPool CPU offload and
+explicit JS worker module invocation. Worker code runs in separate worker-owned V8
+isolates, input/result payloads are copied through serialized messages, and Promise
+settlement happens on the owning app isolate thread. The bridge exposes no raw native
+thread, isolate, libuv, OS, or pointer handles to JavaScript.
 
 ## Purpose
 
@@ -158,6 +164,9 @@ Implemented now:
   request context materialization, HTTP `Results.*` descriptor conversion, JSON response
   bytes, and exception strings. SQLite result and parameter adoption stays scoped to
   ENGINE-22.E.
+- `intrinsics_workers.cc` installs feature-gated workers metadata and bridge functions under
+  `__sloppy.workers`. Worker threads enter only their own worker isolates; completions are
+  copied back through `SlAsyncLoop` and settled on the app isolate owner thread.
 - V8 creation can borrow the parsed Plan and immutable capability registry through
   `SlEngineOptions`; provider bridges may use those pointers only as hook inputs while the
   app host keeps their storage alive.
@@ -180,10 +189,10 @@ Later scope:
 
 ## Non-goals
 
-No ESM resolver, full app host, arbitrary import graph, workers, inspector, snapshots, hot reload, Node
-compatibility, timers, fetch, fs, process/Buffer APIs, npm resolution, or package-manager
-behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and does not make
-this bridge a production server boundary.
+No ESM resolver, full app host, arbitrary import graph, raw native worker handles, inspector,
+snapshots, hot reload, Node compatibility, fetch, process/Buffer APIs, npm resolution, or
+package-manager behavior. EPIC-22/23/24 HTTP usage is limited to the dev-only CLI path and
+does not make this bridge a production server boundary.
 
 ## Intrinsic Module Layout
 

@@ -4,11 +4,12 @@ set(data_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/data.js")
 set(codec_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/codec.js")
 set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
+set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${app_source}" "${index_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${workers_source}" "${app_source}" "${index_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -20,6 +21,7 @@ file(READ "${data_source}" data_js)
 file(READ "${codec_source}" codec_js)
 file(READ "${fs_source}" fs_js)
 file(READ "${time_source}" time_js)
+file(READ "${workers_source}" workers_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
 file(READ "${runtime_classic_source}" runtime_classic_js)
@@ -189,6 +191,26 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "const BackgroundService = Object.freeze"
+        "const WorkQueue = Object.freeze"
+        "const WorkerPool = Object.freeze"
+        "const Worker = Object.freeze"
+        "maxQueued"
+        "concurrency"
+        "overflow"
+        "retry"
+        "SLOPPY_E_WORK_QUEUE_FULL"
+        "SLOPPY_E_WORK_JOB_TIMEOUT"
+        "SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD"
+        "SloppyWorkerError"
+        "WorkerCancellationController"
+        "WorkerCancellationSignal"
+        "__sloppyWorkerResource"
+        "serializePayload")
+    require_substring("${workers_js}" "${required_pattern}" "workers.js is missing expected API contract pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "const Time = Object.freeze"
         "const Deadline = Object.freeze"
         "class CancellationController"
@@ -199,6 +221,13 @@ foreach(required_pattern IN ITEMS
         "CancelledError,"
         "InvalidDeadlineError,"
         "TimerDisposedError,"
+        "BackgroundService,"
+        "WorkQueue,"
+        "WorkerPool,"
+        "Worker,"
+        "WorkerCancellationController,"
+        "WorkerCancellationSignal,"
+        "SloppyWorkerError,"
         "SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.time")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected time runtime export pattern")
 endforeach()
@@ -268,7 +297,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "export { Results }" "export { schema }")
+foreach(required_pattern IN ITEMS "export { Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { Results }" "export { schema }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

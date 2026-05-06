@@ -93,6 +93,70 @@ static SlStr sl_diag_http_client_code_name(SlDiagCode code)
     }
 }
 
+static SlStr sl_diag_workers_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_WORKERS_FEATURE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_WORKERS_FEATURE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_WORKERS_FEATURE_UNAVAILABLE") - 1U);
+    case SL_DIAG_BACKGROUND_SERVICE_START_FAILED:
+        return sl_diag_literal("SLOPPY_E_BACKGROUND_SERVICE_START_FAILED",
+                               sizeof("SLOPPY_E_BACKGROUND_SERVICE_START_FAILED") - 1U);
+    case SL_DIAG_BACKGROUND_SERVICE_FAILED:
+        return sl_diag_literal("SLOPPY_E_BACKGROUND_SERVICE_FAILED",
+                               sizeof("SLOPPY_E_BACKGROUND_SERVICE_FAILED") - 1U);
+    case SL_DIAG_WORK_QUEUE_FULL:
+        return sl_diag_literal("SLOPPY_E_WORK_QUEUE_FULL", sizeof("SLOPPY_E_WORK_QUEUE_FULL") - 1U);
+    case SL_DIAG_WORK_QUEUE_STOPPED:
+        return sl_diag_literal("SLOPPY_E_WORK_QUEUE_STOPPED",
+                               sizeof("SLOPPY_E_WORK_QUEUE_STOPPED") - 1U);
+    case SL_DIAG_WORK_JOB_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_WORK_JOB_CANCELLED",
+                               sizeof("SLOPPY_E_WORK_JOB_CANCELLED") - 1U);
+    case SL_DIAG_WORK_JOB_TIMEOUT:
+        return sl_diag_literal("SLOPPY_E_WORK_JOB_TIMEOUT",
+                               sizeof("SLOPPY_E_WORK_JOB_TIMEOUT") - 1U);
+    case SL_DIAG_WORK_JOB_FAILED:
+        return sl_diag_literal("SLOPPY_E_WORK_JOB_FAILED", sizeof("SLOPPY_E_WORK_JOB_FAILED") - 1U);
+    case SL_DIAG_WORK_RETRY_EXHAUSTED:
+        return sl_diag_literal("SLOPPY_E_WORK_RETRY_EXHAUSTED",
+                               sizeof("SLOPPY_E_WORK_RETRY_EXHAUSTED") - 1U);
+    case SL_DIAG_WORKER_POOL_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_WORKER_POOL_UNAVAILABLE",
+                               sizeof("SLOPPY_E_WORKER_POOL_UNAVAILABLE") - 1U);
+    case SL_DIAG_WORKER_POOL_SATURATED:
+        return sl_diag_literal("SLOPPY_E_WORKER_POOL_SATURATED",
+                               sizeof("SLOPPY_E_WORKER_POOL_SATURATED") - 1U);
+    case SL_DIAG_WORKER_CRASHED:
+        return sl_diag_literal("SLOPPY_E_WORKER_CRASHED", sizeof("SLOPPY_E_WORKER_CRASHED") - 1U);
+    case SL_DIAG_WORKER_RESOURCE_LIMIT_EXCEEDED:
+        return sl_diag_literal("SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED",
+                               sizeof("SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED") - 1U);
+    case SL_DIAG_WORKER_MESSAGE_SERIALIZATION_FAILED:
+        return sl_diag_literal("SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED",
+                               sizeof("SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED") - 1U);
+    case SL_DIAG_WORKER_ISOLATE_STARTUP_FAILED:
+        return sl_diag_literal("SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED",
+                               sizeof("SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED") - 1U);
+    case SL_DIAG_WORKER_UNSUPPORTED_PAYLOAD:
+        return sl_diag_literal("SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD",
+                               sizeof("SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD") - 1U);
+    case SL_DIAG_WORKER_SHUTDOWN_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_WORKER_SHUTDOWN_CANCELLED",
+                               sizeof("SLOPPY_E_WORKER_SHUTDOWN_CANCELLED") - 1U);
+    case SL_DIAG_WORKER_STALE_HANDLE:
+        return sl_diag_literal("SLOPPY_E_WORKER_STALE_HANDLE",
+                               sizeof("SLOPPY_E_WORKER_STALE_HANDLE") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static bool sl_diag_is_workers_code(SlDiagCode code)
+{
+    return code >= SL_DIAG_WORKERS_FEATURE_UNAVAILABLE && code <= SL_DIAG_WORKER_STALE_HANDLE;
+}
+
 static SlStr sl_diag_http_transport_code_name(SlDiagCode code)
 {
     switch (code) {
@@ -1174,6 +1238,9 @@ SlStr sl_diag_code_name(SlDiagCode code)
     }
     if (sl_diag_is_os_code(code)) {
         return sl_diag_os_code_name(code);
+    }
+    if (sl_diag_is_workers_code(code)) {
+        return sl_diag_workers_code_name(code);
     }
 
     SlStr core_name = sl_diag_core_code_name(code);

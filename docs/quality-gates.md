@@ -622,6 +622,12 @@ not require a V8 SDK. Local Windows V8 gates should start with:
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
 
+Repository-local Codex sessions on the maintained Windows development machine should assume
+the V8 SDK is present and discoverable through these scripts. Runtime, engine, stdlib,
+compiler-Plan, and V8-adjacent PRs should run and report this V8 lane. If discovery fails,
+report the resolver output as an environment regression instead of silently treating V8 as
+unavailable.
+
 The resolver searches `-V8Root`, `SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, this worktree's
 `.sdeps/v8/windows-x64`, and the same path in registered git worktrees. Direct CMake users
 must pass `-DSLOPPY_V8_ROOT=<sdk-root>` explicitly. A manual V8-enabled configure must fail
@@ -634,6 +640,10 @@ process tests are compiled and linked only in that V8-enabled build. Passing def
 does not prove V8 smoke, owner-thread, lifecycle, Promise-policy, or bootstrap runtime
 tests passed; the V8-enabled configure/build/test commands must be run and reported
 separately.
+CORE-WORKER-01 worker bridge evidence also lives in this lane: active/inactive
+`__sloppy.workers`, WorkerPool offload through worker-owned isolates, JS worker
+start/invoke/post/stop, stale-handle behavior, scoped resource-limit failure, and
+owner-thread Promise settlement are not proven by default non-V8 gates.
 The default non-V8 lane does run `core.execution_domain`, which proves the fixed ENGINE-26
 domain policy table but does not prove V8 execution.
 ENGINE-15.B adds V8 source-map remapping evidence to this lane. Passing it proves only the

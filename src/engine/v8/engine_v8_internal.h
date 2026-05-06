@@ -32,6 +32,8 @@ struct SlV8TimeRequest;
 struct SlV8CryptoPasswordRequest;
 struct SlV8NetRequest;
 struct SlV8OsRequest;
+struct SlV8WorkerRequest;
+struct SlV8JsWorker;
 
 struct SlV8Engine
 {
@@ -69,6 +71,11 @@ struct SlV8Engine
     std::mutex os_mutex;
     std::vector<std::shared_ptr<SlV8OsRequest>> os_requests;
     bool os_shutting_down = false;
+    std::mutex workers_mutex;
+    std::vector<std::shared_ptr<SlV8WorkerRequest>> worker_requests;
+    std::vector<std::shared_ptr<SlV8JsWorker>> js_workers;
+    uint32_t next_worker_id = 1U;
+    bool workers_shutting_down = false;
     SlProviderInstanceExecutor fs_executor = {};
     std::array<SlProviderExecutorSlot, 32U> fs_slots = {};
     bool fs_executor_initialized = false;
@@ -100,6 +107,10 @@ void sl_v8_os_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_codec_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                     v8::Local<v8::Object> sloppy);
+
+bool sl_v8_install_workers_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
+                                      v8::Local<v8::Object> sloppy);
+void sl_v8_workers_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);

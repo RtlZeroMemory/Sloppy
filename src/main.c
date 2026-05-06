@@ -3961,6 +3961,26 @@ static void sl_cli_doctor_emit_http_clients(const SlCliOptions* options, SlArena
     }
 }
 
+static void sl_cli_doctor_emit_workers(const SlCliOptions* options, SlArena* arena,
+                                       const SlCliMetadata* metadata, bool* emitted)
+{
+    if (!sl_cli_metadata_requires_feature(metadata, "stdlib.workers")) {
+        return;
+    }
+
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.workers.required"),
+                       sl_cli_span_cstr("ok"),
+                       sl_cli_span_cstr("Workers feature metadata is Plan-visible"), emitted);
+    sl_cli_doctor_emit(
+        options, arena, sl_cli_span_cstr("stdlib.workers.lifecycle"), sl_cli_span_cstr("ok"),
+        sl_cli_span_cstr(
+            "workers are runtime resources with explicit bounded lifecycle policy metadata"),
+        emitted);
+    sl_cli_doctor_emit(
+        options, arena, sl_cli_span_cstr("stdlib.workers.redaction"), sl_cli_span_cstr("ok"),
+        sl_cli_span_cstr("worker doctor metadata omits payload and secret values"), emitted);
+}
+
 static void sl_cli_doctor_emit_config_requirements(const SlCliOptions* options, SlArena* arena,
                                                    const SlCliMetadata* metadata, bool* emitted)
 {
@@ -4099,6 +4119,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     sl_cli_doctor_emit_network_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_os_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_http_clients(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_workers(options, arena, metadata, emitted);
     sl_cli_doctor_emit_config_requirements(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
@@ -4630,6 +4651,25 @@ static void sl_cli_audit_http_clients(const SlCliOptions* options, const SlCliMe
     }
 }
 
+static void sl_cli_audit_workers(const SlCliOptions* options, const SlCliMetadata* metadata,
+                                 size_t* findings, size_t* errors)
+{
+    if (!sl_cli_metadata_requires_feature(metadata, "stdlib.workers")) {
+        return;
+    }
+
+    sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_WORKERS_PLAN_VISIBLE",
+                      "sloppy/workers is Plan-visible as stdlib.workers", "requiredFeatures",
+                      findings, errors);
+    sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_WORKERS_BOUNDED",
+                      "worker queues, pools, services, and JS workers must declare bounded "
+                      "lifecycle policy before runtime admission",
+                      "workers", findings, errors);
+    sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_WORKERS_PAYLOAD_REDACTED",
+                      "worker audit output reports policy metadata without payload values",
+                      "workers", findings, errors);
+}
+
 static int sl_cli_command_audit(const SlCliOptions* options)
 {
     unsigned char json_storage[SL_CLI_FILE_MAX_BYTES];
@@ -4669,6 +4709,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_os_capabilities(options, &metadata, &findings, &errors);
     sl_cli_audit_os_features(options, &metadata, &findings, &errors);
     sl_cli_audit_http_clients(options, &metadata, &findings, &errors);
+    sl_cli_audit_workers(options, &metadata, &findings, &errors);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {
         (void)printf("No findings.\n");

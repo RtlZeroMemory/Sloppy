@@ -1842,6 +1842,357 @@ static int test_net_intrinsic_inactive_feature_is_not_registered(void)
     return 0;
 }
 
+static int test_workers_intrinsic_namespace_registered_when_active(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.workers")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 500;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 501;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-workers-active.js"),
+                          sl_str_from_cstr("globalThis.sloppy_workers_active = function () {"
+                                           "  const w = globalThis.__sloppy.workers;"
+                                           "  return w && w.feature === 'stdlib.workers' &&"
+                                           "    w.boundedByDefault === true &&"
+                                           "    w.rawNativeHandlesExposed === false &&"
+                                           "    w.ownerThreadSettlement === true &&"
+                                           "    typeof w.runPool === 'function' &&"
+                                           "    typeof w.startWorker === 'function'"
+                                           "      ? 'workers-active-ok'"
+                                           "      : 'workers-active-missing';"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 502;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_workers_active"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 503;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("workers-active-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 504;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_workers_intrinsic_pool_runs_off_owner_thread(void)
+{
+    unsigned char engine_storage[65536];
+    unsigned char result_storage[4096];
+    unsigned char feature_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.workers")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 510;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 511;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-workers-pool.js"),
+                sl_str_from_cstr(
+                    "globalThis.sloppy_workers_pool = async function () {"
+                    "  const promise = globalThis.__sloppy.workers.runPool("
+                    "    'cpu',"
+                    "    async function (ctx) {"
+                    "      let total = 0;"
+                    "      for (let index = 0; index < 1000; index += 1) { total += index; }"
+                    "      const raw = new Uint8Array(ctx.input.raw);"
+                    "      const view = ctx.input.view;"
+                    "      const nested = ctx.input.nested.bytes;"
+                    "      return new Uint8Array(["
+                    "        ctx.input.value + total - 499500,"
+                    "        raw[1],"
+                    "        view[0],"
+                    "        nested[2]"
+                    "      ]);"
+                    "    },"
+                    "    {"
+                    "      value: 1,"
+                    "      raw: new Uint8Array([2, 3]).buffer,"
+                    "      view: new Uint8Array([4, 5, 6]),"
+                    "      nested: { bytes: new Uint8Array([7, 8, 9]) }"
+                    "    },"
+                    "    {}"
+                    "  );"
+                    "  const ownerThreadContinued = 'owner-free';"
+                    "  const bytes = await promise;"
+                    "  return ownerThreadContinued + ':' +"
+                    "    (bytes instanceof Uint8Array) + ':' + Array.from(bytes).join(',');"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 512;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_workers_pool"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 513;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("owner-free:true:1,3,4,9")))
+    {
+        sl_engine_destroy(engine);
+        return 514;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_workers_intrinsic_js_worker_start_invoke_stop(void)
+{
+    unsigned char engine_storage[65536];
+    unsigned char result_storage[4096];
+    unsigned char feature_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.workers")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    char worker_path_buffer[128];
+    char script_buffer[4096];
+    SlStr worker_path = {0};
+    SlBytes worker_source = sl_bytes_from_parts(
+        (const unsigned char*)"export async function parse(payload) {"
+                              "  return 'tokens:' + payload.text.split(/\\s+/u).length;"
+                              "}\n"
+                              "let count = 0;\n"
+                              "export function countCalls() { count += 1; return count; }\n"
+                              "export function bytes(payload) {"
+                              "  const raw = new Uint8Array(payload.raw);"
+                              "  return new Uint8Array([raw[0], payload.view[1]]);"
+                              "}\n"
+                              "export function onMessage(payload) { return 'msg:' + payload.kind; "
+                              "}\n",
+        sizeof("export async function parse(payload) {"
+               "  return 'tokens:' + payload.text.split(/\\s+/u).length;"
+               "}\n"
+               "let count = 0;\n"
+               "export function countCalls() { count += 1; return count; }\n"
+               "export function bytes(payload) {"
+               "  const raw = new Uint8Array(payload.raw);"
+               "  return new Uint8Array([raw[0], payload.view[1]]);"
+               "}\n"
+               "export function onMessage(payload) { return 'msg:' + payload.kind; }\n") -
+            1U);
+
+    (void)snprintf(worker_path_buffer, sizeof(worker_path_buffer), "./sloppy-v8-worker-test-%p.js",
+                   (void*)&engine_storage[0]);
+    worker_path = sl_str_from_cstr(worker_path_buffer);
+    (void)sl_fs_delete_file(worker_path, NULL);
+    if (expect_status(sl_fs_write_file(worker_path, worker_source, false, &diag), SL_STATUS_OK) !=
+            0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        (void)sl_fs_delete_file(worker_path, NULL);
+        return 515;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        (void)sl_fs_delete_file(worker_path, NULL);
+        return 516;
+    }
+
+    (void)snprintf(
+        script_buffer, sizeof(script_buffer),
+        "globalThis.sloppy_workers_js_worker = async function () {"
+        "  const worker = globalThis.__sloppy.workers.startWorker('%s', { memoryLimitMb: 128 });"
+        "  const parsed = await worker.invoke('parse', { text: 'one two three' });"
+        "  const firstCount = await worker.invoke('countCalls');"
+        "  const secondCount = await worker.invoke('countCalls');"
+        "  const bytes = await worker.invoke('bytes', {"
+        "    raw: new Uint8Array([11, 12]).buffer,"
+        "    view: new Uint8Array([13, 14])"
+        "  });"
+        "  const posted = await worker.post({ kind: 'ping' });"
+        "  await worker.stop();"
+        "  try {"
+        "    await worker.invoke('parse', { text: 'late' });"
+        "    return 'missing-stale-error';"
+        "  } catch (err) {"
+        "    return parsed + ':' + (bytes instanceof Uint8Array) + ':' +"
+        "      Array.from(bytes).join(',') + ':' + firstCount + ',' + secondCount + ':' +"
+        "      posted + ':' + err.code;"
+        "  }"
+        "};"
+        "globalThis.sloppy_workers_resource_limit = function () {"
+        "  try {"
+        "    globalThis.__sloppy.workers.startWorker('%s', { memoryLimitMb: 1 });"
+        "    return 'missing-resource-error';"
+        "  } catch (err) {"
+        "    return err.code;"
+        "  }"
+        "};",
+        worker_path_buffer, worker_path_buffer);
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("v8-workers-js-worker.js"),
+                                            sl_str_from_parts(script_buffer, strlen(script_buffer)),
+                                            &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        (void)sl_fs_delete_file(worker_path, NULL);
+        return 517;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_workers_js_worker"),
+                                               &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("tokens:3:true:11,14:1,2:msg:ping:"
+                                                    "SLOPPY_E_WORKER_STALE_HANDLE")))
+    {
+        sl_engine_destroy(engine);
+        (void)sl_fs_delete_file(worker_path, NULL);
+        return 518;
+    }
+
+    result = (SlEngineResult){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_workers_resource_limit"),
+                                               &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED")))
+    {
+        sl_engine_destroy(engine);
+        (void)sl_fs_delete_file(worker_path, NULL);
+        return 519;
+    }
+
+    sl_engine_destroy(engine);
+    (void)sl_fs_delete_file(worker_path, NULL);
+    return 0;
+}
+
+static int test_workers_intrinsic_inactive_feature_is_not_registered(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 505;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 506;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-workers-inactive.js"),
+                          sl_str_from_cstr("globalThis.sloppy_workers_inactive = function () {"
+                                           "  return globalThis.__sloppy.workers === undefined"
+                                           "    ? 'workers-inactive-ok'"
+                                           "    : 'workers-unexpectedly-active';"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 507;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_workers_inactive"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 508;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("workers-inactive-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 509;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_os_intrinsic_system_and_environment(void)
 {
     unsigned char engine_storage[8192];
@@ -4389,6 +4740,26 @@ int main(int argc, char** argv)
     }
 
     result = test_net_intrinsic_inactive_feature_is_not_registered();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_workers_intrinsic_namespace_registered_when_active();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_workers_intrinsic_pool_runs_off_owner_thread();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_workers_intrinsic_js_worker_start_invoke_stop();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_workers_intrinsic_inactive_feature_is_not_registered();
     if (result != 0) {
         return result;
     }

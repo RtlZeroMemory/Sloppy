@@ -1,0 +1,7 @@
+{
+  "findings": [
+    { "severity": "note", "code": "SLOPPY_AUDIT_WORKERS_PLAN_VISIBLE", "message": "sloppy/workers is Plan-visible as stdlib.workers", "path": "requiredFeatures" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_WORKERS_BOUNDED", "message": "worker queues, pools, services, and JS workers must declare bounded lifecycle policy before runtime admission", "path": "workers" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_WORKERS_PAYLOAD_REDACTED", "message": "worker audit output reports policy metadata without payload values", "path": "workers" }
+  ]
+}

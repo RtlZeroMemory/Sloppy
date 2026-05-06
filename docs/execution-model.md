@@ -144,6 +144,14 @@ V8 bridge registers app and SQLite intrinsics only for active features, while di
 smoke tests without a feature set remain a low-level compatibility path. This still does
 not add dynamic loading, package-manager behavior, or PostgreSQL/SQL Server JS bridges.
 
+CORE-WORKER-01 adds `stdlib.workers` to the same feature model. Imports from
+`sloppy/workers` emit `requiredFeatures[]` metadata, and the V8 bridge installs a
+feature-gated `__sloppy.workers` namespace with policy metadata plus bridge methods for
+WorkerPool offload and explicit worker module invocation. The bootstrap stdlib owns the
+current `BackgroundService`, `WorkQueue`, `WorkerPool`, and `Worker` JavaScript API shape.
+V8-specific tests prove correctness for copied message passing and owner-thread settlement;
+they are not benchmark or production throughput evidence.
+
 TASK 10.A adds a pure-C route pattern parser and matcher foundation for later native route
 dispatch. It supports only a minimal path-pattern subset and one-pattern matching. It does
 not add HTTP parsing, request lifecycle, method matching, route table/trie dispatch,
@@ -1049,3 +1057,17 @@ CORE-TIME-01.C/D/G implements `Time.delay`, `Time.timeout`, `Deadline`,
 intervals, interval-based scheduled jobs, and explicit fake clocks on top of the stdlib
 TimeProvider shape. Integration into FS/provider or request lifecycle APIs remains a
 separate CORE-TIME-01 slice.
+
+## CORE-WORKER-01 Worker Resources
+
+`sloppy/workers` is Plan-visible through `stdlib.workers`. The public API models worker
+resources as deterministic app/runtime resources: background services, bounded FIFO work
+queues, bounded worker pools, and explicit JS worker handles. Queue capacity, concurrency,
+overflow, retry, cancellation, deadline, drain, and stop behavior are explicit. Worker
+payloads are copied or serialized and unsupported payloads fail deterministically.
+
+The runtime contract remains conservative: no raw native pointers or OS/libuv/V8 handles
+are exposed to JavaScript; native worker threads must not enter the app owner's V8 isolate;
+worker-owned isolates are entered only by their worker threads; native completions settle
+JavaScript Promises on the owning V8 thread. Current doctor/audit goldens report metadata
+and policy only, never payload contents or secret values.
