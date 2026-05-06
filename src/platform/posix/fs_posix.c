@@ -3,6 +3,10 @@
  *
  * POSIX filesystem backend. POSIX path and file-descriptor behavior stays here.
  */
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE
+#endif
+
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
