@@ -220,12 +220,13 @@ Current descriptor import mapping is intentionally narrow and mirrors what the c
 stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/results` to
 `stdlib.results`, `sloppy/schema` to `stdlib.schema`, `sloppy/config` to `stdlib.config`,
 `sloppy/data` to `stdlib.data`, `sloppy/time` to `stdlib.time`, `sloppy/fs` to `stdlib.fs`,
-`sloppy/crypto` to `stdlib.crypto`, `sloppy/net` to `stdlib.net`, and
-`sloppy/crypto` to `stdlib.crypto`, `sloppy/codec` to `stdlib.codec`, and
+`sloppy/crypto` to `stdlib.crypto`, `sloppy/net` to `stdlib.net`,
+`sloppy/codec` to `stdlib.codec`, and
 `sloppy/providers/sqlite` to `provider.sqlite`.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
-Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.C/D/F/H
-registered vetted random/hash/HMAC backends and the `__sloppy.crypto` intrinsic namespace.
+Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.E
+registered vetted random/hash/HMAC/password backends and the `__sloppy.crypto` intrinsic
+namespace.
 The network descriptor is known but unavailable by default until CORE-NET implementation
 PRs register TCP backends and V8 intrinsics.
 The codec descriptor is known but unavailable by default until implementation PRs register

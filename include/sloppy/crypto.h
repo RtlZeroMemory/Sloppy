@@ -17,6 +17,13 @@ extern "C" {
 #define SL_CRYPTO_SHA384_SIZE 48U
 #define SL_CRYPTO_SHA512_SIZE 64U
 #define SL_CRYPTO_UUID_V4_TEXT_LENGTH 36U
+#define SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX 128U
+#define SL_CRYPTO_PASSWORD_OPSLIMIT_DEFAULT 2U
+#define SL_CRYPTO_PASSWORD_OPSLIMIT_MIN 2U
+#define SL_CRYPTO_PASSWORD_OPSLIMIT_MAX 4U
+#define SL_CRYPTO_PASSWORD_MEMLIMIT_DEFAULT 67108864ULL
+#define SL_CRYPTO_PASSWORD_MEMLIMIT_MIN 67108864ULL
+#define SL_CRYPTO_PASSWORD_MEMLIMIT_MAX 268435456ULL
 
 typedef enum SlCryptoHashAlgorithm
 {
@@ -32,8 +39,15 @@ typedef struct SlCryptoSecret
     bool disposed;
 } SlCryptoSecret;
 
+typedef struct SlCryptoPasswordOptions
+{
+    uint64_t ops_limit;
+    uint64_t mem_limit;
+} SlCryptoPasswordOptions;
+
 size_t sl_crypto_hash_digest_size(SlCryptoHashAlgorithm algorithm);
 SlStatus sl_crypto_hash_algorithm_from_str(SlStr name, SlCryptoHashAlgorithm* out);
+SlCryptoPasswordOptions sl_crypto_password_default_options(void);
 
 SlStatus sl_crypto_random_bytes(SlOwnedBytes out);
 SlStatus sl_crypto_random_uuid_v4(char* out, size_t out_length);
@@ -46,6 +60,11 @@ SlStatus sl_crypto_hmac(SlCryptoHashAlgorithm algorithm, SlBytes key, SlBytes da
                         SlOwnedBytes out);
 SlStatus sl_crypto_hmac_verify(SlCryptoHashAlgorithm algorithm, SlBytes key, SlBytes data,
                                SlBytes signature, bool* out_equal);
+SlStatus sl_crypto_password_hash(SlBytes password, const SlCryptoPasswordOptions* options,
+                                 char* out, size_t out_length, size_t* out_written);
+SlStatus sl_crypto_password_verify(SlBytes password, SlStr encoded_hash, bool* out_verified);
+SlStatus sl_crypto_password_needs_rehash(SlStr encoded_hash, const SlCryptoPasswordOptions* options,
+                                         bool* out_needs_rehash);
 
 SlStatus sl_crypto_hex_encode(SlBytes data, char* out, size_t out_length);
 SlStatus sl_crypto_base64_encode(SlBytes data, char* out, size_t out_length, size_t* out_written);
