@@ -639,10 +639,10 @@ Promise settlement. Bootstrap stdlib evidence covers fake-clock disposal, determ
 delay/timeout/interval completion, skipped scheduled runs, and filesystem pre-cancel /
 expired-deadline option behavior.
 
-CORE-CRYPTO-01.C/D/F/H adds stable Crypto diagnostics and JSON goldens for the
-feature/model plus random/hash/HMAC/Secret surface. Missing or inactive `stdlib.crypto`
-uses the runtime-feature or missing-bridge diagnostic path rather than raw JavaScript
-property failures. Crypto-specific codes cover primitive/API failures:
+CORE-CRYPTO-01.E keeps stable Crypto diagnostics and JSON goldens for the feature/model
+plus random/hash/HMAC/Secret/password surface. Missing or inactive `stdlib.crypto` uses
+the runtime-feature or missing-bridge diagnostic path rather than raw JavaScript property
+failures. Crypto-specific codes cover primitive/API failures:
 
 - `SLOPPY_E_CRYPTO_FEATURE_UNAVAILABLE` for crypto API use when the feature/backend lane is
   not active;
@@ -658,10 +658,12 @@ property failures. Crypto-specific codes cover primitive/API failures:
 - `SLOPPY_E_CRYPTO_CONSTANT_TIME_INVALID_INPUT` for invalid byte inputs;
 - `SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE` for unavailable vetted backend operations.
 
-Crypto diagnostics must not include passwords, secret bytes, encoded-hash internals, random
-output, raw native pointers, V8 handles, or backend-specific secret material. Default
-goldens prove deterministic diagnostic shape only; they do not prove randomness quality,
-side-channel resistance, password cost, performance, or V8 execution.
+Password hashing maps unsupported encoded hashes to the password-hash diagnostic shape and
+backend/offload failures to the backend-unavailable shape. Crypto diagnostics must not
+include passwords, secret bytes, encoded-hash internals, random output, raw native
+pointers, V8 handles, or backend-specific secret material. Default goldens prove
+deterministic diagnostic shape only; they do not prove randomness quality, side-channel
+resistance, password cracking cost, or performance.
 
 Random-source, unsupported-algorithm, HMAC key, stale Secret, and constant-time input
 failures are surfaced with stable code-name strings in JS-facing errors. Shape tests and

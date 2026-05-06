@@ -22,6 +22,31 @@ static bool sl_crypto_output_valid(SlOwnedBytes out)
     return out.length == 0U || out.ptr != NULL;
 }
 
+static bool sl_crypto_password_options_valid(SlCryptoPasswordOptions options)
+{
+    return options.ops_limit >= SL_CRYPTO_PASSWORD_OPSLIMIT_MIN &&
+           options.ops_limit <= SL_CRYPTO_PASSWORD_OPSLIMIT_MAX &&
+           options.mem_limit >= SL_CRYPTO_PASSWORD_MEMLIMIT_MIN &&
+           options.mem_limit <= SL_CRYPTO_PASSWORD_MEMLIMIT_MAX;
+}
+
+static SlCryptoPasswordOptions
+sl_crypto_password_normalize_options(const SlCryptoPasswordOptions* options)
+{
+    SlCryptoPasswordOptions normalized = sl_crypto_password_default_options();
+
+    if (options == NULL) {
+        return normalized;
+    }
+    if (options->ops_limit != 0U) {
+        normalized.ops_limit = options->ops_limit;
+    }
+    if (options->mem_limit != 0U) {
+        normalized.mem_limit = options->mem_limit;
+    }
+    return normalized;
+}
+
 static void sl_crypto_secure_zero(unsigned char* ptr, size_t length)
 {
     volatile unsigned char* cursor = ptr;
@@ -94,6 +119,12 @@ SlStatus sl_crypto_hash_algorithm_from_str(SlStr name, SlCryptoHashAlgorithm* ou
         return sl_status_ok();
     }
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+}
+
+SlCryptoPasswordOptions sl_crypto_password_default_options(void)
+{
+    return (SlCryptoPasswordOptions){SL_CRYPTO_PASSWORD_OPSLIMIT_DEFAULT,
+                                     SL_CRYPTO_PASSWORD_MEMLIMIT_DEFAULT};
 }
 
 SlStatus sl_crypto_random_bytes(SlOwnedBytes out)
@@ -308,6 +339,51 @@ SlStatus sl_crypto_hmac(SlCryptoHashAlgorithm algorithm, SlBytes key, SlBytes da
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     return sl_platform_crypto_hmac(algorithm, key, data, out);
+}
+
+SlStatus sl_crypto_password_hash(SlBytes password, const SlCryptoPasswordOptions* options,
+                                 char* out, size_t out_length, size_t* out_written)
+{
+    SlCryptoPasswordOptions normalized = sl_crypto_password_normalize_options(options);
+
+    if (out == NULL || out_written == NULL || !sl_crypto_bytes_valid(password)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (out_length < SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX) {
+        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    }
+    if (!sl_crypto_password_options_valid(normalized)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_platform_crypto_password_hash(password, normalized, out, out_length, out_written);
+}
+
+SlStatus sl_crypto_password_verify(SlBytes password, SlStr encoded_hash, bool* out_verified)
+{
+    if (out_verified == NULL || !sl_crypto_bytes_valid(password) ||
+        !sl_crypto_bytes_valid(
+            sl_bytes_from_parts((const unsigned char*)encoded_hash.ptr, encoded_hash.length)))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_platform_crypto_password_verify(password, encoded_hash, out_verified);
+}
+
+SlStatus sl_crypto_password_needs_rehash(SlStr encoded_hash, const SlCryptoPasswordOptions* options,
+                                         bool* out_needs_rehash)
+{
+    SlCryptoPasswordOptions normalized = sl_crypto_password_normalize_options(options);
+
+    if (out_needs_rehash == NULL ||
+        !sl_crypto_bytes_valid(
+            sl_bytes_from_parts((const unsigned char*)encoded_hash.ptr, encoded_hash.length)))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!sl_crypto_password_options_valid(normalized)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_platform_crypto_password_needs_rehash(encoded_hash, normalized, out_needs_rehash);
 }
 
 SlStatus sl_crypto_hmac_verify(SlCryptoHashAlgorithm algorithm, SlBytes key, SlBytes data,

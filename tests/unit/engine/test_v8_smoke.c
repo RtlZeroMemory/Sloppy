@@ -1239,7 +1239,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
     if (expect_status(
             sl_engine_eval_source(
                 engine, sl_str_from_cstr("v8-crypto.js"),
-                sl_str_from_cstr("globalThis.sloppy_crypto_smoke = function () {"
+                sl_str_from_cstr("globalThis.sloppy_crypto_smoke = async function () {"
                                  "  const c = globalThis.__sloppy.crypto;"
                                  "  const enc = (s) => new Uint8Array(Array.from(s).map(ch => "
                                  "ch.charCodeAt(0)));"
@@ -1253,10 +1253,31 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "  const randomHexLength = c.randomHex(4).length;"
                                  "  const emptyRandomText = c.randomHex(0) + "
                                  "c.randomToken(0) + c.randomNumericCode(0);"
+                                 "  const passwordHash = await c.passwordHash(enc('password'), "
+                                 "2, 67108864);"
+                                 "  const passwordOk = await c.passwordVerify(enc('password'), "
+                                 "passwordHash);"
+                                 "  const wrongPasswordRejected = !(await c.passwordVerify("
+                                 "enc('wrong-password'), passwordHash));"
+                                 "  const passwordRehash = await c.passwordNeedsRehash("
+                                 "passwordHash, 3, 67108864);"
+                                 "  const oversizedHashRejected = await (async () => {"
+                                 "    try { await c.passwordVerify(enc('password'), 'x'.repeat("
+                                 "129)); return false; }"
+                                 "    catch (error) { return error instanceof TypeError; }"
+                                 "  })();"
+                                 "  const oversizedRehashRejected = await (async () => {"
+                                 "    try { await c.passwordNeedsRehash('x'.repeat(129), 2, "
+                                 "67108864); return false; }"
+                                 "    catch (error) { return error instanceof TypeError; }"
+                                 "  })();"
                                  "  const equal = c.constantTimeEquals(sig, sig);"
                                  "  return digest + ':' + hex(sig).slice(0, 8) + ':' + "
                                  "uuid[14] + ':' + code.length + ':' + randomHexLength + ':' + "
-                                 "emptyRandomText.length + ':' + equal;"
+                                 "emptyRandomText.length + ':' + passwordHash.startsWith("
+                                 "'$argon2id$') + ':' + passwordOk + ':' + passwordRehash + ':' + "
+                                 "wrongPasswordRejected + ':' + oversizedHashRejected + ':' + "
+                                 "oversizedRehashRejected + ':' + equal;"
                                  "};"),
                 &diag),
             SL_STATUS_OK) != 0)
@@ -1277,7 +1298,8 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(result.text, sl_str_from_cstr("ba7816bf8f01cfea414140de5dae2223"
                                                     "b00361a396177a9cb410ff61f20015ad:"
-                                                    "b0344c61:4:6:8:0:true")))
+                                                    "b0344c61:4:6:8:0:true:true:true:true:"
+                                                    "true:true:true")))
     {
         sl_engine_destroy(engine);
         return 415;

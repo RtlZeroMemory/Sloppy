@@ -257,6 +257,7 @@ find_package(yyjson CONFIG REQUIRED)
 find_package(llhttp CONFIG REQUIRED)
 find_package(libuv CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(unofficial-sodium CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(PostgreSQL REQUIRED)
 if(SLOPPY_ENABLE_SQLSERVER)
@@ -302,6 +303,7 @@ set(
     src/core/features.c
     src/core/crypto.c
     src/core/fs.c
+    src/platform/crypto_password_sodium.c
     src/core/app_host.c
     src/core/loop.c
     src/core/async.c
@@ -422,6 +424,7 @@ target_link_libraries(
             ${SLOPPY_LLHTTP_TARGET}
             ${SLOPPY_LIBUV_TARGET}
             OpenSSL::Crypto
+            unofficial-sodium::sodium
             PostgreSQL::PostgreSQL
             unofficial::sqlite3::sqlite3)
 

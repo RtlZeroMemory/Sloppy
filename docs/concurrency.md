@@ -45,13 +45,13 @@ production-drain claim. There is still no pipelining, concurrent request executi
 connection, request streaming API, public JS streaming response helper, SSE/WebSockets,
 file streaming, or production graceful-drain claim.
 
-CORE-CRYPTO-01.C/D/F/H update: small bounded Hash/HMAC bridge work is inline with a
-documented 1 MiB V8 input cap, while `Password.hash`, `Password.verify`, and
-`Password.needsRehash` are async public APIs and must offload expensive password work away
-from the V8 owner thread. Cross-thread password data must be copied into owned buffers,
-cleaned up exactly once, and settled back on the owner thread. Late completion after
-cancellation or shutdown is cleanup-only. Future crypto work that can block the isolate
-must use the same owner-thread settlement discipline as other native completion paths.
+CORE-CRYPTO-01.E update: small bounded Hash/HMAC bridge work is inline with a documented
+1 MiB V8 input cap, while `Password.hash`, `Password.verify`, and `Password.needsRehash`
+offload native Argon2id work to worker threads. Cross-thread password data is copied into
+owned buffers, cleaned up exactly once, and settled back on the V8 owner thread through
+`SlAsyncLoop`. Late completion after cancellation or shutdown is cleanup-only. Future
+crypto work that can block the isolate must use the same owner-thread settlement
+discipline as other native completion paths.
 
 TASK 09.A implements the first `SlLoop` skeleton as a caller-backed, fixed-capacity native
 completion queue. It is deterministic and single-threaded: callbacks run synchronously on

@@ -67,11 +67,11 @@ thread resolves or rejects Promises during the normal native async drain. Interv
 scheduled jobs, and fake clocks are implemented in the JavaScript stdlib layer and are
 covered by bootstrap tests; native owner-thread Time evidence remains the V8-gated delay
 bridge.
-CORE-CRYPTO-01.C/D/F/H registers the private `__sloppy.crypto` namespace for active
-`stdlib.crypto` plans. The namespace exposes bounded random, SHA-2, HMAC, and
-constant-time helpers used by `stdlib/sloppy/crypto.js`; it does not expose raw native
-pointers or backend handles. Password hashing remains deferred because it must use the
-future offload path and settle on the V8 owner thread.
+CORE-CRYPTO-01.E registers the private `__sloppy.crypto` namespace for active
+`stdlib.crypto` plans. The namespace exposes bounded random, SHA-2, HMAC, constant-time,
+and password helpers used by `stdlib/sloppy/crypto.js`; it does not expose raw native
+pointers or backend handles. `Password.hash`, `Password.verify`, and
+`Password.needsRehash` use worker-thread requests and settle on the V8 owner thread.
 CORE-CODEC-01.A/B reserves the private `__sloppy.codec` namespace for active
 `stdlib.codec` plans and documents the transform/diagnostic contract. The namespace is not
 registered in this contract PR; runtime availability stays false until encoding, text,
@@ -202,8 +202,9 @@ Framework and provider bridge code belongs in sibling V8 modules:
   `stdlib.time` plans.
 - `intrinsics_crypto.cc` owns crypto argument validation and bounded random/hash/HMAC/
   constant-time dispatch for active `stdlib.crypto` plans. The bridge performs only small
-  bounded hash/HMAC work inline; password hashing must offload away from the V8 owner
-  thread in CORE-CRYPTO-01.E.
+  bounded hash/HMAC work inline; `Password.hash`, `Password.verify`, and
+  `Password.needsRehash` offload away from the V8 owner thread and settle through the
+  owner-thread async loop.
 - future `intrinsics_codec.cc` owns codec argument validation, byte/text/binary conversion,
   compression backend dispatch, checksum helpers, and owner-thread Promise settlement for
   active `stdlib.codec` plans. Compression work that can materially block must offload away

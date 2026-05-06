@@ -2001,6 +2001,13 @@ Reason:
     });
 
     const CRYPTO_MAX_INLINE_BYTES = 1024 * 1024;
+    const CRYPTO_MAX_PASSWORD_BYTES = 4096;
+    const CRYPTO_PASSWORD_DEFAULT_OPS_LIMIT = 2;
+    const CRYPTO_PASSWORD_MIN_OPS_LIMIT = 2;
+    const CRYPTO_PASSWORD_MAX_OPS_LIMIT = 4;
+    const CRYPTO_PASSWORD_DEFAULT_MEMORY_LIMIT_BYTES = 67108864;
+    const CRYPTO_PASSWORD_MIN_MEMORY_LIMIT_BYTES = 67108864;
+    const CRYPTO_PASSWORD_MAX_MEMORY_LIMIT_BYTES = 268435456;
 
     function sloppyCryptoUnavailable(operation) {
         throw new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature stdlib.crypto is inactive or unavailable
@@ -2123,6 +2130,48 @@ Reason:
             throw new TypeError(`Sloppy crypto ${operation} input is too large for inline hashing.`);
         }
         return bytes;
+    }
+
+    function sloppyPasswordBytes(value, operation) {
+        const bytes = sloppyCryptoDataToBytes(value, operation);
+        if (bytes.byteLength > CRYPTO_MAX_PASSWORD_BYTES) {
+            throw new TypeError(`Sloppy crypto ${operation} password input is too large.`);
+        }
+        return bytes;
+    }
+
+    function sloppyPasswordOptions(options = undefined) {
+        if (options === undefined) {
+            return {
+                opsLimit: CRYPTO_PASSWORD_DEFAULT_OPS_LIMIT,
+                memoryLimitBytes: CRYPTO_PASSWORD_DEFAULT_MEMORY_LIMIT_BYTES,
+            };
+        }
+        if (options === null || typeof options !== "object") {
+            throw new TypeError("Sloppy Password options must be an object when provided.");
+        }
+
+        const opsLimit = options.opsLimit ?? CRYPTO_PASSWORD_DEFAULT_OPS_LIMIT;
+        const memoryLimitBytes =
+            options.memoryLimitBytes ?? CRYPTO_PASSWORD_DEFAULT_MEMORY_LIMIT_BYTES;
+        if (
+            !Number.isInteger(opsLimit) ||
+            opsLimit < CRYPTO_PASSWORD_MIN_OPS_LIMIT ||
+            opsLimit > CRYPTO_PASSWORD_MAX_OPS_LIMIT ||
+            !Number.isInteger(memoryLimitBytes) ||
+            memoryLimitBytes < CRYPTO_PASSWORD_MIN_MEMORY_LIMIT_BYTES ||
+            memoryLimitBytes > CRYPTO_PASSWORD_MAX_MEMORY_LIMIT_BYTES
+        ) {
+            throw new TypeError("Sloppy Password options are outside the documented safe bounds.");
+        }
+        return { opsLimit, memoryLimitBytes };
+    }
+
+    function sloppyEncodedPasswordHash(value, operation) {
+        if (typeof value !== "string") {
+            throw new TypeError(`Sloppy crypto ${operation} encoded hash must be a string.`);
+        }
+        return value;
     }
 
     function sloppyBytesToHex(bytes) {
@@ -2264,19 +2313,26 @@ Reason:
     });
 
     const Password = Object.freeze({
-        hash() {
-            return Promise.reject(
-                new Error("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: Password.hash lands in CORE-CRYPTO-01.E."),
+        hash(password, options = undefined) {
+            const normalized = sloppyPasswordOptions(options);
+            return sloppyNativeCrypto("Password.hash").passwordHash(
+                sloppyPasswordBytes(password, "Password.hash"),
+                normalized.opsLimit,
+                normalized.memoryLimitBytes,
             );
         },
-        verify() {
-            return Promise.reject(
-                new Error("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: Password.verify lands in CORE-CRYPTO-01.E."),
+        verify(password, encodedHash) {
+            return sloppyNativeCrypto("Password.verify").passwordVerify(
+                sloppyPasswordBytes(password, "Password.verify"),
+                sloppyEncodedPasswordHash(encodedHash, "Password.verify"),
             );
         },
-        needsRehash() {
-            return Promise.reject(
-                new Error("SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: Password.needsRehash lands in CORE-CRYPTO-01.E."),
+        needsRehash(encodedHash, options = undefined) {
+            const normalized = sloppyPasswordOptions(options);
+            return sloppyNativeCrypto("Password.needsRehash").passwordNeedsRehash(
+                sloppyEncodedPasswordHash(encodedHash, "Password.needsRehash"),
+                normalized.opsLimit,
+                normalized.memoryLimitBytes,
             );
         },
     });
