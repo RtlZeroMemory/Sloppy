@@ -118,9 +118,12 @@ deterministic loopback TCP client execution for connect/write/read/readLine/clos
 embedded-NUL bytes. Default TCP execution tests must remain localhost/loopback only and
 keep live-network, stress/torture, V8, package, and benchmark evidence separate.
 CORE-NET-01.E/F adds deterministic loopback listener tests for ephemeral listen, accept,
-accepted-connection ownership, listener close/stale behavior, and accept timeout. These
+accepted-connection ownership, listener close/stale behavior, and accept timeout.
 CORE-NET-01.G adds object/text `NetworkAddress` parsing, local `localhost` DNS-backed
 listener coverage, embedded-NUL host rejection, and socket-option error propagation.
+CORE-NET-01.I adds network doctor/audit goldens, `examples.net.api_shape`, and
+`tests/conformance/net/README.md` so metadata, source examples, and conformance indexing
+are explicit.
 These tests still do not claim external network access, live-provider DNS breadth, TLS,
 HTTP client, UDP, WebSocket, or benchmark evidence.
 CORE-CODEC-01 tests must keep evidence claims narrow. Contract tests prove `sloppy/codec`

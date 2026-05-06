@@ -23,7 +23,8 @@ Expected behavior:
 - provider executor admission runs capability checks before queue slot reservation,
   ownership transfer, or worker execution;
 - denied provider executor admission leaves no resource or queued operation to clean up;
-- filesystem/network capability entries remain metadata/check-only skeletons;
+- filesystem and network capability entries are policy/metadata checks, not OS sandbox
+  evidence;
 - denied diagnostics are redacted.
 - V8 SQLite bridge `open`, `exec`, `query`, and `queryOne` check declared capabilities
   before SQLite provider work when the bridge is enabled.
@@ -40,5 +41,5 @@ mismatch, stale handle failure, and denied users API transport behavior.
 
 Gated/deferred requirements: SQLite bridge enforcement executes only in V8-enabled builds.
 PostgreSQL and SQL Server JavaScript provider bridges remain deferred and must not be
-reported as capability-enforced from JavaScript. Filesystem/network checks are metadata
-checks only until their APIs exist.
+reported as capability-enforced from JavaScript. Filesystem/network checks are Sloppy
+runtime policy/metadata evidence only and do not prove OS-level containment.

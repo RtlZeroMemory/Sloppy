@@ -1,0 +1,3 @@
+Sloppy Audit
+
+[note] SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE network capabilities are policy-visible for sloppy/net; no OS sandbox or external live-network evidence is implemented (capabilities)

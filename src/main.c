@@ -3611,6 +3611,46 @@ static void sl_cli_doctor_emit_fs_capabilities(const SlCliOptions* options, SlAr
     }
 }
 
+static void sl_cli_doctor_emit_network_capabilities(const SlCliOptions* options, SlArena* arena,
+                                                    const SlCliMetadata* metadata, bool* emitted)
+{
+    bool has_network_capability = false;
+    bool has_connect_capability = false;
+    bool has_listen_capability = false;
+
+    for (size_t index = 0U; index < metadata->capability_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "network")) {
+            has_network_capability = true;
+            if (sl_cli_span_equal_cstr(metadata->capabilities[index].access, "connect") ||
+                sl_cli_span_equal_cstr(metadata->capabilities[index].access, "connect-listen"))
+            {
+                has_connect_capability = true;
+            }
+            if (sl_cli_span_equal_cstr(metadata->capabilities[index].access, "listen") ||
+                sl_cli_span_equal_cstr(metadata->capabilities[index].access, "connect-listen"))
+            {
+                has_listen_capability = true;
+            }
+        }
+    }
+    if (has_network_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.net.capabilities"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("network capability metadata is visible to sloppy/net policy checks"),
+            emitted);
+    }
+    if (has_connect_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.net.connect"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("network connect capability metadata is present"), emitted);
+    }
+    if (has_listen_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.net.listen"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("network listen capability metadata is present"), emitted);
+    }
+}
+
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
@@ -3633,6 +3673,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
                                         : sl_cli_span_cstr("capability metadata not present"),
         emitted);
     sl_cli_doctor_emit_fs_capabilities(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_network_capabilities(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
         SlCliSpan message =
@@ -4048,9 +4089,9 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
                           "capabilities", findings, errors);
     }
     if (has_network) {
-        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_NETWORK_SKELETON",
-                          "network capabilities are metadata/check-only; no network API or OS "
-                          "sandbox is implemented",
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE",
+                          "network capabilities are policy-visible for sloppy/net; no OS sandbox "
+                          "or external live-network evidence is implemented",
                           "capabilities", findings, errors);
     }
 }

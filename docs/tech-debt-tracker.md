@@ -110,7 +110,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   Do not claim randomness quality, password cracking cost, timing resistance, security from
   non-crypto hashes, performance, WebCrypto/Node/Bun compatibility, or public alpha
   readiness from the implemented shape/vector tests.
-- Network API implementation after CORE-NET-01.E/F: `stdlib.net`, the `sloppy/net`
+- Network API implementation after CORE-NET-01.I: `stdlib.net`, the `sloppy/net`
   import contract, development/strict network policy, lifecycle model, stable diagnostics,
   native libuv-backed TCP client connections, `TcpClient`/`TcpConnection` JS facade,
   feature-gated `__sloppy.net`, JS-safe TCP resource IDs, and deterministic loopback
@@ -118,8 +118,8 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   accept, JS async accept iteration, listener close/abort, and accept-timeout evidence.
   CORE-NET-01.G adds `NetworkAddress` object/text parsing, local DNS/hostname-backed listen
   coverage, IPv4/IPv6 address handling, and checked `noDelay`/`keepAlive` option
-  propagation. #592 must still implement doctor/audit, examples, final conformance
-  goldens, and broader stress/torture evidence. Do not claim
+  propagation. CORE-NET-01.I adds doctor/audit goldens, source examples, and a conformance
+  evidence index. Broader stress/torture evidence remains future work. Do not claim
   external network access, TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
   performance, or public alpha readiness from the current TCP slice.
 - Codec API implementation after CORE-CODEC-01.F/G: `stdlib.codec`, the `sloppy/codec`

@@ -64,7 +64,10 @@ CORE-NET-01 gates must report network evidence by lane. PRs that only add the `s
 contract, Plan metadata, diagnostics, and policy model do not prove TCP execution, external
 network access, V8 execution, package readiness, throughput, or performance. Default tests
 must remain deterministic localhost/loopback only once TCP behavior lands; live-network and
-benchmark lanes stay optional and separately reported.
+benchmark lanes stay optional and separately reported. CORE-NET-01.I adds
+`examples.net.api_shape`, `sloppy.cli.doctor_network_*`, `sloppy.cli.audit_network_*`, and
+`tests/conformance/net/README.md`; those gates prove source shape, metadata visibility, and
+evidence indexing only.
 CORE-CODEC-01 gates must report codec evidence by lane. PRs that only add the
 `stdlib.codec` contract, Plan metadata, diagnostics, and backend policy do not prove
 Base64/Hex/Text/Binary/Compression/Checksum correctness, V8 execution, package readiness,

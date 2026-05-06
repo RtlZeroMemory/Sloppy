@@ -76,8 +76,10 @@ CORE-NET-01.E/F registers the private `__sloppy.net` namespace for active `stdli
 plans. The bridge exposes TCP client/connection/listener operations through JS-safe
 resource IDs; blocking connect/listen/accept/read/write/close work runs on owned native
 worker threads, and Promise settlement happens through the engine async loop on the V8
-owner thread. DNS policy, richer socket options, and final deadline/cancellation hardening
-remain later CORE-NET slices.
+owner thread. CORE-NET-01.G/I adds local DNS/address parsing, checked socket options,
+doctor/audit metadata goldens, source examples, and conformance indexing without exposing
+raw native handles or making external live-network, TLS, HTTP, UDP, WebSocket, or
+compatibility claims.
 CORE-CODEC-01.C/D/I registers the private `__sloppy.codec` namespace marker for active
 `stdlib.codec` plans. Base64/Base64Url/Hex/UTF-8 algorithms live in the bootstrap stdlib
 for this slice, and CORE-CODEC-01.E keeps Binary reader/writer behavior in that same JS
