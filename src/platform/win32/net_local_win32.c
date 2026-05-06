@@ -269,6 +269,29 @@ static DWORD sl_local_connect_remaining_ms(ULONGLONG start_ms, uint32_t timeout_
     return (DWORD)(timeout_ms - elapsed);
 }
 
+static SlStatus sl_local_apply_remaining_timeout(const SlLocalIoOptions* options,
+                                                 ULONGLONG start_ms, SlLocalIoOptions* out_options,
+                                                 SlDiag* out_diag)
+{
+    bool expired = false;
+
+    if (out_options == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_options = options == NULL ? (SlLocalIoOptions){0} : *options;
+    if (options == NULL || !options->has_timeout_ms) {
+        return sl_status_ok();
+    }
+    out_options->timeout_ms =
+        sl_local_connect_remaining_ms(start_ms, options->timeout_ms, &expired);
+    if (expired) {
+        return sl_local_fail(
+            out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED, SL_STATUS_DEADLINE_EXCEEDED,
+            sl_local_literal("local IPC read or write was cancelled or timed out"));
+    }
+    return sl_status_ok();
+}
+
 SlLocalConnectOptions sl_local_connect_options_default(SlStr path)
 {
     SlLocalConnectOptions options = {0};
@@ -575,6 +598,7 @@ SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes byt
                                       const SlLocalIoOptions* options, SlDiag* out_diag)
 {
     SlStatus status = sl_local_require_connected(connection, out_diag);
+    ULONGLONG start_ms = GetTickCount64();
     size_t written = 0U;
 
     if (!sl_status_is_ok(status)) {
@@ -589,6 +613,8 @@ SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes byt
                                                                   : (DWORD)(bytes.length - written);
         DWORD transferred = 0U;
         BOOL ok = FALSE;
+        bool has_timeout = false;
+        uint32_t timeout_ms = 0U;
 
         status = sl_local_cancelled_status(
             options == NULL ? NULL : options->cancellation, out_diag,
@@ -602,6 +628,19 @@ SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes byt
             return sl_local_fail(out_diag, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
                                  SL_STATUS_INTERNAL,
                                  sl_local_literal("local IPC backend is unavailable"));
+        }
+        if (options != NULL && options->has_timeout_ms) {
+            bool expired = false;
+
+            has_timeout = true;
+            timeout_ms = sl_local_connect_remaining_ms(start_ms, options->timeout_ms, &expired);
+            if (expired) {
+                (void)CloseHandle(overlapped.hEvent);
+                return sl_local_fail(
+                    out_diag, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
+                    SL_STATUS_DEADLINE_EXCEEDED,
+                    sl_local_literal("local IPC read or write was cancelled or timed out"));
+            }
         }
         ok = WriteFile(connection->handle, bytes.ptr + written, chunk, NULL, &overlapped);
         if (ok) {
@@ -624,8 +663,7 @@ SlStatus sl_local_connection_write_ex(SlLocalConnection* connection, SlBytes byt
                     sl_local_literal("local IPC read or write was cancelled or timed out"));
             }
             status = sl_local_wait_overlapped(
-                connection->handle, &overlapped, options != NULL && options->has_timeout_ms,
-                options == NULL ? 0U : options->timeout_ms, &transferred, out_diag,
+                connection->handle, &overlapped, has_timeout, timeout_ms, &transferred, out_diag,
                 SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
                 sl_local_literal("local IPC read or write was cancelled or timed out"));
         }
@@ -762,6 +800,7 @@ SlStatus sl_local_connection_read_until_ex(SlLocalConnection* connection, SlAren
 {
     SlByteBuilder builder;
     SlStatus status;
+    ULONGLONG start_ms = GetTickCount64();
     size_t limit = 0U;
 
     if (connection == NULL || arena == NULL || out == NULL || delimiter.ptr == NULL ||
@@ -776,8 +815,14 @@ SlStatus sl_local_connection_read_until_ex(SlLocalConnection* connection, SlAren
     }
     while (sl_byte_builder_length(&builder) < limit) {
         SlOwnedBytes chunk = {0};
+        SlLocalIoOptions remaining_options = {0};
         SlBytes view;
-        status = sl_local_connection_read_ex(connection, arena, 1U, options, &chunk, out_diag);
+        status = sl_local_apply_remaining_timeout(options, start_ms, &remaining_options, out_diag);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_local_connection_read_ex(connection, arena, 1U, &remaining_options, &chunk,
+                                             out_diag);
         if (!sl_status_is_ok(status)) {
             return status;
         }
