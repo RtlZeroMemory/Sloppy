@@ -5397,6 +5397,17 @@ Reason:
         return normalized;
     }
 
+    function sloppyCallProcessBridge(handle, directName, bridgeName, args, unavailableMessage) {
+        if (handle !== null && typeof handle === "object" && typeof handle[directName] === "function") {
+            return handle[directName](...args);
+        }
+        const bridge = sloppyNativeOs();
+        if (typeof bridge[bridgeName] === "function") {
+            return bridge[bridgeName](handle, ...args);
+        }
+        throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", unavailableMessage);
+    }
+
     class ProcessPipe {
         constructor(handle, name) {
             this._handle = handle;
@@ -5408,10 +5419,14 @@ Reason:
                 throw new TypeError("Process pipe read maxBytes must be a positive number.");
             }
             const method = this._name === "stderr" ? "readStderr" : "readStdout";
-            if (typeof this._handle[method] !== "function") {
-                throw sloppyOsError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
-            }
-            return this._handle[method](Math.ceil(maxBytes));
+            const bridgeMethod = this._name === "stderr" ? "processReadStderr" : "processReadStdout";
+            return sloppyCallProcessBridge(
+                this._handle,
+                method,
+                bridgeMethod,
+                [Math.ceil(maxBytes)],
+                "OS process pipe bridge is unavailable.",
+            );
         }
 
         async readText(maxBytes = 65536) {
@@ -5423,6 +5438,9 @@ Reason:
         }
 
         async *readLines(options = undefined) {
+            if (options !== undefined && (options === null || typeof options !== "object" || Array.isArray(options))) {
+                throw new TypeError("Process pipe readLines options must be an object when provided.");
+            }
             const chunkSize = options?.chunkSize ?? 4096;
             const decoder = new TextDecoder();
             let buffered = "";
@@ -5456,10 +5474,16 @@ Reason:
         }
 
         async write(value) {
-            if (typeof this._handle.writeStdin !== "function") {
-                throw sloppyOsError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
+            if (typeof value !== "string" && !(value instanceof Uint8Array)) {
+                throw new TypeError("Process stdin write requires a string or Uint8Array.");
             }
-            return this._handle.writeStdin(value);
+            return sloppyCallProcessBridge(
+                this._handle,
+                "writeStdin",
+                "processWriteStdin",
+                [value],
+                "OS process stdin bridge is unavailable.",
+            );
         }
 
         async writeText(text) {
@@ -5470,10 +5494,13 @@ Reason:
         }
 
         async close() {
-            if (typeof this._handle.closeStdin !== "function") {
-                throw sloppyOsError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
-            }
-            return this._handle.closeStdin();
+            return sloppyCallProcessBridge(
+                this._handle,
+                "closeStdin",
+                "processCloseStdin",
+                [],
+                "OS process stdin bridge is unavailable.",
+            );
         }
     }
 
@@ -5486,27 +5513,52 @@ Reason:
         }
 
         async wait(options = undefined) {
-            if (typeof this._handle.wait !== "function") {
-                throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process wait bridge is unavailable.");
-            }
-            return this._handle.wait(sloppyProcessWaitOptions(options));
+            return sloppyCallProcessBridge(
+                this._handle,
+                "wait",
+                "processWait",
+                [sloppyProcessWaitOptions(options)],
+                "OS process wait bridge is unavailable.",
+            );
         }
 
         async terminate() {
-            return this._handle.terminate();
+            return sloppyCallProcessBridge(
+                this._handle,
+                "terminate",
+                "processTerminate",
+                [],
+                "OS process terminate bridge is unavailable.",
+            );
         }
 
         async kill() {
-            return this._handle.kill();
+            return sloppyCallProcessBridge(
+                this._handle,
+                "kill",
+                "processKill",
+                [],
+                "OS process kill bridge is unavailable.",
+            );
         }
 
         async cancel() {
-            return this._handle.cancel();
+            return sloppyCallProcessBridge(
+                this._handle,
+                "cancel",
+                "processCancel",
+                [],
+                "OS process cancel bridge is unavailable.",
+            );
         }
 
         async dispose() {
             if (typeof this._handle.dispose === "function") {
                 return this._handle.dispose();
+            }
+            const bridge = sloppyNativeOs();
+            if (typeof bridge.processDispose === "function") {
+                return bridge.processDispose(this._handle);
             }
             return undefined;
         }

@@ -468,7 +468,6 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     HANDLE inherited_handles[3] = {0};
     SIZE_T inherited_handle_count = 0U;
     SIZE_T attribute_size = 0U;
-    SlOwnedStr application_name = {0};
     char* command_line = NULL;
     char* cwd = NULL;
     char* environment_block = NULL;
@@ -486,10 +485,6 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
 
     *out = (SlOsProcessRunResult){0};
     status = sl_os_win32_command_line(arena, command, args, arg_count, &command_line);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_str_copy_to_arena_nul(arena, command, &application_name);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -593,8 +588,12 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     creation_flags |= EXTENDED_STARTUPINFO_PRESENT;
-    if (!CreateProcessA(application_name.ptr, command_line, NULL, NULL, TRUE, creation_flags,
-                        environment_block, cwd, (LPSTARTUPINFOA)&startup, &process))
+    /*
+     * Keep lpApplicationName NULL so Windows applies normal executable lookup, including PATH,
+     * while command_line still carries the explicitly quoted argv vector and never enters a shell.
+     */
+    if (!CreateProcessA(NULL, command_line, NULL, NULL, TRUE, creation_flags, environment_block,
+                        cwd, (LPSTARTUPINFOA)&startup, &process))
     {
         DWORD error = GetLastError();
         DeleteProcThreadAttributeList(startup.lpAttributeList);
@@ -727,7 +726,6 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     SIZE_T inherited_handle_count = 0U;
     SIZE_T attribute_size = 0U;
     bool attribute_initialized = false;
-    SlOwnedStr application_name = {0};
     char* command_line = NULL;
     char* cwd = NULL;
     char* environment_block = NULL;
@@ -738,10 +736,6 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
 
     *out = NULL;
     status = sl_os_win32_command_line(arena, command, args, arg_count, &command_line);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_str_copy_to_arena_nul(arena, command, &application_name);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -857,8 +851,12 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
         status = sl_status_from_code(SL_STATUS_INTERNAL);
         goto cleanup_fail;
     }
-    if (!CreateProcessA(application_name.ptr, command_line, NULL, NULL, TRUE, creation_flags,
-                        environment_block, cwd, (LPSTARTUPINFOA)&startup, &process))
+    /*
+     * Keep lpApplicationName NULL so Windows applies normal executable lookup, including PATH,
+     * while command_line still carries the explicitly quoted argv vector and never enters a shell.
+     */
+    if (!CreateProcessA(NULL, command_line, NULL, NULL, TRUE, creation_flags, environment_block,
+                        cwd, (LPSTARTUPINFOA)&startup, &process))
     {
         DWORD error = GetLastError();
         DeleteProcThreadAttributeList(startup.lpAttributeList);

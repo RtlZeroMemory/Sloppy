@@ -88,9 +88,11 @@ hostname, and line ending metadata. `Environment` exposes key validation, `get`,
 and redacted `list` behavior. The Process run/start helpers use explicit argv only,
 bounded text/byte capture or streaming pipe helpers, timeout/deadline/cancellation
 validation, and stable Sloppy OS diagnostics. `Signals.onShutdown` registers shutdown
-handlers through the Slop-owned bridge shape. The native System/Environment bridge is
-V8-wired; the native execution bridge and platform signal loop remain deferred until host
-work can be scheduled off the V8 owner thread.
+handlers through the Slop-owned bridge shape. The native System/Environment bridge and V8
+process run/start bridge are wired when `stdlib.os` is active; process handles use
+slot/generation resource IDs rather than native pointers. Native platform signal-loop
+dispatch remains deferred until app lifecycle integration can report platform support
+honestly.
 `sql` and `data` expose bootstrap query-template lowering, the fake-provider contract, and
 SQLite/PostgreSQL/SQL Server provider metadata. `data.sqlite("main")` and
 `data.sqlite.open(...)` return safe SQLite wrappers only when the V8 runtime installs the

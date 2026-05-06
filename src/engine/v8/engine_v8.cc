@@ -928,11 +928,18 @@ bool sl_v8_net_feature_enabled(const SlV8Engine* backend)
            sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_NET);
 }
 
+bool sl_v8_os_feature_enabled(const SlV8Engine* backend)
+{
+    return backend != nullptr && backend->has_runtime_features &&
+           sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_OS);
+}
+
 bool sl_v8_needs_async_loop(const SlV8Engine* backend)
 {
     return backend != nullptr &&
            (sl_v8_fs_feature_enabled(backend) || sl_v8_time_feature_enabled(backend) ||
-            sl_v8_crypto_feature_enabled(backend) || sl_v8_net_feature_enabled(backend));
+            sl_v8_crypto_feature_enabled(backend) || sl_v8_net_feature_enabled(backend) ||
+            sl_v8_os_feature_enabled(backend));
 }
 
 SlStatus sl_v8_init_async_features(SlV8Engine* backend, SlArena* arena)
@@ -973,6 +980,7 @@ SlStatus sl_v8_init_async_features(SlV8Engine* backend, SlArena* arena)
         sl_v8_time_dispose(backend);
         sl_v8_crypto_dispose(backend);
         sl_v8_net_dispose(backend);
+        sl_v8_os_dispose(backend);
         sl_async_loop_dispose(backend->async_loop);
         backend->async_loop = nullptr;
         return status;
@@ -1071,6 +1079,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             sl_v8_time_dispose(backend);
             sl_v8_crypto_dispose(backend);
             sl_v8_net_dispose(backend);
+            sl_v8_os_dispose(backend);
             sl_async_loop_dispose(backend->async_loop);
         }
         delete backend;
@@ -1089,6 +1098,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             sl_v8_time_dispose(backend);
             sl_v8_crypto_dispose(backend);
             sl_v8_net_dispose(backend);
+            sl_v8_os_dispose(backend);
             sl_async_loop_dispose(backend->async_loop);
         }
         delete backend->allocator;
@@ -1114,6 +1124,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
                 sl_v8_time_dispose(backend);
                 sl_v8_crypto_dispose(backend);
                 sl_v8_net_dispose(backend);
+                sl_v8_os_dispose(backend);
                 sl_async_loop_dispose(backend->async_loop);
             }
             delete backend->allocator;
@@ -1137,6 +1148,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             sl_v8_time_dispose(backend);
             sl_v8_crypto_dispose(backend);
             sl_v8_net_dispose(backend);
+            sl_v8_os_dispose(backend);
             sl_async_loop_dispose(backend->async_loop);
         }
         delete backend->allocator;
@@ -1184,6 +1196,7 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
             sl_v8_time_dispose(backend);
             sl_v8_crypto_dispose(backend);
             sl_v8_net_dispose(backend);
+            sl_v8_os_dispose(backend);
             sl_async_loop_dispose(backend->async_loop);
             backend->async_loop = nullptr;
         }

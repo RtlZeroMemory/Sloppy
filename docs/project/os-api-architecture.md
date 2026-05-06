@@ -39,8 +39,10 @@ surface. CORE-OS-01.D adds native `sl_os_process_run` and the bootstrap `Process
 facade. CORE-OS-01.E/F adds native `sl_os_process_start`, an opaque ProcessHandle, pipe
 operations, wait timeout, terminate/kill/cancel, and the bootstrap `Process.start` facade.
 CORE-OS-01.G adds the bootstrap `Signals.onShutdown` facade over the Slop-owned bridge
-shape. The V8 process bridge and native platform signal loop remain deferred until host
-work can be scheduled without blocking the V8 owner thread.
+shape. The stabilization sweep wires the V8 `processRun`/`processStart` bridge through
+owner-thread-safe async settlement and JS-safe process resource IDs. Native platform signal
+loop dispatch remains deferred until it can be integrated with app lifecycle without
+claiming cross-platform signal equivalence.
 
 ## API Contract
 
@@ -253,11 +255,18 @@ feature/Plan/diagnostic/compiler metadata lane.
 - Registration disposal forwarding and stable `SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE`
   wrapping when user shutdown handlers throw or reject.
 
-## Deferred Beyond CORE-OS-01.G
+## Implemented In CORE-OS-01 Stabilization
 
-- V8 `processRun` intrinsic and owner-thread-safe native scheduling.
-- V8 `processStart` intrinsic and owner-thread-safe native scheduling.
+- V8 `processRun` intrinsic with explicit-argv native scheduling off the V8 owner thread
+  and Promise settlement on the owner thread.
+- V8 `processStart` intrinsic with JS-safe slot/generation process resource IDs, wait,
+  stdin/stdout/stderr pipe operations, terminate/kill/cancel, and dispose forwarding.
+- Windows `Process.run`/`Process.start` executable lookup now preserves explicit argv and
+  no-shell behavior while allowing normal PATH lookup for commands such as `git`.
+
+## Deferred Beyond CORE-OS-01 Stabilization
+
 - Native platform signal registration and app-host dispatch wiring.
 - Shutdown-driven process cancellation and late-completion runtime hardening.
-- Doctor/audit examples, conformance, and goldens beyond diagnostic shape.
+- Process tree policy beyond direct child termination.
 - Public alpha docs and benchmark/performance claims.

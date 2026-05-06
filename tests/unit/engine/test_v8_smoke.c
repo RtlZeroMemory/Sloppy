@@ -4,8 +4,13 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 static int expect_true(bool condition)
 {
@@ -60,6 +65,37 @@ static int set_test_env(const char* key, const char* value)
 #else
     return setenv(key, value, 1);
 #endif
+}
+
+static int os_child_main(int argc, char** argv)
+{
+    if (argc >= 3 && strcmp(argv[2], "echo") == 0) {
+        puts("v8-child-output");
+        return 5;
+    }
+    if (argc >= 3 && strcmp(argv[2], "stdin") == 0) {
+        char buffer[128];
+        if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+            return 6;
+        }
+        printf("v8-stdin:%s", buffer);
+        return 0;
+    }
+    return 7;
+}
+
+static SlStr self_process_path(char* buffer, size_t capacity, const char* fallback)
+{
+#ifdef _WIN32
+    DWORD length = GetModuleFileNameA(NULL, buffer, (DWORD)capacity);
+    if (length != 0U && length < capacity) {
+        return sl_str_from_parts(buffer, (size_t)length);
+    }
+#else
+    (void)buffer;
+    (void)capacity;
+#endif
+    return sl_str_from_cstr(fallback);
 }
 
 static int expect_response_header(const SlHttpResponse* response, const char* name,
@@ -1852,6 +1888,96 @@ static int test_os_intrinsic_inactive_feature_is_not_registered(void)
     {
         sl_engine_destroy(engine);
         return 454;
+    }
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_os_intrinsic_process_run_start_and_signals(const char* self_path)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[4096];
+    unsigned char feature_storage[1024];
+    char self_storage[4096];
+    char self_js[4096];
+    char source[8192];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.os")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    size_t index = 0U;
+    int written = 0;
+
+    if (self.length == 0U || self.length >= sizeof(self_js)) {
+        return 455;
+    }
+    for (index = 0U; index < self.length; index += 1U) {
+        self_js[index] = self.ptr[index] == '\\' ? '/' : self.ptr[index];
+    }
+    self_js[self.length] = '\0';
+    written = snprintf(
+        source, sizeof(source),
+        "globalThis.sloppy_os_process = async function () {"
+        "  const os = globalThis.__sloppy.os;"
+        "  const command = \"%s\";"
+        "  const run = await os.processRun(command, ['--sloppy-os-child', 'echo'], {"
+        "    capture: 'text', maxStdoutBytes: 65536, maxStderrBytes: 65536, timeoutMs: 5000"
+        "  });"
+        "  const proc = await os.processStart(command, ['--sloppy-os-child', 'stdin'], {"
+        "    stdin: 'pipe', stdout: 'pipe', stderr: 'ignore'"
+        "  });"
+        "  await os.processWriteStdin(proc, 'hello\\n');"
+        "  await os.processCloseStdin(proc);"
+        "  const exit = await os.processWait(proc, { timeoutMs: 5000 });"
+        "  const stdout = await os.processReadStdout(proc, 256);"
+        "  const registration = os.signalsOnShutdown(function () {});"
+        "  registration.dispose();"
+        "  await os.processDispose(proc);"
+        "  return run.exitCode + ':' + run.stdout.trim() + ':' +"
+        "    exit.exitCode + ':' + stdout.trim();"
+        "};",
+        self_js);
+    if (written < 0 || (size_t)written >= sizeof(source)) {
+        return 456;
+    }
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 457;
+    }
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 458;
+    }
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("v8-os-process.js"),
+                                            sl_str_from_cstr(source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 459;
+    }
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_os_process"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 460;
+    }
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("5:v8-child-output:0:v8-stdin:hello")))
+    {
+        sl_engine_destroy(engine);
+        return 461;
     }
     sl_engine_destroy(engine);
     return 0;
@@ -4054,9 +4180,13 @@ static int test_sqlite_intrinsic_provider_kind_mismatch_fails_before_open(void)
     return 0;
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
     int result = 0;
+
+    if (argc >= 2 && strcmp(argv[1], "--sloppy-os-child") == 0) {
+        return os_child_main(argc, argv);
+    }
 
     result = test_eval_and_call_global_function();
     if (result != 0) {
@@ -4179,6 +4309,11 @@ int main(void)
     }
 
     result = test_os_intrinsic_inactive_feature_is_not_registered();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_os_intrinsic_process_run_start_and_signals(argv[0]);
     if (result != 0) {
         return result;
     }

@@ -162,16 +162,18 @@ is visible in security-looking contexts. Checksums must not be used or documente
 authentication, HMAC, signatures, password hashing, tokens, cryptographic hashes, or
 attacker-resistant integrity. Security APIs remain under `sloppy/crypto`.
 
-CORE-OS-01.A/B defines the OS API policy model. CORE-OS-01.C/H partial makes `sloppy/os`
-Plan-visible as `stdlib.os` for System and Environment runtime use. CORE-OS-01.D adds
-explicit-argv `Process.run` admission under `process.run`; strict policy denies it unless
-that authority is explicitly enabled. OS authority categories are `os.info`, `env.read`,
-`env.list`, `process.run`, `process.shell`, `process.signal`, `process.kill`, and
-`signals.shutdown`. Raw environment access is lower-level than app configuration, process
-execution requires explicit argv, shell execution is absent or separately gated, and
-diagnostics must never print environment values, secret args, sensitive captured output,
-native process handles, pipe handles, raw PIDs-as-authority, libuv handles, OS handles, or
-native pointers. These are Sloppy admission checks and audit facts, not OS sandboxing.
+CORE-OS-01.A/B defines the OS API policy model. CORE-OS-01.C/H makes `sloppy/os`
+Plan-visible as `stdlib.os` for System, Environment, and V8 process runtime use.
+CORE-OS-01.D adds explicit-argv `Process.run` admission under `process.run`; strict policy
+denies it unless that authority is explicitly enabled. OS authority categories are
+`os.info`, `env.read`, `env.list`, `process.run`, `process.shell`, `process.signal`,
+`process.kill`, and `signals.shutdown`. Raw environment access is lower-level than app
+configuration, process execution requires explicit argv, shell execution is absent or
+separately gated, and diagnostics must never print environment values, secret args,
+sensitive captured output, native process handles, pipe handles, raw PIDs-as-authority,
+libuv handles, OS handles, or native pointers. The V8 bridge exposes only slot/generation
+resource IDs for process handles. These are Sloppy admission checks and audit facts, not
+OS sandboxing.
 
 COMPILER-30.E keeps this metadata-only: supported config reads, schema declarations,
 request bindings, and `Results.*` response facts are Plan-visible for later audit and
