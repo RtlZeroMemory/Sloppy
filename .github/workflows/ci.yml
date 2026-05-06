@@ -394,7 +394,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf automake libtool bison flex ccache ${{ matrix.compiler_packages }})
+          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache ${{ matrix.compiler_packages }})
           missing=()
 
           for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache ${{ matrix.cc }} ${{ matrix.cxx }}; do
@@ -415,7 +415,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for package in cmake ninja pkg-config autoconf automake libtool ccache; do
+          for package in cmake ninja pkg-config autoconf autoconf-archive automake libtool ccache; do
             if ! brew list --formula "$package" >/dev/null 2>&1; then
               missing+=("$package")
             fi
@@ -423,6 +423,7 @@ jobs:
           if [ "${#missing[@]}" -gt 0 ]; then
             brew install "${missing[@]}"
           fi
+          echo "$(brew --prefix libtool)/libexec/gnubin" >> "$GITHUB_PATH"
 
       - name: Cache ccache
         uses: actions/cache@v4
