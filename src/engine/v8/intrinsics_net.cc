@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstring>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -405,7 +404,8 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
         }
         if (!request->result_bytes.empty()) {
-            memcpy(backing->Data(), request->result_bytes.data(), request->result_bytes.size());
+            std::copy(request->result_bytes.begin(), request->result_bytes.end(),
+                      static_cast<unsigned char*>(backing->Data()));
         }
         v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
         v8::Local<v8::Uint8Array> view =

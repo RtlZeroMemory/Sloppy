@@ -1,13 +1,14 @@
 set(results_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/results.js")
 set(schema_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/schema.js")
 set(data_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/data.js")
+set(codec_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/codec.js")
 set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${fs_source}" "${time_source}" "${app_source}" "${index_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${fs_source}" "${time_source}" "${app_source}" "${index_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -16,6 +17,7 @@ endforeach()
 file(READ "${results_source}" results_js)
 file(READ "${schema_source}" schema_js)
 file(READ "${data_source}" data_js)
+file(READ "${codec_source}" codec_js)
 file(READ "${fs_source}" fs_js)
 file(READ "${time_source}" time_js)
 file(READ "${app_source}" app_js)
@@ -91,6 +93,25 @@ foreach(required_pattern IN ITEMS
         "nativeStdlibBridge"
         "tagged template")
     require_substring("${data_js}" "${required_pattern}" "data.js is missing expected API shape pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "const Base64 = Object.freeze"
+        "const Base64Url = Object.freeze"
+        "const Hex = Object.freeze"
+        "const Text = Object.freeze"
+        "class Utf8StreamingDecoder"
+        "SLOPPY_E_CODEC_INVALID_BASE64"
+        "SLOPPY_E_CODEC_INVALID_BASE64URL"
+        "SLOPPY_E_CODEC_INVALID_HEX"
+        "SLOPPY_E_CODEC_MALFORMED_UTF8"
+        "SLOPPY_E_CODEC_FEATURE_UNAVAILABLE"
+        "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE"
+        "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM"
+        "padding ?? \"optional\""
+        "Base64Url input must use the URL-safe alphabet"
+        "utf8Malformed(fatal, message)")
+    require_substring("${codec_js}" "${required_pattern}" "codec.js is missing expected API contract pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS
@@ -176,6 +197,21 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "const Base64 = Object.freeze"
+        "const Base64Url = Object.freeze"
+        "const Hex = Object.freeze"
+        "const Text = Object.freeze"
+        "Base64,"
+        "Base64Url,"
+        "Hex,"
+        "Text,"
+        "Binary,"
+        "Compression,"
+        "Checksums,")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected codec runtime export pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "createBuilder()"
         "module: createModule"
         "dependsOn(...names)"
@@ -225,7 +261,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Sloppy }" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "export { Results }" "export { schema }")
+foreach(required_pattern IN ITEMS "export { Sloppy }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Time" "Deadline" "CancellationController" "export { Results }" "export { schema }")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

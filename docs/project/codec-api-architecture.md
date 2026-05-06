@@ -1,10 +1,10 @@
 # Codec API Architecture
 
-Status: CORE-CODEC-01.A/B contract. This document defines the intended
+Status: CORE-CODEC-01.C/D/I implementation slice. CORE-CODEC-01.A/B defined the
 `sloppy/codec` surface, backend/dependency policy, feature metadata, diagnostics, and
-safety model before primitive implementation. It is not implementation evidence for
-encoding correctness, compression throughput, streaming behavior, V8 execution, or package
-readiness.
+safety model; CORE-CODEC-01.C/D/I implements Base64, Base64Url, Hex, UTF-8 encode/decode,
+the streaming UTF-8 decoder, bootstrap exports, and the feature-gated V8 namespace marker.
+Binary, Compression, Checksums, examples, and final conformance goldens remain deferred.
 
 ## Goals
 
@@ -41,8 +41,8 @@ import {
 The runtime feature descriptor is `stdlib.codec`. The compiler recognizes only named,
 unaliased imports from `sloppy/codec`; the import adds `stdlib.codec` to Plan
 `requiredFeatures[]`, emits `features.codec = true`, and emits
-`strongPlan.evidence.codec = true`. This contract PR keeps `stdlib.codec` unavailable by
-default until implementation PRs register the native/stdlib/V8 surface.
+`strongPlan.evidence.codec = true`. The feature is available once V8 is available; the
+private `__sloppy.codec` namespace is registered only for active `stdlib.codec` plans.
 
 ## API Contract
 
@@ -167,9 +167,10 @@ Public import: `sloppy/codec`.
 
 Private V8 intrinsic namespace: `__sloppy.codec`.
 
-Dependencies: `core` as runtime-owned helpers. `stdlib.codec` may expose a feature-gated
-V8 bridge through the private `__sloppy.codec` namespace, but V8 is not a default contract
-dependency for the codec model.
+Dependencies: `core` and `v8`. The PR2 Base64/Base64Url/Hex/UTF-8 algorithms are
+bootstrap stdlib helpers, while the private `__sloppy.codec` namespace marks active
+Plan-driven V8 registration. Later Binary and Compression slices may add native bridge
+functions under `src/engine/v8/*`.
 
 Compiler behavior:
 
@@ -179,11 +180,16 @@ Compiler behavior:
 - future PRs may record statically visible compression/checksum use and checksum
   security-context warnings.
 
-Runtime behavior in this PR:
+Runtime behavior in CORE-CODEC-01.C/D/I:
 
 - `stdlib.codec` is known to the feature registry;
-- default availability is false until implementations land;
-- required `stdlib.codec` fails closed through runtime-feature diagnostics.
+- default availability is true when V8 is available;
+- inactive or explicitly unavailable `stdlib.codec` still fails closed through
+  runtime-feature diagnostics;
+- `Base64`, `Base64Url`, `Hex`, and `Text.utf8` are implemented in
+  `stdlib/sloppy/codec.js` and staged into the classic generated-app runtime;
+- `Binary`, `Compression`, and `Checksums` expose deterministic deferred stubs until
+  their dedicated implementation PRs land.
 
 ## Diagnostics
 
@@ -209,10 +215,14 @@ pointers, V8 handles, OS handles, or package-manager state.
 
 ## Evidence Boundaries
 
-Default goldens prove deterministic diagnostic shape only. They do not prove V8 execution,
-compression backend availability, streaming backpressure, cancellation, performance,
-package readiness, or conformance vector coverage. Evidence lanes remain separate:
-default, V8-gated, package, dependency-backed, streaming/stress, and benchmark.
+Default tests now prove the RFC 4648 Base64/Base64Url vectors, Hex vectors, arbitrary-byte
+roundtrips, UTF-8 fatal/replacement behavior, streaming partial-sequence handling, BOM
+preservation, stdlib export shape, and deterministic deferred stubs. V8-gated tests prove
+only active/inactive `__sloppy.codec` namespace registration. They do not prove Binary,
+Compression, Checksums, compression backend availability, streaming compression
+backpressure, cancellation, performance, package readiness, or final conformance coverage.
+Evidence lanes remain separate: default, V8-gated, package, dependency-backed,
+streaming/stress, and benchmark.
 
 ## Non-Goals
 

@@ -78,11 +78,11 @@ blocking connect/read/write/close work runs on owned native worker threads, and 
 settlement happens through the engine async loop on the V8 owner thread. Listener/accept,
 DNS policy, richer socket options, and deadline/cancellation hardening remain later
 CORE-NET slices.
-CORE-CODEC-01.A/B reserves the private `__sloppy.codec` namespace for active
-`stdlib.codec` plans and documents the transform/diagnostic contract. The namespace is not
-registered in this contract PR; runtime availability stays false until encoding, text,
-binary, compression, checksum, and owner-thread Promise settlement paths are implemented in
-later CORE-CODEC PRs.
+CORE-CODEC-01.C/D/I registers the private `__sloppy.codec` namespace marker for active
+`stdlib.codec` plans. Base64/Base64Url/Hex/UTF-8 algorithms live in the bootstrap stdlib
+for this slice; the namespace intentionally exposes no raw native handles and no public
+compatibility promise. Binary, Compression, Checksums, and owner-thread Promise settlement
+paths remain dedicated later CORE-CODEC work.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
@@ -211,10 +211,10 @@ Framework and provider bridge code belongs in sibling V8 modules:
   bounded hash/HMAC work inline; `Password.hash`, `Password.verify`, and
   `Password.needsRehash` offload away from the V8 owner thread and settle through the
   owner-thread async loop.
-- future `intrinsics_codec.cc` owns codec argument validation, byte/text/binary conversion,
-  compression backend dispatch, checksum helpers, and owner-thread Promise settlement for
-  active `stdlib.codec` plans. Compression work that can materially block must offload away
-  from the V8 owner thread.
+- `intrinsics_codec.cc` owns the active `stdlib.codec` namespace marker today. Later
+  Binary/Compression/Checksum bridge functions must stay in this V8 module, preserve owned
+  byte/text boundaries, and settle any async work on the owner thread. Compression work
+  that can materially block must offload away from the V8 owner thread.
 - Native provider, filesystem, HTTP, timer, or other future completions must pass any
   terminal-state guard before reaching owner-thread settlement; provider/libuv/offload
   domains still never enter V8 directly.

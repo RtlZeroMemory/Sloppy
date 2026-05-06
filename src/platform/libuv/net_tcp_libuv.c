@@ -100,7 +100,9 @@ static bool sl_tcp_copy_host_to_cstr(SlStr host, char out[SL_TCP_MAX_HOST_BYTES 
     {
         return false;
     }
-    memcpy(out, host.ptr, host.length);
+    for (size_t index = 0U; index < host.length; index += 1U) {
+        out[index] = host.ptr[index];
+    }
     out[host.length] = '\0';
     return true;
 }
@@ -280,12 +282,12 @@ static SlStatus sl_tcp_parse_sockaddr(const SlTcpConnectOptions* options,
     }
     if (uv_ip4_addr(host, (int)options->port, &addr4) == 0) {
         memset(out_addr, 0, sizeof(*out_addr));
-        memcpy(out_addr, &addr4, sizeof(addr4));
+        *((struct sockaddr_in*)out_addr) = addr4;
         return sl_status_ok();
     }
     if (uv_ip6_addr(host, (int)options->port, &addr6) == 0) {
         memset(out_addr, 0, sizeof(*out_addr));
-        memcpy(out_addr, &addr6, sizeof(addr6));
+        *((struct sockaddr_in6*)out_addr) = addr6;
         return sl_status_ok();
     }
     return sl_tcp_fail(out_diag, SL_DIAG_NET_DNS_FAILURE, SL_STATUS_UNSUPPORTED,

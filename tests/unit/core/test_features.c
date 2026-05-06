@@ -208,7 +208,7 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     if (!sl_str_equal(codec->stable_id, sl_str_from_cstr("stdlib.codec")) ||
         !sl_str_equal(codec->stdlib_import, sl_str_from_cstr("sloppy/codec")) ||
         !sl_str_equal(codec->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.codec")) ||
-        !codec->requires_v8_intrinsics || codec->available)
+        !codec->requires_v8_intrinsics || !codec->available)
     {
         return 69;
     }
@@ -402,7 +402,7 @@ static int test_explicit_codec_required_feature_activates_when_available(void)
     return 0;
 }
 
-static int test_codec_required_feature_unavailable_by_default(void)
+static int test_codec_required_feature_fails_when_runtime_unavailable(void)
 {
     unsigned char diag_storage[2048];
     SlArena diag_arena = {0};
@@ -413,6 +413,7 @@ static int test_codec_required_feature_unavailable_by_default(void)
     SlDiag diag = {0};
 
     availability.v8 = true;
+    availability.stdlib_codec = false;
     plan.required_features = required;
     plan.required_feature_count = 1U;
     (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
@@ -853,7 +854,7 @@ int main(void)
         test_explicit_crypto_required_feature_activates_when_available,
         test_crypto_required_feature_fails_when_backend_unavailable,
         test_explicit_codec_required_feature_activates_when_available,
-        test_codec_required_feature_unavailable_by_default,
+        test_codec_required_feature_fails_when_runtime_unavailable,
         test_explicit_net_required_feature_activates_when_available,
         test_net_required_feature_activates_by_default_after_tcp_client_backend,
         test_minimal_route_activates_expected_features,

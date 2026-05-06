@@ -37,6 +37,7 @@ set(
     README.md
     app.js
     bootstrap.manifest.json
+    codec.js
     data.js
     fs.js
     crypto.js
@@ -357,6 +358,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/string_interop.cc
         src/engine/v8/intrinsics.cc
         src/engine/v8/intrinsics_crypto.cc
+        src/engine/v8/intrinsics_codec.cc
         src/engine/v8/intrinsics_fs.cc
         src/engine/v8/intrinsics_net.cc
         src/engine/v8/intrinsics_time.cc
@@ -1720,9 +1722,13 @@ if(SLOPPY_ENABLE_TESTS)
             NAME bootstrap.stdlib.data_foundation
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_data_foundation.mjs")
+        add_test(
+            NAME bootstrap.stdlib.codec
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
         set_tests_properties(
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
-            bootstrap.stdlib.data_foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 
     if(CARGO_EXECUTABLE)
