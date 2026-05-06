@@ -312,6 +312,15 @@ static int test_password_rejects_unsupported_format(void)
     {
         return 51;
     }
+    verified = true;
+    if (expect_status(
+            sl_crypto_password_verify(sl_bytes_from_parts(password, sizeof(password) - 1U),
+                                      sl_str_from_cstr("$argon2id$malformed"), &verified),
+            SL_STATUS_UNSUPPORTED) != 0 ||
+        verified)
+    {
+        return 52;
+    }
     return 0;
 }
 

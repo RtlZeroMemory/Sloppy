@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <chrono>
 #include <limits>
 #include <memory>
 #include <new>
@@ -308,41 +307,60 @@ bool crypto_v8_post_password_completion(const std::shared_ptr<SlV8CryptoPassword
         return false;
     }
 
-    while (!request->cancelled.load()) {
+    {
+        std::lock_guard<std::mutex> lock(backend->crypto_mutex);
+        if (request->cancelled.load() || backend->crypto_shutting_down ||
+            backend->async_loop == nullptr)
         {
-            std::lock_guard<std::mutex> lock(backend->crypto_mutex);
-            if (backend->crypto_shutting_down || backend->async_loop == nullptr) {
-                request->cancelled.store(true);
-                return false;
-            }
+            request->cancelled.store(true);
+            return false;
         }
-
-        CryptoV8PasswordCompletionPayload* payload =
-            new (std::nothrow) CryptoV8PasswordCompletionPayload();
-        if (payload == nullptr) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            continue;
-        }
-        payload->request = request;
-
-        SlAsyncCompletion completion = {};
-        completion.kind = SL_ASYNC_COMPLETION_V8_CONTINUATION;
-        completion.operation_kind = SL_ASYNC_OPERATION_BLOCKING_OFFLOAD;
-        completion.status = request->status;
-        completion.payload = payload;
-        completion.dispatch = crypto_v8_password_completion_dispatch;
-        completion.cleanup = crypto_v8_password_completion_cleanup;
-
-        request->completion_posted.store(true);
-        SlStatus post_status = sl_async_loop_post(backend->async_loop, &completion);
-        if (sl_status_is_ok(post_status)) {
-            return true;
-        }
-        request->completion_posted.store(false);
-        delete payload;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+
+    CryptoV8PasswordCompletionPayload* payload =
+        new (std::nothrow) CryptoV8PasswordCompletionPayload();
+    if (payload == nullptr) {
+        request->cancelled.store(true);
+        return false;
+    }
+    payload->request = request;
+
+    SlAsyncCompletion completion = {};
+    completion.kind = SL_ASYNC_COMPLETION_V8_CONTINUATION;
+    completion.operation_kind = SL_ASYNC_OPERATION_BLOCKING_OFFLOAD;
+    completion.status = request->status;
+    completion.payload = payload;
+    completion.dispatch = crypto_v8_password_completion_dispatch;
+    completion.cleanup = crypto_v8_password_completion_cleanup;
+
+    request->completion_posted.store(true);
+    SlStatus post_status = sl_async_loop_post(backend->async_loop, &completion);
+    if (sl_status_is_ok(post_status)) {
+        return true;
+    }
+    request->completion_posted.store(false);
+    request->cancelled.store(true);
+    delete payload;
     return false;
+}
+
+bool crypto_v8_reject_password_promise(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                       v8::Local<v8::Promise::Resolver> resolver,
+                                       const char* message, bool type_error)
+{
+    v8::Local<v8::String> local_message;
+    v8::Local<v8::Value> exception;
+
+    if (!sl_status_is_ok(
+            crypto_v8_to_local_string(isolate, sl_str_from_cstr(message), &local_message)))
+    {
+        return false;
+    }
+    exception =
+        type_error ? v8::Exception::TypeError(local_message) : v8::Exception::Error(local_message);
+    bool ok = resolver->Reject(context, exception).FromMaybe(false);
+    isolate->PerformMicrotaskCheckpoint();
+    return ok;
 }
 
 void crypto_v8_password_worker(std::shared_ptr<SlV8CryptoPasswordRequest> request)
@@ -407,9 +425,17 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
     std::string encoded_hash;
     SlCryptoPasswordOptions options = sl_crypto_password_default_options();
 
+    if (!v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
+        crypto_v8_throw_error(isolate,
+                              "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: could not create Promise");
+        return;
+    }
+    args.GetReturnValue().Set(resolver->GetPromise());
+
     if (backend == nullptr || backend->async_loop == nullptr) {
-        crypto_v8_throw_error(
-            isolate, "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password async lane is unavailable");
+        (void)crypto_v8_reject_password_promise(
+            isolate, context, resolver,
+            "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password async lane is unavailable", false);
         return;
     }
 
@@ -419,8 +445,9 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
             !crypto_v8_password_options_args(args, 1, 2, &options))
         {
             crypto_v8_zero_vector(password);
-            crypto_v8_throw_type_error(
-                isolate, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.hash arguments invalid");
+            (void)crypto_v8_reject_password_promise(
+                isolate, context, resolver,
+                "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.hash arguments invalid", true);
             return;
         }
     }
@@ -430,23 +457,18 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
             !crypto_v8_password_hash_arg(isolate, args[1], &encoded_hash))
         {
             crypto_v8_zero_vector(password);
-            crypto_v8_throw_type_error(
-                isolate, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.verify arguments invalid");
+            (void)crypto_v8_reject_password_promise(
+                isolate, context, resolver,
+                "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.verify arguments invalid", true);
             return;
         }
     }
     else if (args.Length() != 3 || !crypto_v8_password_hash_arg(isolate, args[0], &encoded_hash) ||
              !crypto_v8_password_options_args(args, 1, 2, &options))
     {
-        crypto_v8_throw_type_error(
-            isolate, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.needsRehash arguments invalid");
-        return;
-    }
-
-    if (!v8::Promise::Resolver::New(context).ToLocal(&resolver)) {
-        crypto_v8_zero_vector(password);
-        crypto_v8_throw_error(isolate,
-                              "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: could not create Promise");
+        (void)crypto_v8_reject_password_promise(
+            isolate, context, resolver,
+            "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Password.needsRehash arguments invalid", true);
         return;
     }
 
@@ -454,8 +476,9 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
                                                            SlV8CryptoPasswordRequest());
     if (request == nullptr) {
         crypto_v8_zero_vector(password);
-        crypto_v8_throw_error(isolate,
-                              "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: could not allocate request");
+        (void)crypto_v8_reject_password_promise(
+            isolate, context, resolver,
+            "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: could not allocate request", false);
         return;
     }
 
@@ -471,8 +494,9 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
         if (backend->crypto_shutting_down) {
             request->resolver.Reset();
             crypto_v8_zero_vector(request->password);
-            crypto_v8_throw_error(isolate,
-                                  "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: crypto is shutting down");
+            (void)crypto_v8_reject_password_promise(
+                isolate, context, resolver,
+                "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: crypto is shutting down", false);
             return;
         }
         backend->crypto_password_requests.push_back(request);
@@ -484,12 +508,11 @@ void crypto_v8_start_password_request(const v8::FunctionCallbackInfo<v8::Value>&
         request->resolver.Reset();
         crypto_v8_remove_password_request(request);
         crypto_v8_zero_vector(request->password);
-        crypto_v8_throw_error(isolate,
-                              "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password worker unavailable");
+        (void)crypto_v8_reject_password_promise(
+            isolate, context, resolver,
+            "SLOPPY_E_CRYPTO_BACKEND_UNAVAILABLE: password worker unavailable", false);
         return;
     }
-
-    args.GetReturnValue().Set(resolver->GetPromise());
 }
 
 bool crypto_v8_uint8_array(v8::Isolate* isolate, const unsigned char* data, size_t length,

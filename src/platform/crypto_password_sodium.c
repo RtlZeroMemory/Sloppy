@@ -13,26 +13,10 @@ static SlStatus sl_sodium_status(void)
     return sodium_init() < 0 ? sl_status_from_code(SL_STATUS_UNSUPPORTED) : sl_status_ok();
 }
 
-static bool sl_sodium_password_hash_format_supported(SlStr encoded_hash)
-{
-    static const char prefix[] = "$argon2id$";
-    size_t index = 0U;
-
-    if (encoded_hash.length < sizeof(prefix) - 1U || encoded_hash.ptr == NULL) {
-        return false;
-    }
-    for (index = 0U; index < sizeof(prefix) - 1U; index += 1U) {
-        if (encoded_hash.ptr[index] != prefix[index]) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static SlStatus sl_sodium_copy_encoded_hash(SlStr encoded_hash,
                                             char out[SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX])
 {
-    if (!sl_sodium_password_hash_format_supported(encoded_hash) ||
+    if (encoded_hash.ptr == NULL || encoded_hash.length == 0U ||
         encoded_hash.length >= SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX)
     {
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
@@ -87,8 +71,10 @@ SlStatus sl_platform_crypto_password_verify(SlBytes password, SlStr encoded_hash
                                             bool* out_verified)
 {
     char encoded[SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX] = {0};
+    SlCryptoPasswordOptions options = sl_crypto_password_default_options();
     SlStatus status = sl_sodium_status();
     int result = 0;
+    int rehash_result = 0;
 
     if (out_verified == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -105,8 +91,17 @@ SlStatus sl_platform_crypto_password_verify(SlBytes password, SlStr encoded_hash
 
     result = crypto_pwhash_str_verify(encoded, (const char*)password.ptr,
                                       (unsigned long long)password.length);
-    *out_verified = result == 0;
+    if (result == 0) {
+        *out_verified = true;
+        sodium_memzero(encoded, sizeof(encoded));
+        return sl_status_ok();
+    }
+    rehash_result = crypto_pwhash_str_needs_rehash(encoded, (unsigned long long)options.ops_limit,
+                                                   (size_t)options.mem_limit);
     sodium_memzero(encoded, sizeof(encoded));
+    if (rehash_result < 0) {
+        return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    }
     return sl_status_ok();
 }
 
