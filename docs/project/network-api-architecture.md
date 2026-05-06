@@ -146,7 +146,8 @@ Runtime behavior after CORE-NET-01.E/F:
   round trips;
 - `TcpListener` supports numeric loopback listen, ephemeral ports, bounded backlog,
   blocking native accept, JS async accept iteration, close, abort, stale-listener
-  diagnostics, and accept timeout/cancellation status mapping;
+  diagnostics, and accept timeout status mapping. Signal/deadline cancellation remains
+  follow-up hardening for the final stream/cancellation slice;
 - the V8 bridge exposes only JS-safe resource IDs and settles Promises on the owner thread
   after native worker-thread completion.
 
