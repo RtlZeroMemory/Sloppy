@@ -639,10 +639,10 @@ Promise settlement. Bootstrap stdlib evidence covers fake-clock disposal, determ
 delay/timeout/interval completion, skipped scheduled runs, and filesystem pre-cancel /
 expired-deadline option behavior.
 
-CORE-CRYPTO-01.E keeps stable Crypto diagnostics and JSON goldens for the feature/model
-plus random/hash/HMAC/Secret/password surface. CORE-CRYPTO-01.G adds the non-security
-`NonCryptoHash` warning shape. Missing or inactive `stdlib.crypto` uses the runtime-feature
-or missing-bridge diagnostic path rather than raw JavaScript property failures.
+CORE-CRYPTO-01.I keeps stable Crypto diagnostics and JSON goldens for the feature/model
+plus random/hash/HMAC/Secret/password surface and the non-security `NonCryptoHash` warning
+shape. Missing or inactive `stdlib.crypto` uses the runtime-feature or missing-bridge
+diagnostic path rather than raw JavaScript property failures.
 Crypto-specific codes cover primitive/API failures:
 
 - `SLOPPY_E_CRYPTO_FEATURE_UNAVAILABLE` for crypto API use when the feature/backend lane is

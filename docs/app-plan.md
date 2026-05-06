@@ -103,7 +103,8 @@ dependency of `stdlib.fs` so numeric filesystem timeouts work for apps that impo
 the Plan schema or activation rules. CORE-FS-01.C/D/H consumes the active feature to
 install the first core `__sloppy.fs` V8 bridge and stdlib `File` wrappers.
 CORE-CRYPTO-01.A/B adds the `stdlib.crypto` descriptor and compiler activation for
-`sloppy/crypto`, while keeping it unavailable by default until implementations land.
+`sloppy/crypto`; CORE-CRYPTO-01.C through I make the scoped crypto surface active in V8
+plans when the vetted backends are available.
 CORE-CODEC-01.A/B adds the `stdlib.codec` descriptor and compiler activation for
 `sloppy/codec`, while keeping it unavailable by default until Base64/Base64Url/Hex/Text/
 Binary/Compression/Checksum implementations land.
@@ -224,9 +225,10 @@ stdlib already understand: `sloppy/app` maps to `stdlib.framework/app`, `sloppy/
 `sloppy/codec` to `stdlib.codec`, and
 `sloppy/providers/sqlite` to `provider.sqlite`.
 PostgreSQL and SQL Server provider descriptors exist as unavailable/deferred entries for
-Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.G
-registered vetted random/hash/HMAC/password/non-crypto hash backends and the
-`__sloppy.crypto` intrinsic namespace.
+Plan validation; the crypto descriptor is active for V8 plans after CORE-CRYPTO-01.I
+registered vetted random/hash/HMAC/password/non-crypto hash backends, the
+`__sloppy.crypto` intrinsic namespace, and source/conformance evidence for the scoped
+surface.
 The network descriptor is known but unavailable by default until CORE-NET implementation
 PRs register TCP backends and V8 intrinsics.
 The codec descriptor is known but unavailable by default until implementation PRs register

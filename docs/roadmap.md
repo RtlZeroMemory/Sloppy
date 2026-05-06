@@ -92,7 +92,7 @@ Durable architecture sources remain:
 | Capability enforcement | Complete/proven for integrated paths | SQLite/provider-executor paths enforce before provider work; CORE-FS-01 implements filesystem feature/capability policy, import-driven Plan metadata, runtime path-policy enforcement for implemented FS operations, and doctor/audit goldens for filesystem metadata visibility; CORE-FS-02 keeps trusted runtime artifact reads independent of app filesystem grants; network remains metadata/check skeleton. |
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Time/deadline API | Complete/proven for scoped path | CORE-TIME-01.A/B defines `sloppy/time`, `stdlib.time`, compiler Plan activation, stable diagnostics, and bootstrap error classes. CORE-TIME-01.C/D/G adds the V8-gated native delay backend, owner-thread Promise settlement, `Time.delay`, `Time.timeout`, `Deadline`, and `CancellationController`. CORE-TIME-01.E/F adds intervals, scheduled jobs, and fake clock. CORE-TIME-01.H aligns filesystem options plus app/request/provider/HTTP naming boundaries. CORE-TIME-01.I adds source examples, final goldens, and the conformance evidence index. |
-| Crypto API | Partial | CORE-CRYPTO-01.G implements `sloppy/crypto` random helpers, SHA-2/HMAC, ConstantTime, Secret cleanup, `stdlib.crypto`/`__sloppy.crypto`, bootstrap JS surface, libsodium Argon2id password hash/verify/needsRehash with V8 offload, and dependency-backed `NonCryptoHash.xxHash64`. Final examples and conformance/goldens remain deferred. |
+| Crypto API | Complete/proven for scoped path | CORE-CRYPTO-01.A/B/C/D/E/F/G/H/I implements `sloppy/crypto` random helpers, SHA-2/HMAC, ConstantTime, Secret cleanup, `stdlib.crypto`/`__sloppy.crypto`, bootstrap JS surface, libsodium Argon2id password hash/verify/needsRehash with V8 offload, dependency-backed `NonCryptoHash.xxHash64`, source examples, diagnostic goldens, and conformance evidence indexing. Broader compatibility and production hardening remain future work; deterministic tests do not claim random quality, cracking cost, timing-proof behavior, non-crypto hash security, WebCrypto/Node/Bun compatibility, or performance. |
 | TCP networking API | Partial | CORE-NET-01.C/D/H defines `sloppy/net`, `stdlib.net`, compiler Plan activation, development/strict network policy, lifecycle model, stable diagnostics, native libuv-backed TCP client connections, `TcpClient`/`TcpConnection`, feature-gated `__sloppy.net`, owner-thread Promise settlement, and loopback client conformance. Listener/accept, DNS/options, stream/deadline/cancellation hardening, doctor/audit, examples, and final conformance remain deferred to #588-#592. |
 | Codec API | Partial | CORE-CODEC-01.A/B defines `sloppy/codec`, `stdlib.codec`, compiler Plan activation, backend/dependency policy, stable diagnostics, and safety policy. CORE-CODEC-01.C/D/I implements Base64/Base64Url/Hex, UTF-8 encode/decode and streaming decoder, bootstrap/generated-app runtime exports, and V8-gated namespace smoke coverage. Binary/Compression/Checksums, examples, final conformance, and dependency-backed evidence remain deferred. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
@@ -125,9 +125,10 @@ Kept open intentionally:
   watch/dev-loop, and command-diagnostic cleanup;
 - #318/#355-#359 Strong Plan strategic layer;
 - #268/#300/#301 public alpha readiness and non-claims review.
-- #571 CORE-CRYPTO-01 remains the crypto parent while #572-#580 land sequentially; #572/#573
-  cover the contract/feature/diagnostic model and #574/#575/#577/#579 cover the first
-  random/hash/HMAC/Secret/V8 implementation slice.
+- #571 CORE-CRYPTO-01 remains the crypto parent only until #572-#580 are closed and the
+  final evidence comment is recorded. The implemented scoped path covers contract,
+  feature/diagnostic model, random/hash/HMAC/Secret/V8, password, NonCryptoHash, examples,
+  and conformance evidence.
 - #581 CORE-NET-01 remains the TCP networking parent while #584-#592 land sequentially;
   #584/#585 cover the current contract, feature, policy, and diagnostic model.
 

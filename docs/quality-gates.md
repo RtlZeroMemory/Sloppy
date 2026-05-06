@@ -56,9 +56,10 @@ package-manager behavior, public alpha readiness, or benchmark claims are implie
 CORE-CRYPTO-01 gates must report crypto evidence by lane. PRs that add random/hash/HMAC/
 Secret/V8 support prove OS-source use, API shape, standard SHA-2/HMAC vectors, cleanup
 lifecycle, and V8 bridge registration only. They do not prove random quality, password
-cost, side-channel resistance, package readiness, or performance. Later vector/example PRs
-must keep secure `Hash`/`Hmac` evidence separate from explicitly non-security
-`NonCryptoHash` evidence.
+cost, side-channel resistance, package readiness, or performance. CORE-CRYPTO-01.I adds
+`examples.crypto.api_shape` and `tests/conformance/crypto/README.md`; those gates prove
+source example shape and evidence indexing only. Secure `Hash`/`Hmac` evidence remains
+separate from explicitly non-security `NonCryptoHash` evidence.
 CORE-NET-01 gates must report network evidence by lane. PRs that only add the `stdlib.net`
 contract, Plan metadata, diagnostics, and policy model do not prove TCP execution, external
 network access, V8 execution, package readiness, throughput, or performance. Default tests

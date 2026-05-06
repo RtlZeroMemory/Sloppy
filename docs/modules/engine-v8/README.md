@@ -67,7 +67,7 @@ thread resolves or rejects Promises during the normal native async drain. Interv
 scheduled jobs, and fake clocks are implemented in the JavaScript stdlib layer and are
 covered by bootstrap tests; native owner-thread Time evidence remains the V8-gated delay
 bridge.
-CORE-CRYPTO-01.G registers the private `__sloppy.crypto` namespace for active
+CORE-CRYPTO-01.I documents and tests the private `__sloppy.crypto` namespace for active
 `stdlib.crypto` plans. The namespace exposes bounded random, SHA-2, HMAC, constant-time,
 password, and explicit non-crypto hash helpers used by `stdlib/sloppy/crypto.js`; it does
 not expose raw native pointers or backend handles. `Password.hash`, `Password.verify`, and

@@ -86,17 +86,17 @@ provider work. Application config may contain secrets later, but this slice does
 secrets manager, user secrets, remote providers, or raw environment access from JS.
 Secret-looking config values are redacted in diagnostics and Plan metadata.
 
-CORE-CRYPTO-01.E adds the password hashing slice to the implemented crypto API without adding a new
+CORE-CRYPTO-01.I completes the scoped implemented crypto API without adding a new
 permission grant type. `sloppy/crypto` is Plan-visible as `stdlib.crypto` and registers
 `__sloppy.crypto` only for active V8 plans. Crypto backends use OS random/crypto
 facilities or vetted dependencies behind Sloppy-owned platform/backend boundaries.
 Password hashing uses `libsodium` Argon2id PHC strings, but JavaScript never receives raw
 native pointers or backend handles. Secure `Hash`/`Hmac` APIs and `NonCryptoHash` are
 separate namespaces so non-security hashes are not confused with signatures, tokens,
-password hashes, or integrity checks. CORE-CRYPTO-01.G implements `NonCryptoHash.xxHash64`
-through the vetted `xxhash` dependency and emits a Plan-visible doctor warning when
-statically visible source uses it in security-looking contexts. That warning is a
-best-effort static cue, not comprehensive security enforcement.
+password hashes, or integrity checks. `NonCryptoHash.xxHash64` uses the vetted `xxhash`
+dependency and emits a Plan-visible doctor warning when statically visible source uses it
+in security-looking contexts. That warning is a best-effort static cue, not comprehensive
+security enforcement.
 
 Secret-bearing crypto inputs must not appear in Plan metadata, diagnostics, logs, examples,
 or goldens. `Secret` disposal is best-effort cleanup of Sloppy-owned native buffers only:
