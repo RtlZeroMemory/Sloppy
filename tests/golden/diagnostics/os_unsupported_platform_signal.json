@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_UNSUPPORTED_PLATFORM_SIGNAL","severity":"error","message":"platform signal is unsupported","hints":["Signal support must be reported honestly per platform."]}

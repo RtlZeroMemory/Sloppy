@@ -4,6 +4,26 @@
 
 typedef int (*FeatureTestFn)(void);
 
+static SlPlanDataProvider empty_data_provider(void)
+{
+    SlPlanDataProvider provider;
+
+    provider.token = sl_str_empty();
+    provider.provider = sl_str_empty();
+    provider.capability = sl_str_empty();
+    provider.service = sl_str_empty();
+    provider.database = sl_str_empty();
+    return provider;
+}
+
+static SlPlanRequiredFeature empty_required_feature(void)
+{
+    SlPlanRequiredFeature feature;
+
+    feature.id = sl_str_empty();
+    return feature;
+}
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
@@ -97,6 +117,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.stdlib_crypto = true;
     availability.stdlib_codec = true;
     availability.stdlib_net = true;
+    availability.stdlib_os = true;
     return availability;
 }
 
@@ -166,16 +187,18 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CODEC);
     const SlRuntimeFeatureDescriptor* net =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_NET);
+    const SlRuntimeFeatureDescriptor* os =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_OS);
     const SlRuntimeFeatureDescriptor* fs =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FS);
     const SlRuntimeFeatureDescriptor* config =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 17) {
+    if (SL_RUNTIME_FEATURE_COUNT != 18) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || data == NULL || time == NULL || crypto == NULL ||
-        codec == NULL || net == NULL || fs == NULL || config == NULL)
+        codec == NULL || net == NULL || os == NULL || fs == NULL || config == NULL)
     {
         return 61;
     }
@@ -220,6 +243,15 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
     {
         return 70;
+    }
+    if (!sl_str_equal(os->stable_id, sl_str_from_cstr("stdlib.os")) ||
+        !sl_str_equal(os->stdlib_import, sl_str_from_cstr("sloppy/os")) ||
+        !sl_str_equal(os->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.os")) ||
+        !os->requires_v8_intrinsics || os->available ||
+        (os->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_TRANSPORT_LIBUV)) == 0U ||
+        (os->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
+    {
+        return 71;
     }
     if (!sl_str_equal(fs->stable_id, sl_str_from_cstr("stdlib.fs")) ||
         !sl_str_equal(fs->stdlib_import, sl_str_from_cstr("sloppy/fs")) ||
@@ -497,6 +529,69 @@ static int test_net_required_feature_activates_by_default_after_tcp_client_backe
     return 0;
 }
 
+static int test_explicit_os_required_feature_activates_when_available(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.os")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_OS))
+    {
+        return 2;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 3;
+    }
+    return 0;
+}
+
+static int test_os_required_feature_fails_by_default_until_runtime_surface_lands(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.os")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = sl_runtime_feature_default_availability();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.v8 = true;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
+        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.os")))
+    {
+        return 2;
+    }
+    return 0;
+}
+
 static int test_minimal_route_activates_expected_features(void)
 {
     unsigned char diag_storage[2048];
@@ -547,7 +642,7 @@ static int test_sqlite_provider_metadata_activates_sqlite(void)
     SlArena diag_arena = {0};
     SlPlanHandler handlers[1];
     SlPlanRoute routes[1];
-    SlPlanDataProvider providers[1] = {{0}};
+    SlPlanDataProvider providers[1] = {empty_data_provider()};
     SlPlan plan = base_plan(handlers, routes);
     SlRuntimeFeatureAvailability availability = all_available();
     SlRuntimeFeatureSet set = {0};
@@ -707,8 +802,8 @@ static int test_missing_feature_diagnostic_goldens(void)
 {
     SlPlanHandler handlers[1];
     SlPlanRoute routes[1];
-    SlPlanDataProvider providers[1] = {{0}};
-    SlPlanRequiredFeature required[1] = {{0}};
+    SlPlanDataProvider providers[1] = {empty_data_provider()};
+    SlPlanRequiredFeature required[1] = {empty_required_feature()};
     SlRuntimeFeatureAvailability availability = all_available();
     SlPlan plan = base_plan(handlers, routes);
 
@@ -845,6 +940,25 @@ static int test_net_feature_diagnostic_golden(void)
     return 0;
 }
 
+static int test_os_feature_diagnostic_golden(void)
+{
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.os")}};
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlPlan plan = target_only_plan();
+
+    availability.stdlib_os = false;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_os.json") != 0)
+    {
+        return 80;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     static const FeatureTestFn tests[] = {
@@ -857,6 +971,8 @@ int main(void)
         test_codec_required_feature_fails_when_runtime_unavailable,
         test_explicit_net_required_feature_activates_when_available,
         test_net_required_feature_activates_by_default_after_tcp_client_backend,
+        test_explicit_os_required_feature_activates_when_available,
+        test_os_required_feature_fails_by_default_until_runtime_surface_lands,
         test_minimal_route_activates_expected_features,
         test_sqlite_provider_metadata_activates_sqlite,
         test_unavailable_postgres_required_feature_fails,
@@ -867,6 +983,7 @@ int main(void)
         test_crypto_feature_diagnostic_golden,
         test_codec_feature_diagnostic_golden,
         test_net_feature_diagnostic_golden,
+        test_os_feature_diagnostic_golden,
     };
     size_t index = 0U;
 

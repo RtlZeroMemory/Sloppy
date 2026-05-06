@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE","severity":"error","message":"signal handler failed","hints":["Shutdown handlers must surface failures without leaking secrets or native handles."]}

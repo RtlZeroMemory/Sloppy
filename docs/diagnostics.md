@@ -747,6 +747,36 @@ decompression-limit failures. They do not prove checksum security, performance, 
 streaming compatibility, brotli/zstd/deflate support, package readiness, or public alpha
 coverage.
 
+CORE-OS-01.A/B adds the OS diagnostic model and JSON goldens for the `sloppy/os`
+feature/model slice. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the startup/Plan-gating
+diagnostic while `stdlib.os` is known but unavailable by default.
+`SLOPPY_E_OS_FEATURE_UNAVAILABLE` is reserved for already-reached OS API paths when a
+specific OS backend or optional lane is inactive. Other OS-specific codes are reserved for
+host-system API failures:
+
+- `SLOPPY_E_OS_FEATURE_UNAVAILABLE` for OS API use when the feature/backend lane is not
+  active;
+- `SLOPPY_E_OS_ENV_ACCESS_DENIED` for strict-policy environment read/list denial;
+- `SLOPPY_E_OS_ENV_SECRET_REDACTED` for deterministic environment value redaction;
+- `SLOPPY_E_OS_PROCESS_EXECUTION_DENIED` for strict-policy process execution denial;
+- `SLOPPY_E_OS_SHELL_EXECUTION_DENIED` for absent or separately gated shell execution;
+- `SLOPPY_E_OS_COMMAND_NOT_FOUND` for deterministic command lookup failure;
+- `SLOPPY_E_OS_INVALID_CWD` for invalid working-directory input or policy;
+- `SLOPPY_E_OS_INVALID_ENV_OVERRIDE` for invalid process environment override input;
+- `SLOPPY_E_OS_PROCESS_TIMEOUT` for timeout/deadline terminal state;
+- `SLOPPY_E_OS_PROCESS_CANCELLED` for caller cancellation terminal state;
+- `SLOPPY_E_OS_PROCESS_KILLED` for explicit kill/forced termination terminal state;
+- `SLOPPY_E_OS_PROCESS_START_FAILED` for native process start failure;
+- `SLOPPY_E_OS_PIPE_CLOSED` for stale or closed process pipe operations;
+- `SLOPPY_E_OS_UNSUPPORTED_PLATFORM_SIGNAL` for unsupported platform signal behavior;
+- `SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE` for shutdown/signal handler failures.
+
+OS diagnostics may name operation, policy mode, capability id, environment key name,
+command basename, capture mode, terminal state, and platform support class. They must not
+include environment values, secret args, sensitive captured output, raw PIDs-as-authority,
+native process handles, pipe handles, libuv handles, OS handles, V8 handles, native
+pointers, package-manager state, or unnormalized machine-local paths.
+
 App/request lifecycle diagnostics:
 
 - startup storage/init failure uses `SLOPPY_E_LIFECYCLE_START_FAILED`;

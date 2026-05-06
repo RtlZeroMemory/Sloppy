@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_PROCESS_EXECUTION_DENIED","severity":"error","message":"process execution was denied","hints":["Strict OS policy requires explicit process.run allowance before native admission."]}

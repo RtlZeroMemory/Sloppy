@@ -795,6 +795,86 @@ static int test_net_code_names(void)
     return 0;
 }
 
+static int test_os_code_names(void)
+{
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_FEATURE_UNAVAILABLE),
+                         sl_str_from_cstr("SLOPPY_E_OS_FEATURE_UNAVAILABLE")) != 0)
+    {
+        return 220;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_ENV_ACCESS_DENIED),
+                         sl_str_from_cstr("SLOPPY_E_OS_ENV_ACCESS_DENIED")) != 0)
+    {
+        return 221;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_ENV_SECRET_REDACTED),
+                         sl_str_from_cstr("SLOPPY_E_OS_ENV_SECRET_REDACTED")) != 0)
+    {
+        return 222;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_PROCESS_EXECUTION_DENIED),
+                         sl_str_from_cstr("SLOPPY_E_OS_PROCESS_EXECUTION_DENIED")) != 0)
+    {
+        return 223;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_SHELL_EXECUTION_DENIED),
+                         sl_str_from_cstr("SLOPPY_E_OS_SHELL_EXECUTION_DENIED")) != 0)
+    {
+        return 224;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_COMMAND_NOT_FOUND),
+                         sl_str_from_cstr("SLOPPY_E_OS_COMMAND_NOT_FOUND")) != 0)
+    {
+        return 225;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_INVALID_CWD),
+                         sl_str_from_cstr("SLOPPY_E_OS_INVALID_CWD")) != 0)
+    {
+        return 226;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_INVALID_ENV_OVERRIDE),
+                         sl_str_from_cstr("SLOPPY_E_OS_INVALID_ENV_OVERRIDE")) != 0)
+    {
+        return 227;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_PROCESS_TIMEOUT),
+                         sl_str_from_cstr("SLOPPY_E_OS_PROCESS_TIMEOUT")) != 0)
+    {
+        return 228;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_PROCESS_CANCELLED),
+                         sl_str_from_cstr("SLOPPY_E_OS_PROCESS_CANCELLED")) != 0)
+    {
+        return 229;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_PROCESS_KILLED),
+                         sl_str_from_cstr("SLOPPY_E_OS_PROCESS_KILLED")) != 0)
+    {
+        return 230;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_PROCESS_START_FAILED),
+                         sl_str_from_cstr("SLOPPY_E_OS_PROCESS_START_FAILED")) != 0)
+    {
+        return 231;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_PIPE_CLOSED),
+                         sl_str_from_cstr("SLOPPY_E_OS_PIPE_CLOSED")) != 0)
+    {
+        return 232;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_UNSUPPORTED_PLATFORM_SIGNAL),
+                         sl_str_from_cstr("SLOPPY_E_OS_UNSUPPORTED_PLATFORM_SIGNAL")) != 0)
+    {
+        return 233;
+    }
+    if (expect_str_equal(sl_diag_code_name(SL_DIAG_OS_SIGNAL_HANDLER_FAILURE),
+                         sl_str_from_cstr("SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE")) != 0)
+    {
+        return 234;
+    }
+    return 0;
+}
+
 static int expect_time_json_snapshot(SlDiagCode code, const char* message, const char* hint,
                                      const char* snapshot)
 {
@@ -1226,11 +1306,125 @@ static int test_net_diagnostic_json_goldens(void)
     return 0;
 }
 
+static int test_os_diagnostic_json_goldens(void)
+{
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_FEATURE_UNAVAILABLE, "OS feature is unavailable",
+            "Enable stdlib.os only in a runtime lane with registered OS backends.",
+            "tests/golden/diagnostics/os_feature_unavailable.json") != 0)
+    {
+        return 230;
+    }
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_ENV_ACCESS_DENIED,
+                                    "environment access was denied",
+                                    "Strict OS policy requires an env.read or env.list allowance.",
+                                    "tests/golden/diagnostics/os_env_access_denied.json") != 0)
+    {
+        return 231;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_WARNING, SL_DIAG_OS_ENV_SECRET_REDACTED,
+            "environment value was redacted",
+            "Diagnostics may name environment keys but must not print values.",
+            "tests/golden/diagnostics/os_env_secret_redacted.json") != 0)
+    {
+        return 232;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_PROCESS_EXECUTION_DENIED,
+            "process execution was denied",
+            "Strict OS policy requires explicit process.run allowance before native admission.",
+            "tests/golden/diagnostics/os_process_execution_denied.json") != 0)
+    {
+        return 233;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_SHELL_EXECUTION_DENIED, "shell execution was denied",
+            "Shell execution is not implicit and must remain separately gated if added.",
+            "tests/golden/diagnostics/os_shell_execution_denied.json") != 0)
+    {
+        return 234;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_COMMAND_NOT_FOUND, "command was not found",
+            "Process APIs execute explicit argv only and report lookup failure deterministically.",
+            "tests/golden/diagnostics/os_command_not_found.json") != 0)
+    {
+        return 235;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_INVALID_CWD, "process working directory is invalid",
+            "Validate cwd before process admission and avoid leaking machine-local paths.",
+            "tests/golden/diagnostics/os_invalid_cwd.json") != 0)
+    {
+        return 236;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_INVALID_ENV_OVERRIDE,
+            "process environment override is invalid",
+            "Environment override diagnostics must name keys without printing values.",
+            "tests/golden/diagnostics/os_invalid_env_override.json") != 0)
+    {
+        return 237;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_PROCESS_TIMEOUT, "process timed out",
+            "Timeout and caller cancellation must remain distinguishable terminal states.",
+            "tests/golden/diagnostics/os_process_timeout.json") != 0)
+    {
+        return 238;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_PROCESS_CANCELLED, "process was cancelled",
+            "Caller cancellation must not be reported as timeout or kill success.",
+            "tests/golden/diagnostics/os_process_cancelled.json") != 0)
+    {
+        return 239;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_PROCESS_KILLED, "process was killed",
+            "Kill and terminate outcomes must report explicit process terminal state.",
+            "tests/golden/diagnostics/os_process_killed.json") != 0)
+    {
+        return 240;
+    }
+    if (expect_stdlib_json_snapshot(SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_PROCESS_START_FAILED,
+                                    "process start failed",
+                                    "Start failures must clean up native resources exactly once.",
+                                    "tests/golden/diagnostics/os_process_start_failed.json") != 0)
+    {
+        return 241;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_PIPE_CLOSED, "process pipe is closed",
+            "Stale or closed process pipes fail without exposing native handles.",
+            "tests/golden/diagnostics/os_pipe_closed.json") != 0)
+    {
+        return 242;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_UNSUPPORTED_PLATFORM_SIGNAL,
+            "platform signal is unsupported",
+            "Signal support must be reported honestly per platform.",
+            "tests/golden/diagnostics/os_unsupported_platform_signal.json") != 0)
+    {
+        return 243;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_OS_SIGNAL_HANDLER_FAILURE, "signal handler failed",
+            "Shutdown handlers must surface failures without leaking secrets or native handles.",
+            "tests/golden/diagnostics/os_signal_handler_failure.json") != 0)
+    {
+        return 244;
+    }
+    return 0;
+}
+
 static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_OS_SIGNAL_HANDLER_FAILURE; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1239,8 +1433,7 @@ static int test_stable_code_registry_complete(void)
     }
 
     if (expect_str_equal(
-            sl_diag_code_name(
-                (SlDiagCode)((size_t)SL_DIAG_CRYPTO_NONCRYPTO_HASH_SECURITY_CONTEXT_WARNING + 1U)),
+            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_OS_SIGNAL_HANDLER_FAILURE + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
@@ -1886,6 +2079,10 @@ static int test_code_name_groups(void)
     if (result != 0) {
         return result;
     }
+    result = test_os_code_names();
+    if (result != 0) {
+        return result;
+    }
 
     result = test_engine_async_code_names();
     if (result != 0) {
@@ -1922,7 +2119,12 @@ static int test_diagnostic_json_golden_groups(void)
         return result;
     }
 
-    return test_net_diagnostic_json_goldens();
+    result = test_net_diagnostic_json_goldens();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_os_diagnostic_json_goldens();
 }
 
 int main(void)

@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_PROCESS_KILLED","severity":"error","message":"process was killed","hints":["Kill and terminate outcomes must report explicit process terminal state."]}

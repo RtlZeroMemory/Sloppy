@@ -485,6 +485,81 @@ static bool sl_diag_is_net_code(SlDiagCode code)
     }
 }
 
+static SlStr sl_diag_os_code_name(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_OS_FEATURE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_OS_FEATURE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_OS_FEATURE_UNAVAILABLE") - 1U);
+    case SL_DIAG_OS_ENV_ACCESS_DENIED:
+        return sl_diag_literal("SLOPPY_E_OS_ENV_ACCESS_DENIED",
+                               sizeof("SLOPPY_E_OS_ENV_ACCESS_DENIED") - 1U);
+    case SL_DIAG_OS_ENV_SECRET_REDACTED:
+        return sl_diag_literal("SLOPPY_E_OS_ENV_SECRET_REDACTED",
+                               sizeof("SLOPPY_E_OS_ENV_SECRET_REDACTED") - 1U);
+    case SL_DIAG_OS_PROCESS_EXECUTION_DENIED:
+        return sl_diag_literal("SLOPPY_E_OS_PROCESS_EXECUTION_DENIED",
+                               sizeof("SLOPPY_E_OS_PROCESS_EXECUTION_DENIED") - 1U);
+    case SL_DIAG_OS_SHELL_EXECUTION_DENIED:
+        return sl_diag_literal("SLOPPY_E_OS_SHELL_EXECUTION_DENIED",
+                               sizeof("SLOPPY_E_OS_SHELL_EXECUTION_DENIED") - 1U);
+    case SL_DIAG_OS_COMMAND_NOT_FOUND:
+        return sl_diag_literal("SLOPPY_E_OS_COMMAND_NOT_FOUND",
+                               sizeof("SLOPPY_E_OS_COMMAND_NOT_FOUND") - 1U);
+    case SL_DIAG_OS_INVALID_CWD:
+        return sl_diag_literal("SLOPPY_E_OS_INVALID_CWD", sizeof("SLOPPY_E_OS_INVALID_CWD") - 1U);
+    case SL_DIAG_OS_INVALID_ENV_OVERRIDE:
+        return sl_diag_literal("SLOPPY_E_OS_INVALID_ENV_OVERRIDE",
+                               sizeof("SLOPPY_E_OS_INVALID_ENV_OVERRIDE") - 1U);
+    case SL_DIAG_OS_PROCESS_TIMEOUT:
+        return sl_diag_literal("SLOPPY_E_OS_PROCESS_TIMEOUT",
+                               sizeof("SLOPPY_E_OS_PROCESS_TIMEOUT") - 1U);
+    case SL_DIAG_OS_PROCESS_CANCELLED:
+        return sl_diag_literal("SLOPPY_E_OS_PROCESS_CANCELLED",
+                               sizeof("SLOPPY_E_OS_PROCESS_CANCELLED") - 1U);
+    case SL_DIAG_OS_PROCESS_KILLED:
+        return sl_diag_literal("SLOPPY_E_OS_PROCESS_KILLED",
+                               sizeof("SLOPPY_E_OS_PROCESS_KILLED") - 1U);
+    case SL_DIAG_OS_PROCESS_START_FAILED:
+        return sl_diag_literal("SLOPPY_E_OS_PROCESS_START_FAILED",
+                               sizeof("SLOPPY_E_OS_PROCESS_START_FAILED") - 1U);
+    case SL_DIAG_OS_PIPE_CLOSED:
+        return sl_diag_literal("SLOPPY_E_OS_PIPE_CLOSED", sizeof("SLOPPY_E_OS_PIPE_CLOSED") - 1U);
+    case SL_DIAG_OS_UNSUPPORTED_PLATFORM_SIGNAL:
+        return sl_diag_literal("SLOPPY_E_OS_UNSUPPORTED_PLATFORM_SIGNAL",
+                               sizeof("SLOPPY_E_OS_UNSUPPORTED_PLATFORM_SIGNAL") - 1U);
+    case SL_DIAG_OS_SIGNAL_HANDLER_FAILURE:
+        return sl_diag_literal("SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE",
+                               sizeof("SLOPPY_E_OS_SIGNAL_HANDLER_FAILURE") - 1U);
+    default:
+        return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
+    }
+}
+
+static bool sl_diag_is_os_code(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_OS_FEATURE_UNAVAILABLE:
+    case SL_DIAG_OS_ENV_ACCESS_DENIED:
+    case SL_DIAG_OS_ENV_SECRET_REDACTED:
+    case SL_DIAG_OS_PROCESS_EXECUTION_DENIED:
+    case SL_DIAG_OS_SHELL_EXECUTION_DENIED:
+    case SL_DIAG_OS_COMMAND_NOT_FOUND:
+    case SL_DIAG_OS_INVALID_CWD:
+    case SL_DIAG_OS_INVALID_ENV_OVERRIDE:
+    case SL_DIAG_OS_PROCESS_TIMEOUT:
+    case SL_DIAG_OS_PROCESS_CANCELLED:
+    case SL_DIAG_OS_PROCESS_KILLED:
+    case SL_DIAG_OS_PROCESS_START_FAILED:
+    case SL_DIAG_OS_PIPE_CLOSED:
+    case SL_DIAG_OS_UNSUPPORTED_PLATFORM_SIGNAL:
+    case SL_DIAG_OS_SIGNAL_HANDLER_FAILURE:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static SlStr sl_diag_core_code_name(SlDiagCode code)
 {
     switch (code) {
@@ -917,6 +992,9 @@ SlStr sl_diag_code_name(SlDiagCode code)
     }
     if (sl_diag_is_net_code(code)) {
         return sl_diag_net_code_name(code);
+    }
+    if (sl_diag_is_os_code(code)) {
+        return sl_diag_os_code_name(code);
     }
 
     SlStr core_name = sl_diag_core_code_name(code);

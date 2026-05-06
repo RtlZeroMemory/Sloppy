@@ -3,4 +3,4 @@
    |
 1 | import { Sloppy, Results, data as db } from "sloppy";
    |                           ^^^^^^^^^^
-hint: Use documented unaliased imports from "sloppy", "sloppy/time", "sloppy/fs", "sloppy/crypto", "sloppy/codec", or "sloppy/net".
+hint: Use documented unaliased imports from "sloppy", "sloppy/time", "sloppy/fs", "sloppy/crypto", "sloppy/codec", "sloppy/net", or "sloppy/os".

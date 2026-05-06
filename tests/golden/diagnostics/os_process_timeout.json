@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_OS_PROCESS_TIMEOUT","severity":"error","message":"process timed out","hints":["Timeout and caller cancellation must remain distinguishable terminal states."]}
