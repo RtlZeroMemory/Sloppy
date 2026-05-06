@@ -10,6 +10,7 @@ import {
     FileHandle,
     Hash,
     Hmac,
+    HttpClient,
     InvalidDeadlineError,
     LocalEndpoint,
     NetworkAddress,
@@ -30,6 +31,13 @@ import { sqlite } from "../../stdlib/sloppy/providers/sqlite.js";
 
 function assertThrowsMessage(fn, expected) {
     assert.throws(fn, (error) => {
+        assert.match(String(error.message), expected);
+        return true;
+    });
+}
+
+async function assertRejectsMessage(fn, expected) {
+    await assert.rejects(fn, (error) => {
         assert.match(String(error.message), expected);
         return true;
     });
@@ -211,6 +219,21 @@ async function flushMicrotasks(count = 6) {
             globalThis.__sloppy = previousSloppy;
         }
     }
+}
+
+{
+    assert.equal(typeof HttpClient.create, "function");
+    assert.equal(typeof HttpClient.get, "function");
+    const client = HttpClient.create({ baseUrl: "https://api.example.test" });
+    assert.equal(typeof client.getJson, "function");
+    await assertRejectsMessage(
+        () => HttpClient.get("https://api.example.test/health"),
+        /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
+    );
+    await assertRejectsMessage(
+        () => client.postJson("/items", { name: "test" }),
+        /SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE/,
+    );
 }
 
 {

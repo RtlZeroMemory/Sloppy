@@ -403,6 +403,9 @@ jobs:
               break
             fi
           done
+          if ! dpkg-query -W -f='${Status}' autoconf-archive 2>/dev/null | grep -q "install ok installed"; then
+            missing=("${packages[@]}")
+          fi
 
           if [ "${#missing[@]}" -gt 0 ]; then
             sudo apt-get update
@@ -481,9 +484,11 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: |
           set -euo pipefail
+          ninja_path="$(command -v ninja)"
           cmake_args=(
             --preset "${{ matrix.preset }}"
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_MAKE_PROGRAM="$ninja_path"
             -DSLOPPY_ENABLE_WERROR=ON
             -DSLOPPY_ENABLE_V8=OFF
             -DSLOPPY_ENGINE=none

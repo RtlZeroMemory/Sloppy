@@ -3753,6 +3753,60 @@ Reason:
         },
     });
 
+    function httpClientUnavailable(operation) {
+        return Promise.reject(
+            new Error(
+                `SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE: HttpClient.${operation} is contract-visible, but the outbound HTTP client transport is not implemented in this runtime lane.`,
+            ),
+        );
+    }
+
+    function createHttpClientFacade(baseOptions = undefined) {
+        const client = {
+            request() {
+                return httpClientUnavailable("request");
+            },
+            get() {
+                return httpClientUnavailable("get");
+            },
+            post() {
+                return httpClientUnavailable("post");
+            },
+            getJson() {
+                return httpClientUnavailable("getJson");
+            },
+            postJson() {
+                return httpClientUnavailable("postJson");
+            },
+        };
+        Object.defineProperty(client, "__sloppyHttpClientOptions", {
+            value: baseOptions,
+            enumerable: false,
+        });
+        return Object.freeze(client);
+    }
+
+    const HttpClient = Object.freeze({
+        create(options = undefined) {
+            return createHttpClientFacade(options);
+        },
+        request() {
+            return httpClientUnavailable("request");
+        },
+        get() {
+            return httpClientUnavailable("get");
+        },
+        post() {
+            return httpClientUnavailable("post");
+        },
+        getJson() {
+            return httpClientUnavailable("getJson");
+        },
+        postJson() {
+            return httpClientUnavailable("postJson");
+        },
+    });
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         Random,
@@ -3786,5 +3840,6 @@ Reason:
         TcpListener,
         TcpConnection,
         NetworkAddress,
+        HttpClient,
     });
 })();

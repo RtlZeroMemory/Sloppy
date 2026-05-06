@@ -122,7 +122,24 @@ static SlRuntimeFeatureDescriptor sl_feature_os_descriptor(SlRuntimeFeatureId id
                                           SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
                                           SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
                                           SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-                                      available, true, true);
+                                       available, true, true);
+}
+
+static SlRuntimeFeatureDescriptor sl_feature_http_client_descriptor(SlRuntimeFeatureId id,
+                                                                    bool available)
+{
+    (void)available;
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.httpclient", sizeof("stdlib.httpclient") - 1U),
+        sl_feature_literal("HTTP client stdlib", sizeof("HTTP client stdlib") - 1U),
+        sl_feature_literal("sloppy/net", sizeof("sloppy/net") - 1U),
+        sl_feature_literal("__sloppy.httpClient", sizeof("__sloppy.httpClient") - 1U),
+        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO),
+        false, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_unknown_descriptor(SlRuntimeFeatureId id)
@@ -133,19 +150,64 @@ static SlRuntimeFeatureDescriptor sl_feature_unknown_descriptor(SlRuntimeFeature
 }
 
 static SlRuntimeFeatureDescriptor
+sl_feature_provider_descriptor_with_availability(SlRuntimeFeatureId id,
+                                                 const SlRuntimeFeatureAvailability* availability)
+{
+    const bool sqlite = availability == NULL ? false : availability->provider_sqlite;
+    const bool postgres = availability == NULL ? false : availability->provider_postgres;
+    const bool sqlserver = availability == NULL ? false : availability->provider_sqlserver;
+
+    switch (id) {
+    case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
+            sl_feature_literal("provider.sqlite", sizeof("provider.sqlite") - 1U),
+            sl_feature_literal("SQLite provider", sizeof("SQLite provider") - 1U),
+            sl_feature_literal("sloppy/providers/sqlite", sizeof("sloppy/providers/sqlite") - 1U),
+            sl_feature_literal("__sloppy.data.sqlite", sizeof("__sloppy.data.sqlite") - 1U),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+                SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_DATA),
+            sqlite, true, true);
+    case SL_RUNTIME_FEATURE_PROVIDER_POSTGRES:
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
+            sl_feature_literal("provider.postgres", sizeof("provider.postgres") - 1U),
+            sl_feature_literal("PostgreSQL provider", sizeof("PostgreSQL provider") - 1U),
+            sl_feature_literal("sloppy/providers/postgres",
+                               sizeof("sloppy/providers/postgres") - 1U),
+            sl_str_empty(),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
+            postgres, false, true);
+    case SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER:
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
+            sl_feature_literal("provider.sqlserver", sizeof("provider.sqlserver") - 1U),
+            sl_feature_literal("SQL Server provider", sizeof("SQL Server provider") - 1U),
+            sl_feature_literal("sloppy/providers/sqlserver",
+                               sizeof("sloppy/providers/sqlserver") - 1U),
+            sl_str_empty(),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
+            sqlserver, false, true);
+    default:
+        return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_CORE, sl_str_empty(),
+                                          sl_str_empty(), sl_str_empty(), sl_str_empty(), 0U, false,
+                                          false, false);
+    }
+}
+
+static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
                                         const SlRuntimeFeatureAvailability* availability)
 {
     const bool v8 = availability == NULL ? false : availability->v8;
     const bool http = availability == NULL ? false : availability->http;
     const bool libuv = availability == NULL ? false : availability->transport_libuv;
-    const bool sqlite = availability == NULL ? false : availability->provider_sqlite;
-    const bool postgres = availability == NULL ? false : availability->provider_postgres;
-    const bool sqlserver = availability == NULL ? false : availability->provider_sqlserver;
     const bool crypto = availability == NULL ? false : availability->stdlib_crypto;
     const bool net = availability == NULL ? false : availability->stdlib_net;
     const bool codec = availability == NULL ? true : availability->stdlib_codec;
     const bool os = availability == NULL ? false : availability->stdlib_os;
+    const bool http_client = availability == NULL ? false : availability->stdlib_http_client;
+
     switch (id) {
     case SL_RUNTIME_FEATURE_CORE:
         return sl_feature_descriptor_make(
@@ -219,38 +281,14 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_net_descriptor(id, net);
     case SL_RUNTIME_FEATURE_STDLIB_OS:
         return sl_feature_os_descriptor(id, os);
+    case SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT:
+        return sl_feature_http_client_descriptor(id, http_client);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
         return sl_feature_fs_descriptor(id);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
-        return sl_feature_descriptor_make(
-            id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
-            sl_feature_literal("provider.sqlite", sizeof("provider.sqlite") - 1U),
-            sl_feature_literal("SQLite provider", sizeof("SQLite provider") - 1U),
-            sl_feature_literal("sloppy/providers/sqlite", sizeof("sloppy/providers/sqlite") - 1U),
-            sl_feature_literal("__sloppy.data.sqlite", sizeof("__sloppy.data.sqlite") - 1U),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-                SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_DATA),
-            sqlite, true, true);
     case SL_RUNTIME_FEATURE_PROVIDER_POSTGRES:
-        return sl_feature_descriptor_make(
-            id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
-            sl_feature_literal("provider.postgres", sizeof("provider.postgres") - 1U),
-            sl_feature_literal("PostgreSQL provider", sizeof("PostgreSQL provider") - 1U),
-            sl_feature_literal("sloppy/providers/postgres",
-                               sizeof("sloppy/providers/postgres") - 1U),
-            sl_str_empty(),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
-            postgres, false, true);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER:
-        return sl_feature_descriptor_make(
-            id, SL_RUNTIME_FEATURE_KIND_PROVIDER,
-            sl_feature_literal("provider.sqlserver", sizeof("provider.sqlserver") - 1U),
-            sl_feature_literal("SQL Server provider", sizeof("SQL Server provider") - 1U),
-            sl_feature_literal("sloppy/providers/sqlserver",
-                               sizeof("sloppy/providers/sqlserver") - 1U),
-            sl_str_empty(),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
-            sqlserver, false, true);
+        return sl_feature_provider_descriptor_with_availability(id, availability);
     default:
         return sl_feature_unknown_descriptor(id);
     }
@@ -274,6 +312,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.stdlib_codec = true;
     availability.stdlib_net = true;
     availability.stdlib_os = false;
+    availability.stdlib_http_client = false;
     return availability;
 }
 
@@ -363,6 +402,14 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+         false, true, true},
+        {SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.httpclient"), SL_FEATURE_STR("HTTP client stdlib"),
+         SL_FEATURE_STR("sloppy/net"), SL_FEATURE_STR("__sloppy.httpClient"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO),
          false, true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {

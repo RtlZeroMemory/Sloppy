@@ -2447,8 +2447,23 @@ static int test_bounded_keep_alive_chunked_streaming_stress_smoke(void)
     return 0;
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
+    bool run_core = true;
+    bool run_bounded_smoke = true;
+    if (argc == 2 && strcmp(argv[1], "--without-bounded-smoke") == 0) {
+        run_bounded_smoke = false;
+    }
+    else if (argc == 2 && strcmp(argv[1], "--bounded-smoke-only") == 0) {
+        run_core = false;
+    }
+    else if (argc != 1) {
+        return 2;
+    }
+    if (!run_core) {
+        return test_bounded_keep_alive_chunked_streaming_stress_smoke();
+    }
+
     int result = test_config_validation_and_lifecycle();
 
     if (result != 0) {
@@ -2566,5 +2581,8 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_bounded_keep_alive_chunked_streaming_stress_smoke();
+    if (run_bounded_smoke) {
+        return test_bounded_keep_alive_chunked_streaming_stress_smoke();
+    }
+    return 0;
 }

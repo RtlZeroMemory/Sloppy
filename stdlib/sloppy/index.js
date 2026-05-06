@@ -4,6 +4,7 @@ export { ConstantTime, Hash, Hmac, NonCryptoHash, Password, Random, Secret } fro
 export { data, sql } from "./data.js";
 export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
 export {
+    HttpClient,
     LocalEndpoint,
     NamedPipe,
     NetworkAddress,

@@ -198,6 +198,7 @@ struct ExtractedApp {
     checksum_security_context_visible: bool,
     uses_net_runtime: bool,
     uses_os_runtime: bool,
+    uses_http_client_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -328,6 +329,7 @@ struct AppState {
     checksum_security_context_visible: bool,
     net_imported: bool,
     os_imported: bool,
+    http_client_imported: bool,
     sqlite_imported: bool,
     unsupported_import_alias: bool,
     unsupported_import_name: Option<(String, Span)>,
@@ -366,6 +368,7 @@ impl AppState {
             checksum_security_context_visible: false,
             net_imported: false,
             os_imported: false,
+            http_client_imported: false,
             sqlite_imported: false,
             unsupported_import_alias: false,
             unsupported_import_name: None,
@@ -1042,6 +1045,7 @@ struct ModuleGraph {
     checksum_security_context_visible: bool,
     uses_net_runtime: bool,
     uses_os_runtime: bool,
+    uses_http_client_runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1068,6 +1072,7 @@ impl ModuleGraph {
             checksum_security_context_visible: false,
             uses_net_runtime: false,
             uses_os_runtime: false,
+            uses_http_client_runtime: false,
         }
     }
 
@@ -1321,6 +1326,7 @@ fn extract_entry(
             || graph.checksum_security_context_visible,
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
         uses_os_runtime: state.os_imported || graph.uses_os_runtime,
+        uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
     })
 }
 
@@ -1564,7 +1570,7 @@ fn sloppy_codec_import_name_supported(name: &str) -> bool {
 fn sloppy_net_import_name_supported(name: &str) -> bool {
     matches!(
         name,
-        "TcpClient" | "TcpListener" | "TcpConnection" | "NetworkAddress"
+        "TcpClient" | "TcpListener" | "TcpConnection" | "NetworkAddress" | "HttpClient"
     )
 }
 
@@ -1736,6 +1742,27 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
     }
 }
 
+fn mark_sloppy_net_runtime_usage(
+    net_runtime: &mut bool,
+    http_client_runtime: &mut bool,
+    imported: &str,
+) {
+    /* HttpClient is exported from sloppy/net but maps to stdlib.httpclient, not raw TCP stdlib.net. */
+    if imported == "HttpClient" {
+        *http_client_runtime = true;
+    } else {
+        *net_runtime = true;
+    }
+}
+
+fn mark_sloppy_net_runtime_import(state: &mut AppState, imported: &str) {
+    mark_sloppy_net_runtime_usage(
+        &mut state.net_imported,
+        &mut state.http_client_imported,
+        imported,
+    );
+}
+
 fn handle_sloppy_stdlib_import(
     import_source: &str,
     import: &ImportDeclaration<'_>,
@@ -1760,7 +1787,11 @@ fn handle_sloppy_stdlib_import(
         let local = specifier.local.name.as_str();
         if kind.name_supported(imported) && imported == local {
             if import_specifier_is_runtime_value(import, specifier) {
-                mark_sloppy_stdlib_runtime_import(state, kind);
+                if matches!(kind, SloppyStdlibImport::Net) {
+                    mark_sloppy_net_runtime_import(state, imported);
+                } else {
+                    mark_sloppy_stdlib_runtime_import(state, kind);
+                }
             }
         } else {
             if kind.name_supported(imported) {
@@ -3239,8 +3270,21 @@ fn extract_relative_module(
                 }
                 if import_source == "sloppy/net" {
                     validate_module_sloppy_net_import(&imported.path, import)?;
-                    if import_has_runtime_value_specifier(import) {
-                        graph.uses_net_runtime = true;
+                    if let Some(specifiers) = &import.specifiers {
+                        for specifier in specifiers {
+                            if let ImportDeclarationSpecifier::ImportSpecifier(specifier) =
+                                specifier
+                            {
+                                if import_specifier_is_runtime_value(import, specifier) {
+                                    let imported_name = specifier.imported.name().as_str();
+                                    mark_sloppy_net_runtime_usage(
+                                        &mut graph.uses_net_runtime,
+                                        &mut graph.uses_http_client_runtime,
+                                        imported_name,
+                                    );
+                                }
+                            }
+                        }
                     }
                     continue;
                 }
@@ -6053,6 +6097,16 @@ fn emit_plan(
         value["strongPlan"]["evidence"]["os"] = json!(true);
         value["features"]["os"] = json!(true);
     }
+    if app.uses_http_client_runtime {
+        required_features.push("stdlib.httpclient");
+        value["strongPlan"]["evidence"]["httpClient"] = json!(true);
+        value["features"]["httpClient"] = json!(true);
+        doctor_checks.push(json!({
+            "id": "stdlib.httpclient.contract",
+            "status": "warn",
+            "message": "HttpClient is contract-visible but the outbound HTTP transport is deferred until CORE-HTTPCLIENT implementation PRs"
+        }));
+    }
     if !required_features.is_empty() {
         value["requiredFeatures"] = json!(required_features);
     }
@@ -6159,6 +6213,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_os_runtime {
         runtime_exports.extend(["System", "Environment", "Process", "Signals"]);
+    }
+    if app.uses_http_client_runtime {
+        runtime_exports.push("HttpClient");
     }
     push_generated_line(
         &mut output,
@@ -6814,6 +6871,7 @@ mod tests {
             checksum_security_context_visible: false,
             uses_net_runtime: false,
             uses_os_runtime: false,
+            uses_http_client_runtime: false,
         };
         config
             .apply_to_app(&mut app)
@@ -7171,6 +7229,63 @@ export default app;
     }
 
     #[test]
+    fn function_module_sloppy_net_http_client_import_emits_http_client_required_feature() {
+        let root = fixture_temp_dir("function-module-http-client-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("billing.js"),
+            r#"import { Results } from "sloppy";
+import { HttpClient } from "sloppy/net";
+
+export function billingModule(app) {
+    app.get("/billing", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { billingModule } from "./modules/billing.js";
+
+const app = Sloppy.create();
+app.useModule(billingModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_http_client_runtime);
+        assert!(!app.uses_net_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(
+            plan["requiredFeatures"],
+            serde_json::json!(["stdlib.httpclient"])
+        );
+        assert_eq!(plan["features"]["httpClient"], serde_json::json!(true));
+        assert_eq!(
+            plan["strongPlan"]["evidence"]["httpClient"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            plan["doctorChecks"][0]["id"],
+            serde_json::json!("stdlib.httpclient.contract")
+        );
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
     fn function_module_sloppy_codec_import_emits_required_feature() {
         let root = fixture_temp_dir("function-module-codec-import");
         let modules = root.join("modules");
@@ -7260,6 +7375,56 @@ export default app;
         .expect("plan should emit");
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert!(plan.get("requiredFeatures").is_none());
+        assert!(plan["features"].get("network").is_none());
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn function_module_type_only_sloppy_net_http_client_import_does_not_emit_required_feature() {
+        let root = fixture_temp_dir("function-module-type-only-http-client-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("billing.ts"),
+            r#"import { Results } from "sloppy";
+import type { HttpClient } from "sloppy/net";
+
+export function billingModule(app) {
+    app.get("/billing", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { billingModule } from "./modules/billing.ts";
+
+const app = Sloppy.create();
+app.useModule(billingModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let input = root.join("input.ts");
+        fs::write(&input, source).expect("fixture input should be writable");
+        let app = extract(&input, source).expect("fixture should extract");
+        assert!(!app.uses_http_client_runtime);
+        assert!(!app.uses_net_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results } = __sloppyRuntime;"));
+        assert!(!emitted_js.source.contains("HttpClient"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert!(plan.get("requiredFeatures").is_none());
+        assert!(plan["features"].get("httpClient").is_none());
         assert!(plan["features"].get("network").is_none());
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
@@ -8623,6 +8788,47 @@ export default app;
         assert_eq!(
             value["strongPlan"]["evidence"]["os"],
             serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn sloppy_net_http_client_import_emits_http_client_required_feature() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { HttpClient } from "sloppy/net";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.js"), source)
+            .expect("sloppy/net HttpClient import should be recognized");
+        assert!(app.uses_http_client_runtime);
+        assert!(!app.uses_net_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js
+            .source
+            .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+        assert_eq!(
+            value["requiredFeatures"],
+            serde_json::json!(["stdlib.httpclient"])
+        );
+        assert_eq!(value["features"]["httpClient"], serde_json::json!(true));
+        assert_eq!(
+            value["strongPlan"]["evidence"]["httpClient"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            value["doctorChecks"][0]["id"],
+            serde_json::json!("stdlib.httpclient.contract")
         );
     }
 
