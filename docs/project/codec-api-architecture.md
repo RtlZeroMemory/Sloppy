@@ -99,11 +99,9 @@ const crc = Checksums.crc32(bytes);
 - Base64 uses the RFC 4648 standard alphabet with `=` padding by default.
 - Base64Url is a distinct namespace using the URL-safe alphabet. It is not an alias for
   standard Base64.
-- Base64Url encode supports `{ padding: true | false }`; default is padded until a later
-  implementation PR proves the exact ergonomic default in tests.
-- Base64Url decode supports `{ padding: "required" | "optional" | "forbidden" }`, with
-  `"optional"` selected as the default contract unless implementation evidence forces a
-  stricter default.
+- Base64Url encode supports `{ padding: true | false }`; default is `false` (unpadded).
+- Base64Url decode supports `{ padding: "required" | "optional" | "forbidden" }`; default
+  is `"optional"`.
 - Decoders reject malformed alphabets, invalid padding placement, impossible lengths, and
   non-canonical trailing bits deterministically.
 - Hex encodes lowercase by default. Decode accepts uppercase and lowercase hex, rejects odd
@@ -167,7 +165,9 @@ Public import: `sloppy/codec`.
 
 Private V8 intrinsic namespace: `__sloppy.codec`.
 
-Dependencies: `core` and `v8`.
+Dependencies: `core` as runtime-owned helpers. `stdlib.codec` may expose a feature-gated
+V8 bridge through the private `__sloppy.codec` namespace, but V8 is not a default contract
+dependency for the codec model.
 
 Compiler behavior:
 

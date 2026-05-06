@@ -669,9 +669,11 @@ goldens may include operation names and algorithm ids, but never generated rando
 secret material.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the contract-only
-feature/model slice. Missing or inactive `stdlib.codec` uses the runtime-feature
-diagnostics above until implementation PRs register actual backends and V8 intrinsics.
-Codec-specific codes are reserved for transformation/API failures:
+feature/model slice. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the startup/Plan-gating
+diagnostic when `stdlib.codec` is required but the runtime feature is not enabled before
+execution begins. `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` is reserved for already-reached
+codec API paths when the API surface exists but a specific codec backend or optional lane
+is inactive. Other codec-specific codes are reserved for transformation/API failures:
 
 - `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` for codec API use when the feature/backend lane is
   not active;

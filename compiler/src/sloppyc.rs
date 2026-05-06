@@ -28,6 +28,15 @@ use crate::validation::{
 const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
 const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
 const STDLIB_VERSION: &str = "0.1.0";
+const CODEC_EXPORTS: &[&str] = &[
+    "Base64",
+    "Base64Url",
+    "Hex",
+    "Text",
+    "Binary",
+    "Compression",
+    "Checksums",
+];
 
 #[derive(Debug, Eq, PartialEq)]
 enum CliCommand {
@@ -1337,10 +1346,7 @@ fn sloppy_crypto_import_name_supported(name: &str) -> bool {
 }
 
 fn sloppy_codec_import_name_supported(name: &str) -> bool {
-    matches!(
-        name,
-        "Base64" | "Base64Url" | "Hex" | "Text" | "Binary" | "Compression" | "Checksums"
-    )
+    CODEC_EXPORTS.contains(&name)
 }
 
 fn validate_module_sloppy_time_import(
@@ -5922,15 +5928,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         ]);
     }
     if app.uses_codec_runtime {
-        runtime_exports.extend([
-            "Base64",
-            "Base64Url",
-            "Hex",
-            "Text",
-            "Binary",
-            "Compression",
-            "Checksums",
-        ]);
+        runtime_exports.extend(CODEC_EXPORTS.iter().copied());
     }
     push_generated_line(
         &mut output,
@@ -6889,6 +6887,56 @@ export default app;
         let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
         assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.time"]));
         assert_eq!(plan["features"]["time"], serde_json::json!(true));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn function_module_sloppy_codec_import_emits_required_feature() {
+        let root = fixture_temp_dir("function-module-codec-import");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("payloads.js"),
+            r#"import { Results } from "sloppy";
+import { Base64, Base64Url, Hex, Text, Binary, Compression, Checksums } from "sloppy/codec";
+
+export function payloadsModule(app) {
+    app.get("/payloads", () => Results.text("ok"));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { payloadsModule } from "./modules/payloads.js";
+
+const app = Sloppy.create();
+app.useModule(payloadsModule);
+app.get("/health", () => Results.text("ok"));
+export default app;
+"#;
+        let app = extract_temp_input(&root, source).expect("fixture should extract");
+        assert!(app.uses_codec_runtime);
+
+        let emitted_js = super::emit_app_js(&app);
+        assert!(emitted_js.source.contains(&super::CODEC_EXPORTS.join(", ")));
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+        assert_eq!(
+            plan["requiredFeatures"],
+            serde_json::json!(["stdlib.codec"])
+        );
+        assert_eq!(plan["features"]["codec"], serde_json::json!(true));
+        assert_eq!(
+            plan["strongPlan"]["evidence"]["codec"],
+            serde_json::json!(true)
+        );
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }
