@@ -152,6 +152,237 @@ function validateRunOptions(options) {
     return normalized;
 }
 
+function validateStartOptions(options) {
+    const normalized = {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+    };
+    if (options === undefined) {
+        return normalized;
+    }
+    if (options === null || typeof options !== "object" || Array.isArray(options)) {
+        throw new TypeError("OS start options must be an object when provided.");
+    }
+    for (const key of Object.keys(options)) {
+        if (!["cwd", "env", "stdin", "stdout", "stderr", "deadline", "signal"].includes(key)) {
+            throw new TypeError(`OS start does not support option ${key}.`);
+        }
+    }
+    if (options.cwd !== undefined) {
+        if (typeof options.cwd !== "string" || options.cwd.includes("\0")) {
+            throw new TypeError("OS start cwd must be a string without NUL.");
+        }
+        normalized.cwd = options.cwd;
+    }
+    if (options.env !== undefined) {
+        if (options.env === null || typeof options.env !== "object" || Array.isArray(options.env)) {
+            throw new TypeError("OS start env must be an object when provided.");
+        }
+        normalized.env = Object.freeze(Object.fromEntries(Object.entries(options.env).map(([key, value]) => {
+            requireKey(key, "OS start env");
+            if (typeof value !== "string" || value.includes("\0")) {
+                throw new TypeError(`OS start env.${key} must be a string without NUL.`);
+            }
+            return [key, value];
+        })));
+    }
+    for (const key of ["stdin", "stdout", "stderr"]) {
+        if (options[key] !== undefined) {
+            if (!["ignore", "pipe"].includes(options[key])) {
+                throw new TypeError(`OS start ${key} must be "ignore" or "pipe".`);
+            }
+            normalized[key] = options[key];
+        }
+    }
+    if (options.deadline !== undefined && options.deadline !== null) {
+        if (typeof options.deadline.remainingMs !== "function") {
+            throw new TypeError("OS start deadline must come from sloppy/time Deadline.");
+        }
+        if (options.deadline.remainingMs() <= 0) {
+            throw osError("SLOPPY_E_OS_PROCESS_TIMEOUT", "deadline already expired");
+        }
+    }
+    if (options.signal !== undefined) {
+        if (!isCancellationSignal(options.signal)) {
+            throw new TypeError("OS start signal must be a cancellation signal.");
+        }
+        if (options.signal.aborted === true) {
+            throw osError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
+        }
+    }
+    return normalized;
+}
+
+function validateWaitOptions(options) {
+    const normalized = { timeoutMs: 0 };
+    if (options === undefined) {
+        return normalized;
+    }
+    if (options === null || typeof options !== "object" || Array.isArray(options)) {
+        throw new TypeError("ProcessHandle.wait options must be an object when provided.");
+    }
+    for (const key of Object.keys(options)) {
+        if (!["timeoutMs", "deadline", "signal"].includes(key)) {
+            throw new TypeError(`ProcessHandle.wait does not support option ${key}.`);
+        }
+    }
+    if (options.timeoutMs !== undefined) {
+        if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0) {
+            throw new TypeError("ProcessHandle.wait timeoutMs must be a non-negative number.");
+        }
+        normalized.timeoutMs = Math.ceil(options.timeoutMs);
+    }
+    if (options.deadline !== undefined && options.deadline !== null) {
+        if (typeof options.deadline.remainingMs !== "function") {
+            throw new TypeError("ProcessHandle.wait deadline must come from sloppy/time Deadline.");
+        }
+        const remaining = options.deadline.remainingMs();
+        if (remaining <= 0) {
+            throw osError("SLOPPY_E_OS_PROCESS_TIMEOUT", "deadline already expired");
+        }
+        if (remaining !== Infinity) {
+            if (!Number.isFinite(remaining)) {
+                throw new TypeError("ProcessHandle.wait deadline remaining time must be finite or Infinity.");
+            }
+            normalized.timeoutMs = Math.min(normalized.timeoutMs || Infinity, Math.ceil(remaining));
+        }
+    }
+    if (options.signal !== undefined) {
+        if (!isCancellationSignal(options.signal)) {
+            throw new TypeError("ProcessHandle.wait signal must be a cancellation signal.");
+        }
+        if (options.signal.aborted === true) {
+            throw osError("SLOPPY_E_OS_PROCESS_CANCELLED", "process was cancelled");
+        }
+    }
+    return normalized;
+}
+
+class ProcessPipe {
+    constructor(handle, name) {
+        this._handle = handle;
+        this._name = name;
+    }
+
+    async read(maxBytes = 65536) {
+        if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
+            throw new TypeError("Process pipe read maxBytes must be a positive number.");
+        }
+        const method = this._name === "stderr" ? "readStderr" : "readStdout";
+        if (typeof this._handle[method] !== "function") {
+            throw osError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
+        }
+        return this._handle[method](Math.ceil(maxBytes));
+    }
+
+    async readText(maxBytes = 65536) {
+        const value = await this.read(maxBytes);
+        if (typeof value === "string") {
+            return value;
+        }
+        return new TextDecoder().decode(value);
+    }
+
+    async *readLines(options = undefined) {
+        const chunkSize = options?.chunkSize ?? 4096;
+        const decoder = new TextDecoder();
+        let buffered = "";
+        for (;;) {
+            const value = await this.read(chunkSize);
+            const chunk = typeof value === "string" ? value : decoder.decode(value, { stream: true });
+            if (chunk.length === 0) {
+                break;
+            }
+            buffered += chunk;
+            for (;;) {
+                const newline = buffered.indexOf("\n");
+                if (newline < 0) {
+                    break;
+                }
+                const line = buffered.slice(0, newline).replace(/\r$/, "");
+                buffered = buffered.slice(newline + 1);
+                yield line;
+            }
+        }
+        buffered += decoder.decode();
+        if (buffered.length !== 0) {
+            yield buffered.replace(/\r$/, "");
+        }
+    }
+}
+
+class ProcessInput {
+    constructor(handle) {
+        this._handle = handle;
+    }
+
+    async write(value) {
+        if (typeof this._handle.writeStdin !== "function") {
+            throw osError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
+        }
+        return this._handle.writeStdin(value);
+    }
+
+    async writeText(text) {
+        if (typeof text !== "string") {
+            throw new TypeError("Process stdin writeText requires a string.");
+        }
+        return this.write(text);
+    }
+
+    async close() {
+        if (typeof this._handle.closeStdin !== "function") {
+            throw osError("SLOPPY_E_OS_PIPE_CLOSED", "process pipe is closed");
+        }
+        return this._handle.closeStdin();
+    }
+}
+
+class ProcessHandle {
+    constructor(handle, options) {
+        this._handle = handle;
+        this.stdin = options.stdin === "pipe" ? new ProcessInput(handle) : undefined;
+        this.stdout = options.stdout === "pipe" ? new ProcessPipe(handle, "stdout") : undefined;
+        this.stderr = options.stderr === "pipe" ? new ProcessPipe(handle, "stderr") : undefined;
+    }
+
+    async wait(options = undefined) {
+        if (typeof this._handle.wait !== "function") {
+            throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process wait bridge is unavailable.");
+        }
+        return this._handle.wait(validateWaitOptions(options));
+    }
+
+    async terminate() {
+        if (typeof this._handle.terminate !== "function") {
+            throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process terminate bridge is unavailable.");
+        }
+        return this._handle.terminate();
+    }
+
+    async kill() {
+        if (typeof this._handle.kill !== "function") {
+            throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process kill bridge is unavailable.");
+        }
+        return this._handle.kill();
+    }
+
+    async cancel() {
+        if (typeof this._handle.cancel !== "function") {
+            throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process cancel bridge is unavailable.");
+        }
+        return this._handle.cancel();
+    }
+
+    async dispose() {
+        if (typeof this._handle.dispose === "function") {
+            return this._handle.dispose();
+        }
+        return undefined;
+    }
+}
+
 function systemInfo() {
     const info = bridge().systemInfo();
     if (info === null || typeof info !== "object") {
@@ -207,8 +438,14 @@ const Process = Object.freeze({
         }
         return os.processRun(command, argv, runOptions);
     },
-    start() {
-        throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS start API is deferred to CORE-OS-01.E/F.");
+    async start(command, args = [], options = undefined) {
+        const argv = requireArgv(command, args);
+        const startOptions = validateStartOptions(options);
+        const os = bridge();
+        if (typeof os.processStart !== "function") {
+            throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS start bridge is unavailable.");
+        }
+        return new ProcessHandle(await os.processStart(command, argv, startOptions), startOptions);
     },
 });
 
@@ -218,4 +455,4 @@ const Signals = Object.freeze({
     },
 });
 
-export { Environment, OsError, Process, Signals, System };
+export { Environment, OsError, Process, ProcessHandle, Signals, System };

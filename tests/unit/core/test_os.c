@@ -80,6 +80,14 @@ static int process_child_main(int argc, char** argv)
         sleep_ms(250U);
         return 0;
     }
+    if (argc >= 3 && strcmp(argv[2], "stdin") == 0) {
+        char buffer[128];
+        if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+            return 5;
+        }
+        printf("stdin:%s", buffer);
+        return 0;
+    }
     if (argc >= 4 && strcmp(argv[2], "env") == 0) {
 #ifdef _WIN32
         char* value = NULL;
@@ -487,6 +495,149 @@ static int test_process_run_capture_bound(const char* self_path)
     return 0;
 }
 
+static int test_process_start_streams_and_wait(const char* self_path)
+{
+    unsigned char storage[524288];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    char self_storage[4096];
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("echo")};
+    SlOsProcessStartOptions options = {.stdout_mode = SL_OS_PROCESS_PIPE_PIPE,
+                                       .stderr_mode = SL_OS_PROCESS_PIPE_PIPE};
+    SlOsProcessHandle* handle = NULL;
+    SlOsProcessPipeRead stdout_read = {0};
+    SlOsProcessPipeRead stderr_read = {0};
+    SlOsProcessExit exit = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_start(&arena, &policy, self, args, 2U, &options, &handle, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 110;
+    }
+    if (handle == NULL ||
+        expect_status(sl_os_process_wait(handle, NULL, &exit, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_stdout_read(&arena, handle, 256U, &stdout_read, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_stderr_read(&arena, handle, 256U, &stderr_read, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_os_process_dispose(handle);
+        return 111;
+    }
+    if (exit.exit_code != 7 ||
+        !str_contains(sl_owned_str_as_view(stdout_read.bytes), "child-output") ||
+        !str_contains(sl_owned_str_as_view(stderr_read.bytes), "child-error"))
+    {
+        sl_os_process_dispose(handle);
+        return 112;
+    }
+    sl_os_process_dispose(handle);
+    sl_os_process_dispose(handle);
+    return 0;
+}
+
+static int test_process_start_stdin_pipe(const char* self_path)
+{
+    unsigned char storage[524288];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    char self_storage[4096];
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("stdin")};
+    SlOsProcessStartOptions options = {.stdin_mode = SL_OS_PROCESS_PIPE_PIPE,
+                                       .stdout_mode = SL_OS_PROCESS_PIPE_PIPE};
+    SlOsProcessHandle* handle = NULL;
+    SlOsProcessPipeRead stdout_read = {0};
+    SlOsProcessExit exit = {0};
+    size_t written = 0U;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_start(&arena, &policy, self, args, 2U, &options, &handle, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 120;
+    }
+    if (expect_status(
+            sl_os_process_stdin_write(handle, sl_str_from_cstr("hello\n"), &written, NULL),
+            SL_STATUS_OK) != 0 ||
+        written != 6U ||
+        expect_status(sl_os_process_stdin_close(handle, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_wait(handle, NULL, &exit, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_stdout_read(&arena, handle, 256U, &stdout_read, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_os_process_dispose(handle);
+        return 121;
+    }
+    if (exit.exit_code != 0 ||
+        !str_contains(sl_owned_str_as_view(stdout_read.bytes), "stdin:hello"))
+    {
+        sl_os_process_dispose(handle);
+        return 122;
+    }
+    sl_os_process_dispose(handle);
+    return 0;
+}
+
+static int test_process_start_timeout_kill_cancel_and_stale(const char* self_path)
+{
+    unsigned char storage[524288];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    char self_storage[4096];
+    SlStr self = self_process_path(self_storage, sizeof(self_storage), self_path);
+    SlStr args[2] = {sl_str_from_cstr("--sloppy-os-child"), sl_str_from_cstr("sleep")};
+    SlOsProcessStartOptions options = {.stdout_mode = SL_OS_PROCESS_PIPE_PIPE};
+    SlOsProcessWaitOptions wait_options = {.timeout_ms = 10U};
+    SlOsProcessHandle* handle = NULL;
+    SlOsProcessExit exit = {0};
+    SlOsProcessPipeRead pipe_read = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_start(&arena, &policy, self, args, 2U, &options, &handle, NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 130;
+    }
+    if (expect_status(sl_os_process_wait(handle, &wait_options, &exit, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        !exit.timed_out || diag.code != SL_DIAG_OS_PROCESS_TIMEOUT)
+    {
+        sl_os_process_dispose(handle);
+        return 131;
+    }
+    if (expect_status(sl_os_process_kill(handle, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_wait(handle, NULL, &exit, NULL), SL_STATUS_OK) != 0 ||
+        !exit.killed)
+    {
+        sl_os_process_dispose(handle);
+        return 132;
+    }
+    sl_os_process_dispose(handle);
+    diag = (SlDiag){0};
+    if (expect_status(sl_os_process_stdout_read(&arena, handle, 16U, &pipe_read, &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_OS_PIPE_CLOSED)
+    {
+        return 133;
+    }
+    handle = NULL;
+    if (expect_status(sl_os_process_start(&arena, &policy, self, args, 2U, NULL, &handle, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_cancel(handle, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_wait(handle, NULL, &exit, NULL), SL_STATUS_OK) != 0 ||
+        !exit.cancelled)
+    {
+        sl_os_process_dispose(handle);
+        return 134;
+    }
+    sl_os_process_dispose(handle);
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     if (argc >= 2 && strcmp(argv[1], "--sloppy-os-child") == 0) {
@@ -532,5 +683,17 @@ int main(int argc, char** argv)
     if (result != 0) {
         return result;
     }
-    return test_process_run_capture_bound(argv[0]);
+    result = test_process_run_capture_bound(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+    result = test_process_start_streams_and_wait(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+    result = test_process_start_stdin_pipe(argv[0]);
+    if (result != 0) {
+        return result;
+    }
+    return test_process_start_timeout_kill_cancel_and_stale(argv[0]);
 }

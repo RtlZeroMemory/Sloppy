@@ -760,3 +760,387 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     }
     return sl_status_ok();
 }
+
+struct SlOsProcessHandle
+{
+    pid_t child;
+    int stdin_fd;
+    int stdout_fd;
+    int stderr_fd;
+    bool disposed;
+    bool waited;
+    bool killed;
+    bool cancelled;
+    int32_t exit_code;
+};
+
+static SlStatus sl_os_posix_pipe_closed(SlDiag* out_diag)
+{
+    return sl_os_posix_process_fail(SL_DIAG_OS_PIPE_CLOSED, out_diag,
+                                    sl_str_from_cstr("process pipe is closed"),
+                                    sl_str_from_cstr("Stale process pipe operations are denied."));
+}
+
+static void sl_os_posix_child_dup_or_devnull(int fd, int std_fd, int flags)
+{
+    int devnull = -1;
+
+    if (fd >= 0) {
+        (void)dup2(fd, std_fd);
+        return;
+    }
+    devnull = open("/dev/null", flags);
+    if (devnull >= 0) {
+        (void)dup2(devnull, std_fd);
+        (void)close(devnull);
+    }
+}
+
+SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr* args,
+                                      size_t arg_count, const SlOsProcessStartOptions* options,
+                                      SlOsProcessHandle** out, SlDiag* out_diag)
+{
+    char** argv = NULL;
+    char** envp = NULL;
+    char* command_cstr = NULL;
+    char* exec_path = NULL;
+    char* cwd_cstr = NULL;
+    int stdin_pipe[2] = {-1, -1};
+    int stdout_pipe[2] = {-1, -1};
+    int stderr_pipe[2] = {-1, -1};
+    int error_pipe[2] = {-1, -1};
+    pid_t child = -1;
+    void* memory = NULL;
+    SlOsProcessHandle* handle = NULL;
+    SlStatus status;
+
+    *out = NULL;
+    status = sl_os_posix_copy_nul(arena, command, &command_cstr);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, (arg_count + 2U) * sizeof(char*), _Alignof(char*), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    argv = (char**)memory;
+    argv[0] = command_cstr;
+    for (size_t index = 0U; index < arg_count; index += 1U) {
+        status = sl_os_posix_copy_nul(arena, args[index], &argv[index + 1U]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    argv[arg_count + 1U] = NULL;
+    if (!sl_str_is_empty(options->cwd)) {
+        struct stat cwd_stat;
+        status = sl_os_posix_copy_nul(arena, options->cwd, &cwd_cstr);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (stat(cwd_cstr, &cwd_stat) != 0 || !S_ISDIR(cwd_stat.st_mode)) {
+            return sl_os_posix_process_fail(
+                SL_DIAG_OS_INVALID_CWD, out_diag,
+                sl_str_from_cstr("process working directory is invalid"),
+                sl_str_from_cstr("Validate cwd before process admission."));
+        }
+    }
+    status = sl_os_posix_environment_block(arena, options->environment_overrides,
+                                           options->environment_override_count, &envp);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_os_posix_resolve_command(arena, command_cstr, envp, cwd_cstr, &exec_path);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (exec_path == NULL) {
+        return sl_os_posix_process_fail(
+            SL_DIAG_OS_COMMAND_NOT_FOUND, out_diag, sl_str_from_cstr("command was not found"),
+            sl_str_from_cstr("Process APIs execute explicit argv only."));
+    }
+    if (options->stdin_mode == SL_OS_PROCESS_PIPE_PIPE && pipe(stdin_pipe) != 0) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    if (options->stdout_mode == SL_OS_PROCESS_PIPE_PIPE && pipe(stdout_pipe) != 0) {
+        sl_os_posix_close_pipe(stdin_pipe);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    if (options->stderr_mode == SL_OS_PROCESS_PIPE_PIPE && pipe(stderr_pipe) != 0) {
+        sl_os_posix_close_pipe(stdin_pipe);
+        sl_os_posix_close_pipe(stdout_pipe);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    if (pipe(error_pipe) != 0) {
+        sl_os_posix_close_pipe(stdin_pipe);
+        sl_os_posix_close_pipe(stdout_pipe);
+        sl_os_posix_close_pipe(stderr_pipe);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    (void)fcntl(error_pipe[1], F_SETFD, FD_CLOEXEC);
+    child = fork();
+    if (child < 0) {
+        sl_os_posix_close_pipe(stdin_pipe);
+        sl_os_posix_close_pipe(stdout_pipe);
+        sl_os_posix_close_pipe(stderr_pipe);
+        sl_os_posix_close_pipe(error_pipe);
+        return sl_os_posix_process_fail(SL_DIAG_OS_PROCESS_START_FAILED, out_diag,
+                                        sl_str_from_cstr("process start failed"),
+                                        sl_str_from_cstr("fork failed before process admission."));
+    }
+    if (child == 0) {
+        if (cwd_cstr != NULL && chdir(cwd_cstr) != 0) {
+            SlOsPosixProcessError error = {.error = errno,
+                                           .source = SL_OS_POSIX_PROCESS_ERROR_CHDIR};
+            (void)write(error_pipe[1], &error, sizeof(error));
+            _exit(126);
+        }
+        sl_os_posix_child_dup_or_devnull(stdin_pipe[0], STDIN_FILENO, O_RDONLY);
+        sl_os_posix_child_dup_or_devnull(stdout_pipe[1], STDOUT_FILENO, O_WRONLY);
+        sl_os_posix_child_dup_or_devnull(stderr_pipe[1], STDERR_FILENO, O_WRONLY);
+        sl_os_posix_close_pipe(stdin_pipe);
+        sl_os_posix_close_pipe(stdout_pipe);
+        sl_os_posix_close_pipe(stderr_pipe);
+        sl_os_posix_close_fd(&error_pipe[0]);
+        execve(exec_path, argv, envp);
+        {
+            int err = errno;
+            SlOsPosixProcessError error = {.error = err, .source = SL_OS_POSIX_PROCESS_ERROR_EXEC};
+            (void)write(error_pipe[1], &error, sizeof(error));
+            _exit(err == ENOENT ? 127 : 126);
+        }
+    }
+    sl_os_posix_close_fd(&stdin_pipe[0]);
+    sl_os_posix_close_fd(&stdout_pipe[1]);
+    sl_os_posix_close_fd(&stderr_pipe[1]);
+    sl_os_posix_close_fd(&error_pipe[1]);
+    sl_os_posix_set_nonblock(stdout_pipe[0]);
+    sl_os_posix_set_nonblock(stderr_pipe[0]);
+    {
+        SlOsPosixProcessError process_error = {0};
+        ssize_t got = read(error_pipe[0], &process_error, sizeof(process_error));
+        sl_os_posix_close_fd(&error_pipe[0]);
+        if (got == (ssize_t)sizeof(process_error)) {
+            int child_status = 0;
+            (void)waitpid(child, &child_status, 0);
+            sl_os_posix_close_pipe(stdin_pipe);
+            sl_os_posix_close_pipe(stdout_pipe);
+            sl_os_posix_close_pipe(stderr_pipe);
+            if (process_error.source == SL_OS_POSIX_PROCESS_ERROR_EXEC &&
+                (process_error.error == ENOENT || process_error.error == ENOTDIR))
+            {
+                return sl_os_posix_process_fail(
+                    SL_DIAG_OS_COMMAND_NOT_FOUND, out_diag,
+                    sl_str_from_cstr("command was not found"),
+                    sl_str_from_cstr("Process APIs execute explicit argv only."));
+            }
+            if (process_error.source == SL_OS_POSIX_PROCESS_ERROR_CHDIR) {
+                return sl_os_posix_process_fail(
+                    SL_DIAG_OS_INVALID_CWD, out_diag,
+                    sl_str_from_cstr("process working directory is invalid"),
+                    sl_str_from_cstr("Validate cwd before process admission."));
+            }
+            return sl_os_posix_process_fail(SL_DIAG_OS_PROCESS_START_FAILED, out_diag,
+                                            sl_str_from_cstr("process start failed"),
+                                            sl_str_from_cstr("native process admission failed."));
+        }
+    }
+    status = sl_arena_alloc(arena, sizeof(*handle), _Alignof(SlOsProcessHandle), &memory);
+    if (!sl_status_is_ok(status)) {
+        (void)kill(child, SIGKILL);
+        (void)waitpid(child, NULL, 0);
+        sl_os_posix_close_pipe(stdin_pipe);
+        sl_os_posix_close_pipe(stdout_pipe);
+        sl_os_posix_close_pipe(stderr_pipe);
+        return status;
+    }
+    handle = (SlOsProcessHandle*)memory;
+    *handle = (SlOsProcessHandle){.child = child,
+                                  .stdin_fd = stdin_pipe[1],
+                                  .stdout_fd = stdout_pipe[0],
+                                  .stderr_fd = stderr_pipe[0]};
+    *out = handle;
+    return sl_status_ok();
+}
+
+SlStatus sl_os_platform_process_wait(SlOsProcessHandle* handle,
+                                     const SlOsProcessWaitOptions* options, SlOsProcessExit* out,
+                                     SlDiag* out_diag)
+{
+    uint64_t start_ms = sl_os_posix_now_ms();
+
+    if (handle->disposed || handle->child <= 0) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    if (handle->waited) {
+        *out = (SlOsProcessExit){.exit_code = handle->exit_code,
+                                 .killed = handle->killed,
+                                 .cancelled = handle->cancelled};
+        return sl_status_ok();
+    }
+    for (;;) {
+        int child_status = 0;
+        pid_t waited = waitpid(handle->child, &child_status, WNOHANG);
+        if (waited == handle->child) {
+            if (WIFEXITED(child_status)) {
+                handle->exit_code = (int32_t)WEXITSTATUS(child_status);
+            }
+            else if (WIFSIGNALED(child_status)) {
+                handle->exit_code = 128 + (int32_t)WTERMSIG(child_status);
+                handle->killed = true;
+            }
+            handle->waited = true;
+            *out = (SlOsProcessExit){.exit_code = handle->exit_code,
+                                     .killed = handle->killed,
+                                     .cancelled = handle->cancelled};
+            return sl_status_ok();
+        }
+        if (waited < 0) {
+            return sl_os_posix_process_fail(SL_DIAG_OS_PROCESS_START_FAILED, out_diag,
+                                            sl_str_from_cstr("process wait failed"),
+                                            sl_str_from_cstr("native process wait failed."));
+        }
+        if (options != NULL && options->timeout_ms != 0U && start_ms != 0U &&
+            sl_os_posix_now_ms() - start_ms >= options->timeout_ms)
+        {
+            out->timed_out = true;
+            return sl_os_posix_process_fail(
+                SL_DIAG_OS_PROCESS_TIMEOUT, out_diag, sl_str_from_cstr("process timed out"),
+                sl_str_from_cstr("Timeout and caller cancellation remain distinguishable."));
+        }
+        sl_os_posix_sleep_poll();
+    }
+}
+
+static SlStatus sl_os_posix_pipe_read_to_arena(SlArena* arena, int* fd, size_t max_bytes,
+                                               SlOsProcessPipeRead* out, SlDiag* out_diag)
+{
+    void* memory = NULL;
+    ssize_t got;
+    SlStatus status;
+
+    if (*fd < 0) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    status = sl_arena_alloc(arena, max_bytes + 1U, _Alignof(char), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    got = read(*fd, memory, max_bytes);
+    if (got > 0) {
+        ((char*)memory)[got] = '\0';
+        out->bytes = (SlOwnedStr){.ptr = (char*)memory, .length = (size_t)got};
+        return sl_status_ok();
+    }
+    if (got == 0) {
+        sl_os_posix_close_fd(fd);
+        out->closed = true;
+        return sl_status_ok();
+    }
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        ((char*)memory)[0] = '\0';
+        out->bytes = (SlOwnedStr){.ptr = (char*)memory, .length = 0U};
+        return sl_status_ok();
+    }
+    return sl_os_posix_pipe_closed(out_diag);
+}
+
+SlStatus sl_os_platform_process_stdout_read(SlArena* arena, SlOsProcessHandle* handle,
+                                            size_t max_bytes, SlOsProcessPipeRead* out,
+                                            SlDiag* out_diag)
+{
+    if (handle->disposed) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    return sl_os_posix_pipe_read_to_arena(arena, &handle->stdout_fd, max_bytes, out, out_diag);
+}
+
+SlStatus sl_os_platform_process_stderr_read(SlArena* arena, SlOsProcessHandle* handle,
+                                            size_t max_bytes, SlOsProcessPipeRead* out,
+                                            SlDiag* out_diag)
+{
+    if (handle->disposed) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    return sl_os_posix_pipe_read_to_arena(arena, &handle->stderr_fd, max_bytes, out, out_diag);
+}
+
+SlStatus sl_os_platform_process_stdin_write(SlOsProcessHandle* handle, SlStr bytes,
+                                            size_t* out_written, SlDiag* out_diag)
+{
+    ssize_t written;
+
+    if (handle->disposed || handle->stdin_fd < 0) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    written = write(handle->stdin_fd, bytes.ptr, bytes.length);
+    if (written < 0) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    *out_written = (size_t)written;
+    return sl_status_ok();
+}
+
+SlStatus sl_os_platform_process_stdin_close(SlOsProcessHandle* handle, SlDiag* out_diag)
+{
+    if (handle->disposed || handle->stdin_fd < 0) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    sl_os_posix_close_fd(&handle->stdin_fd);
+    return sl_status_ok();
+}
+
+SlStatus sl_os_platform_process_terminate(SlOsProcessHandle* handle, SlDiag* out_diag)
+{
+    if (handle->disposed || handle->child <= 0) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    if (kill(handle->child, SIGTERM) != 0 && errno != ESRCH) {
+        return sl_os_posix_process_fail(SL_DIAG_OS_PROCESS_KILLED, out_diag,
+                                        sl_str_from_cstr("process was killed"),
+                                        sl_str_from_cstr("native process termination failed."));
+    }
+    handle->killed = true;
+    return sl_status_ok();
+}
+
+SlStatus sl_os_platform_process_kill(SlOsProcessHandle* handle, SlDiag* out_diag)
+{
+    if (handle->disposed || handle->child <= 0) {
+        return sl_os_posix_pipe_closed(out_diag);
+    }
+    if (kill(handle->child, SIGKILL) != 0 && errno != ESRCH) {
+        return sl_os_posix_process_fail(SL_DIAG_OS_PROCESS_KILLED, out_diag,
+                                        sl_str_from_cstr("process was killed"),
+                                        sl_str_from_cstr("native process kill failed."));
+    }
+    handle->killed = true;
+    return sl_status_ok();
+}
+
+SlStatus sl_os_platform_process_cancel(SlOsProcessHandle* handle, SlDiag* out_diag)
+{
+    SlStatus status = sl_os_platform_process_terminate(handle, out_diag);
+    if (sl_status_is_ok(status)) {
+        handle->cancelled = true;
+    }
+    return status;
+}
+
+void sl_os_platform_process_dispose(SlOsProcessHandle* handle)
+{
+    if (handle == NULL || handle->disposed) {
+        return;
+    }
+    if (!handle->waited && handle->child > 0) {
+        int child_status = 0;
+        if (waitpid(handle->child, &child_status, WNOHANG) == 0) {
+            (void)kill(handle->child, SIGKILL);
+            (void)waitpid(handle->child, &child_status, 0);
+        }
+    }
+    sl_os_posix_close_fd(&handle->stdin_fd);
+    sl_os_posix_close_fd(&handle->stdout_fd);
+    sl_os_posix_close_fd(&handle->stderr_fd);
+    handle->disposed = true;
+}

@@ -64,6 +64,12 @@ typedef enum SlOsProcessCaptureMode
     SL_OS_PROCESS_CAPTURE_BYTES = 2
 } SlOsProcessCaptureMode;
 
+typedef enum SlOsProcessPipeMode
+{
+    SL_OS_PROCESS_PIPE_IGNORE = 0,
+    SL_OS_PROCESS_PIPE_PIPE = 1
+} SlOsProcessPipeMode;
+
 typedef struct SlOsEnvironmentOverride
 {
     SlStr key;
@@ -91,6 +97,37 @@ typedef struct SlOsProcessRunResult
     SlOwnedStr stderr_text;
 } SlOsProcessRunResult;
 
+typedef struct SlOsProcessHandle SlOsProcessHandle;
+
+typedef struct SlOsProcessStartOptions
+{
+    SlStr cwd;
+    const SlOsEnvironmentOverride* environment_overrides;
+    size_t environment_override_count;
+    SlOsProcessPipeMode stdin_mode;
+    SlOsProcessPipeMode stdout_mode;
+    SlOsProcessPipeMode stderr_mode;
+} SlOsProcessStartOptions;
+
+typedef struct SlOsProcessWaitOptions
+{
+    uint64_t timeout_ms;
+} SlOsProcessWaitOptions;
+
+typedef struct SlOsProcessExit
+{
+    int32_t exit_code;
+    bool timed_out;
+    bool cancelled;
+    bool killed;
+} SlOsProcessExit;
+
+typedef struct SlOsProcessPipeRead
+{
+    SlOwnedStr bytes;
+    bool closed;
+} SlOsProcessPipeRead;
+
 SlOsPolicy sl_os_development_policy(void);
 SlOsPolicy sl_os_strict_policy(const SlOsEnvironmentGrant* grants, size_t grant_count,
                                bool allow_environment_list, SlStr environment_list_prefix);
@@ -112,6 +149,23 @@ SlStatus sl_os_process_run(SlArena* arena, const SlOsPolicy* policy, SlStr comma
                            const SlStr* args, size_t arg_count,
                            const SlOsProcessRunOptions* options, SlOsProcessRunResult* out,
                            SlDiag* out_diag);
+SlStatus sl_os_process_start(SlArena* arena, const SlOsPolicy* policy, SlStr command,
+                             const SlStr* args, size_t arg_count,
+                             const SlOsProcessStartOptions* options, SlOsProcessHandle** out,
+                             SlDiag* out_diag);
+SlStatus sl_os_process_wait(SlOsProcessHandle* handle, const SlOsProcessWaitOptions* options,
+                            SlOsProcessExit* out, SlDiag* out_diag);
+SlStatus sl_os_process_stdout_read(SlArena* arena, SlOsProcessHandle* handle, size_t max_bytes,
+                                   SlOsProcessPipeRead* out, SlDiag* out_diag);
+SlStatus sl_os_process_stderr_read(SlArena* arena, SlOsProcessHandle* handle, size_t max_bytes,
+                                   SlOsProcessPipeRead* out, SlDiag* out_diag);
+SlStatus sl_os_process_stdin_write(SlOsProcessHandle* handle, SlStr bytes, size_t* out_written,
+                                   SlDiag* out_diag);
+SlStatus sl_os_process_stdin_close(SlOsProcessHandle* handle, SlDiag* out_diag);
+SlStatus sl_os_process_terminate(SlOsProcessHandle* handle, SlDiag* out_diag);
+SlStatus sl_os_process_kill(SlOsProcessHandle* handle, SlDiag* out_diag);
+SlStatus sl_os_process_cancel(SlOsProcessHandle* handle, SlDiag* out_diag);
+void sl_os_process_dispose(SlOsProcessHandle* handle);
 
 #ifdef __cplusplus
 }

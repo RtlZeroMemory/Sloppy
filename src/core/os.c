@@ -296,3 +296,169 @@ SlStatus sl_os_process_run(SlArena* arena, const SlOsPolicy* policy, SlStr comma
     }
     return sl_os_platform_process_run(arena, command, args, arg_count, options, out, out_diag);
 }
+
+static SlStatus sl_os_process_common_validate(const SlOsPolicy* policy, SlStr command,
+                                              const SlStr* args, size_t arg_count, SlDiag* out_diag)
+{
+    size_t index = 0U;
+
+    if (command.ptr == NULL || command.length == 0U || sl_os_str_contains_nul(command) ||
+        (arg_count != 0U && args == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (policy != NULL && policy->mode == SL_OS_POLICY_STRICT && !policy->allow_process_run) {
+        return sl_os_denied(
+            SL_DIAG_OS_PROCESS_EXECUTION_DENIED, out_diag,
+            sl_str_from_cstr("process execution was denied"),
+            sl_str_from_cstr("Grant process.run before admitting native process work."));
+    }
+    for (index = 0U; index < arg_count; index += 1U) {
+        if (args[index].ptr == NULL || sl_os_str_contains_nul(args[index])) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_os_process_start_options_validate(const SlOsProcessStartOptions* options,
+                                                     SlDiag* out_diag)
+{
+    size_t index = 0U;
+
+    if (options == NULL) {
+        return sl_status_ok();
+    }
+    if (!sl_str_is_empty(options->cwd) &&
+        (options->cwd.ptr == NULL || sl_os_str_contains_nul(options->cwd)))
+    {
+        return sl_os_denied(SL_DIAG_OS_INVALID_CWD, out_diag,
+                            sl_str_from_cstr("process working directory is invalid"),
+                            sl_str_from_cstr("Validate cwd before process admission."));
+    }
+    if (options->environment_override_count != 0U && options->environment_overrides == NULL) {
+        return sl_os_denied(SL_DIAG_OS_INVALID_ENV_OVERRIDE, out_diag,
+                            sl_str_from_cstr("process environment override is invalid"),
+                            sl_str_from_cstr("Environment overrides require key/value entries."));
+    }
+    for (index = 0U; index < options->environment_override_count; index += 1U) {
+        if (!sl_os_process_env_override_valid(&options->environment_overrides[index])) {
+            return sl_os_denied(
+                SL_DIAG_OS_INVALID_ENV_OVERRIDE, out_diag,
+                sl_str_from_cstr("process environment override is invalid"),
+                sl_str_from_cstr("Environment override diagnostics must not print values."));
+        }
+    }
+    if (options->stdin_mode > SL_OS_PROCESS_PIPE_PIPE ||
+        options->stdout_mode > SL_OS_PROCESS_PIPE_PIPE ||
+        options->stderr_mode > SL_OS_PROCESS_PIPE_PIPE)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_status_ok();
+}
+
+SlStatus sl_os_process_start(SlArena* arena, const SlOsPolicy* policy, SlStr command,
+                             const SlStr* args, size_t arg_count,
+                             const SlOsProcessStartOptions* options, SlOsProcessHandle** out,
+                             SlDiag* out_diag)
+{
+    SlOsProcessStartOptions defaults = {0};
+    SlStatus status;
+
+    if (arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = NULL;
+    status = sl_os_process_common_validate(policy, command, args, arg_count, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (options == NULL) {
+        options = &defaults;
+    }
+    status = sl_os_process_start_options_validate(options, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_os_platform_process_start(arena, command, args, arg_count, options, out, out_diag);
+}
+
+SlStatus sl_os_process_wait(SlOsProcessHandle* handle, const SlOsProcessWaitOptions* options,
+                            SlOsProcessExit* out, SlDiag* out_diag)
+{
+    if (handle == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = (SlOsProcessExit){0};
+    return sl_os_platform_process_wait(handle, options, out, out_diag);
+}
+
+SlStatus sl_os_process_stdout_read(SlArena* arena, SlOsProcessHandle* handle, size_t max_bytes,
+                                   SlOsProcessPipeRead* out, SlDiag* out_diag)
+{
+    if (arena == NULL || handle == NULL || out == NULL || max_bytes == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = (SlOsProcessPipeRead){0};
+    return sl_os_platform_process_stdout_read(arena, handle, max_bytes, out, out_diag);
+}
+
+SlStatus sl_os_process_stderr_read(SlArena* arena, SlOsProcessHandle* handle, size_t max_bytes,
+                                   SlOsProcessPipeRead* out, SlDiag* out_diag)
+{
+    if (arena == NULL || handle == NULL || out == NULL || max_bytes == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = (SlOsProcessPipeRead){0};
+    return sl_os_platform_process_stderr_read(arena, handle, max_bytes, out, out_diag);
+}
+
+SlStatus sl_os_process_stdin_write(SlOsProcessHandle* handle, SlStr bytes, size_t* out_written,
+                                   SlDiag* out_diag)
+{
+    if (handle == NULL || bytes.ptr == NULL || out_written == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_written = 0U;
+    return sl_os_platform_process_stdin_write(handle, bytes, out_written, out_diag);
+}
+
+SlStatus sl_os_process_stdin_close(SlOsProcessHandle* handle, SlDiag* out_diag)
+{
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_os_platform_process_stdin_close(handle, out_diag);
+}
+
+SlStatus sl_os_process_terminate(SlOsProcessHandle* handle, SlDiag* out_diag)
+{
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_os_platform_process_terminate(handle, out_diag);
+}
+
+SlStatus sl_os_process_kill(SlOsProcessHandle* handle, SlDiag* out_diag)
+{
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_os_platform_process_kill(handle, out_diag);
+}
+
+SlStatus sl_os_process_cancel(SlOsProcessHandle* handle, SlDiag* out_diag)
+{
+    if (handle == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_os_platform_process_cancel(handle, out_diag);
+}
+
+void sl_os_process_dispose(SlOsProcessHandle* handle)
+{
+    if (handle != NULL) {
+        sl_os_platform_process_dispose(handle);
+    }
+}
