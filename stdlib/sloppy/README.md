@@ -43,11 +43,12 @@ fails closed with the existing missing-feature error.
 `schema` exposes a small validation skeleton for string, number, boolean, and object
 shapes.
 `codec.js` publishes the CORE-CODEC-01.C/D/I Base64, Base64Url, Hex, and UTF-8 text
-helpers plus the streaming UTF-8 decoder. The Base64/Base64Url/Hex decoders are strict and
-diagnostic-stable, arbitrary bytes and embedded NUL values are preserved, and UTF-8
-malformed input follows the documented fatal/replacement policy. Binary, Compression, and
-Checksums are present only as deterministic deferred stubs until their dedicated
-CORE-CODEC implementation PRs land.
+helpers plus the streaming UTF-8 decoder, and CORE-CODEC-01.E Binary reader/writer
+helpers. The Base64/Base64Url/Hex decoders are strict and diagnostic-stable, arbitrary
+bytes and embedded NUL values are preserved, UTF-8 malformed input follows the documented
+fatal/replacement policy, and Binary reads/writes are endian-explicit and bounds-checked.
+Compression and Checksums are present only as deterministic deferred stubs until their
+dedicated CORE-CODEC implementation PRs land.
 `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` expose the CORE-FS-01.G filesystem
 surface when the V8 runtime installs the feature-gated `__sloppy.fs` bridge: async core
 file operations, directory create/list/delete/walk helpers, atomic writes, temp paths,
