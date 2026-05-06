@@ -495,6 +495,27 @@ static int drain_until_dispatch_count(SlAsyncLoop* loop, ProviderRecord* record,
     return 3;
 }
 
+static int drain_until_cleanup_count(SlAsyncLoop* loop, ProviderRecord* record, size_t expected)
+{
+    size_t attempts = 0U;
+
+    if (loop == NULL || record == NULL) {
+        return 1;
+    }
+
+    for (attempts = 0U; attempts < 100000U; attempts += 1U) {
+        size_t ran = 0U;
+        if (expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0) {
+            return 2;
+        }
+        if (record->cleanup_count >= expected) {
+            return 0;
+        }
+    }
+
+    return 3;
+}
+
 static int prepare_pool_stress_descriptors(ProviderRecord* record, ProviderWorkPayload* payloads,
                                            SlProviderOperationDescriptor* descriptors, size_t count,
                                            atomic_int* active_count, atomic_int* max_active_count,
@@ -2013,6 +2034,10 @@ static int test_serialized_worker_executes_one_at_a_time_fifo(void)
     SlProviderOperationDescriptor first_desc;
     SlProviderOperationDescriptor second_desc;
     SlProviderOperationDescriptor third_desc;
+    atomic_bool release;
+
+    atomic_init(&release, false);
+    first_payload.release = &release;
 
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
             0 ||
@@ -2040,6 +2065,7 @@ static int test_serialized_worker_executes_one_at_a_time_fifo(void)
         return 91;
     }
 
+    atomic_store(&release, true);
     if (drain_until_dispatch_count(loop, &record, 3U) != 0 || record.worker_count != 3U ||
         record.dispatch_count != 3U || record.cleanup_count != 3U || record.worker_values[0] != 1 ||
         record.worker_values[1] != 2 || record.worker_values[2] != 3 ||
@@ -2373,7 +2399,7 @@ static int test_shutdown_of_queued_operation_preserves_active_in_flight(void)
     }
 
     atomic_store(&release, true);
-    if (drain_until_dispatch_count(loop, &record, 2U) != 0 ||
+    if (drain_until_cleanup_count(loop, &record, 2U) != 0 ||
         sl_provider_executor_in_flight_count(&executor) != 0U ||
         sl_provider_executor_pending_count(&executor) != 0U || record.cleanup_count != 2U)
     {

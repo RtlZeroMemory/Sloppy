@@ -299,6 +299,8 @@ static int test_duplicate_service_token_fails_startup(void)
     SlDiag diag = {0};
     SlAppHostStartupValidation options;
 
+    providers[0] = (SlPlanDataProvider){0};
+    providers[1] = (SlPlanDataProvider){0};
     (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
     options = validation_options(&diag_arena);
 
@@ -335,6 +337,7 @@ static int test_startup_reports_plan_driven_runtime_features(void)
     SlRuntimeFeatureSet features = {0};
     SlAppHostStartupValidation options;
 
+    providers[0] = (SlPlanDataProvider){0};
     (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
     options = validation_options(&diag_arena);
     options.out_runtime_features = &features;
