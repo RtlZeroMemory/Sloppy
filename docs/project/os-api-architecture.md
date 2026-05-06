@@ -36,7 +36,9 @@ Type-only imports do not activate the runtime feature.
 
 CORE-OS-01.C/H makes `stdlib.os` available for the `System` and `Environment` runtime
 surface. CORE-OS-01.D adds native `sl_os_process_run` and the bootstrap `Process.run`
-facade. The V8 process bridge remains deferred until process work can be scheduled without
+facade. CORE-OS-01.E/F adds native `sl_os_process_start`, an opaque ProcessHandle, pipe
+operations, wait timeout, terminate/kill/cancel, and the bootstrap `Process.start` facade.
+The V8 process bridge remains deferred until process work can be scheduled without
 blocking the V8 owner thread. Signals remain deferred to later CORE-OS-01 slices and fail
 closed through the JS facade.
 
@@ -101,10 +103,11 @@ Full deadline/cancellation/signal/shutdown hardening remains in `Deferred Beyond
 CORE-OS-01.D`.
 
 `Process.start(command, args, options?)` returns a `ProcessHandle` with JS-safe resource
-identity only. The handle may expose `stdin`, `stdout`, `stderr`, `wait`, `terminate`,
-`kill`, `cancel`, and `dispose` semantics as the implementation slices land. JavaScript
-must never receive raw PIDs-as-capabilities, native process handles, pipe handles, libuv
-handles, OS handles, or native pointers.
+identity only. The bootstrap facade exposes `stdin`, `stdout`, `stderr`, `wait`,
+`terminate`, `kill`, `cancel`, and `dispose` over the Slop-owned bridge shape. Native C
+keeps the handle opaque to callers and keeps platform process and pipe handles private to
+the platform backend. JavaScript must never receive raw PIDs-as-capabilities, native
+process handles, pipe handles, libuv handles, OS handles, or native pointers.
 
 Signals:
 
@@ -233,11 +236,21 @@ feature/Plan/diagnostic/compiler metadata lane.
 - Bootstrap JS `Process.run` validation and result forwarding through the Slop-owned OS
   bridge shape.
 
-## Deferred Beyond CORE-OS-01.D
+## Implemented In CORE-OS-01.E/F
+
+- Native `sl_os_process_start` for explicit argv only, reusing the same no-shell process
+  contract as `Process.run`.
+- Opaque native `SlOsProcessHandle` plus stdin/stdout/stderr pipe read/write/close helpers.
+- Wait timeout, explicit terminate/kill/cancel helpers, stale pipe diagnostics, and
+  idempotent dispose cleanup.
+- Bootstrap JS `Process.start`, `ProcessHandle`, pipe `read`, `readText`, `readLines`, and
+  stdin `writeText` facade over the private bridge shape.
+
+## Deferred Beyond CORE-OS-01.E/F
 
 - V8 `processRun` intrinsic and owner-thread-safe native scheduling.
-- Process.start, streaming pipes, and ProcessHandle lifecycle.
-- Deadlines, cancellation, kill, shutdown, and late-completion runtime hardening.
+- V8 `processStart` intrinsic and owner-thread-safe native scheduling.
+- Shutdown-driven process cancellation and late-completion runtime hardening.
 - Signals and app lifecycle integration.
 - Doctor/audit examples, conformance, and goldens beyond diagnostic shape.
 - Public alpha docs and benchmark/performance claims.

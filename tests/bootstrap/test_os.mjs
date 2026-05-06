@@ -60,6 +60,45 @@ try {
                     timedOut: false,
                 };
             },
+            processStart(command, args, options) {
+                let disposed = false;
+                let stdoutReads = 0;
+                return {
+                    command,
+                    args,
+                    options,
+                    readStdout(maxBytes) {
+                        assert.equal(maxBytes, 16);
+                        stdoutReads += 1;
+                        return disposed || stdoutReads > 2 ? "" : "alpha\nbeta\n";
+                    },
+                    readStderr() {
+                        return "";
+                    },
+                    writeStdin(value) {
+                        assert.equal(value, "input");
+                        return value.length;
+                    },
+                    closeStdin() {
+                        return undefined;
+                    },
+                    wait(waitOptions) {
+                        return { exitCode: 0, timedOut: waitOptions.timeoutMs === 1 };
+                    },
+                    terminate() {
+                        return { killed: true };
+                    },
+                    kill() {
+                        return { killed: true };
+                    },
+                    cancel() {
+                        return { cancelled: true };
+                    },
+                    dispose() {
+                        disposed = true;
+                    },
+                };
+            },
         },
     };
 
@@ -114,6 +153,33 @@ try {
     );
     await assert.rejects(Process.run("tool", [], { signal: {} }), TypeError);
     await assert.rejects(Process.run("tool", ["bad\0arg"]), TypeError);
+
+    const proc = await Process.start("tool", ["arg"], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    assert.deepEqual(proc._handle.command, "tool");
+    assert.deepEqual(proc._handle.args, ["arg"]);
+    assert.deepEqual(proc._handle.options, { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+    assert.equal(await proc.stdin.writeText("input"), 5);
+    assert.equal(await proc.stdout.readText(16), "alpha\nbeta\n");
+    const lines = [];
+    for await (const line of proc.stdout.readLines({ chunkSize: 16 })) {
+        lines.push(line);
+    }
+    assert.deepEqual(lines, ["alpha", "beta"]);
+    assert.deepEqual(await proc.wait({ timeoutMs: 1 }), { exitCode: 0, timedOut: true });
+    await assert.rejects(proc.wait({ deadline: { remainingMs: () => Number.NaN } }), TypeError);
+    assert.deepEqual(await proc.kill(), { killed: true });
+    assert.deepEqual(await proc.cancel(), { cancelled: true });
+    await proc.dispose();
+
+    await assertOsRejects(
+        Process.start("tool", [], { deadline: { remainingMs: () => 0 } }),
+        "SLOPPY_E_OS_PROCESS_TIMEOUT",
+    );
+    await assertOsRejects(
+        Process.start("tool", [], { signal: { aborted: true, reason: "cancelled" } }),
+        "SLOPPY_E_OS_PROCESS_CANCELLED",
+    );
+    await assert.rejects(Process.start("tool", [], { stdout: "inherit" }), TypeError);
 } finally {
     if (previousSloppy === undefined) {
         delete globalThis.__sloppy;

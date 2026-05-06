@@ -113,9 +113,10 @@ CRC32 plus a static doctor warning when checksum use is visible in security-look
 contexts.
 CORE-OS-01.A/B adds the `stdlib.os` descriptor and compiler activation for `sloppy/os`.
 CORE-OS-01.C/H partial makes the feature available for System and Environment runtime use;
-CORE-OS-01.D adds the explicit-argv `Process.run` facade and native run helper. The V8
-process bridge, `Process.start`, streaming process handles, and Signals remain deferred
-behind failing JS facade methods until their bounded CORE-OS-01 slices land.
+CORE-OS-01.D adds the explicit-argv `Process.run` facade and native run helper.
+CORE-OS-01.E/F adds the native `Process.start` foundation, opaque ProcessHandle, streaming
+pipe helpers, and bootstrap JS handle facade. The V8 process bridge and Signals remain
+deferred behind failing JS facade methods until their bounded CORE-OS-01 slices land.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
