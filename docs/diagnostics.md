@@ -706,12 +706,13 @@ CORE-NET-01.I adds CLI doctor/audit goldens for Plan-visible network capabilitie
 `stdlib.net.capabilities`, `stdlib.net.connect`, `stdlib.net.listen`, and
 `SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE`. Those goldens prove deterministic metadata
 visibility and no OS sandbox or external live-network evidence.
-CORE-NET-02.A/B/F adds stable local IPC diagnostics for the policy/API contract layer:
-feature unavailable, unsupported platform, invalid endpoint path/name, path policy denial,
-stale socket cleanup failure, endpoint already exists, connect/listen failure,
+CORE-NET-02 adds stable local IPC diagnostics for the API, policy, backend, and bridge
+layers: feature unavailable, unsupported platform, invalid endpoint path/name, path policy
+denial, stale socket cleanup failure, endpoint already exists, connect/listen failure,
 accept/read/write cancellation or timeout, disposed resources, backend unavailable, and
-unsupported permission/mode behavior. These diagnostics pin the intended local IPC failure
-shapes without claiming Unix socket or Windows named pipe backend execution.
+unsupported permission/mode behavior. Platform-gated tests prove Unix socket and Windows
+named pipe execution where the backend exists; default non-V8 evidence still must not be
+reported as V8 bridge execution.
 
 CORE-HTTPCLIENT-01.A/B/C reserves outbound HTTP client diagnostics,
 CORE-HTTPCLIENT-01.D adds the first cleartext HTTP/1.1 request/response lane over the

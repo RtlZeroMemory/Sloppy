@@ -254,6 +254,18 @@ int test_named_pipe_policy_and_unsupported_backend()
     {
         return 4;
     }
+    options.path = sl_str_from_cstr("\\\\.\\pipe\\bad\\nested");
+    if (expect_status(sl_local_endpoint_listen(&server_arena, &options, &server, nullptr),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 5;
+    }
+    options.path = sl_str_from_cstr("\\\\.\\pipe\\bad name");
+    if (expect_status(sl_local_endpoint_listen(&server_arena, &options, &server, nullptr),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 6;
+    }
     options.path = sl_str_from_cstr(path.c_str());
     if (expect_status(sl_local_endpoint_listen(&server_arena, &options, &server, nullptr),
                       SL_STATUS_OK) != 0 ||
@@ -261,10 +273,10 @@ int test_named_pipe_policy_and_unsupported_backend()
                       SL_STATUS_INVALID_STATE) != 0)
     {
         (void)sl_local_server_abort(server, nullptr);
-        return 5;
+        return 7;
     }
     if (expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0) {
-        return 6;
+        return 8;
     }
     return 0;
 }

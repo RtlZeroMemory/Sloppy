@@ -163,14 +163,29 @@ async function flushMicrotasks(count = 6) {
 
 {
     const previousSloppy = globalThis.__sloppy;
+    let connectLocalCalls = 0;
+    const delayedLocalHandles = [];
     try {
         globalThis.__sloppy = {
             net: {
                 connectLocal(options) {
+                    connectLocalCalls += 1;
+                    if (options.path === "runtime:/late.sock") {
+                        return new Promise((resolve) => {
+                            setTimeout(() => {
+                                const handle = { kind: "late-local", options };
+                                delayedLocalHandles.push(handle);
+                                resolve(handle);
+                            }, 20);
+                        });
+                    }
                     return Promise.resolve({ kind: "local", options });
                 },
                 listenLocal(options) {
                     return Promise.resolve({ kind: "server", options });
+                },
+                acceptLocal(server, timeoutMs) {
+                    return Promise.resolve({ kind: "accepted", server, timeoutMs });
                 },
                 writeLocal(handle, bytes, timeoutMs) {
                     handle.lastWrite = { bytes, timeoutMs };
@@ -188,7 +203,14 @@ async function flushMicrotasks(count = 6) {
                 closeLocal() {
                     return Promise.resolve();
                 },
-                abortLocal() {
+                abortLocal(handle) {
+                    handle.aborted = true;
+                    return Promise.resolve();
+                },
+                closeLocalServer() {
+                    return Promise.resolve();
+                },
+                abortLocalServer() {
                     return Promise.resolve();
                 },
             },
@@ -209,6 +231,35 @@ async function flushMicrotasks(count = 6) {
         ]);
         await conn.close();
         assert.equal(conn.closed, true);
+        await assert.rejects(conn.readUntil(new Uint8Array([10])), /closed/);
+        await assert.rejects(conn.readLine(), /closed/);
+
+        const neverDeadlineConn = await LocalEndpoint.connect({
+            path: "runtime:/deadline-never.sock",
+            deadline: Deadline.never(),
+        });
+        assert.deepEqual(neverDeadlineConn._handle.options, { path: "runtime:/deadline-never.sock" });
+        await neverDeadlineConn.close();
+
+        const cancelledConnect = new CancellationController();
+        cancelledConnect.cancel("caller stopped");
+        const callsBeforeCancelledConnect = connectLocalCalls;
+        await assert.rejects(
+            LocalEndpoint.connect({ path: "runtime:/cancelled.sock", signal: cancelledConnect.signal }),
+            /cancelled/,
+        );
+        assert.equal(connectLocalCalls, callsBeforeCancelledConnect);
+
+        await assert.rejects(
+            LocalEndpoint.connect({ path: "runtime:/expired.sock", deadline: Deadline.after(0) }),
+            /timed out/,
+        );
+        assert.equal(connectLocalCalls, callsBeforeCancelledConnect);
+
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/late.sock", timeoutMs: 1 }), /timed out/);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(delayedLocalHandles.length, 1);
+        assert.equal(delayedLocalHandles[0].aborted, true);
 
         const server = await LocalEndpoint.listen({
             path: "runtime:/my-app.sock",
@@ -223,6 +274,16 @@ async function flushMicrotasks(count = 6) {
             permissions: "0600",
             backlog: 4,
         });
+        const accepted = await server.accept({ timeoutMs: 6 });
+        assert.equal(accepted._handle.server, server._handle);
+        assert.equal(accepted._handle.timeoutMs, 6);
+        assert.equal(typeof server.accept({ timeoutMs: 7 })[Symbol.asyncIterator], "function");
+        const acceptIterator = server.accept({ timeoutMs: 7 })[Symbol.asyncIterator]();
+        const iterated = await acceptIterator.next();
+        assert.equal(iterated.done, false);
+        assert.equal(iterated.value._handle.timeoutMs, 7);
+        await iterated.value.close();
+        await accepted.close();
         await server.close();
         assert.equal(server.closed, true);
 
@@ -233,6 +294,9 @@ async function flushMicrotasks(count = 6) {
 
         await assert.rejects(LocalEndpoint.connect({ path: "../bad.sock" }), /named-root/);
         await assert.rejects(LocalEndpoint.connect({ path: "runtime:/../bad.sock" }), /named root/);
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/bad//sock" }), /named root/);
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/bad/." }), /named root/);
+        await assert.rejects(LocalEndpoint.connect({ path: "runtime:/bad name.sock" }), /named root/);
         await assert.rejects(
             LocalEndpoint.listen({ path: "runtime:/ok.sock", permissions: "600" }),
             /octal/,

@@ -511,6 +511,12 @@ SlLocalEndpointBackend net_v8_default_local_backend(void)
 #endif
 }
 
+bool net_v8_is_runtime_path_segment_char(char ch)
+{
+    return ch == '.' || ch == '_' || ch == '-' || (ch >= '0' && ch <= '9') ||
+           (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+}
+
 bool net_v8_runtime_path_to_local_path(const std::string& logical, SlLocalEndpointBackend backend,
                                        std::string* out)
 {
@@ -522,28 +528,48 @@ bool net_v8_runtime_path_to_local_path(const std::string& logical, SlLocalEndpoi
     if (suffix.empty()) {
         return false;
     }
-    for (char& ch : suffix) {
-        if (ch == '/') {
-            ch = '-';
+    if (suffix.front() == '/' || suffix.back() == '/' || suffix.find('\\') != std::string::npos) {
+        return false;
+    }
+
+    std::string encoded_suffix;
+    size_t segment_start = 0U;
+    while (segment_start < suffix.size()) {
+        size_t segment_end = suffix.find('/', segment_start);
+        if (segment_end == std::string::npos) {
+            segment_end = suffix.size();
         }
-        else if (!(ch == '.' || ch == '_' || ch == '-' || (ch >= '0' && ch <= '9') ||
-                   (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')))
-        {
+        if (segment_end == segment_start) {
             return false;
         }
+
+        const std::string segment = suffix.substr(segment_start, segment_end - segment_start);
+        if (segment == "." || segment == "..") {
+            return false;
+        }
+        for (const char ch : segment) {
+            if (!net_v8_is_runtime_path_segment_char(ch)) {
+                return false;
+            }
+        }
+        if (!encoded_suffix.empty()) {
+            encoded_suffix += '~';
+        }
+        encoded_suffix += segment;
+        segment_start = segment_end + 1U;
     }
     if (backend == SL_LOCAL_ENDPOINT_BACKEND_AUTO) {
         backend = net_v8_default_local_backend();
     }
     if (backend == SL_LOCAL_ENDPOINT_BACKEND_NAMED_PIPE) {
-        *out = "\\\\.\\pipe\\sloppy-runtime-" + suffix;
+        *out = "\\\\.\\pipe\\sloppy-runtime-" + encoded_suffix;
         return true;
     }
     if (backend == SL_LOCAL_ENDPOINT_BACKEND_UNIX) {
 #ifdef _WIN32
         return false;
 #else
-        *out = "/tmp/sloppy-runtime-" + suffix;
+        *out = "/tmp/sloppy-runtime-" + encoded_suffix;
         return true;
 #endif
     }

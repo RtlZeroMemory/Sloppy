@@ -1603,7 +1603,10 @@ static int test_net_intrinsic_namespace_is_registered(void)
                                  "  const n = globalThis.__sloppy.net;"
                                  "  const names = ['connect', 'listen', 'accept', 'write',"
                                  "    'read', 'readLine', 'readUntil', 'close', 'abort',"
-                                 "    'closeListener', 'abortListener'];"
+                                 "    'closeListener', 'abortListener', 'connectLocal',"
+                                 "    'listenLocal', 'acceptLocal', 'writeLocal', 'readLocal',"
+                                 "    'readLineLocal', 'readUntilLocal', 'closeLocal',"
+                                 "    'abortLocal', 'closeLocalServer', 'abortLocalServer'];"
                                  "  return n && names.every((name) => typeof n[name] === "
                                  "'function')"
                                  "    ? 'net-active-ok'"
@@ -1630,6 +1633,80 @@ static int test_net_intrinsic_namespace_is_registered(void)
     {
         sl_engine_destroy(engine);
         return 435;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_net_local_endpoint_intrinsic_rejects_invalid_runtime_path(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.net")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 436;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 437;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-net-local-invalid.js"),
+                sl_str_from_cstr(
+                    "globalThis.sloppy_net_local_invalid = async function () {"
+                    "  const invalidPaths = ['runtime:/../bad.sock', 'runtime://bad.sock',"
+                    "    'runtime:/bad//sock', 'runtime:/bad name.sock'];"
+                    "  for (const path of invalidPaths) {"
+                    "    try { await globalThis.__sloppy.net.connectLocal({ path });"
+                    "      return 'accepted:' + path;"
+                    "    } catch (err) {"
+                    "      const message = String(err && err.message ? err.message : err);"
+                    "      if (!message.includes('local IPC endpoint path is invalid')) {"
+                    "        return 'wrong-error:' + message;"
+                    "      }"
+                    "    }"
+                    "  }"
+                    "  return 'local-invalid-ok';"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 438;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_net_local_invalid"),
+                                               &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 439;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("local-invalid-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 440;
     }
 
     sl_engine_destroy(engine);
@@ -4297,6 +4374,11 @@ int main(int argc, char** argv)
     }
 
     result = test_net_intrinsic_namespace_is_registered();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_net_local_endpoint_intrinsic_rejects_invalid_runtime_path();
     if (result != 0) {
         return result;
     }

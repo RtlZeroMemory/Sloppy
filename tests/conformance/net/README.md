@@ -1,6 +1,6 @@
 # Network Conformance
 
-Status: CORE-NET-01.I evidence index.
+Status: CORE-NET-01.I plus CORE-NET-02 stabilization evidence index.
 
 Network conformance is split by lane:
 
@@ -39,8 +39,8 @@ Network conformance is split by lane:
   `stdlib.net`, `features.network`, and `strongPlan.evidence.network`;
 - V8-gated evidence: `conformance.v8.runtime_bridge` covers active `__sloppy.net`
   registration, `stdlib.httpclient` activation of that private bridge dependency, TCP
-  client/listener loopback smoke, promise settlement through the V8 owner-thread path, and
-  inactive-feature gating when a V8 SDK is configured.
+  client/listener loopback smoke, LocalEndpoint bridge/path validation, promise settlement
+  through the V8 owner-thread path, and inactive-feature gating when a V8 SDK is configured.
 
 CORE-NET-02 adds POSIX-gated Unix domain socket native tests, Windows-gated named pipe
 native tests, local IPC API validation, stable diagnostic shapes, V8 bridge wiring, and

@@ -298,14 +298,34 @@ int test_accept_timeout_and_unsupported_backend()
     connect_options.timeout_ms = 25U;
     if (expect_status(
             sl_local_endpoint_connect(&accepted_arena, &connect_options, &connection, nullptr),
-            SL_STATUS_UNSUPPORTED) != 0 ||
-        connection != nullptr)
+            SL_STATUS_OK) != 0 ||
+        connection == nullptr)
     {
         (void)sl_local_server_abort(server, nullptr);
         (void)unlink(path.c_str());
         return 3;
     }
     accept_options.has_timeout_ms = true;
+    accept_options.timeout_ms = 1000U;
+    if (expect_status(
+            sl_local_server_accept(server, &accepted_arena, &accept_options, &accepted, nullptr),
+            SL_STATUS_OK) != 0 ||
+        accepted == nullptr)
+    {
+        (void)sl_local_connection_abort(connection, nullptr);
+        (void)sl_local_server_abort(server, nullptr);
+        (void)unlink(path.c_str());
+        return 4;
+    }
+    if (expect_status(sl_local_connection_close(connection, nullptr), SL_STATUS_OK) != 0 ||
+        expect_status(sl_local_connection_close(accepted, nullptr), SL_STATUS_OK) != 0)
+    {
+        (void)sl_local_server_abort(server, nullptr);
+        (void)unlink(path.c_str());
+        return 5;
+    }
+    connection = nullptr;
+    accepted = nullptr;
     accept_options.timeout_ms = 25U;
     if (expect_status(
             sl_local_server_accept(server, &accepted_arena, &accept_options, &accepted, nullptr),
@@ -314,7 +334,7 @@ int test_accept_timeout_and_unsupported_backend()
     {
         (void)sl_local_server_abort(server, nullptr);
         (void)unlink(path.c_str());
-        return 4;
+        return 6;
     }
     {
         SlCancellationToken token = {};
@@ -326,7 +346,7 @@ int test_accept_timeout_and_unsupported_backend()
         {
             (void)sl_local_server_abort(server, nullptr);
             (void)unlink(path.c_str());
-            return 5;
+            return 7;
         }
         accept_options = sl_local_accept_options_default();
         accept_options.cancellation = &token;
@@ -337,7 +357,7 @@ int test_accept_timeout_and_unsupported_backend()
         {
             (void)sl_local_server_abort(server, nullptr);
             (void)unlink(path.c_str());
-            return 6;
+            return 8;
         }
     }
     if (expect_status(sl_local_server_close(server, nullptr), SL_STATUS_OK) != 0 ||
@@ -345,7 +365,7 @@ int test_accept_timeout_and_unsupported_backend()
                       SL_STATUS_INVALID_STATE) != 0)
     {
         (void)unlink(path.c_str());
-        return 7;
+        return 9;
     }
     (void)unlink(path.c_str());
     return 0;
