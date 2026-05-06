@@ -188,10 +188,11 @@ void crypto_v8_random_uuid_callback(const v8::FunctionCallbackInfo<v8::Value>& a
 
 template <typename Fn>
 void crypto_v8_random_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args,
-                                    const char* message, Fn generate)
+                                    const char* message, size_t output_multiplier, Fn generate)
 {
     v8::Isolate* isolate = args.GetIsolate();
     size_t length = 0U;
+    size_t output_length = 0U;
     std::vector<char> text;
     v8::Local<v8::String> result;
 
@@ -200,10 +201,11 @@ void crypto_v8_random_text_callback(const v8::FunctionCallbackInfo<v8::Value>& a
         return;
     }
 
-    text.resize(length == 0U ? 1U : length);
+    output_length = length * output_multiplier;
+    text.resize(output_length == 0U ? 1U : output_length);
     if (!sl_status_is_ok(generate(length, text.data(), text.size())) ||
         !sl_status_is_ok(crypto_v8_to_local_string(
-            isolate, sl_str_from_parts(text.data(), text.size()), &result)))
+            isolate, sl_str_from_parts(text.data(), output_length), &result)))
     {
         crypto_v8_throw_error(
             isolate, "SLOPPY_E_CRYPTO_RANDOM_SOURCE_UNAVAILABLE: OS random source unavailable");
@@ -215,7 +217,7 @@ void crypto_v8_random_text_callback(const v8::FunctionCallbackInfo<v8::Value>& a
 void crypto_v8_random_hex_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     crypto_v8_random_text_callback(
-        args, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Random.hex length must be 0..1024",
+        args, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Random.hex length must be 0..1024", 2U,
         [](size_t length, char* out, size_t out_length) {
             return sl_crypto_random_hex(length, out, out_length);
         });
@@ -224,7 +226,7 @@ void crypto_v8_random_hex_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
 void crypto_v8_random_token_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     crypto_v8_random_text_callback(
-        args, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Random.token length must be 0..1024",
+        args, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Random.token length must be 0..1024", 1U,
         [](size_t length, char* out, size_t out_length) {
             return sl_crypto_random_token(length, out, out_length);
         });
@@ -233,7 +235,7 @@ void crypto_v8_random_token_callback(const v8::FunctionCallbackInfo<v8::Value>& 
 void crypto_v8_random_numeric_code_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     crypto_v8_random_text_callback(
-        args, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Random.numericCode length must be 0..1024",
+        args, "SLOPPY_E_CRYPTO_INVALID_KEY_SECRET: Random.numericCode length must be 0..1024", 1U,
         [](size_t length, char* out, size_t out_length) {
             return sl_crypto_random_numeric_code(length, out, out_length);
         });

@@ -1250,9 +1250,13 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "  const sig = c.hmac('sha256', key, enc('Hi There'));"
                                  "  const uuid = c.randomUuid();"
                                  "  const code = c.randomNumericCode(6);"
+                                 "  const randomHexLength = c.randomHex(4).length;"
+                                 "  const emptyRandomText = c.randomHex(0) + "
+                                 "c.randomToken(0) + c.randomNumericCode(0);"
                                  "  const equal = c.constantTimeEquals(sig, sig);"
                                  "  return digest + ':' + hex(sig).slice(0, 8) + ':' + "
-                                 "uuid[14] + ':' + code.length + ':' + equal;"
+                                 "uuid[14] + ':' + code.length + ':' + randomHexLength + ':' + "
+                                 "emptyRandomText.length + ':' + equal;"
                                  "};"),
                 &diag),
             SL_STATUS_OK) != 0)
@@ -1273,7 +1277,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(result.text, sl_str_from_cstr("ba7816bf8f01cfea414140de5dae2223"
                                                     "b00361a396177a9cb410ff61f20015ad:"
-                                                    "b0344c61:4:6:true")))
+                                                    "b0344c61:4:6:8:0:true")))
     {
         sl_engine_destroy(engine);
         return 415;
