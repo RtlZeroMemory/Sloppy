@@ -95,13 +95,13 @@
       "optional": [],
       "required": [
         {
-          "env": "SLOPPY_PROVIDERS_POSTGRES_ANALYTICS_CONNECTION_STRING",
+          "env": "Sloppy__Providers__postgres__analytics__connectionString",
           "key": "Sloppy:Providers:postgres:analytics:connectionString",
           "secret": true,
           "type": "secret"
         },
         {
-          "env": "SLOPPY_PROVIDERS_SQLSERVER_REPORTING_CONNECTION_STRING",
+          "env": "Sloppy__Providers__sqlserver__reporting__connectionString",
           "key": "Sloppy:Providers:sqlserver:reporting:connectionString",
           "secret": true,
           "type": "secret"

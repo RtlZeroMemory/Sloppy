@@ -72,13 +72,13 @@
       "required": [
         {
           "key": "Auth:JwtSecret",
-          "env": "AUTH_JWT_SECRET",
+          "env": "Auth__JwtSecret",
           "type": "secret",
           "secret": true
         },
         {
           "key": "Auth:Issuer",
-          "env": "AUTH_ISSUER",
+          "env": "Auth__Issuer",
           "type": "string",
           "secret": false
         }
@@ -86,7 +86,7 @@
       "optional": [
         {
           "key": "Auth:TokenTtlMinutes",
-          "env": "AUTH_TOKEN_TTL_MINUTES",
+          "env": "Auth__TokenTtlMinutes",
           "type": "number",
           "secret": false,
           "default": 60

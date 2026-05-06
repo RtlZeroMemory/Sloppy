@@ -1221,30 +1221,7 @@ impl ConfigurationRequirementPlan {
 }
 
 fn config_key_to_env_name(key: &str) -> String {
-    key.split(':')
-        .map(config_segment_to_env_name)
-        .collect::<Vec<_>>()
-        .join("_")
-}
-
-fn config_segment_to_env_name(segment: &str) -> String {
-    let mut output = String::new();
-    let mut previous_was_lower_or_digit = false;
-    for ch in segment.chars() {
-        if matches!(ch, '-' | '.' | ' ') {
-            if !output.ends_with('_') {
-                output.push('_');
-            }
-            previous_was_lower_or_digit = false;
-            continue;
-        }
-        if ch.is_ascii_uppercase() && previous_was_lower_or_digit {
-            output.push('_');
-        }
-        output.push(ch.to_ascii_uppercase());
-        previous_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
-    }
-    output
+    key.split(':').collect::<Vec<_>>().join("__")
 }
 
 fn normalize_config_key(key: &str) -> String {
@@ -3148,16 +3125,12 @@ fn config_bind_metadata(
             continue;
         }
         let name = property_key_name(&property.key)?;
-        let Some((value_type, has_default, default_value, required, sensitive)) =
-            bind_descriptor_metadata(&property.value)
+        let Some((key_segment, value_type, has_default, default_value, required, sensitive)) =
+            bind_descriptor_metadata(name, &property.value)
         else {
             continue;
         };
-        let key = format!(
-            "{}:{}",
-            provider_config_prefix(prefix),
-            config_bind_descriptor_segment(name)
-        );
+        let key = format!("{}:{}", provider_config_prefix(prefix), key_segment);
         reads.push(ConfigReadMetadata {
             key,
             value_type,
@@ -3174,8 +3147,9 @@ fn config_bind_metadata(
 }
 
 fn bind_descriptor_metadata(
+    name: &str,
     expression: &Expression<'_>,
-) -> Option<(String, bool, Option<Value>, bool, bool)> {
+) -> Option<(String, String, bool, Option<Value>, bool, bool)> {
     match expression {
         Expression::StringLiteral(literal) => {
             let value_type = literal.value.as_str();
@@ -3183,6 +3157,7 @@ fn bind_descriptor_metadata(
                 return None;
             }
             Some((
+                config_bind_descriptor_segment(name),
                 value_type.to_string(),
                 false,
                 None,
@@ -3204,7 +3179,11 @@ fn bind_descriptor_metadata(
             let default_value = object_json_property_value(object, "default");
             let has_default = default_value.is_some();
             let required = object_bool_property_value(object, "required").unwrap_or(!has_default);
+            let key_segment = object_string_property_value(object, "key")
+                .map(str::to_string)
+                .unwrap_or_else(|| config_bind_descriptor_segment(name));
             Some((
+                key_segment,
                 value_type.to_string(),
                 has_default,
                 default_value,
@@ -7645,7 +7624,7 @@ export default app;
             .as_array()
             .expect("required manifest should be an array")
             .iter()
-            .any(|entry| entry["env"] == "AUTH_JWT_SECRET" && entry["secret"] == true));
+            .any(|entry| entry["env"] == "Auth__JwtSecret" && entry["secret"] == true));
         std::env::remove_var("Auth__JwtSecret");
         fs::remove_dir_all(&root).expect("config test directory should be removable");
     }
@@ -7657,7 +7636,7 @@ const app = Sloppy.create();
 const auth = app.config.bind("Auth", {
   jwtSecret: "secret",
   tokenTtlMinutes: { type: "number", default: 60, min: 1, max: 1440 },
-  issuer: { type: "string", required: true }
+  issuer: { key: "Jwt:Issuer", type: "string", required: true }
 });
 app.get("/", () => Results.text("ok"));
 export default app;
@@ -7672,6 +7651,10 @@ export default app;
         assert!(app.config_reads.iter().any(|read| {
             read.key == "Auth:TokenTtlMinutes" && read.has_default && !read.required
         }));
+        assert!(app
+            .config_reads
+            .iter()
+            .any(|read| read.key == "Auth:Jwt:Issuer" && !read.sensitive && read.required));
         let config = super::ConfigurationModel {
             environment: "Development".to_string(),
             values: std::collections::BTreeMap::new(),
@@ -7696,6 +7679,11 @@ export default app;
             .any(|requirement| requirement["key"] == "Auth:JwtSecret"
                 && requirement["status"] == "missing"
                 && requirement["secret"] == true));
+        assert!(requirements
+            .iter()
+            .any(|requirement| requirement["key"] == "Auth:Jwt:Issuer"
+                && requirement["status"] == "missing"
+                && requirement["secret"] == false));
         assert!(plan["configuration"]["packageManifest"]["optional"]
             .as_array()
             .expect("optional manifest should be an array")

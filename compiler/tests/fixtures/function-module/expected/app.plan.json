@@ -84,7 +84,7 @@
       "optional": [],
       "required": [
         {
-          "env": "SLOPPY_PROVIDERS_SQLITE_MAIN_DATABASE",
+          "env": "Sloppy__Providers__sqlite__main__database",
           "key": "Sloppy:Providers:sqlite:main:database",
           "secret": false,
           "type": "string"

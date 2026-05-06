@@ -98,7 +98,7 @@
       "optional": [
         {
           "default": "127.0.0.1",
-          "env": "SLOPPY_SERVER_HOST",
+          "env": "Sloppy__Server__Host",
           "key": "Sloppy:Server:Host",
           "secret": false,
           "type": "string"
@@ -106,7 +106,7 @@
       ],
       "required": [
         {
-          "env": "SLOPPY_PROVIDERS_SQLITE_MAIN_DATABASE",
+          "env": "Sloppy__Providers__sqlite__main__database",
           "key": "Sloppy:Providers:sqlite:main:database",
           "secret": false,
           "type": "string"
