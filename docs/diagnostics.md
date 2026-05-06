@@ -706,6 +706,12 @@ CORE-NET-01.I adds CLI doctor/audit goldens for Plan-visible network capabilitie
 `stdlib.net.capabilities`, `stdlib.net.connect`, `stdlib.net.listen`, and
 `SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE`. Those goldens prove deterministic metadata
 visibility and no OS sandbox or external live-network evidence.
+CORE-NET-02.A/B/F adds stable local IPC diagnostics for the policy/API contract layer:
+feature unavailable, unsupported platform, invalid endpoint path/name, path policy denial,
+stale socket cleanup failure, endpoint already exists, connect/listen failure,
+accept/read/write cancellation or timeout, disposed resources, backend unavailable, and
+unsupported permission/mode behavior. These diagnostics pin the intended local IPC failure
+shapes without claiming Unix socket or Windows named pipe backend execution.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and

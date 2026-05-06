@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_STALE_CLEANUP_FAILED","severity":"error","message":"stale local IPC endpoint cleanup failed","hints":["unlinkExisting may remove only policy-allowed stale socket files."]}

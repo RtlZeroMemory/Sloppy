@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_DISPOSED","severity":"error","message":"local IPC connection or server is disposed","hints":["Disposed local IPC resources reject stale use without touching native handles."]}

@@ -302,38 +302,44 @@ static void client_write_cb(uv_write_t* request, int status)
 
 static int connect_client(uint32_t port, ClientConnect* client)
 {
-    struct sockaddr_in address;
+    int last_result = 0;
 
-    *client = {};
-    if (uv_loop_init(&client->loop) != 0) {
-        return 1;
-    }
-    client->loop_initialized = true;
-    if (uv_tcp_init(&client->loop, &client->handle) != 0) {
-        (void)uv_loop_close(&client->loop);
-        client->loop_initialized = false;
-        return 2;
-    }
-    client->handle_initialized = true;
-    client->handle.data = client;
-    if (uv_ip4_addr("127.0.0.1", static_cast<int>(port), &address) != 0) {
-        close_client(client);
-        return 3;
-    }
+    for (size_t attempt = 0U; attempt < 16U; attempt += 1U) {
+        struct sockaddr_in address;
 
-    client->request.data = client;
-    if (uv_tcp_connect(&client->request, &client->handle, (const struct sockaddr*)&address,
-                       client_connect_cb) != 0)
-    {
+        *client = {};
+        if (uv_loop_init(&client->loop) != 0) {
+            return 1;
+        }
+        client->loop_initialized = true;
+        if (uv_tcp_init(&client->loop, &client->handle) != 0) {
+            (void)uv_loop_close(&client->loop);
+            client->loop_initialized = false;
+            return 2;
+        }
+        client->handle_initialized = true;
+        client->handle.data = client;
+        if (uv_ip4_addr("127.0.0.1", static_cast<int>(port), &address) != 0) {
+            close_client(client);
+            return 3;
+        }
+
+        client->request.data = client;
+        if (uv_tcp_connect(&client->request, &client->handle, (const struct sockaddr*)&address,
+                           client_connect_cb) != 0)
+        {
+            close_client(client);
+            return 4;
+        }
+        (void)uv_run(&client->loop, UV_RUN_DEFAULT);
+        if (client->connected) {
+            return 0;
+        }
+        last_result = 5;
         close_client(client);
-        return 4;
+        uv_sleep(5U);
     }
-    (void)uv_run(&client->loop, UV_RUN_DEFAULT);
-    if (!client->connected) {
-        close_client(client);
-        return 5;
-    }
-    return 0;
+    return last_result;
 }
 
 static int start_client_read(ClientConnect* client)

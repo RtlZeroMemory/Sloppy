@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_UNSUPPORTED_PLATFORM","severity":"error","message":"local IPC platform is unsupported","hints":["UnixSocket is POSIX-specific and NamedPipe is Windows-specific."]}

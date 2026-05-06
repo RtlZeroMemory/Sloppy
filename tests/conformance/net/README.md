@@ -29,7 +29,9 @@ Network conformance is split by lane:
   registration, TCP client/listener loopback smoke, promise settlement through the V8
   owner-thread path, and inactive-feature gating when a V8 SDK is configured.
 
-This is not CORE-NET-02 local IPC, TLS, HTTP client/server behavior, UDP, WebSocket,
-Node/Bun/Deno compatibility, direct WinSock/epoll/kqueue/io_uring backend evidence,
-crypto implementation, package-manager behavior, public alpha documentation, benchmark
-evidence, stress/torture evidence, or external live-network proof.
+CORE-NET-02.A/B/F adds local IPC API validation and stable diagnostic shapes under the
+same `stdlib.net` feature. This is not Unix domain socket or Windows named pipe backend
+execution, TLS, HTTP client/server behavior, UDP, WebSocket, Node/Bun/Deno compatibility,
+direct WinSock/epoll/kqueue/io_uring backend evidence, crypto implementation,
+package-manager behavior, public alpha documentation, benchmark evidence, stress/torture
+evidence, or external live-network proof.

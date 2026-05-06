@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_NET_LOCAL_IPC_INVALID_PATH","severity":"error","message":"local IPC endpoint path is invalid","hints":["Use a configured named-root path such as runtime:/my-app.sock."]}

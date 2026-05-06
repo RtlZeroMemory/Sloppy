@@ -19,6 +19,27 @@ static int expect_str_equal(SlStr actual, SlStr expected)
     return expect_true(sl_str_equal(actual, expected));
 }
 
+typedef struct ExpectedDiagCodeName
+{
+    SlDiagCode code;
+    const char* name;
+} ExpectedDiagCodeName;
+
+static int expect_diag_code_names(const ExpectedDiagCodeName* expected, size_t count,
+                                  int failure_base)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < count; index += 1U) {
+        if (expect_str_equal(sl_diag_code_name(expected[index].code),
+                             sl_str_from_cstr(expected[index].name)) != 0)
+        {
+            return failure_base + (int)index;
+        }
+    }
+    return 0;
+}
+
 static SlStatus make_arena(SlArena* arena, unsigned char* buffer, size_t size)
 {
     return sl_arena_init(arena, buffer, size);
@@ -717,82 +738,38 @@ static int test_codec_code_names(void)
 
 static int test_net_code_names(void)
 {
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_FEATURE_UNAVAILABLE),
-                         sl_str_from_cstr("SLOPPY_E_NET_FEATURE_UNAVAILABLE")) != 0)
-    {
-        return 180;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_DENIED),
-                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_DENIED")) != 0)
-    {
-        return 181;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_LISTEN_DENIED),
-                         sl_str_from_cstr("SLOPPY_E_NET_LISTEN_DENIED")) != 0)
-    {
-        return 182;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_INVALID_HOST),
-                         sl_str_from_cstr("SLOPPY_E_NET_INVALID_HOST")) != 0)
-    {
-        return 183;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_INVALID_PORT),
-                         sl_str_from_cstr("SLOPPY_E_NET_INVALID_PORT")) != 0)
-    {
-        return 184;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_DNS_FAILURE),
-                         sl_str_from_cstr("SLOPPY_E_NET_DNS_FAILURE")) != 0)
-    {
-        return 185;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_TIMEOUT),
-                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_TIMEOUT")) != 0)
-    {
-        return 186;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECT_CANCELLED),
-                         sl_str_from_cstr("SLOPPY_E_NET_CONNECT_CANCELLED")) != 0)
-    {
-        return 187;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_CONNECTION_CLOSED),
-                         sl_str_from_cstr("SLOPPY_E_NET_CONNECTION_CLOSED")) != 0)
-    {
-        return 188;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_STALE_HANDLE),
-                         sl_str_from_cstr("SLOPPY_E_NET_STALE_HANDLE")) != 0)
-    {
-        return 189;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_READ_WRITE_TIMEOUT),
-                         sl_str_from_cstr("SLOPPY_E_NET_READ_WRITE_TIMEOUT")) != 0)
-    {
-        return 190;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_READ_WRITE_CANCELLED),
-                         sl_str_from_cstr("SLOPPY_E_NET_READ_WRITE_CANCELLED")) != 0)
-    {
-        return 191;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_BACKPRESSURE_OVERFLOW),
-                         sl_str_from_cstr("SLOPPY_E_NET_BACKPRESSURE_OVERFLOW")) != 0)
-    {
-        return 192;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_UNSUPPORTED_OPTION),
-                         sl_str_from_cstr("SLOPPY_E_NET_UNSUPPORTED_OPTION")) != 0)
-    {
-        return 193;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_NET_BACKEND_UNAVAILABLE),
-                         sl_str_from_cstr("SLOPPY_E_NET_BACKEND_UNAVAILABLE")) != 0)
-    {
-        return 194;
-    }
-    return 0;
+    static const ExpectedDiagCodeName expected[] = {
+        {SL_DIAG_NET_FEATURE_UNAVAILABLE, "SLOPPY_E_NET_FEATURE_UNAVAILABLE"},
+        {SL_DIAG_NET_CONNECT_DENIED, "SLOPPY_E_NET_CONNECT_DENIED"},
+        {SL_DIAG_NET_LISTEN_DENIED, "SLOPPY_E_NET_LISTEN_DENIED"},
+        {SL_DIAG_NET_INVALID_HOST, "SLOPPY_E_NET_INVALID_HOST"},
+        {SL_DIAG_NET_INVALID_PORT, "SLOPPY_E_NET_INVALID_PORT"},
+        {SL_DIAG_NET_DNS_FAILURE, "SLOPPY_E_NET_DNS_FAILURE"},
+        {SL_DIAG_NET_CONNECT_TIMEOUT, "SLOPPY_E_NET_CONNECT_TIMEOUT"},
+        {SL_DIAG_NET_CONNECT_CANCELLED, "SLOPPY_E_NET_CONNECT_CANCELLED"},
+        {SL_DIAG_NET_CONNECTION_CLOSED, "SLOPPY_E_NET_CONNECTION_CLOSED"},
+        {SL_DIAG_NET_STALE_HANDLE, "SLOPPY_E_NET_STALE_HANDLE"},
+        {SL_DIAG_NET_READ_WRITE_TIMEOUT, "SLOPPY_E_NET_READ_WRITE_TIMEOUT"},
+        {SL_DIAG_NET_READ_WRITE_CANCELLED, "SLOPPY_E_NET_READ_WRITE_CANCELLED"},
+        {SL_DIAG_NET_BACKPRESSURE_OVERFLOW, "SLOPPY_E_NET_BACKPRESSURE_OVERFLOW"},
+        {SL_DIAG_NET_UNSUPPORTED_OPTION, "SLOPPY_E_NET_UNSUPPORTED_OPTION"},
+        {SL_DIAG_NET_BACKEND_UNAVAILABLE, "SLOPPY_E_NET_BACKEND_UNAVAILABLE"},
+        {SL_DIAG_NET_LOCAL_IPC_FEATURE_UNAVAILABLE, "SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE"},
+        {SL_DIAG_NET_LOCAL_IPC_UNSUPPORTED_PLATFORM, "SLOPPY_E_NET_LOCAL_IPC_UNSUPPORTED_PLATFORM"},
+        {SL_DIAG_NET_LOCAL_IPC_INVALID_PATH, "SLOPPY_E_NET_LOCAL_IPC_INVALID_PATH"},
+        {SL_DIAG_NET_LOCAL_IPC_PATH_DENIED, "SLOPPY_E_NET_LOCAL_IPC_PATH_DENIED"},
+        {SL_DIAG_NET_LOCAL_IPC_STALE_CLEANUP_FAILED, "SLOPPY_E_NET_LOCAL_IPC_STALE_CLEANUP_FAILED"},
+        {SL_DIAG_NET_LOCAL_IPC_ENDPOINT_EXISTS, "SLOPPY_E_NET_LOCAL_IPC_ENDPOINT_EXISTS"},
+        {SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED, "SLOPPY_E_NET_LOCAL_IPC_CONNECT_FAILED"},
+        {SL_DIAG_NET_LOCAL_IPC_LISTEN_FAILED, "SLOPPY_E_NET_LOCAL_IPC_LISTEN_FAILED"},
+        {SL_DIAG_NET_LOCAL_IPC_ACCEPT_CANCELLED, "SLOPPY_E_NET_LOCAL_IPC_ACCEPT_CANCELLED"},
+        {SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED, "SLOPPY_E_NET_LOCAL_IPC_READ_WRITE_CANCELLED"},
+        {SL_DIAG_NET_LOCAL_IPC_DISPOSED, "SLOPPY_E_NET_LOCAL_IPC_DISPOSED"},
+        {SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE, "SLOPPY_E_NET_LOCAL_IPC_BACKEND_UNAVAILABLE"},
+        {SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED,
+         "SLOPPY_E_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED"}};
+
+    return expect_diag_code_names(expected, sizeof(expected) / sizeof(expected[0]), 180);
 }
 
 static int test_os_code_names(void)
@@ -1420,11 +1397,119 @@ static int test_os_diagnostic_json_goldens(void)
     return 0;
 }
 
+static int test_local_ipc_diagnostic_json_goldens(void)
+{
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_FEATURE_UNAVAILABLE,
+            "local IPC feature is unavailable",
+            "Enable LocalEndpoint only in a runtime lane with Unix socket or named pipe backends.",
+            "tests/golden/diagnostics/net_local_ipc_feature_unavailable.json") != 0)
+    {
+        return 215;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_UNSUPPORTED_PLATFORM,
+            "local IPC platform is unsupported",
+            "UnixSocket is POSIX-specific and NamedPipe is Windows-specific.",
+            "tests/golden/diagnostics/net_local_ipc_unsupported_platform.json") != 0)
+    {
+        return 216;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_INVALID_PATH,
+            "local IPC endpoint path is invalid",
+            "Use a configured named-root path such as runtime:/my-app.sock.",
+            "tests/golden/diagnostics/net_local_ipc_invalid_path.json") != 0)
+    {
+        return 217;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_PATH_DENIED,
+            "local IPC path was denied by policy",
+            "Strict local IPC policy requires an allow rule for the named root and operation.",
+            "tests/golden/diagnostics/net_local_ipc_path_denied.json") != 0)
+    {
+        return 218;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_STALE_CLEANUP_FAILED,
+            "stale local IPC endpoint cleanup failed",
+            "unlinkExisting may remove only policy-allowed stale socket files.",
+            "tests/golden/diagnostics/net_local_ipc_stale_cleanup_failed.json") != 0)
+    {
+        return 219;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_ENDPOINT_EXISTS,
+            "local IPC endpoint already exists",
+            "Set unlinkExisting only when stale-socket cleanup is intended and policy-allowed.",
+            "tests/golden/diagnostics/net_local_ipc_endpoint_exists.json") != 0)
+    {
+        return 220;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_CONNECT_FAILED,
+            "local IPC connect failed",
+            "Connect diagnostics must not expose raw socket, pipe, or OS handles.",
+            "tests/golden/diagnostics/net_local_ipc_connect_failed.json") != 0)
+    {
+        return 221;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_LISTEN_FAILED, "local IPC listen failed",
+            "Listen diagnostics include safe endpoint metadata only.",
+            "tests/golden/diagnostics/net_local_ipc_listen_failed.json") != 0)
+    {
+        return 222;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_ACCEPT_CANCELLED,
+            "local IPC accept was cancelled or timed out",
+            "Accept cancellation and timeout remain distinguishable at the JS error boundary.",
+            "tests/golden/diagnostics/net_local_ipc_accept_cancelled.json") != 0)
+    {
+        return 223;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_READ_WRITE_CANCELLED,
+            "local IPC read or write was cancelled or timed out",
+            "Read/write cancellation and timeout must not be conflated with backend failure.",
+            "tests/golden/diagnostics/net_local_ipc_read_write_cancelled.json") != 0)
+    {
+        return 224;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_DISPOSED,
+            "local IPC connection or server is disposed",
+            "Disposed local IPC resources reject stale use without touching native handles.",
+            "tests/golden/diagnostics/net_local_ipc_disposed.json") != 0)
+    {
+        return 225;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_BACKEND_UNAVAILABLE,
+            "local IPC backend is unavailable",
+            "Unsupported platform/backend combinations fail honestly before native admission.",
+            "tests/golden/diagnostics/net_local_ipc_backend_unavailable.json") != 0)
+    {
+        return 226;
+    }
+    if (expect_stdlib_json_snapshot(
+            SL_DIAG_SEVERITY_ERROR, SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED,
+            "local IPC permission mode is unsupported",
+            "POSIX mode strings are applied only where the backend can enforce them.",
+            "tests/golden/diagnostics/net_local_ipc_permission_unsupported.json") != 0)
+    {
+        return 227;
+    }
+    return 0;
+}
+
 static int test_stable_code_registry_complete(void)
 {
     size_t value = (size_t)SL_DIAG_NONE;
 
-    for (; value <= (size_t)SL_DIAG_OS_SIGNAL_HANDLER_FAILURE; value += 1U) {
+    for (; value <= (size_t)SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED; value += 1U) {
         if (expect_true(!sl_str_equal(sl_diag_code_name((SlDiagCode)value),
                                       sl_str_from_cstr("SLOPPY_E_UNKNOWN"))) != 0)
         {
@@ -1433,7 +1518,8 @@ static int test_stable_code_registry_complete(void)
     }
 
     if (expect_str_equal(
-            sl_diag_code_name((SlDiagCode)((size_t)SL_DIAG_OS_SIGNAL_HANDLER_FAILURE + 1U)),
+            sl_diag_code_name(
+                (SlDiagCode)((size_t)SL_DIAG_NET_LOCAL_IPC_PERMISSION_UNSUPPORTED + 1U)),
             sl_str_from_cstr("SLOPPY_E_UNKNOWN")) != 0)
     {
         return 54;
@@ -2124,7 +2210,12 @@ static int test_diagnostic_json_golden_groups(void)
         return result;
     }
 
-    return test_os_diagnostic_json_goldens();
+    result = test_os_diagnostic_json_goldens();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_local_ipc_diagnostic_json_goldens();
 }
 
 int main(void)

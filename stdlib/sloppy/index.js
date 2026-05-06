@@ -3,7 +3,15 @@ export { Base64, Base64Url, Binary, Checksums, Compression, Hex, Text } from "./
 export { ConstantTime, Hash, Hmac, NonCryptoHash, Password, Random, Secret } from "./crypto.js";
 export { data, sql } from "./data.js";
 export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
-export { NetworkAddress, TcpClient, TcpConnection, TcpListener } from "./net.js";
+export {
+    LocalEndpoint,
+    NamedPipe,
+    NetworkAddress,
+    TcpClient,
+    TcpConnection,
+    TcpListener,
+    UnixSocket,
+} from "./net.js";
 export { Results } from "./results.js";
 export { schema } from "./schema.js";
 export {

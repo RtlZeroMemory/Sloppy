@@ -3,6 +3,10 @@
  *
  * POSIX filesystem backend. POSIX path and file-descriptor behavior stays here.
  */
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE
+#endif
+
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #endif
@@ -61,7 +65,7 @@ static uint64_t sl_fs_posix_modified_stamp(const struct stat* st)
     }
 #if defined(__APPLE__)
     return ((uint64_t)st->st_mtimespec.tv_sec * 1000000000ULL) + (uint64_t)st->st_mtimespec.tv_nsec;
-#elif defined(st_mtim)
+#elif defined(__linux__)
     return ((uint64_t)st->st_mtim.tv_sec * 1000000000ULL) + (uint64_t)st->st_mtim.tv_nsec;
 #else
     return (uint64_t)st->st_mtime * 1000000000ULL;

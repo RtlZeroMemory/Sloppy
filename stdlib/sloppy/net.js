@@ -149,6 +149,178 @@ function normalizeListenOptions(options) {
     return normalized;
 }
 
+function normalizeLocalEndpointPath(path, operation) {
+    if (typeof path !== "string" || path.length === 0) {
+        throw new TypeError(`${operation} path must be a non-empty string.`);
+    }
+    if (path.includes("\0")) {
+        throw new TypeError(`${operation} path must not contain NUL bytes.`);
+    }
+    if (/^[A-Za-z]:[\\/]/.test(path) || path.startsWith("/") || path.startsWith("\\\\")) {
+        throw new TypeError(`${operation} path must use a configured named root such as runtime:/.`);
+    }
+    const separator = path.indexOf(":/");
+    if (separator <= 0) {
+        throw new TypeError(`${operation} path must use a named-root path such as runtime:/my-app.sock.`);
+    }
+    const root = path.slice(0, separator);
+    const rest = path.slice(separator + 2);
+    if (!/^[A-Za-z][A-Za-z0-9_.-]*$/.test(root)) {
+        throw new TypeError(`${operation} named root is invalid.`);
+    }
+    if (rest.length === 0 || rest.startsWith("/") || rest.includes("\\") || rest.split("/").includes("..")) {
+        throw new TypeError(`${operation} path must stay inside the named root.`);
+    }
+    return path;
+}
+
+function normalizePermissionMode(value, operation) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (typeof value !== "string" || !/^0[0-7]{3}$/.test(value)) {
+        throw new TypeError(`${operation} permissions must be an octal string such as "0600".`);
+    }
+    return value;
+}
+
+function normalizeLocalConnectOptions(options, operation) {
+    if (!isPlainObject(options)) {
+        throw new TypeError(`${operation} options must be a plain object.`);
+    }
+    const normalized = { path: normalizeLocalEndpointPath(options.path, operation) };
+    if (options.backend !== undefined) {
+        if (options.backend !== "unix" && options.backend !== "namedPipe") {
+            throw new TypeError(`${operation} backend must be "unix" or "namedPipe" when specified.`);
+        }
+        normalized.backend = options.backend;
+    }
+    if (options.timeoutMs !== undefined) {
+        if (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0) {
+            throw new TypeError(`${operation} timeoutMs must be a non-negative number.`);
+        }
+        normalized.timeoutMs = Math.ceil(options.timeoutMs);
+    }
+    return normalized;
+}
+
+function normalizeLocalListenOptions(options, operation) {
+    const normalized = normalizeLocalConnectOptions(options, operation);
+    if (options.unlinkExisting !== undefined && typeof options.unlinkExisting !== "boolean") {
+        throw new TypeError(`${operation} unlinkExisting must be a boolean.`);
+    }
+    if (options.backlog !== undefined && (!Number.isInteger(options.backlog) || options.backlog < 1)) {
+        throw new TypeError(`${operation} backlog must be a positive integer.`);
+    }
+    normalized.unlinkExisting = options.unlinkExisting === true;
+    normalized.permissions = normalizePermissionMode(options.permissions, operation);
+    if (options.backlog !== undefined) {
+        normalized.backlog = options.backlog;
+    }
+    return normalized;
+}
+
+function localIpcUnavailable() {
+    throw new SloppyNetError(
+        "LocalIpcFeatureUnavailableError",
+        "SLOPPY_E_NET_LOCAL_IPC_FEATURE_UNAVAILABLE: local IPC is specified but no Unix socket or named pipe backend is active.",
+    );
+}
+
+class LocalEndpointServer {
+    constructor(bridge, handle) {
+        this._bridge = bridge;
+        this._handle = handle;
+        this._closed = false;
+    }
+
+    get closed() {
+        return this._closed;
+    }
+
+    async accept(options = undefined) {
+        if (this._closed) {
+            throw new SloppyNetError("LocalEndpointDisposedError", "Local endpoint server is closed.");
+        }
+        const timeoutMs = normalizeTimeoutOption(options, "LocalEndpoint.accept");
+        if (typeof this._bridge.acceptLocal !== "function") {
+            localIpcUnavailable();
+        }
+        return this._bridge.acceptLocal(this._handle, timeoutMs);
+    }
+
+    acceptLoop(options = undefined) {
+        const server = this;
+        return {
+            async *[Symbol.asyncIterator]() {
+                while (!server.closed) {
+                    yield await server.accept(options);
+                }
+            },
+        };
+    }
+
+    async close() {
+        if (this._closed) {
+            return;
+        }
+        this._closed = true;
+        if (typeof this._bridge.closeLocalServer === "function") {
+            await this._bridge.closeLocalServer(this._handle);
+        }
+    }
+
+    async abort() {
+        if (this._closed) {
+            return;
+        }
+        this._closed = true;
+        if (typeof this._bridge.abortLocalServer === "function") {
+            await this._bridge.abortLocalServer(this._handle);
+        }
+    }
+}
+
+const LocalEndpoint = Object.freeze({
+    async connect(options) {
+        const bridge = requireNetBridge();
+        const normalized = normalizeLocalConnectOptions(options, "LocalEndpoint.connect");
+        if (typeof bridge.connectLocal !== "function") {
+            localIpcUnavailable();
+        }
+        return bridge.connectLocal(normalized);
+    },
+
+    async listen(options) {
+        const bridge = requireNetBridge();
+        const normalized = normalizeLocalListenOptions(options, "LocalEndpoint.listen");
+        if (typeof bridge.listenLocal !== "function") {
+            localIpcUnavailable();
+        }
+        return new LocalEndpointServer(bridge, await bridge.listenLocal(normalized));
+    },
+});
+
+const UnixSocket = Object.freeze({
+    async connect(options) {
+        return LocalEndpoint.connect({ ...options, backend: "unix" });
+    },
+
+    async listen(options) {
+        return LocalEndpoint.listen({ ...options, backend: "unix" });
+    },
+});
+
+const NamedPipe = Object.freeze({
+    async connect(options) {
+        return LocalEndpoint.connect({ ...options, backend: "namedPipe" });
+    },
+
+    async listen(options) {
+        return LocalEndpoint.listen({ ...options, backend: "namedPipe" });
+    },
+});
+
 function normalizeTimeoutOption(options, operation) {
     if (options === undefined) {
         return undefined;
@@ -317,4 +489,13 @@ const TcpListener = Object.freeze({
     },
 });
 
-export { NetworkAddress, SloppyNetError, TcpClient, TcpConnection, TcpListener };
+export {
+    LocalEndpoint,
+    NamedPipe,
+    NetworkAddress,
+    SloppyNetError,
+    TcpClient,
+    TcpConnection,
+    TcpListener,
+    UnixSocket,
+};
