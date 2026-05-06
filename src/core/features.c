@@ -144,6 +144,22 @@ static SlRuntimeFeatureDescriptor sl_feature_http_client_descriptor(SlRuntimeFea
         available, true, true);
 }
 
+static SlRuntimeFeatureDescriptor sl_feature_workers_descriptor(SlRuntimeFeatureId id,
+                                                                bool available)
+{
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.workers", sizeof("stdlib.workers") - 1U),
+        sl_feature_literal("workers stdlib", sizeof("workers stdlib") - 1U),
+        sl_feature_literal("sloppy/workers", sizeof("sloppy/workers") - 1U),
+        sl_feature_literal("__sloppy.workers", sizeof("__sloppy.workers") - 1U),
+        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC),
+        available, true, true);
+}
+
 static SlRuntimeFeatureDescriptor sl_feature_unknown_descriptor(SlRuntimeFeatureId id)
 {
     return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_CORE, sl_str_empty(),
@@ -209,6 +225,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     const bool codec = availability == NULL ? true : availability->stdlib_codec;
     const bool os = availability == NULL ? false : availability->stdlib_os;
     const bool http_client = availability == NULL ? false : availability->stdlib_http_client;
+    const bool workers = availability == NULL ? false : availability->stdlib_workers;
 
     switch (id) {
     case SL_RUNTIME_FEATURE_CORE:
@@ -285,6 +302,8 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_os_descriptor(id, os);
     case SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT:
         return sl_feature_http_client_descriptor(id, http_client);
+    case SL_RUNTIME_FEATURE_STDLIB_WORKERS:
+        return sl_feature_workers_descriptor(id, workers);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
         return sl_feature_fs_descriptor(id);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
@@ -315,6 +334,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.stdlib_net = true;
     availability.stdlib_os = true;
     availability.stdlib_http_client = true;
+    availability.stdlib_workers = true;
     return availability;
 }
 
@@ -413,6 +433,14 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |
              SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO),
+         true, true, true},
+        {SL_RUNTIME_FEATURE_STDLIB_WORKERS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.workers"), SL_FEATURE_STR("workers stdlib"),
+         SL_FEATURE_STR("sloppy/workers"), SL_FEATURE_STR("__sloppy.workers"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC),
          true, true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {

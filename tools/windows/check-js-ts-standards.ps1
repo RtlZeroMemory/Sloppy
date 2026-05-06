@@ -144,6 +144,21 @@ function Test-AllowedStdlibGlobalWrite {
     return $false
 }
 
+function Test-AllowedStdlibDynamicImport {
+    param(
+        [string]$RelativePath,
+        [string]$Line
+    )
+
+    if ($RelativePath -eq "stdlib/sloppy/workers.js" -and
+        $Line -match '^\s*const\s+moduleNamespace\s+=\s+await\s+import\s*\(\s*modulePath\s*\)\s*;')
+    {
+        return $true
+    }
+
+    return $false
+}
+
 $files = Get-TrackedSourceFiles
 if ($files.Count -eq 0) {
     $files = Get-RecursiveSourceFiles
@@ -196,6 +211,11 @@ foreach ($file in $files) {
         if ($relativePath.StartsWith("stdlib/sloppy/", [System.StringComparison]::OrdinalIgnoreCase)) {
             foreach ($rule in $stdlibRules) {
                 if ($line -match $rule.Pattern) {
+                    if ($rule.Rule -eq "JS010" -and
+                        (Test-AllowedStdlibDynamicImport -RelativePath $relativePath -Line $line))
+                    {
+                        continue
+                    }
                     $violations += New-Finding -File $relativePath -Line $lineNumber -Rule $rule.Rule -Message $rule.Message
                 }
             }

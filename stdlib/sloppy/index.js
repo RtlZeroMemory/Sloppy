@@ -25,3 +25,12 @@ export {
     TimeoutError,
     TimerDisposedError,
 } from "./time.js";
+export {
+    BackgroundService,
+    SloppyWorkerError,
+    WorkQueue,
+    Worker,
+    WorkerCancellationController,
+    WorkerCancellationSignal,
+    WorkerPool,
+} from "./workers.js";

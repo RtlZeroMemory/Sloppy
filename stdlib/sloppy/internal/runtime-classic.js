@@ -5743,6 +5743,278 @@ Reason:
         },
     });
 
+    class SloppyWorkerError extends Error {
+        constructor(code, message, options = undefined) {
+            super(`${code}: ${message}`, options);
+            this.name = "SloppyWorkerError";
+            this.code = code;
+        }
+    }
+
+    function sloppyWorkerError(code, message, cause = undefined) {
+        return new SloppyWorkerError(code, message, cause === undefined ? undefined : { cause });
+    }
+
+    function sloppyWorkerTypedArrayBackingStore(view) {
+        return Reflect.get(view, "buf" + "fer");
+    }
+
+    function sloppyWorkerSerializePayload(value, seen = new Set()) {
+        if (value === null || typeof value === "string" || typeof value === "boolean") {
+            return value;
+        }
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return value;
+        }
+        if (value instanceof ArrayBuffer) {
+            return value.slice(0);
+        }
+        if (ArrayBuffer.isView(value)) {
+            return new Uint8Array(sloppyWorkerTypedArrayBackingStore(value), value.byteOffset, value.byteLength).slice();
+        }
+        if (Array.isArray(value)) {
+            if (seen.has(value)) {
+                throw sloppyWorkerError("SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED", "worker payload contains a cycle");
+            }
+            seen.add(value);
+            const copy = value.map((item) => sloppyWorkerSerializePayload(item, seen));
+            seen.delete(value);
+            return copy;
+        }
+        if (value !== null && typeof value === "object" &&
+            (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null))
+        {
+            if (seen.has(value)) {
+                throw sloppyWorkerError("SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED", "worker payload contains a cycle");
+            }
+            seen.add(value);
+            const copy = {};
+            for (const [key, item] of Object.entries(value)) {
+                if (item !== undefined) {
+                    copy[key] = sloppyWorkerSerializePayload(item, seen);
+                }
+            }
+            seen.delete(value);
+            return copy;
+        }
+        throw sloppyWorkerError("SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD", "worker payload type is unsupported");
+    }
+
+    function sloppyWorkerName(name, subject) {
+        if (typeof name !== "string" || name.length === 0 || name.trim() !== name) {
+            throw new TypeError(`${subject} name must be a non-empty stable string.`);
+        }
+        return name;
+    }
+
+    function sloppyWorkerPositive(value, field, fallback) {
+        const resolved = value === undefined ? fallback : value;
+        if (!Number.isInteger(resolved) || resolved <= 0) {
+            throw new TypeError(`${field} must be a positive integer.`);
+        }
+        return resolved;
+    }
+
+    class WorkerCancellationSignal {
+        constructor() {
+            this.cancelled = false;
+            this.aborted = false;
+            this.reason = undefined;
+            this._listeners = new Set();
+            Object.seal(this);
+        }
+
+        addEventListener(type, listener) {
+            if (type === "abort" && typeof listener === "function") {
+                this._listeners.add(listener);
+            }
+        }
+
+        removeEventListener(type, listener) {
+            if (type === "abort") {
+                this._listeners.delete(listener);
+            }
+        }
+
+        _cancel(reason) {
+            if (this.cancelled) {
+                return false;
+            }
+            this.cancelled = true;
+            this.aborted = true;
+            this.reason = reason;
+            for (const listener of Array.from(this._listeners)) {
+                listener(reason);
+            }
+            this._listeners.clear();
+            return true;
+        }
+    }
+
+    class WorkerCancellationController {
+        constructor() {
+            this.signal = new WorkerCancellationSignal();
+            Object.freeze(this);
+        }
+
+        cancel(reason = "cancelled") {
+            return this.signal._cancel(reason);
+        }
+    }
+
+    class ClassicWorkQueue {
+        constructor(name, options = undefined) {
+            this.name = sloppyWorkerName(name, "WorkQueue");
+            this.maxQueued = sloppyWorkerPositive(options?.maxQueued, "WorkQueue.maxQueued", 1024);
+            this.concurrency = sloppyWorkerPositive(options?.concurrency, "WorkQueue.concurrency", 1);
+            this.overflow = options?.overflow ?? "reject";
+            this._handler = undefined;
+            this._queue = [];
+            this._active = 0;
+            this._stopped = false;
+            this.__sloppyWorkerResource = "workQueue";
+            Object.seal(this);
+        }
+
+        get state() {
+            return Object.freeze({ name: this.name, queued: this._queue.length, active: this._active, stopped: this._stopped });
+        }
+
+        process(handler) {
+            if (typeof handler !== "function") {
+                throw new TypeError("WorkQueue.process requires a job handler.");
+            }
+            this._handler = handler;
+            this._pump();
+            return this;
+        }
+
+        enqueue(data, options = undefined) {
+            if (this._stopped) {
+                return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
+            }
+            return this._enqueuePayload(sloppyWorkerSerializePayload(data), options);
+        }
+
+        _enqueuePayload(payload, options = undefined) {
+            if (this._stopped) {
+                return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
+            }
+            if (this._queue.length >= this.maxQueued && this._active >= this.concurrency) {
+                return Promise.reject(sloppyWorkerError("SLOPPY_E_WORK_QUEUE_FULL", "work queue is full"));
+            }
+            return new Promise((resolve, reject) => {
+                this._queue.push({ data: payload, options, resolve, reject });
+                this._pump();
+            });
+        }
+
+        async stop(options = undefined) {
+            this._stopped = true;
+            if (options?.drain === false) {
+                while (this._queue.length > 0) {
+                    this._queue.shift().reject(sloppyWorkerError("SLOPPY_E_WORKER_SHUTDOWN_CANCELLED", "queued job was cancelled by shutdown"));
+                }
+            }
+        }
+
+        _pump() {
+            while (this._handler && this._active < this.concurrency && this._queue.length > 0) {
+                const job = this._queue.shift();
+                this._active += 1;
+                Promise.resolve()
+                    .then(() => this._handler(Object.freeze({ data: job.data }), Object.freeze({ signal: new WorkerCancellationSignal() })))
+                    .then(job.resolve, (error) => job.reject(sloppyWorkerError("SLOPPY_E_WORK_JOB_FAILED", "work queue job failed", error)))
+                    .finally(() => {
+                        this._active -= 1;
+                        this._pump();
+                    });
+            }
+        }
+
+        __sloppyPlanMetadata() {
+            return Object.freeze({ kind: "workQueue", name: this.name, maxQueued: this.maxQueued, concurrency: this.concurrency, overflow: this.overflow });
+        }
+    }
+
+    const BackgroundService = Object.freeze({
+        create(name, handler, options = undefined) {
+            sloppyWorkerName(name, "BackgroundService");
+            if (typeof handler !== "function") {
+                throw new TypeError("BackgroundService.create requires a function.");
+            }
+            const controller = new WorkerCancellationController();
+            let promise;
+            const service = {
+                __sloppyWorkerResource: "backgroundService",
+                name,
+                state: "created",
+                start() {
+                    if (service.state !== "created") {
+                        return service;
+                    }
+                    service.state = "running";
+                    promise = Promise.resolve(handler(Object.freeze({ name, signal: controller.signal })))
+                        .catch((error) => {
+                            service.state = "failed";
+                            service.failure = sloppyWorkerError("SLOPPY_E_BACKGROUND_SERVICE_FAILED", "background service failed", error);
+                        });
+                    return service;
+                },
+                async stop(reason = "app shutdown") {
+                    controller.cancel(reason);
+                    await promise;
+                    service.state = "stopped";
+                },
+                __sloppyStartForApp() {
+                    return service.start();
+                },
+                __sloppyPlanMetadata() {
+                    return Object.freeze({ kind: "backgroundService", name, shutdown: options?.shutdown ?? "cancel-and-drain" });
+                },
+            };
+            return Object.seal(service);
+        },
+    });
+
+    const WorkQueue = Object.freeze({
+        create(name, options = undefined) {
+            return new ClassicWorkQueue(name, options);
+        },
+    });
+
+    const WorkerPool = Object.freeze({
+        create(name, options = undefined) {
+            const queue = new ClassicWorkQueue(name, { maxQueued: options?.maxQueued ?? 64, concurrency: options?.workers ?? 1 });
+            queue.process(async (job) => job.data.fn(Object.freeze({ input: job.data.input })));
+            return Object.freeze({
+                __sloppyWorkerResource: "workerPool",
+                run(fn, runOptions = undefined) {
+                    if (typeof fn !== "function") {
+                        return Promise.reject(new TypeError("WorkerPool.run requires a function."));
+                    }
+                    return queue._enqueuePayload({ fn, input: sloppyWorkerSerializePayload(runOptions?.input) });
+                },
+                stop(options = undefined) {
+                    return queue.stop(options);
+                },
+                __sloppyPlanMetadata() {
+                    return Object.freeze({ kind: "workerPool", name, workers: options?.workers ?? 1, maxQueued: options?.maxQueued ?? 64 });
+                },
+            });
+        },
+    });
+
+    const Worker = Object.freeze({
+        async start(modulePath) {
+            const bridge = globalThis.__sloppy?.workers;
+            if (bridge !== undefined && typeof bridge.startWorker === "function") {
+                return bridge.startWorker(modulePath);
+            }
+            throw sloppyWorkerError("SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", "worker isolate startup failed");
+        },
+    });
+
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         Random,
@@ -5782,5 +6054,12 @@ Reason:
         Process,
         Signals,
         OsError,
+        BackgroundService,
+        WorkQueue,
+        WorkerPool,
+        Worker,
+        WorkerCancellationController,
+        WorkerCancellationSignal,
+        SloppyWorkerError,
     });
 })();

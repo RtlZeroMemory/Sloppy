@@ -2,8 +2,8 @@
 
 ## Status
 
-Partially implemented for TASK 09.A, TASK 09.B, TASK 09.C, and the ENGINE-03 V8 async
-runtime slice.
+Partially implemented for TASK 09.A, TASK 09.B, TASK 09.C, the ENGINE-03 V8 async
+runtime slice, and CORE-WORKER-01 bootstrap worker resources.
 
 TASK 10.B adds libuv as a vcpkg/CMake dependency and a minimal init/close smoke under the
 HTTP parser tests. It does not change the implemented `SlLoop`, `SlAsync`, or
@@ -33,6 +33,12 @@ drain/cancel policy, and thread-safe posting. ENGINE-03 adds V8 owner-thread mic
 draining for returned handler Promises plus a native cancellation-token snapshot shape, but
 it does not add timers, fetch, Node APIs, or queued native completions.
 
+CORE-WORKER-01 adds `sloppy/workers` as the public worker resource API. In the bootstrap
+stdlib, `BackgroundService`, bounded `WorkQueue`, and `WorkerPool` admission semantics run
+today; V8 installs `__sloppy.workers` feature metadata. True native CPU offload and separate
+V8 worker isolates are still bridge-gated and must not be counted as pass evidence without
+V8-gated tests.
+
 ## Non-goals
 
 No libuv backend, OS event loop, timers, sockets, HTTP server behavior, real worker
@@ -47,6 +53,7 @@ Implemented public header:
 - `include/sloppy/async.h`
 - `include/sloppy/cancellation.h`
 - `include/sloppy/worker_pool.h`
+- `stdlib/sloppy/workers.js`
 
 Implemented API:
 
@@ -69,8 +76,13 @@ Implemented API:
 - `sl_worker_pool_init_inline`;
 - `sl_worker_pool_reset_inline`;
 - `sl_worker_pool_submit`.
+- `BackgroundService.create`;
+- `WorkQueue.create`;
+- `WorkerPool.create`;
+- `Worker.start`.
 
-Real worker-thread abstractions remain future work.
+Real native worker-thread execution for `WorkerPool` and separate JavaScript worker isolate
+execution remain future work beyond the bootstrap API and metadata path.
 
 ## Ownership/Lifetime Rules
 

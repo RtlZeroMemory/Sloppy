@@ -1,0 +1,16 @@
+{
+  "checks": [
+    { "id": "bootstrap.assets", "status": "ok", "message": "bootstrap runtime asset found" },
+    { "id": "engine.v8", "status": "warn", "message": "V8 bridge disabled in this build; V8 runtime tests not run" },
+    { "id": "providers.live", "status": "warn", "message": "live provider checks are not configured by default and no live DB was contacted" },
+    { "id": "package.runtime", "status": "warn", "message": "local CLI checks do not prove package release readiness" },
+    { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
+    { "id": "app.plan.routes", "status": "warn", "message": "no route metadata present" },
+    { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
+    { "id": "app.plan.capabilities", "status": "warn", "message": "capability metadata not present" },
+    { "id": "stdlib.workers.required", "status": "ok", "message": "Workers feature metadata is Plan-visible" },
+    { "id": "stdlib.workers.lifecycle", "status": "ok", "message": "workers are runtime resources with explicit bounded lifecycle policy metadata" },
+    { "id": "stdlib.workers.redaction", "status": "ok", "message": "worker doctor metadata omits payload and secret values" },
+    { "id": "stdlib.workers.contract", "status": "ok", "message": "Workers are Plan-visible as stdlib.workers; queue, service, pool, and JS worker resources are lifecycle-bound and bounded by default" }
+  ]
+}

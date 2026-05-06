@@ -44,6 +44,7 @@ set(
     net.js
     os.js
     time.js
+    workers.js
     index.js
     providers/sqlite.js
     results.js
@@ -385,6 +386,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/intrinsics_net.cc
         src/engine/v8/intrinsics_os.cc
         src/engine/v8/intrinsics_time.cc
+        src/engine/v8/intrinsics_workers.cc
         src/engine/v8/intrinsics_sqlite.cc)
 endif()
 
@@ -991,6 +993,8 @@ if(SLOPPY_ENABLE_TESTS)
     set(SLOPPY_DOCTOR_OS_JSON_GOLDEN tests/golden/cli/doctor-os-json.json)
     set(SLOPPY_DOCTOR_HTTP_CLIENT_TEXT_GOLDEN tests/golden/cli/doctor-http-client-text.txt)
     set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN tests/golden/cli/doctor-http-client-json.json)
+    set(SLOPPY_DOCTOR_WORKERS_TEXT_GOLDEN tests/golden/cli/doctor-workers-text.txt)
+    set(SLOPPY_DOCTOR_WORKERS_JSON_GOLDEN tests/golden/cli/doctor-workers-json.json)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
         tests/golden/cli/doctor-crypto-noncrypto-hash-text.txt)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -1014,6 +1018,8 @@ if(SLOPPY_ENABLE_TESTS)
             tests/golden/cli/doctor-http-client-text-v8.txt)
         set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN
             tests/golden/cli/doctor-http-client-json-v8.json)
+        set(SLOPPY_DOCTOR_WORKERS_TEXT_GOLDEN tests/golden/cli/doctor-workers-text-v8.txt)
+        set(SLOPPY_DOCTOR_WORKERS_JSON_GOLDEN tests/golden/cli/doctor-workers-json-v8.json)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
             tests/golden/cli/doctor-crypto-noncrypto-hash-text-v8.txt)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -1059,6 +1065,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_http_client_json ${SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN} doctor
         --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_workers_text ${SLOPPY_DOCTOR_WORKERS_TEXT_GOLDEN} doctor --plan
+        tests/fixtures/cli/workers-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_workers_json ${SLOPPY_DOCTOR_WORKERS_JSON_GOLDEN} doctor --plan
+        tests/fixtures/cli/workers-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_crypto_noncrypto_hash_text
         ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN} doctor --plan
@@ -1114,6 +1126,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_http_client_json tests/golden/cli/audit-http-client-json.json audit
         --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_workers_text tests/golden/cli/audit-workers-text.txt audit --plan
+        tests/fixtures/cli/workers-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_workers_json tests/golden/cli/audit-workers-json.json audit --plan
+        tests/fixtures/cli/workers-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)
@@ -1866,6 +1884,10 @@ if(SLOPPY_ENABLE_TESTS)
         NAME examples.os.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_os_examples.cmake")
+    add_test(
+        NAME examples.workers.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_workers_examples.cmake")
 
     if(NODE_EXECUTABLE)
         add_test(
@@ -1888,10 +1910,13 @@ if(SLOPPY_ENABLE_TESTS)
         add_test(
             NAME bootstrap.stdlib.http_client
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_http_client.mjs")
+        add_test(
+            NAME bootstrap.stdlib.workers
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_workers.mjs")
         set_tests_properties(
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.os
-            bootstrap.stdlib.http_client PROPERTIES
+            bootstrap.stdlib.http_client bootstrap.stdlib.workers PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     endif()
 

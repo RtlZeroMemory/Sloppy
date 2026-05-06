@@ -215,6 +215,17 @@ function validateProviderDescriptor(provider) {
     }
 }
 
+function isWorkerResource(resource) {
+    return resource !== null &&
+        typeof resource === "object" &&
+        typeof resource.__sloppyPlanMetadata === "function" &&
+        typeof resource.__sloppyWorkerResource === "string";
+}
+
+function snapshotWorkerResource(resource) {
+    return Object.freeze({ ...resource.__sloppyPlanMetadata() });
+}
+
 function sqliteProviderToken(name) {
     return name.includes(".") ? name : `data.${name}`;
 }
@@ -1098,6 +1109,7 @@ function createRouteGroup(routes, host, assertAppMutable, getCurrentModule, pref
 
 function createApp(host) {
     const routes = [];
+    const workerResources = [];
     const guard = createMutationGuard("app");
     let currentModule = null;
     const moduleDebugRef = host.moduleDebugRef ?? { modules: Object.freeze([]) };
@@ -1118,6 +1130,13 @@ function createApp(host) {
 
         use(provider) {
             assertAppMutable();
+            if (isWorkerResource(provider)) {
+                workerResources.push(provider);
+                if (typeof provider.__sloppyStartForApp === "function") {
+                    provider.__sloppyStartForApp(app);
+                }
+                return provider;
+            }
             validateProviderDescriptor(provider);
 
             const configured = host.config.bind(`${provider.kind}:${provider.name}`);
@@ -1220,6 +1239,7 @@ function createApp(host) {
         __debug() {
             return Object.freeze({
                 modules: moduleDebugRef.modules,
+                workers: Object.freeze(workerResources.map(snapshotWorkerResource)),
             });
         },
 
@@ -1231,6 +1251,7 @@ function createApp(host) {
             return Object.freeze({
                 modules: moduleDebugRef.modules,
                 capabilities: host.capabilities.list(),
+                workers: Object.freeze(workerResources.map(snapshotWorkerResource)),
             });
         },
 

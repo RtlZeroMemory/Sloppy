@@ -94,6 +94,12 @@ ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reac
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
 intrinsic namespace. That is a missing-feature diagnostic, not a raw V8 property lookup
 failure.
+CORE-WORKER-01 registers `__sloppy.workers` only for active `stdlib.workers` plans. The
+namespace currently publishes policy metadata used by the JavaScript stdlib to confirm the
+feature surface; it does not expose raw native handles and does not claim separate V8
+worker-isolate execution. Future bridge functions for true worker isolate startup,
+message passing, or CPU offload must stay in `src/engine/v8/*` and settle Promises on the
+owning isolate thread.
 
 ## Purpose
 
@@ -158,6 +164,8 @@ Implemented now:
   request context materialization, HTTP `Results.*` descriptor conversion, JSON response
   bytes, and exception strings. SQLite result and parameter adoption stays scoped to
   ENGINE-22.E.
+- `intrinsics_workers.cc` installs feature-gated workers metadata under `__sloppy.workers`
+  without exposing native pointers or entering V8 from worker threads.
 - V8 creation can borrow the parsed Plan and immutable capability registry through
   `SlEngineOptions`; provider bridges may use those pointers only as hook inputs while the
   app host keeps their storage alive.

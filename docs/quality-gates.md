@@ -619,6 +619,12 @@ not require a V8 SDK. Local Windows V8 gates should start with:
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
 
+Repository-local Codex sessions on the maintained Windows development machine should assume
+the V8 SDK is present and discoverable through these scripts. Runtime, engine, stdlib,
+compiler-Plan, and V8-adjacent PRs should run and report this V8 lane. If discovery fails,
+report the resolver output as an environment regression instead of silently treating V8 as
+unavailable.
+
 The resolver searches `-V8Root`, `SLOPPY_V8_ROOT`, `SLOPPY_V8_SDK_HINTS`, this worktree's
 `.sdeps/v8/windows-x64`, and the same path in registered git worktrees. Direct CMake users
 must pass `-DSLOPPY_V8_ROOT=<sdk-root>` explicitly. A manual V8-enabled configure must fail

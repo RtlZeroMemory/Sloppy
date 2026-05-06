@@ -37,6 +37,9 @@ These standards govern:
 - Do not use browser DOM APIs in the bootstrap stdlib.
 - Do not depend on npm packages in the bootstrap stdlib.
 - Do not use dynamic imports unless a future scoped task documents the boundary and tests.
+- CORE-WORKER-01 allows the single bridge-gated dynamic `import(modulePath)` in
+  `stdlib/sloppy/workers.js` for `Worker.start()` bootstrap module execution. It must stay
+  behind that API and must not become general package, Node, or npm resolution.
 - Avoid top-level side effects except intentional export initialization.
 - `stdlib/sloppy/internal/runtime-classic.js` is the narrow exception that may publish
   `globalThis.__sloppy_runtime`; it must not add broader globals or Node/browser shims.

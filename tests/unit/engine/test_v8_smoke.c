@@ -1842,6 +1842,133 @@ static int test_net_intrinsic_inactive_feature_is_not_registered(void)
     return 0;
 }
 
+static int test_workers_intrinsic_namespace_registered_when_active(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.workers")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 500;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 501;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-workers-active.js"),
+                          sl_str_from_cstr("globalThis.sloppy_workers_active = function () {"
+                                           "  const w = globalThis.__sloppy.workers;"
+                                           "  return w && w.feature === 'stdlib.workers' &&"
+                                           "    w.boundedByDefault === true &&"
+                                           "    w.rawNativeHandlesExposed === false &&"
+                                           "    w.ownerThreadSettlement === true"
+                                           "      ? 'workers-active-ok'"
+                                           "      : 'workers-active-missing';"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 502;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_workers_active"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 503;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("workers-active-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 504;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_workers_intrinsic_inactive_feature_is_not_registered(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 505;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 506;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-workers-inactive.js"),
+                          sl_str_from_cstr("globalThis.sloppy_workers_inactive = function () {"
+                                           "  return globalThis.__sloppy.workers === undefined"
+                                           "    ? 'workers-inactive-ok'"
+                                           "    : 'workers-unexpectedly-active';"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 507;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_workers_inactive"), &result,
+                                               &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 508;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(result.text, sl_str_from_cstr("workers-inactive-ok")))
+    {
+        sl_engine_destroy(engine);
+        return 509;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_os_intrinsic_system_and_environment(void)
 {
     unsigned char engine_storage[8192];
@@ -4389,6 +4516,16 @@ int main(int argc, char** argv)
     }
 
     result = test_net_intrinsic_inactive_feature_is_not_registered();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_workers_intrinsic_namespace_registered_when_active();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_workers_intrinsic_inactive_feature_is_not_registered();
     if (result != 0) {
         return result;
     }

@@ -184,6 +184,15 @@ SlStr sl_resource_kind_name(SlResourceKind kind)
         return sl_resource_literal("local.server", sizeof("local.server") - 1U);
     case SL_RESOURCE_KIND_OS_PROCESS:
         return sl_resource_literal("os.process", sizeof("os.process") - 1U);
+    case SL_RESOURCE_KIND_BACKGROUND_SERVICE:
+        return sl_resource_literal("workers.background_service",
+                                   sizeof("workers.background_service") - 1U);
+    case SL_RESOURCE_KIND_WORK_QUEUE:
+        return sl_resource_literal("workers.queue", sizeof("workers.queue") - 1U);
+    case SL_RESOURCE_KIND_WORKER_POOL:
+        return sl_resource_literal("workers.pool", sizeof("workers.pool") - 1U);
+    case SL_RESOURCE_KIND_JS_WORKER:
+        return sl_resource_literal("workers.js_worker", sizeof("workers.js_worker") - 1U);
     default:
         return sl_resource_literal("unknown", sizeof("unknown") - 1U);
     }

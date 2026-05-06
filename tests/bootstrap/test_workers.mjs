@@ -1,0 +1,168 @@
+import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import {
+    BackgroundService,
+    Deadline,
+    Sloppy,
+    SloppyWorkerError,
+    WorkQueue,
+    Worker,
+    WorkerCancellationController,
+    WorkerPool,
+} from "../../stdlib/sloppy/index.js";
+
+function assertWorkerCode(error, code) {
+    assert(error instanceof SloppyWorkerError);
+    assert.equal(error.code, code);
+}
+
+async function assertRejectsWorkerCode(promise, code) {
+    await assert.rejects(promise, (error) => {
+        assertWorkerCode(error, code);
+        return true;
+    });
+}
+
+async function flush(count = 5) {
+    for (let index = 0; index < count; index += 1) {
+        await Promise.resolve();
+    }
+}
+
+{
+    let started = 0;
+    let observedCancel = false;
+    const service = BackgroundService.create("cleanup", async (ctx) => {
+        started += 1;
+        while (!ctx.signal.cancelled) {
+            await Promise.resolve();
+        }
+        observedCancel = true;
+    });
+    const app = Sloppy.create();
+    assert.equal(app.use(service), service);
+    await flush();
+    assert.equal(started, 1);
+    assert.equal(app.__getPlanContributions().workers[0].kind, "backgroundService");
+    await service.stop();
+    assert.equal(observedCancel, true);
+    assert.equal(service.state, "stopped");
+}
+
+{
+    const queue = WorkQueue.create("emails", { maxQueued: 4, concurrency: 2, overflow: "reject" });
+    let active = 0;
+    let maxActive = 0;
+    const order = [];
+    queue.process(async (job) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        order.push(job.data.id);
+        await Promise.resolve();
+        active -= 1;
+        return job.data.id * 2;
+    });
+
+    const results = await Promise.all([
+        queue.enqueue({ id: 1 }),
+        queue.enqueue({ id: 2 }),
+        queue.enqueue({ id: 3 }),
+        queue.enqueue({ id: 4 }),
+    ]);
+    assert.deepEqual(results, [2, 4, 6, 8]);
+    assert.deepEqual(order, [1, 2, 3, 4]);
+    assert.equal(maxActive, 2);
+}
+
+{
+    const queue = WorkQueue.create("overflow", { maxQueued: 1, concurrency: 1, overflow: "reject" });
+    let release;
+    queue.process((job) => {
+        if (job.data === "queued") {
+            return "queued-ok";
+        }
+        return new Promise((resolve) => {
+            release = resolve;
+        });
+    });
+    const first = queue.enqueue("active");
+    const second = queue.enqueue("queued");
+    await assertRejectsWorkerCode(queue.enqueue("rejected"), "SLOPPY_E_WORK_QUEUE_FULL");
+    release("ok");
+    await first;
+    assert.equal(await second, "queued-ok");
+}
+
+{
+    const queue = WorkQueue.create("retry", {
+        maxQueued: 4,
+        concurrency: 1,
+        retry: { maxAttempts: 3, backoffMs: 0 },
+    });
+    let attempts = 0;
+    queue.process(async () => {
+        attempts += 1;
+        if (attempts < 3) {
+            throw new Error("planned failure");
+        }
+        return "sent";
+    });
+    assert.equal(await queue.enqueue({ template: "welcome" }), "sent");
+    assert.equal(attempts, 3);
+}
+
+{
+    const queue = WorkQueue.create("timeout", { maxQueued: 1, concurrency: 1 });
+    queue.process(() => new Promise(() => {}));
+    await assertRejectsWorkerCode(
+        queue.enqueue("late", { deadline: Deadline.after(1) }),
+        "SLOPPY_E_WORK_JOB_TIMEOUT",
+    );
+}
+
+{
+    const controller = new WorkerCancellationController();
+    controller.cancel("caller");
+    const queue = WorkQueue.create("cancel", { maxQueued: 1, concurrency: 1 });
+    queue.process(async () => "never");
+    await assertRejectsWorkerCode(
+        queue.enqueue("cancelled", { signal: controller.signal }),
+        "SLOPPY_E_WORK_JOB_CANCELLED",
+    );
+}
+
+{
+    const pool = WorkerPool.create("image-processing", { workers: 2, maxQueued: 4 });
+    const values = await Promise.all([
+        pool.run(async (ctx) => ctx.input + 1, { input: 1 }),
+        pool.run(async (ctx) => ctx.input + 1, { input: 2 }),
+    ]);
+    assert.deepEqual(values, [2, 3]);
+    assert.equal(pool.state.workers, 2);
+    await pool.stop();
+}
+
+{
+    await assertRejectsWorkerCode(
+        WorkQueue.create("unsupported").process(async () => undefined).enqueue(() => {}),
+        "SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD",
+    );
+}
+
+{
+    const directory = await mkdtemp(join(tmpdir(), "sloppy-worker-"));
+    const workerPath = join(directory, "parser.mjs");
+    await writeFile(
+        workerPath,
+        "export async function parse(payload) { return { tokens: payload.text.split(/\\s+/u).length }; }\n",
+        "utf8",
+    );
+    const worker = await Worker.start(pathToFileURL(workerPath).href, { memoryLimitMb: 128 });
+    assert.deepEqual(await worker.invoke("parse", { text: "one two three" }), { tokens: 3 });
+    await worker.stop();
+    await assertRejectsWorkerCode(worker.invoke("parse", { text: "late" }), "SLOPPY_E_WORKER_STALE_HANDLE");
+}

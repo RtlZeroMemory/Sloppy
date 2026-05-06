@@ -36,7 +36,8 @@ typedef enum SlRuntimeFeatureId
     SL_RUNTIME_FEATURE_STDLIB_NET = 16,
     SL_RUNTIME_FEATURE_STDLIB_OS = 17,
     SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT = 18,
-    SL_RUNTIME_FEATURE_COUNT = 19
+    SL_RUNTIME_FEATURE_STDLIB_WORKERS = 19,
+    SL_RUNTIME_FEATURE_COUNT = 20
 } SlRuntimeFeatureId;
 
 #ifdef __cplusplus
@@ -109,6 +110,7 @@ typedef struct SlRuntimeFeatureAvailability
     bool stdlib_net;
     bool stdlib_os;
     bool stdlib_http_client;
+    bool stdlib_workers;
 } SlRuntimeFeatureAvailability;
 
 SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void);
