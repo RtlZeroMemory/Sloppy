@@ -57,6 +57,8 @@ assertBytes(textBytes, new Uint8Array([104, 101, 108, 108, 111, 0, 239, 187, 191
 assert.equal(Text.utf8.decode(textBytes, { fatal: true }), text);
 assert.equal(Text.utf8.decode(new Uint8Array([0xef, 0xbb, 0xbf, 0x41])), "\uFEFFA");
 assert.equal(Text.utf8.decode(new Uint8Array([0xc0, 0xaf])), "\uFFFD\uFFFD");
+assert.equal(Text.utf8.decode(new Uint8Array([0xe0, 0x20])), "\uFFFD ");
+assert.equal(Text.utf8.decode(new Uint8Array([0xe2, 0x82, 0x20])), "\uFFFD ");
 assertCodecError(() => Text.utf8.decode(new Uint8Array([0xc0, 0xaf]), { fatal: true }), "SLOPPY_E_CODEC_MALFORMED_UTF8");
 
 const streamingDecoder = Text.utf8.decoder({ fatal: true });

@@ -2618,7 +2618,7 @@ Reason:
                 offset += 1;
                 continue;
             }
-            if (offset + needed > bytes.length) {
+            if (offset + 1 >= bytes.length) {
                 if (stream) {
                     break;
                 }
@@ -2632,19 +2632,29 @@ Reason:
                 offset += 1;
                 continue;
             }
+            if (offset + needed > bytes.length) {
+                if (stream) {
+                    break;
+                }
+                output += utf8Malformed(fatal, "UTF-8 input ended with an incomplete sequence.");
+                offset = bytes.length;
+                break;
+            }
             codePoint = (codePoint << 6) | (b1 & 0x3f);
             let valid = true;
+            let invalidIndex = 0;
             for (let index = 2; index < needed; index += 1) {
                 const next = bytes[offset + index];
                 if (!isContinuation(next)) {
                     valid = false;
+                    invalidIndex = index;
                     break;
                 }
                 codePoint = (codePoint << 6) | (next & 0x3f);
             }
             if (!valid) {
                 output += utf8Malformed(fatal, "UTF-8 input contains an invalid continuation byte.");
-                offset += 1;
+                offset += invalidIndex;
                 continue;
             }
             output += String.fromCodePoint(codePoint);
