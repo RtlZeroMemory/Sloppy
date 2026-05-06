@@ -370,6 +370,28 @@ await withNodeNetBridge(async () => {
 
 await withNodeNetBridge(async () => {
     const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.1 204 No Content\r\n\r\n";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000 },
+        });
+        assert.deepEqual(await (await client.get("/empty-one", { timeoutMs: 1000 })).bytes(), new Uint8Array(0));
+        assert.deepEqual(await (await client.get("/empty-two", { timeoutMs: 1000 })).bytes(), new Uint8Array(0));
+
+        assert.deepEqual(observed.map((request) => request.target), ["/empty-one", "/empty-two"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 1);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
     const server = await startHttpServer((request, context) => {
         observed.push({ target: request.target, connectionId: context.connectionId });
         return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
@@ -445,6 +467,31 @@ await withNodeNetBridge(async () => {
         assert.equal(redirectedHeaders.get("cookie"), undefined);
         assert.equal(redirectedHeaders.get("x-api-key"), undefined);
         assert.equal(redirectedHeaders.get("x-trace"), "visible");
+    } finally {
+        await redirect.close();
+        await target.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let redirectedRequest;
+    const target = await startHttpServer((request) => {
+        redirectedRequest = request;
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+    const redirect = await startHttpServer(() => `HTTP/1.1 303 See Other\r\nLocation: ${target.url}/final\r\nContent-Length: 0\r\n\r\n`);
+
+    try {
+        const response = await HttpClient.post(`${redirect.url}/start`, {
+            text: "abc",
+            redirects: { allowPost: true },
+        });
+
+        assert.equal(await response.text(), "ok");
+        assert.equal(redirectedRequest.method, "GET");
+        assert.equal(redirectedRequest.body.byteLength, 0);
+        assert.equal(redirectedRequest.headers.get("content-length"), undefined);
+        assert.equal(redirectedRequest.headers.get("content-type"), undefined);
     } finally {
         await redirect.close();
         await target.close();
@@ -717,6 +764,18 @@ await withNodeNetBridge(async () => {
     try {
         await assertRejectsMessage(
             () => HttpClient.get(`${server.url}/malformed`),
+            /SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE/,
+        );
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const server = await startHttpServer(() => "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nbo");
+    try {
+        await assertRejectsMessage(
+            () => HttpClient.get(`${server.url}/truncated`),
             /SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE/,
         );
     } finally {

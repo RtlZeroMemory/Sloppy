@@ -3810,8 +3810,22 @@ Reason:
         }
     }
 
+    function normalizeHttpHostHeaderForOrigin(hostHeader) {
+        if (hostHeader.startsWith("[")) {
+            const close = hostHeader.indexOf("]");
+            if (close > 0) {
+                return `[${hostHeader.slice(1, close).toLowerCase()}]${hostHeader.slice(close + 1)}`;
+            }
+        }
+        const colon = hostHeader.lastIndexOf(":");
+        if (colon > 0) {
+            return `${hostHeader.slice(0, colon).toLowerCase()}${hostHeader.slice(colon)}`;
+        }
+        return hostHeader.toLowerCase();
+    }
+
     function httpOriginKey(url) {
-        return `${url.scheme}://${url.hostHeader}`;
+        return `${url.scheme}://${normalizeHttpHostHeaderForOrigin(url.hostHeader)}`;
     }
 
     function httpUrlToString(url) {
@@ -3992,6 +4006,10 @@ Reason:
 
     function httpConnectionHeaderHas(value, token) {
         return value.split(",").some((part) => part.trim().toLowerCase() === token);
+    }
+
+    function isHttpBodyForbiddenStatus(status) {
+        return (status >= 100 && status <= 199) || status === 204 || status === 304;
     }
 
     function resolveHttpRedirectUrl(currentUrl, location, operation) {
@@ -4657,6 +4675,7 @@ Reason:
         if (match === null) {
             throw httpClientError("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE", "HTTP response status line is malformed.");
         }
+        const status = Number(match[2]);
         for (const line of lines) {
             if (line.length === 0) {
                 continue;
@@ -4687,7 +4706,9 @@ Reason:
             (httpMinorVersion === 1
                 ? !httpConnectionHeaderHas(connectionHeader, "close")
                 : httpConnectionHeaderHas(connectionHeader, "keep-alive"));
-        if (transferEncoding === "chunked") {
+        if (isHttpBodyForbiddenStatus(status)) {
+            bodyBytes = bodyBytes.slice(0, 0);
+        } else if (transferEncoding === "chunked") {
             const decoded = parseHttpChunkedBody(bodyBytes, maxResponseBytes, complete);
             if (decoded === undefined) {
                 return undefined;
@@ -4703,6 +4724,12 @@ Reason:
                 throw httpClientError("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT", "HTTP response body exceeded the configured limit.");
             }
             if (bodyBytes.byteLength < contentLength) {
+                if (complete) {
+                    throw httpClientError(
+                        "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
+                        "HTTP response ended before the declared Content-Length body was fully received.",
+                    );
+                }
                 return undefined;
             }
             bodyBytes = bodyBytes.slice(0, contentLength);
@@ -4715,7 +4742,7 @@ Reason:
             }
             connectionReusable = false;
         }
-        return new HttpClientResponse(Number(match[2]), match[3] ?? "", new HttpHeaderBag(headers), bodyBytes, connectionReusable);
+        return new HttpClientResponse(status, match[3] ?? "", new HttpHeaderBag(headers), bodyBytes, connectionReusable);
     }
 
     async function readHttpResponse(connection, limits) {
@@ -4957,7 +4984,21 @@ Reason:
             if (httpOriginKey(nextUrl) !== httpOriginKey(current.url)) {
                 stripHttpSensitiveHeaders(headers, current.redirects);
             }
-            current = Object.freeze({ ...current, url: nextUrl, headers });
+            let method = current.method;
+            let body = current.body;
+            const hasBody = current.body.byteLength > 0;
+            if (
+                current.method !== "HEAD" &&
+                (response.status === 303 ||
+                    ((response.status === 301 || response.status === 302) &&
+                        (hasBody || current.method === "POST" || current.method === "PUT" || current.method === "PATCH")))
+            ) {
+                method = "GET";
+                body = new Uint8Array(0);
+                headers.delete("content-length");
+                headers.delete("content-type");
+            }
+            current = Object.freeze({ ...current, url: nextUrl, headers, method, body });
         }
     }
 
