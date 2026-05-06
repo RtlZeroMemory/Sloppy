@@ -144,6 +144,9 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => NetworkAddress.parse("::1:443"), /host:port/);
     assertThrowsMessage(() => NetworkAddress.parse("127.0.0.1"), /host:port/);
     assertThrowsMessage(() => NetworkAddress.parse("[::1]443"), /\[host\]:port/);
+    assertThrowsMessage(() => NetworkAddress.parse("[::1]:"), /TCP port text/);
+    assertThrowsMessage(() => NetworkAddress.parse("localhost:1e3"), /TCP port text/);
+    assertThrowsMessage(() => NetworkAddress.parse("localhost:0x50"), /TCP port text/);
     assertThrowsMessage(() => NetworkAddress.parse("localhost:70000"), /TCP port/);
 }
 

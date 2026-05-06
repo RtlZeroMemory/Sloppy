@@ -161,6 +161,10 @@ try {
         () => globalThis.__sloppy_runtime.NetworkAddress.parse("::1:443"),
         /host:port/,
     );
+    assert.throws(
+        () => globalThis.__sloppy_runtime.NetworkAddress.parse("localhost:1e3"),
+        /TCP port text/,
+    );
     const runtimeWriter = globalThis.__sloppy_runtime.Binary.writer();
     runtimeWriter.u16le(0x1234).bytes(new Uint8Array([0]));
     assertBytes(runtimeWriter.toBytes(), new Uint8Array([0x34, 0x12, 0]));

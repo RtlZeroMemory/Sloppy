@@ -33,7 +33,7 @@ class NetworkAddress {
                 }
                 return new NetworkAddress(
                     value.slice(1, end),
-                    normalizePort(Number(value.slice(end + 2)), true),
+                    parsePortText(value.slice(end + 2)),
                 );
             }
             const firstColon = value.indexOf(":");
@@ -43,7 +43,7 @@ class NetworkAddress {
             }
             return new NetworkAddress(
                 value.slice(0, lastColon),
-                normalizePort(Number(value.slice(lastColon + 1)), true),
+                parsePortText(value.slice(lastColon + 1)),
             );
         }
         if (typeof value !== "object" || value === null) {
@@ -87,6 +87,13 @@ function normalizePort(port, allowZero) {
         throw new TypeError(`TCP port must be an integer from ${minimum} to 65535.`);
     }
     return port;
+}
+
+function parsePortText(text) {
+    if (typeof text !== "string" || text.length === 0 || !/^[0-9]+$/.test(text)) {
+        throw new TypeError("TCP port text must contain decimal digits.");
+    }
+    return normalizePort(Number(text), true);
 }
 
 function normalizeConnectOptions(options) {

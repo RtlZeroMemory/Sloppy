@@ -322,7 +322,8 @@ int test_listener_hostname_resolution()
                       SL_STATUS_OK) != 0 ||
         listener == nullptr ||
         expect_status(sl_tcp_listener_local_endpoint(listener, &endpoint), SL_STATUS_OK) != 0 ||
-        endpoint.port == 0U)
+        endpoint.port == 0U ||
+        (endpoint.family != SL_NETWORK_ADDRESS_IPV4 && endpoint.family != SL_NETWORK_ADDRESS_IPV6))
     {
         return 1;
     }

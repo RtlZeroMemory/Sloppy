@@ -3180,7 +3180,7 @@ Reason:
                     }
                     return new NetworkAddress(
                         value.slice(1, end),
-                        sloppyNetPort(Number(value.slice(end + 2)), true),
+                        sloppyNetPortText(value.slice(end + 2)),
                     );
                 }
                 const firstColon = value.indexOf(":");
@@ -3190,7 +3190,7 @@ Reason:
                 }
                 return new NetworkAddress(
                     value.slice(0, lastColon),
-                    sloppyNetPort(Number(value.slice(lastColon + 1)), true),
+                    sloppyNetPortText(value.slice(lastColon + 1)),
                 );
             }
             if (value === null || typeof value !== "object") {
@@ -3229,6 +3229,13 @@ Reason:
             throw new TypeError(`TCP port must be an integer from ${minimum} to 65535.`);
         }
         return port;
+    }
+
+    function sloppyNetPortText(text) {
+        if (typeof text !== "string" || text.length === 0 || !/^[0-9]+$/.test(text)) {
+            throw new TypeError("TCP port text must contain decimal digits.");
+        }
+        return sloppyNetPort(Number(text), true);
     }
 
     function sloppyNetConnectOptions(options) {
