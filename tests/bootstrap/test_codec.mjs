@@ -195,7 +195,7 @@ function stalledAsyncIterable() {
                 next() {
                     return new Promise(() => {});
                 },
-                return() {
+                async return() {
                     return { done: true };
                 },
             };

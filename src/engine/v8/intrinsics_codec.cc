@@ -176,6 +176,7 @@ bool codec_v8_gzip_bytes(const std::vector<unsigned char>& input, int level,
         return false;
     }
 
+    /* z_stream::next_in is Bytef* even though deflate only reads input. */
     stream.next_in = input.empty() ? nullptr : const_cast<Bytef*>(input.data());
     stream.avail_in = static_cast<uInt>(input.size());
 
@@ -215,6 +216,7 @@ CodecInflateResult codec_v8_gunzip_bytes(const std::vector<unsigned char>& input
         return CodecInflateResult::Corrupt;
     }
 
+    /* z_stream::next_in is Bytef* even though inflate only reads input. */
     stream.next_in = input.empty() ? nullptr : const_cast<Bytef*>(input.data());
     stream.avail_in = static_cast<uInt>(input.size());
 
