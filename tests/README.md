@@ -28,7 +28,7 @@ transactions, and diagnostics.
 The `examples.hello.api_shape`, `examples.ergonomics.api_shape`,
 `examples.modules_basic.api_shape`, `examples.data_foundation.api_shape`,
 `examples.sqlite_basic.api_shape`, `examples.time.api_shape`, `examples.crypto.api_shape`,
-and `examples.net.api_shape` CTest checks statically verify public examples use the current
+`examples.net.api_shape`, and `examples.os.api_shape` CTest checks statically verify public examples use the current
 documented API shape without requiring Node, npm, compiler extraction, app-plan emission,
 JavaScript provider connections, external network access, or unrelated runtime behavior.
 

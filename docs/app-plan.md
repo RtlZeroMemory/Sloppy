@@ -116,8 +116,10 @@ CORE-OS-01.C/H partial makes the feature available for System and Environment ru
 CORE-OS-01.D adds the explicit-argv `Process.run` facade and native run helper.
 CORE-OS-01.E/F adds the native `Process.start` foundation, opaque ProcessHandle, streaming
 pipe helpers, and bootstrap JS handle facade. CORE-OS-01.G adds the bootstrap
-`Signals.onShutdown` facade. The V8 process bridge and native platform signal loop remain
-deferred until their bounded CORE-OS-01 slices land.
+`Signals.onShutdown` facade. CORE-OS-01.I adds OS doctor/audit goldens, source examples,
+and conformance indexing for the visible metadata/redaction lane. The V8 process bridge
+and native platform signal loop remain deferred until their bounded host-scheduling lanes
+land.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
@@ -263,8 +265,9 @@ The codec descriptor is active for V8 plans after CORE-CODEC-01.C/D/I registered
 `__sloppy.codec` namespace; Base64/Base64Url/Hex/Text and Binary are implemented in the
 bootstrap JS surface, and Compression uses bounded native zlib gzip/gunzip helpers through
 that namespace. Checksum backends remain a future slice. The OS descriptor is Plan-visible
-after CORE-OS-01.A/B, but remains unavailable until System, Environment, Process, and
-Signals implementation slices land.
+and the bootstrap/native System, Environment, Process, and Signals surfaces are available
+for their scoped CORE-OS-01 lanes; the V8 process bridge and native platform signal loop
+remain deferred.
 
 ## Schema Sections
 
@@ -514,7 +517,9 @@ adds core, advanced, and FileHandle filesystem operations behind feature-gated V
 registration; CORE-FS-01.G adds watch resources behind `fs.watch`; CORE-FS-01.I/J adds
 filesystem doctor/audit goldens and source examples that prove metadata visibility.
 CORE-NET-01.I adds network doctor/audit goldens and source examples that prove
-`connect`/`listen` metadata visibility. No capability entry creates an OS sandbox.
+`connect`/`listen` metadata visibility. CORE-OS-01.I adds OS doctor/audit goldens and
+source examples that prove OS/env/process/signal metadata visibility without values or
+native handles. No capability entry creates an OS sandbox.
 
 ### permissions
 

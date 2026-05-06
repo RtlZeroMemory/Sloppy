@@ -3755,6 +3755,71 @@ static bool sl_cli_metadata_requires_feature(const SlCliMetadata* metadata, cons
     return false;
 }
 
+static void sl_cli_doctor_emit_os_capabilities(const SlCliOptions* options, SlArena* arena,
+                                               const SlCliMetadata* metadata, bool* emitted)
+{
+    bool has_os_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.os");
+    bool has_os_capability = false;
+    bool has_env_capability = false;
+    bool has_process_capability = false;
+    bool has_shell_capability = false;
+    bool has_signals_capability = false;
+
+    for (size_t index = 0U; index < metadata->capability_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "os")) {
+            has_os_capability = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "env")) {
+            has_env_capability = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "process")) {
+            has_process_capability = true;
+            if (sl_cli_span_equal_cstr(metadata->capabilities[index].access, "shell")) {
+                has_shell_capability = true;
+            }
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "signals")) {
+            has_signals_capability = true;
+        }
+    }
+
+    if (has_os_feature) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.required"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("OS runtime feature metadata is Plan-visible"), emitted);
+    }
+    if (has_os_capability || has_env_capability || has_process_capability || has_signals_capability)
+    {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.capabilities"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("OS capability metadata is visible without values or native handles"),
+            emitted);
+    }
+    if (has_env_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.environment"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("environment access metadata omits environment values"), emitted);
+    }
+    if (has_process_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.process"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("process metadata is explicit-argv and exposes no native handles"),
+            emitted);
+    }
+    if (has_shell_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.shell"), sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr("shell capability metadata is visible but shell execution is denied"),
+            emitted);
+    }
+    if (has_signals_capability) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.os.signals"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("shutdown signal metadata is visible without platform signal claims"),
+            emitted);
+    }
+}
+
 static void sl_cli_doctor_emit_http_clients(const SlCliOptions* options, SlArena* arena,
                                             const SlCliMetadata* metadata, bool* emitted)
 {
@@ -3836,6 +3901,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         emitted);
     sl_cli_doctor_emit_fs_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_network_capabilities(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_os_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_http_clients(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");
@@ -4260,6 +4326,67 @@ static void sl_cli_audit_capabilities(const SlCliOptions* options, const SlCliMe
     }
 }
 
+static void sl_cli_audit_os_capabilities(const SlCliOptions* options, const SlCliMetadata* metadata,
+                                         size_t* findings, size_t* errors)
+{
+    bool has_os = false;
+    bool has_env = false;
+    bool has_process = false;
+    bool has_shell = false;
+    bool has_signals = false;
+
+    for (size_t index = 0U; index < metadata->capability_count; index += 1U) {
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "os")) {
+            has_os = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "env")) {
+            has_env = true;
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "process")) {
+            has_process = true;
+            if (sl_cli_span_equal_cstr(metadata->capabilities[index].access, "shell")) {
+                has_shell = true;
+            }
+        }
+        if (sl_cli_span_equal_cstr(metadata->capabilities[index].kind, "signals")) {
+            has_signals = true;
+        }
+    }
+
+    if (has_os || has_env || has_process || has_signals) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_POLICY_VISIBLE",
+                          "OS capabilities are policy-visible for sloppy/os; no OS sandbox, "
+                          "environment values, native handles, or raw PIDs are exposed",
+                          "capabilities", findings, errors);
+    }
+    if (has_env) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_ENV_REDACTED",
+                          "environment metadata names access only and omits variable values",
+                          "capabilities", findings, errors);
+    }
+    if (has_process) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_PROCESS_EXPLICIT_ARGV",
+                          "process metadata is explicit-argv and does not imply shell execution",
+                          "capabilities", findings, errors);
+    }
+    if (has_shell) {
+        sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OS_SHELL_DENIED",
+                          "shell capability metadata is visible, but shell execution is denied "
+                          "unless a future explicit gate enables it",
+                          "capabilities", findings, errors);
+    }
+}
+
+static void sl_cli_audit_os_features(const SlCliOptions* options, const SlCliMetadata* metadata,
+                                     size_t* findings, size_t* errors)
+{
+    if (sl_cli_metadata_requires_feature(metadata, "stdlib.os")) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_PLAN_VISIBLE",
+                          "sloppy/os is Plan-visible as stdlib.os", "requiredFeatures", findings,
+                          errors);
+    }
+}
+
 static void sl_cli_audit_http_clients(const SlCliOptions* options, const SlCliMetadata* metadata,
                                       size_t* findings, size_t* errors)
 {
@@ -4342,6 +4469,8 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_modules(options, &metadata, &findings, &errors);
     sl_cli_audit_providers(options, &metadata, &findings, &errors);
     sl_cli_audit_capabilities(options, &metadata, &findings, &errors);
+    sl_cli_audit_os_capabilities(options, &metadata, &findings, &errors);
+    sl_cli_audit_os_features(options, &metadata, &findings, &errors);
     sl_cli_audit_http_clients(options, &metadata, &findings, &errors);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {

@@ -56,7 +56,11 @@ bool sl_plan_capability_kind_supported(SlStr kind)
 {
     return sl_str_equal(kind, sl_str_from_cstr("database")) ||
            sl_str_equal(kind, sl_str_from_cstr("filesystem")) ||
-           sl_str_equal(kind, sl_str_from_cstr("network"));
+           sl_str_equal(kind, sl_str_from_cstr("network")) ||
+           sl_str_equal(kind, sl_str_from_cstr("os")) ||
+           sl_str_equal(kind, sl_str_from_cstr("env")) ||
+           sl_str_equal(kind, sl_str_from_cstr("process")) ||
+           sl_str_equal(kind, sl_str_from_cstr("signals"));
 }
 
 bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
@@ -81,6 +85,22 @@ bool sl_plan_capability_access_supported(SlStr kind, SlStr access)
         return sl_str_equal(access, sl_str_from_cstr("connect")) ||
                sl_str_equal(access, sl_str_from_cstr("listen")) ||
                sl_str_equal(access, sl_str_from_cstr("connect-listen"));
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("os"))) {
+        return sl_str_equal(access, sl_str_from_cstr("info"));
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("env"))) {
+        return sl_str_equal(access, sl_str_from_cstr("read")) ||
+               sl_str_equal(access, sl_str_from_cstr("list"));
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("process"))) {
+        return sl_str_equal(access, sl_str_from_cstr("run")) ||
+               sl_str_equal(access, sl_str_from_cstr("shell")) ||
+               sl_str_equal(access, sl_str_from_cstr("signal")) ||
+               sl_str_equal(access, sl_str_from_cstr("kill"));
+    }
+    if (sl_str_equal(kind, sl_str_from_cstr("signals"))) {
+        return sl_str_equal(access, sl_str_from_cstr("shutdown"));
     }
     return false;
 }
