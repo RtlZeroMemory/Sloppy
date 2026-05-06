@@ -23,6 +23,7 @@ live-provider, package, stress, or benchmark evidence.
 | `runtime_feature_missing_transport_dependency.json` | default | runtime features | HTTP activation with unavailable `transport.libuv` dependency. |
 | `runtime_feature_unavailable_transport.json` | default | runtime features | Direct `transport.libuv` required-feature availability failure. |
 | `runtime_feature_unavailable_crypto.json` | default | runtime features | Direct `stdlib.crypto` required-feature availability failure before crypto backends land. |
+| `runtime_feature_unavailable_codec.json` | default | runtime features | Direct `stdlib.codec` required-feature availability failure before codec implementations land. |
 | `runtime_feature_unavailable_net.json` | default | runtime features | Direct `stdlib.net` required-feature availability failure before TCP backends land. |
 | `runtime_feature_inactive_sqlite_intrinsic.snap` | default | stdlib/runtime features | Stdlib SQLite missing-intrinsic text when `provider.sqlite` is inactive. |
 | `time_timeout.json` | default | Time diagnostics | Timeout/deadline diagnostic JSON shape. |
@@ -43,6 +44,19 @@ live-provider, package, stress, or benchmark evidence.
 | `crypto_secret_disposed.json` | default | Crypto diagnostics | Disposed Secret stale-use diagnostic shape. |
 | `crypto_constant_time_invalid_input.json` | default | Crypto diagnostics | Constant-time comparison input validation diagnostic. |
 | `crypto_backend_unavailable.json` | default | Crypto diagnostics | Backend unavailable diagnostic without leaking backend secrets. |
+| `codec_feature_unavailable.json` | default | Codec diagnostics | Codec feature unavailable diagnostic JSON shape. |
+| `codec_unsupported_encoding.json` | default | Codec diagnostics | Unsupported encoding diagnostic JSON shape. |
+| `codec_invalid_base64.json` | default | Codec diagnostics | Invalid standard Base64 diagnostic JSON shape. |
+| `codec_invalid_base64url.json` | default | Codec diagnostics | Invalid Base64Url diagnostic JSON shape. |
+| `codec_invalid_hex.json` | default | Codec diagnostics | Invalid hex diagnostic JSON shape. |
+| `codec_malformed_utf8.json` | default | Codec diagnostics | Malformed UTF-8 diagnostic JSON shape. |
+| `codec_binary_read_out_of_bounds.json` | default | Codec diagnostics | Bounds-checked binary reader diagnostic JSON shape. |
+| `codec_binary_invalid_endian_or_field_size.json` | default | Codec diagnostics | Invalid binary endian/field-size diagnostic JSON shape. |
+| `codec_compression_backend_unavailable.json` | default | Codec diagnostics | Compression backend unavailable diagnostic JSON shape. |
+| `codec_decompression_limit_exceeded.json` | default | Codec diagnostics | Decompression bomb/output-limit diagnostic JSON shape. |
+| `codec_compressed_stream_corrupt.json` | default | Codec diagnostics | Corrupt compressed-stream diagnostic JSON shape. |
+| `codec_checksum_unsupported_algorithm.json` | default | Codec diagnostics | Unsupported checksum algorithm diagnostic JSON shape. |
+| `codec_checksum_security_context_warning.json` | default | Codec diagnostics | Warning when checksum use looks security-like. |
 | `net_feature_unavailable.json` | default | Network diagnostics | Network feature unavailable diagnostic JSON shape. |
 | `net_connect_denied.json` | default | Network diagnostics | Strict-policy connect denial diagnostic JSON shape. |
 | `net_listen_denied.json` | default | Network diagnostics | Strict-policy listen denial diagnostic JSON shape. |

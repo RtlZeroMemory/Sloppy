@@ -77,6 +77,11 @@ plans and documents the TCP policy/diagnostic contract. The namespace is not reg
 this contract PR; runtime availability stays false until native TCP/libuv resources,
 owned async completions, and owner-thread Promise settlement are implemented in later
 CORE-NET PRs.
+CORE-CODEC-01.A/B reserves the private `__sloppy.codec` namespace for active
+`stdlib.codec` plans and documents the transform/diagnostic contract. The namespace is not
+registered in this contract PR; runtime availability stays false until encoding, text,
+binary, compression, checksum, and owner-thread Promise settlement paths are implemented in
+later CORE-CODEC PRs.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
@@ -204,6 +209,10 @@ Framework and provider bridge code belongs in sibling V8 modules:
   constant-time dispatch for active `stdlib.crypto` plans. The bridge performs only small
   bounded hash/HMAC work inline; password hashing must offload away from the V8 owner
   thread in CORE-CRYPTO-01.E.
+- future `intrinsics_codec.cc` owns codec argument validation, byte/text/binary conversion,
+  compression backend dispatch, checksum helpers, and owner-thread Promise settlement for
+  active `stdlib.codec` plans. Compression work that can materially block must offload away
+  from the V8 owner thread.
 - Native provider, filesystem, HTTP, timer, or other future completions must pass any
   terminal-state guard before reaching owner-thread settlement; provider/libuv/offload
   domains still never enter V8 directly.

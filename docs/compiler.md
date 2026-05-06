@@ -208,6 +208,10 @@ Unsupported input fails with diagnostics. The compiler accepts only
 `import { Sloppy, Results } from "sloppy";` plus optional unaliased `data`, `schema`,
 `sloppy/time`, `sloppy/fs`, `sloppy/crypto`, and `sloppy/net` named imports as public import syntax and rejects arbitrary
 bare imports such as `"express"`, `"fs"`, and `"node:fs"` with
+`import { Sloppy, Results } from "sloppy";` plus optional unaliased named imports from
+the separate public specifiers `"sloppy/time"`, `"sloppy/fs"`, `"sloppy/crypto"`,
+`"sloppy/codec"`, `"sloppy/data"`, and `"sloppy/schema"`. It rejects arbitrary bare
+imports such as `"express"`, `"fs"`, and `"node:fs"` with
 `SLOPPYC_E_UNSUPPORTED_IMPORT_SPECIFIER`. The compiler does not implement Node package
 resolution, npm resolution, import maps, dynamic imports, arbitrary module graphs, or
 package-manager behavior. It resolves only source-local relative function modules in the
@@ -286,6 +290,9 @@ The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is stage
 runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler recognizes only the
 public bare import `import { Sloppy, Results } from "sloppy";` plus optional unaliased
 `data`, `schema`, `sloppy/time`, `sloppy/fs`, `sloppy/crypto`, and `sloppy/net` imports as input syntax. EPIC-24
+named imports from the separate public specifiers `"sloppy/data"`, `"sloppy/schema"`,
+`"sloppy/time"`, `"sloppy/fs"`, `"sloppy/crypto"`, and `"sloppy/codec"` as input syntax.
+EPIC-24
 rewrites that import away in generated `app.js`: the artifact reads `Results` from
 `globalThis.__sloppy_runtime`, which is installed by the runtime-loaded bootstrap asset,
 assigns each generated handler to its legacy `globalThis.__sloppy_handler_<id>` export name,

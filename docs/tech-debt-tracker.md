@@ -114,6 +114,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   doctor/audit, examples, and conformance goldens. Do not claim TCP execution, external
   network access, TLS, HTTP client, UDP, WebSocket, Node/Bun/Deno compatibility,
   performance, or public alpha readiness from the contract slice.
+- Codec API implementation after CORE-CODEC-01.A/B: `stdlib.codec`, the `sloppy/codec`
+  import contract, backend/dependency policy, stable diagnostics, and safety model exist.
+  #624 through #631 must still implement Base64/Base64Url/Hex, UTF-8 text and streaming
+  decoder, Binary reader/writer, compression/decompression and streaming transforms,
+  CRC32 checksums, V8/stdlib integration, examples, vectors, and conformance goldens. Do
+  not claim Node Buffer, Web Streams, Bun/Deno, compression backend, benchmark, or public
+  alpha readiness from the contract slice.
 - Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded

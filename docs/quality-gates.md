@@ -64,6 +64,12 @@ contract, Plan metadata, diagnostics, and policy model do not prove TCP executio
 network access, V8 execution, package readiness, throughput, or performance. Default tests
 must remain deterministic localhost/loopback only once TCP behavior lands; live-network and
 benchmark lanes stay optional and separately reported.
+CORE-CODEC-01 gates must report codec evidence by lane. PRs that only add the
+`stdlib.codec` contract, Plan metadata, diagnostics, and backend policy do not prove
+Base64/Hex/Text/Binary/Compression/Checksum correctness, V8 execution, package readiness,
+streaming/backpressure behavior, compression backend availability, or performance. Later
+vector/example PRs must keep checksum evidence separate from `sloppy/crypto` security
+evidence.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS

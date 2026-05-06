@@ -1,0 +1,1 @@
+{"code":"SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED","severity":"error","message":"decompression output limit exceeded","hints":["Decompression must enforce the configured max output policy."]}

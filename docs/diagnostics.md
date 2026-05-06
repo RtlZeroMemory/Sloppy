@@ -695,6 +695,37 @@ handles, OS handles, V8 handles, raw native pointers, or package-manager state. 
 goldens prove deterministic diagnostic shape only; they do not prove TCP execution,
 external network access, throughput, V8 execution, or benchmark evidence.
 
+CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the contract-only
+feature/model slice. `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` is the startup/Plan-gating
+diagnostic when `stdlib.codec` is required but the runtime feature is not enabled before
+execution begins. `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` is reserved for already-reached
+codec API paths when the API surface exists but a specific codec backend or optional lane
+is inactive. Other codec-specific codes are reserved for transformation/API failures:
+
+- `SLOPPY_E_CODEC_FEATURE_UNAVAILABLE` for codec API use when the feature/backend lane is
+  not active;
+- `SLOPPY_E_CODEC_UNSUPPORTED_ENCODING` for encodings outside the supported matrix;
+- `SLOPPY_E_CODEC_INVALID_BASE64` for malformed standard Base64 input;
+- `SLOPPY_E_CODEC_INVALID_BASE64URL` for malformed Base64Url input;
+- `SLOPPY_E_CODEC_INVALID_HEX` for malformed hex input;
+- `SLOPPY_E_CODEC_MALFORMED_UTF8` for fatal malformed UTF-8 input;
+- `SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS` for bounds-checked reader failures;
+- `SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE` for unsupported endian/width
+  requests;
+- `SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE` for unavailable vetted compression
+  backends;
+- `SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED` for decompression output limits;
+- `SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT` for corrupt compressed input;
+- `SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM` for unsupported checksum algorithms;
+- `SLOPPY_W_CODEC_CHECKSUM_SECURITY_CONTEXT_WARNING` for statically visible security-looking
+  checksum use.
+
+Codec diagnostics may name operation, encoding, checksum algorithm, backend family, byte
+length, and configured limits. They must not include raw tokens, secret-looking values,
+native pointers, V8 handles, OS handles, or package-manager state. Default goldens prove
+deterministic diagnostic shape only; they do not prove V8 execution, compression backend
+availability, streaming behavior, performance, or conformance vectors.
+
 App/request lifecycle diagnostics:
 
 - startup storage/init failure uses `SLOPPY_E_LIFECYCLE_START_FAILED`;

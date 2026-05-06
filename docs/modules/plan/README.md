@@ -42,6 +42,9 @@ Implemented now:
 - CORE-NET-01.A/B `stdlib.net` feature metadata for the `sloppy/net` import. It is known
   to Plan validation but unavailable by default until the TCP backend and V8
   implementation PRs land;
+- CORE-CODEC-01.A/B `stdlib.codec` feature metadata for the `sloppy/codec` import. It is
+  known to Plan validation but unavailable by default until the codec implementation and
+  V8/stdlib PRs land;
 - arena-owned parsed plan storage;
 - basic diagnostics for invalid plan JSON and validation failures;
 - documented golden plan fixture matrix;

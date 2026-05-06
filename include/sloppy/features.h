@@ -32,8 +32,9 @@ typedef enum SlRuntimeFeatureId
     SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER = 12,
     SL_RUNTIME_FEATURE_STDLIB_TIME = 13,
     SL_RUNTIME_FEATURE_STDLIB_CRYPTO = 14,
-    SL_RUNTIME_FEATURE_STDLIB_NET = 15,
-    SL_RUNTIME_FEATURE_COUNT = 16
+    SL_RUNTIME_FEATURE_STDLIB_CODEC = 15,
+    SL_RUNTIME_FEATURE_STDLIB_NET = 16,
+    SL_RUNTIME_FEATURE_COUNT = 17
 } SlRuntimeFeatureId;
 
 #ifdef __cplusplus
@@ -102,6 +103,7 @@ typedef struct SlRuntimeFeatureAvailability
     bool provider_postgres;
     bool provider_sqlserver;
     bool stdlib_crypto;
+    bool stdlib_codec;
     bool stdlib_net;
 } SlRuntimeFeatureAvailability;
 

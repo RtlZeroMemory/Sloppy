@@ -111,6 +111,13 @@ import recognition, `stdlib.net` Plan metadata, unavailable-feature diagnostics,
 network diagnostic names/goldens, and network policy documentation. Later implementation
 tests must use deterministic localhost/loopback by default and keep live-network,
 stress/torture, V8, package, and benchmark evidence separate.
+CORE-CODEC-01 tests must keep evidence claims narrow. Contract tests may prove
+`sloppy/codec` import recognition, `stdlib.codec` Plan metadata, unavailable-feature
+diagnostics, stable codec diagnostic names/goldens, backend policy, and checksum
+non-security wording. Later implementation tests must use standard Base64/Base64Url/Hex,
+UTF-8, binary endian, compression, streaming, and checksum vectors without claiming Node
+Buffer/Web Streams/Bun/Deno compatibility, benchmark performance, or public alpha
+readiness.
 
 FRAMEWORK-01.B adds configuration coverage across Rust compiler tests, JS stdlib tests,
 compiler golden artifacts, source-input process tests, and the SQLite users API fixture.
