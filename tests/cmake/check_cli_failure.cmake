@@ -15,7 +15,13 @@ if(SLOPPY_EXPECT_NO_STDLIB_FS)
     endif()
     list(GET SLOPPY_CLI_ARGS ${artifacts_value_index} artifacts_path_value)
 
-    set(artifact_plan_path "${repo_root}/${artifacts_path_value}/app.plan.json")
+    if(IS_ABSOLUTE "${artifacts_path_value}")
+        set(artifact_dir "${artifacts_path_value}")
+    else()
+        set(artifact_dir "${repo_root}/${artifacts_path_value}")
+    endif()
+
+    set(artifact_plan_path "${artifact_dir}/app.plan.json")
     if(NOT EXISTS "${artifact_plan_path}")
         message(FATAL_ERROR
                 "stdlib.fs precondition test could not inspect app.plan.json: ${artifact_plan_path}")
@@ -26,7 +32,7 @@ if(SLOPPY_EXPECT_NO_STDLIB_FS)
                 "runtime artifact unexpectedly declares or imports stdlib.fs: ${artifact_plan_path}")
     endif()
 
-    set(artifact_bundle_path "${repo_root}/${artifacts_path_value}/app.js")
+    set(artifact_bundle_path "${artifact_dir}/app.js")
     if(EXISTS "${artifact_bundle_path}")
         file(READ "${artifact_bundle_path}" artifact_bundle_js)
         if(artifact_bundle_js MATCHES "sloppy/fs")
