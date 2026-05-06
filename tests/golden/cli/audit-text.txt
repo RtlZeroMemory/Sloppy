@@ -13,4 +13,4 @@ Sloppy Audit
 [error] SLOPPY_AUDIT_CAPABILITY_PROVIDER_REQUIRED database capability is missing required provider reference (capabilities)
 [error] SLOPPY_AUDIT_CAPABILITY_PROVIDER_FORBIDDEN filesystem/network capabilities must not declare providers (capabilities)
 [note] SLOPPY_AUDIT_FILESYSTEM_POLICY_VISIBLE filesystem capabilities are policy-visible for sloppy/fs; no OS sandbox is implemented (capabilities)
-[note] SLOPPY_AUDIT_NETWORK_SKELETON network capabilities are metadata/check-only; no network API or OS sandbox is implemented (capabilities)
+[note] SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE network capabilities are policy-visible for sloppy/net; no OS sandbox or external live-network evidence is implemented (capabilities)

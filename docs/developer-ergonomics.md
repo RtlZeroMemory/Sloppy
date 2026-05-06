@@ -99,7 +99,10 @@ CORE-NET-01.A/B locks the first `sloppy/net` TCP contract around `TcpClient`,
 Plan-visible as `stdlib.net`; the V8 runtime path now covers scoped TCP client/listener
 operations, local DNS/address parsing, and checked `noDelay`/`keepAlive` option
 propagation. Development-mode loopback should stay easy, while strict mode remains able to
-require explicit external connect/listen policy.
+require explicit external connect/listen policy. CORE-NET-01.I adds checked TCP source
+examples plus doctor/audit goldens for Plan-visible network capability metadata without
+claiming OS sandboxing, package behavior, external live-network proof, or compatibility
+with Node/Bun/Deno.
 CORE-CODEC-01.A/B locks the first `sloppy/codec` contract around `Base64`,
 `Base64Url`, `Hex`, UTF-8 `Text`, `Binary`, `Compression`, and `Checksums`. The compiler
 now makes `sloppy/codec` Plan-visible as `stdlib.codec`. The current runtime surface

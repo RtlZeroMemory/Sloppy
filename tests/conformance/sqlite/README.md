@@ -65,5 +65,5 @@ not prove the V8 JavaScript bridge or localhost transport executed.
 
 Gated/deferred requirements: PostgreSQL and SQL Server JavaScript bridges are not part of
 this conformance suite. The users API fixture is localhost transport evidence, not
-production-edge HTTP evidence. Filesystem and network capability checks remain
-metadata/check-only skeletons.
+production-edge HTTP evidence. Filesystem and network capability checks remain Sloppy
+policy/metadata evidence and do not prove OS-level containment.

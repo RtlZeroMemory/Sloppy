@@ -2,7 +2,7 @@
 
 Parent EPIC: #581 CORE-NET-01: TCP/IP Networking Runtime API.
 
-Status: PR 4 DNS/address/socket-option implementation.
+Status: PR 5 conformance/examples/docs evidence.
 
 | Issue | Slice | PR Group | Status |
 | --- | --- | --- | --- |
@@ -14,7 +14,7 @@ Status: PR 4 DNS/address/socket-option implementation.
 | #589 | Streams, Backpressure, Deadlines, and Cancellation | PR 3 | Bounded connection stream helpers, accept timeout, stale/closed lifecycle checks, and cleanup-once listener/connection paths landed; broader stress/torture remains final evidence. |
 | #590 | DNS, Address Parsing, IPv4/IPv6, and Socket Options | PR 4 | `NetworkAddress` text/object parsing, local DNS-backed listen, IPv4/IPv6 address handling, endpoint metadata, and checked `noDelay`/`keepAlive` option propagation landed. |
 | #591 | V8/Stdlib Integration and JS Surface | PR 2 | Native intrinsics and bootstrap stdlib surface landed, extended by PR 3 listener methods. |
-| #592 | Doctor/Audit, Conformance, Examples, Docs, and Goldens | PR 5 | Deferred until the final evidence/examples pass. |
+| #592 | Doctor/Audit, Conformance, Examples, Docs, and Goldens | PR 5 | Network doctor/audit goldens, source examples, conformance index, and final docs landed. |
 
 ## PR Order
 
@@ -38,8 +38,9 @@ Status: PR 4 DNS/address/socket-option implementation.
   package-manager behavior, public alpha docs, benchmark claims, or crypto implementation
   are included in this EPIC.
 
-## Evidence Expected Later
+## Final Evidence
 
-Future PRs must add examples, doctor/audit goldens, final network conformance, and
-platform skip reporting. External live-network and benchmark lanes remain optional and
-separately reported.
+CORE-NET-01.I adds `sloppy.cli.doctor_network_*`, `sloppy.cli.audit_network_*`,
+`examples.net.api_shape`, and `tests/conformance/net/README.md`. Default evidence remains
+deterministic localhost/loopback plus static metadata/examples. External live-network,
+stress/torture, package, and benchmark lanes remain optional and separately reported.

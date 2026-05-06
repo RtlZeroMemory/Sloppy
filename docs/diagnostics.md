@@ -702,6 +702,10 @@ goldens prove deterministic diagnostic shape only. Loopback client/listener test
 scoped TCP execution, local `localhost` DNS resolution, IPv4/IPv6 address parsing, and
 socket-option failure mapping; they do not prove external network access, throughput,
 live-provider DNS behavior, or benchmark evidence.
+CORE-NET-01.I adds CLI doctor/audit goldens for Plan-visible network capabilities:
+`stdlib.net.capabilities`, `stdlib.net.connect`, `stdlib.net.listen`, and
+`SLOPPY_AUDIT_NETWORK_POLICY_VISIBLE`. Those goldens prove deterministic metadata
+visibility and no OS sandbox or external live-network evidence.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
