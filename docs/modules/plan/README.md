@@ -39,6 +39,9 @@ Implemented now:
 - CORE-FS-01.A/B `stdlib.fs` feature metadata for the `sloppy/fs` import;
 - CORE-CRYPTO-01.G `stdlib.crypto` feature metadata and V8 intrinsic activation for the
   implemented `sloppy/crypto` random/hash/HMAC/Password/Secret/NonCryptoHash surface;
+- CORE-NET-01.A/B `stdlib.net` feature metadata for the `sloppy/net` import. It is known
+  to Plan validation but unavailable by default until the TCP backend and V8
+  implementation PRs land;
 - CORE-CODEC-01.A/B `stdlib.codec` feature metadata for the `sloppy/codec` import. It is
   known to Plan validation but unavailable by default until the codec implementation and
   V8/stdlib PRs land;

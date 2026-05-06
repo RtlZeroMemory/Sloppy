@@ -107,6 +107,19 @@ not block the V8 owner thread in the V8 stdlib surface.
 Current random evidence is limited to OS-source use and API shape: UUID version/variant,
 token/hex/numeric alphabets, and rejection-sampling implementation. Deterministic tests do
 not claim random quality.
+CORE-NET-01.A/B adds the TCP networking API contract and policy model. `sloppy/net` is
+Plan-visible as `stdlib.net` and unavailable by default until native TCP backends and V8
+intrinsics land. Development mode allows ordinary loopback workflows without handwritten
+target declarations. Strict mode can require explicit allow rules for external connects
+and listens, and denied operations must fail before native socket admission. Statically
+visible literal host/port targets are future Plan-visible network capability metadata;
+dynamic host/port values must be represented honestly as partial/dynamic metadata rather
+than guessed.
+
+Network policy is not an OS sandbox claim. JavaScript never receives raw sockets, libuv
+handles, OS handles, raw native pointers, or backend resource internals. DNS/connect work
+must not block the V8 owner thread, and doctor/audit output must redact sensitive endpoint
+details where policy requires it.
 
 CORE-CODEC-01.A/B adds the codec API contract without adding a new permission grant type.
 `sloppy/codec` is Plan-visible as `stdlib.codec` and unavailable by default until real

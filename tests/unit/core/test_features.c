@@ -96,6 +96,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.provider_sqlserver = false;
     availability.stdlib_crypto = true;
     availability.stdlib_codec = true;
+    availability.stdlib_net = true;
     return availability;
 }
 
@@ -163,16 +164,18 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CRYPTO);
     const SlRuntimeFeatureDescriptor* codec =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CODEC);
+    const SlRuntimeFeatureDescriptor* net =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_NET);
     const SlRuntimeFeatureDescriptor* fs =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FS);
     const SlRuntimeFeatureDescriptor* config =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 16) {
+    if (SL_RUNTIME_FEATURE_COUNT != 17) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || data == NULL || time == NULL || crypto == NULL ||
-        codec == NULL || fs == NULL || config == NULL)
+        codec == NULL || net == NULL || fs == NULL || config == NULL)
     {
         return 61;
     }
@@ -208,6 +211,15 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !codec->requires_v8_intrinsics || codec->available)
     {
         return 69;
+    }
+    if (!sl_str_equal(net->stable_id, sl_str_from_cstr("stdlib.net")) ||
+        !sl_str_equal(net->stdlib_import, sl_str_from_cstr("sloppy/net")) ||
+        !sl_str_equal(net->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.net")) ||
+        !net->requires_v8_intrinsics || net->available ||
+        (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_TRANSPORT_LIBUV)) == 0U ||
+        (net->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
+    {
+        return 70;
     }
     if (!sl_str_equal(fs->stable_id, sl_str_from_cstr("stdlib.fs")) ||
         !sl_str_equal(fs->stdlib_import, sl_str_from_cstr("sloppy/fs")) ||
@@ -413,6 +425,69 @@ static int test_codec_required_feature_unavailable_by_default(void)
     }
     if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
         !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.codec")))
+    {
+        return 2;
+    }
+    return 0;
+}
+
+static int test_explicit_net_required_feature_activates_when_available(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.net")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_NET))
+    {
+        return 2;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 3;
+    }
+    return 0;
+}
+
+static int test_net_required_feature_unavailable_by_default(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.net")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = sl_runtime_feature_default_availability();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.v8 = true;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    (void)sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
+        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.net")))
     {
         return 2;
     }
@@ -748,6 +823,25 @@ static int test_codec_feature_diagnostic_golden(void)
     return 0;
 }
 
+static int test_net_feature_diagnostic_golden(void)
+{
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.net")}};
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlPlan plan = target_only_plan();
+
+    availability.stdlib_net = false;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    if (expect_activation_diagnostic_snapshot(
+            &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            "tests/golden/diagnostics/runtime_feature_unavailable_net.json") != 0)
+    {
+        return 79;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     static const FeatureTestFn tests[] = {
@@ -758,6 +852,8 @@ int main(void)
         test_crypto_required_feature_fails_when_backend_unavailable,
         test_explicit_codec_required_feature_activates_when_available,
         test_codec_required_feature_unavailable_by_default,
+        test_explicit_net_required_feature_activates_when_available,
+        test_net_required_feature_unavailable_by_default,
         test_minimal_route_activates_expected_features,
         test_sqlite_provider_metadata_activates_sqlite,
         test_unavailable_postgres_required_feature_fails,
@@ -767,6 +863,7 @@ int main(void)
         test_missing_feature_diagnostic_goldens,
         test_crypto_feature_diagnostic_golden,
         test_codec_feature_diagnostic_golden,
+        test_net_feature_diagnostic_golden,
     };
     size_t index = 0U;
 

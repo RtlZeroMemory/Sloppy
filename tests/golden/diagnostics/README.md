@@ -24,6 +24,7 @@ live-provider, package, stress, or benchmark evidence.
 | `runtime_feature_unavailable_transport.json` | default | runtime features | Direct `transport.libuv` required-feature availability failure. |
 | `runtime_feature_unavailable_crypto.json` | default | runtime features | Direct `stdlib.crypto` required-feature availability failure before crypto backends land. |
 | `runtime_feature_unavailable_codec.json` | default | runtime features | Direct `stdlib.codec` required-feature availability failure before codec implementations land. |
+| `runtime_feature_unavailable_net.json` | default | runtime features | Direct `stdlib.net` required-feature availability failure before TCP backends land. |
 | `runtime_feature_inactive_sqlite_intrinsic.snap` | default | stdlib/runtime features | Stdlib SQLite missing-intrinsic text when `provider.sqlite` is inactive. |
 | `time_timeout.json` | default | Time diagnostics | Timeout/deadline diagnostic JSON shape. |
 | `time_cancelled.json` | default | Time diagnostics | Caller cancellation diagnostic JSON shape. |
@@ -57,6 +58,21 @@ live-provider, package, stress, or benchmark evidence.
 | `codec_compressed_stream_corrupt.json` | default | Codec diagnostics | Corrupt compressed-stream diagnostic JSON shape. |
 | `codec_checksum_unsupported_algorithm.json` | default | Codec diagnostics | Unsupported checksum algorithm diagnostic JSON shape. |
 | `codec_checksum_security_context_warning.json` | default | Codec diagnostics | Warning when checksum use looks security-like. |
+| `net_feature_unavailable.json` | default | Network diagnostics | Network feature unavailable diagnostic JSON shape. |
+| `net_connect_denied.json` | default | Network diagnostics | Strict-policy connect denial diagnostic JSON shape. |
+| `net_listen_denied.json` | default | Network diagnostics | Strict-policy listen denial diagnostic JSON shape. |
+| `net_invalid_host.json` | default | Network diagnostics | Invalid host diagnostic JSON shape. |
+| `net_invalid_port.json` | default | Network diagnostics | Invalid TCP port diagnostic JSON shape. |
+| `net_dns_failure.json` | default | Network diagnostics | DNS failure diagnostic with endpoint redaction reminder. |
+| `net_connect_timeout.json` | default | Network diagnostics | Connect timeout diagnostic JSON shape. |
+| `net_connect_cancelled.json` | default | Network diagnostics | Connect cancellation diagnostic JSON shape. |
+| `net_connection_closed.json` | default | Network diagnostics | Closed connection diagnostic JSON shape. |
+| `net_stale_handle.json` | default | Network diagnostics | Stale TCP handle diagnostic JSON shape. |
+| `net_read_write_timeout.json` | default | Network diagnostics | Read/write timeout diagnostic JSON shape. |
+| `net_read_write_cancelled.json` | default | Network diagnostics | Read/write cancellation diagnostic JSON shape. |
+| `net_backpressure_overflow.json` | default | Network diagnostics | Bounded TCP queue overflow diagnostic JSON shape. |
+| `net_unsupported_option.json` | default | Network diagnostics | Unsupported socket option diagnostic JSON shape. |
+| `net_backend_unavailable.json` | default | Network diagnostics | Backend unavailable diagnostic without raw handle exposure. |
 
 V8-gated exception, async, SQLite users API, and `sloppy run` diagnostic evidence stays in
 the V8-enabled CTest lane and its process tests. Default renderer goldens must not be

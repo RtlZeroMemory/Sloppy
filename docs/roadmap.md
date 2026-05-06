@@ -93,6 +93,7 @@ Durable architecture sources remain:
 | Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
 | Time/deadline API | Complete/proven for scoped path | CORE-TIME-01.A/B defines `sloppy/time`, `stdlib.time`, compiler Plan activation, stable diagnostics, and bootstrap error classes. CORE-TIME-01.C/D/G adds the V8-gated native delay backend, owner-thread Promise settlement, `Time.delay`, `Time.timeout`, `Deadline`, and `CancellationController`. CORE-TIME-01.E/F adds intervals, scheduled jobs, and fake clock. CORE-TIME-01.H aligns filesystem options plus app/request/provider/HTTP naming boundaries. CORE-TIME-01.I adds source examples, final goldens, and the conformance evidence index. |
 | Crypto API | Partial | CORE-CRYPTO-01.G implements `sloppy/crypto` random helpers, SHA-2/HMAC, ConstantTime, Secret cleanup, `stdlib.crypto`/`__sloppy.crypto`, bootstrap JS surface, libsodium Argon2id password hash/verify/needsRehash with V8 offload, and dependency-backed `NonCryptoHash.xxHash64`. Final examples and conformance/goldens remain deferred. |
+| TCP networking API | Missing/contracted | CORE-NET-01.A/B defines `sloppy/net`, `stdlib.net`, compiler Plan activation, development/strict network policy, lifecycle model, stable diagnostics, and redaction policy. Native TCP/libuv, client/listener/stream behavior, DNS/options, V8/stdlib integration, examples, and conformance evidence remain deferred to #586-#592. |
 | Codec API | Missing/contracted | CORE-CODEC-01.A/B defines `sloppy/codec`, `stdlib.codec`, compiler Plan activation, backend/dependency policy, stable diagnostics, and safety policy. Base64/Base64Url/Hex/Text/Binary/Compression/Checksums implementations remain deferred to #624-#631. |
 | Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
 | Source-input run | Partial/proven for compiler-owned module subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; supported relative function modules and Sloppy provider imports are compiler-owned. Cache reuse, watch/hot reload, Node/npm, and full TypeScript remain deferred. |
@@ -127,6 +128,8 @@ Kept open intentionally:
 - #571 CORE-CRYPTO-01 remains the crypto parent while #572-#580 land sequentially; #572/#573
   cover the contract/feature/diagnostic model and #574/#575/#577/#579 cover the first
   random/hash/HMAC/Secret/V8 implementation slice.
+- #581 CORE-NET-01 remains the TCP networking parent while #584-#592 land sequentially;
+  #584/#585 cover the current contract, feature, policy, and diagnostic model.
 
 Previously created for the owner-approved post-Core next wave, now completed or kept as
 historical evidence where closed:

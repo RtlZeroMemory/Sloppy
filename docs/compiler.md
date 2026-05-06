@@ -205,6 +205,9 @@ The compiler extracts:
 Extraction must be deterministic. Import order must not silently decide module ordering.
 
 Unsupported input fails with diagnostics. The compiler accepts only
+`import { Sloppy, Results } from "sloppy";` plus optional unaliased `data`, `schema`,
+`sloppy/time`, `sloppy/fs`, `sloppy/crypto`, and `sloppy/net` named imports as public import syntax and rejects arbitrary
+bare imports such as `"express"`, `"fs"`, and `"node:fs"` with
 `import { Sloppy, Results } from "sloppy";` plus optional unaliased named imports from
 the separate public specifiers `"sloppy/time"`, `"sloppy/fs"`, `"sloppy/crypto"`,
 `"sloppy/codec"`, `"sloppy/data"`, and `"sloppy/schema"`. It rejects arbitrary bare
@@ -286,6 +289,7 @@ a separate discovery model.
 The bootstrap stdlib source layout now lives under `stdlib/sloppy/` and is staged for
 runtime/package use under `lib/sloppy/bootstrap/sloppy/`. The compiler recognizes only the
 public bare import `import { Sloppy, Results } from "sloppy";` plus optional unaliased
+`data`, `schema`, `sloppy/time`, `sloppy/fs`, `sloppy/crypto`, and `sloppy/net` imports as input syntax. EPIC-24
 named imports from the separate public specifiers `"sloppy/data"`, `"sloppy/schema"`,
 `"sloppy/time"`, `"sloppy/fs"`, `"sloppy/crypto"`, and `"sloppy/codec"` as input syntax.
 EPIC-24

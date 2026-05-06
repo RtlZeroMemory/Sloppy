@@ -95,6 +95,22 @@ static SlRuntimeFeatureDescriptor sl_feature_fs_descriptor(SlRuntimeFeatureId id
         true, true, true);
 }
 
+static SlRuntimeFeatureDescriptor sl_feature_net_descriptor(SlRuntimeFeatureId id, bool available)
+{
+    /* The TCP stdlib is Plan-visible before it is executable: sloppy/net remains known even when
+       unavailable, and depends on V8, libuv transport, and stdlib.time deadline semantics. */
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.net", sizeof("stdlib.net") - 1U),
+        sl_feature_literal("network stdlib", sizeof("network stdlib") - 1U),
+        sl_feature_literal("sloppy/net", sizeof("sloppy/net") - 1U),
+        sl_feature_literal("__sloppy.net", sizeof("__sloppy.net") - 1U),
+        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+        available, true, true);
+}
+
 static SlRuntimeFeatureDescriptor
 sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
                                         const SlRuntimeFeatureAvailability* availability)
@@ -106,6 +122,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     const bool postgres = availability == NULL ? false : availability->provider_postgres;
     const bool sqlserver = availability == NULL ? false : availability->provider_sqlserver;
     const bool crypto = availability == NULL ? false : availability->stdlib_crypto;
+    const bool net = availability == NULL ? false : availability->stdlib_net;
     const bool codec = availability == NULL ? false : availability->stdlib_codec;
 
     switch (id) {
@@ -177,6 +194,8 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_crypto_descriptor(id, crypto);
     case SL_RUNTIME_FEATURE_STDLIB_CODEC:
         return sl_feature_codec_descriptor(id, codec);
+    case SL_RUNTIME_FEATURE_STDLIB_NET:
+        return sl_feature_net_descriptor(id, net);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
         return sl_feature_fs_descriptor(id);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
@@ -232,6 +251,9 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.provider_sqlserver = false;
     availability.stdlib_crypto = true;
     availability.stdlib_codec = false;
+    /* Known-but-unavailable by default keeps sloppy/net import diagnostics deterministic until the
+       V8/libuv TCP backend is explicitly wired by the implementation PRs. */
+    availability.stdlib_net = false;
     return availability;
 }
 
@@ -308,7 +330,14 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.codec"), SL_FEATURE_STR("codec stdlib"),
          SL_FEATURE_STR("sloppy/codec"), SL_FEATURE_STR("__sloppy.codec"),
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), false,
-         true, true}};
+         true, true},
+        {SL_RUNTIME_FEATURE_STDLIB_NET, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.net"), SL_FEATURE_STR("network stdlib"),
+         SL_FEATURE_STR("sloppy/net"), SL_FEATURE_STR("__sloppy.net"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+         false, true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;
