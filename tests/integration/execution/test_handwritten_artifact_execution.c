@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #define TEST_ARENA_SIZE 16384U
-#define TEST_FILE_SIZE 131072U
+#define TEST_FILE_SIZE 262144U
 
 static int expect_true(bool condition)
 {
