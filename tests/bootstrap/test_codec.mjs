@@ -126,6 +126,8 @@ cappedWriter.u8(1).u8(2);
 assertCodecError(() => cappedWriter.u8(3), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
 assertBytes(cappedWriter.toBytes(), new Uint8Array([1, 2]));
 assertCodecError(() => Binary.writer({ initialCapacity: 3, maxCapacity: 2 }), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
+assertCodecError(() => Binary.writer({ initialCapacity: 2 ** 40 }), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
+assertCodecError(() => Binary.writer({ maxCapacity: 2 ** 40 }), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
 assertCodecError(() => Binary.writer().u8(256), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
 assertCodecError(() => Binary.writer().u64le(-1n), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
 assert.throws(() => Binary.reader([]), TypeError);
@@ -141,6 +143,10 @@ try {
     const runtimeWriter = globalThis.__sloppy_runtime.Binary.writer();
     runtimeWriter.u16le(0x1234).bytes(new Uint8Array([0]));
     assertBytes(runtimeWriter.toBytes(), new Uint8Array([0x34, 0x12, 0]));
+    assertCodecError(
+        () => globalThis.__sloppy_runtime.Binary.writer({ initialCapacity: 2 ** 40 }),
+        "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE",
+    );
 } finally {
     if (previousRuntime === undefined) {
         delete globalThis.__sloppy_runtime;

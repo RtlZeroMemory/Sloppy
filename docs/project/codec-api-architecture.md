@@ -133,8 +133,9 @@ const crc = Checksums.crc32(bytes);
 - Float32/Float64 are selected only if a future IEEE-754 validation PR adds deterministic
   cross-platform vectors.
 - Reader position, seek, and remaining are explicit. Negative seeks and overflow fail.
-- Writer growth is bounded by an explicit max-capacity option or runtime default. Growth
-  uses checked arithmetic and Slop buffer primitives.
+- Writer growth is bounded by an explicit `maxCapacity` option and a 64 MiB runtime
+  maximum. Growth uses checked arithmetic and fails with stable diagnostics before
+  allocatable buffer limits are reached.
 
 ## Compression Policy
 

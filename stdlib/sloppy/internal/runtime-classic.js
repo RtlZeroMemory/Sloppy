@@ -2789,6 +2789,14 @@ Reason:
         return value;
     }
 
+    function requireBinaryCapacity(value, operation) {
+        value = requireNonNegativeInteger(value, operation);
+        if (value > DEFAULT_BINARY_WRITER_MAX_CAPACITY) {
+            throw binaryFieldError(`${operation} must not exceed the Binary.writer runtime maximum.`);
+        }
+        return value;
+    }
+
     function requireIntegerInRange(value, min, max, operation) {
         if (!Number.isInteger(value) || value < min || value > max) {
             throw binaryFieldError(`${operation} value is outside the supported field range.`);
@@ -2968,11 +2976,11 @@ Reason:
             const initialCapacity =
                 options.initialCapacity === undefined
                     ? DEFAULT_BINARY_WRITER_CAPACITY
-                    : requireNonNegativeInteger(options.initialCapacity, "Binary.writer initialCapacity");
+                    : requireBinaryCapacity(options.initialCapacity, "Binary.writer initialCapacity");
             this.#maxCapacity =
                 options.maxCapacity === undefined
                     ? DEFAULT_BINARY_WRITER_MAX_CAPACITY
-                    : requireNonNegativeInteger(options.maxCapacity, "Binary.writer maxCapacity");
+                    : requireBinaryCapacity(options.maxCapacity, "Binary.writer maxCapacity");
             if (initialCapacity > this.#maxCapacity) {
                 throw binaryFieldError("Binary.writer initialCapacity must not exceed maxCapacity.");
             }
