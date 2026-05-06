@@ -47,8 +47,11 @@ helpers plus the streaming UTF-8 decoder, and CORE-CODEC-01.E Binary reader/writ
 helpers. The Base64/Base64Url/Hex decoders are strict and diagnostic-stable, arbitrary
 bytes and embedded NUL values are preserved, UTF-8 malformed input follows the documented
 fatal/replacement policy, and Binary reads/writes are endian-explicit and bounds-checked.
-Compression and Checksums are present only as deterministic deferred stubs until their
-dedicated CORE-CODEC implementation PRs land.
+CORE-CODEC-01.F/G adds `Compression.gzip`, `Compression.gunzip`, `gzipStream`, and
+`gunzipStream`. These helpers require the active V8 `__sloppy.codec` bridge, use the
+selected zlib backend for gzip/gunzip bytes, keep input/output bounded, and expose an
+async-iterable transform surface rather than Web Streams compatibility. Checksums remain a
+deterministic deferred stub until CORE-CODEC-01.H/J lands.
 `File`, `Directory`, `Path`, `FileHandle`, and `FileWatcher` expose the CORE-FS-01.G filesystem
 surface when the V8 runtime installs the feature-gated `__sloppy.fs` bridge: async core
 file operations, directory create/list/delete/walk helpers, atomic writes, temp paths,

@@ -786,3 +786,8 @@ For future implementation:
   model.
 - ENGINE-12 stress tests show many pending async operations do not create
   thread-per-request behavior before Sloppy claims scalable async performance.
+- CORE-CODEC-01.F/G gzip/gunzip keeps native zlib work inline only under the documented
+  1 MiB input cap. The public `gzipStream`/`gunzipStream` helpers are async-iterable
+  transforms with bounded buffering and signal/deadline checks, not Web Streams. Larger or
+  incremental native compression work must use the native completion/offload model and
+  settle any V8 Promise on the owner thread.

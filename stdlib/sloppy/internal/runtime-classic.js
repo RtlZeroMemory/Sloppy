@@ -3121,27 +3121,322 @@ Reason:
         },
     });
 
+    const DEFAULT_COMPRESSION_LEVEL = 6;
+    const MAX_COMPRESSION_INPUT_BYTES = 1024 * 1024;
+    const DEFAULT_DECOMPRESSION_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+
+    function compressionBackendUnavailable(operation) {
+        throw codecError(
+            "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE",
+            `${operation} requires the zlib-backed __sloppy.codec V8 bridge.`,
+        );
+    }
+
+    function sloppyNativeCodec(operation) {
+        const bridge = globalThis.__sloppy?.codec ?? null;
+        if (bridge === null) {
+            compressionBackendUnavailable(operation);
+        }
+        return bridge;
+    }
+
+    function sloppyNativeCompressionFunction(operation, name) {
+        const method = sloppyNativeCodec(operation)[name];
+        if (typeof method !== "function") {
+            compressionBackendUnavailable(operation);
+        }
+        return method;
+    }
+
+    function requireCompressionLevel(value, operation) {
+        if (!Number.isInteger(value) || value < 0 || value > 9) {
+            throw new TypeError(`${operation} level must be an integer from 0 to 9.`);
+        }
+        return value;
+    }
+
+    function requireCompressionLimit(value, operation, maximum) {
+        if (!Number.isSafeInteger(value) || value < 0 || value > maximum) {
+            throw new TypeError(`${operation} must be a non-negative safe integer no greater than ${maximum}.`);
+        }
+        return value;
+    }
+
+    function parseGzipOptions(options, operation) {
+        options = validateOptionsObject(options, operation);
+        rejectUnknownOptions(options, new Set(["level"]), operation);
+        return {
+            level: options.level === undefined ? DEFAULT_COMPRESSION_LEVEL : requireCompressionLevel(options.level, operation),
+        };
+    }
+
+    function parseGunzipOptions(options, operation) {
+        options = validateOptionsObject(options, operation);
+        rejectUnknownOptions(options, new Set(["maxOutputBytes"]), operation);
+        return {
+            maxOutputBytes:
+                options.maxOutputBytes === undefined
+                    ? DEFAULT_DECOMPRESSION_MAX_OUTPUT_BYTES
+                    : requireCompressionLimit(options.maxOutputBytes, `${operation} maxOutputBytes`, DEFAULT_DECOMPRESSION_MAX_OUTPUT_BYTES),
+        };
+    }
+
+    function parseCompressionStreamOptions(options, operation, allowedCodecOptions) {
+        options = validateOptionsObject(options, operation);
+        rejectUnknownOptions(options, new Set([...allowedCodecOptions, "signal", "deadline", "maxInputBytes"]), operation);
+        const maxInputBytes =
+            options.maxInputBytes === undefined
+                ? MAX_COMPRESSION_INPUT_BYTES
+                : requireCompressionLimit(options.maxInputBytes, `${operation} maxInputBytes`, MAX_COMPRESSION_INPUT_BYTES);
+        const codecOptions = {};
+        for (const key of allowedCodecOptions) {
+            if (Object.prototype.hasOwnProperty.call(options, key)) {
+                if (key === "level") {
+                    codecOptions.level = requireCompressionLevel(options.level, operation);
+                } else if (key === "maxOutputBytes") {
+                    codecOptions.maxOutputBytes = requireCompressionLimit(
+                        options.maxOutputBytes,
+                        `${operation} maxOutputBytes`,
+                        DEFAULT_DECOMPRESSION_MAX_OUTPUT_BYTES,
+                    );
+                }
+            }
+        }
+        return {
+            codecOptions,
+            signal: options.signal,
+            deadline: options.deadline,
+            maxInputBytes,
+        };
+    }
+
+    function normalizeCompressionResult(value, operation) {
+        if (!(value instanceof Uint8Array)) {
+            throw new TypeError(`${operation} native backend must return Uint8Array bytes.`);
+        }
+        return value.slice();
+    }
+
+    function codecIsCancellationSignal(value) {
+        return (
+            value !== null &&
+            typeof value === "object" &&
+            typeof value.aborted === "boolean" &&
+            ("reason" in value || typeof value.addEventListener === "function")
+        );
+    }
+
+    function codecSubscribeCancellation(signal, listener) {
+        if (!codecIsCancellationSignal(signal)) {
+            return () => {};
+        }
+        if (signal.aborted) {
+            listener(signal.reason);
+            return () => {};
+        }
+        if (typeof signal._subscribe === "function") {
+            return signal._subscribe(listener);
+        }
+        if (typeof signal.addEventListener === "function") {
+            const wrapped = () => listener(signal.reason);
+            signal.addEventListener("abort", wrapped);
+            return () => signal.removeEventListener?.("abort", wrapped);
+        }
+        return () => {};
+    }
+
+    function compressionCancelledError(reason = undefined) {
+        return cancelledError(reason);
+    }
+
+    function compressionTimeoutError(reason = undefined) {
+        return timeoutError(reason);
+    }
+
+    function codecDeadlineRemainingMs(deadline, operation) {
+        if (deadline === undefined || deadline === null) {
+            return Infinity;
+        }
+        if (typeof deadline.remainingMs !== "function") {
+            throw new TypeError(`${operation} deadline must come from Deadline.after, Deadline.at, or Deadline.never.`);
+        }
+        return deadline.remainingMs();
+    }
+
+    function checkCompressionTerminalOptions(options, operation) {
+        if (codecIsCancellationSignal(options.signal) && options.signal.aborted) {
+            throw compressionCancelledError(options.signal.reason);
+        }
+        if (codecDeadlineRemainingMs(options.deadline, operation) <= 0) {
+            throw compressionTimeoutError(options.deadline);
+        }
+    }
+
+    function raceCompressionTerminal(promise, options, operation) {
+        checkCompressionTerminalOptions(options, operation);
+        const signal = options.signal;
+        const remainingMs = codecDeadlineRemainingMs(options.deadline, operation);
+        if (!codecIsCancellationSignal(signal) && remainingMs === Infinity) {
+            return promise;
+        }
+        return new Promise((resolve, reject) => {
+            let finished = false;
+            let timeoutId;
+            let cleanupSignal = () => {};
+            const finish = (callback, value) => {
+                if (finished) {
+                    return;
+                }
+                finished = true;
+                cleanupAll();
+                callback(value);
+            };
+            cleanupSignal = codecSubscribeCancellation(signal, (reason) => {
+                finish(reject, compressionCancelledError(reason));
+            });
+            if (remainingMs !== Infinity) {
+                const setTimer = globalThis["setTimeout"];
+                const clearTimer = globalThis["clearTimeout"];
+                if (typeof setTimer !== "function" || typeof clearTimer !== "function") {
+                    finish(reject, compressionTimeoutError(options.deadline));
+                    return;
+                }
+                timeoutId = setTimer(
+                    () => finish(reject, compressionTimeoutError(options.deadline)),
+                    Math.min(Math.ceil(remainingMs), 0x7fffffff),
+                );
+            }
+            promise.then(
+                (value) => {
+                    finish(resolve, value);
+                },
+                (error) => {
+                    finish(reject, error);
+                },
+            );
+            function cleanupAll() {
+                cleanupSignal();
+                if (timeoutId !== undefined) {
+                    const clearTimer = globalThis["clearTimeout"];
+                    clearTimer(timeoutId);
+                }
+            }
+        });
+    }
+
+    function runCompression(operation, bytes, options, invoke) {
+        try {
+            bytes = requireBytes(bytes, operation);
+            checkCompressionTerminalOptions({ signal: options?.signal, deadline: options?.deadline }, operation);
+            if (bytes.byteLength > MAX_COMPRESSION_INPUT_BYTES) {
+                throw new TypeError(`${operation} input exceeds the ${MAX_COMPRESSION_INPUT_BYTES} byte inline compression limit.`);
+            }
+            const promise = Promise.resolve(invoke(new Uint8Array(bytes))).then((result) =>
+                normalizeCompressionResult(result, operation),
+            );
+            return raceCompressionTerminal(promise, options ?? {}, operation);
+        } catch (error) {
+            return Promise.reject(error);
+        }
+    }
+
+    function codecIsIterable(value) {
+        return value !== null && typeof value === "object" && (Symbol.asyncIterator in value || Symbol.iterator in value);
+    }
+
+    async function* compressionStream(input, options, operation, parseOptions, invoke) {
+        const parsed = parseOptions(options, operation);
+        checkCompressionTerminalOptions(parsed, operation);
+        let total = 0;
+        const chunks = [];
+        let terminal = false;
+        const iterator =
+            typeof input[Symbol.asyncIterator] === "function"
+                ? input[Symbol.asyncIterator]()
+                : input[Symbol.iterator]();
+        try {
+            while (true) {
+                checkCompressionTerminalOptions(parsed, operation);
+                const next = await raceCompressionTerminal(Promise.resolve(iterator.next()), parsed, operation);
+                if (next.done === true) {
+                    break;
+                }
+                const chunk = next.value;
+                const bytes = requireBytes(chunk, operation);
+                if (bytes.byteLength > parsed.maxInputBytes - total) {
+                    throw new TypeError(`${operation} buffered input exceeds maxInputBytes.`);
+                }
+                chunks.push(new Uint8Array(bytes));
+                total += bytes.byteLength;
+            }
+            checkCompressionTerminalOptions(parsed, operation);
+            const inputBytes = new Uint8Array(total);
+            let offset = 0;
+            for (const chunk of chunks) {
+                inputBytes.set(chunk, offset);
+                offset += chunk.byteLength;
+            }
+            const output = await raceCompressionTerminal(Promise.resolve(invoke(inputBytes, parsed.codecOptions)), parsed, operation);
+            checkCompressionTerminalOptions(parsed, operation);
+            terminal = true;
+            yield output;
+        } finally {
+            if (!terminal && typeof iterator.return === "function") {
+                try {
+                    await raceCompressionTerminal(Promise.resolve(iterator.return()), parsed, operation);
+                } catch {
+                }
+            }
+            chunks.length = 0;
+            if (!terminal) {
+                total = 0;
+            }
+        }
+    }
+
     const Compression = Object.freeze({
-        gzip() {
-            return Promise.reject(
-                codecError("SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE", "Compression.gzip lands in CORE-CODEC-01.F."),
+        gzip(bytes, options = undefined) {
+            try {
+                const parsed = parseGzipOptions(options, "Compression.gzip");
+                return runCompression("Compression.gzip", bytes, {}, (input) =>
+                    sloppyNativeCompressionFunction("Compression.gzip", "gzip").call(undefined, input, parsed.level),
+                );
+            } catch (error) {
+                return Promise.reject(error);
+            }
+        },
+        gunzip(bytes, options = undefined) {
+            try {
+                const parsed = parseGunzipOptions(options, "Compression.gunzip");
+                return runCompression("Compression.gunzip", bytes, {}, (input) =>
+                    sloppyNativeCompressionFunction("Compression.gunzip", "gunzip").call(undefined, input, parsed.maxOutputBytes),
+                );
+            } catch (error) {
+                return Promise.reject(error);
+            }
+        },
+        gzipStream(input, options = undefined) {
+            if (!codecIsIterable(input)) {
+                throw new TypeError("Compression.gzipStream input must be an iterable or async iterable of Uint8Array chunks.");
+            }
+            return compressionStream(
+                input,
+                options,
+                "Compression.gzipStream",
+                (streamOptions, operation) => parseCompressionStreamOptions(streamOptions, operation, ["level"]),
+                (bytes, codecOptions) => Compression.gzip(bytes, codecOptions),
             );
         },
-        gunzip() {
-            return Promise.reject(
-                codecError("SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE", "Compression.gunzip lands in CORE-CODEC-01.F."),
-            );
-        },
-        gzipStream() {
-            throw codecError(
-                "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE",
-                "Compression.gzipStream lands in CORE-CODEC-01.G.",
-            );
-        },
-        gunzipStream() {
-            throw codecError(
-                "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE",
-                "Compression.gunzipStream lands in CORE-CODEC-01.G.",
+        gunzipStream(input, options = undefined) {
+            if (!codecIsIterable(input)) {
+                throw new TypeError("Compression.gunzipStream input must be an iterable or async iterable of Uint8Array chunks.");
+            }
+            return compressionStream(
+                input,
+                options,
+                "Compression.gunzipStream",
+                (streamOptions, operation) => parseCompressionStreamOptions(streamOptions, operation, ["maxOutputBytes"]),
+                (bytes, codecOptions) => Compression.gunzip(bytes, codecOptions),
             );
         },
     });

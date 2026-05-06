@@ -107,8 +107,9 @@ CORE-CRYPTO-01.A/B adds the `stdlib.crypto` descriptor and compiler activation f
 plans when the vetted backends are available.
 CORE-CODEC-01.A/B adds the `stdlib.codec` descriptor and compiler activation for
 `sloppy/codec`; CORE-CODEC-01.C/D/I enables Base64/Base64Url/Hex/Text helpers and
-CORE-CODEC-01.E adds Binary reader/writer while Compression/Checksum implementations
-remain future slices.
+CORE-CODEC-01.E adds Binary reader/writer. CORE-CODEC-01.F/G adds zlib-backed
+gzip/gunzip and bounded async-iterable gzip/gunzip transforms while Checksum
+implementations remain a future slice.
 CORE-FS-01.E/F extends the same feature-gated
 bridge with Directory, FileHandle, temp, atomic, and symlink primitives, plus native
 lock-file primitives under the filesystem backend contract. CORE-FS-01.G extends the same
@@ -234,8 +235,9 @@ The network descriptor is active for V8 plans after CORE-NET-01.G registered TCP
 client/listener backends, the `__sloppy.net` intrinsic namespace, and local address/DNS
 socket-option coverage for the scoped surface.
 The codec descriptor is active for V8 plans after CORE-CODEC-01.C/D/I registered the
-`__sloppy.codec` namespace marker; Base64/Base64Url/Hex/Text and Binary are implemented in
-the bootstrap JS surface while Compression/Checksum backends remain future slices.
+`__sloppy.codec` namespace; Base64/Base64Url/Hex/Text and Binary are implemented in the
+bootstrap JS surface, and Compression uses bounded native zlib gzip/gunzip helpers through
+that namespace. Checksum backends remain a future slice.
 
 ## Schema Sections
 
