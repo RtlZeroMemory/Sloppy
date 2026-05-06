@@ -1257,6 +1257,8 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "2, 67108864);"
                                  "  const passwordOk = await c.passwordVerify(enc('password'), "
                                  "passwordHash);"
+                                 "  const wrongPasswordRejected = !(await c.passwordVerify("
+                                 "enc('wrong-password'), passwordHash));"
                                  "  const passwordRehash = await c.passwordNeedsRehash("
                                  "passwordHash, 3, 67108864);"
                                  "  const oversizedHashRejected = await (async () => {"
@@ -1274,8 +1276,8 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "uuid[14] + ':' + code.length + ':' + randomHexLength + ':' + "
                                  "emptyRandomText.length + ':' + passwordHash.startsWith("
                                  "'$argon2id$') + ':' + passwordOk + ':' + passwordRehash + ':' + "
-                                 "oversizedHashRejected + ':' + oversizedRehashRejected + ':' + "
-                                 "equal;"
+                                 "wrongPasswordRejected + ':' + oversizedHashRejected + ':' + "
+                                 "oversizedRehashRejected + ':' + equal;"
                                  "};"),
                 &diag),
             SL_STATUS_OK) != 0)
@@ -1297,7 +1299,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
         !sl_str_equal(result.text, sl_str_from_cstr("ba7816bf8f01cfea414140de5dae2223"
                                                     "b00361a396177a9cb410ff61f20015ad:"
                                                     "b0344c61:4:6:8:0:true:true:true:true:"
-                                                    "true:true")))
+                                                    "true:true:true")))
     {
         sl_engine_destroy(engine);
         return 415;

@@ -39,7 +39,7 @@ import {
 ```
 
 The compiler recognizes only named, unaliased imports from `sloppy/crypto`. The import
-activates the `stdlib.crypto` runtime feature in emitted Plan metadata. CORE-CRYPTO-01.C/D/F/H
+activates the `stdlib.crypto` runtime feature in emitted Plan metadata. CORE-CRYPTO-01.E
 registers the V8 intrinsic namespace for active `stdlib.crypto` plans.
 
 ## API Contract
@@ -148,7 +148,7 @@ hash helpers as a public algorithm contract.
 
 ## Async and Owner-Thread Policy
 
-Small bounded hash/HMAC work runs inline in CORE-CRYPTO-01.C/D/F/H with a 1 MiB V8 bridge
+Small bounded hash/HMAC work runs inline through CORE-CRYPTO-01.E with a 1 MiB V8 bridge
 input cap. The public JS methods keep the async `Promise` return shape for `Hash`/`Hmac`,
 but the current bridge performs the bounded native work on the owner thread. Larger
 streaming/offloaded hash work remains deferred.

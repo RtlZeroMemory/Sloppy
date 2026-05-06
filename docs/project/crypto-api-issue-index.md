@@ -2,7 +2,7 @@
 
 Parent EPIC: #571 CORE-CRYPTO-01: Crypto, Random, Hashing, Password, and Secret Utilities.
 
-Status: PR 2 random/hash/HMAC/Secret/V8 surface implementation.
+Status: PR 3 password hashing and V8 offload implementation.
 
 | Issue | Slice | PR Group | Status |
 | --- | --- | --- | --- |
@@ -48,8 +48,13 @@ Status: PR 2 random/hash/HMAC/Secret/V8 surface implementation.
 - Non-Windows SHA-2/HMAC uses OpenSSL 3 through the vetted dependency toolchain.
 - Token and numeric-code helpers use rejection sampling; tests verify API shape and
   alphabet/UUID constraints only.
-- V8 hash/HMAC inputs are capped at 1 MiB for the inline bridge. Password hashing uses
-  worker-thread requests and settles promises on the V8 owner thread.
+- V8 hash/HMAC inputs are capped at 1 MiB for the inline bridge.
+
+## Implementation Decisions In PR 3
+
+- Password hashing, verification, and needsRehash use libsodium Argon2id PHC strings.
+- V8 password operations use worker-thread requests and settle promises on the V8 owner
+  thread.
 
 ## Evidence Expected Later
 

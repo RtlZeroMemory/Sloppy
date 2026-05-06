@@ -70,8 +70,8 @@ bridge.
 CORE-CRYPTO-01.E registers the private `__sloppy.crypto` namespace for active
 `stdlib.crypto` plans. The namespace exposes bounded random, SHA-2, HMAC, constant-time,
 and password helpers used by `stdlib/sloppy/crypto.js`; it does not expose raw native
-pointers or backend handles. Password hashing uses worker-thread requests and settles on
-the V8 owner thread.
+pointers or backend handles. `Password.hash`, `Password.verify`, and
+`Password.needsRehash` use worker-thread requests and settle on the V8 owner thread.
 ENGINE-27.E/F pins the inactive SQLite intrinsic behavior: stdlib code that reaches
 `data.sqlite.open(...)` without an active `provider.sqlite` feature reports
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and names `__sloppy.data.sqlite` as the missing V8
@@ -197,8 +197,9 @@ Framework and provider bridge code belongs in sibling V8 modules:
   `stdlib.time` plans.
 - `intrinsics_crypto.cc` owns crypto argument validation and bounded random/hash/HMAC/
   constant-time dispatch for active `stdlib.crypto` plans. The bridge performs only small
-  bounded hash/HMAC work inline; password hashing offloads away from the V8 owner thread
-  and settles through the owner-thread async loop.
+  bounded hash/HMAC work inline; `Password.hash`, `Password.verify`, and
+  `Password.needsRehash` offload away from the V8 owner thread and settle through the
+  owner-thread async loop.
 - Native provider, filesystem, HTTP, timer, or other future completions must pass any
   terminal-state guard before reaching owner-thread settlement; provider/libuv/offload
   domains still never enter V8 directly.
