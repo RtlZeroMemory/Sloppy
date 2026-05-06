@@ -68,9 +68,11 @@ benchmark lanes stay optional and separately reported.
 CORE-CODEC-01 gates must report codec evidence by lane. PRs that only add the
 `stdlib.codec` contract, Plan metadata, diagnostics, and backend policy do not prove
 Base64/Hex/Text/Binary/Compression/Checksum correctness, V8 execution, package readiness,
-streaming/backpressure behavior, compression backend availability, or performance. Later
-vector/example PRs must keep checksum evidence separate from `sloppy/crypto` security
-evidence.
+streaming/backpressure behavior, compression backend availability, or performance.
+CORE-CODEC-01.F/G evidence is split between default JS compression-surface tests and
+V8-gated zlib backend tests; it still does not prove Web Streams compatibility, broader
+algorithms, package readiness, or performance. Later vector/example PRs must keep checksum
+evidence separate from `sloppy/crypto` security evidence.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS

@@ -263,6 +263,7 @@ find_package(unofficial-sodium CONFIG REQUIRED)
 find_package(xxHash CONFIG REQUIRED)
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
 find_package(PostgreSQL REQUIRED)
+find_package(ZLIB REQUIRED)
 if(SLOPPY_ENABLE_SQLSERVER)
     find_package(ODBC REQUIRED)
     message(STATUS "SQL Server provider: enabled through ODBC")
@@ -442,7 +443,8 @@ target_link_libraries(
             OpenSSL::Crypto
             unofficial-sodium::sodium
             PostgreSQL::PostgreSQL
-            unofficial::sqlite3::sqlite3)
+            unofficial::sqlite3::sqlite3
+            ZLIB::ZLIB)
 
 if(WIN32)
     target_link_libraries(sloppy_core PRIVATE bcrypt)
