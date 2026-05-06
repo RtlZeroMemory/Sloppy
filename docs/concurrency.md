@@ -17,8 +17,8 @@ differences from ASP.NET Core, Node, Bun, and Deno.
 - No thread-per-request model.
 - No arbitrary thread-pool continuation into a shared V8 isolate.
 - No parallel execution of JS callbacks inside one isolate.
-- No production claim for native CPU-parallel JS worker isolates until V8-gated bridge tests
-  prove that path.
+- No performance claim for native CPU-parallel JS worker isolates; V8-gated bridge tests prove
+  correctness and owner-thread settlement only.
 - No custom event loop implementation in this spec pass.
 - No CPU-parallel JS execution in a single isolate.
 - No Node/libuv compatibility promise, and no public timers/fetch/fs/process APIs.
@@ -59,9 +59,10 @@ diagnostics, doctor/audit evidence, and examples for worker-shaped resources. Th
 JavaScript bootstrap layer implements `BackgroundService`, bounded `WorkQueue`, and
 `WorkerPool` admission/concurrency semantics with explicit cancellation, timeout, retry,
 overflow, drain, and stop behavior. The V8 bridge installs feature-gated
-`__sloppy.workers` metadata, but separate V8 worker isolates and true native CPU offload
-remain bridge-gated and must not be presented as production-ready evidence until V8-gated
-tests prove separate isolate startup, message passing, and owner-thread settlement.
+`__sloppy.workers` methods for bounded WorkerPool offload and explicit worker module
+invocation. Worker code runs in worker-owned V8 isolates, copied completion data is posted
+through the engine async loop, and Promise settlement happens only on the app isolate owner
+thread.
 
 TASK 09.A implements the first `SlLoop` skeleton as a caller-backed, fixed-capacity native
 completion queue. It is deterministic and single-threaded: callbacks run synchronously on

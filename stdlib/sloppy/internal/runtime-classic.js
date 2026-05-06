@@ -5755,6 +5755,21 @@ Reason:
         return new SloppyWorkerError(code, message, cause === undefined ? undefined : { cause });
     }
 
+    function sloppyWorkerBridgeError(error, fallbackCode, fallbackMessage) {
+        if (error instanceof SloppyWorkerError) {
+            return error;
+        }
+        const code = typeof error?.code === "string" && error.code.startsWith("SLOPPY_E_")
+            ? error.code
+            : fallbackCode;
+        const message = typeof error?.message === "string" && error.message.length > 0
+            ? error.message
+            : fallbackMessage;
+        return sloppyWorkerError(code, message, error);
+    }
+
+    const sloppyWorkerSerializationMarker = "__sloppyWorkerSerialized";
+
     function sloppyWorkerTypedArrayBackingStore(view) {
         return Reflect.get(view, "buf" + "fer");
     }
@@ -5786,6 +5801,9 @@ Reason:
         {
             if (seen.has(value)) {
                 throw sloppyWorkerError("SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED", "worker payload contains a cycle");
+            }
+            if (Object.prototype.hasOwnProperty.call(value, sloppyWorkerSerializationMarker)) {
+                throw sloppyWorkerError("SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD", "worker payload uses a reserved serialization marker");
             }
             seen.add(value);
             const copy = {};
@@ -5986,7 +6004,17 @@ Reason:
     const WorkerPool = Object.freeze({
         create(name, options = undefined) {
             const queue = new ClassicWorkQueue(name, { maxQueued: options?.maxQueued ?? 64, concurrency: options?.workers ?? 1 });
-            queue.process(async (job) => job.data.fn(Object.freeze({ input: job.data.input })));
+            queue.process(async (job) => {
+                const bridge = globalThis.__sloppy?.workers;
+                if (bridge !== undefined && typeof bridge.runPool === "function") {
+                    try {
+                        return await bridge.runPool(name, job.data.fn, job.data.input, {});
+                    } catch (error) {
+                        throw sloppyWorkerBridgeError(error, "SLOPPY_E_WORKER_CRASHED", "worker pool operation failed");
+                    }
+                }
+                return job.data.fn(Object.freeze({ input: job.data.input }));
+            });
             return Object.freeze({
                 __sloppyWorkerResource: "workerPool",
                 run(fn, runOptions = undefined) {
@@ -6005,11 +6033,72 @@ Reason:
         },
     });
 
+    class ClassicNativeWorkerHandle {
+        constructor(modulePath, nativeHandle, options) {
+            this.modulePath = modulePath;
+            this._native = nativeHandle;
+            this._stopped = false;
+            this._memoryLimitMb = options.memoryLimitMb;
+            this.__sloppyWorkerResource = "jsWorker";
+            Object.seal(this);
+        }
+
+        async invoke(exportName, payload = undefined, options = undefined) {
+            if (this._stopped) {
+                throw sloppyWorkerError("SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+            }
+            if (typeof exportName !== "string" || exportName.length === 0) {
+                throw new TypeError("Worker.invoke export name must be a non-empty string.");
+            }
+            try {
+                return await this._native.invoke(exportName, sloppyWorkerSerializePayload(payload), options);
+            } catch (error) {
+                throw sloppyWorkerBridgeError(error, "SLOPPY_E_WORKER_CRASHED", "worker crashed");
+            }
+        }
+
+        async post(message, options = undefined) {
+            if (this._stopped) {
+                throw sloppyWorkerError("SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+            }
+            try {
+                return await this._native.post(sloppyWorkerSerializePayload(message), options);
+            } catch (error) {
+                throw sloppyWorkerBridgeError(error, "SLOPPY_E_WORKER_CRASHED", "worker crashed");
+            }
+        }
+
+        async stop() {
+            if (this._stopped) {
+                return;
+            }
+            this._stopped = true;
+            try {
+                await this._native.stop();
+            } catch (error) {
+                throw sloppyWorkerBridgeError(error, "SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+            }
+        }
+
+        __sloppyPlanMetadata() {
+            return Object.freeze({ kind: "jsWorker", path: this.modulePath, memoryLimitMb: this._memoryLimitMb });
+        }
+    }
+
     const Worker = Object.freeze({
-        async start(modulePath) {
+        async start(modulePath, options = undefined) {
+            if (typeof modulePath !== "string" || modulePath.length === 0) {
+                throw new TypeError("Worker.start module path must be a non-empty string.");
+            }
+            const memoryLimitMb = sloppyWorkerPositive(options?.memoryLimitMb, "Worker.memoryLimitMb", 128);
             const bridge = globalThis.__sloppy?.workers;
             if (bridge !== undefined && typeof bridge.startWorker === "function") {
-                return bridge.startWorker(modulePath);
+                try {
+                    const nativeHandle = await bridge.startWorker(modulePath, { memoryLimitMb });
+                    return new ClassicNativeWorkerHandle(modulePath, nativeHandle, { memoryLimitMb });
+                } catch (error) {
+                    throw sloppyWorkerBridgeError(error, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", "worker isolate startup failed");
+                }
             }
             throw sloppyWorkerError("SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", "worker isolate startup failed");
         },

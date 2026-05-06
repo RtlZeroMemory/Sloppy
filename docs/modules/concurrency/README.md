@@ -35,9 +35,8 @@ it does not add timers, fetch, Node APIs, or queued native completions.
 
 CORE-WORKER-01 adds `sloppy/workers` as the public worker resource API. In the bootstrap
 stdlib, `BackgroundService`, bounded `WorkQueue`, and `WorkerPool` admission semantics run
-today; V8 installs `__sloppy.workers` feature metadata. True native CPU offload and separate
-V8 worker isolates are still bridge-gated and must not be counted as pass evidence without
-V8-gated tests.
+today; V8 installs `__sloppy.workers` bridge methods for WorkerPool offload and explicit
+worker module invocation. V8-gated tests are required before reporting that bridge evidence.
 
 ## Non-goals
 
@@ -81,8 +80,10 @@ Implemented API:
 - `WorkerPool.create`;
 - `Worker.start`.
 
-Real native worker-thread execution for `WorkerPool` and separate JavaScript worker isolate
-execution remain future work beyond the bootstrap API and metadata path.
+The public WorkerPool/Worker bridge copies inputs into worker-owned V8 isolates and posts
+serialized completion data back through the owner-thread async loop. The older
+`SlWorkerPool` C skeleton remains an inline unit-test primitive; app-facing CPU offload is
+the `sloppy/workers` bridge path.
 
 ## Ownership/Lifetime Rules
 

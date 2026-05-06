@@ -3,6 +3,7 @@ import { Deadline } from "./time.js";
 const DEFAULT_QUEUE_CAPACITY = 1024;
 const DEFAULT_WORKER_POOL_CAPACITY = 64;
 const MAX_RESOURCE_NAME_LENGTH = 128;
+const WORKER_SERIALIZATION_MARKER = "__sloppyWorkerSerialized";
 
 class SloppyWorkerError extends Error {
     constructor(code, message, options = undefined) {
@@ -14,6 +15,19 @@ class SloppyWorkerError extends Error {
 
 function workerError(code, message, cause = undefined) {
     return new SloppyWorkerError(code, message, cause === undefined ? undefined : { cause });
+}
+
+function toWorkerError(error, fallbackCode, fallbackMessage) {
+    if (error instanceof SloppyWorkerError) {
+        return error;
+    }
+    const code = typeof error?.code === "string" && error.code.startsWith("SLOPPY_E_")
+        ? error.code
+        : fallbackCode;
+    const message = typeof error?.message === "string" && error.message.length > 0
+        ? error.message
+        : fallbackMessage;
+    return workerError(code, message, error);
 }
 
 function validateName(name, subject) {
@@ -244,6 +258,9 @@ function serializePayload(value, seen = new Set()) {
     if (isPlainObject(value)) {
         if (seen.has(value)) {
             throw workerError("SLOPPY_E_WORKER_MESSAGE_SERIALIZATION_FAILED", "worker payload contains a cycle");
+        }
+        if (Object.prototype.hasOwnProperty.call(value, WORKER_SERIALIZATION_MARKER)) {
+            throw workerError("SLOPPY_E_WORKER_UNSUPPORTED_PAYLOAD", "worker payload uses a reserved serialization marker");
         }
         seen.add(value);
         const copy = {};
@@ -504,7 +521,9 @@ class WorkQueueHandle {
                         settled = true;
                         this._stats.failed += 1;
                         this._stats.retryExhausted += attemptLimit > 1 ? 1 : 0;
-                        job.reject(workerError("SLOPPY_E_WORK_RETRY_EXHAUSTED", "work queue retry attempts were exhausted", error));
+                        job.reject(attemptLimit === 1 && error instanceof SloppyWorkerError
+                            ? error
+                            : workerError("SLOPPY_E_WORK_RETRY_EXHAUSTED", "work queue retry attempts were exhausted", error));
                         break;
                     }
                     const ms = retryDelayMs(this.retry.backoff, job.attempt, error);
@@ -630,7 +649,11 @@ class WorkerPoolHandle {
         this._queue.process(async (job, ctx) => {
             const bridge = globalThis.__sloppy?.workers;
             if (bridge !== undefined && typeof bridge.runPool === "function") {
-                return bridge.runPool(this.name, job.data.fn, job.data.input, ctx);
+                try {
+                    return await bridge.runPool(this.name, job.data.fn, job.data.input, ctx);
+                } catch (error) {
+                    throw toWorkerError(error, "SLOPPY_E_WORKER_CRASHED", "worker pool operation failed");
+                }
             }
             await yieldTurn();
             return job.data.fn(Object.freeze({ input: job.data.input, signal: ctx.signal, deadline: ctx.deadline }));
@@ -731,6 +754,80 @@ class JsWorkerHandle {
     }
 }
 
+class NativeJsWorkerHandle {
+    constructor(modulePath, nativeHandle, options) {
+        this.modulePath = modulePath;
+        this._native = nativeHandle;
+        this._stopped = false;
+        this._memoryLimitMb = options.memoryLimitMb;
+        this.__sloppyWorkerResource = "jsWorker";
+        Object.seal(this);
+    }
+
+    async invoke(exportName, payload = undefined, options = undefined) {
+        if (this._stopped) {
+            throw workerError("SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+        }
+        if (typeof exportName !== "string" || exportName.length === 0) {
+            throw new TypeError("Worker.invoke export name must be a non-empty string.");
+        }
+        const input = serializePayload(payload);
+        const owned = makeContext(normalizeOperationOptions(options));
+        try {
+            return await Promise.race([
+                this._native.invoke(exportName, input, options),
+                new Promise((_, reject) => {
+                    subscribeSignal(owned.ctx.signal, (reason) => reject(rejectForCancellation(reason, "SLOPPY_E_WORK_JOB_TIMEOUT")));
+                }),
+            ]);
+        } catch (error) {
+            throw toWorkerError(error, "SLOPPY_E_WORKER_CRASHED", "worker crashed");
+        } finally {
+            owned.cleanup();
+        }
+    }
+
+    async post(message, options = undefined) {
+        if (this._stopped) {
+            throw workerError("SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+        }
+        const input = serializePayload(message);
+        const owned = makeContext(normalizeOperationOptions(options));
+        try {
+            return await Promise.race([
+                this._native.post(input, options),
+                new Promise((_, reject) => {
+                    subscribeSignal(owned.ctx.signal, (reason) => reject(rejectForCancellation(reason, "SLOPPY_E_WORK_JOB_TIMEOUT")));
+                }),
+            ]);
+        } catch (error) {
+            throw toWorkerError(error, "SLOPPY_E_WORKER_CRASHED", "worker crashed");
+        } finally {
+            owned.cleanup();
+        }
+    }
+
+    async stop() {
+        if (this._stopped) {
+            return;
+        }
+        this._stopped = true;
+        try {
+            await this._native.stop();
+        } catch (error) {
+            throw toWorkerError(error, "SLOPPY_E_WORKER_STALE_HANDLE", "worker handle has been stopped");
+        }
+    }
+
+    __sloppyPlanMetadata() {
+        return Object.freeze({
+            kind: "jsWorker",
+            path: this.modulePath,
+            memoryLimitMb: this._memoryLimitMb,
+        });
+    }
+}
+
 const BackgroundService = Object.freeze({
     create(name, handler, options = undefined) {
         return new BackgroundServiceHandle(name, handler, options);
@@ -757,7 +854,12 @@ const Worker = Object.freeze({
         const memoryLimitMb = positiveInteger(options?.memoryLimitMb, "Worker.memoryLimitMb", 128);
         const bridge = globalThis.__sloppy?.workers;
         if (bridge !== undefined && typeof bridge.startWorker === "function") {
-            return bridge.startWorker(modulePath, { memoryLimitMb });
+            try {
+                const nativeHandle = await bridge.startWorker(modulePath, { memoryLimitMb });
+                return new NativeJsWorkerHandle(modulePath, nativeHandle, { memoryLimitMb });
+            } catch (error) {
+                throw toWorkerError(error, "SLOPPY_E_WORKER_ISOLATE_STARTUP_FAILED", "worker isolate startup failed");
+            }
         }
         try {
             const moduleNamespace = await import(modulePath);

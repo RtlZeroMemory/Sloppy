@@ -3,15 +3,15 @@
 ## Status
 
 CORE-WORKER-01 introduces the public `sloppy/workers` module, feature metadata, diagnostics,
-doctor/audit evidence, examples, and bootstrap tests for worker-shaped resources. The shipped
+doctor/audit evidence, examples, bootstrap tests, and V8-gated worker bridge coverage. The
 JavaScript bootstrap API implements deterministic `BackgroundService`, bounded `WorkQueue`,
-and `WorkerPool` admission semantics. `Worker.start()` can execute explicit worker modules in
-the bootstrap/Node test lane and is bridge-gated in the V8 runtime lane.
+and `WorkerPool` admission semantics. In V8 builds, `WorkerPool.run(...)` runs copied work in
+a separate worker-owned V8 isolate and settles its Promise on the owning isolate thread.
+`Worker.start()` loads an explicit worker module, invokes exported functions through copied
+messages, and exposes no raw native handles.
 
-Native V8 worker isolates and true native CPU offload are not reported as production-ready
-performance features. The V8 bridge exposes only feature-gated `__sloppy.workers` metadata
-until native worker-isolate execution grows a real bridge. Do not close issue scope that
-requires true separate V8 isolates or native CPU parallelism unless those bridge tests exist.
+This is correctness and lifecycle evidence, not a benchmark or throughput claim. Default
+non-V8 gates still do not prove V8 isolate execution; report the V8 lane separately.
 
 ## Public API
 
@@ -26,8 +26,8 @@ import {
 
 - `BackgroundService.create(name, handler, options?)` creates a lifecycle-bound app resource.
 - `WorkQueue.create(name, options)` creates a bounded in-process FIFO queue.
-- `WorkerPool.create(name, options)` creates a bounded offload-style queue with fixed worker
-  concurrency.
+- `WorkerPool.create(name, options)` creates a bounded offload queue with fixed worker
+  concurrency; the V8 bridge executes admitted work in worker-owned isolates.
 - `Worker.start(modulePath, options?)` starts an explicit worker module when a supported bridge
   or bootstrap module loader is available.
 
@@ -60,6 +60,15 @@ Overflow policy is explicit:
 Jobs receive copied/serialized payloads. Supported payloads are `null`, booleans, finite
 numbers, strings, arrays, plain objects, `ArrayBuffer`, and typed-array views. Unsupported
 payloads fail deterministically without including payload values in diagnostics.
+
+The V8 bridge copies input as serialized text into the worker isolate and copies serialized
+results back before owner-thread settlement. Worker modules use Sloppy-owned source files with
+`export function`, `export async function`, or `export const` exports; this is not Node
+`worker_threads`, Web Worker compatibility, or package-manager resolution.
+
+Resource limits are scoped to bounded queues, payload/result byte caps, module source caps,
+and `memoryLimitMb` validation. Exceeding those limits fails with
+`SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED`.
 
 Retry policy is explicit through `retry.maxAttempts` and `retry.backoffMs`. Exhausted retry
 attempts fail with `SLOPPY_E_WORK_RETRY_EXHAUSTED`. Cancellation and deadline expiration are

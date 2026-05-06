@@ -637,6 +637,10 @@ process tests are compiled and linked only in that V8-enabled build. Passing def
 does not prove V8 smoke, owner-thread, lifecycle, Promise-policy, or bootstrap runtime
 tests passed; the V8-enabled configure/build/test commands must be run and reported
 separately.
+CORE-WORKER-01 worker bridge evidence also lives in this lane: active/inactive
+`__sloppy.workers`, WorkerPool offload through worker-owned isolates, JS worker
+start/invoke/post/stop, stale-handle behavior, scoped resource-limit failure, and
+owner-thread Promise settlement are not proven by default non-V8 gates.
 The default non-V8 lane does run `core.execution_domain`, which proves the fixed ENGINE-26
 domain policy table but does not prove V8 execution.
 ENGINE-15.B adds V8 source-map remapping evidence to this lane. Passing it proves only the

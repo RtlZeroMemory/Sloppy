@@ -21,22 +21,17 @@ Child issues:
 
 This slice lands the public `sloppy/workers` module, runtime feature metadata,
 worker-specific diagnostics, compiler Plan metadata, doctor/audit goldens, bootstrap tests,
-V8 feature-gated namespace metadata, docs, and examples.
+V8 worker bridge tests, docs, and examples.
 
 Implemented in the bootstrap stdlib:
 
 - `BackgroundService.create(...)` lifecycle resource registration through `app.use(...)`.
 - bounded `WorkQueue` FIFO admission, concurrency, overflow, drain, shutdown, cancellation,
   timeout, retry, and unsupported-payload behavior.
-- `WorkerPool.create(...).run(...)` bounded worker-pool style admission over the current
-  JavaScript bootstrap execution layer.
-- `Worker.start(...).invoke(...).stop()` bootstrap module execution and stale-handle checks.
-
-Explicitly not closed by this document unless bridge tests are added:
-
-- production native CPU-parallel `WorkerPool` execution.
-- separate V8 worker isolate startup and message passing in the runtime lane.
-- resource-limit enforcement beyond validated API options and payload copy/serialization.
+- `WorkerPool.create(...).run(...)` bounded admission and, in the V8 lane, execution in a
+  worker-owned isolate with owner-thread Promise settlement.
+- `Worker.start(...).invoke(...).post(...).stop()` bootstrap module execution, V8 worker
+  isolate invocation/message passing, resource-limit validation, and stale-handle checks.
 
 ## Required Evidence
 
@@ -45,4 +40,5 @@ Explicitly not closed by this document unless bridge tests are added:
 - compiler import/Plan tests.
 - doctor/audit goldens.
 - source-input example shape checks.
-- V8-gated evidence for `__sloppy.workers` metadata when the V8 lane is available.
+- V8-gated evidence for `__sloppy.workers` metadata, WorkerPool offload, worker isolate
+  start/invoke/post/stop, stale-handle behavior, and scoped resource-limit failure.

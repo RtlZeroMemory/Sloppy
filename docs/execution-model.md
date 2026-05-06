@@ -146,11 +146,11 @@ not add dynamic loading, package-manager behavior, or PostgreSQL/SQL Server JS b
 
 CORE-WORKER-01 adds `stdlib.workers` to the same feature model. Imports from
 `sloppy/workers` emit `requiredFeatures[]` metadata, and the V8 bridge installs a
-feature-gated `__sloppy.workers` namespace with policy metadata. The bootstrap stdlib owns
-the current `BackgroundService`, `WorkQueue`, `WorkerPool`, and `Worker` JavaScript API
-shape. True native CPU offload and separate V8 worker-isolate execution remain bridge-gated
-and are not performance or production-isolation evidence until V8-specific tests prove
-that path.
+feature-gated `__sloppy.workers` namespace with policy metadata plus bridge methods for
+WorkerPool offload and explicit worker module invocation. The bootstrap stdlib owns the
+current `BackgroundService`, `WorkQueue`, `WorkerPool`, and `Worker` JavaScript API shape.
+V8-specific tests prove correctness for copied message passing and owner-thread settlement;
+they are not benchmark or production throughput evidence.
 
 TASK 10.A adds a pure-C route pattern parser and matcher foundation for later native route
 dispatch. It supports only a minimal path-pattern subset and one-pattern matching. It does
@@ -1067,6 +1067,7 @@ overflow, retry, cancellation, deadline, drain, and stop behavior are explicit. 
 payloads are copied or serialized and unsupported payloads fail deterministically.
 
 The runtime contract remains conservative: no raw native pointers or OS/libuv/V8 handles
-are exposed to JavaScript; native worker threads must not enter V8; any future native
-completion must settle JavaScript Promises on the owning V8 thread. Current doctor/audit
-goldens report metadata and policy only, never payload contents or secret values.
+are exposed to JavaScript; native worker threads must not enter the app owner's V8 isolate;
+worker-owned isolates are entered only by their worker threads; native completions settle
+JavaScript Promises on the owning V8 thread. Current doctor/audit goldens report metadata
+and policy only, never payload contents or secret values.
