@@ -1,0 +1,20 @@
+{
+  "checks": [
+    { "id": "bootstrap.assets", "status": "ok", "message": "bootstrap runtime asset found" },
+    { "id": "engine.v8", "status": "ok", "message": "V8 bridge compiled; runtime success still requires V8 tests" },
+    { "id": "providers.live", "status": "warn", "message": "live provider checks are not configured by default and no live DB was contacted" },
+    { "id": "package.runtime", "status": "warn", "message": "local CLI checks do not prove package release readiness" },
+    { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
+    { "id": "app.plan.routes", "status": "warn", "message": "no route metadata present" },
+    { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
+    { "id": "app.plan.capabilities", "status": "ok", "message": "capability metadata present" },
+    { "id": "stdlib.net.capabilities", "status": "ok", "message": "network capability metadata is visible to sloppy/net policy checks" },
+    { "id": "stdlib.net.connect", "status": "ok", "message": "network connect capability metadata is present" },
+    { "id": "stdlib.httpclient.required", "status": "ok", "message": "HttpClient feature metadata is Plan-visible" },
+    { "id": "stdlib.httpclient.clients", "status": "ok", "message": "HTTP client named-client metadata is visible" },
+    { "id": "stdlib.httpclient.static-targets", "status": "ok", "message": "static outbound HTTP targets are visible without secret values" },
+    { "id": "stdlib.httpclient.dynamic-targets", "status": "warn", "message": "dynamic outbound HTTP targets are marked partial, not guessed" },
+    { "id": "stdlib.httpclient.strict-network", "status": "ok", "message": "strict HTTP network policy metadata is present" },
+    { "id": "stdlib.httpclient.redaction", "status": "ok", "message": "HTTP client doctor metadata omits Authorization, Cookie, API key, bearer token, and TLS-sensitive values" }
+  ]
+}

@@ -1,0 +1,18 @@
+Sloppy Doctor
+
+[ok] bootstrap.assets: bootstrap runtime asset found
+[ok] engine.v8: V8 bridge compiled; runtime success still requires V8 tests
+[warn] providers.live: live provider checks are not configured by default and no live DB was contacted
+[warn] package.runtime: local CLI checks do not prove package release readiness
+[ok] app.plan.parse: app plan parsed by native Plan v1 parser
+[warn] app.plan.routes: no route metadata present
+[warn] app.plan.providers: provider metadata not present
+[ok] app.plan.capabilities: capability metadata present
+[ok] stdlib.net.capabilities: network capability metadata is visible to sloppy/net policy checks
+[ok] stdlib.net.connect: network connect capability metadata is present
+[ok] stdlib.httpclient.required: HttpClient feature metadata is Plan-visible
+[ok] stdlib.httpclient.clients: HTTP client named-client metadata is visible
+[ok] stdlib.httpclient.static-targets: static outbound HTTP targets are visible without secret values
+[warn] stdlib.httpclient.dynamic-targets: dynamic outbound HTTP targets are marked partial, not guessed
+[ok] stdlib.httpclient.strict-network: strict HTTP network policy metadata is present
+[ok] stdlib.httpclient.redaction: HTTP client doctor metadata omits Authorization, Cookie, API key, bearer token, and TLS-sensitive values

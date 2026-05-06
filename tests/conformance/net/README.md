@@ -17,9 +17,14 @@ Network conformance is split by lane:
   `sloppy.cli.audit_network_*` prove Plan-visible network capability metadata for
   `connect`, `listen`, and `connect-listen` without claiming OS sandboxing or external
   network access;
+- default HTTP client CLI metadata evidence: `sloppy.cli.doctor_http_client_*` and
+  `sloppy.cli.audit_http_client_*` prove Plan-visible `stdlib.httpclient`, named-client,
+  static target, dynamic/partial target, and strict-network metadata without leaking
+  URLs, headers, cookies, bearer tokens, API keys, or TLS-sensitive material;
 - default source examples: `examples.net.api_shape` checks TCP client, listener, echo,
-  strict-policy, and deadline/cancellation examples for the supported public API shape and
-  rejects obvious Node/Bun/Deno, package-manager, benchmark, and adjacent-protocol claims;
+  strict-policy, deadline/cancellation, and HTTP client examples for the supported public
+  API shape and rejects obvious Node/Bun/Deno, package-manager, benchmark, and
+  adjacent-protocol claims;
 - bootstrap JavaScript stdlib evidence: `bootstrap.stdlib.app_host_foundation` executes
   the ESM stdlib with deterministic native-hook fakes and verifies `TcpClient`,
   `TcpListener`, `TcpConnection`, and `NetworkAddress` surface behavior;

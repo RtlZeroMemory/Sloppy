@@ -25,6 +25,7 @@ live-provider, package, stress, or benchmark evidence.
 | `runtime_feature_unavailable_crypto.json` | default | runtime features | Direct `stdlib.crypto` required-feature availability failure before crypto backends land. |
 | `runtime_feature_unavailable_codec.json` | default | runtime features | Direct `stdlib.codec` required-feature availability failure before codec implementations land. |
 | `runtime_feature_unavailable_net.json` | default | runtime features | Direct `stdlib.net` required-feature availability failure before TCP backends land. |
+| `runtime_feature_unavailable_http_client.json` | default | runtime features | Direct `stdlib.httpclient` required-feature availability failure before the HTTP client lane is active. |
 | `runtime_feature_unavailable_os.json` | default | runtime features | Direct `stdlib.os` required-feature availability failure before OS runtime API implementation lands. |
 | `runtime_feature_inactive_sqlite_intrinsic.snap` | default | stdlib/runtime features | Stdlib SQLite missing-intrinsic text when `provider.sqlite` is inactive. |
 | `time_timeout.json` | default | Time diagnostics | Timeout/deadline diagnostic JSON shape. |

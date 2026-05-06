@@ -128,12 +128,16 @@ policy vocabulary. `HttpClient` imports from `sloppy/net` are Plan-visible as
 `stdlib.httpclient`, separate from raw TCP `stdlib.net`, because named clients,
 pipeline/transport policy, TLS validation, redirects, pooling, and redaction have a
 different security surface. CORE-HTTPCLIENT-01.D adds the first cleartext `http://`
-HTTP/1.1 request/response lane over the CORE-NET TCP bridge. HTTPS/TLS, redirects,
-pooling, streaming bodies, named-client doctor metadata, and external-network security
-evidence remain deferred. Future doctor/audit output must represent static targets and
-dynamic/partial targets honestly and must redact authorization headers, cookies, API keys,
-bearer tokens, config-backed secret values, secret query parameters, and TLS-sensitive
-material.
+HTTP/1.1 request/response lane over the CORE-NET TCP bridge. Later slices add bounded
+helper APIs, buffered request/response stream shapes, operation-wide timeout/deadline/
+cancellation, per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mapping,
+strict-network preconnect denial, cross-origin sensitive-header strip/deny defaults, and
+HTTP client doctor/audit metadata goldens. HTTPS/TLS, proxy policy, true socket-level
+streaming, automatic compiler inference of static target literals, external-network
+security evidence, and a dedicated HTTP-native V8 bridge remain deferred. Doctor/audit
+output represents static targets and dynamic/partial targets honestly and must redact or
+omit authorization headers, cookies, API keys, bearer tokens, config-backed secret values,
+secret query parameters, and TLS-sensitive material.
 
 Network policy is not an OS sandbox claim. JavaScript never receives raw sockets, libuv
 handles, OS handles, raw native pointers, or backend resource internals. DNS/connect work

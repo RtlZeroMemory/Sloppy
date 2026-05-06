@@ -1,10 +1,11 @@
 # HTTP Client API Architecture
 
-Status: CORE-HTTPCLIENT-01.A/B/C contract slice plus CORE-HTTPCLIENT-01.D/E/F/G partial
+Status: CORE-HTTPCLIENT-01.A/B/C contract slice plus CORE-HTTPCLIENT-01.D/E/F/G/I partial
 HTTP/1.1 client transport, helper surface, bounded body/deadline semantics, redirects,
-pooling, DNS failure mapping, strict network policy, and header redaction. This document
-defines the outbound HTTP client API and policy model, and records the first executable
-cleartext HTTP/1.1 request/response lane.
+pooling, DNS failure mapping, strict network policy, header redaction, doctor/audit
+metadata goldens, source examples, and conformance indexing. This document defines the
+outbound HTTP client API and policy model, and records the first executable cleartext
+HTTP/1.1 request/response lane.
 
 ## Goal
 
@@ -29,9 +30,10 @@ plus request `json` body serialization, bounded async-iterable request body cons
 response `stream()` iteration over the buffered body, `signal` cancellation, and
 `deadline` handling. It also includes bounded redirects, reusable-client per-origin
 HTTP/1.1 pooling, strict-network preconnect denial, deterministic DNS-failure mapping, and
-cross-origin sensitive-header stripping. HTTPS/TLS, true socket-level streaming, proxy
-policy, and named-client doctor metadata remain deferred to later CORE-HTTPCLIENT-01
-slices.
+cross-origin sensitive-header stripping plus doctor/audit metadata for named, static, and
+dynamic outbound clients. HTTPS/TLS, true socket-level streaming, proxy policy, automatic
+compiler target inference, and a dedicated HTTP-native V8 bridge remain deferred to later
+CORE-HTTPCLIENT-01 slices.
 
 ## Public Shape
 
@@ -183,6 +185,17 @@ Static outbound targets should become Plan/doctor-visible. Dynamic base URLs or 
 represented as dynamic or partial metadata, never guessed as static facts. Strict mode must
 be able to deny external HTTP before native connect/TLS work. Doctor/audit output explains
 outbound HTTP access without leaking secrets.
+
+The current doctor/audit lane reads explicit Plan metadata for `requiredFeatures:
+["stdlib.httpclient"]` and a small `httpClients[]` metadata array used by generated or
+hand-authored artifacts. `sloppy doctor` reports Plan-visible HttpClient activation,
+named-client metadata, static target visibility, dynamic/partial target markers, and
+strict-network metadata without printing raw URLs, headers, cookies, bearer tokens, API
+keys, or TLS-sensitive material. `sloppy audit` emits note-level findings for Plan and
+named/static target visibility and a warning for dynamic targets that must be checked at
+runtime. The compiler does not yet infer static outbound targets from arbitrary
+`HttpClient.create(...)` source; that inference remains a follow-up so dynamic source is
+not guessed as static.
 
 ## Diagnostics
 

@@ -972,6 +972,8 @@ if(SLOPPY_ENABLE_TESTS)
     set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json.json)
     set(SLOPPY_DOCTOR_NET_TEXT_GOLDEN tests/golden/cli/doctor-network-text.txt)
     set(SLOPPY_DOCTOR_NET_JSON_GOLDEN tests/golden/cli/doctor-network-json.json)
+    set(SLOPPY_DOCTOR_HTTP_CLIENT_TEXT_GOLDEN tests/golden/cli/doctor-http-client-text.txt)
+    set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN tests/golden/cli/doctor-http-client-json.json)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
         tests/golden/cli/doctor-crypto-noncrypto-hash-text.txt)
     set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -989,6 +991,10 @@ if(SLOPPY_ENABLE_TESTS)
         set(SLOPPY_DOCTOR_FS_JSON_GOLDEN tests/golden/cli/doctor-filesystem-json-v8.json)
         set(SLOPPY_DOCTOR_NET_TEXT_GOLDEN tests/golden/cli/doctor-network-text-v8.txt)
         set(SLOPPY_DOCTOR_NET_JSON_GOLDEN tests/golden/cli/doctor-network-json-v8.json)
+        set(SLOPPY_DOCTOR_HTTP_CLIENT_TEXT_GOLDEN
+            tests/golden/cli/doctor-http-client-text-v8.txt)
+        set(SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN
+            tests/golden/cli/doctor-http-client-json-v8.json)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN
             tests/golden/cli/doctor-crypto-noncrypto-hash-text-v8.txt)
         set(SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_JSON_GOLDEN
@@ -1022,6 +1028,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_network_json ${SLOPPY_DOCTOR_NET_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/network-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_http_client_text ${SLOPPY_DOCTOR_HTTP_CLIENT_TEXT_GOLDEN} doctor
+        --plan tests/fixtures/cli/http-client-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_http_client_json ${SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN} doctor
+        --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_crypto_noncrypto_hash_text
         ${SLOPPY_DOCTOR_CRYPTO_NONCRYPTO_TEXT_GOLDEN} doctor --plan
@@ -1065,6 +1077,12 @@ if(SLOPPY_ENABLE_TESTS)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_network_json tests/golden/cli/audit-network-json.json audit --plan
         tests/fixtures/cli/network-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_http_client_text tests/golden/cli/audit-http-client-text.txt audit
+        --plan tests/fixtures/cli/http-client-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_http_client_json tests/golden/cli/audit-http-client-json.json audit
+        --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)

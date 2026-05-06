@@ -726,6 +726,11 @@ connect/DNS/TLS failures, timeout versus cancellation, redirect loops/max redire
 sensitive header stripping, pool exhaustion, strict policy denial, and dynamic target metadata. These
 diagnostics must not include secrets, tokens, cookies, raw TLS material, native handles,
 V8 handles, OS handles, raw pointers, or unredacted query parameters marked secret.
+CORE-HTTPCLIENT-01.I adds CLI doctor/audit goldens for Plan-visible `stdlib.httpclient`,
+named-client metadata, static target visibility, dynamic/partial target markers, and
+strict-network metadata. Those goldens prove metadata visibility and redaction/omission
+policy only; they do not prove TLS execution, external network access, package readiness,
+or benchmark behavior.
 
 CORE-CODEC-01.A/B adds stable Codec diagnostics and JSON goldens for the feature/model
 slice. CORE-CODEC-01.C/D/I uses the same code-name strings for Base64/Base64Url/Hex and
