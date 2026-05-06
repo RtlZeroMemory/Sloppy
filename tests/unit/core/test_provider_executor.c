@@ -3,6 +3,7 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 enum
 {
@@ -2574,6 +2575,11 @@ int main(void)
     for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {
         int result = tests[index]();
         if (result != 0) {
+#ifdef _MSC_VER
+            fprintf_s(stderr, "provider_executor subtest %zu failed with %d\n", index, result);
+#else
+            (void)fprintf(stderr, "provider_executor subtest %zu failed with %d\n", index, result);
+#endif
             return result;
         }
     }

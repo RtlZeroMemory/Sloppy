@@ -65,7 +65,7 @@ static uint64_t sl_fs_posix_modified_stamp(const struct stat* st)
     }
 #if defined(__APPLE__)
     return ((uint64_t)st->st_mtimespec.tv_sec * 1000000000ULL) + (uint64_t)st->st_mtimespec.tv_nsec;
-#elif defined(st_mtim)
+#elif defined(__linux__)
     return ((uint64_t)st->st_mtim.tv_sec * 1000000000ULL) + (uint64_t)st->st_mtim.tv_nsec;
 #else
     return (uint64_t)st->st_mtime * 1000000000ULL;

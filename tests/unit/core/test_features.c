@@ -648,6 +648,7 @@ static int test_sqlite_provider_metadata_activates_sqlite(void)
     SlRuntimeFeatureSet set = {0};
     SlDiag diag = {0};
 
+    providers[0] = (SlPlanDataProvider){0};
     providers[0].token = sl_str_from_cstr("data.main");
     providers[0].provider = sl_str_from_cstr("sqlite");
     plan.data_providers = providers;
@@ -807,6 +808,8 @@ static int test_missing_feature_diagnostic_goldens(void)
     SlRuntimeFeatureAvailability availability = all_available();
     SlPlan plan = base_plan(handlers, routes);
 
+    providers[0] = (SlPlanDataProvider){0};
+    required[0] = (SlPlanRequiredFeature){0};
     required[0].id = sl_str_from_cstr("future.magic");
     plan.required_features = required;
     plan.required_feature_count = 1U;
