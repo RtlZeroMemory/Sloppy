@@ -134,7 +134,9 @@ cancellation, per-origin HTTP/1.1 pooling, bounded redirects, DNS failure mappin
 strict-network preconnect denial, cross-origin sensitive-header strip/deny defaults, and
 HTTP client doctor/audit metadata goldens. HTTPS/TLS, proxy policy, true socket-level
 streaming, automatic compiler inference of static target literals, external-network
-security evidence, and a dedicated HTTP-native V8 bridge remain deferred. Doctor/audit
+security evidence, and a separate HTTP-native V8 bridge remain deferred. The current V8
+surface activates `stdlib.httpclient` through the existing private `__sloppy.net` bridge.
+Doctor/audit
 output represents static targets and dynamic/partial targets honestly and must redact or
 omit authorization headers, cookies, API keys, bearer tokens, config-backed secret values,
 secret query parameters, and TLS-sensitive material.

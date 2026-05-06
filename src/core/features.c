@@ -128,8 +128,8 @@ static SlRuntimeFeatureDescriptor sl_feature_os_descriptor(SlRuntimeFeatureId id
 static SlRuntimeFeatureDescriptor sl_feature_http_client_descriptor(SlRuntimeFeatureId id,
                                                                     bool available)
 {
-    /* HTTP client is feature-visible on its own, but this slice ships through sloppy/net
-       and the existing __sloppy.net bridge until the dedicated V8 surface lands. */
+    /* HttpClient is feature-visible on its own while its first V8 runtime path reuses the
+       existing sloppy/net TCP bridge. */
     return sl_feature_descriptor_make(
         id, SL_RUNTIME_FEATURE_KIND_STDLIB,
         sl_feature_literal("stdlib.httpclient", sizeof("stdlib.httpclient") - 1U),

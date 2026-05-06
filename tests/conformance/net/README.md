@@ -37,8 +37,9 @@ Network conformance is split by lane:
 - compiler/tooling evidence: Rust compiler tests cover `sloppy/net` import activation for
   `stdlib.net`, `features.network`, and `strongPlan.evidence.network`;
 - V8-gated evidence: `conformance.v8.runtime_bridge` covers active `__sloppy.net`
-  registration, TCP client/listener loopback smoke, promise settlement through the V8
-  owner-thread path, and inactive-feature gating when a V8 SDK is configured.
+  registration, `stdlib.httpclient` activation of that private bridge dependency, TCP
+  client/listener loopback smoke, promise settlement through the V8 owner-thread path, and
+  inactive-feature gating when a V8 SDK is configured.
 
 CORE-NET-02.A/B/F adds local IPC API validation and stable diagnostic shapes under the
 same `stdlib.net` feature. This is not Unix domain socket or Windows named pipe backend
