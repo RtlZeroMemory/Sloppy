@@ -1,3 +1,5 @@
+import { Text } from "./codec.js";
+
 class OsError extends Error {
     constructor(code, message) {
         super(`${code}: ${message}`);
@@ -296,7 +298,7 @@ class ProcessPipe {
         if (typeof value === "string") {
             return value;
         }
-        return new TextDecoder().decode(value);
+        return Text.utf8.decode(value);
     }
 
     async *readLines(options = undefined) {
@@ -304,7 +306,7 @@ class ProcessPipe {
             throw new TypeError("Process pipe readLines options must be an object when provided.");
         }
         const chunkSize = options?.chunkSize ?? 4096;
-        const decoder = new TextDecoder();
+        const decoder = Text.utf8.decoder();
         let buffered = "";
         for (;;) {
             const value = await this.read(chunkSize);
@@ -323,7 +325,7 @@ class ProcessPipe {
                 yield line;
             }
         }
-        buffered += decoder.decode();
+        buffered += decoder.finish();
         if (buffered.length !== 0) {
             yield buffered.replace(/\r$/, "");
         }

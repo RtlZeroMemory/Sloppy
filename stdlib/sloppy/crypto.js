@@ -1,3 +1,5 @@
+import { Base64, Hex, Text } from "./codec.js";
+
 const MAX_INLINE_BYTES = 1024 * 1024;
 const MAX_PASSWORD_BYTES = 4096;
 const PASSWORD_DEFAULT_OPS_LIMIT = 2;
@@ -28,40 +30,6 @@ function nativeCrypto(operation) {
     return bridge;
 }
 
-function utf8ToBytes(value) {
-    const text = String(value);
-    const bytes = [];
-    for (let index = 0; index < text.length; index += 1) {
-        let codePoint = text.charCodeAt(index);
-        if (codePoint >= 0xd800 && codePoint <= 0xdbff && index + 1 < text.length) {
-            const next = text.charCodeAt(index + 1);
-            if (next >= 0xdc00 && next <= 0xdfff) {
-                codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
-                index += 1;
-            }
-        }
-        if (codePoint <= 0x7f) {
-            bytes.push(codePoint);
-        } else if (codePoint <= 0x7ff) {
-            bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
-        } else if (codePoint <= 0xffff) {
-            bytes.push(
-                0xe0 | (codePoint >> 12),
-                0x80 | ((codePoint >> 6) & 0x3f),
-                0x80 | (codePoint & 0x3f),
-            );
-        } else {
-            bytes.push(
-                0xf0 | (codePoint >> 18),
-                0x80 | ((codePoint >> 12) & 0x3f),
-                0x80 | ((codePoint >> 6) & 0x3f),
-                0x80 | (codePoint & 0x3f),
-            );
-        }
-    }
-    return new Uint8Array(bytes);
-}
-
 function cloneBytes(bytes) {
     return bytes.slice();
 }
@@ -74,7 +42,7 @@ function dataToBytes(value, operation) {
         return cloneBytes(value);
     }
     if (typeof value === "string") {
-        return utf8ToBytes(value);
+        return Text.utf8.encode(value);
     }
     throw new TypeError(`Sloppy crypto ${operation} data must be a string, Uint8Array, or Secret.`);
 }
@@ -127,30 +95,6 @@ function encodedPasswordHash(value, operation) {
     return value;
 }
 
-function bytesToHex(bytes) {
-    let output = "";
-    for (const byte of bytes) {
-        output += byte.toString(16).padStart(2, "0");
-    }
-    return output;
-}
-
-function bytesToBase64(bytes) {
-    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let output = "";
-    for (let index = 0; index < bytes.byteLength; index += 3) {
-        const a = bytes[index];
-        const b = index + 1 < bytes.byteLength ? bytes[index + 1] : 0;
-        const c = index + 2 < bytes.byteLength ? bytes[index + 2] : 0;
-        const triple = (a << 16) | (b << 8) | c;
-        output += alphabet[(triple >> 18) & 0x3f];
-        output += alphabet[(triple >> 12) & 0x3f];
-        output += index + 1 < bytes.byteLength ? alphabet[(triple >> 6) & 0x3f] : "=";
-        output += index + 2 < bytes.byteLength ? alphabet[triple & 0x3f] : "=";
-    }
-    return output;
-}
-
 function digest(algorithm, value, operation) {
     const bytes = requireBoundedBytes(dataToBytes(value, operation), operation);
     return nativeCrypto(operation).hash(algorithm, bytes);
@@ -194,10 +138,10 @@ class IncrementalHasher {
         }
         const bytes = digest(this._algorithm, joined, "Hash.digest");
         if (encoding === "hex") {
-            return bytesToHex(bytes);
+            return Hex.encode(bytes);
         }
         if (encoding === "base64") {
-            return bytesToBase64(bytes);
+            return Base64.encode(bytes);
         }
         if (encoding !== undefined && encoding !== "bytes") {
             throw new TypeError("Sloppy Hash.digest encoding must be bytes, hex, or base64.");
@@ -217,7 +161,7 @@ class SecretValue {
         if (typeof value !== "string") {
             throw new TypeError("Sloppy Secret.fromUtf8 value must be a string.");
         }
-        return new SecretValue(utf8ToBytes(value));
+        return new SecretValue(Text.utf8.encode(value));
     }
 
     static fromBytes(value) {
@@ -279,10 +223,10 @@ const Hash = Object.freeze({
         return Promise.resolve(digest("sha512", value, "Hash.sha512"));
     },
     async sha256Hex(value) {
-        return bytesToHex(digest("sha256", value, "Hash.sha256Hex"));
+        return Hex.encode(digest("sha256", value, "Hash.sha256Hex"));
     },
     async sha256Base64(value) {
-        return bytesToBase64(digest("sha256", value, "Hash.sha256Base64"));
+        return Base64.encode(digest("sha256", value, "Hash.sha256Base64"));
     },
     create(algorithm) {
         return new IncrementalHasher(algorithm);

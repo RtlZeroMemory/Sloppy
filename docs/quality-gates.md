@@ -93,11 +93,19 @@ V8-gated zlib backend tests; it still does not prove Web Streams compatibility, 
 algorithms, package readiness, or performance. CORE-CODEC-01.H/J adds CRC32 vectors,
 example checks, and checksum security-context warnings; this evidence remains separate from
 `sloppy/crypto` security evidence.
+CORE-INTEGRATION-01 gates must report cross-API evidence by lane. Default gates now include
+`bootstrap.stdlib.core_integration`, `examples.core_integration.api_shape`, and
+`tools/windows/check-core-api-integration.ps1` through `dev.ps1 lint`. Passing them proves
+the documented shared-helper adoption and duplicate-helper guardrails only. It does not
+prove strict app FS policy under real `sloppy run`, raw TCP deadline/signal behavior, OS
+post-admission process cancellation, V8 process-pipe binary return, worker module path
+policy, live-network/provider behavior, package readiness, stress/torture, benchmark
+performance, public alpha status, or production readiness.
 
 Current gates cover C/Rust builds, formatting, linting, CTest, cargo tests, compiler
 goldens, artifact hygiene, platform-boundary scanning, C standards scanning, JS/TS
-standards scanning, Rust standards scanning, and a lightweight docs freshness structure
-check.
+standards scanning, Rust standards scanning, the Core API integration scanner, and a
+lightweight docs freshness structure check.
 CI currently favors pre-alpha iteration speed while preserving default cross-platform
 evidence. Normal pull requests and pushes to `main` run static hygiene, standards/docs
 scanners, Rust checks for non-docs changes, a Windows native configure/build/CTest smoke,

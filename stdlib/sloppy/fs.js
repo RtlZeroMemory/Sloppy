@@ -4,6 +4,7 @@ import {
     Time,
     TimeoutError,
 } from "./time.js";
+import { Text } from "./codec.js";
 
 const MAX_TIMEOUT_MS = 0xffffffff;
 
@@ -609,7 +610,7 @@ class FileHandle {
 
     async readText(maxBytes, options) {
         const bytes = await this.readBytes(maxBytes, options);
-        return new TextDecoder().decode(bytes);
+        return Text.utf8.decode(bytes);
     }
 
     writeBytes(bytes, options) {
@@ -689,10 +690,37 @@ class FileHandle {
     }
 
     async *readLines(options) {
-        const decoder = new TextDecoder();
+        const decoder = Text.utf8.decoder();
         const newline = options?.newline ?? "\n";
         const maxLineLength = options?.maxLineLength ?? 1024 * 1024;
         let buffered = "";
+        const limitError = () => {
+            const error = new Error(
+                "SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.",
+            );
+            error.code = "SLOPPY_E_LIMIT_EXCEEDED";
+            return error;
+        };
+        const shouldNormalizeCarriageReturn = newline === "\n" || newline === "\r\n";
+        const normalizeLine = (line) => shouldNormalizeCarriageReturn ? line.replace(/\r$/, "") : line;
+        const pendingDelimiterCarryLength = () => {
+            const maxCarry = Math.min(buffered.length, newline.length - 1);
+            for (let length = maxCarry; length > 0; length -= 1) {
+                if (buffered.endsWith(newline.slice(0, length))) {
+                    return length;
+                }
+            }
+            return 0;
+        };
+        const checkPendingLineLength = () => {
+            const carryLength = pendingDelimiterCarryLength();
+            const pendingLine = carryLength > 0
+                ? buffered.slice(0, buffered.length - carryLength)
+                : buffered;
+            if (normalizeLine(pendingLine).length > maxLineLength) {
+                throw limitError();
+            }
+        };
         if (typeof newline !== "string" || newline.length === 0) {
             throw new TypeError(
                 "Sloppy FileHandle.readLines newline must be a non-empty string.",
@@ -700,19 +728,25 @@ class FileHandle {
         }
         for await (const chunk of this.readChunks(options)) {
             buffered += decoder.decode(chunk, { stream: true });
-            if (buffered.length > maxLineLength) {
-                throw new Error("SLOPPY_E_LIMIT_EXCEEDED: filesystem line exceeds maxLineLength.");
-            }
             let index = buffered.indexOf(newline);
             while (index !== -1) {
-                yield buffered.slice(0, index).replace(/\r$/, "");
+                const line = normalizeLine(buffered.slice(0, index));
+                if (line.length > maxLineLength) {
+                    throw limitError();
+                }
+                yield line;
                 buffered = buffered.slice(index + newline.length);
                 index = buffered.indexOf(newline);
             }
+            checkPendingLineLength();
         }
-        buffered += decoder.decode();
+        buffered += decoder.finish();
+        const trailingLine = normalizeLine(buffered);
+        if (trailingLine.length > maxLineLength) {
+            throw limitError();
+        }
         if (buffered.length !== 0) {
-            yield buffered;
+            yield trailingLine;
         }
     }
 }

@@ -451,106 +451,62 @@ static int test_provider_code_names(void)
 
 static int test_http_code_names(void)
 {
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_UNSUPPORTED_BODY),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_UNSUPPORTED_BODY")) != 0)
-    {
-        return 60;
-    }
+    static const ExpectedDiagCodeName expected[] = {
+        {SL_DIAG_HTTP_UNSUPPORTED_BODY, "SLOPPY_E_HTTP_UNSUPPORTED_BODY"},
+        {SL_DIAG_INVALID_HTTP_RESULT, "SLOPPY_E_INVALID_HTTP_RESULT"},
+        {SL_DIAG_HTTP_BODY_LIMIT, "SLOPPY_E_HTTP_BODY_LIMIT"},
+        {SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE, "SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE"},
+        {SL_DIAG_HTTP_TARGET_LIMIT, "SLOPPY_E_HTTP_TARGET_LIMIT"},
+        {SL_DIAG_HTTP_HEADER_NAME_LIMIT, "SLOPPY_E_HTTP_HEADER_NAME_LIMIT"},
+        {SL_DIAG_HTTP_HEADER_VALUE_LIMIT, "SLOPPY_E_HTTP_HEADER_VALUE_LIMIT"},
+        {SL_DIAG_HTTP_HEADER_BYTES_LIMIT, "SLOPPY_E_HTTP_HEADER_BYTES_LIMIT"},
+        {SL_DIAG_HTTP_CONNECTION_CLOSED, "SLOPPY_E_HTTP_CONNECTION_CLOSED"},
+        {SL_DIAG_HTTP_REQUEST_TIMEOUT, "SLOPPY_E_HTTP_REQUEST_TIMEOUT"},
+        {SL_DIAG_HTTP_OVERLOAD, "SLOPPY_E_HTTP_OVERLOAD"},
+        {SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED, "SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED"},
+        {SL_DIAG_HTTP_TRANSPORT_CONFIG, "SLOPPY_E_HTTP_TRANSPORT_CONFIG"},
+        {SL_DIAG_HTTP_BIND_FAILED, "SLOPPY_E_HTTP_BIND_FAILED"},
+        {SL_DIAG_HTTP_LISTEN_FAILED, "SLOPPY_E_HTTP_LISTEN_FAILED"},
+        {SL_DIAG_HTTP_ACCEPT_FAILED, "SLOPPY_E_HTTP_ACCEPT_FAILED"},
+        {SL_DIAG_UNKNOWN_RUNTIME_FEATURE, "SLOPPY_E_UNKNOWN_RUNTIME_FEATURE"},
+        {SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE, "SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE"},
+        {SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING,
+         "SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING"}};
 
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_INVALID_HTTP_RESULT),
-                         sl_str_from_cstr("SLOPPY_E_INVALID_HTTP_RESULT")) != 0)
-    {
-        return 61;
-    }
+    return expect_diag_code_names(expected, sizeof(expected) / sizeof(expected[0]), 60);
+}
 
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_BODY_LIMIT),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_BODY_LIMIT")) != 0)
-    {
-        return 62;
-    }
+static int test_http_client_code_names(void)
+{
+    static const ExpectedDiagCodeName expected[] = {
+        {SL_DIAG_HTTP_CLIENT_FEATURE_UNAVAILABLE, "SLOPPY_E_HTTP_CLIENT_FEATURE_UNAVAILABLE"},
+        {SL_DIAG_HTTP_CLIENT_INVALID_URL, "SLOPPY_E_HTTP_CLIENT_INVALID_URL"},
+        {SL_DIAG_HTTP_CLIENT_INVALID_OPTIONS, "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS"},
+        {SL_DIAG_HTTP_CLIENT_AMBIGUOUS_BODY, "SLOPPY_E_HTTP_CLIENT_AMBIGUOUS_BODY"},
+        {SL_DIAG_HTTP_CLIENT_BODY_CONSUMED, "SLOPPY_E_HTTP_CLIENT_BODY_CONSUMED"},
+        {SL_DIAG_HTTP_CLIENT_RESPONSE_BODY_LIMIT, "SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT"},
+        {SL_DIAG_HTTP_CLIENT_REQUEST_BODY_LIMIT, "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT"},
+        {SL_DIAG_HTTP_CLIENT_MALFORMED_RESPONSE, "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE"},
+        {SL_DIAG_HTTP_CLIENT_INVALID_JSON, "SLOPPY_E_HTTP_CLIENT_INVALID_JSON"},
+        {SL_DIAG_HTTP_CLIENT_CONNECT_FAILED, "SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED"},
+        {SL_DIAG_HTTP_CLIENT_DNS_FAILED, "SLOPPY_E_HTTP_CLIENT_DNS_FAILED"},
+        {SL_DIAG_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE,
+         "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE"},
+        {SL_DIAG_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED,
+         "SLOPPY_E_HTTP_CLIENT_TLS_CERTIFICATE_VALIDATION_FAILED"},
+        {SL_DIAG_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH, "SLOPPY_E_HTTP_CLIENT_TLS_HOSTNAME_MISMATCH"},
+        {SL_DIAG_HTTP_CLIENT_REQUEST_TIMEOUT, "SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT"},
+        {SL_DIAG_HTTP_CLIENT_REQUEST_CANCELLED, "SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED"},
+        {SL_DIAG_HTTP_CLIENT_REDIRECT_LOOP, "SLOPPY_E_HTTP_CLIENT_REDIRECT_LOOP"},
+        {SL_DIAG_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED, "SLOPPY_E_HTTP_CLIENT_MAX_REDIRECTS_EXCEEDED"},
+        {SL_DIAG_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED,
+         "SLOPPY_E_HTTP_CLIENT_SENSITIVE_HEADER_STRIPPED"},
+        {SL_DIAG_HTTP_CLIENT_POOL_EXHAUSTED, "SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED"},
+        {SL_DIAG_HTTP_CLIENT_STRICT_NETWORK_DENIED, "SLOPPY_E_HTTP_CLIENT_STRICT_NETWORK_DENIED"},
+        {SL_DIAG_HTTP_CLIENT_DYNAMIC_TARGET_METADATA,
+         "SLOPPY_W_HTTP_CLIENT_DYNAMIC_TARGET_METADATA"}};
 
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE")) != 0)
-    {
-        return 63;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_TARGET_LIMIT),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_TARGET_LIMIT")) != 0)
-    {
-        return 64;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_HEADER_NAME_LIMIT),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_HEADER_NAME_LIMIT")) != 0)
-    {
-        return 65;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_HEADER_VALUE_LIMIT),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_HEADER_VALUE_LIMIT")) != 0)
-    {
-        return 66;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_HEADER_BYTES_LIMIT),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_HEADER_BYTES_LIMIT")) != 0)
-    {
-        return 67;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_CONNECTION_CLOSED),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_CONNECTION_CLOSED")) != 0)
-    {
-        return 68;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_REQUEST_TIMEOUT),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_REQUEST_TIMEOUT")) != 0)
-    {
-        return 69;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_OVERLOAD),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_OVERLOAD")) != 0)
-    {
-        return 70;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_KEEP_ALIVE_UNSUPPORTED),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED")) != 0)
-    {
-        return 71;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_TRANSPORT_CONFIG),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_TRANSPORT_CONFIG")) != 0)
-    {
-        return 72;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_BIND_FAILED),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_BIND_FAILED")) != 0)
-    {
-        return 73;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_LISTEN_FAILED),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_LISTEN_FAILED")) != 0)
-    {
-        return 74;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_HTTP_ACCEPT_FAILED),
-                         sl_str_from_cstr("SLOPPY_E_HTTP_ACCEPT_FAILED")) != 0)
-    {
-        return 75;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_UNKNOWN_RUNTIME_FEATURE),
-                         sl_str_from_cstr("SLOPPY_E_UNKNOWN_RUNTIME_FEATURE")) != 0)
-    {
-        return 76;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE),
-                         sl_str_from_cstr("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE")) != 0)
-    {
-        return 77;
-    }
-    if (expect_str_equal(sl_diag_code_name(SL_DIAG_RUNTIME_FEATURE_DEPENDENCY_MISSING),
-                         sl_str_from_cstr("SLOPPY_E_RUNTIME_FEATURE_DEPENDENCY_MISSING")) != 0)
-    {
-        return 78;
-    }
-
-    return 0;
+    return expect_diag_code_names(expected, sizeof(expected) / sizeof(expected[0]), 300);
 }
 
 static int test_time_code_names(void)
@@ -865,6 +821,7 @@ static int test_workers_code_names(void)
         {SL_DIAG_WORK_JOB_FAILED, "SLOPPY_E_WORK_JOB_FAILED"},
         {SL_DIAG_WORK_RETRY_EXHAUSTED, "SLOPPY_E_WORK_RETRY_EXHAUSTED"},
         {SL_DIAG_WORKER_POOL_UNAVAILABLE, "SLOPPY_E_WORKER_POOL_UNAVAILABLE"},
+        {SL_DIAG_WORKER_BRIDGE_UNAVAILABLE, "SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE"},
         {SL_DIAG_WORKER_POOL_SATURATED, "SLOPPY_E_WORKER_POOL_SATURATED"},
         {SL_DIAG_WORKER_CRASHED, "SLOPPY_E_WORKER_CRASHED"},
         {SL_DIAG_WORKER_RESOURCE_LIMIT_EXCEEDED, "SLOPPY_E_WORKER_RESOURCE_LIMIT_EXCEEDED"},
@@ -2173,6 +2130,10 @@ static int test_code_name_groups(void)
         return result;
     }
     result = test_http_code_names();
+    if (result != 0) {
+        return result;
+    }
+    result = test_http_client_code_names();
     if (result != 0) {
         return result;
     }

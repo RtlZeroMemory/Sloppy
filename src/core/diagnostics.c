@@ -45,9 +45,15 @@ static SlStr sl_diag_http_client_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_CLIENT_RESPONSE_BODY_LIMIT:
         return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT",
                                sizeof("SLOPPY_E_HTTP_CLIENT_RESPONSE_BODY_LIMIT") - 1U);
+    case SL_DIAG_HTTP_CLIENT_REQUEST_BODY_LIMIT:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT") - 1U);
     case SL_DIAG_HTTP_CLIENT_MALFORMED_RESPONSE:
         return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
                                sizeof("SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE") - 1U);
+    case SL_DIAG_HTTP_CLIENT_INVALID_JSON:
+        return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_INVALID_JSON",
+                               sizeof("SLOPPY_E_HTTP_CLIENT_INVALID_JSON") - 1U);
     case SL_DIAG_HTTP_CLIENT_CONNECT_FAILED:
         return sl_diag_literal("SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED",
                                sizeof("SLOPPY_E_HTTP_CLIENT_CONNECT_FAILED") - 1U);
@@ -124,6 +130,9 @@ static SlStr sl_diag_workers_code_name(SlDiagCode code)
     case SL_DIAG_WORKER_POOL_UNAVAILABLE:
         return sl_diag_literal("SLOPPY_E_WORKER_POOL_UNAVAILABLE",
                                sizeof("SLOPPY_E_WORKER_POOL_UNAVAILABLE") - 1U);
+    case SL_DIAG_WORKER_BRIDGE_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE",
+                               sizeof("SLOPPY_E_WORKER_BRIDGE_UNAVAILABLE") - 1U);
     case SL_DIAG_WORKER_POOL_SATURATED:
         return sl_diag_literal("SLOPPY_E_WORKER_POOL_SATURATED",
                                sizeof("SLOPPY_E_WORKER_POOL_SATURATED") - 1U);
@@ -282,7 +291,9 @@ static SlStr sl_diag_http_code_name(SlDiagCode code)
     case SL_DIAG_HTTP_CLIENT_AMBIGUOUS_BODY:
     case SL_DIAG_HTTP_CLIENT_BODY_CONSUMED:
     case SL_DIAG_HTTP_CLIENT_RESPONSE_BODY_LIMIT:
+    case SL_DIAG_HTTP_CLIENT_REQUEST_BODY_LIMIT:
     case SL_DIAG_HTTP_CLIENT_MALFORMED_RESPONSE:
+    case SL_DIAG_HTTP_CLIENT_INVALID_JSON:
     case SL_DIAG_HTTP_CLIENT_CONNECT_FAILED:
     case SL_DIAG_HTTP_CLIENT_DNS_FAILED:
     case SL_DIAG_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE:
@@ -345,7 +356,9 @@ static bool sl_diag_is_http_code(SlDiagCode code)
     case SL_DIAG_HTTP_CLIENT_AMBIGUOUS_BODY:
     case SL_DIAG_HTTP_CLIENT_BODY_CONSUMED:
     case SL_DIAG_HTTP_CLIENT_RESPONSE_BODY_LIMIT:
+    case SL_DIAG_HTTP_CLIENT_REQUEST_BODY_LIMIT:
     case SL_DIAG_HTTP_CLIENT_MALFORMED_RESPONSE:
+    case SL_DIAG_HTTP_CLIENT_INVALID_JSON:
     case SL_DIAG_HTTP_CLIENT_CONNECT_FAILED:
     case SL_DIAG_HTTP_CLIENT_DNS_FAILED:
     case SL_DIAG_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE:
@@ -2484,27 +2497,19 @@ SlStatus sl_diag_render_json_with_source(SlArena* arena, const SlDiag* diag,
     return sl_status_ok();
 }
 
-static bool sl_diag_ascii_equal_ci(char actual, char expected_lower)
-{
-    if (actual >= 'A' && actual <= 'Z') {
-        actual = (char)(actual - 'A' + 'a');
-    }
-    return actual == expected_lower;
-}
-
 static bool sl_diag_secret_word_at(SlStr text, size_t index, const char* word)
 {
-    size_t offset = 0U;
+    const char* start = text.ptr;
 
-    while (word[offset] != '\0') {
-        if (index + offset >= text.length ||
-            !sl_diag_ascii_equal_ci(text.ptr[index + offset], word[offset]))
-        {
-            return false;
-        }
-        offset += 1U;
+    if (word == NULL || index > text.length || (text.length > 0U && text.ptr == NULL)) {
+        return false;
     }
-    return true;
+    if (index < text.length) {
+        start = text.ptr + index;
+    }
+
+    return sl_str_starts_with_ci_ascii(sl_str_from_parts(start, text.length - index),
+                                       sl_str_from_cstr(word));
 }
 
 static bool sl_diag_secret_identifier_char(char value)

@@ -168,7 +168,8 @@ Public import: `sloppy/crypto`.
 
 Private V8 intrinsic namespace: `__sloppy.crypto`.
 
-Dependencies: `core` and `v8`.
+Dependencies: `core`, `v8`, and `stdlib.codec` for canonical UTF-8, Hex, and Base64
+formatting.
 
 Compiler behavior:
 
@@ -184,6 +185,8 @@ Runtime behavior after CORE-CRYPTO-01.I:
 
 - `stdlib.crypto` is known to the feature registry and available when its dependencies are
   available.
+- `stdlib.crypto` activates `stdlib.codec` so hash formatting and string/secret text
+  conversion use the shared Codec primitives instead of local helpers.
 - The V8 bridge registers `__sloppy.crypto` only for active `stdlib.crypto` plans.
 - `Password.hash`, `Password.verify`, and `Password.needsRehash` return promises and
   offload native password work away from the V8 owner thread.

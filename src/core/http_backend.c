@@ -258,79 +258,6 @@ static void sl_http_request_terminal_cancel(SlHttpRequestLifecycle* request,
     sl_http_request_release_admission(request);
 }
 
-static int sl_http_backend_ascii_lower(int ch)
-{
-    if (ch >= 'A' && ch <= 'Z') {
-        return ch - 'A' + 'a';
-    }
-    return ch;
-}
-
-static bool sl_http_backend_str_iequal(SlStr left, SlStr right)
-{
-    size_t index = 0U;
-
-    if ((left.ptr == NULL && left.length != 0U) || (right.ptr == NULL && right.length != 0U) ||
-        left.length != right.length)
-    {
-        return false;
-    }
-
-    for (index = 0U; index < left.length; index += 1U) {
-        if (sl_http_backend_ascii_lower((unsigned char)left.ptr[index]) !=
-            sl_http_backend_ascii_lower((unsigned char)right.ptr[index]))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool sl_http_backend_str_istarts_with(SlStr str, SlStr prefix)
-{
-    size_t index = 0U;
-
-    if ((str.ptr == NULL && str.length != 0U) || (prefix.ptr == NULL && prefix.length != 0U) ||
-        prefix.length > str.length)
-    {
-        return false;
-    }
-
-    for (index = 0U; index < prefix.length; index += 1U) {
-        if (sl_http_backend_ascii_lower((unsigned char)str.ptr[index]) !=
-            sl_http_backend_ascii_lower((unsigned char)prefix.ptr[index]))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-static bool sl_http_backend_str_iends_with(SlStr str, SlStr suffix)
-{
-    size_t offset = 0U;
-    size_t index = 0U;
-
-    if ((str.ptr == NULL && str.length != 0U) || (suffix.ptr == NULL && suffix.length != 0U) ||
-        suffix.length > str.length)
-    {
-        return false;
-    }
-
-    offset = str.length - suffix.length;
-    for (index = 0U; index < suffix.length; index += 1U) {
-        if (sl_http_backend_ascii_lower((unsigned char)str.ptr[offset + index]) !=
-            sl_http_backend_ascii_lower((unsigned char)suffix.ptr[index]))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 static SlStr sl_http_backend_trim_ascii_space(SlStr value)
 {
     size_t begin = 0U;
@@ -367,9 +294,13 @@ static SlStr sl_http_backend_media_type(SlStr content_type)
 
 static bool sl_http_backend_media_type_json(SlStr media_type)
 {
-    return sl_http_backend_str_iequal(media_type, sl_str_from_cstr("application/json")) ||
-           (sl_http_backend_str_istarts_with(media_type, sl_str_from_cstr("application/")) &&
-            sl_http_backend_str_iends_with(media_type, sl_str_from_cstr("+json")));
+    const SlStr application_prefix = sl_str_from_cstr("application/");
+    const SlStr json_suffix = sl_str_from_cstr("+json");
+
+    return sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/json")) ||
+           (media_type.length > application_prefix.length + json_suffix.length &&
+            sl_str_starts_with_ci_ascii(media_type, application_prefix) &&
+            sl_str_ends_with_ci_ascii(media_type, json_suffix));
 }
 
 static SlStatus sl_http_body_reader_classify(SlStr content_type, size_t content_length,
@@ -394,7 +325,7 @@ static SlStatus sl_http_body_reader_classify(SlStr content_type, size_t content_
         *out_kind = SL_HTTP_REQUEST_BODY_JSON;
         return sl_status_ok();
     }
-    if (sl_http_backend_str_iequal(media_type, sl_str_from_cstr("text/plain"))) {
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("text/plain"))) {
         *out_kind = SL_HTTP_REQUEST_BODY_TEXT;
         return sl_status_ok();
     }

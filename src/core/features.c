@@ -12,6 +12,25 @@
 #define SL_FEATURE_BIT(id) (UINT32_C(1) << (uint32_t)(id))
 #define SL_FEATURE_STR(text) {text, sizeof(text) - 1U}
 #define SL_FEATURE_EMPTY {NULL, 0U}
+#define SL_FEATURE_DEPS_TIME                                                                       \
+    (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
+#define SL_FEATURE_DEPS_CRYPTO                                                                     \
+    (SL_FEATURE_DEPS_TIME | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC))
+#define SL_FEATURE_DEPS_CODEC SL_FEATURE_DEPS_TIME
+#define SL_FEATURE_DEPS_FS                                                                         \
+    (SL_FEATURE_DEPS_TIME | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |                       \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC))
+#define SL_FEATURE_DEPS_NET                                                                        \
+    (SL_FEATURE_DEPS_TIME | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |                   \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |                                              \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC))
+#define SL_FEATURE_DEPS_OS SL_FEATURE_DEPS_NET
+#define SL_FEATURE_DEPS_HTTP_CLIENT                                                                \
+    (SL_FEATURE_DEPS_TIME | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_NET) |                        \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |                                              \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |                                             \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
+#define SL_FEATURE_DEPS_WORKERS SL_FEATURE_DEPS_NET
 
 #ifdef SLOPPY_ENABLE_V8_BRIDGE
 #define SL_FEATURE_V8_AVAILABLE true
@@ -52,9 +71,8 @@ static SlRuntimeFeatureDescriptor sl_feature_time_descriptor(SlRuntimeFeatureId 
         sl_feature_literal("stdlib.time", sizeof("stdlib.time") - 1U),
         sl_feature_literal("time stdlib", sizeof("time stdlib") - 1U),
         sl_feature_literal("sloppy/time", sizeof("sloppy/time") - 1U),
-        sl_feature_literal("__sloppy.time", sizeof("__sloppy.time") - 1U),
-        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true, true,
-        true);
+        sl_feature_literal("__sloppy.time", sizeof("__sloppy.time") - 1U), SL_FEATURE_DEPS_TIME,
+        true, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_crypto_descriptor(SlRuntimeFeatureId id,
@@ -66,8 +84,7 @@ static SlRuntimeFeatureDescriptor sl_feature_crypto_descriptor(SlRuntimeFeatureI
         sl_feature_literal("crypto stdlib", sizeof("crypto stdlib") - 1U),
         sl_feature_literal("sloppy/crypto", sizeof("sloppy/crypto") - 1U),
         sl_feature_literal("__sloppy.crypto", sizeof("__sloppy.crypto") - 1U),
-        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), available,
-        true, true);
+        SL_FEATURE_DEPS_CRYPTO, available, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_codec_descriptor(SlRuntimeFeatureId id, bool available)
@@ -77,9 +94,8 @@ static SlRuntimeFeatureDescriptor sl_feature_codec_descriptor(SlRuntimeFeatureId
         sl_feature_literal("stdlib.codec", sizeof("stdlib.codec") - 1U),
         sl_feature_literal("codec stdlib", sizeof("codec stdlib") - 1U),
         sl_feature_literal("sloppy/codec", sizeof("sloppy/codec") - 1U),
-        sl_feature_literal("__sloppy.codec", sizeof("__sloppy.codec") - 1U),
-        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), available,
-        true, true);
+        sl_feature_literal("__sloppy.codec", sizeof("__sloppy.codec") - 1U), SL_FEATURE_DEPS_CODEC,
+        available, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_fs_descriptor(SlRuntimeFeatureId id)
@@ -89,10 +105,8 @@ static SlRuntimeFeatureDescriptor sl_feature_fs_descriptor(SlRuntimeFeatureId id
         sl_feature_literal("stdlib.fs", sizeof("stdlib.fs") - 1U),
         sl_feature_literal("filesystem stdlib", sizeof("filesystem stdlib") - 1U),
         sl_feature_literal("sloppy/fs", sizeof("sloppy/fs") - 1U),
-        sl_feature_literal("__sloppy.fs", sizeof("__sloppy.fs") - 1U),
-        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-        true, true, true);
+        sl_feature_literal("__sloppy.fs", sizeof("__sloppy.fs") - 1U), SL_FEATURE_DEPS_FS, true,
+        true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_net_descriptor(SlRuntimeFeatureId id, bool available)
@@ -104,10 +118,7 @@ static SlRuntimeFeatureDescriptor sl_feature_net_descriptor(SlRuntimeFeatureId i
         sl_feature_literal("stdlib.net", sizeof("stdlib.net") - 1U),
         sl_feature_literal("network stdlib", sizeof("network stdlib") - 1U),
         sl_feature_literal("sloppy/net", sizeof("sloppy/net") - 1U),
-        sl_feature_literal("__sloppy.net", sizeof("__sloppy.net") - 1U),
-        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
+        sl_feature_literal("__sloppy.net", sizeof("__sloppy.net") - 1U), SL_FEATURE_DEPS_NET,
         available, true, true);
 }
 
@@ -118,11 +129,7 @@ static SlRuntimeFeatureDescriptor sl_feature_os_descriptor(SlRuntimeFeatureId id
                                       sl_feature_literal("OS stdlib", sizeof("OS stdlib") - 1U),
                                       sl_feature_literal("sloppy/os", sizeof("sloppy/os") - 1U),
                                       sl_feature_literal("__sloppy.os", sizeof("__sloppy.os") - 1U),
-                                      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) |
-                                          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-                                          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
-                                          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-                                      available, true, true);
+                                      SL_FEATURE_DEPS_OS, available, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_http_client_descriptor(SlRuntimeFeatureId id,
@@ -136,12 +143,7 @@ static SlRuntimeFeatureDescriptor sl_feature_http_client_descriptor(SlRuntimeFea
         sl_feature_literal("HTTP client stdlib", sizeof("HTTP client stdlib") - 1U),
         sl_feature_literal("sloppy/net", sizeof("sloppy/net") - 1U),
         sl_feature_literal("__sloppy.net", sizeof("__sloppy.net") - 1U),
-        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_NET) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO),
-        available, true, true);
+        SL_FEATURE_DEPS_HTTP_CLIENT, available, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_workers_descriptor(SlRuntimeFeatureId id,
@@ -153,11 +155,7 @@ static SlRuntimeFeatureDescriptor sl_feature_workers_descriptor(SlRuntimeFeature
         sl_feature_literal("workers stdlib", sizeof("workers stdlib") - 1U),
         sl_feature_literal("sloppy/workers", sizeof("sloppy/workers") - 1U),
         sl_feature_literal("__sloppy.workers", sizeof("__sloppy.workers") - 1U),
-        SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC),
-        available, true, true);
+        SL_FEATURE_DEPS_WORKERS, available, true, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_unknown_descriptor(SlRuntimeFeatureId id)
@@ -377,10 +375,7 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP), true, false, true},
         {SL_RUNTIME_FEATURE_STDLIB_FS, SL_RUNTIME_FEATURE_KIND_STDLIB, SL_FEATURE_STR("stdlib.fs"),
          SL_FEATURE_STR("filesystem stdlib"), SL_FEATURE_STR("sloppy/fs"),
-         SL_FEATURE_STR("__sloppy.fs"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-         true, true, true},
+         SL_FEATURE_STR("__sloppy.fs"), SL_FEATURE_DEPS_FS, true, true, true},
         {SL_RUNTIME_FEATURE_PROVIDER_SQLITE, SL_RUNTIME_FEATURE_KIND_PROVIDER,
          SL_FEATURE_STR("provider.sqlite"), SL_FEATURE_STR("SQLite provider"),
          SL_FEATURE_STR("sloppy/providers/sqlite"), SL_FEATURE_STR("__sloppy.data.sqlite"),
@@ -399,49 +394,31 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          false, true},
         {SL_RUNTIME_FEATURE_STDLIB_TIME, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.time"), SL_FEATURE_STR("time stdlib"),
-         SL_FEATURE_STR("sloppy/time"), SL_FEATURE_STR("__sloppy.time"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
+         SL_FEATURE_STR("sloppy/time"), SL_FEATURE_STR("__sloppy.time"), SL_FEATURE_DEPS_TIME, true,
          true, true},
         {SL_RUNTIME_FEATURE_STDLIB_CRYPTO, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.crypto"), SL_FEATURE_STR("crypto stdlib"),
-         SL_FEATURE_STR("sloppy/crypto"), SL_FEATURE_STR("__sloppy.crypto"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
-         true, true},
+         SL_FEATURE_STR("sloppy/crypto"), SL_FEATURE_STR("__sloppy.crypto"), SL_FEATURE_DEPS_CRYPTO,
+         true, true, true},
         {SL_RUNTIME_FEATURE_STDLIB_CODEC, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.codec"), SL_FEATURE_STR("codec stdlib"),
-         SL_FEATURE_STR("sloppy/codec"), SL_FEATURE_STR("__sloppy.codec"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), true,
-         true, true},
+         SL_FEATURE_STR("sloppy/codec"), SL_FEATURE_STR("__sloppy.codec"), SL_FEATURE_DEPS_CODEC,
+         true, true, true},
         {SL_RUNTIME_FEATURE_STDLIB_NET, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.net"), SL_FEATURE_STR("network stdlib"),
-         SL_FEATURE_STR("sloppy/net"), SL_FEATURE_STR("__sloppy.net"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-         true, true, true},
+         SL_FEATURE_STR("sloppy/net"), SL_FEATURE_STR("__sloppy.net"), SL_FEATURE_DEPS_NET, true,
+         true, true},
         {SL_RUNTIME_FEATURE_STDLIB_OS, SL_RUNTIME_FEATURE_KIND_STDLIB, SL_FEATURE_STR("stdlib.os"),
          SL_FEATURE_STR("OS stdlib"), SL_FEATURE_STR("sloppy/os"), SL_FEATURE_STR("__sloppy.os"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME),
-         false, true, true},
+         SL_FEATURE_DEPS_OS, false, true, true},
         {SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.httpclient"), SL_FEATURE_STR("HTTP client stdlib"),
-         SL_FEATURE_STR("sloppy/net"), SL_FEATURE_STR("__sloppy.net"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_NET) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO),
+         SL_FEATURE_STR("sloppy/net"), SL_FEATURE_STR("__sloppy.net"), SL_FEATURE_DEPS_HTTP_CLIENT,
          true, true, true},
         {SL_RUNTIME_FEATURE_STDLIB_WORKERS, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.workers"), SL_FEATURE_STR("workers stdlib"),
          SL_FEATURE_STR("sloppy/workers"), SL_FEATURE_STR("__sloppy.workers"),
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |
-             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC),
-         true, true, true}};
+         SL_FEATURE_DEPS_WORKERS, true, true, true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;

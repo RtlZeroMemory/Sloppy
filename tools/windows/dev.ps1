@@ -379,6 +379,27 @@ function Invoke-DocsFreshnessCheck {
     }
 }
 
+function Invoke-CoreApiIntegrationCheck {
+    $script = Join-Path $PSScriptRoot "check-core-api-integration.ps1"
+    & $script -SelfTest
+    if (-not $?) {
+        throw "core API integration scanner self-test failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "core API integration scanner self-test failed with exit code $LASTEXITCODE"
+    }
+
+    & $script
+    if (-not $?) {
+        throw "core API integration check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "core API integration check failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-CComplexityWarningCheck {
     $script = Join-Path $PSScriptRoot "check-c-complexity.ps1"
     & $script
@@ -395,6 +416,7 @@ function Invoke-Lint {
     Invoke-JsTsStandardsCheck
     Invoke-RustStandardsCheck
     Invoke-DocsFreshnessCheck
+    Invoke-CoreApiIntegrationCheck
     Invoke-CComplexityWarningCheck
 
     $clangTidy = Resolve-GateTool "clang-tidy" "C/C++ lint"

@@ -1,7 +1,13 @@
+import { Text } from "./codec.js";
+
 class SloppyNetError extends Error {
     constructor(name, message, options) {
         super(message);
         this.name = name;
+        const code = /^((?:SLOPPY_E|SLOPPY_W)_[A-Z0-9_]+):/.exec(message)?.[1];
+        if (code !== undefined) {
+            this.code = code;
+        }
         if (options?.cause !== undefined) {
             this.cause = options.cause;
         }
@@ -560,7 +566,7 @@ class LocalEndpointConnection {
         if (typeof text !== "string") {
             throw new TypeError("LocalEndpointConnection.writeText requires a string.");
         }
-        await this.write(new TextEncoder().encode(text), options);
+        await this.write(Text.utf8.encode(text), options);
     }
 
     async read(options = undefined) {
@@ -588,7 +594,7 @@ class LocalEndpointConnection {
             throw new SloppyNetError("LocalEndpointDisposedError", "Local endpoint connection is closed.");
         }
         const delimiterBytes =
-            typeof delimiter === "string" ? new TextEncoder().encode(delimiter) : delimiter;
+            typeof delimiter === "string" ? Text.utf8.encode(delimiter) : delimiter;
         if (!(delimiterBytes instanceof Uint8Array) || delimiterBytes.byteLength === 0) {
             throw new TypeError("LocalEndpointConnection.readUntil delimiter must be non-empty bytes.");
         }
@@ -770,7 +776,7 @@ class TcpConnection {
         if (typeof text !== "string") {
             throw new TypeError("TcpConnection.writeText requires a string.");
         }
-        await this.write(new TextEncoder().encode(text));
+        await this.write(Text.utf8.encode(text));
     }
 
     async read(options = undefined) {
@@ -786,7 +792,7 @@ class TcpConnection {
 
     async readUntil(delimiter, options = undefined) {
         const delimiterBytes =
-            typeof delimiter === "string" ? new TextEncoder().encode(delimiter) : delimiter;
+            typeof delimiter === "string" ? Text.utf8.encode(delimiter) : delimiter;
         if (!(delimiterBytes instanceof Uint8Array) || delimiterBytes.byteLength === 0) {
             throw new TypeError("TcpConnection.readUntil delimiter must be non-empty bytes.");
         }
@@ -1689,6 +1695,30 @@ async function readHttpStreamChunk(iterator, signal, expiresAtMs) {
     }
 }
 
+function isHttpRequestStreamTimingError(error) {
+    return error?.code === "SLOPPY_E_HTTP_CLIENT_REQUEST_TIMEOUT" ||
+        error?.code === "SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED";
+}
+
+async function closeHttpRequestStreamIterator(iterator, shouldAwaitCleanup) {
+    if (typeof iterator.return !== "function") {
+        return;
+    }
+    try {
+        const cleanup = Promise.resolve(iterator.return());
+        if (shouldAwaitCleanup) {
+            await cleanup;
+            return;
+        }
+
+        // Timed-out or cancelled async generators can remain suspended in next(); observe
+        // cleanup failures without letting a non-interruptible iterator block settlement.
+        cleanup.catch(() => {});
+        await Promise.race([cleanup, Promise.resolve()]);
+    } catch {
+    }
+}
+
 async function consumeHttpRequestStream(stream, maxRequestBytes, headers, operation, timing) {
     if (!isHttpAsyncIterable(stream)) {
         throw httpClientError(
@@ -1700,28 +1730,43 @@ async function consumeHttpRequestStream(stream, maxRequestBytes, headers, operat
     const chunks = [];
     let totalLength = 0;
     const iterator = stream[Symbol.asyncIterator]();
-    while (true) {
-        const result = await readHttpStreamChunk(iterator, timing.signal, timing.expiresAtMs);
-        if (result.done) {
-            break;
+    let completed = false;
+    let terminalError;
+    try {
+        while (true) {
+            const result = await readHttpStreamChunk(iterator, timing.signal, timing.expiresAtMs);
+            if (result.done) {
+                completed = true;
+                break;
+            }
+            const chunk = result.value;
+            if (!(chunk instanceof Uint8Array)) {
+                throw httpClientError(
+                    "HttpClientInvalidOptionsError",
+                    "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+                    `${operation} stream body chunks must be Uint8Array values.`,
+                );
+            }
+            totalLength += chunk.byteLength;
+            if (totalLength > maxRequestBytes) {
+                throw httpClientError(
+                    "HttpClientRequestLimitError",
+                    "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
+                    "HTTP request body exceeded the configured limit.",
+                );
+            }
+            chunks.push(chunk.slice());
         }
-        const chunk = result.value;
-        if (!(chunk instanceof Uint8Array)) {
-            throw httpClientError(
-                "HttpClientInvalidOptionsError",
-                "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
-                `${operation} stream body chunks must be Uint8Array values.`,
+    } catch (error) {
+        terminalError = error;
+        throw error;
+    } finally {
+        if (!completed) {
+            await closeHttpRequestStreamIterator(
+                iterator,
+                !isHttpRequestStreamTimingError(terminalError),
             );
         }
-        totalLength += chunk.byteLength;
-        if (totalLength > maxRequestBytes) {
-            throw httpClientError(
-                "HttpClientRequestLimitError",
-                "SLOPPY_E_HTTP_CLIENT_REQUEST_BODY_LIMIT",
-                "HTTP request body exceeded the configured limit.",
-            );
-        }
-        chunks.push(chunk.slice());
     }
     setHttpDefaultHeader(headers, "Content-Type", "application/octet-stream");
     return concatHttpBytes(chunks, totalLength);
@@ -1759,7 +1804,7 @@ async function normalizeHttpBody(options, headers, operation, maxRequestBytes, t
             );
         }
         setHttpDefaultHeader(headers, "Content-Type", "application/json");
-        return enforceHttpRequestBodyLimit(new TextEncoder().encode(text), maxRequestBytes);
+        return enforceHttpRequestBodyLimit(Text.utf8.encode(text), maxRequestBytes);
     }
     if (sources[0] === "text") {
         if (typeof options.text !== "string") {
@@ -1770,7 +1815,7 @@ async function normalizeHttpBody(options, headers, operation, maxRequestBytes, t
             );
         }
         setHttpDefaultHeader(headers, "Content-Type", "text/plain; charset=utf-8");
-        return enforceHttpRequestBodyLimit(new TextEncoder().encode(options.text), maxRequestBytes);
+        return enforceHttpRequestBodyLimit(Text.utf8.encode(options.text), maxRequestBytes);
     }
     if (sources[0] === "stream") {
         return await consumeHttpRequestStream(options.stream, maxRequestBytes, headers, operation, timing);
@@ -1942,12 +1987,12 @@ class HttpClientResponse {
     }
 
     async text() {
-        return new TextDecoder().decode(this._consume());
+        return Text.utf8.decode(this._consume());
     }
 
     async json() {
         try {
-            return JSON.parse(new TextDecoder().decode(this._consume()));
+            return JSON.parse(Text.utf8.decode(this._consume()));
         } catch (error) {
             throw httpClientError(
                 "HttpClientJsonError",
@@ -2269,7 +2314,7 @@ function serializeHttpRequest(request, keepAlive = false) {
         lines.push(`Content-Length: ${request.body.byteLength}`);
     }
     lines.push("", "");
-    const head = new TextEncoder().encode(lines.join("\r\n"));
+    const head = Text.utf8.encode(lines.join("\r\n"));
     const bytes = new Uint8Array(head.byteLength + request.body.byteLength);
     bytes.set(head, 0);
     bytes.set(request.body, head.byteLength);
@@ -2516,9 +2561,6 @@ async function sendHttpRequest(baseOptions, request, options = undefined, defaul
             }),
         ]);
     } catch (error) {
-        if (error instanceof SloppyNetError && String(error.message).startsWith("SLOPPY_E_HTTP_CLIENT_")) {
-            throw error;
-        }
         if (cancelled) {
             throw httpClientError(
                 "HttpClientCancelledError",
@@ -2534,6 +2576,12 @@ async function sendHttpRequest(baseOptions, request, options = undefined, defaul
                 "HTTP client request timed out.",
                 { cause: error },
             );
+        }
+        if (error instanceof SloppyNetError &&
+            typeof error.code === "string" &&
+            error.code.startsWith("SLOPPY_E_HTTP_CLIENT_"))
+        {
+            throw error;
         }
         throw mapHttpTransportError(error);
     } finally {

@@ -74,8 +74,11 @@ function deadlineRemainingMs(deadline) {
         return Infinity;
     }
     const remaining = Number(deadline.remainingMs());
-    if (!Number.isFinite(remaining)) {
+    if (remaining === Infinity) {
         return Infinity;
+    }
+    if (!Number.isFinite(remaining)) {
+        throw new TypeError("worker deadline remainingMs() must be finite or Infinity.");
     }
     return Math.max(0, remaining);
 }
@@ -185,8 +188,11 @@ function normalizeOperationOptions(options = undefined) {
     if (options === undefined || options === null) {
         return { deadline: undefined, signal: undefined };
     }
-    if (typeof options !== "object") {
-        throw new TypeError("worker operation options must be an object.");
+    if (!isPlainObject(options)) {
+        throw new TypeError("worker operation options must be a plain object.");
+    }
+    if (options.signal !== undefined && !isSignal(options.signal)) {
+        throw new TypeError("worker signal must be a Sloppy cancellation signal or AbortSignal-like object.");
     }
     let timeoutDeadline = undefined;
     if (options.timeoutMs !== undefined) {
@@ -436,6 +442,22 @@ class WorkQueueHandle {
         if (this._stopped) {
             return Promise.reject(workerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
         }
+        let normalizedOptions;
+        try {
+            normalizedOptions = normalizeOperationOptions(options);
+        } catch (error) {
+            return Promise.reject(error);
+        }
+        try {
+            if (signalCancelled(normalizedOptions.signal)) {
+                return Promise.reject(rejectForCancellation(signalReason(normalizedOptions.signal)));
+            }
+            if (deadlineRemainingMs(normalizedOptions.deadline) <= 0) {
+                return Promise.reject(rejectForCancellation("deadline"));
+            }
+        } catch (error) {
+            return Promise.reject(error);
+        }
         const submit = () => new Promise((resolve, reject) => {
             if (this._stopped) {
                 reject(workerError("SLOPPY_E_WORK_QUEUE_STOPPED", "work queue is stopped"));
@@ -445,7 +467,7 @@ class WorkQueueHandle {
                 id: this._nextJobId++,
                 data: payload,
                 attempt: 0,
-                options: normalizeOperationOptions(options),
+                options: normalizedOptions,
                 resolve,
                 reject,
             };
@@ -463,19 +485,84 @@ class WorkQueueHandle {
                 return Promise.reject(workerError("SLOPPY_E_WORK_QUEUE_FULL", "work queue backpressure waiters are full"));
             }
             return new Promise((resolve, reject) => {
-                this._waiters.push({
-                    reject,
-                    resume: () => submit().then(resolve, reject),
-                });
+                const waiter = this._createBackpressureWaiter(normalizedOptions, resolve, reject, submit);
+                this._waiters.push(waiter);
             });
         }
         return submit();
     }
 
+    _createBackpressureWaiter(options, resolve, reject, submit) {
+        let finished = false;
+        let timeoutId = undefined;
+        let cleanupSignal = () => {};
+        const remove = (waiter) => {
+            const index = this._waiters.indexOf(waiter);
+            if (index >= 0) {
+                this._waiters.splice(index, 1);
+            }
+        };
+        const finish = (waiter, callback) => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            cleanupSignal();
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+            callback();
+        };
+        const waiter = {
+            cleanup: () => {
+                cleanupSignal();
+                if (timeoutId !== undefined) {
+                    clearTimeout(timeoutId);
+                }
+            },
+            reject: (error) => finish(waiter, () => reject(error)),
+            resume: () => finish(waiter, () => {
+                try {
+                    if (signalCancelled(options.signal)) {
+                        this._stats.cancelled += 1;
+                        reject(rejectForCancellation(signalReason(options.signal)));
+                        return;
+                    }
+                    if (deadlineRemainingMs(options.deadline) <= 0) {
+                        this._stats.timedOut += 1;
+                        reject(rejectForCancellation("deadline"));
+                        return;
+                    }
+                } catch (error) {
+                    reject(error);
+                    return;
+                }
+                submit().then(resolve, reject);
+            }),
+        };
+
+        cleanupSignal = subscribeSignal(options.signal, (reason) => {
+            remove(waiter);
+            this._stats.cancelled += 1;
+            waiter.reject(rejectForCancellation(reason));
+        });
+        const remaining = deadlineRemainingMs(options.deadline);
+        if (remaining !== Infinity) {
+            timeoutId = setTimeout(() => {
+                remove(waiter);
+                this._stats.timedOut += 1;
+                waiter.reject(rejectForCancellation("deadline"));
+            }, Math.ceil(remaining));
+        }
+        return waiter;
+    }
+
     _rejectWaiters(error, options = undefined) {
         const countCancelled = options?.countCancelled !== false;
         while (this._waiters.length > 0) {
-            this._waiters.shift().reject(error);
+            const waiter = this._waiters.shift();
+            waiter.cleanup?.();
+            waiter.reject(error);
             if (countCancelled) {
                 this._stats.cancelled += 1;
             }

@@ -135,6 +135,13 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   claim Node Buffer, Web Streams, Bun/Deno, broader compression algorithms, incremental
   native streaming, checksum security, benchmark, package, or public alpha readiness from
   this slice.
+- Core API integration after CORE-INTEGRATION-01: `docs/project/core-api-platform-map.md`
+  is the current dependency/ownership/options/streams/diagnostics map, and the first
+  duplicate-helper scanner guards Codec text adoption and native HTTP string helper
+  adoption. Remaining integration debt is issue-backed: strict app FS policy under real
+  `sloppy run`, raw TCP timeout/deadline/signal normalization, OS post-admission process
+  cancellation, V8 process-pipe binary return, worker module path policy, runtime-classic
+  parity/regeneration checks, and broader secret/golden scanner coverage.
 - Provider execution runtime beyond ENGINE-23.A/B/C/D/E/F/G/H serialized and blocking-pool
   admission/execution:
   provider operation descriptors with owned inputs, per-provider-instance bounded

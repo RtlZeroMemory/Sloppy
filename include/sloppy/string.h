@@ -49,6 +49,15 @@ bool sl_str_is_empty(SlStr str);
 bool sl_str_equal(SlStr left, SlStr right);
 bool sl_str_starts_with(SlStr str, SlStr prefix);
 bool sl_str_ends_with(SlStr str, SlStr suffix);
+
+/*
+ * ASCII-only case-insensitive helpers for protocol grammars such as HTTP header
+ * names and media types. Non-ASCII bytes compare by exact byte value.
+ */
+bool sl_str_equal_ci_ascii(SlStr left, SlStr right);
+bool sl_str_starts_with_ci_ascii(SlStr str, SlStr prefix);
+bool sl_str_ends_with_ci_ascii(SlStr str, SlStr suffix);
+
 SlStr sl_owned_str_as_view(SlOwnedStr str);
 
 /*
