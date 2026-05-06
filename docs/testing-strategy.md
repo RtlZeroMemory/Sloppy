@@ -123,9 +123,11 @@ import recognition, `stdlib.codec` Plan metadata, unavailable-feature diagnostic
 codec diagnostic names/goldens, backend policy, and checksum non-security wording.
 CORE-CODEC-01.C/D/I adds default bootstrap vectors for Base64/Base64Url/Hex, UTF-8
 fatal/replacement behavior, streaming partial sequences, BOM preservation, arbitrary-byte
-roundtrips, deferred Binary/Compression/Checksum stubs, and V8-gated active/inactive
-`__sloppy.codec` namespace smoke coverage. Later implementation tests must still cover
-binary endian, compression, streaming compression, and checksum vectors without claiming
+roundtrips, deferred Compression/Checksum stubs, and V8-gated active/inactive
+`__sloppy.codec` namespace smoke coverage. CORE-CODEC-01.E adds Binary reader/writer
+endian, signed/unsigned width, 64-bit BigInt, bounds, seek, embedded-byte, and writer
+capacity vectors. Later implementation tests must still cover compression, streaming
+compression, and checksum vectors without claiming
 Node Buffer/Web Streams/Bun/Deno compatibility, benchmark performance, or public alpha
 readiness.
 

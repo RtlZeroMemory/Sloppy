@@ -16,6 +16,15 @@ function assertCodecError(fn, code) {
     });
 }
 
+function assertCodecErrorMessage(fn, code, messagePattern) {
+    assert.throws(fn, (error) => {
+        assert.equal(error.code, code);
+        assert.match(error.message, new RegExp(code));
+        assert.match(error.message, messagePattern);
+        return true;
+    });
+}
+
 const base64Vectors = [
     ["", ""],
     ["f", "Zg=="],
@@ -78,7 +87,64 @@ assert.throws(() => Base64Url.encode(new Uint8Array(0), { padding: "no" }), Type
 assert.throws(() => Base64Url.decode("", new Date()), TypeError);
 assert.throws(() => Text.utf8.decode(new Uint8Array(0), { ignoreBOM: true }), TypeError);
 assert.throws(() => Text.utf8.decoder(new Uint8Array(0)), TypeError);
-assertCodecError(() => Binary.reader(new Uint8Array(0)), "SLOPPY_E_CODEC_FEATURE_UNAVAILABLE");
+
+const binaryReader = Binary.reader(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 255, 254, 253, 252, 0]));
+assert.equal(binaryReader.position(), 0);
+assert.equal(binaryReader.remaining(), 13);
+assert.equal(binaryReader.u32le(), 0x04030201);
+assert.equal(binaryReader.u16be(), 0x0506);
+assertBytes(binaryReader.bytes(2), new Uint8Array([7, 8]));
+assert.equal(binaryReader.i8(), -1);
+assert.equal(binaryReader.i16be(), -259);
+assert.equal(binaryReader.remaining(), 2);
+binaryReader.seek(0);
+assert.equal(binaryReader.u16be(), 0x0102);
+assert.equal(binaryReader.position(), 2);
+binaryReader.seek(9);
+assert.equal(binaryReader.i32be(), -16909312);
+assert.equal(Binary.reader(new Uint8Array([8, 7, 6, 5, 4, 3, 2, 1])).u64le(), 0x0102030405060708n);
+assert.equal(Binary.reader(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe])).i64be(), -2n);
+
+const payload = new Uint8Array([0, 65, 255]);
+const binaryWriter = Binary.writer({ initialCapacity: 1, maxCapacity: 64 });
+binaryWriter.u32le(1).u16be(payload.length).bytes(payload).i8(-1).i16le(-2).u64be(0x0102030405060708n).i64le(-2n);
+assert.equal(binaryWriter.position(), 28);
+const binaryWriterBytes = new Uint8Array([
+    1, 0, 0, 0, 0, 3, 0, 65, 255, 255, 254, 255, 1, 2, 3, 4, 5, 6, 7, 8, 254, 255, 255, 255, 255, 255, 255, 255,
+]);
+assertBytes(binaryWriter.toBytes(), binaryWriterBytes);
+const writtenReader = Binary.reader(binaryWriter.toBytes());
+assert.equal(writtenReader.u32le(), 1);
+assert.equal(writtenReader.u16be(), payload.length);
+assertBytes(writtenReader.bytes(payload.length), payload);
+assert.equal(writtenReader.i8(), -1);
+assert.equal(writtenReader.i16le(), -2);
+assert.equal(writtenReader.u64be(), 0x0102030405060708n);
+assert.equal(writtenReader.i64le(), -2n);
+assert.equal(writtenReader.remaining(), 0);
+
+const writerSnapshot = binaryWriter.toBytes();
+writerSnapshot[0] = 0xff;
+assert.equal(Binary.reader(writerSnapshot).u32le(), 0xff);
+assertBytes(binaryWriter.toBytes(), binaryWriterBytes);
+assert.equal(Binary.reader(binaryWriter.toBytes()).u32le(), 1);
+
+const shortReader = Binary.reader(new Uint8Array([1]));
+assertCodecError(() => shortReader.u16le(), "SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS");
+assert.equal(shortReader.position(), 0);
+assertCodecError(() => shortReader.seek(2), "SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS");
+assertCodecError(() => Binary.reader(new Uint8Array([1])).bytes(2), "SLOPPY_E_CODEC_BINARY_READ_OUT_OF_BOUNDS");
+const cappedWriter = Binary.writer({ initialCapacity: 1, maxCapacity: 2 });
+cappedWriter.u8(1).u8(2);
+assertCodecErrorMessage(() => cappedWriter.u8(3), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE", /BinaryWriter\.u8/);
+assertBytes(cappedWriter.toBytes(), new Uint8Array([1, 2]));
+assertCodecError(() => Binary.writer({ initialCapacity: 3, maxCapacity: 2 }), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
+assertCodecError(() => Binary.writer({ initialCapacity: 2 ** 40 }), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
+assertCodecError(() => Binary.writer({ maxCapacity: 2 ** 40 }), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
+assertCodecError(() => Binary.writer().u8(256), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
+assertCodecError(() => Binary.writer().u64le(-1n), "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE");
+assert.throws(() => Binary.reader([]), TypeError);
+
 await assert.rejects(() => Compression.gzip(new Uint8Array(0)), /SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE/);
 assertCodecError(() => Checksums.crc32(new Uint8Array(0)), "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM");
 
@@ -87,6 +153,13 @@ await import("../../stdlib/sloppy/internal/runtime-classic.js");
 try {
     assert.equal(globalThis.__sloppy_runtime.Base64.encode(ascii("runtime")), "cnVudGltZQ==");
     assert.equal(globalThis.__sloppy_runtime.Text.utf8.decode(ascii("classic")), "classic");
+    const runtimeWriter = globalThis.__sloppy_runtime.Binary.writer();
+    runtimeWriter.u16le(0x1234).bytes(new Uint8Array([0]));
+    assertBytes(runtimeWriter.toBytes(), new Uint8Array([0x34, 0x12, 0]));
+    assertCodecError(
+        () => globalThis.__sloppy_runtime.Binary.writer({ initialCapacity: 2 ** 40 }),
+        "SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE",
+    );
 } finally {
     if (previousRuntime === undefined) {
         delete globalThis.__sloppy_runtime;
