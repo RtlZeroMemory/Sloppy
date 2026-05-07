@@ -8,6 +8,8 @@
  */
 #include "sloppy/bytes.h"
 
+#include "bytes_internal.h"
+
 #include <string.h>
 
 #define SL_BYTES_FNV1A_OFFSET 14695981039346656037ULL
@@ -90,7 +92,7 @@ SlBytes sl_owned_bytes_as_view(SlOwnedBytes bytes)
     return sl_bytes_from_parts(bytes.ptr, bytes.length);
 }
 
-SlStatus sl_bytes_find(SlBytes bytes, unsigned char needle, SlBytesFindResult* out)
+SlStatus sl_bytes_find_scalar(SlBytes bytes, unsigned char needle, SlBytesFindResult* out)
 {
     size_t index = 0U;
     SlBytesFindResult result = {.found = false, .index = bytes.length, .value = 0U};
@@ -112,7 +114,22 @@ SlStatus sl_bytes_find(SlBytes bytes, unsigned char needle, SlBytesFindResult* o
     return sl_status_ok();
 }
 
-SlStatus sl_bytes_find_any(SlBytes bytes, SlBytes needles, SlBytesFindResult* out)
+SlStatus sl_bytes_find(SlBytes bytes, unsigned char needle, SlBytesFindResult* out)
+{
+    if (out == NULL || !sl_bytes_has_valid_storage(bytes)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+#if SL_BYTES_SIMD_AVX2
+    return sl_bytes_find_avx2(bytes, needle, out);
+#elif SL_BYTES_SIMD_SSE2
+    return sl_bytes_find_sse2(bytes, needle, out);
+#else
+    return sl_bytes_find_scalar(bytes, needle, out);
+#endif
+}
+
+SlStatus sl_bytes_find_any_scalar(SlBytes bytes, SlBytes needles, SlBytesFindResult* out)
 {
     size_t index = 0U;
     size_t needle_index = 0U;
@@ -141,6 +158,21 @@ SlStatus sl_bytes_find_any(SlBytes bytes, SlBytes needles, SlBytesFindResult* ou
 
     *out = result;
     return sl_status_ok();
+}
+
+SlStatus sl_bytes_find_any(SlBytes bytes, SlBytes needles, SlBytesFindResult* out)
+{
+    if (out == NULL || !sl_bytes_has_valid_storage(bytes) || !sl_bytes_has_valid_storage(needles)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+#if SL_BYTES_SIMD_AVX2
+    return sl_bytes_find_any_avx2(bytes, needles, out);
+#elif SL_BYTES_SIMD_SSE2
+    return sl_bytes_find_any_sse2(bytes, needles, out);
+#else
+    return sl_bytes_find_any_scalar(bytes, needles, out);
+#endif
 }
 
 SlStatus sl_bytes_hash(SlBytes bytes, uint64_t* out_hash)

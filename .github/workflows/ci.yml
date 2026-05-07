@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.changed.outputs.docs_only }}
+      simd_relevant: ${{ steps.changed.outputs.simd_relevant }}
 
     steps:
       - name: Checkout
@@ -57,6 +58,7 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "simd_relevant=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -75,6 +77,7 @@ jobs:
           fi
 
           docs_only=true
+          simd_relevant=false
           if [ "${#files[@]}" -eq 0 ]; then
             docs_only=false
           fi
@@ -87,9 +90,20 @@ jobs:
                 docs_only=false
                 ;;
             esac
+
+            case "$file" in
+              .github/workflows/ci.yml|CMakeLists.txt|CMakePresets.json|\
+              include/sloppy/bytes.h|include/sloppy/string.h|include/sloppy/builder.h|\
+              src/core/bytes*|src/core/string*|src/core/builder*|\
+              tests/unit/core/test_bytes.c|tests/unit/core/test_string.c|tests/unit/core/test_builder.c|\
+              tests/fuzz/fuzz_memory_primitives.c|benchmarks/bench_memory.c|benchmarks/README.md)
+                simd_relevant=true
+                ;;
+            esac
           done
 
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "simd_relevant=$simd_relevant" >> "$GITHUB_OUTPUT"
 
   ci-fast:
     name: ci-fast / static
@@ -462,6 +476,101 @@ jobs:
       - name: Test
         shell: bash
         run: ctest --preset linux-sanitizers --output-on-failure
+
+  memory-simd:
+    name: memory-simd / ${{ matrix.name }}
+    runs-on: windows-latest
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && (needs.changes.outputs.simd_relevant == 'true' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-simd
+            preset: windows-simd
+          - name: windows-avx2
+            preset: windows-avx2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler -> target
+          cache-on-failure: true
+
+      - name: Ensure Ninja
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-
+            windows-memory-simd-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
+          $vcpkgBinaryCache = Join-Path $PWD ".sdeps/vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $vcpkgBinaryCache | Out-Null
+          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          }
+          git -C $vcpkgRoot fetch origin
+          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Toolchain bootstrap
+        shell: pwsh
+        run: .\tools\windows\bootstrap.ps1
+
+      - name: Configure
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 configure -Preset "${{ matrix.preset }}"
+
+      - name: Save vcpkg cache after configure
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Build
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 build -Preset "${{ matrix.preset }}"
+
+      - name: SIMD parity, seed replay, and benchmark smoke
+        shell: pwsh
+        run: ctest --preset "${{ matrix.preset }}" -R "core\.(bytes|str)|fuzz\.memory_primitives\.seed_replay|benchmarks\.sloppy_bench" --output-on-failure
 
   # The full Windows local-gate mirror is opt-in during pre-alpha iteration.
   # Normal non-docs changes already run windows-fast plus the Unix platform matrix below.

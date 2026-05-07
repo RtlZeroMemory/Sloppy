@@ -67,6 +67,24 @@ static bool sl_byte_builder_is_initialized(const SlByteBuilder* builder)
     return builder != NULL && builder->storage != SL_BUILDER_STORAGE_INVALID;
 }
 
+static unsigned char* sl_byte_builder_data(SlByteBuilder* builder)
+{
+    if (builder == NULL) {
+        return NULL;
+    }
+
+    return builder->storage == SL_BUILDER_STORAGE_SMALL ? builder->small : builder->data;
+}
+
+static const unsigned char* sl_byte_builder_const_data(const SlByteBuilder* builder)
+{
+    if (builder == NULL) {
+        return NULL;
+    }
+
+    return builder->storage == SL_BUILDER_STORAGE_SMALL ? builder->small : builder->data;
+}
+
 static SlStatus sl_byte_builder_validate_span(SlBytes bytes)
 {
     if (bytes.length != 0U && bytes.ptr == NULL) {
@@ -123,7 +141,9 @@ static SlStatus sl_byte_builder_grow(SlByteBuilder* builder, size_t required)
     void* next_data = NULL;
     SlStatus status;
 
-    if (builder->storage == SL_BUILDER_STORAGE_FIXED) {
+    if (builder->storage == SL_BUILDER_STORAGE_FIXED ||
+        builder->storage == SL_BUILDER_STORAGE_SMALL)
+    {
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
 
@@ -138,7 +158,8 @@ static SlStatus sl_byte_builder_grow(SlByteBuilder* builder, size_t required)
     }
 
     if (builder->length != 0U) {
-        sl_byte_builder_copy((unsigned char*)next_data, builder->data, builder->length);
+        sl_byte_builder_copy((unsigned char*)next_data, sl_byte_builder_const_data(builder),
+                             builder->length);
         sl_builder_counter_add(&builder->copied_bytes, builder->length);
     }
 
@@ -160,6 +181,22 @@ SlStatus sl_byte_builder_init_fixed(SlByteBuilder* builder, unsigned char* buffe
     result.capacity = capacity;
     result.max_capacity = capacity;
     result.storage = SL_BUILDER_STORAGE_FIXED;
+    *builder = result;
+    return sl_status_ok();
+}
+
+SlStatus sl_byte_builder_init_small(SlByteBuilder* builder)
+{
+    SlByteBuilder result = {0U};
+
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    result.data = NULL;
+    result.capacity = sizeof(result.small);
+    result.max_capacity = sizeof(result.small);
+    result.storage = SL_BUILDER_STORAGE_SMALL;
     *builder = result;
     return sl_status_ok();
 }
@@ -231,11 +268,14 @@ SlByteBuilderStats sl_byte_builder_stats(const SlByteBuilder* builder)
 
 SlBytes sl_byte_builder_view(const SlByteBuilder* builder)
 {
+    const unsigned char* data = NULL;
+
     if (builder == NULL || builder->length == 0U) {
         return sl_bytes_empty();
     }
 
-    return sl_bytes_from_parts(builder->data, builder->length);
+    data = sl_byte_builder_const_data(builder);
+    return data == NULL ? sl_bytes_empty() : sl_bytes_from_parts(data, builder->length);
 }
 
 SlStatus sl_byte_builder_reserve(SlByteBuilder* builder, size_t additional)
@@ -281,7 +321,7 @@ SlStatus sl_byte_builder_append_bytes(SlByteBuilder* builder, SlBytes bytes)
         return status;
     }
 
-    sl_byte_builder_copy(builder->data + builder->length, bytes.ptr, bytes.length);
+    sl_byte_builder_copy(sl_byte_builder_data(builder) + builder->length, bytes.ptr, bytes.length);
     builder->length += bytes.length;
     sl_builder_counter_add(&builder->appended_bytes, bytes.length);
     return sl_status_ok();
@@ -300,7 +340,7 @@ SlStatus sl_byte_builder_append_byte(SlByteBuilder* builder, unsigned char byte)
         return status;
     }
 
-    builder->data[builder->length] = byte;
+    sl_byte_builder_data(builder)[builder->length] = byte;
     builder->length += 1U;
     sl_builder_counter_add(&builder->appended_bytes, 1U);
     return sl_status_ok();
@@ -313,6 +353,15 @@ SlStatus sl_string_builder_init_fixed(SlStringBuilder* builder, char* buffer, si
     }
 
     return sl_byte_builder_init_fixed(&builder->bytes, (unsigned char*)buffer, capacity);
+}
+
+SlStatus sl_string_builder_init_small(SlStringBuilder* builder)
+{
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_byte_builder_init_small(&builder->bytes);
 }
 
 SlStatus sl_string_builder_init_arena(SlStringBuilder* builder, SlArena* arena,
@@ -378,7 +427,7 @@ SlStatus sl_string_builder_view_with_nul(SlStringBuilder* builder, SlStr* out)
         return status;
     }
 
-    builder->bytes.data[builder->bytes.length] = '\0';
+    sl_byte_builder_data(&builder->bytes)[builder->bytes.length] = '\0';
     *out = sl_string_builder_view(builder);
     return sl_status_ok();
 }
@@ -443,7 +492,7 @@ SlStatus sl_string_builder_append_u64(SlStringBuilder* builder, uint64_t value)
     }
 
     for (index = 0U; index < length; index += 1U) {
-        builder->bytes.data[builder->bytes.length + index] =
+        sl_byte_builder_data(&builder->bytes)[builder->bytes.length + index] =
             (unsigned char)digits[length - index - 1U];
     }
 
@@ -485,15 +534,15 @@ SlStatus sl_string_builder_append_i64(SlStringBuilder* builder, int64_t value)
     }
 
     if (digits[0] == '-') {
-        builder->bytes.data[builder->bytes.length] = (unsigned char)digits[0];
+        sl_byte_builder_data(&builder->bytes)[builder->bytes.length] = (unsigned char)digits[0];
         for (index = 1U; index < length; index += 1U) {
-            builder->bytes.data[builder->bytes.length + index] =
+            sl_byte_builder_data(&builder->bytes)[builder->bytes.length + index] =
                 (unsigned char)digits[length - index];
         }
     }
     else {
         for (index = 0U; index < length; index += 1U) {
-            builder->bytes.data[builder->bytes.length + index] =
+            sl_byte_builder_data(&builder->bytes)[builder->bytes.length + index] =
                 (unsigned char)digits[length - index - 1U];
         }
     }

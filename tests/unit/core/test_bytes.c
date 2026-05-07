@@ -199,6 +199,92 @@ static int test_deterministic_byte_scan_properties(void)
     return 0;
 }
 
+static int test_find_any_parity_matrix(void)
+{
+    unsigned char bytes[97];
+    const unsigned char needle_sets[][4] = {
+        {0U, 0U, 0U, 0U},
+        {(unsigned char)'/', (unsigned char)'?', (unsigned char)'#', 0U},
+        {0xffU, 0x80U, 0x7fU, 0x40U},
+        {(unsigned char)'a', (unsigned char)'z', (unsigned char)'A', (unsigned char)'Z'},
+    };
+    size_t length = 0U;
+
+    for (length = 0U; length <= sizeof(bytes); length += 1U) {
+        size_t index = 0U;
+        size_t set_index = 0U;
+
+        for (index = 0U; index < sizeof(bytes); index += 1U) {
+            bytes[index] = (unsigned char)((index * 19U + length * 7U + 3U) & 0xffU);
+        }
+        if (length > 33U) {
+            bytes[33U] = 0xffU;
+        }
+        if (length > 64U) {
+            bytes[64U] = (unsigned char)'?';
+        }
+
+        for (set_index = 0U; set_index < sizeof(needle_sets) / sizeof(needle_sets[0]);
+             set_index += 1U)
+        {
+            SlBytesFindResult single = {.found = true, .index = 999U, .value = 77U};
+            SlBytesFindResult result = {.found = true, .index = 999U, .value = 77U};
+            unsigned char single_needle = needle_sets[set_index][0];
+            bool single_expected_found = false;
+            size_t single_expected_index = length;
+            bool expected_found = false;
+            size_t expected_index = length;
+            unsigned char expected_value = 0U;
+
+            for (index = 0U; index < length; index += 1U) {
+                size_t needle_index = 0U;
+
+                if (!single_expected_found && bytes[index] == single_needle) {
+                    single_expected_found = true;
+                    single_expected_index = index;
+                }
+                if (!expected_found) {
+                    for (needle_index = 0U; needle_index < sizeof(needle_sets[0]);
+                         needle_index += 1U)
+                    {
+                        if (bytes[index] == needle_sets[set_index][needle_index]) {
+                            expected_found = true;
+                            expected_index = index;
+                            expected_value = bytes[index];
+                            break;
+                        }
+                    }
+                }
+                if (expected_found && single_expected_found) {
+                    continue;
+                }
+            }
+
+            if (expect_status(
+                    sl_bytes_find(sl_bytes_from_parts(bytes, length), single_needle, &single),
+                    SL_STATUS_OK) != 0 ||
+                single.found != single_expected_found || single.index != single_expected_index ||
+                (single.found && single.value != single_needle))
+            {
+                return 34;
+            }
+
+            if (expect_status(sl_bytes_find_any(sl_bytes_from_parts(bytes, length),
+                                                sl_bytes_from_parts(needle_sets[set_index],
+                                                                    sizeof(needle_sets[0])),
+                                                &result),
+                              SL_STATUS_OK) != 0 ||
+                result.found != expected_found || result.index != expected_index ||
+                (result.found && result.value != expected_value))
+            {
+                return 33;
+            }
+        }
+    }
+
+    return 0;
+}
+
 static int test_arena_copies(void)
 {
     const unsigned char bytes[] = {0U, 1U, 2U, 0U};
@@ -276,6 +362,11 @@ int main(void)
     }
 
     result = test_deterministic_byte_scan_properties();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_find_any_parity_matrix();
     if (result != 0) {
         return result;
     }

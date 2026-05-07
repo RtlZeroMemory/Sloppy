@@ -36,6 +36,11 @@ checks prove that the harness runs; they do not prove runtime performance or sup
 performance claims. Measured Release benchmark evidence must name the command, build,
 hardware/context, workload, and output.
 
+Optional SIMD backends may change which implementation a benchmark exercises. That does
+not make benchmark smoke a performance claim; measured reports must still identify the
+preset, compiler, platform, configured `SLOPPY_ENABLE_SIMD` mode, and configured
+`SLOPPY_SIMD_LEVEL`.
+
 ## Future Phase
 
 Measured benchmark lanes should become meaningful only when a scoped task defines the path,

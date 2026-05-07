@@ -8,6 +8,8 @@
  */
 #include "sloppy/string.h"
 
+#include "string_internal.h"
+
 #include "sloppy/checked_math.h"
 
 #include <string.h>
@@ -104,7 +106,7 @@ bool sl_str_ends_with(SlStr str, SlStr suffix)
     return memcmp(str.ptr + offset, suffix.ptr, suffix.length) == 0;
 }
 
-bool sl_str_equal_ci_ascii(SlStr left, SlStr right)
+bool sl_str_equal_ci_ascii_scalar(SlStr left, SlStr right)
 {
     size_t index = 0U;
 
@@ -131,10 +133,19 @@ bool sl_str_equal_ci_ascii(SlStr left, SlStr right)
     return true;
 }
 
+bool sl_str_equal_ci_ascii(SlStr left, SlStr right)
+{
+#if SL_STRING_SIMD_AVX2
+    return sl_str_equal_ci_ascii_avx2(left, right);
+#elif SL_STRING_SIMD_SSE2
+    return sl_str_equal_ci_ascii_sse2(left, right);
+#else
+    return sl_str_equal_ci_ascii_scalar(left, right);
+#endif
+}
+
 bool sl_str_starts_with_ci_ascii(SlStr str, SlStr prefix)
 {
-    size_t index = 0U;
-
     if (prefix.length == 0U) {
         return true;
     }
@@ -142,20 +153,12 @@ bool sl_str_starts_with_ci_ascii(SlStr str, SlStr prefix)
         return false;
     }
 
-    for (index = 0U; index < prefix.length; index += 1U) {
-        if (sl_str_ascii_lower((unsigned char)str.ptr[index]) !=
-            sl_str_ascii_lower((unsigned char)prefix.ptr[index]))
-        {
-            return false;
-        }
-    }
-    return true;
+    return sl_str_equal_ci_ascii(sl_str_from_parts(str.ptr, prefix.length), prefix);
 }
 
 bool sl_str_ends_with_ci_ascii(SlStr str, SlStr suffix)
 {
     size_t offset = 0U;
-    size_t index = 0U;
 
     if (suffix.length == 0U) {
         return true;
@@ -165,17 +168,10 @@ bool sl_str_ends_with_ci_ascii(SlStr str, SlStr suffix)
     }
 
     offset = str.length - suffix.length;
-    for (index = 0U; index < suffix.length; index += 1U) {
-        if (sl_str_ascii_lower((unsigned char)str.ptr[offset + index]) !=
-            sl_str_ascii_lower((unsigned char)suffix.ptr[index]))
-        {
-            return false;
-        }
-    }
-    return true;
+    return sl_str_equal_ci_ascii(sl_str_from_parts(str.ptr + offset, suffix.length), suffix);
 }
 
-bool sl_str_contains_nul(SlStr str)
+bool sl_str_contains_nul_scalar(SlStr str)
 {
     size_t index = 0U;
 
@@ -189,6 +185,21 @@ bool sl_str_contains_nul(SlStr str)
         }
     }
     return false;
+}
+
+bool sl_str_contains_nul(SlStr str)
+{
+    if (!sl_str_has_valid_storage(str)) {
+        return false;
+    }
+
+#if SL_STRING_SIMD_AVX2
+    return sl_str_contains_nul_avx2(str);
+#elif SL_STRING_SIMD_SSE2
+    return sl_str_contains_nul_sse2(str);
+#else
+    return sl_str_contains_nul_scalar(str);
+#endif
 }
 
 SlStr sl_owned_str_as_view(SlOwnedStr str)
@@ -250,6 +261,7 @@ SlStatus sl_str_validate_no_nul(SlStr str)
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    /* C-string boundary validation checks storage before using the scan predicate. */
     return sl_str_contains_nul(str) ? sl_status_from_code(SL_STATUS_INVALID_ARGUMENT)
                                     : sl_status_ok();
 }

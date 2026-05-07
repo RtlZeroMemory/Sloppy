@@ -67,7 +67,8 @@ static int test_no_nul_boundary_helpers(void)
 
     if (expect_true(sl_str_contains_nul(embedded_str)) != 0 ||
         expect_true(!sl_str_contains_nul(non_ascii_str)) != 0 ||
-        expect_true(!sl_str_contains_nul(sl_str_empty())) != 0)
+        expect_true(!sl_str_contains_nul(sl_str_empty())) != 0 ||
+        expect_true(!sl_str_contains_nul(sl_str_from_parts(NULL, 1U))) != 0)
     {
         return 5;
     }
@@ -208,6 +209,81 @@ static int test_deterministic_string_view_properties(void)
     return 0;
 }
 
+static int test_ascii_case_parity_matrix(void)
+{
+    char left[129];
+    char right[129];
+    size_t length = 0U;
+
+    for (length = 0U; length <= sizeof(left); length += 1U) {
+        size_t index = 0U;
+        bool expected_equal = true;
+        bool expected_contains_nul = false;
+
+        for (index = 0U; index < sizeof(left); index += 1U) {
+            unsigned char base = (unsigned char)((index * 13U + length * 5U) & 0x7fU);
+            if (base >= (unsigned char)'A' && base <= (unsigned char)'Z') {
+                left[index] = (char)base;
+                right[index] = (char)(base - (unsigned char)'A' + (unsigned char)'a');
+            }
+            else if (base >= (unsigned char)'a' && base <= (unsigned char)'z') {
+                left[index] = (char)base;
+                right[index] = (char)(base - (unsigned char)'a' + (unsigned char)'A');
+            }
+            else {
+                left[index] = (char)base;
+                right[index] = (char)base;
+            }
+        }
+
+        if (length > 31U) {
+            left[31U] = '[';
+            right[31U] = '{';
+            expected_equal = false;
+        }
+        if (length > 65U) {
+            left[65U] = (char)0xc3;
+            right[65U] = (char)0xc3;
+        }
+        if (length > 96U) {
+            left[96U] = '\0';
+            right[96U] = '\0';
+            expected_contains_nul = true;
+        }
+        for (index = 0U; index < length; index += 1U) {
+            if (left[index] == '\0') {
+                expected_contains_nul = true;
+                break;
+            }
+        }
+
+        if (expect_true(sl_str_equal_ci_ascii(sl_str_from_parts(left, length),
+                                              sl_str_from_parts(right, length)) ==
+                        expected_equal) != 0)
+        {
+            return 45;
+        }
+
+        if (length <= 31U &&
+            (expect_true(sl_str_starts_with_ci_ascii(sl_str_from_parts(left, length),
+                                                     sl_str_from_parts(right, length / 2U))) != 0 ||
+             expect_true(sl_str_ends_with_ci_ascii(
+                 sl_str_from_parts(left, length),
+                 sl_str_from_parts(right + (length / 2U), length - (length / 2U)))) != 0))
+        {
+            return 46;
+        }
+
+        if (expect_true(sl_str_contains_nul(sl_str_from_parts(left, length)) ==
+                        expected_contains_nul) != 0)
+        {
+            return 47;
+        }
+    }
+
+    return 0;
+}
+
 static int test_arena_copies(void)
 {
     const char embedded[] = {'a', '\0', 'b'};
@@ -330,6 +406,11 @@ int main(void)
     }
 
     result = test_deterministic_string_view_properties();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_ascii_case_parity_matrix();
     if (result != 0) {
         return result;
     }
