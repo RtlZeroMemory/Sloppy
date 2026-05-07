@@ -384,7 +384,8 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlserver.supports.connectionString, true);
     assert.equal(data.sqlserver.supports.odbc, true);
     assert.equal(data.sqlserver.supports.transactions, true);
-    assert.equal(data.sqlserver.supports.pooling, "skeleton");
+    assert.equal(data.sqlserver.supports.pooling, true);
+    assert.equal(data.sqlserver.supports.executionMode, "TRUE_ASYNC");
     assert.equal(data.sqlserver.supports.nativeStdlibBridge, false);
     assert.equal(data.sqlserver.__debug().nativeStdlibBridge, false);
     assert.equal(sql.lower(["a ", " b"], ["x"], {

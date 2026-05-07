@@ -13,10 +13,9 @@ This document is implementation-grade architecture for tasks under
 `DATA-RUNTIME-01: Provider Execution Runtime, Async Modes, Admission, Cancellation, and
 Diagnostics`.
 
-It does not implement runtime code by itself. It also does not create Node/npm
-compatibility, package-manager behavior, green threads/fibers/virtual threads,
-PostgreSQL/SQL Server JavaScript bridges, an ORM, migrations, HTTP backend behavior,
-public alpha docs, or benchmark claims.
+It does not create Node/npm compatibility, package-manager behavior, green
+threads/fibers/virtual threads, an ORM, migrations, HTTP backend behavior, public alpha
+docs, or benchmark claims.
 
 ## 1. Provider Runtime Purpose
 
@@ -479,7 +478,7 @@ Work after ENGINE-23:
 
 - ENGINE-13 proper HTTP backend may consume shared pressure/cancellation semantics but does
   not implement provider runtime;
-- SQLite runtime completion should route SQLite operations through the provider
-  executor before claiming scalable provider behavior;
-- SQL Server JS bridge work remains separate until ODBC async behavior and the
-  provider-owned bridge shape are solid.
+- SQLite runtime completion routes SQLite operations through the provider executor before
+  claiming scalable provider behavior;
+- SQL Server JS bridge work claims true-async only for the ODBC async driver path and
+  keeps live evidence separate from default evidence.

@@ -38,6 +38,12 @@
 #define SL_FEATURE_V8_AVAILABLE false
 #endif
 
+#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
+#define SL_FEATURE_SQLSERVER_AVAILABLE true
+#else
+#define SL_FEATURE_SQLSERVER_AVAILABLE false
+#endif
+
 static SlStr sl_feature_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -202,9 +208,10 @@ sl_feature_provider_descriptor_with_availability(SlRuntimeFeatureId id,
             sl_feature_literal("SQL Server provider", sizeof("SQL Server provider") - 1U),
             sl_feature_literal("sloppy/providers/sqlserver",
                                sizeof("sloppy/providers/sqlserver") - 1U),
-            sl_str_empty(),
-            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8),
-            sqlserver, false, true);
+            sl_feature_literal("__sloppy.data.sqlserver", sizeof("__sloppy.data.sqlserver") - 1U),
+            SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+                SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_DATA),
+            sqlserver, true, true);
     default:
         return sl_feature_descriptor_make(id, SL_RUNTIME_FEATURE_KIND_CORE, sl_str_empty(),
                                           sl_str_empty(), sl_str_empty(), sl_str_empty(), 0U, false,
@@ -327,7 +334,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.transport_libuv = true;
     availability.provider_sqlite = true;
     availability.provider_postgres = true;
-    availability.provider_sqlserver = false;
+    availability.provider_sqlserver = SL_FEATURE_SQLSERVER_AVAILABLE;
     availability.stdlib_crypto = true;
     availability.stdlib_codec = true;
     availability.stdlib_net = true;
@@ -391,9 +398,10 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          true, true, true},
         {SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER, SL_RUNTIME_FEATURE_KIND_PROVIDER,
          SL_FEATURE_STR("provider.sqlserver"), SL_FEATURE_STR("SQL Server provider"),
-         SL_FEATURE_STR("sloppy/providers/sqlserver"), SL_FEATURE_EMPTY,
-         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8), false,
-         false, true},
+         SL_FEATURE_STR("sloppy/providers/sqlserver"), SL_FEATURE_STR("__sloppy.data.sqlserver"),
+         SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |
+             SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_DATA),
+         SL_FEATURE_SQLSERVER_AVAILABLE, true, true},
         {SL_RUNTIME_FEATURE_STDLIB_TIME, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.time"), SL_FEATURE_STR("time stdlib"),
          SL_FEATURE_STR("sloppy/time"), SL_FEATURE_STR("__sloppy.time"), SL_FEATURE_DEPS_TIME, true,

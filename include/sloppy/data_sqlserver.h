@@ -38,7 +38,9 @@ typedef struct SlSqlServerOpenOptions
  * The provider owns ODBC environment/connection handles stored behind the opaque fields;
  * callers must close them through sl_sqlserver_close. ODBC headers and handle casts stay
  * in the provider implementation, and these handles must never be surfaced to JavaScript.
- * This provider is synchronous and single-thread-owned.
+ * This native C boundary is synchronous and single-thread-owned. The JavaScript provider
+ * bridge is separate and enables ODBC asynchronous connection/statement mode before
+ * claiming TRUE_ASYNC behavior.
  */
 typedef struct SlSqlServerConnection
 {

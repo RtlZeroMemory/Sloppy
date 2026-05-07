@@ -113,7 +113,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.transport_libuv = true;
     availability.provider_sqlite = true;
     availability.provider_postgres = true;
-    availability.provider_sqlserver = false;
+    availability.provider_sqlserver = true;
     availability.stdlib_crypto = true;
     availability.stdlib_codec = true;
     availability.stdlib_net = true;
@@ -179,6 +179,8 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_PROVIDER_SQLITE);
     const SlRuntimeFeatureDescriptor* postgres =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_PROVIDER_POSTGRES);
+    const SlRuntimeFeatureDescriptor* sqlserver =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER);
     const SlRuntimeFeatureDescriptor* data =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_DATA);
     const SlRuntimeFeatureDescriptor* time =
@@ -201,9 +203,9 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     if (SL_RUNTIME_FEATURE_COUNT != 20) {
         return 60;
     }
-    if (sqlite == NULL || postgres == NULL || data == NULL || time == NULL || crypto == NULL ||
-        codec == NULL || net == NULL || os == NULL || http_client == NULL || fs == NULL ||
-        config == NULL)
+    if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
+        crypto == NULL || codec == NULL || net == NULL || os == NULL || http_client == NULL ||
+        fs == NULL || config == NULL)
     {
         return 61;
     }
@@ -295,6 +297,23 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     {
         return 65;
     }
+    if (!sqlserver->requires_v8_intrinsics ||
+        !sl_str_equal(sqlserver->stdlib_import, sl_str_from_cstr("sloppy/providers/sqlserver")) ||
+        !sl_str_equal(sqlserver->v8_intrinsic_namespace,
+                      sl_str_from_cstr("__sloppy.data.sqlserver")) ||
+        (sqlserver->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_DATA)) == 0U)
+    {
+        return 73;
+    }
+#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
+    if (!sqlserver->available) {
+        return 74;
+    }
+#else
+    if (sqlserver->available) {
+        return 75;
+    }
+#endif
     return 0;
 }
 
@@ -986,6 +1005,7 @@ static int test_missing_feature_diagnostic_goldens(void)
     }
 
     availability.provider_postgres = true;
+    availability.provider_sqlserver = false;
     required[0].id = sl_str_from_cstr("provider.sqlserver");
     if (expect_activation_diagnostic_snapshot(
             &plan, &availability, SL_STATUS_UNSUPPORTED, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,

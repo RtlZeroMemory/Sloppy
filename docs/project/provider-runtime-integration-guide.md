@@ -3,10 +3,8 @@
 Status: DATA-RUNTIME-01 evidence and integration guide for SQLite, PostgreSQL, and SQL
 Server runtime work.
 
-This guide explains how database providers must consume the ENGINE-23 provider executor.
-It is not a database bridge implementation. It does not convert SQLite to async offload,
-add PostgreSQL or SQL Server JavaScript bridges, create an ORM, add migrations, change V8,
-or make benchmark claims.
+This guide explains how database providers consume Slop async/provider runtime contracts.
+It is not an ORM, migration system, or benchmark claim.
 
 ## What ENGINE-23 Proves
 
@@ -112,9 +110,10 @@ Rules:
 - provider-specific cancellation, such as ODBC statement cancellation, must be explicit,
   documented, and tested before docs claim mid-call interruption.
 
-SQL Server bridge work remains separate until the ODBC async lane proves real async driver
-behavior. The current native provider boundary and non-live tests do not prove
-JS-to-native SQL Server execution.
+The V8 SQL Server bridge enables ODBC async connection/statement mode before it accepts
+work. Drivers that cannot enable those async attributes fail as unsupported/unavailable
+instead of falling back to blocking workers. Live SQL Server V8 evidence is still separate
+from default CI evidence.
 
 ## Diagnostics And Counters
 

@@ -84,10 +84,10 @@ artifact and validated by the runtime.
 ## Providers And Capabilities
 
 Plan provider and capability metadata supports policy checks and doctor/audit visibility.
-SQLite provider/capability metadata is consumed by the V8 SQLite bridge in scoped lanes.
-PostgreSQL, SQL Server, filesystem, and network capability metadata must not be presented
-as complete JavaScript bridge or OS-sandbox evidence unless a scoped implementation and
-evidence lane prove it.
+SQLite, PostgreSQL, and SQL Server provider/capability metadata is consumed by scoped V8
+provider bridges when their runtime features are active. Filesystem and network capability
+metadata must not be presented as complete OS-sandbox evidence unless a scoped
+implementation and evidence lane prove it.
 
 Framework v2 typed provider parameters such as `Postgres<"main">`, `Sqlite<"main">`, and
 `SqlServer<"main">` are represented as injection/capability requirements in route metadata.

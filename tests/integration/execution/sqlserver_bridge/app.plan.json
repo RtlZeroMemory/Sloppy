@@ -1,0 +1,62 @@
+{
+  "bundle": {
+    "hash": "sha256:64764eb101d583eddaccc72c4004b418cd9636a329c49722da55f70fc5ab55d6",
+    "id": "sqlserver-bridge-app-js",
+    "path": "app.js"
+  },
+  "compilerVersion": "handwritten-data-wave-4-sqlserver-bridge",
+  "requiredFeatures": [
+    "provider.sqlserver",
+    "stdlib.os"
+  ],
+  "capabilities": [
+    {
+      "access": "readwrite",
+      "kind": "database",
+      "provider": "data.main",
+      "token": "data.main"
+    }
+  ],
+  "dataProviders": [
+    {
+      "capability": "data.main",
+      "database": "config:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING",
+      "provider": "sqlserver",
+      "service": null,
+      "token": "data.main"
+    }
+  ],
+  "features": {
+    "asyncHandlers": true,
+    "capabilities": true,
+    "dataProviders": true,
+    "sourceMaps": true
+  },
+  "handlers": [
+    {
+      "displayName": "GET /sqlserver",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    }
+  ],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": null,
+      "pattern": "/sqlserver"
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceMap": {
+    "hash": "sha256:5986666663677317572a77fba73a41011e14f775223b76534a914697173e0af6",
+    "id": "sqlserver-bridge-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

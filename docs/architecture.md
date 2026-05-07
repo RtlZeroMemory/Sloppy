@@ -124,9 +124,9 @@ provider contracts and executor boundaries. JavaScript receives capability-check
 functions, not native pointers or provider-owned resources.
 
 SQLite has the serialized executable bridge. PostgreSQL has a V8-gated true-async bridge
-over nonblocking libpq plus bounded pooling. SQL Server provider metadata/native
-boundaries exist as scoped foundations until the ODBC async bridge lane proves real async
-driver behavior. Live-provider evidence remains separate from default evidence.
+over nonblocking libpq plus bounded pooling. SQL Server has a V8-gated bridge that
+requires ODBC asynchronous connection and statement support before it claims true-async
+execution. Live-provider evidence remains separate from default evidence.
 
 ## Compiler Boundary
 

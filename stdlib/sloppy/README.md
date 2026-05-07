@@ -49,10 +49,9 @@ lib/sloppy/bootstrap/sloppy/
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
   exists.
-- `data.js` exposes query-template lowering, provider metadata helpers, and SQLite bridge
-  entry points when the V8 lane installs the native SQLite bridge with Plan/capability
-  metadata. PostgreSQL and SQL Server JavaScript bridge entry points remain unavailable
-  until their own bridge modules exist.
+- `data.js` exposes query-template lowering, provider metadata helpers, and SQLite,
+  PostgreSQL, and SQL Server bridge entry points when the V8 lane installs the matching
+  provider bridge with Plan/capability metadata.
 - `internal/runtime-classic.js` is the V8-gated classic-script runtime asset loaded before
   generated artifacts. Generated code reads `globalThis.__sloppy_runtime` and registers
   handlers through Sloppy-owned intrinsics.
@@ -72,7 +71,7 @@ lib/sloppy/bootstrap/sloppy/
 - `app.run`, `app.listen`, or `app.build`;
 - public handler registration APIs;
 - full compiler extraction or arbitrary import rewriting;
-- broad PostgreSQL/SQL Server JavaScript provider bridges;
+- ORM, migrations, or schema-management behavior for database providers;
 - nested route groups, middleware, automatic validation/request binding, module packages,
   native plugins, or full app lifecycle integration;
 - config file/environment/CLI loading inside the JS stdlib itself, secret managers, native

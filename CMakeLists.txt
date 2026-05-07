@@ -492,7 +492,8 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/intrinsics_time.cc
         src/engine/v8/intrinsics_workers.cc
         src/engine/v8/intrinsics_sqlite.cc
-        src/engine/v8/intrinsics_postgres.cc)
+        src/engine/v8/intrinsics_postgres.cc
+        src/engine/v8/intrinsics_sqlserver.cc)
 endif()
 
 set(
@@ -2082,6 +2083,18 @@ if(SLOPPY_ENABLE_TESTS)
             PROPERTIES
                 LABELS "conformance;v8;postgres;live-provider"
                 SKIP_REGULAR_EXPRESSION "SKIP: live PostgreSQL V8 bridge tests are not configured")
+        add_test(
+            NAME conformance.sqlserver.bridge_live
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlserver_bridge_live.cmake")
+        set_tests_properties(
+            conformance.sqlserver.bridge_live
+            PROPERTIES
+                LABELS "conformance;v8;sqlserver;live-provider"
+                SKIP_REGULAR_EXPRESSION
+                    "SKIP: live SQL Server V8 bridge tests are not configured|SKIP: live SQL Server V8 bridge true-async path is unavailable")
         add_test(
             NAME sloppy.run.once_hello
             COMMAND "$<TARGET_FILE:sloppy>" run --artifacts

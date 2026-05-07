@@ -678,9 +678,236 @@ Operation:
         },
     });
 
+    function requireSqlServerBridge() {
+        const bridge = globalThis.__sloppy?.data?.sqlserver;
+
+        if (bridge === undefined) {
+            throw new Error(`SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature provider.sqlserver is inactive or unavailable
+
+Provider:
+  sqlserver
+
+Feature:
+  provider.sqlserver
+
+Operation:
+  open
+
+Reason:
+  The active Sloppy Plan did not enable the __sloppy.data.sqlserver V8 intrinsic namespace.`);
+        }
+
+        return bridge;
+    }
+
+    function normalizeSqlServerOpenOptions(options) {
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy sqlserver.open options must be a plain object.");
+        }
+        if (typeof options.connectionString !== "string" || options.connectionString.length === 0) {
+            throw new TypeError("Sloppy sqlserver.open connectionString must be a non-empty string.");
+        }
+        const access = options.access ?? "readwrite";
+        const maxConnections = options.maxConnections ?? 1;
+        if (access !== "read" && access !== "readwrite") {
+            throw new TypeError("Sloppy sqlserver.open access must be read or readwrite.");
+        }
+        if (!Number.isInteger(maxConnections) || maxConnections < 1 || maxConnections > 16) {
+            throw new TypeError("Sloppy sqlserver.open maxConnections must be an integer from 1 to 16.");
+        }
+        return Object.freeze({
+            provider: "sqlserver",
+            connectionString: options.connectionString,
+            capability: options.capability ?? "data.sqlserver",
+            access,
+            maxConnections,
+        });
+    }
+
+    function normalizeSqlServerParams(params, operation) {
+        if (params === undefined) {
+            return [];
+        }
+        if (!Array.isArray(params)) {
+            throw new TypeError(`Sloppy sqlserver.${operation} parameters must be an array.`);
+        }
+        return params;
+    }
+
+    function normalizeSqlServerQuery(operation, sql, params) {
+        if (typeof sql !== "string" || sql.length === 0) {
+            throw new TypeError(`Sloppy sqlserver.${operation} SQL must be a non-empty string.`);
+        }
+        return {
+            text: sql,
+            parameters: normalizeSqlServerParams(params, operation),
+        };
+    }
+
+    function createSqlServerConnection(bridge, handle) {
+        const state = {
+            closed: false,
+            handle,
+            transactionActive: false,
+        };
+
+        function assertOpen(operation) {
+            if (state.closed) {
+                throw new Error(`sloppy: sqlserver connection is closed
+
+Provider:
+  sqlserver
+
+Operation:
+  ${operation}`);
+            }
+        }
+
+        function createTransaction() {
+            const txState = {
+                closed: false,
+            };
+            function assertTransactionOpen(operation) {
+                assertOpen(operation);
+                if (txState.closed) {
+                    throw new Error(`sloppy: sqlserver transaction scope is closed
+
+Provider:
+  sqlserver
+
+Operation:
+  ${operation}`);
+                }
+            }
+            const tx = Object.freeze({
+                exec(sql, params) {
+                    assertTransactionOpen("transaction.exec");
+                    const query = normalizeSqlServerQuery("exec", sql, params);
+                    return bridge.transactionExec(state.handle, query.text, query.parameters);
+                },
+                query(sql, params) {
+                    assertTransactionOpen("transaction.query");
+                    const query = normalizeSqlServerQuery("query", sql, params);
+                    return bridge.transactionQuery(state.handle, query.text, query.parameters);
+                },
+                queryOne(sql, params) {
+                    assertTransactionOpen("transaction.queryOne");
+                    const query = normalizeSqlServerQuery("queryOne", sql, params);
+                    return bridge.transactionQueryOne(state.handle, query.text, query.parameters);
+                },
+                transaction() {
+                    throw new Error("sloppy: sqlserver nested transactions are not supported");
+                },
+            });
+            return {
+                tx,
+                close() {
+                    txState.closed = true;
+                },
+            };
+        }
+
+        async function rollbackAfterCallbackError(error, transaction) {
+            try {
+                await bridge.transactionRollback(state.handle);
+            } catch {
+                transaction.close();
+                state.closed = true;
+                try {
+                    bridge.close(state.handle);
+                } catch {
+                    // Preserve the callback error while preventing resource reuse.
+                }
+                throw error;
+            }
+            transaction.close();
+            state.transactionActive = false;
+            throw error;
+        }
+
+        async function commitTransaction(transaction) {
+            try {
+                await bridge.transactionCommit(state.handle);
+            } catch (error) {
+                transaction.close();
+                state.transactionActive = false;
+                state.closed = true;
+                try {
+                    bridge.close(state.handle);
+                } catch {
+                    // Keep the commit failure as the observable error.
+                }
+                throw error;
+            }
+            transaction.close();
+            state.transactionActive = false;
+        }
+
+        return Object.freeze({
+            exec(sql, params) {
+                assertOpen("exec");
+                const query = normalizeSqlServerQuery("exec", sql, params);
+                return bridge.exec(state.handle, query.text, query.parameters);
+            },
+            query(sql, params) {
+                assertOpen("query");
+                const query = normalizeSqlServerQuery("query", sql, params);
+                return bridge.query(state.handle, query.text, query.parameters);
+            },
+            queryOne(sql, params) {
+                assertOpen("queryOne");
+                const query = normalizeSqlServerQuery("queryOne", sql, params);
+                return bridge.queryOne(state.handle, query.text, query.parameters);
+            },
+            async transaction(callback) {
+                assertOpen("transaction");
+                if (typeof callback !== "function") {
+                    throw new TypeError("Sloppy sqlserver.transaction callback must be a function.");
+                }
+                if (state.transactionActive) {
+                    throw new Error("sloppy: sqlserver nested transactions are not supported");
+                }
+                state.transactionActive = true;
+                try {
+                    await bridge.transactionBegin(state.handle);
+                } catch (error) {
+                    state.transactionActive = false;
+                    throw error;
+                }
+                const transaction = createTransaction();
+                let value;
+                try {
+                    value = await callback(transaction.tx);
+                } catch (error) {
+                    return rollbackAfterCallbackError(error, transaction);
+                }
+                await commitTransaction(transaction);
+                return value;
+            },
+            close() {
+                if (state.closed) {
+                    return;
+                }
+                if (state.transactionActive) {
+                    throw new Error("sloppy: sqlserver transaction is active");
+                }
+                bridge.close(state.handle);
+                state.closed = true;
+            },
+        });
+    }
+
+    const sqlserver = Object.freeze({
+        open(options) {
+            const bridge = requireSqlServerBridge();
+            return createSqlServerConnection(bridge, bridge.open(normalizeSqlServerOpenOptions(options)));
+        },
+    });
+
     const data = Object.freeze({
         sqlite,
         postgres,
+        sqlserver,
     });
 
     function requireFsBridge(operation) {

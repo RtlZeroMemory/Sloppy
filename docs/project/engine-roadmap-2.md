@@ -11,7 +11,7 @@ runtime/compiler/framework/provider features in this PR.
 | Compiler and Plan metadata | Strong supported-subset compiler and Plan metadata exist, including routes, capabilities, provider effects, source maps, completeness, and Strong Plan consumer output. Broader TypeScript checking, imported helper inference, and typed graph/versioning follow-ups remain open. |
 | V8 execution | Optional V8 lane supports registered handlers, bounded microtask Promise settlement, request/result conversion, source-map exception primary-span remapping, SQLite bridge calls, and PostgreSQL bridge calls through Slop-owned native completion plumbing. Timers/fetch and unrelated native async sources remain missing. |
 | HTTP runtime | Bounded localhost HTTP/1.1 transport supports sequential keep-alive, idle timeout, max requests, lifecycle reset, chunked request decoding, internal chunked response writer, and stress/conformance smoke. Route-level policy, request IDs, access events, trusted proxy policy, and production drain remain missing. |
-| Provider runtime | Native provider executor exists, with copied descriptors, bounded admission, worker modes, cancellation/shutdown terminal posting, late-completion cleanup, and diagnostics/counters. SQLite JS bridge routes through serialized provider execution. PostgreSQL has a V8-gated true-async libpq bridge and bounded pool. SQL Server JS bridge work remains separate until ODBC async behavior is proven. |
+| Provider runtime | Native provider executor exists, with copied descriptors, bounded admission, worker modes, cancellation/shutdown terminal posting, late-completion cleanup, and diagnostics/counters. SQLite JS bridge routes through serialized provider execution. PostgreSQL has a V8-gated true-async libpq bridge and bounded pool. SQL Server has a V8-gated async ODBC bridge and bounded pool when the configured driver supports async connection/statement mode. |
 | App/resource lifecycle | ENGINE-16 provides app/request lifecycle states, terminal outcomes, cleanup-once invariants, typed resource cleanup, leak snapshots, and lifecycle diagnostics for the native helper layer. Timer/callback/provider-operation counter integration remains missing. |
 | Diagnostics | ENGINE-15 provides stable codes, deterministic text/JSON/source-frame rendering, source-map exception remapping for current V8 claims, redaction coverage, and diagnostic goldens. Runtime events/counters and access observability remain missing. |
 | Public alpha | Still blocked. Roadmap-2 is not public alpha docs and makes no benchmark/performance claims. |
@@ -22,7 +22,7 @@ runtime/compiler/framework/provider features in this PR.
 - No public alpha docs.
 - No benchmark/performance claims.
 - No Node/npm/package-manager compatibility.
-- No SQL Server JavaScript bridge implementation until the ODBC async lane is scoped.
+- No ORM, migrations, or production database hardening.
 - No broad code rewrite.
 - No generated/build artifacts.
 
