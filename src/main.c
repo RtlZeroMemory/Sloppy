@@ -276,6 +276,16 @@ static bool sl_cli_span_equal_cstr(SlCliSpan left, const char* right)
     return sl_cli_span_equal(left, sl_cli_span_cstr(right));
 }
 
+static bool sl_cli_copy_cstr(char* buffer, size_t capacity, const char* value)
+{
+    SlStr view = {0};
+    SlStringBuilder builder = {0};
+
+    return sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) &&
+           sl_status_is_ok(sl_string_builder_append_cstr(&builder, value)) &&
+           sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)) && view.ptr == buffer;
+}
+
 static bool sl_cli_string_builder_append_span(SlStringBuilder* builder, SlCliSpan span)
 {
     return sl_status_is_ok(sl_string_builder_append_str(builder, sl_cli_span_str(span)));
@@ -616,7 +626,7 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
                                                              sizeof(out->executable_path))) &&
         argc > 0 && argv != NULL && argv[0] != NULL)
     {
-        (void)snprintf(out->executable_path, sizeof(out->executable_path), "%s", argv[0]);
+        (void)sl_cli_copy_cstr(out->executable_path, sizeof(out->executable_path), argv[0]);
     }
     out->format = SL_CLI_FORMAT_TEXT;
     out->host = SL_RUN_DEFAULT_HOST;
