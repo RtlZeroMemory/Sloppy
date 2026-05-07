@@ -11,6 +11,7 @@
 #include "sloppy/http_response.h"
 
 #include <limits.h>
+#include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <uv.h>
@@ -639,27 +640,13 @@ static int sl_http_transport_tls_passphrase_cb(char* buffer, int size, int rwfla
     return (int)passphrase.length;
 }
 
-static void sl_http_transport_secure_zero(char* ptr, size_t length)
-{
-    volatile char* cursor = ptr;
-    size_t index = 0U;
-
-    if (ptr == NULL) {
-        return;
-    }
-    for (index = 0U; index < length; index += 1U) {
-        cursor[index] = '\0';
-    }
-}
-
 static void sl_http_transport_clear_tls_passphrase(SlHttpTransportServer* server)
 {
     if (server == NULL || server->platform == NULL || server->platform->tls_passphrase.ptr == NULL)
     {
         return;
     }
-    sl_http_transport_secure_zero(server->platform->tls_passphrase.ptr,
-                                  server->platform->tls_passphrase.length);
+    OPENSSL_cleanse(server->platform->tls_passphrase.ptr, server->platform->tls_passphrase.length);
     server->platform->tls_passphrase = (SlOwnedStr){0};
 }
 
