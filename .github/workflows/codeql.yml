@@ -39,7 +39,7 @@ on:
     - cron: "23 4 * * 1"
 
 concurrency:
-  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  group: codeql-${{ github.event.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
