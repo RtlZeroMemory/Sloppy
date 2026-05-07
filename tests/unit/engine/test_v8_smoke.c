@@ -2951,6 +2951,14 @@ static int test_invalid_result_headers_fail_safely(void)
                                            "    'text/plain; charset=utf-8',"
                                            "    headers: { 'Content-Length': '1' },"
                                            "    body: 'bad' };"
+                                           "};"
+                                           "globalThis.sloppy_invalid_transfer_header = function "
+                                           "() {"
+                                           "  return { __sloppyResult: true, kind: 'text',"
+                                           "    status: 200, contentType: "
+                                           "    'text/plain; charset=utf-8',"
+                                           "    headers: { 'Transfer-Encoding': 'chunked' },"
+                                           "    body: 'bad' };"
                                            "};"),
                           &diag),
                       SL_STATUS_OK) != 0)
@@ -2971,6 +2979,23 @@ static int test_invalid_result_headers_fail_safely(void)
     if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT) {
         sl_engine_destroy(engine);
         return 89;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_invalid_transfer_header"),
+                                               &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 90;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT) {
+        sl_engine_destroy(engine);
+        return 91;
     }
 
     sl_engine_destroy(engine);

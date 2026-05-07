@@ -42,7 +42,7 @@ and evidence boundaries:
 
 Public docs live under `docs/public/*`. During pre-alpha, they must be explicit skeletons
 or current-subset pages. They must not expose internal issue choreography, imply public
-alpha launch, or present Framework v2/package/release behavior before it exists.
+alpha launch, or present broad framework/package/release behavior before it exists.
 
 ### Module Docs
 
@@ -82,10 +82,18 @@ behavior, test expectations, or public examples must update relevant docs. Examp
 - changing compiler extraction updates compiler docs, syntax docs, fixtures, and tests;
 - standards changes update `AGENTS.md`, `CONTRIBUTING.md`, and relevant skills.
 
+## Pre-Alpha Current-Code Policy
+
+Sloppy is pre-alpha. When a current contract changes, source docs should describe the new
+contract directly. Do not keep replaced/current parallel docs, numbered successor docs, or
+transitional wording unless the task is specifically about a release-stability promise.
+Deleting replaced code and rewriting stale docs is acceptable when tests and source docs
+move with the change.
+
 ## No Stale Documentation
 
-If docs contradict implementation or tests, fix the contradiction or explicitly document a
-migration/deprecation. Do not leave stale docs with TODO-only excuses.
+If docs contradict implementation or tests, rewrite the current source docs to match the
+implemented contract. Do not leave stale docs with TODO-only excuses.
 
 Current docs should describe current invariants. Historical docs should be archived or
 clearly labeled. Issue indexes should not replace GitHub live issue state.
@@ -97,7 +105,7 @@ Current/public docs must not claim:
 - public alpha release or readiness;
 - production readiness or operational hardening;
 - performance results or benchmark conclusions;
-- Node/Bun/Deno/npm compatibility;
+- Node/Bun/Deno/npm behavior;
 - package/release readiness;
 - provider, V8, HTTP, TLS, or framework behavior beyond the evidence lane that proves it.
 

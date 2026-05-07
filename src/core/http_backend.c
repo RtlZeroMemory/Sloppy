@@ -62,6 +62,19 @@ static SlStatus sl_http_backend_overload(SlDiag* out_diag)
         SL_STATUS_CAPACITY_EXCEEDED);
 }
 
+static SlStatus sl_http_backend_overflow(SlDiag* out_diag)
+{
+    return sl_http_backend_diag(
+        out_diag, SL_DIAG_OVERFLOW,
+        sl_http_backend_literal("HTTP backend identifier space was exhausted",
+                                sizeof("HTTP backend identifier space was exhausted") - 1U),
+        sl_http_backend_literal("restart the backend before native request or connection IDs wrap",
+                                sizeof("restart the backend before native request or connection "
+                                       "IDs wrap") -
+                                    1U),
+        SL_STATUS_OVERFLOW);
+}
+
 static SlStatus sl_http_backend_connection_closed(SlDiag* out_diag)
 {
     return sl_http_backend_diag(
@@ -140,9 +153,10 @@ static SlStatus sl_http_backend_unsupported_media_diag(SlDiag* out_diag)
         out_diag, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE,
         sl_http_backend_literal("HTTP request body content type is not supported",
                                 sizeof("HTTP request body content type is not supported") - 1U),
-        sl_http_backend_literal("use application/json or text/plain for bounded request bodies",
-                                sizeof("use application/json or text/plain for bounded request "
-                                       "bodies") -
+        sl_http_backend_literal("use application/json, text/plain, or application/octet-stream for "
+                                "bounded request bodies",
+                                sizeof("use application/json, text/plain, or "
+                                       "application/octet-stream for bounded request bodies") -
                                     1U),
         SL_STATUS_UNSUPPORTED);
 }
@@ -167,6 +181,7 @@ static void sl_http_backend_options_init(SlHttpBackendOptions* out,
     out->max_connections = SL_HTTP_BACKEND_DEFAULT_MAX_CONNECTIONS;
     out->max_active_requests = SL_HTTP_BACKEND_DEFAULT_MAX_ACTIVE_REQUESTS;
     out->parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    out->parse.max_request_line_length = SL_HTTP_DEFAULT_MAX_REQUEST_LINE_LENGTH;
     out->parse.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     out->parse.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
     out->parse.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
@@ -183,6 +198,9 @@ static void sl_http_backend_options_init(SlHttpBackendOptions* out,
                                    ? SL_HTTP_BACKEND_DEFAULT_MAX_ACTIVE_REQUESTS
                                    : options->max_active_requests;
     out->parse.max_headers = options->parse.max_headers;
+    out->parse.max_request_line_length = options->parse.max_request_line_length == 0U
+                                             ? SL_HTTP_DEFAULT_MAX_REQUEST_LINE_LENGTH
+                                             : options->parse.max_request_line_length;
     out->parse.max_target_length = options->parse.max_target_length == 0U
                                        ? SL_HTTP_DEFAULT_MAX_TARGET_LENGTH
                                        : options->parse.max_target_length;
@@ -329,6 +347,10 @@ static SlStatus sl_http_body_reader_classify(SlStr content_type, size_t content_
         *out_kind = SL_HTTP_REQUEST_BODY_TEXT;
         return sl_status_ok();
     }
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/octet-stream"))) {
+        *out_kind = SL_HTTP_REQUEST_BODY_BYTES;
+        return sl_status_ok();
+    }
 
     return sl_http_backend_unsupported_media_diag(out_diag);
 }
@@ -427,6 +449,7 @@ SlStatus sl_http_backend_init(SlHttpBackend* backend, const SlHttpBackendOptions
     backend->state = SL_HTTP_BACKEND_STATE_INITIALIZED;
     backend->listener.state = SL_HTTP_LISTENER_STATE_UNBOUND;
     backend->next_connection_id = 1U;
+    backend->next_request_id = 1U;
     return sl_status_ok();
 }
 
@@ -510,6 +533,9 @@ SlStatus sl_http_backend_accept_connection(SlHttpBackend* backend, SlHttpConnect
     }
     if (backend->active_connections >= backend->options.max_connections) {
         return sl_http_backend_overload(out_diag);
+    }
+    if (backend->next_connection_id == UINT64_MAX) {
+        return sl_http_backend_overflow(out_diag);
     }
 
     out_connection->backend = backend;
@@ -596,14 +622,19 @@ SlStatus sl_http_request_begin(SlHttpConnection* connection, SlArena* arena,
     if (backend->active_requests >= backend->options.max_active_requests) {
         return sl_http_backend_overload(out_diag);
     }
+    if (backend->next_request_id == UINT64_MAX) {
+        return sl_http_backend_overflow(out_diag);
+    }
 
     backend->active_requests += 1U;
     connection->request_count += 1U;
     connection->state = SL_HTTP_CONNECTION_STATE_READING_REQUEST;
     out_request->connection = connection;
     out_request->arena = arena;
+    out_request->id = backend->next_request_id;
     out_request->state = SL_HTTP_REQUEST_STATE_CREATED;
     out_request->admitted = true;
+    backend->next_request_id += 1U;
     sl_cancellation_token_init(&out_request->cancellation);
     return sl_status_ok();
 }

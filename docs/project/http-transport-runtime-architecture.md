@@ -35,8 +35,10 @@ bounded backlog, bounded per-connection response storage, and bounded transport 
 header read, body read, total request, and response write phases. Tests may pass port `0`
 for an OS-selected localhost port and read it through `sl_http_transport_server_bound_port`.
 Invalid host/address, port above `65535`, zero connection/request/response capacity, and
-invalid backlog fail before serving work. Timer values of zero use the bounded defaults;
-there is no public idle-timeout or production tuning surface yet.
+invalid backlog fail before serving work. Timer values of zero use the bounded defaults.
+The `sloppy run` path consumes Plan/config metadata for max connections, request body
+bytes, request timeout, keep-alive enablement, keep-alive idle timeout, and max requests
+per connection. These are bounded development-server controls, not production-edge tuning.
 
 These are foundation defaults, not production-edge defaults.
 
@@ -68,7 +70,7 @@ path, headers, and body bytes remain request-arena owned.
 Supported request framing is intentionally bounded:
 
 - sequential keep-alive only after each response write completes and request state resets;
-- `Content-Length` bodies only;
+- `Content-Length` bodies;
 - bounded chunked request decoding in scoped native/runtime lanes;
 - empty bodies are supported;
 - body bytes may arrive in the same TCP chunk as the head or across later chunks;
@@ -141,11 +143,13 @@ Transport diagnostics use stable Sloppy diagnostic codes:
 - `SLOPPY_E_HTTP_CONNECTION_CLOSED` for read errors or client disconnect;
 - `SLOPPY_E_HTTP_REQUEST_TIMEOUT` for header, body, and total-request transport timeouts;
 - `SLOPPY_E_HTTP_HEADER_BYTES_LIMIT` for oversized accumulated request heads;
-- `SLOPPY_E_INVALID_HTTP_REQUEST` for malformed heads or invalid Content-Length;
-- `SLOPPY_E_HTTP_UNSUPPORTED_BODY` for Transfer-Encoding/chunked;
+- `SLOPPY_E_HTTP_REQUEST_LINE_LIMIT` for an oversized method/target/version line;
+- `SLOPPY_E_INVALID_HTTP_REQUEST` for malformed heads, Host policy failures, invalid
+  Content-Length, duplicate singleton framing headers, and conflicting framing headers;
+- `SLOPPY_E_HTTP_UNSUPPORTED_BODY` for unsupported transfer codings;
 - `SLOPPY_E_HTTP_BODY_LIMIT` for oversized bodies;
 - `SLOPPY_E_HTTP_UNSUPPORTED_MEDIA_TYPE` for unsupported body media;
-- `SLOPPY_E_HTTP_KEEP_ALIVE_UNSUPPORTED` for detected pipelined request bytes;
+- `SLOPPY_E_HTTP_PIPELINING_UNSUPPORTED` for detected pipelined request bytes;
 - `SLOPPY_E_HTTP_DISPATCH_FAILED` for missing/invalid transport dispatch wiring;
 - `SLOPPY_E_HTTP_RESPONSE_SERIALIZATION_FAILED` for response writer/buffer-capacity
   failures;

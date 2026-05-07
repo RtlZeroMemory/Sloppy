@@ -42,6 +42,11 @@
       "id": 5,
       "exportName": "__sloppy_handler_5",
       "displayName": "Http.Body"
+    },
+    {
+      "id": 6,
+      "exportName": "__sloppy_handler_6",
+      "displayName": "Http.ContextBytes"
     }
   ]
 }

@@ -22,3 +22,34 @@ globalThis.__sloppy_register_handler(5, function (ctx) {
     body: ctx.request.json(),
   });
 });
+
+globalThis.__sloppy_register_handler(6, function (ctx) {
+  const bytes = ctx.request.body.bytes();
+  let secondReadRejected = false;
+  let secondReadError = null;
+  try {
+    ctx.request.body.text();
+  } catch (error) {
+    secondReadRejected = true;
+    secondReadError = {
+      name: String(error && error.name ? error.name : "Error"),
+      message: String(error && error.message ? error.message : error),
+    };
+  }
+
+  return Results.json({
+    id: ctx.request.id,
+    scheme: ctx.request.scheme,
+    protocol: ctx.request.protocol,
+    queryString: ctx.request.queryString,
+    contentType: ctx.request.contentType,
+    contentLength: ctx.request.contentLength,
+    connectionId: ctx.connection.id,
+    connection: `${ctx.connection.scheme}:${ctx.connection.protocol}:${ctx.connection.secure}`,
+    bodyKind: ctx.request.body.kind,
+    consumed: ctx.request.body.consumed,
+    bytes: Array.from(bytes),
+    secondReadRejected,
+    secondReadError,
+  });
+});

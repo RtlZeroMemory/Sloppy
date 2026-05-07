@@ -31,6 +31,14 @@ typedef struct SlHttpRouteTableEntry
     bool has_params;
 } SlHttpRouteTableEntry;
 
+typedef struct SlHttpDispatchContextSeed
+{
+    uint64_t request_id;
+    uint64_t connection_id;
+    size_t max_body_length;
+    const SlCancellationToken* cancellation;
+} SlHttpDispatchContextSeed;
+
 static SlStr sl_http_dispatch_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
@@ -220,9 +228,10 @@ static SlStatus sl_http_dispatch_unsupported_media_type(SlArena* arena, SlDiag* 
         arena, out_diag, SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE,
         sl_http_dispatch_literal("HTTP request body content type is not supported",
                                  sizeof("HTTP request body content type is not supported") - 1U),
-        sl_http_dispatch_literal("use application/json or text/plain for bounded request bodies",
-                                 sizeof("use application/json or text/plain for bounded request "
-                                        "bodies") -
+        sl_http_dispatch_literal("use application/json, text/plain, or application/octet-stream "
+                                 "for bounded request bodies",
+                                 sizeof("use application/json, text/plain, or "
+                                        "application/octet-stream for bounded request bodies") -
                                      1U),
         SL_STATUS_UNSUPPORTED);
 }
@@ -327,6 +336,93 @@ static bool sl_http_dispatch_request_transfer_encoding_chunked(const SlHttpReque
                                  sl_str_from_cstr("chunked"));
 }
 
+static SlStr sl_http_dispatch_extract_query_string(SlStr raw_target)
+{
+    size_t index = 0U;
+
+    if (raw_target.ptr == NULL) {
+        return sl_str_empty();
+    }
+
+    for (index = 0U; index < raw_target.length; index += 1U) {
+        if (raw_target.ptr[index] == '?') {
+            return sl_str_from_parts(raw_target.ptr + index + 1U, raw_target.length - index - 1U);
+        }
+    }
+
+    return sl_str_empty();
+}
+
+static bool sl_http_dispatch_parse_size_decimal(SlStr value, size_t* out)
+{
+    size_t index = 0U;
+    size_t parsed = 0U;
+
+    if (out == NULL || value.length == 0U || (value.ptr == NULL && value.length != 0U)) {
+        return false;
+    }
+    for (index = 0U; index < value.length; index += 1U) {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        if (ch < '0' || ch > '9') {
+            return false;
+        }
+        if (parsed > (SIZE_MAX - (size_t)(ch - '0')) / 10U) {
+            return false;
+        }
+        parsed = (parsed * 10U) + (size_t)(ch - '0');
+    }
+
+    *out = parsed;
+    return true;
+}
+
+static SlStr sl_http_dispatch_protocol_name(const SlHttpRequestHead* request)
+{
+    if (request == NULL || request->version_major != 1U) {
+        return sl_str_empty();
+    }
+    if (request->version_minor == 0U) {
+        return sl_str_from_cstr("HTTP/1.0");
+    }
+    if (request->version_minor == 1U) {
+        return sl_str_from_cstr("HTTP/1.1");
+    }
+    return sl_str_empty();
+}
+
+static void sl_http_dispatch_apply_metadata(const SlHttpRequestHead* request,
+                                            const SlHttpDispatchContextSeed* seed,
+                                            SlHttpRequestContext* request_context)
+{
+    SlStr content_type = sl_str_empty();
+    SlStr content_length = sl_str_empty();
+    size_t parsed_content_length = 0U;
+
+    if (request == NULL || request_context == NULL) {
+        return;
+    }
+
+    request_context->scheme = sl_str_from_cstr("http");
+    request_context->protocol = sl_http_dispatch_protocol_name(request);
+    request_context->query_string = sl_http_dispatch_extract_query_string(request->raw_target);
+    if (seed != NULL) {
+        request_context->request_id = seed->request_id;
+        request_context->connection_id = seed->connection_id;
+        request_context->cancellation = seed->cancellation;
+    }
+    if (sl_http_dispatch_find_header(request, sl_str_from_cstr("Content-Type"), &content_type)) {
+        request_context->content_type = sl_http_dispatch_trim_ascii_space(content_type);
+    }
+    if (sl_http_dispatch_find_header(request, sl_str_from_cstr("Content-Length"),
+                                     &content_length) &&
+        sl_http_dispatch_parse_size_decimal(sl_http_dispatch_trim_ascii_space(content_length),
+                                            &parsed_content_length))
+    {
+        request_context->has_content_length = true;
+        request_context->content_length = (uint64_t)parsed_content_length;
+    }
+}
+
 static bool sl_http_dispatch_media_type_json(SlStr media_type)
 {
     return sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/json")) ||
@@ -353,6 +449,7 @@ static SlStatus sl_http_dispatch_validate_json_body(SlArena* arena, SlBytes body
 }
 
 static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpRequestHead* request,
+                                                   size_t max_body_length,
                                                    SlHttpRequestBodyKind* out_body_kind,
                                                    SlDiag* out_diag)
 {
@@ -367,6 +464,9 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     *out_body_kind = SL_HTTP_REQUEST_BODY_NONE;
     if (request == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (max_body_length == 0U) {
+        max_body_length = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
     }
 
     if (sl_http_dispatch_request_declares_transfer_encoding(request) &&
@@ -388,7 +488,7 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     {
         return sl_http_dispatch_unsupported_body(arena, out_diag);
     }
-    if (request->body.length > SL_HTTP_DEFAULT_MAX_BODY_LENGTH) {
+    if (request->body.length > max_body_length) {
         return sl_http_dispatch_body_too_large(arena, out_diag);
     }
 
@@ -407,6 +507,10 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     }
     if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("text/plain"))) {
         *out_body_kind = SL_HTTP_REQUEST_BODY_TEXT;
+        return sl_status_ok();
+    }
+    if (sl_str_equal_ci_ascii(media_type, sl_str_from_cstr("application/octet-stream"))) {
+        *out_body_kind = SL_HTTP_REQUEST_BODY_BYTES;
         return sl_status_ok();
     }
 
@@ -667,10 +771,11 @@ static SlStatus sl_http_dispatch_find_route(SlArena* arena,
     return sl_status_ok();
 }
 
-SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const SlPlan* plan,
-                                       const SlHttpDispatchTable* dispatch_table,
-                                       const SlHttpRequestHead* request, SlEngineResult* out_result,
-                                       SlDiag* out_diag)
+static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, const SlPlan* plan,
+                                              const SlHttpDispatchTable* dispatch_table,
+                                              const SlHttpRequestHead* request,
+                                              const SlHttpDispatchContextSeed* seed,
+                                              SlEngineResult* out_result, SlDiag* out_diag)
 {
     const SlHttpRouteBinding* binding = NULL;
     const SlPlanHandler* handler = NULL;
@@ -728,8 +833,11 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
         return status;
     }
 
-    status =
-        sl_http_dispatch_apply_body_policy(arena, request, &request_context.body_kind, out_diag);
+    status = sl_http_dispatch_apply_body_policy(arena, request,
+                                                seed == NULL || seed->max_body_length == 0U
+                                                    ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
+                                                    : seed->max_body_length,
+                                                &request_context.body_kind, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -748,6 +856,7 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
     }
 
     request_context.request = request;
+    sl_http_dispatch_apply_metadata(request, seed, &request_context);
     request_context.route_params = route_match.params;
     request_context.route_param_count = route_match.param_count;
     request_context.query_params = query.params;
@@ -755,4 +864,35 @@ SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const S
 
     return sl_runtime_contract_call_handler_with_context(engine, arena, plan, binding->handler_id,
                                                          &request_context, out_result, out_diag);
+}
+
+SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const SlPlan* plan,
+                                       const SlHttpDispatchTable* dispatch_table,
+                                       const SlHttpRequestHead* request, SlEngineResult* out_result,
+                                       SlDiag* out_diag)
+{
+    return sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, request, NULL,
+                                         out_result, out_diag);
+}
+
+SlStatus sl_http_dispatch_request_lifecycle(SlArena* arena, SlEngine* engine, const SlPlan* plan,
+                                            const SlHttpDispatchTable* dispatch_table,
+                                            const SlHttpRequestLifecycle* request,
+                                            SlEngineResult* out_result, SlDiag* out_diag)
+{
+    SlHttpDispatchContextSeed seed = {0};
+
+    if (request == NULL) {
+        return sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, NULL, NULL,
+                                             out_result, out_diag);
+    }
+
+    seed.request_id = request->id;
+    seed.connection_id = request->connection == NULL ? 0U : request->connection->id;
+    seed.max_body_length = request->connection == NULL || request->connection->backend == NULL
+                               ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
+                               : request->connection->backend->options.parse.max_body_length;
+    seed.cancellation = &request->cancellation;
+    return sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, &request->head, &seed,
+                                         out_result, out_diag);
 }

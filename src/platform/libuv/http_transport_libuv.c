@@ -135,6 +135,7 @@ static SlHttpTransportConfig sl_http_transport_config_defaults(void)
     config.max_connections = SL_HTTP_BACKEND_DEFAULT_MAX_CONNECTIONS;
     config.max_active_requests = SL_HTTP_BACKEND_DEFAULT_MAX_ACTIVE_REQUESTS;
     config.parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    config.parse.max_request_line_length = SL_HTTP_DEFAULT_MAX_REQUEST_LINE_LENGTH;
     config.parse.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     config.parse.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
     config.parse.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
@@ -173,6 +174,9 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.max_active_requests = input->max_active_requests;
         config.parse.max_headers =
             input->parse.max_headers == 0U ? config.parse.max_headers : input->parse.max_headers;
+        config.parse.max_request_line_length = input->parse.max_request_line_length == 0U
+                                                   ? config.parse.max_request_line_length
+                                                   : input->parse.max_request_line_length;
         config.parse.max_target_length = input->parse.max_target_length == 0U
                                              ? config.parse.max_target_length
                                              : input->parse.max_target_length;
@@ -258,6 +262,12 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
                           "HTTP transport request buffer capacity is invalid",
                           sizeof("HTTP transport request buffer capacity is invalid") - 1U));
     }
+    if (config.parse.max_body_length > config.request_arena_bytes) {
+        return sl_http_transport_invalid_config(
+            out_diag, sl_http_transport_literal(
+                          "HTTP transport request body limit exceeds request arena",
+                          sizeof("HTTP transport request body limit exceeds request arena") - 1U));
+    }
 
     *out = config;
     return sl_status_ok();
@@ -298,6 +308,7 @@ static uint16_t sl_http_transport_status_for_failure(SlStatus status, const SlDi
         }
         if (diag->code == SL_DIAG_HTTP_BODY_LIMIT || diag->code == SL_DIAG_HTTP_HEADER_LIMIT ||
             diag->code == SL_DIAG_HTTP_HEADER_BYTES_LIMIT ||
+            diag->code == SL_DIAG_HTTP_REQUEST_LINE_LIMIT ||
             diag->code == SL_DIAG_HTTP_TARGET_LIMIT ||
             diag->code == SL_DIAG_HTTP_HEADER_NAME_LIMIT ||
             diag->code == SL_DIAG_HTTP_HEADER_VALUE_LIMIT)
@@ -422,6 +433,54 @@ static bool sl_http_transport_header_value(const SlHttpRequestHead* head, SlStr 
         }
     }
     return false;
+}
+
+static bool sl_http_transport_response_header_name_char_valid(char ch)
+{
+    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+           ch == '!' || ch == '#' || ch == '$' || ch == '%' || ch == '&' || ch == '\'' ||
+           ch == '*' || ch == '+' || ch == '-' || ch == '.' || ch == '^' || ch == '_' ||
+           ch == '`' || ch == '|' || ch == '~';
+}
+
+static bool sl_http_transport_response_header_name_valid(SlStr name)
+{
+    size_t index = 0U;
+
+    if (name.ptr == NULL || name.length == 0U) {
+        return false;
+    }
+    for (index = 0U; index < name.length; index += 1U) {
+        if (!sl_http_transport_response_header_name_char_valid(name.ptr[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool sl_http_transport_response_header_value_valid(SlStr value)
+{
+    size_t index = 0U;
+
+    if (value.ptr == NULL && value.length != 0U) {
+        return false;
+    }
+    for (index = 0U; index < value.length; index += 1U) {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        if ((ch < 0x20U && ch != '\t') || ch == 0x7FU) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool sl_http_transport_response_header_managed(SlStr name)
+{
+    return sl_str_equal_ci_ascii(name, sl_str_from_cstr("Connection")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Keep-Alive")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Content-Type")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Transfer-Encoding")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Content-Length"));
 }
 
 static SlHttpTransportServer*
@@ -893,6 +952,7 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
     SlStatus status;
 
     if (connection == NULL || response == NULL ||
+        (response->header_count != 0U && response->headers == NULL) ||
         (response->stream_chunk_count != 0U && response->stream_chunks == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -905,6 +965,35 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
                                         connection->response_storage_size);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (!sl_http_transport_response_header_value_valid(response->content_type)) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            SL_STATUS_INVALID_ARGUMENT,
+            sl_http_transport_literal("HTTP streaming response header is invalid",
+                                      sizeof("HTTP streaming response header is invalid") - 1U),
+            sl_http_transport_literal("stream response content type must not contain control bytes",
+                                      sizeof("stream response content type must not contain "
+                                             "control bytes") -
+                                          1U));
+    }
+    for (size_t header_index = 0U; header_index < response->header_count; header_index += 1U) {
+        const SlHttpHeader* header = &response->headers[header_index];
+        if (!sl_http_transport_response_header_name_valid(header->name) ||
+            sl_http_transport_response_header_managed(header->name) ||
+            !sl_http_transport_response_header_value_valid(header->value))
+        {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+                SL_STATUS_INVALID_ARGUMENT,
+                sl_http_transport_literal("HTTP streaming response header is invalid",
+                                          sizeof("HTTP streaming response header is invalid") - 1U),
+                sl_http_transport_literal("stream response custom headers must be safe and must "
+                                          "not override managed headers",
+                                          sizeof("stream response custom headers must be safe and "
+                                                 "must not override managed headers") -
+                                              1U));
+        }
     }
     status = sl_http_transport_builder_append_cstr(&builder, "HTTP/1.1 ");
     if (sl_status_is_ok(status)) {
@@ -927,6 +1016,21 @@ static SlStatus sl_http_transport_write_stream_head(SlHttpTransportConnection* c
         status = sl_http_transport_builder_append_cstr(&builder, "\r\nContent-Type: ");
         if (sl_status_is_ok(status)) {
             status = sl_http_transport_builder_append_str(&builder, response->content_type);
+        }
+    }
+    for (size_t header_index = 0U; sl_status_is_ok(status) && header_index < response->header_count;
+         header_index += 1U)
+    {
+        const SlHttpHeader* header = &response->headers[header_index];
+        status = sl_http_transport_builder_append_cstr(&builder, "\r\n");
+        if (sl_status_is_ok(status)) {
+            status = sl_http_transport_builder_append_str(&builder, header->name);
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_http_transport_builder_append_cstr(&builder, ": ");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_http_transport_builder_append_str(&builder, header->value);
         }
     }
     if (sl_status_is_ok(status)) {

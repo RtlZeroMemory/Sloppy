@@ -41,8 +41,20 @@ Clean/safe C and honest evidence are non-negotiable.
   C safety, V8 boundaries, concurrency, providers, permissions/security, diagnostics
   redaction, packaging, release evidence, and repository-wide documentation cleanup.
 - Do not introduce public alpha, production-readiness, benchmark/performance,
-  package-readiness, provider-readiness, or Node/Bun/Deno compatibility claims unless the
+  package-readiness, provider-readiness, or Node/Bun/Deno claims unless the
   source doc and evidence lane prove the exact claim.
+
+## Pre-Alpha Change Policy
+
+- Breaking API, ABI, layout, and source-shape changes are allowed while Sloppy is
+  pre-alpha.
+- When a contract changes, update the current code, tests, and source docs directly.
+- Prefer deleting replaced code over keeping parallel replaced/current paths, shims, numbered
+  successor types, or transitional layers.
+- Do not add replaced-shape preservation machinery unless the user explicitly asks for a
+  release-stability slice.
+- If review feedback assumes a stable external ABI, verify whether that promise exists in
+  current docs before reshaping the implementation around it.
 
 ## Implementation Contract for Reviewers
 
@@ -57,7 +69,7 @@ Contract for Reviewers" section so reviewers can compare the code and tests agai
 task contract. CodeRabbit and human reviewers should reject shallow happy-path-only tests,
 current-output snapshots, unredacted goldens, V8/package/live/fuzz/stress evidence
 reported as default evidence, optional lanes reported as success, and unsupported public
-alpha/production/performance/compatibility claims.
+alpha/production/performance/runtime claims.
 
 ## Source-of-truth map
 
@@ -127,14 +139,14 @@ Prioritize:
   unnecessary `unwrap`/`expect`, deterministic output, feature/crate boundary drift, and
   trait or macro abstractions that obscure simple logic;
 - JavaScript/TypeScript runtime-contract issues: descriptor shape drift, unsupported
-  Node/npm compatibility assumptions, nullable/undefined assumptions, type holes, async
+  Node/Bun/Deno/npm behavior assumptions, nullable/undefined assumptions, type holes, async
   cleanup, secret redaction, and ESM/package-boundary regressions;
 - native boundary issues: V8 type leakage outside `src/engine/v8/*`, JS raw native pointer
   exposure, ownership transfer across language boundaries, thread-affinity mistakes, string
   encoding bugs, and exceptions or panics crossing FFI/ABI boundaries unsafely;
 - parser, Plan, route, protocol, terminal/IO, and binary-format issues: malformed input
   handling, partial reads/writes, bounds checks before access, integer overflow, state
-  machine correctness, deterministic output, and backward/forward compatibility;
+  machine correctness, deterministic output, and wire-format evolution;
 - concurrency and async bugs: owner-thread rules, races, cancellation/timeout behavior,
   late completion, shutdown ordering, worker-pool/resource lifetime, and hidden global
   mutable state;
@@ -163,9 +175,9 @@ task or the source-of-truth docs.
 - No JS raw native pointers.
 - No raw `malloc`/`free` outside allocator modules once allocator exists.
 - No package-manager scope.
-- No Node compatibility by default.
+- No Node behavior by default.
 - No package-manager behavior unless a scoped task and docs require it.
-- No Node compatibility assumptions.
+- No Node behavior assumptions.
 - No runtime features before scoped source docs and tasks.
 - No overengineering in JS/Rust either; keep public API and compiler/tooling work direct.
 - Avoid speculative abstraction; simple direct C is preferred unless a documented

@@ -667,6 +667,19 @@ static int test_config_validation_and_lifecycle(void)
         return 8;
     }
 
+    sl_arena_reset(&arena);
+    config = small_config(nullptr);
+    config.request_arena_bytes = 16U;
+    config.parse.max_body_length = 32U;
+    server = {};
+    diag = {};
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_HTTP_TRANSPORT_CONFIG)
+    {
+        return 9;
+    }
+
     return 0;
 }
 
@@ -806,7 +819,8 @@ static int test_ready_get_and_split_head(void)
         return 31;
     }
     if (expect_status(sl_http_transport_connection_feed_test(
-                          &server.connections[0], bytes_from_cstr("lit HTTP/1.1\r\n\r\n"), &diag),
+                          &server.connections[0],
+                          bytes_from_cstr("lit HTTP/1.1\r\nHost: example.test\r\n\r\n"), &diag),
                       SL_STATUS_OK) != 0 ||
         server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_REQUEST_READY ||
         hook.count != 1U || hook.method != SL_HTTP_METHOD_GET ||
@@ -833,10 +847,11 @@ static int test_ready_request_without_hook_closes_and_releases(void)
     {
         return 40;
     }
-    if (expect_status(
-            sl_http_transport_connection_feed_test(
-                &server.connections[0], bytes_from_cstr("GET /done HTTP/1.1\r\n\r\n"), &diag),
-            SL_STATUS_OK) != 0 ||
+    if (expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /done HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                          &diag),
+                      SL_STATUS_OK) != 0 ||
         sl_http_transport_server_active_connections(&server) != 0U ||
         server.backend.active_requests != 0U)
     {
@@ -861,7 +876,8 @@ static int test_body_same_chunk_split_chunk_and_empty_body(void)
         start_one_connection(&arena, &server, &client, &hook) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("POST /body HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                          bytes_from_cstr("POST /body HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Content-Type: text/plain\r\n"
                                           "Content-Length: 5\r\n\r\nhello"),
                           &diag),
                       SL_STATUS_OK) != 0 ||
@@ -880,7 +896,8 @@ static int test_body_same_chunk_split_chunk_and_empty_body(void)
     if (start_one_connection(&arena, &server, &client, &hook) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("PUT /split-body HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                          bytes_from_cstr("PUT /split-body HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Content-Type: text/plain\r\n"
                                           "Content-Length: 5\r\n\r\nhe"),
                           &diag),
                       SL_STATUS_OK) != 0 ||
@@ -903,7 +920,8 @@ static int test_body_same_chunk_split_chunk_and_empty_body(void)
     if (start_one_connection(&arena, &server, &client, &hook) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("PATCH /empty HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                          bytes_from_cstr("PATCH /empty HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Content-Type: text/plain\r\n"
                                           "Content-Length: 0\r\n\r\n"),
                           &diag),
                       SL_STATUS_OK) != 0 ||
@@ -931,7 +949,8 @@ static int test_chunked_request_decoding_success_cases(void)
         expect_status(
             sl_http_transport_connection_feed_test(
                 &server.connections[0],
-                bytes_from_cstr("POST /chunk HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                bytes_from_cstr("POST /chunk HTTP/1.1\r\nHost: example.test\r\n"
+                                "Content-Type: text/plain\r\n"
                                 "Transfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n"),
                 &diag),
             SL_STATUS_OK) != 0 ||
@@ -951,8 +970,9 @@ static int test_chunked_request_decoding_success_cases(void)
     if (start_one_connection(&arena, &server, &client, &hook) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("POST /multi HTTP/1.1\r\nContent-Type: application/"
-                                          "json\r\nTransfer-Encoding: chunked\r\n\r\nA\r\nhello"),
+                          bytes_from_cstr("POST /multi HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Content-Type: application/json\r\n"
+                                          "Transfer-Encoding: chunked\r\n\r\nA\r\nhello"),
                           &diag),
                       SL_STATUS_OK) != 0 ||
         server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_READING_BODY ||
@@ -974,8 +994,8 @@ static int test_chunked_request_decoding_success_cases(void)
     if (start_one_connection(&arena, &server, &client, &hook) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("POST /empty HTTP/1.1\r\nTransfer-Encoding: chunked\r\n"
-                                          "\r\n0\r\n\r\n"),
+                          bytes_from_cstr("POST /empty HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n"),
                           &diag),
                       SL_STATUS_OK) != 0 ||
         hook.count != 1U || hook.body.length != 0U)
@@ -990,7 +1010,8 @@ static int test_chunked_request_decoding_success_cases(void)
 
 static int test_chunked_request_decoding_allows_bounded_wire_overhead(void)
 {
-    static const char request[] = "POST /tiny HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
+    static const char request[] = "POST /tiny HTTP/1.1\r\nHost: example.test\r\n"
+                                  "Transfer-Encoding: chunked\r\n\r\n"
                                   "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
                                   "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
                                   "1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n1\r\na\r\n"
@@ -1005,7 +1026,7 @@ static int test_chunked_request_decoding_allows_bounded_wire_overhead(void)
     SlDiag diag = {};
 
     config = small_config(&hook);
-    config.max_request_head_bytes = 64U;
+    config.max_request_head_bytes = 96U;
     config.parse.max_body_length = 20U;
 
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
@@ -1035,20 +1056,24 @@ static int test_chunked_request_decoding_rejections(void)
         SlDiagCode diag_code;
         bool missing_final_chunk_on_close;
     } cases[] = {
-        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nz\r\nx\r\n0\r\n\r\n",
+        {"POST / HTTP/1.1\r\nHost: example.test\r\nTransfer-Encoding: chunked\r\n\r\n"
+         "z\r\nx\r\n0\r\n\r\n",
          SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_CHUNK_SIZE_INVALID, false},
-        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nx\n0\r\n\r\n",
+        {"POST / HTTP/1.1\r\nHost: example.test\r\nTransfer-Encoding: chunked\r\n\r\n"
+         "2\r\nx\n0\r\n\r\n",
          SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_CHUNK_DELIMITER_INVALID, false},
-        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n21\r\n"
+        {"POST / HTTP/1.1\r\nHost: example.test\r\nTransfer-Encoding: chunked\r\n\r\n21\r\n"
          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n0\r\n\r\n",
          SL_STATUS_CAPACITY_EXCEEDED, SL_DIAG_HTTP_BODY_LIMIT, false},
-        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n20\r\n", SL_STATUS_OK, SL_DIAG_NONE,
-         true},
-        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\n\r\n0\r\n\r\n",
+        {"POST / HTTP/1.1\r\nHost: example.test\r\nTransfer-Encoding: chunked\r\n\r\n20\r\n",
+         SL_STATUS_OK, SL_DIAG_NONE, true},
+        {"POST / HTTP/1.1\r\nHost: example.test\r\nTransfer-Encoding: chunked\r\n"
+         "Content-Length: 1\r\n\r\n0\r\n\r\n",
          SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_HTTP_REQUEST, false},
-        {"POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n", SL_STATUS_UNSUPPORTED,
-         SL_DIAG_HTTP_UNSUPPORTED_BODY, false},
-        {"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX: y\r\n\r\n",
+        {"POST / HTTP/1.1\r\nHost: example.test\r\nTransfer-Encoding: gzip\r\n\r\n",
+         SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_UNSUPPORTED_BODY, false},
+        {"POST / HTTP/1.1\r\nHost: example.test\r\nTransfer-Encoding: chunked\r\n\r\n"
+         "0\r\nX: y\r\n\r\n",
          SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_TRAILERS_UNSUPPORTED, false},
     };
 
@@ -1180,7 +1205,8 @@ static int test_body_policy_and_pipelining_rejections(void)
         start_one_connection(&arena, &server, &client, nullptr) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n"),
+                          bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Transfer-Encoding: gzip\r\n\r\n"),
                           &diag),
                       SL_STATUS_UNSUPPORTED) != 0 ||
         diag.code != SL_DIAG_HTTP_UNSUPPORTED_BODY)
@@ -1197,7 +1223,8 @@ static int test_body_policy_and_pipelining_rejections(void)
     if (start_one_connection(&arena, &server, &client, nullptr) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("POST / HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                          bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Content-Type: text/plain\r\n"
                                           "Content-Length: 33\r\n\r\n"),
                           &diag),
                       SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
@@ -1213,13 +1240,13 @@ static int test_body_policy_and_pipelining_rejections(void)
     client = {};
     diag = {};
     if (start_one_connection(&arena, &server, &client, nullptr) != 0 ||
-        expect_status(
-            sl_http_transport_connection_feed_test(
-                &server.connections[0],
-                bytes_from_cstr("POST / HTTP/1.1\r\nContent-Type: application/octet-stream\r\n"
-                                "Content-Length: 2\r\n\r\nhi"),
-                &diag),
-            SL_STATUS_UNSUPPORTED) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("POST / HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Content-Type: application/x-unsupported\r\n"
+                                          "Content-Length: 2\r\n\r\nhi"),
+                          &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
         diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
     {
         stop_one_connection(&server, &client);
@@ -1234,7 +1261,8 @@ static int test_body_policy_and_pipelining_rejections(void)
     if (start_one_connection(&arena, &server, &client, nullptr) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("GET /one HTTP/1.1\r\n\r\nGET /two HTTP/1.1\r\n\r\n"),
+                          bytes_from_cstr("GET /one HTTP/1.1\r\nHost: example.test\r\n\r\nGET /two "
+                                          "HTTP/1.1\r\nHost: example.test\r\n\r\n"),
                           &diag),
                       SL_STATUS_UNSUPPORTED) != 0 ||
         diag.code != SL_DIAG_HTTP_PIPELINING_UNSUPPORTED)
@@ -1278,7 +1306,8 @@ static int test_disconnect_cleanup_paths(void)
     if (start_one_connection(&arena, &server, &client, nullptr) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("POST /body HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                          bytes_from_cstr("POST /body HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Content-Type: text/plain\r\n"
                                           "Content-Length: 5\r\n\r\nhe"),
                           &diag),
                       SL_STATUS_OK) != 0 ||
@@ -1338,10 +1367,11 @@ static int test_dispatch_success_writes_response_and_closes(void)
         return 80;
     }
 
-    if (expect_status(
-            sl_http_transport_connection_feed_test(
-                &server.connections[0], bytes_from_cstr("GET /again HTTP/1.1\r\n\r\n"), &diag),
-            SL_STATUS_INVALID_STATE) != 0 ||
+    if (expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /again HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                          &diag),
+                      SL_STATUS_INVALID_STATE) != 0 ||
         dispatch.count != 1U)
     {
         stop_one_connection(&server, &client);
@@ -1377,6 +1407,101 @@ static int test_streaming_response_writes_chunked_frames(void)
     {
         return 810;
     }
+    return 0;
+}
+
+static int run_streaming_response_header_policy_case(SlStr content_type, SlHttpHeader* headers,
+                                                     size_t header_count,
+                                                     SlStatusCode expected_status,
+                                                     SlDiagCode expected_diag)
+{
+    SlHttpResponseStreamChunk chunks[1] = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+    unsigned char storage[65536];
+    SlArena arena = {};
+    ClientConnect client = {};
+
+    chunks[0].bytes = bytes_from_cstr("hello");
+    dispatch.response = sl_http_response_stream(200U, content_type, chunks, 1U);
+    dispatch.response.headers = headers;
+    dispatch.response.header_count = header_count;
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /stream HTTP/1.1\r\nHost: local\r\n\r\n"), &diag),
+                      expected_status) != 0 ||
+        diag.code != expected_diag)
+    {
+        stop_one_connection(&server, &client);
+        return 1;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_streaming_response_rejects_control_header_values(void)
+{
+    static const char value_with_nul[] = {'o', 'k', '\0', 'b', 'a', 'd'};
+    static const char value_with_htab[] = {'o', 'k', '\t', 'v', 'a', 'l', 'u', 'e'};
+    static const char invalid_content_type[] = {'t', 'e', 'x', 't', '/', 'p',
+                                                'l', 'a', 'i', 'n', '\0'};
+    SlHttpHeader header = {};
+
+    header.name = sl_str_from_cstr("X-Test");
+    header.value = sl_str_from_parts(value_with_nul, sizeof(value_with_nul));
+    if (run_streaming_response_header_policy_case(sl_str_from_cstr("text/plain; charset=utf-8"),
+                                                  &header, 1U, SL_STATUS_INVALID_ARGUMENT,
+                                                  SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED) != 0)
+    {
+        return 821;
+    }
+
+    header.value = sl_str_from_parts(value_with_htab, sizeof(value_with_htab));
+    if (run_streaming_response_header_policy_case(sl_str_from_cstr("text/plain; charset=utf-8"),
+                                                  &header, 1U, SL_STATUS_OK, SL_DIAG_NONE) != 0)
+    {
+        return 822;
+    }
+
+    header.name = sl_str_from_cstr("Content-Length");
+    header.value = sl_str_from_cstr("5");
+    if (run_streaming_response_header_policy_case(sl_str_from_cstr("text/plain; charset=utf-8"),
+                                                  &header, 1U, SL_STATUS_INVALID_ARGUMENT,
+                                                  SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED) != 0)
+    {
+        return 823;
+    }
+
+    header.name = sl_str_from_cstr("Keep-Alive");
+    header.value = sl_str_from_cstr("timeout=5");
+    if (run_streaming_response_header_policy_case(sl_str_from_cstr("text/plain; charset=utf-8"),
+                                                  &header, 1U, SL_STATUS_INVALID_ARGUMENT,
+                                                  SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED) != 0)
+    {
+        return 824;
+    }
+
+    if (run_streaming_response_header_policy_case(
+            sl_str_from_parts(invalid_content_type, sizeof(invalid_content_type)), nullptr, 0U,
+            SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED) != 0)
+    {
+        return 825;
+    }
+
     return 0;
 }
 
@@ -1474,10 +1599,11 @@ static int test_streaming_response_rejects_non_arena_chunks(void)
         expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
         connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
         expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
-        expect_status(
-            sl_http_transport_connection_feed_test(
-                &server.connections[0], bytes_from_cstr("GET /stream HTTP/1.1\r\n\r\n"), &diag),
-            SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /stream HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                          &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
         dispatch.count != 1U ||
         server.connections[0].last_diag.code != SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED)
     {
@@ -1520,10 +1646,11 @@ static int test_streaming_response_backpressure_rejection(void)
         expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
         connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
         expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
-        expect_status(
-            sl_http_transport_connection_feed_test(
-                &server.connections[0], bytes_from_cstr("GET /stream HTTP/1.1\r\n\r\n"), &diag),
-            SL_STATUS_OK) != 0)
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /stream HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
     {
         stop_one_connection(&server, &client);
         return 811;
@@ -1882,10 +2009,11 @@ static int test_dispatch_failures_map_to_safe_responses(void)
             expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
             connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
             expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
-            expect_status(
-                sl_http_transport_connection_feed_test(
-                    &server.connections[0], bytes_from_cstr("GET /mapped HTTP/1.1\r\n\r\n"), &diag),
-                SL_STATUS_OK) != 0 ||
+            expect_status(sl_http_transport_connection_feed_test(
+                              &server.connections[0],
+                              bytes_from_cstr("GET /mapped HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                              &diag),
+                          SL_STATUS_OK) != 0 ||
             dispatch.count != 1U ||
             expect_bytes_equal(sl_bytes_from_parts(server.connections[0].response_storage,
                                                    server.connections[0].response_length),
@@ -2030,8 +2158,8 @@ static int test_localhost_transport_smoke_body_success_and_rejections(void)
 
     config = small_config(nullptr);
     if (run_localhost_request(&config,
-                              "POST / HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: "
-                              "33\r\n\r\n",
+                              "POST / HTTP/1.1\r\nHost: local\r\nContent-Type: text/plain\r\n"
+                              "Content-Length: 33\r\n\r\n",
                               &response, &server, nullptr) != 0 ||
         server.connections[0].last_diag.code != SL_DIAG_HTTP_BODY_LIMIT ||
         expect_bytes_equal(response, too_large) != 0)
@@ -2041,7 +2169,8 @@ static int test_localhost_transport_smoke_body_success_and_rejections(void)
 
     config = small_config(nullptr);
     if (run_localhost_request(&config,
-                              "POST / HTTP/1.1\r\nContent-Type: application/octet-stream\r\n"
+                              "POST / HTTP/1.1\r\nHost: local\r\n"
+                              "Content-Type: application/x-unsupported\r\n"
                               "Content-Length: 2\r\n\r\nhi",
                               &response, &server, nullptr) != 0 ||
         server.connections[0].last_diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE ||
@@ -2090,10 +2219,11 @@ static int test_response_buffer_capacity_failure_is_deterministic(void)
         expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
         connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
         expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
-        expect_status(
-            sl_http_transport_connection_feed_test(
-                &server.connections[0], bytes_from_cstr("GET /big HTTP/1.1\r\n\r\n"), &diag),
-            SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /big HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                          &diag),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
         diag.code != SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED || dispatch.count != 1U ||
         server.backend.active_requests != 0U)
     {
@@ -2162,7 +2292,8 @@ static int test_shutdown_during_body_read_cancels_cleanup_once(void)
         start_one_connection(&arena, &server, &client, nullptr) != 0 ||
         expect_status(sl_http_transport_connection_feed_test(
                           &server.connections[0],
-                          bytes_from_cstr("POST /body HTTP/1.1\r\nContent-Type: text/plain\r\n"
+                          bytes_from_cstr("POST /body HTTP/1.1\r\nHost: example.test\r\n"
+                                          "Content-Type: text/plain\r\n"
                                           "Content-Length: 5\r\n\r\nhe"),
                           &diag),
                       SL_STATUS_OK) != 0 ||
@@ -2213,7 +2344,8 @@ static int test_header_and_body_timeout_write_408_or_close(void)
             return 130 + (int)index;
         }
         if (index == 1U || index == 2U) {
-            if (write_client_bytes(&client, "POST /slow HTTP/1.1\r\nContent-Type: text/plain\r\n"
+            if (write_client_bytes(&client, "POST /slow HTTP/1.1\r\nHost: example.test\r\n"
+                                            "Content-Type: text/plain\r\n"
                                             "Content-Length: 5\r\n\r\nhe") != 0)
             {
                 stop_one_connection(&server, &client);
@@ -2259,10 +2391,11 @@ static int test_shutdown_during_response_write_is_cleanup_only(void)
         expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
         connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
         expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
-        expect_status(
-            sl_http_transport_connection_feed_test(
-                &server.connections[0], bytes_from_cstr("GET /write HTTP/1.1\r\n\r\n"), &diag),
-            SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /write HTTP/1.1\r\nHost: example.test\r\n\r\n"),
+                          &diag),
+                      SL_STATUS_OK) != 0 ||
         server.connections[0].state != SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE ||
         !server.connections[0].write_started || server.connections[0].write_completed ||
         server.backend.active_requests != 1U)
@@ -2499,6 +2632,7 @@ static int run_named_transport_case(const char* name)
     }
     if (strcmp(name, "streaming_response") == 0) {
         SLOPPY_TRANSPORT_CASE_SEQUENCE(test_streaming_response_writes_chunked_frames,
+                                       test_streaming_response_rejects_control_header_values,
                                        test_streaming_response_multiple_empty_and_keep_alive);
     }
     if (strcmp(name, "backpressure") == 0) {
@@ -2589,6 +2723,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_streaming_response_writes_chunked_frames();
+    if (result != 0) {
+        return result;
+    }
+    result = test_streaming_response_rejects_control_header_values();
     if (result != 0) {
         return result;
     }

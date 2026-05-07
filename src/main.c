@@ -3,7 +3,7 @@
  *
  * Provides plan introspection commands and the bounded development `sloppy run` path.
  * Runtime execution requires V8-enabled artifacts and intentionally avoids production
- * HTTP, package-manager behavior, Node compatibility, middleware, streaming, and hot
+ * HTTP, package-manager behavior, Node behavior, middleware, streaming, and hot
  * reload claims.
  */
 #include "sloppy/arena.h"
@@ -357,7 +357,8 @@ static void sl_cli_print_version(void)
 static void sl_cli_print_help(void)
 {
     sl_cli_print_version();
-    (void)printf("Pre-alpha runtime foundation with bounded run and metadata CLI introspection.\n\n");
+    (void)printf(
+        "Pre-alpha runtime foundation with bounded run and metadata CLI introspection.\n\n");
     (void)printf("Usage:\n");
     (void)printf("  sloppy --help\n");
     (void)printf("  sloppy --version\n");
@@ -1510,15 +1511,21 @@ typedef struct SlRunApp
     SlHttpRouteTable route_table;
     char config_host[SL_RUN_CONFIG_HOST_MAX_BYTES];
     uint16_t config_port;
+    uint64_t config_max_connections;
+    uint64_t config_max_request_body_bytes;
     uint64_t config_keep_alive_idle_timeout_ms;
     uint64_t config_max_requests_per_connection;
+    uint64_t config_request_timeout_ms;
     uint64_t next_request_id;
     bool config_keep_alive_enabled;
     bool config_has_host;
     bool config_has_port;
+    bool config_has_max_connections;
+    bool config_has_max_request_body_bytes;
     bool config_has_keep_alive_enabled;
     bool config_has_keep_alive_idle_timeout_ms;
     bool config_has_max_requests_per_connection;
+    bool config_has_request_timeout_ms;
 } SlRunApp;
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
@@ -1754,6 +1761,11 @@ static bool sl_run_plan_config_parse_u64(yyjson_val* value, uint64_t* out)
     return *out != 0U;
 }
 
+static bool sl_run_plan_config_u64_fits_size_t(uint64_t value)
+{
+    return value <= (uint64_t)SIZE_MAX;
+}
+
 static bool sl_run_plan_config_parse_bool(yyjson_val* value, bool* out)
 {
     if (value == NULL || out == NULL || !yyjson_is_bool(value)) {
@@ -1783,6 +1795,27 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
         }
         app->config_has_port = true;
     }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxConnections")) {
+        if (!sl_run_plan_config_parse_u64(value, &app->config_max_connections) ||
+            !sl_run_plan_config_u64_fits_size_t(app->config_max_connections))
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:MaxConnections must be a positive integer\n");
+            return 1;
+        }
+        app->config_has_max_connections = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestBodyBytes")) {
+        if (!sl_run_plan_config_parse_u64(value, &app->config_max_request_body_bytes) ||
+            !sl_run_plan_config_u64_fits_size_t(app->config_max_request_body_bytes))
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: app.plan.json "
+                              "Sloppy:Server:MaxRequestBodyBytes must be a positive integer\n");
+            return 1;
+        }
+        app->config_has_max_request_body_bytes = true;
+    }
     else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:KeepAliveEnabled")) {
         if (!sl_run_plan_config_parse_bool(value, &app->config_keep_alive_enabled)) {
             sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
@@ -1801,13 +1834,24 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
         app->config_has_keep_alive_idle_timeout_ms = true;
     }
     else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:MaxRequestsPerConnection")) {
-        if (!sl_run_plan_config_parse_u64(value, &app->config_max_requests_per_connection)) {
+        if (!sl_run_plan_config_parse_u64(value, &app->config_max_requests_per_connection) ||
+            !sl_run_plan_config_u64_fits_size_t(app->config_max_requests_per_connection))
+        {
             sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
                                       "Sloppy:Server:MaxRequestsPerConnection must be a positive "
                                       "integer\n");
             return 1;
         }
         app->config_has_max_requests_per_connection = true;
+    }
+    else if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:RequestTimeoutMs")) {
+        if (!sl_run_plan_config_parse_u64(value, &app->config_request_timeout_ms)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:RequestTimeoutMs must be a positive "
+                                      "integer\n");
+            return 1;
+        }
+        app->config_has_request_timeout_ms = true;
     }
 
     return 0;
@@ -2605,6 +2649,7 @@ typedef struct SlRunDispatchContext
     SlRunApp* app;
     SlArena* arena;
     const SlHttpRequestHead* request;
+    const SlHttpRequestLifecycle* lifecycle;
     SlHttpResponse* response;
 } SlRunDispatchContext;
 
@@ -2615,14 +2660,22 @@ static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_sc
     SlEngineResult result = {0};
     SlStatus status;
 
-    /* The scope is represented by the callback boundary; no request cleanups are registered here. */
+    /* The scope is represented by the callback boundary; no request cleanups are registered here.
+     */
     (void)request_scope;
     if (context == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_http_dispatch_request_head(context->arena, context->app->engine,
-                                           &context->app->plan, &context->app->route_table.dispatch,
-                                           context->request, &result, out_diag);
+    if (context->lifecycle != NULL) {
+        status = sl_http_dispatch_request_lifecycle(
+            context->arena, context->app->engine, &context->app->plan,
+            &context->app->route_table.dispatch, context->lifecycle, &result, out_diag);
+    }
+    else {
+        status = sl_http_dispatch_request_head(
+            context->arena, context->app->engine, &context->app->plan,
+            &context->app->route_table.dispatch, context->request, &result, out_diag);
+    }
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -2634,22 +2687,23 @@ static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_sc
     return sl_status_ok();
 }
 
-static SlStatus sl_run_dispatch_response_with_storage(SlRunApp* app,
-                                                      const SlHttpRequestHead* request,
-                                                      SlArena* dispatch_arena,
-                                                      SlHttpResponse* out_response,
-                                                      SlDiag* out_diag)
+static SlStatus sl_run_dispatch_response_with_storage(
+    SlRunApp* app, const SlHttpRequestHead* request, const SlHttpRequestLifecycle* lifecycle,
+    SlArena* dispatch_arena, SlHttpResponse* out_response, SlDiag* out_diag)
 {
     SlScopeCleanup request_cleanups[SL_RUN_REQUEST_SCOPE_MAX_CLEANUPS];
     SlRunDispatchContext dispatch_context = {0};
 
-    if (app == NULL || request == NULL || dispatch_arena == NULL || out_response == NULL) {
+    if (app == NULL || (request == NULL && lifecycle == NULL) || dispatch_arena == NULL ||
+        out_response == NULL)
+    {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     dispatch_context.app = app;
     dispatch_context.arena = dispatch_arena;
     dispatch_context.request = request;
+    dispatch_context.lifecycle = lifecycle;
     dispatch_context.response = out_response;
 
     if (app->next_request_id == UINT64_MAX) {
@@ -2714,7 +2768,8 @@ static int sl_run_dispatch_head_with_storage(SlRunApp* app, const SlHttpRequestH
         return -1;
     }
 
-    status = sl_run_dispatch_response_with_storage(app, request, &dispatch_arena, &result, &diag);
+    status =
+        sl_run_dispatch_response_with_storage(app, request, NULL, &dispatch_arena, &result, &diag);
     if (sl_status_is_ok(status)) {
         status = sl_http_response_write(&result, (unsigned char*)response, response_capacity,
                                         &response_bytes);
@@ -2831,8 +2886,8 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status =
-        sl_run_dispatch_response_with_storage(app, &request->head, arena, out_response, out_diag);
+    status = sl_run_dispatch_response_with_storage(app, &request->head, request, arena,
+                                                   out_response, out_diag);
     if (sl_status_is_ok(status)) {
         return status;
     }
@@ -2859,11 +2914,20 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     config.read_chunk_bytes = SL_HTTP_TRANSPORT_DEFAULT_READ_CHUNK_BYTES;
     config.max_response_bytes = SL_RUN_RESPONSE_MAX_BYTES;
     config.parse.max_headers = SL_HTTP_DEFAULT_MAX_HEADERS;
+    config.parse.max_request_line_length = SL_HTTP_DEFAULT_MAX_REQUEST_LINE_LENGTH;
     config.parse.max_target_length = SL_HTTP_DEFAULT_MAX_TARGET_LENGTH;
     config.parse.max_header_name_length = SL_HTTP_DEFAULT_MAX_HEADER_NAME_LENGTH;
     config.parse.max_header_value_length = SL_HTTP_DEFAULT_MAX_HEADER_VALUE_LENGTH;
     config.parse.max_total_header_bytes = SL_HTTP_DEFAULT_MAX_TOTAL_HEADER_BYTES;
     config.parse.max_body_length = SL_RUN_REQUEST_MAX_BYTES;
+    if (app != NULL && app->config_has_max_connections) {
+        config.max_connections = (size_t)app->config_max_connections;
+        config.max_active_requests = (size_t)app->config_max_connections;
+        config.connection_capacity = (size_t)app->config_max_connections;
+    }
+    if (app != NULL && app->config_has_max_request_body_bytes) {
+        config.parse.max_body_length = (size_t)app->config_max_request_body_bytes;
+    }
     if (app != NULL && app->config_has_keep_alive_enabled) {
         config.keep_alive_disabled = !app->config_keep_alive_enabled;
     }
@@ -2872,6 +2936,9 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     }
     if (app != NULL && app->config_has_max_requests_per_connection) {
         config.max_requests_per_connection = (size_t)app->config_max_requests_per_connection;
+    }
+    if (app != NULL && app->config_has_request_timeout_ms) {
+        config.request_timeout_ms = app->config_request_timeout_ms;
     }
     config.dispatch = sl_run_transport_dispatch;
     config.dispatch_user = app;

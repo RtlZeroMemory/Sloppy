@@ -14,19 +14,19 @@ The Plan lets Sloppy validate application shape before runtime execution:
 - compiler/source metadata for diagnostics;
 - configuration metadata where the compiler emits it.
 
-The Plan is not a package manifest, npm metadata format, Node compatibility layer, or
-public extension system.
+The Plan is not a package manifest, npm metadata format, Node runtime layer, or public
+extension system.
 
 ## Current Runtime Contract
 
 Plan v1 alpha remains the current runtime contract. Supported artifacts contain
 `app.plan.json`, generated `app.js`, and source-map metadata where available. The runtime
 validates schema version, route/handler/provider/capability structure, artifact hashes,
-runtime compatibility, and required features before entering V8.
+runtime target support, and required features before entering V8.
 
 Handler IDs are compiler-owned numeric IDs. Current executable V8 dispatch uses generated
-artifact registration and registered handler dispatch; the legacy numeric handler-call ABI
-remains unsupported for the noop engine.
+artifact registration and registered handler dispatch; direct numeric handler-call ABI
+entry remains unsupported for the noop engine.
 
 ## Routes And Handlers
 
@@ -43,6 +43,14 @@ The native runtime validates route metadata, builds a deterministic route table,
 dispatches supported requests through V8 in the V8 lane. Dynamic route registration,
 middleware, modules, automatic validation, arbitrary imports, and full TypeScript semantics
 remain outside the current source subset.
+
+## Server Config Metadata
+
+The runtime consumes Slop-owned server metadata emitted by the current compiler/config
+pipeline for `sloppy run`: host, port, max connections, max request body bytes, request
+timeout, keep-alive enablement, keep-alive idle timeout, and max requests per connection.
+Malformed, zero, unsupported, or range-overflowing values fail closed before serving work.
+Route-level limits and trusted proxy policy are not Plan metadata yet.
 
 ## Required Features
 
@@ -75,7 +83,7 @@ TypeScript build system.
 
 ## Non-Goals
 
-- Node/Bun/Deno/npm compatibility.
+- Node/Bun/Deno/npm behavior.
 - Package-manager metadata.
 - Arbitrary import graph resolution.
 - Public plugin extension points.
