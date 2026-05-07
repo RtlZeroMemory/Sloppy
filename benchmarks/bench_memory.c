@@ -114,6 +114,39 @@ static SlStatus bench_memory_builder_append_growth(const SlBenchContext* context
     return sl_status_ok();
 }
 
+static SlStatus bench_memory_builder_small_append(const SlBenchContext* context,
+                                                  uint64_t iterations, uint64_t* out_checksum)
+{
+    unsigned char payload[32];
+    uint64_t checksum = 0U;
+    uint64_t iteration = 0U;
+
+    (void)context;
+    sl_bench_fill_bytes(payload, sizeof(payload));
+
+    for (iteration = 0U; iteration < iterations; iteration += 1U) {
+        SlByteBuilder builder;
+        SlByteBuilderStats stats;
+        SlStatus status = sl_byte_builder_init_small(&builder);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_byte_builder_append_bytes(&builder, sl_bytes_from_parts(payload, 12U));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_byte_builder_append_bytes(&builder, sl_bytes_from_parts(payload + 12U, 8U));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        stats = sl_byte_builder_stats(&builder);
+        checksum += (uint64_t)(stats.length + stats.capacity + stats.appended_bytes);
+    }
+
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
 static SlStatus bench_memory_checked_array_size(const SlBenchContext* context, uint64_t iterations,
                                                 uint64_t* out_checksum)
 {
@@ -137,7 +170,8 @@ static SlStatus bench_memory_checked_array_size(const SlBenchContext* context, u
 }
 
 static const SlBenchDefinition memory_benchmarks[] = {
-    {"memory.bytes.find_any", "memory", "scalar byte find-any over a fixed binary buffer", 10000U,
+    {"memory.bytes.find_any", "memory",
+     "canonical byte find-any over a fixed binary buffer; backend depends on build preset", 10000U,
      1000000U, bench_memory_byte_find_any, "microbenchmark only; not a parser throughput claim",
      false},
     {"memory.string.equal_ci_ascii", "memory", "ASCII case-insensitive string comparison", 10000U,
@@ -145,6 +179,9 @@ static const SlBenchDefinition memory_benchmarks[] = {
     {"memory.builder.append_growth", "memory", "arena builder append and growth counters", 1000U,
      100000U, bench_memory_builder_append_growth,
      "reports counter checksum only; not an allocation-rate claim", false},
+    {"memory.builder.small_append", "memory", "small inline builder append counters", 10000U,
+     1000000U, bench_memory_builder_small_append,
+     "reports SSO counter checksum only; not an allocation-rate claim", false},
     {"memory.checked.array_size", "memory", "checked size calculation for array allocation", 10000U,
      1000000U, bench_memory_checked_array_size,
      "microbenchmark only; not an allocator throughput claim", false},

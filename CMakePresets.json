@@ -17,6 +17,7 @@
         "CMAKE_CXX_COMPILER": "clang-cl",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
         "SLOPPY_ENABLE_WERROR": "OFF"
       }
     },
@@ -30,6 +31,7 @@
         "CMAKE_C_COMPILER": "clang-cl",
         "CMAKE_CXX_COMPILER": "clang-cl",
         "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
         "SLOPPY_ENABLE_ASSERTS": "OFF"
       }
     },
@@ -42,7 +44,8 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_C_COMPILER": "clang-cl",
         "CMAKE_CXX_COMPILER": "clang-cl",
-        "SLOPPY_ENABLE_TESTS": "ON"
+        "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_SIMD": "AUTO"
       }
     },
     {
@@ -55,6 +58,7 @@
         "CMAKE_C_COMPILER": "clang-cl",
         "CMAKE_CXX_COMPILER": "clang-cl",
         "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
         "SLOPPY_ENABLE_ASAN": "ON",
         "SLOPPY_ENABLE_ASSERTS": "ON"
       }
@@ -70,7 +74,41 @@
         "CMAKE_CXX_COMPILER": "clang-cl",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
         "SLOPPY_ENABLE_LIBFUZZER": "ON",
+        "SLOPPY_ENABLE_ASSERTS": "ON",
+        "SLOPPY_ENABLE_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "windows-simd",
+      "displayName": "Windows SIMD",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-simd",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
+        "SLOPPY_ENABLE_ASSERTS": "ON",
+        "SLOPPY_ENABLE_WERROR": "OFF"
+      }
+    },
+    {
+      "name": "windows-avx2",
+      "displayName": "Windows AVX2 SIMD",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/windows-avx2",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "SLOPPY_ENABLE_TESTS": "ON",
+        "SLOPPY_ENABLE_SIMD": "ON",
+        "SLOPPY_SIMD_LEVEL": "AVX2",
         "SLOPPY_ENABLE_ASSERTS": "ON",
         "SLOPPY_ENABLE_WERROR": "OFF"
       }
@@ -87,6 +125,7 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "SLOPPY_ENABLE_TESTS": "ON",
         "SLOPPY_ENABLE_SQLSERVER": "OFF",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
         "SLOPPY_ENABLE_WERROR": "OFF"
       }
     },
@@ -102,6 +141,7 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "SLOPPY_ENABLE_TESTS": "ON",
         "SLOPPY_ENABLE_SQLSERVER": "OFF",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
         "SLOPPY_ENABLE_ASAN": "ON",
         "SLOPPY_ENABLE_UBSAN": "ON",
         "SLOPPY_ENABLE_ASSERTS": "ON",
@@ -120,6 +160,7 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "SLOPPY_ENABLE_TESTS": "ON",
         "SLOPPY_ENABLE_SQLSERVER": "OFF",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
         "SLOPPY_ENABLE_WERROR": "OFF"
       }
     },
@@ -135,6 +176,7 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "SLOPPY_ENABLE_TESTS": "ON",
         "SLOPPY_ENABLE_SQLSERVER": "OFF",
+        "SLOPPY_ENABLE_SIMD": "AUTO",
         "SLOPPY_ENABLE_WERROR": "OFF"
       }
     }
@@ -159,6 +201,14 @@
     {
       "name": "windows-libfuzzer",
       "configurePreset": "windows-libfuzzer"
+    },
+    {
+      "name": "windows-simd",
+      "configurePreset": "windows-simd"
+    },
+    {
+      "name": "windows-avx2",
+      "configurePreset": "windows-avx2"
     },
     {
       "name": "linux-clang",
@@ -209,6 +259,20 @@
     {
       "name": "windows-libfuzzer",
       "configurePreset": "windows-libfuzzer",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-simd",
+      "configurePreset": "windows-simd",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-avx2",
+      "configurePreset": "windows-avx2",
       "output": {
         "outputOnFailure": true
       }

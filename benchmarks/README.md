@@ -44,10 +44,14 @@ Handler dispatch benchmarks are split by current runtime capability:
 `http.request_head.parse` is a microbenchmark for the complete-buffer request-head parser.
 It is not an HTTP server throughput benchmark.
 
-Memory primitive benchmarks currently include scalar byte find-any scans, ASCII
+Memory primitive benchmarks currently include canonical byte find-any scans, ASCII
 case-insensitive string comparison, checked array-size arithmetic, and arena-backed builder
-append/growth counters. These are internal microbenchmarks for future optimization
-decisions. They are not allocation-rate, parser-throughput, or public performance claims.
+append/growth counters plus explicit small-builder append counters. The byte find-any
+benchmark exercises the backend selected by the build preset, including automatic SIMD
+selection on supported platforms. These are internal microbenchmarks for future
+optimization decisions. Advanced SIMD presets such as `windows-avx2` must be named in
+measured reports. These are not allocation-rate, parser-throughput, SIMD-performance, or
+public performance claims.
 
 ## Output
 

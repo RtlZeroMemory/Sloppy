@@ -132,6 +132,74 @@ static int test_arena_byte_builder_growth_and_failures(void)
     return 0;
 }
 
+static int test_small_builder_sso_contract(void)
+{
+    const unsigned char prefix[] = {'s', 's', 'o'};
+    const unsigned char overflow[] = {
+        'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x',
+        'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x',
+        'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x',
+        'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x'};
+    SlByteBuilder byte_builder;
+    SlStringBuilder string_builder;
+    SlByteBuilderStats stats;
+    SlStr view = sl_str_from_cstr("sentinel");
+
+    if (expect_status(sl_byte_builder_init_small(&byte_builder), SL_STATUS_OK) != 0 ||
+        sl_byte_builder_capacity(&byte_builder) != SL_BYTE_BUILDER_SMALL_CAPACITY)
+    {
+        return 70;
+    }
+
+    if (expect_status(sl_byte_builder_append_bytes(&byte_builder,
+                                                   sl_bytes_from_parts(prefix, sizeof(prefix))),
+                      SL_STATUS_OK) != 0 ||
+        expect_bytes(sl_byte_builder_view(&byte_builder), prefix, sizeof(prefix)) != 0)
+    {
+        return 71;
+    }
+
+    stats = sl_byte_builder_stats(&byte_builder);
+    if (stats.storage != SL_BUILDER_STORAGE_SMALL ||
+        stats.capacity != SL_BYTE_BUILDER_SMALL_CAPACITY || stats.grow_count != 0U ||
+        stats.copied_bytes != 0U)
+    {
+        return 72;
+    }
+
+    if (expect_status(sl_byte_builder_append_bytes(&byte_builder,
+                                                   sl_bytes_from_parts(overflow, sizeof(overflow))),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        expect_bytes(sl_byte_builder_view(&byte_builder), prefix, sizeof(prefix)) != 0)
+    {
+        return 73;
+    }
+
+    if (expect_status(sl_string_builder_init_small(&string_builder), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_cstr(&string_builder, "small"), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_char(&string_builder, ':'), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_append_size(&string_builder, 7U), SL_STATUS_OK) != 0 ||
+        expect_str(sl_string_builder_view(&string_builder), "small:7", 7U) != 0)
+    {
+        return 74;
+    }
+
+    if (expect_status(sl_string_builder_view_with_nul(&string_builder, &view), SL_STATUS_OK) != 0 ||
+        expect_str(view, "small:7", 7U) != 0 || view.ptr[view.length] != '\0')
+    {
+        return 75;
+    }
+
+    sl_string_builder_reset(&string_builder);
+    if (sl_string_builder_length(&string_builder) != 0U ||
+        sl_string_builder_capacity(&string_builder) != SL_BYTE_BUILDER_SMALL_CAPACITY)
+    {
+        return 76;
+    }
+
+    return 0;
+}
+
 static int test_builder_stats_snapshot_contract(void)
 {
     unsigned char fixed_storage[4];
@@ -449,6 +517,11 @@ int main(void)
     }
 
     result = test_arena_byte_builder_growth_and_failures();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_small_builder_sso_contract();
     if (result != 0) {
         return result;
     }

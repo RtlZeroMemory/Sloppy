@@ -463,6 +463,101 @@ jobs:
         shell: bash
         run: ctest --preset linux-sanitizers --output-on-failure
 
+  memory-simd:
+    name: memory-simd / ${{ matrix.name }}
+    runs-on: windows-latest
+    needs: changes
+    if: github.event_name != 'workflow_dispatch' && (needs.changes.outputs.docs_only != 'true' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-simd
+            preset: windows-simd
+          - name: windows-avx2
+            preset: windows-avx2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler -> target
+          cache-on-failure: true
+
+      - name: Ensure Ninja
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-
+            windows-memory-simd-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
+          $vcpkgBinaryCache = Join-Path $PWD ".sdeps/vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $vcpkgBinaryCache | Out-Null
+          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          }
+          git -C $vcpkgRoot fetch origin
+          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Toolchain bootstrap
+        shell: pwsh
+        run: .\tools\windows\bootstrap.ps1
+
+      - name: Configure
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 configure -Preset "${{ matrix.preset }}"
+
+      - name: Save vcpkg cache after configure
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-memory-simd-${{ matrix.preset }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Build
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 build -Preset "${{ matrix.preset }}"
+
+      - name: SIMD parity, seed replay, and benchmark smoke
+        shell: pwsh
+        run: ctest --preset "${{ matrix.preset }}" -R "core\.(bytes|str)|fuzz\.memory_primitives\.seed_replay|benchmarks\.sloppy_bench" --output-on-failure
+
   # The full Windows local-gate mirror is opt-in during pre-alpha iteration.
   # Normal non-docs changes already run windows-fast plus the Unix platform matrix below.
   windows:

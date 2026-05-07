@@ -95,6 +95,9 @@ static int exercise_string_and_bytes(const uint8_t* data, size_t size)
     if (!status_is_ok(sl_bytes_hash(bytes, &hash)) || !status_is_ok(sl_str_hash(str, &hash))) {
         return 1;
     }
+    if (!sl_str_equal_ci_ascii(str, str)) {
+        return 1;
+    }
     if (sl_str_contains_nul(str) &&
         sl_status_code(sl_str_validate_no_nul(str)) != SL_STATUS_INVALID_ARGUMENT)
     {
@@ -109,6 +112,7 @@ static int exercise_builders(const uint8_t* data, size_t size)
     unsigned char storage[FUZZ_MEMORY_FIXED_BUILDER_SIZE];
     unsigned char arena_storage[FUZZ_MEMORY_ARENA_SIZE];
     SlByteBuilder byte_builder;
+    SlByteBuilder small_builder;
     SlStringBuilder string_builder;
     SlArena arena;
     SlByteBuilderStats stats;
@@ -126,6 +130,17 @@ static int exercise_builders(const uint8_t* data, size_t size)
     }
     stats = sl_byte_builder_stats(&byte_builder);
     if (stats.length > stats.capacity || stats.appended_bytes < stats.length) {
+        return 1;
+    }
+
+    if (!status_is_ok(sl_byte_builder_init_small(&small_builder))) {
+        return 1;
+    }
+    (void)sl_byte_builder_append_bytes(&small_builder, sl_bytes_from_parts(data, prefix));
+    stats = sl_byte_builder_stats(&small_builder);
+    if (stats.storage != SL_BUILDER_STORAGE_SMALL || stats.length > stats.capacity ||
+        stats.capacity != SL_BYTE_BUILDER_SMALL_CAPACITY)
+    {
         return 1;
     }
 

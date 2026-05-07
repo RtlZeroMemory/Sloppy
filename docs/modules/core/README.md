@@ -7,6 +7,11 @@ borrowed string/byte views, checked arithmetic, arenas, builders, interned metad
 diagnostics integration, and small ownership primitives.
 Arena and builder stats are read-only internal measurement evidence; they do not introduce
 allocator ownership or performance claims.
+SIMD files may accelerate canonical byte/string primitives when `SLOPPY_ENABLE_SIMD=AUTO`
+detects a supported baseline backend. Advanced tiers such as AVX2 are configured through
+`SLOPPY_SIMD_LEVEL`, but the scalar reference path remains the public contract and
+fallback. Explicit small builders provide SSO for local construction; arena builders remain
+the contract for returned arena-owned views.
 
 ## Current Status
 

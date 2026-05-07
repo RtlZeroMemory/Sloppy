@@ -123,7 +123,9 @@ static SlStatus sl_byte_builder_grow(SlByteBuilder* builder, size_t required)
     void* next_data = NULL;
     SlStatus status;
 
-    if (builder->storage == SL_BUILDER_STORAGE_FIXED) {
+    if (builder->storage == SL_BUILDER_STORAGE_FIXED ||
+        builder->storage == SL_BUILDER_STORAGE_SMALL)
+    {
         return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
     }
 
@@ -161,6 +163,23 @@ SlStatus sl_byte_builder_init_fixed(SlByteBuilder* builder, unsigned char* buffe
     result.max_capacity = capacity;
     result.storage = SL_BUILDER_STORAGE_FIXED;
     *builder = result;
+    return sl_status_ok();
+}
+
+SlStatus sl_byte_builder_init_small(SlByteBuilder* builder)
+{
+    SlByteBuilder result = {0U};
+
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    result.data = result.small;
+    result.capacity = sizeof(result.small);
+    result.max_capacity = sizeof(result.small);
+    result.storage = SL_BUILDER_STORAGE_SMALL;
+    *builder = result;
+    builder->data = builder->small;
     return sl_status_ok();
 }
 
@@ -313,6 +332,15 @@ SlStatus sl_string_builder_init_fixed(SlStringBuilder* builder, char* buffer, si
     }
 
     return sl_byte_builder_init_fixed(&builder->bytes, (unsigned char*)buffer, capacity);
+}
+
+SlStatus sl_string_builder_init_small(SlStringBuilder* builder)
+{
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    return sl_byte_builder_init_small(&builder->bytes);
 }
 
 SlStatus sl_string_builder_init_arena(SlStringBuilder* builder, SlArena* arena,

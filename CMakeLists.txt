@@ -14,6 +14,15 @@ option(SLOPPY_ENABLE_ASAN "Enable AddressSanitizer where supported." OFF)
 option(SLOPPY_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer where supported." OFF)
 option(SLOPPY_ENABLE_TSAN "Enable ThreadSanitizer where supported." OFF)
 option(SLOPPY_ENABLE_LIBFUZZER "Build opt-in libFuzzer targets for fuzz/property lanes." OFF)
+set(SLOPPY_ENABLE_SIMD
+    "AUTO"
+    CACHE STRING
+          "Enable SIMD backends for canonical scalar primitives: AUTO, ON, or OFF.")
+set_property(CACHE SLOPPY_ENABLE_SIMD PROPERTY STRINGS "AUTO" "ON" "OFF")
+set(SLOPPY_SIMD_LEVEL
+    "AUTO"
+    CACHE STRING "Preferred SIMD backend level: AUTO, SSE2, or AVX2.")
+set_property(CACHE SLOPPY_SIMD_LEVEL PROPERTY STRINGS "AUTO" "SSE2" "AVX2")
 option(SLOPPY_BUILD_COMPILER "Add the sloppyc Rust compiler target when Cargo is available." ON)
 option(SLOPPY_ENABLE_V8 "Enable the phase-gated V8 bridge SDK integration." OFF)
 if(WIN32)
@@ -51,6 +60,49 @@ if(SLOPPY_ENABLE_LIBFUZZER AND MSVC)
     if(NOT EXISTS "${SLOPPY_CLANG_FUZZER_LIB}")
         message(FATAL_ERROR "Clang libFuzzer runtime was not found: ${SLOPPY_CLANG_FUZZER_LIB}")
     endif()
+endif()
+set(SLOPPY_SIMD_REQUESTED OFF)
+set(SLOPPY_SIMD_ENABLED OFF)
+set(SLOPPY_BYTES_SIMD_SSE2_AVAILABLE OFF)
+set(SLOPPY_BYTES_SIMD_AVX2_AVAILABLE OFF)
+if(NOT SLOPPY_ENABLE_SIMD STREQUAL "AUTO"
+   AND NOT SLOPPY_ENABLE_SIMD STREQUAL "ON"
+   AND NOT SLOPPY_ENABLE_SIMD STREQUAL "OFF")
+    message(FATAL_ERROR "SLOPPY_ENABLE_SIMD must be AUTO, ON, or OFF.")
+endif()
+if(NOT SLOPPY_SIMD_LEVEL STREQUAL "AUTO"
+   AND NOT SLOPPY_SIMD_LEVEL STREQUAL "SSE2"
+   AND NOT SLOPPY_SIMD_LEVEL STREQUAL "AVX2")
+    message(FATAL_ERROR "SLOPPY_SIMD_LEVEL must be AUTO, SSE2, or AVX2.")
+endif()
+if(SLOPPY_ENABLE_SIMD STREQUAL "ON")
+    set(SLOPPY_SIMD_REQUESTED ON)
+endif()
+if(NOT SLOPPY_ENABLE_SIMD STREQUAL "OFF")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|X86_64|AMD64|amd64|i[3-6]86|x86)$")
+        if(SLOPPY_SIMD_LEVEL STREQUAL "AVX2")
+            set(SLOPPY_BYTES_SIMD_AVX2_AVAILABLE ON)
+            set(SLOPPY_SIMD_ENABLED ON)
+        else()
+            set(SLOPPY_BYTES_SIMD_SSE2_AVAILABLE ON)
+            set(SLOPPY_SIMD_ENABLED ON)
+        endif()
+    elseif(SLOPPY_SIMD_REQUESTED)
+        message(
+            FATAL_ERROR
+                "SLOPPY_ENABLE_SIMD=ON was requested, but no supported SIMD backend is available for ${CMAKE_SYSTEM_PROCESSOR}.")
+    else()
+        message(
+            STATUS
+                "No supported SIMD backend is available for ${CMAKE_SYSTEM_PROCESSOR}; using scalar primitives.")
+    endif()
+endif()
+if(SLOPPY_BYTES_SIMD_AVX2_AVAILABLE)
+    message(STATUS "SIMD byte/string backend: AVX2")
+elseif(SLOPPY_BYTES_SIMD_SSE2_AVAILABLE)
+    message(STATUS "SIMD byte/string backend: SSE2")
+else()
+    message(STATUS "SIMD byte/string backend: scalar")
 endif()
 set(SLOPPY_CLANG_ASAN_DYNAMIC_LIB "")
 set(SLOPPY_CLANG_ASAN_THUNK_LIB "")
@@ -395,6 +447,13 @@ set(
     src/platform/libuv/process.c
     src/platform/libuv/thread.c)
 
+if(SLOPPY_BYTES_SIMD_SSE2_AVAILABLE)
+    list(APPEND SLOPPY_CORE_SOURCES src/core/bytes_simd_sse2.c src/core/string_simd_sse2.c)
+endif()
+if(SLOPPY_BYTES_SIMD_AVX2_AVAILABLE)
+    list(APPEND SLOPPY_CORE_SOURCES src/core/bytes_simd_avx2.c src/core/string_simd_avx2.c)
+endif()
+
 if(WIN32)
     list(
         APPEND
@@ -584,6 +643,33 @@ if(SLOPPY_ENABLE_ASSERTS)
     target_compile_definitions(sloppy_core PUBLIC SL_ENABLE_ASSERTS=1)
 else()
     target_compile_definitions(sloppy_core PUBLIC SL_ENABLE_ASSERTS=0)
+endif()
+
+if(SLOPPY_SIMD_ENABLED)
+    target_compile_definitions(sloppy_core PUBLIC SL_ENABLE_SIMD=1)
+else()
+    target_compile_definitions(sloppy_core PUBLIC SL_ENABLE_SIMD=0)
+endif()
+
+if(SLOPPY_BYTES_SIMD_SSE2_AVAILABLE)
+    target_compile_definitions(sloppy_core PRIVATE SL_BYTES_SIMD_SSE2=1 SL_STRING_SIMD_SSE2=1)
+else()
+    target_compile_definitions(sloppy_core PRIVATE SL_BYTES_SIMD_SSE2=0 SL_STRING_SIMD_SSE2=0)
+endif()
+
+if(SLOPPY_BYTES_SIMD_AVX2_AVAILABLE)
+    target_compile_definitions(sloppy_core PRIVATE SL_BYTES_SIMD_AVX2=1 SL_STRING_SIMD_AVX2=1)
+    if(MSVC)
+        set_source_files_properties(
+            src/core/bytes_simd_avx2.c src/core/string_simd_avx2.c
+            PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    else()
+        set_source_files_properties(
+            src/core/bytes_simd_avx2.c src/core/string_simd_avx2.c
+            PROPERTIES COMPILE_OPTIONS "-mavx2")
+    endif()
+else()
+    target_compile_definitions(sloppy_core PRIVATE SL_BYTES_SIMD_AVX2=0 SL_STRING_SIMD_AVX2=0)
 endif()
 
 add_executable(sloppy src/main.c)

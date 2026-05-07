@@ -479,6 +479,11 @@ Required:
 - preserve explicit pointer-plus-length semantics;
 - preserve embedded-NUL and binary correctness.
 
+Optional SIMD backends belong in dedicated backend files and must call through canonical
+length-based primitive APIs. The scalar implementation remains the reference behavior and
+fallback. Intrinsics must not introduce OS API dependencies, hidden global dispatch state,
+or a second public compatibility path.
+
 Forbidden:
 
 - do not hand-roll ad hoc string append loops;

@@ -128,6 +128,27 @@ libFuzzer mutation runs are separate optional evidence. They must name the targe
 toolchain, duration, and whether the run modified the corpus. Generated corpus files are
 not committed unless a scoped task deliberately promotes them to reviewed seeds.
 
+## SIMD Evidence
+
+SIMD backends are selected build-time implementations of canonical scalar primitives. The
+`memory-simd` CI matrix builds both `windows-simd` with default `SLOPPY_ENABLE_SIMD=AUTO`
+selection and `windows-avx2` with `SLOPPY_SIMD_LEVEL=AVX2`, then runs byte/string parity
+tests, memory primitive seed replay, and benchmark smoke. Those lanes prove backend
+selection and scalar/SIMD parity for the covered primitives on supported runners; benchmark
+smoke remains harness evidence, not performance evidence.
+
+Local Windows lane:
+
+```powershell
+.\tools\windows\dev.ps1 configure -Preset windows-simd
+.\tools\windows\dev.ps1 build -Preset windows-simd
+ctest --preset windows-simd -R "core\.(bytes|str)|fuzz\.memory_primitives\.seed_replay|benchmarks\.sloppy_bench" --output-on-failure
+
+.\tools\windows\dev.ps1 configure -Preset windows-avx2
+.\tools\windows\dev.ps1 build -Preset windows-avx2
+ctest --preset windows-avx2 -R "core\.(bytes|str)|fuzz\.memory_primitives\.seed_replay|benchmarks\.sloppy_bench" --output-on-failure
+```
+
 ## Advanced Static Analysis
 
 Fast script scanners remain part of default lint. The clang-tidy/analyzer lane is deeper

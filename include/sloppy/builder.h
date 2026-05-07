@@ -17,14 +17,19 @@ typedef enum SlBuilderStorageKind
 {
     SL_BUILDER_STORAGE_INVALID = 0,
     SL_BUILDER_STORAGE_FIXED = 1,
-    SL_BUILDER_STORAGE_ARENA = 2
+    SL_BUILDER_STORAGE_ARENA = 2,
+    SL_BUILDER_STORAGE_SMALL = 3
 } SlBuilderStorageKind;
+
+#define SL_BYTE_BUILDER_SMALL_CAPACITY 64U
 
 /*
  * SlByteBuilder is a bounded mutable byte output target.
  *
  * Fixed builders write into caller-owned storage and never grow. Arena builders allocate
  * replacement buffers from a caller-supplied arena as they grow, up to `max_capacity`.
+ * Small builders use inline storage inside the builder and never grow; their views are
+ * valid only while the builder object remains alive and unchanged.
  * The builder never owns or frees an arena. Failed append/reserve calls leave the existing
  * builder contents valid and unchanged, so callers may keep using or viewing the prefix
  * already written. Appends may source bytes from the builder's current storage; self-overlap
@@ -42,6 +47,7 @@ typedef struct SlByteBuilder
     size_t failed_reserve_count;
     SlArena* arena;
     SlBuilderStorageKind storage;
+    unsigned char small[SL_BYTE_BUILDER_SMALL_CAPACITY];
 } SlByteBuilder;
 
 typedef struct SlByteBuilderStats
@@ -68,6 +74,7 @@ typedef struct SlStringBuilder
 } SlStringBuilder;
 
 SlStatus sl_byte_builder_init_fixed(SlByteBuilder* builder, unsigned char* buffer, size_t capacity);
+SlStatus sl_byte_builder_init_small(SlByteBuilder* builder);
 SlStatus sl_byte_builder_init_arena(SlByteBuilder* builder, SlArena* arena, size_t initial_capacity,
                                     size_t max_capacity);
 void sl_byte_builder_reset(SlByteBuilder* builder);
@@ -80,6 +87,7 @@ SlStatus sl_byte_builder_append_bytes(SlByteBuilder* builder, SlBytes bytes);
 SlStatus sl_byte_builder_append_byte(SlByteBuilder* builder, unsigned char byte);
 
 SlStatus sl_string_builder_init_fixed(SlStringBuilder* builder, char* buffer, size_t capacity);
+SlStatus sl_string_builder_init_small(SlStringBuilder* builder);
 SlStatus sl_string_builder_init_arena(SlStringBuilder* builder, SlArena* arena,
                                       size_t initial_capacity, size_t max_capacity);
 void sl_string_builder_reset(SlStringBuilder* builder);
