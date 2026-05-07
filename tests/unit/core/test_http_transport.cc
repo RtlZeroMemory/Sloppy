@@ -1011,7 +1011,9 @@ static int run_tls_keep_alive_client_close_notify(uint32_t port, std::string* ou
             goto cleanup;
         }
     }
-    (void)SSL_shutdown(ssl);
+    if (SSL_shutdown(ssl) < 0) {
+        goto cleanup;
+    }
     (void)BIO_flush(bio);
     result = 0;
 
@@ -1198,9 +1200,14 @@ static int test_https_close_notify_is_disconnect_cleanup_only(void)
         result = 938;
         goto cleanup;
     }
-    if (server.connections[0].response_length != 0U) {
-        result = 939;
-        goto cleanup;
+    {
+        size_t first_status = client_response.find("HTTP/1.1 ");
+        if (first_status == std::string::npos ||
+            client_response.find("HTTP/1.1 ", first_status + 1U) != std::string::npos)
+        {
+            result = 939;
+            goto cleanup;
+        }
     }
     result = 0;
 
@@ -1345,7 +1352,14 @@ static int test_https_listen_rejects_invalid_cert_key_and_passphrase(void)
         std::filesystem::remove_all(encrypted_cert_path.parent_path());
         return 916;
     }
-    (void)sl_http_transport_server_stop(&server, &diag);
+    if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        std::filesystem::remove_all(cert_path.parent_path());
+        std::filesystem::remove_all(encrypted_cert_path.parent_path());
+        return 917;
+    }
     (void)sl_http_transport_server_dispose(&server, &diag);
 
     std::filesystem::remove_all(cert_path.parent_path());

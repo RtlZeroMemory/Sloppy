@@ -650,11 +650,23 @@ static void sl_http_transport_clear_tls_passphrase(SlHttpTransportServer* server
     server->platform->tls_passphrase = (SlOwnedStr){0};
 }
 
+static void sl_http_transport_release_tls_context(SlHttpPlatformListener* platform)
+{
+    if (platform == NULL || platform->tls_context == NULL) {
+        return;
+    }
+    SSL_CTX_free(platform->tls_context);
+    platform->tls_context = NULL;
+}
+
 static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server, SlDiag* out_diag)
 {
     SSL_CTX* context = NULL;
 
     if (server == NULL || server->platform == NULL || !server->config.tls.enabled) {
+        return sl_status_ok();
+    }
+    if (server->platform->tls_context != NULL) {
         return sl_status_ok();
     }
 
@@ -3222,10 +3234,6 @@ static void sl_http_transport_close_listener(SlHttpPlatformListener* platform)
         while (uv_run(&platform->loop, UV_RUN_DEFAULT) != 0) {
         }
     }
-    if (platform->tls_context != NULL) {
-        SSL_CTX_free(platform->tls_context);
-        platform->tls_context = NULL;
-    }
     platform->listener_initialized = false;
 }
 
@@ -3530,6 +3538,7 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
     if (rc != 0) {
         server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
         sl_http_transport_close_listener(server->platform);
+        sl_http_transport_release_tls_context(server->platform);
         (void)uv_loop_close(&server->platform->loop);
         server->platform->loop_initialized = false;
         return sl_http_transport_uv_status(
@@ -3854,6 +3863,9 @@ SlStatus sl_http_transport_server_dispose(SlHttpTransportServer* server, SlDiag*
     status = sl_http_backend_dispose(&server->backend, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (server->platform != NULL) {
+        sl_http_transport_release_tls_context(server->platform);
     }
     server->state = SL_HTTP_TRANSPORT_SERVER_STATE_DISPOSED;
     return sl_status_ok();
