@@ -543,6 +543,7 @@ set(
     tests/fuzz/fuzz_diagnostics_render.c
     tests/fuzz/fuzz_memory_primitives.c
     benchmarks/bench_main.c
+    benchmarks/bench_v8_bridge.c
     benchmarks/bench_route_matcher.c
     benchmarks/bench_handler_dispatch.c
     benchmarks/bench_memory.c)
@@ -672,6 +673,7 @@ endif()
 add_executable(
     sloppy_bench
     benchmarks/bench_main.c
+    benchmarks/bench_v8_bridge.c
     benchmarks/bench_route_matcher.c
     benchmarks/bench_handler_dispatch.c
     benchmarks/bench_memory.c)
@@ -1203,12 +1205,24 @@ if(SLOPPY_ENABLE_TESTS)
         benchmarks.sloppy_bench.smoke_json
         PROPERTIES PASS_REGULAR_EXPRESSION "\"sloppyBenchmarkVersion\": 1")
 
-    add_test(
-        NAME benchmarks.sloppy_bench.v8_deferred
-        COMMAND sloppy_bench --include-v8 --bench handler.v8.call_function0)
-    set_tests_properties(
-        benchmarks.sloppy_bench.v8_deferred
-        PROPERTIES PASS_REGULAR_EXPRESSION "benchmark skipped/deferred: handler.v8.call_function0")
+    if(SLOPPY_ENABLE_V8)
+        add_test(
+            NAME benchmarks.sloppy_bench.v8_bridge_smoke_json
+            COMMAND
+                sloppy_bench --include-v8 --smoke --format json --bench
+                v8.bridge.call.noop_proxy)
+        set_tests_properties(
+            benchmarks.sloppy_bench.v8_bridge_smoke_json
+            PROPERTIES PASS_REGULAR_EXPRESSION "\"name\": \"v8.bridge.call.noop_proxy\"")
+    else()
+        add_test(
+            NAME benchmarks.sloppy_bench.v8_unavailable
+            COMMAND sloppy_bench --include-v8 --bench v8.bridge.call.noop_proxy)
+        set_tests_properties(
+            benchmarks.sloppy_bench.v8_unavailable
+            PROPERTIES PASS_REGULAR_EXPRESSION
+                       "benchmark skipped/deferred: v8.bridge.call.noop_proxy")
+    endif()
 
     if(WIN32)
         add_test(

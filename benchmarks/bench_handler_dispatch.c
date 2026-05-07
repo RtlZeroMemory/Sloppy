@@ -191,14 +191,6 @@ static SlStatus bench_http_get_dispatch_noop(const SlBenchContext* context, uint
     return sl_status_ok();
 }
 
-static SlStatus bench_v8_dispatch_deferred(const SlBenchContext* context, uint64_t iterations,
-                                           uint64_t* out_checksum)
-{
-    (void)iterations;
-    *out_checksum = context != NULL && context->include_v8 ? UINT64_C(1) : UINT64_C(0);
-    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
-}
-
 static const SlBenchDefinition handler_definitions[] = {
     {"handler.plan.lookup", "handler", "lookup handler IDs in a borrowed Sloppy Plan table", 10000U,
      1000000U, bench_plan_handler_lookup, "non-V8 lookup only; no JavaScript enters this benchmark",
@@ -211,9 +203,6 @@ static const SlBenchDefinition handler_definitions[] = {
      "synthetic parsed GET dispatch through route match, plan lookup, and noop engine", 1000U,
      100000U, bench_http_get_dispatch_noop,
      "not a server throughput benchmark; no sockets or response writer are involved", false},
-    {"handler.v8.call_function0", "handler", "V8-gated handler call benchmark placeholder", 0U, 0U,
-     bench_v8_dispatch_deferred,
-     "deferred until the harness is built with V8 and an approved SDK is configured", true},
 };
 
 const SlBenchDefinition* sl_bench_handler_dispatch_definitions(size_t* out_count)

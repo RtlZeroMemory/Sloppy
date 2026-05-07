@@ -4,6 +4,7 @@
 #include "sloppy/engine.h"
 #include "sloppy/platform.h"
 
+#include <atomic>
 #include <cstddef>
 #include <string>
 #include <thread>
@@ -412,6 +413,104 @@ static int test_failed_post_does_not_mark_continuation_active(void)
     return result;
 }
 
+static int test_concurrent_double_post_settles_once(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char loop_arena_storage[4096];
+    SlArena engine_arena = {};
+    SlArena loop_arena = {};
+    SlAsyncCompletion completion_storage[2];
+    SlAsyncLoop* loop = nullptr;
+    SlEngine* engine = nullptr;
+    SlEngineOptions options = v8_options();
+    SlV8NativeContinuation continuation = {};
+    ScopeCounter scope = {0U, 0U};
+    SlStatus first_status = sl_status_from_code(SL_STATUS_INTERNAL);
+    SlStatus second_status = sl_status_from_code(SL_STATUS_INTERNAL);
+    std::atomic<bool> start(false);
+    size_t ran = 0U;
+
+    if (expect_status(sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&loop_arena, loop_arena_storage, sizeof(loop_arena_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &loop_arena, completion_storage, 2U, &loop),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0)
+    {
+        return 40;
+    }
+
+    int result = [&]() {
+        SlV8Engine* backend = static_cast<SlV8Engine*>(engine->backend);
+        v8::Isolate* isolate = backend->isolate;
+        v8::Isolate::Scope isolate_scope(isolate);
+        v8::HandleScope handle_scope(isolate);
+        v8::Local<v8::Context> context = backend->context.Get(isolate);
+        v8::Context::Scope context_scope(context);
+        v8::Local<v8::Promise> promise;
+
+        if (expect_status(sl_v8_native_continuation_prepare(engine, &continuation, &promise),
+                          SL_STATUS_OK) != 0)
+        {
+            return 41;
+        }
+
+        v8::Global<v8::Promise> promise_ref(isolate, promise);
+        std::thread first([&]() {
+            while (!start.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            first_status = sl_v8_native_continuation_post(loop, &continuation, sl_status_ok(),
+                                                          "first", false, scope_ref(&scope));
+        });
+        std::thread second([&]() {
+            while (!start.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            second_status = sl_v8_native_continuation_post(loop, &continuation, sl_status_ok(),
+                                                           "second", false, scope_ref(&scope));
+        });
+        start.store(true, std::memory_order_release);
+        first.join();
+        second.join();
+
+        bool first_ok = sl_status_code(first_status) == SL_STATUS_OK;
+        bool second_ok = sl_status_code(second_status) == SL_STATUS_OK;
+        bool first_rejected = sl_status_code(first_status) == SL_STATUS_INVALID_STATE;
+        bool second_rejected = sl_status_code(second_status) == SL_STATUS_INVALID_STATE;
+        if (first_ok == second_ok || !(first_rejected || second_rejected) ||
+            scope.retain_count != 1U || scope.release_count != 0U)
+        {
+            promise_ref.Reset();
+            return 42;
+        }
+
+        if (expect_status(sl_async_loop_drain(loop, 0U, &ran), SL_STATUS_OK) != 0 || ran != 1U ||
+            !continuation.settled || !continuation.cleanup_ran || scope.release_count != 1U)
+        {
+            promise_ref.Reset();
+            return 43;
+        }
+
+        v8::Local<v8::Promise> settled = promise_ref.Get(isolate);
+        std::string value = v8_value_to_string(isolate, settled->Result());
+        if (settled->State() != v8::Promise::kFulfilled || (value != "first" && value != "second"))
+        {
+            promise_ref.Reset();
+            return 44;
+        }
+
+        promise_ref.Reset();
+        return 0;
+    }();
+
+    sl_async_loop_dispose(loop);
+    sl_engine_destroy(engine);
+    return result;
+}
+
 int main(void)
 {
     int result = test_cross_thread_native_completion_fulfills_on_owner_thread();
@@ -430,5 +529,10 @@ int main(void)
         return result;
     }
 
-    return test_failed_post_does_not_mark_continuation_active();
+    result = test_failed_post_does_not_mark_continuation_active();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_concurrent_double_post_settles_once();
 }

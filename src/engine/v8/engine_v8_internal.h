@@ -35,12 +35,89 @@ struct SlV8OsRequest;
 struct SlV8WorkerRequest;
 struct SlV8JsWorker;
 
+typedef enum SlV8HttpStringKey
+{
+    SL_V8_HTTP_STRING_ABORTED = 0,
+    SL_V8_HTTP_STRING_BODY,
+    SL_V8_HTTP_STRING_BODY_RESULT,
+    SL_V8_HTTP_STRING_BYTES,
+    SL_V8_HTTP_STRING_CONNECTION,
+    SL_V8_HTTP_STRING_CONSUMED,
+    SL_V8_HTTP_STRING_CONTENT_LENGTH,
+    SL_V8_HTTP_STRING_CONTENT_TYPE,
+    SL_V8_HTTP_STRING_DEADLINE,
+    SL_V8_HTTP_STRING_ENTRIES,
+    SL_V8_HTTP_STRING_EXPIRED,
+    SL_V8_HTTP_STRING_GET,
+    SL_V8_HTTP_STRING_HEADERS,
+    SL_V8_HTTP_STRING_ID,
+    SL_V8_HTTP_STRING_JSON,
+    SL_V8_HTTP_STRING_KIND,
+    SL_V8_HTTP_STRING_LOCATION,
+    SL_V8_HTTP_STRING_METHOD,
+    SL_V8_HTTP_STRING_PATH,
+    SL_V8_HTTP_STRING_PROTOCOL,
+    SL_V8_HTTP_STRING_QUERY,
+    SL_V8_HTTP_STRING_QUERY_STRING,
+    SL_V8_HTTP_STRING_RAW_TARGET,
+    SL_V8_HTTP_STRING_REASON,
+    SL_V8_HTTP_STRING_REQUEST,
+    SL_V8_HTTP_STRING_ROUTE,
+    SL_V8_HTTP_STRING_SCHEME,
+    SL_V8_HTTP_STRING_SECURE,
+    SL_V8_HTTP_STRING_SIGNAL,
+    SL_V8_HTTP_STRING_SLOPPY_RESULT,
+    SL_V8_HTTP_STRING_STATUS,
+    SL_V8_HTTP_STRING_TEXT,
+    SL_V8_HTTP_STRING_THROW_IF_ABORTED,
+    SL_V8_HTTP_STRING_COUNT
+} SlV8HttpStringKey;
+
+typedef enum SlV8HttpPrivateKey
+{
+    SL_V8_HTTP_PRIVATE_ABORTED = 0,
+    SL_V8_HTTP_PRIVATE_BODY,
+    SL_V8_HTTP_PRIVATE_BODY_BYTES,
+    SL_V8_HTTP_PRIVATE_BODY_CONSUMED,
+    SL_V8_HTTP_PRIVATE_BODY_KIND,
+    SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT,
+    SL_V8_HTTP_PRIVATE_REASON,
+    SL_V8_HTTP_PRIVATE_COUNT
+} SlV8HttpPrivateKey;
+
+typedef enum SlV8HttpFunctionKey
+{
+    SL_V8_HTTP_FUNCTION_BODY_BYTES = 0,
+    SL_V8_HTTP_FUNCTION_BODY_JSON,
+    SL_V8_HTTP_FUNCTION_BODY_TEXT,
+    SL_V8_HTTP_FUNCTION_HEADERS_ENTRIES,
+    SL_V8_HTTP_FUNCTION_HEADERS_GET,
+    SL_V8_HTTP_FUNCTION_REQUEST_BYTES,
+    SL_V8_HTTP_FUNCTION_REQUEST_JSON,
+    SL_V8_HTTP_FUNCTION_REQUEST_TEXT,
+    SL_V8_HTTP_FUNCTION_SIGNAL_THROW_IF_ABORTED,
+    SL_V8_HTTP_FUNCTION_COUNT
+} SlV8HttpFunctionKey;
+
+typedef enum SlV8HttpPrototypeKey
+{
+    SL_V8_HTTP_PROTOTYPE_BODY = 0,
+    SL_V8_HTTP_PROTOTYPE_HEADERS,
+    SL_V8_HTTP_PROTOTYPE_REQUEST,
+    SL_V8_HTTP_PROTOTYPE_SIGNAL,
+    SL_V8_HTTP_PROTOTYPE_COUNT
+} SlV8HttpPrototypeKey;
+
 struct SlV8Engine
 {
     v8::ArrayBuffer::Allocator* allocator = nullptr;
     v8::Isolate* isolate = nullptr;
     SlArena* arena = nullptr;
     v8::Global<v8::Context> context;
+    std::array<v8::Global<v8::String>, SL_V8_HTTP_STRING_COUNT> http_strings = {};
+    std::array<v8::Global<v8::Private>, SL_V8_HTTP_PRIVATE_COUNT> http_private_keys = {};
+    std::array<v8::Global<v8::Function>, SL_V8_HTTP_FUNCTION_COUNT> http_functions = {};
+    std::array<v8::Global<v8::Object>, SL_V8_HTTP_PROTOTYPE_COUNT> http_prototypes = {};
     std::unordered_map<uint32_t, v8::Global<v8::Function>> handlers;
     std::unordered_map<uint32_t, v8::Global<v8::Function>>* pending_handlers = nullptr;
     std::thread::id owner_thread;

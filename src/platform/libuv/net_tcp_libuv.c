@@ -94,7 +94,8 @@ static void sl_tcp_zero_bytes(void* ptr, size_t length)
     unsigned char* bytes = (unsigned char*)ptr;
     size_t index = 0U;
 
-    /* sl_tcp_zero_bytes clears ephemeral init storage; ptr may be NULL. This is not a secure wipe. */
+    /* sl_tcp_zero_bytes clears ephemeral init storage; ptr may be NULL. This is not a secure wipe.
+     */
     if (bytes == NULL) {
         return;
     }

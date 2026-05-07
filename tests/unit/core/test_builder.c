@@ -402,7 +402,8 @@ static int test_string_builder_formatting_and_nul(void)
     if (expect_status(
             sl_string_format_u64(format_storage, sizeof(format_storage), UINT64_MAX, &formatted),
             SL_STATUS_OK) != 0 ||
-        formatted.ptr != format_storage || expect_str(formatted, "18446744073709551615", 20U) != 0 ||
+        formatted.ptr != format_storage ||
+        expect_str(formatted, "18446744073709551615", 20U) != 0 ||
         format_storage[formatted.length] != '\0')
     {
         return 24;
@@ -412,7 +413,8 @@ static int test_string_builder_formatting_and_nul(void)
     if (expect_status(sl_string_format_i64(format_storage, sizeof(format_storage),
                                            -9223372036854775807LL - 1LL, &formatted),
                       SL_STATUS_OK) != 0 ||
-        formatted.ptr != format_storage || expect_str(formatted, "-9223372036854775808", 20U) != 0 ||
+        formatted.ptr != format_storage ||
+        expect_str(formatted, "-9223372036854775808", 20U) != 0 ||
         format_storage[formatted.length] != '\0')
     {
         return 25;

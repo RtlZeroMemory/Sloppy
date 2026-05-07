@@ -75,6 +75,17 @@ itself fails:
 If SDK resolution fails on this machine, report the resolver failure as an
 environment blocker. Do not count the V8 lane as skipped, optional, or passed.
 
+V8 bridge benchmark smoke is separate evidence. For bridge-performance changes, run it
+from the V8-enabled preset and report it as harness evidence, not correctness evidence or
+performance proof:
+
+```powershell
+.\build\windows-relwithdebinfo\sloppy_bench.exe --include-v8 --smoke --format json --bench v8.bridge.call.noop_proxy
+```
+
+Measured V8 bridge benchmark runs must be reported separately with raw output, hardware,
+compiler, preset, V8 SDK/version, baseline, and caveats.
+
 ## Documentation and Static Checks
 
 Documentation work must run `git diff --check` and the docs/static checks that
