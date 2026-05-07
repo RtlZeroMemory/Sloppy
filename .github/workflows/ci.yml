@@ -29,10 +29,6 @@ on:
           - "false"
           - "true"
 
-concurrency:
-  group: ci-${{ github.event.number || github.ref }}
-  cancel-in-progress: true
-
 env:
   VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
 
