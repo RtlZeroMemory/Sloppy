@@ -20,6 +20,14 @@ on:
         required: false
         default: ""
         type: string
+      advanced_analysis:
+        description: "Run the optional clang-tidy/analyzer memory-analysis lane."
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -120,6 +128,7 @@ jobs:
         shell: pwsh
         run: |
           .\tools\windows\check-platform-boundaries.ps1
+          .\tools\windows\check-c-standards.ps1 -SelfTest
           .\tools\windows\check-c-standards.ps1
           .\tools\windows\check-js-ts-standards.ps1
           .\tools\windows\check-rust-standards.ps1
@@ -563,7 +572,105 @@ jobs:
         run: |
           set -euo pipefail
           tools/unix/check-platform-boundaries.sh
+          tools/unix/check-c-standards.sh --self-test
           tools/unix/check-c-standards.sh
+
+  advanced-analysis:
+    name: advanced static analysis
+    runs-on: ubuntu-latest
+    needs: changes
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.advanced_analysis == 'true') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'memory-analysis'))
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(build-essential clang clang-tidy cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache)
+          missing=()
+
+          for command in clang clang++ clang-tidy cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache; do
+            if ! command -v "$command" >/dev/null 2>&1; then
+              missing=("${packages[@]}")
+              break
+            fi
+          done
+          if ! dpkg-query -W -f='${Status}' autoconf-archive 2>/dev/null | grep -q "install ok installed"; then
+            missing=("${packages[@]}")
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+          fi
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: advanced-analysis-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            advanced-analysis-vcpkg-${{ env.VCPKG_COMMIT }}-
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          vcpkg_root="$PWD/.sdeps/vcpkg"
+          vcpkg_binary_cache="$PWD/.sdeps/vcpkg-bincache"
+          mkdir -p "$vcpkg_binary_cache"
+          if [ ! -d "$vcpkg_root" ]; then
+            mkdir -p "$(dirname "$vcpkg_root")"
+            git clone https://github.com/microsoft/vcpkg.git "$vcpkg_root"
+          fi
+          git -C "$vcpkg_root" fetch origin
+          git -C "$vcpkg_root" checkout "$VCPKG_COMMIT"
+          if [ ! -x "$vcpkg_root/vcpkg" ]; then
+            "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+
+      - name: Configure compile database
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake \
+            --preset linux-clang \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_MAKE_PROGRAM="$(command -v ninja)" \
+            -DSLOPPY_ENABLE_WERROR=OFF \
+            -DSLOPPY_ENABLE_V8=OFF \
+            -DSLOPPY_ENGINE=none \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Save vcpkg cache after configure
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: advanced-analysis-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Run clang-tidy analyzer profile
+        shell: bash
+        run: cmake --build --preset linux-clang --target sloppy_memory_analysis
 
   ci-full:
     name: ci-full

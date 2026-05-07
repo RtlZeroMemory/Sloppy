@@ -1,10 +1,12 @@
 param(
-    [switch]$StrictAlloc
+    [switch]$StrictAlloc,
+    [switch]$SelfTest,
+    [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 )
 
 $ErrorActionPreference = "Stop"
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+$Root = (Resolve-Path -LiteralPath $Root).Path
 
 $sourceExtensions = @(".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx")
 $excludedPrefixes = @(
@@ -57,12 +59,21 @@ function Test-SourcePath {
     param([string]$RelativePath)
 
     if (-not ($RelativePath.StartsWith("include/", [System.StringComparison]::OrdinalIgnoreCase) -or
-            $RelativePath.StartsWith("src/", [System.StringComparison]::OrdinalIgnoreCase))) {
+            $RelativePath.StartsWith("src/", [System.StringComparison]::OrdinalIgnoreCase) -or
+            $RelativePath.StartsWith("tests/", [System.StringComparison]::OrdinalIgnoreCase) -or
+            $RelativePath.StartsWith("benchmarks/", [System.StringComparison]::OrdinalIgnoreCase))) {
         return $false
     }
 
     $extension = [System.IO.Path]::GetExtension($RelativePath)
     return $extension -in $sourceExtensions
+}
+
+function Test-ImplementationPath {
+    param([string]$RelativePath)
+
+    return $RelativePath.StartsWith("include/", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $RelativePath.StartsWith("src/", [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 function Test-PlatformPath {
@@ -117,7 +128,7 @@ function Get-TrackedSourceFiles {
 
     Push-Location $Root
     try {
-        $tracked = & $git.Source ls-files -- include src
+        $tracked = & $git.Source -C $Root ls-files -- include src tests benchmarks 2>$null
         if ($LASTEXITCODE -ne 0) {
             return @()
         }
@@ -135,7 +146,9 @@ function Get-TrackedSourceFiles {
 function Get-RecursiveSourceFiles {
     $paths = @(
         (Join-Path $Root "include"),
-        (Join-Path $Root "src")
+        (Join-Path $Root "src"),
+        (Join-Path $Root "tests"),
+        (Join-Path $Root "benchmarks")
     )
 
     return @(Get-ChildItem -Path $paths -Recurse -File -ErrorAction SilentlyContinue |
@@ -156,10 +169,12 @@ $violations = @()
 $warnings = @()
 
 $includePattern = '^\s*#\s*include\s*[<"]([^>"]+)[>"]'
-$unsafeFunctionPattern = '\b(gets|strcpy|strcat|sprintf|vsprintf)\s*\('
+$unsafeFunctionPattern = '\b(gets|strcpy|strncpy|strcat|sprintf|vsprintf|strdup)\s*\('
 $cstringTerminatorPattern = '\bsl_str_copy_to_arena_nul\s*\('
-$memoryPrimitivePattern = '\b(snprintf|strlen|memcpy|memmove)\s*\('
+$memoryPrimitivePattern = '\b(snprintf|strlen|memcpy|memmove|memcmp|memset)\s*\('
 $allocPattern = '\b(malloc|free|realloc|calloc)\s*\('
+$analysisSuppressionPattern = '\bNOLINT(?:NEXTLINE|BEGIN|END)?\b'
+$validAnalysisSuppressionPattern = 'sloppy-analysis-suppress:\s*#\d+\s+.+;\s*remove when .+$'
 
 function Test-AllowedMemoryPrimitiveBoundary {
     param(
@@ -168,7 +183,7 @@ function Test-AllowedMemoryPrimitiveBoundary {
         [string]$Line
     )
 
-    if ($Line -match 'sloppy-allow:\s*c-memory-boundary\s+.+$') {
+    if ($Line -match 'sloppy-allow:\s*c-memory-boundary\s+#\d+\s+.+;\s*remove when .+$') {
         return $true
     }
 
@@ -176,19 +191,8 @@ function Test-AllowedMemoryPrimitiveBoundary {
         return $true
     }
 
-    if ($RelativePath -eq "src/main.c" -and $FunctionName -eq "strlen") {
-        return $true
-    }
-
-    if ($RelativePath -eq "src/data/postgres.c" -and $FunctionName -eq "snprintf") {
-        return $true
-    }
-
-    if ($RelativePath -eq "src/data/sqlserver.c" -and $FunctionName -eq "memcpy") {
-        return $true
-    }
-
-    if ($RelativePath -eq "src/engine/v8/intrinsics_sqlite.cc" -and $FunctionName -eq "memcpy") {
+    if (($RelativePath -eq "src/core/string.c" -or $RelativePath -eq "src/core/bytes.c") -and
+        $FunctionName -eq "memcmp") {
         return $true
     }
 
@@ -204,11 +208,13 @@ function Test-AllowedCStringTerminatorBoundary {
 foreach ($file in $files) {
     $relativePath = Convert-ToRepoPath $file
     $lineNumber = 0
+    $previousLine = ""
 
     foreach ($line in Get-Content -LiteralPath $file) {
         $lineNumber += 1
+        $allowanceContext = "$previousLine $line"
 
-        if ($line -match $includePattern) {
+        if ((Test-ImplementationPath $relativePath) -and $line -match $includePattern) {
             $header = $Matches[1]
             if (($header -in $forbiddenOsHeaders) -and -not (Test-PlatformPath $relativePath)) {
                 $violations += New-Finding `
@@ -231,7 +237,8 @@ foreach ($file in $files) {
             }
         }
 
-        if (($line -match 'v8::') -and -not (Test-V8Path $relativePath)) {
+        if ((Test-ImplementationPath $relativePath) -and
+            ($line -match 'v8::') -and -not (Test-V8Path $relativePath)) {
             $violations += New-Finding `
                 -File $relativePath `
                 -Line $lineNumber `
@@ -251,7 +258,19 @@ foreach ($file in $files) {
                     -Severity "error"
         }
 
-        if (($line -match $cstringTerminatorPattern) -and
+        if ($line -match $analysisSuppressionPattern -and
+            $allowanceContext -notmatch $validAnalysisSuppressionPattern) {
+            $violations += New-Finding `
+                -File $relativePath `
+                -Line $lineNumber `
+                -Pattern "NOLINT" `
+                -Rule "Static-analysis suppressions need an issue, reason, and removal condition." `
+                -Fix "Use `sloppy-analysis-suppress: #issue reason; remove when condition` on the suppression line." `
+                -Severity "error"
+        }
+
+        if ((Test-ImplementationPath $relativePath) -and
+            ($line -match $cstringTerminatorPattern) -and
             -not (Test-AllowedCStringTerminatorBoundary -RelativePath $relativePath))
         {
             $violations += New-Finding `
@@ -263,9 +282,9 @@ foreach ($file in $files) {
                 -Severity "error"
         }
 
-        if ($line -match $memoryPrimitivePattern) {
+        if ((Test-ImplementationPath $relativePath) -and $line -match $memoryPrimitivePattern) {
             $functionName = $Matches[1]
-            if (-not (Test-AllowedMemoryPrimitiveBoundary -RelativePath $relativePath -FunctionName $functionName -Line $line)) {
+            if (-not (Test-AllowedMemoryPrimitiveBoundary -RelativePath $relativePath -FunctionName $functionName -Line $allowanceContext)) {
                 $violations += New-Finding `
                     -File $relativePath `
                     -Line $lineNumber `
@@ -276,7 +295,8 @@ foreach ($file in $files) {
             }
         }
 
-        if (($line -match $allocPattern) -and -not (Test-AllowedAllocPath $relativePath)) {
+        if ((Test-ImplementationPath $relativePath) -and
+            ($line -match $allocPattern) -and -not (Test-AllowedAllocPath $relativePath)) {
             $finding = New-Finding `
                 -File $relativePath `
                 -Line $lineNumber `
@@ -288,9 +308,66 @@ foreach ($file in $files) {
             if ($StrictAlloc) {
                 $finding.Severity = "error"
                 $violations += $finding
-            } else {
-                $warnings += $finding
             }
+        }
+
+        $previousLine = $line
+    }
+}
+
+if ($SelfTest) {
+    $powerShell = (Get-Command pwsh, powershell -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    if ($null -eq $powerShell) {
+        throw "PowerShell was not found for C standards scanner self-test."
+    }
+
+    $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("sloppy-c-standards-" + [System.Guid]::NewGuid().ToString("N"))
+    $validRoot = Join-Path $tempRoot "valid"
+    $invalidRoot = Join-Path $tempRoot "invalid"
+    try {
+        New-Item -ItemType Directory -Force -Path (Join-Path $validRoot "src/core") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $validRoot "tests/unit/core") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "src/core") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "tests/unit/core") | Out-Null
+
+        Set-Content -LiteralPath (Join-Path $validRoot "src/core/string.c") -Value @'
+#include <string.h>
+size_t ok_strlen(const char* text) { return strlen(text); }
+int ok_memcmp(const char* a, const char* b, size_t n) { return memcmp(a, b, n); }
+void ok_boundary(char* dst, const char* src, size_t n) { memcpy(dst, src, n); } /* sloppy-allow: c-memory-boundary #760 fixture boundary copy; remove when fixture is replaced */
+'@
+        Set-Content -LiteralPath (Join-Path $validRoot "tests/unit/core/test_ok.c") -Value @'
+/* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): sloppy-analysis-suppress: #805 fixture suppression; remove when fixture is replaced */
+int ok_suppression(void) { return 0; }
+'@
+
+        Set-Content -LiteralPath (Join-Path $invalidRoot "src/core/bad.c") -Value @'
+#include <string.h>
+void bad_copy(char* dst, const char* src) { strcpy(dst, src); }
+void bad_memset(char* dst) { memset(dst, 0, 8); }
+/* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
+int bad_suppression(void) { return 0; }
+'@
+        Set-Content -LiteralPath (Join-Path $invalidRoot "tests/unit/core/test_bad.c") -Value @'
+#include <string.h>
+void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
+'@
+
+        & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $validRoot -StrictAlloc | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            throw "C standards scanner self-test valid fixture failed."
+        }
+
+        & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $invalidRoot -StrictAlloc *> $null
+        if ($LASTEXITCODE -eq 0) {
+            throw "C standards scanner self-test invalid fixture unexpectedly passed."
+        }
+
+        Write-Host "C standards scanner self-test passed."
+        exit 0
+    } finally {
+        if (Test-Path -LiteralPath $tempRoot) {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force
         }
     }
 }

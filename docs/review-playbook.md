@@ -20,7 +20,8 @@ Checks CMake, scripts, CI, test integration, Windows-first/cross-platform assump
 generated artifact hygiene.
 
 Reject required jobs that are made green by silently skipping their purpose. Optional V8,
-package, live-provider, fuzz/property, stress/torture, sanitizer, and benchmark lanes must
+package, live-provider, advanced static analysis, fuzz/property, stress/torture, sanitizer,
+and benchmark lanes must
 be reported separately from default evidence.
 
 ## Simplicity / Overengineering Reviewer

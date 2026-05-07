@@ -11,7 +11,7 @@ Use this for PR or patch review.
 6. Verify tests map to documented intended behavior.
 7. Flag tests that only mirror current implementation, update goldens without intent, or
    cover only happy paths.
-8. Reject optional V8/package/live-provider/fuzz/stress/sanitizer/benchmark lanes reported
+8. Reject optional V8/package/live-provider/advanced-static/fuzz/stress/sanitizer/benchmark lanes reported
    as default pass evidence.
 9. Reject benchmark smoke used as correctness or performance evidence.
 10. Reject unsupported public alpha, production, performance, package-readiness,

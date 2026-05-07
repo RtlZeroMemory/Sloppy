@@ -1278,9 +1278,11 @@ static SlStatus sl_sqlsrv_append_chunk(SlArena* arena, SlStr current, SlStr chun
     }
     dst = (char*)ptr;
     if (current.length > 0U) {
+        /* sloppy-allow: c-memory-boundary #760 text copy; remove when helper lands */
         memcpy(dst, current.ptr, current.length);
     }
     if (chunk.length > 0U) {
+        /* sloppy-allow: c-memory-boundary #760 text copy; remove when helper lands */
         memcpy(dst + current.length, chunk.ptr, chunk.length);
     }
     *out = sl_str_from_parts(dst, length);

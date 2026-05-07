@@ -23,8 +23,8 @@ Every evidence report must name each applicable lane and status: `PASS`,
 
 Use these PR lane names when reporting evidence: default non-V8, compiler/Plan, V8-gated,
 source-input, package outside-checkout, platform-specific, dependency-backed,
-live-network/live-provider, fuzz/property, stress/torture, sanitizer/memory-safety, and
-benchmark.
+live-network/live-provider, advanced static analysis, fuzz/property, stress/torture,
+sanitizer/memory-safety, and benchmark.
 
 | Lane | What it proves |
 | --- | --- |
@@ -36,6 +36,7 @@ benchmark.
 | Platform-specific | Windows, Linux, macOS, or SDK-specific behavior. |
 | Dependency-backed | Behavior requiring a local SDK, tool, driver, or service dependency. |
 | Live-network/live-provider | Dependency-backed provider behavior against a real service. |
+| Advanced static analysis | Clang-tidy, Clang Static Analyzer, custom AST/query checks, or similar static tooling. |
 | Fuzz/property | Deterministic seed replay or mutation evidence for parser/protocol contracts. |
 | Stress/torture | Long-running, high-volume, race, cancellation, or shutdown pressure. |
 | Sanitizer/memory-safety | Address, undefined-behavior, thread, or memory-safety sanitizer evidence. |
@@ -80,6 +81,10 @@ Default-safe fuzz/property seed replay may run in the default lane when it is
 deterministic and bounded. libFuzzer mutation, sanitizers, long fuzzing,
 stress/torture, live-provider checks, package checks, V8 checks, and benchmarks
 remain opt-in unless a scoped task promotes a bounded target.
+
+Advanced static analysis is separate from default script lint. A clean clang-tidy/analyzer
+run is useful evidence for memory-sensitive PRs, but skipped or unavailable advanced
+analysis must not be described as default pass evidence.
 
 Benchmark evidence must include the command, build configuration,
 hardware/context, workload, and output. It must not be used to imply production

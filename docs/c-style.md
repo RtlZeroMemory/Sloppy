@@ -168,10 +168,14 @@ Prefer capability and platform abstraction APIs over platform macros in core mod
 ## Static Analysis Rules
 
 `.clang-tidy` is part of the project contract. It starts with analyzer, bugprone,
-performance, portability, and selected readability checks.
+portability, and high-signal bug checks. The enforceable advanced-analysis baseline is the
+memory/core `sloppy_memory_analysis` target; the broader full-repo target remains
+exploratory until its findings are triaged. Generic style-noise checks stay out of the
+first baseline unless a scoped task proves they catch a Slop invariant.
 
 New warnings should be fixed or explicitly documented. CI treats warnings as failures for
-configured gates.
+configured gates. `NOLINT` suppressions require `sloppy-analysis-suppress: #issue reason;
+remove when condition`.
 
 ## Public API Shape
 
@@ -201,6 +205,7 @@ Every new C module needs:
 
 - `clang-format`;
 - `clang-tidy`;
+- clang-tidy/Clang Static Analyzer evidence for memory-sensitive changes when practical;
 - CMake build;
 - CTest;
 - warnings-as-errors in CI;

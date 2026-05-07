@@ -9,8 +9,8 @@ Status: pre-alpha quality snapshot.
 - Red: not ready for public alpha use.
 
 Default gates prove the non-V8 path unless a V8-enabled lane is explicitly run. Optional
-V8, package, live-provider, stress, torture, sanitizer, and benchmark evidence must be
-reported separately.
+V8, package, live-provider, advanced static analysis, stress, torture, sanitizer, and
+benchmark evidence must be reported separately.
 
 | Area | Status | Current Evidence | Remaining Gap |
 | --- | --- | --- | --- |

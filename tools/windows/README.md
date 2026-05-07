@@ -17,6 +17,19 @@ needed:
 
 The root `tools/*.ps1` files forward here for compatibility.
 
+For memory-sensitive changes, `lint` remains the fast default gate and `analyze` is the
+controlled memory/core clang-tidy/Clang Static Analyzer lane:
+
+```powershell
+.\tools\windows\dev.ps1 configure
+.\tools\windows\dev.ps1 analyze
+```
+
+`analyze` requires `compile_commands.json` from configure and a local `clang-tidy`. It
+builds the `sloppy_memory_analysis` target; the broader `sloppy_clang_tidy` target is
+exploratory until the full-repo analyzer baseline is quiet. Report it as the `advanced
+static analysis` lane, separate from default non-V8 evidence.
+
 ## V8 SDK Discovery
 
 V8 is optional for the default developer loop. When a V8-enabled build is needed, use the

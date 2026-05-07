@@ -15,6 +15,7 @@ static int expect_str(SlStr actual, SlStr expected)
 static SlExecutionDomain unsupported_domain_for_test(void)
 {
     /* Intentionally exercises lookup behavior for future/invalid enum values. */
+    /* sloppy-analysis-suppress: #805 invalid enum test; remove when helper lands */
     /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange) */
     return (SlExecutionDomain)999;
 }
