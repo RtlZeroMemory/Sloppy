@@ -1,7 +1,7 @@
 # Results
 
-Status: Bootstrap result helper set implemented; dev-only run consumes supported
-`Results.*` descriptors through the EPIC-23 native response writer.
+Status: bootstrap result helper set implemented; bounded run consumes supported
+`Results.*` descriptors through the native response writer.
 
 Bootstrap status: `stdlib/sloppy/results.js` exports a frozen `Results` object with
 `Results.ok(...)`, `Results.created(...)`, `Results.accepted(...)`,
@@ -12,7 +12,7 @@ Bootstrap status: `stdlib/sloppy/results.js` exports a frozen `Results` object w
 Purpose: document current result descriptor helpers and the future path where handler
 return values become native response descriptors.
 
-ENGINE-01 target contract:
+Current target contract:
 
 - core helpers are `text`, `json`, `ok`, `created`, `accepted`, `noContent`, `notFound`,
   `badRequest`, `problem`, and `status`;
@@ -33,7 +33,7 @@ app.mapGet("/health", () => Results.json({ status: "ok" }, { status: 200 }));
 descriptor shape. `examples/ergonomics/app.js` demonstrates `Results.ok`,
 `Results.accepted`, and `Results.noContent`.
 
-`sloppy run --artifacts` executes EPIC-21/24 compiler output in V8-enabled builds. The
+`sloppy run --artifacts` executes compiler output in V8-enabled builds. The
 runtime loads `stdlib/sloppy/internal/runtime-classic.js` from the staged bootstrap stdlib
 root before evaluating generated `app.js`; generated code reads `Results` from
 `globalThis.__sloppy_runtime` instead of embedding a compiler-owned shim. The V8 bridge
@@ -96,7 +96,7 @@ Both helpers accept `options.status`; status must be an integer from 100 to 999 
 defaults to each helper's documented default. `Results.text` and `Results.html` store
 `String(body)`. `Results.json` and JSON-shaped status helpers preserve the provided
 JavaScript value as `body`; the descriptor is frozen, but object values are not deep-frozen.
-In the dev-only EPIC-23 V8 response conversion path, omitted or `undefined` JSON-shaped
+In the current V8 response conversion path, omitted or `undefined` JSON-shaped
 descriptor bodies serialize deterministically as JSON `null`.
 `options.headers` may be a plain object and is shallow-copied/frozen as descriptor metadata.
 There is no header normalization class.
@@ -117,7 +117,7 @@ Implemented in the dev run path now:
 - invalid result descriptors fail safely with `SLOPPY_E_INVALID_HTTP_RESULT` and a safe dev
   `500` response.
 
-MAIN1-13 conformance verifies `Results.text` through the executable hello example,
+Conformance coverage verifies `Results.text` through the executable hello example,
 `Results.json` through the executable request-context example, and an invalid descriptor
 through a V8-gated checked-in artifact fixture that must return a safe dev `500`.
 

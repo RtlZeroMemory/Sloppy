@@ -48,8 +48,8 @@ typedef struct SlCompletion
  *
  * Threading and engine boundary:
  * - this skeleton is single-threaded and not thread-safe;
- * - posting from other threads is not supported yet;
- * - owner-thread enforcement is not implemented yet;
+ * - cross-thread posting is outside the current loop contract;
+ * - owner-thread enforcement remains an engine boundary responsibility;
  * - V8 isolates must only be entered by their owning JS event-loop thread;
  * - native worker threads must post future completions back instead of entering V8.
  */

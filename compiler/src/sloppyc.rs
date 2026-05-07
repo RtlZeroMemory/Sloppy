@@ -26,7 +26,7 @@ use crate::validation::{
     plan_completeness, route_completeness, Completeness, RouteCompletenessInput,
 };
 
-const COMPILER_VERSION: &str = "sloppyc-0.8.0-engine-02";
+const COMPILER_VERSION: &str = "sloppyc-0.8.0";
 const RUNTIME_MINIMUM_VERSION: &str = "0.1.0";
 const STDLIB_VERSION: &str = "0.1.0";
 
@@ -2473,7 +2473,7 @@ fn extract_expression_statement(
             .with_path(path)
             .with_span(statement.span)
             .with_hint(format!(
-                "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable in this compiler slice."
+                "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract."
             )));
         }
         let helper_sources = state.helper_sources.values().cloned().collect::<Vec<_>>();
@@ -2871,7 +2871,9 @@ fn database_capability_call(
         )
         .with_path(path)
         .with_span(options.span)
-        .with_hint("Use a first-party database provider value or a future provider plugin task."));
+        .with_hint(
+            "Use one of the first-party database provider values supported by Plan metadata.",
+        ));
     }
 
     let access = optional_object_string_property(path, options, "access")?
@@ -3715,7 +3717,9 @@ fn extract_relative_module(
         )
         .with_path(&imported.path)
         .with_span(imported.span)
-        .with_hint("Keep function modules acyclic for the framework MVP."));
+        .with_hint(
+            "Keep function modules acyclic for the current function-module compiler contract.",
+        ));
     }
     if let Some(module) = graph.modules.get(&imported.path) {
         return cached_module_routes(module, imported);
@@ -4052,7 +4056,7 @@ fn extract_module_function_routes(
                         .with_path(path)
                         .with_span(statement.span)
                         .with_hint(format!(
-                            "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable in this compiler slice."
+                            "Provider handle '{name}' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract."
                         )));
                     }
                     handler.source = wrap_module_handler_with_providers(
@@ -4608,7 +4612,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             if handler_parameters_are_unsupported(&function.params) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                    "route handlers compiled by this MVP may declare zero parameters or one simple context parameter",
+                    "compiled route handlers may declare zero parameters or one simple context parameter",
                     Some("The current runtime passes one plain request context object."),
                 )
             } else if arrow_has_typescript_syntax(function) {
@@ -4627,7 +4631,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
                 (
                     "SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY",
                     "async handler extraction currently supports one direct Results.* return",
-                    Some("Keep async compiler fixtures to direct Results.* returns until ENGINE-03 owns Promise settlement."),
+                    Some("Keep async handlers to direct Results.* returns for the current Promise settlement contract."),
                 )
             } else {
                 (
@@ -4641,7 +4645,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
             if handler_parameters_are_unsupported(&function.params) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
-                    "route handlers compiled by this MVP may declare zero parameters or one simple context parameter",
+                    "compiled route handlers may declare zero parameters or one simple context parameter",
                     Some("The current runtime passes one plain request context object."),
                 )
             } else if function_has_typescript_syntax(function) {
@@ -4660,7 +4664,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
                 (
                     "SLOPPYC_E_UNSUPPORTED_ASYNC_HANDLER_BODY",
                     "async handler extraction currently supports one direct Results.* return",
-                    Some("Keep async compiler fixtures to direct Results.* returns until ENGINE-03 owns Promise settlement."),
+                    Some("Keep async handlers to direct Results.* returns for the current Promise settlement contract."),
                 )
             } else {
                 (
@@ -8991,7 +8995,7 @@ export default app;
     }
 
     #[test]
-    fn extracts_engine_02_metadata_without_runtime_claims() {
+    fn extracts_route_metadata_without_runtime_claims() {
         let source = r#"import { Sloppy, Results, data } from "sloppy";
 const builder = Sloppy.createBuilder();
 builder.capabilities.addDatabase("users.db", { provider: "sqlite", access: "read" });

@@ -1,6 +1,6 @@
 # Core Network Time Codec Example
 
-Status: CORE-INTEGRATION-01 conformance source example. This example uses LocalEndpoint
+Status: conformance source example. This example uses LocalEndpoint
 operation options, a shared Deadline, and Codec UTF-8 helpers for byte ownership at the
 network boundary.
 

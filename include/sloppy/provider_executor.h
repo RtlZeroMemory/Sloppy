@@ -89,8 +89,8 @@ typedef struct SlProviderExecutorConfig
  *
  * sl_provider_executor_submit() copies the textual metadata and input bytes into the
  * caller-provided arena before the operation can outlive the caller stack. `cancellation`,
- * `deadline`, and pointer metadata are borrowed placeholders and must outlive the
- * operation unless their owning scope is retained through `scope`. Completion dispatch
+ * `deadline`, and pointer metadata are borrowed fields and must outlive the operation
+ * unless their owning scope is retained through `scope`. Completion dispatch
  * runs only when the owning SlAsyncLoop drains the terminal completion. Cleanup runs
  * exactly once after terminal dispatch or explicit discard.
  *

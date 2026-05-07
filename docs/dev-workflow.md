@@ -11,7 +11,7 @@ This covers:
 
 - local commands;
 - bounded-context PR model;
-- AI/Codex workflow;
+- agent workflow;
 - review modes;
 - blocking versus non-blocking findings;
 - follow-up issue rules;
@@ -54,19 +54,16 @@ Examples:
 - good: "EPIC 04: diagnostic formatter and first snapshots";
 - bad: "core primitives, diagnostics, router, and compiler cleanup".
 
-## AI/Codex Workflow
+## Agent Workflow
 
-AI assistance is expected, but human engineering judgment is required.
+Agent assistance is part of the repository workflow, but the contract is outcome-based:
+read the source docs, keep the context bounded, implement only the scoped behavior, report
+evidence honestly, and promote repeated review feedback into docs/checks/tools.
 
-Recommended loop:
-
-1. Architect prompt: turn roadmap task into exact files, constraints, tests, and acceptance.
-2. Dev prompt: implement only that bounded slice.
-3. Independent reviewer prompt: review for spec compliance, C safety, tests, and regressions.
-4. Fixer prompt: address only actionable findings.
-5. Final verification prompt: run gates, summarize residual risks, and prepare review notes.
-
-The reviewer prompt should cite the relevant docs and ADRs.
+Use targeted independent reviewers or subagents for high-risk slices such as C safety, V8
+boundaries, concurrency, providers, permissions/security, diagnostics redaction, packaging,
+release evidence, and repository-wide documentation cleanup. Trivial changes do not need a
+specialist sweep.
 
 ## Review Modes
 
@@ -133,10 +130,9 @@ Do not use follow-ups to defer required tests, safety fixes, or architecture dec
 
 ## Keeping Speed Without Lowering Quality
 
-Speed comes from small PRs, clear acceptance criteria, reusable prompts, and automated
-gates. It does not come from merging vague code and promising to clean it up later.
-
-MVP means narrow, not bad.
+Speed comes from bounded coherent PRs, clear acceptance criteria, reusable prompts, and
+automated gates. It does not come from merging vague code and promising to clean it up
+later, and it does not require splitting one coherent bounded context into many tiny PRs.
 
 ## Source And Review Archive Hygiene
 
@@ -158,7 +154,8 @@ Prefer a tracked-file-only archive process after commits exist.
 
 Developer workflow is healthy when:
 
-- each PR maps to a roadmap EPIC/task;
+- each implementation PR maps to a current issue/task or explicitly states why it is
+  trivial docs-only cleanup;
 - gates are run and reported honestly;
 - review comments distinguish blocking from non-blocking;
 - follow-ups have clear scope;

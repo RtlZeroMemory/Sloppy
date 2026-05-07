@@ -1,6 +1,6 @@
 # PostgreSQL Basic Example
 
-This is a static API-shape example for the EPIC-17 PostgreSQL provider.
+This is a static API-shape example for the PostgreSQL provider.
 
 It shows the intended module/capability/service registration shape, PostgreSQL `$1`
 query-template lowering, a simple bounded pool option, and transaction usage.

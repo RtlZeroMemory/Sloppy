@@ -1,6 +1,6 @@
 # Rust Compiler Skill
 
-Use this for `compiler/`, future `sloppyc`, Rust fixtures, and Rust-owned tooling.
+Use this for `compiler/`, `sloppyc`, Rust fixtures, and Rust-owned tooling.
 
 1. Read `docs/rust-standards.md`.
 2. Keep compiler output deterministic and path-normalized.
@@ -17,3 +17,6 @@ Use this for `compiler/`, future `sloppyc`, Rust fixtures, and Rust-owned toolin
 10. Run `cargo clippy --manifest-path compiler/Cargo.toml -- -D warnings`.
 11. Run `cargo test --manifest-path compiler/Cargo.toml`.
 12. Run `.\tools\windows\check-rust-standards.ps1`.
+13. Keep compiler docs and public examples clear about the supported source subset; do not
+    imply full TypeScript, package resolution, Node compatibility, or public alpha
+    readiness.

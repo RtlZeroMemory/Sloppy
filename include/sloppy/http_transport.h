@@ -95,7 +95,7 @@ typedef struct SlHttpTransportConfig
     uint64_t keep_alive_idle_timeout_ms;
     size_t max_requests_per_connection;
     bool keep_alive_disabled;
-    /* Caller/arena-backed table size for accepted connection placeholders. */
+    /* Caller/arena-backed table size for accepted connection slots. */
     size_t connection_capacity;
     int backlog;
     SlHttpTransportRequestReadyFn on_request_ready;

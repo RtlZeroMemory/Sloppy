@@ -49,7 +49,7 @@ bridge expansion, benchmark marketing, or public alpha documentation.
   lifetime/allocation/string/builder/interoperability primitives, including bounded
   string interning/symbol-table policy for stable route, Plan, module, capability, and
   provider metadata. ENGINE-22 adopts them in hot paths. The audit and strategy docs are
-  `docs/project/post-core-mvp-memory-string-audit.md` and
+  `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md` and
   `docs/project/archive/post-core-mvp/memory-string-foundation-architecture.md`.
 
 ## Shared Acceptance Gates

@@ -15,7 +15,8 @@
  * - one owner thread creates and enters each isolate/context; wrong-thread entry fails
  *   before touching V8 state;
  * - V8's required process-wide platform state is initialized once, kept for process
- *   lifetime, and private to this module until an explicit runtime shutdown task exists.
+ *   lifetime, and private to this module because runtime shutdown semantics are not yet
+ *   defined.
  *
  * Tests: tests/unit/engine/test_v8_smoke.c when SLOPPY_ENABLE_V8 is enabled.
  */
@@ -1609,9 +1610,10 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
         return sl_v8_write_exception_diag(
             engine, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE, isolate, context,
             try_catch, sl_str_empty(), "JavaScript function lookup failed",
-            sl_v8_literal("EPIC-23 dispatch maps plan handler IDs to generated globals.",
-                          sizeof("EPIC-23 dispatch maps plan handler IDs to generated globals.") -
-                              1U));
+            sl_v8_literal(
+                "Generated app artifacts must register handler globals before dispatch.",
+                sizeof("Generated app artifacts must register handler globals before dispatch.") -
+                    1U));
     }
 
     if (value->IsUndefined()) {

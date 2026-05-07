@@ -2,7 +2,7 @@
 
 Status: Bootstrap developer ergonomics API-shape example.
 
-This example shows the current EPIC-13 bootstrap surface: route groups, result helpers,
+This example shows the current bootstrap surface: route groups, result helpers,
 schema metadata, config, logging, and services. It uses the source stdlib path because the
 future bare `"sloppy"` import is not wired into compiler/runtime module resolution yet.
 
@@ -19,14 +19,14 @@ What works today:
 - `schema.object(...)` and `schema.string().min(...)` create inspectable validation
   metadata and standalone validators.
 - CTest statically verifies this example imports the current stdlib path and uses the
-  expected EPIC-13 API shape.
+  expected API shape.
 
 What does not work yet:
 
 - this source-stdlib example is not a `sloppy run --artifacts` app.
 - `sloppyc` does not compile this example or extract route groups/schemas from it.
 - This example does not emit `app.plan.json`.
-- The current `sloppy run` MVP does not load this source-stdlib example, materialize a
+- The current bounded `sloppy run` path does not load this source-stdlib example, materialize a
   request context, or parse request bodies/query values for it.
 - Route params are not passed by the native HTTP runtime into JavaScript handler context
   yet; this example uses `route.id ?? "demo"` to stay honest in bootstrap mode.

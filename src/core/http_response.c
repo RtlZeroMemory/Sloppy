@@ -1,10 +1,10 @@
 /*
  * src/core/http_response.c
  *
- * Implements EPIC-23's small native response descriptor writer for dev HTTP responses.
- * It writes deterministic HTTP/1.1 status, managed Connection policy, Content-Type when present,
- * bounded custom headers, Content-Length, and body bytes. It is not a streaming writer,
- * cookie layer, compression layer, or production response pipeline.
+ * Implements the bounded native response descriptor writer for development HTTP responses.
+ * It writes deterministic HTTP/1.1 status, managed Connection policy, Content-Type when
+ * present, bounded custom headers, Content-Length, and body bytes. It is not a streaming
+ * writer, cookie layer, compression layer, or production response pipeline.
  *
  * Safety invariants:
  * - output is bounded by the caller-provided buffer;

@@ -1,6 +1,6 @@
 # Codec Checksums Example
 
-Status: CORE-CODEC-01.J source example. This example documents CRC32 as a non-security
+Status: source example. This example documents CRC32 as a non-security
 checksum helper for accidental-corruption checks and cache metadata.
 
 ```js

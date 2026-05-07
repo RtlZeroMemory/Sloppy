@@ -402,6 +402,15 @@ function Invoke-CoreApiIntegrationCheck {
 
 function Invoke-TestGovernanceCheck {
     $script = Join-Path $PSScriptRoot "check-test-governance.ps1"
+    & $script -SelfTest
+    if (-not $?) {
+        throw "test governance self-test failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "test governance self-test failed with exit code $LASTEXITCODE"
+    }
+
     & $script
     if (-not $?) {
         throw "test governance check failed"

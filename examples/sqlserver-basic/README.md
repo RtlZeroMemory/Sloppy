@@ -1,6 +1,6 @@
 # SQL Server Basic Example
 
-This is a static API-shape example for the EPIC-18 SQL Server provider.
+This is a static API-shape example for the SQL Server provider.
 
 It shows the intended module/capability/service registration shape, ODBC `?`
 query-template lowering, a simple bounded pool option, transaction usage, and the

@@ -124,6 +124,9 @@ jobs:
           .\tools\windows\check-js-ts-standards.ps1
           .\tools\windows\check-rust-standards.ps1
           .\tools\windows\check-docs-freshness.ps1
+          .\tools\windows\check-core-api-integration.ps1 -SelfTest
+          .\tools\windows\check-core-api-integration.ps1
+          .\tools\windows\check-test-governance.ps1 -SelfTest
           .\tools\windows\check-test-governance.ps1
 
   rust:

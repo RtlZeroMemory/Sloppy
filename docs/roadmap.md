@@ -1,193 +1,75 @@
 # Roadmap
 
-Status: 2026-05-05 post-ENGINE-16 source-of-truth reset plus Engine Roadmap-2
-planning. This is an audit and planning document, not a release promise.
+This roadmap is the current repository-level planning summary. GitHub issues
+own live task state; this document explains the product-mode direction and the
+evidence boundaries that must hold before public alpha.
 
 ## Current Reality
 
-Core MVP / Slop Engine proof has landed for the scoped development path:
+| Area | Current reality |
+| --- | --- |
+| Core runtime | C primitives, diagnostics, memory ownership, platform boundaries, plan validation, and app-host startup are established foundations. |
+| Compiler/artifacts | `sloppyc` can emit artifacts for the supported source subset and the runtime can execute artifact bundles. Full TypeScript semantics are not claimed. |
+| V8 | V8 is isolated behind `src/engine/v8/*` and remains an explicit optional lane. Default evidence does not prove V8 behavior. |
+| HTTP | Bounded HTTP/1.1 runtime behavior exists for development evidence. Production HTTP, TLS, public streaming APIs, middleware, WebSockets, and HTTP/2 or HTTP/3 are not claimed. |
+| Providers | SQLite has scoped native/runtime support. PostgreSQL and SQL Server remain provider-boundary and metadata work without complete JS runtime bridges. |
+| Capabilities/security | Runtime capability checks are policy enforcement points, not an OS sandbox. |
+| Packaging | Package smoke proves source/package layout mechanics only. It is not release readiness. |
+| Public docs | Public docs remain pre-alpha skeletons until the alpha gate explicitly promotes them. |
 
-- `sloppyc build` emits deterministic Plan, bundle, and source-map artifacts for the
-  supported source subset.
-- `sloppy run --artifacts` executes selected V8-gated artifacts.
-- CORE-FS-02 separates trusted runtime artifact/config/stdlib file loading from the
-  app-facing `sloppy/fs` feature and capability policy.
-- V8 runtime execution covers registered handlers, bounded direct Promise/microtask
-  settlement, request context, result conversion, and SQLite bridge calls.
-- HTTP backend semantics and libuv localhost transport exist for bounded sequential
-  HTTP/1.1 keep-alive over localhost, including idle timeout, max requests, lifecycle
-  reset, bounded chunked request decoding, and an internal chunked response writer.
-  Pipelining, public streaming APIs, SSE/WebSockets/file streaming, and production-edge
-  HTTP remain out of scope.
-- SQLite users API proof runs through compiler -> artifacts -> localhost TCP -> V8 handler
-  -> capability-gated SQLite bridge -> JSON response.
-- Provider executor/offload infrastructure exists, but the current SQLite bridge is not
-  yet routed through it.
-- ENGINE-19 evidence lanes and package outside-checkout smoke exist; default, V8-gated,
-  package, live-provider, stress, and benchmark evidence must remain separate.
-- ENGINE-15 completes the current source-map/diagnostic renderer wave, and ENGINE-16
-  completes the current native app/request/resource lifecycle wave. Roadmap-2 now focuses
-  on execution model hardening, runtime feature modularity, provider executor adoption,
-  route-level HTTP policy/observability, runtime events/metrics, and later torture tests.
+## Current Phase
 
-The compact source records for this reset are:
+The repository is in the pre-alpha product-mode transition. The work in this
+phase cleans up documentation, source comments, skills, contributor guidance,
+and stale planning records so current docs describe the runtime as it exists
+instead of preserving construction history as active guidance.
 
-- `docs/project/post-engine-16-execution-model-audit.md`;
-- `docs/project/post-engine-16-runtime-modularity-audit.md`;
-- `docs/project/post-engine-16-provider-runtime-audit.md`;
-- `docs/project/post-engine-16-http-runtime-audit.md`;
-- `docs/project/post-engine-16-lifecycle-memory-audit.md`;
-- `docs/project/post-engine-16-diagnostics-observability-audit.md`;
-- `docs/project/post-engine-16-docs-issue-reconciliation.md`;
-- `docs/project/engine-roadmap-2.md`;
-- `docs/project/engine-roadmap-2-issue-index.md`;
-- historical post-Core records under `docs/project/post-core-mvp-*.md` and
-  `docs/project/post-core-next-wave-issue-map.md`;
-- `docs/project/framework-app-layer-roadmap.md`;
-- `docs/project/framework-api-shape.md`;
-- `docs/project/source-input-run-dev-loop-plan.md`;
-- `docs/project/strong-plan-strategic-layer-plan.md`;
-- `docs/project/compiler-inference-engine-architecture.md`;
-- `docs/project/compiler-inference-issue-index.md`;
-- `docs/project/http-post-mvp-transport-plan.md`;
-- `docs/project/post-core-immediate-hardening-plan.md`;
-- `docs/project/crypto-api-architecture.md`;
-- `docs/project/crypto-api-issue-index.md`.
+This phase does not release public alpha, implement packaging, implement TLS,
+complete Framework v2, or claim production readiness.
 
-Durable architecture sources remain:
+## Next Major Tracks
 
-- `docs/architecture.md`;
-- `docs/execution-model.md`;
-- `docs/concurrency.md`;
-- `docs/memory.md`;
-- `docs/diagnostics.md`;
-- `docs/data-providers.md`;
-- `docs/security-permissions.md`;
-- `docs/testing-strategy.md`;
-- `docs/quality-gates.md`;
-- `docs/project/engine-framework-contract.md`;
-- `docs/project/slop-engine-final-shape.md`;
-- `docs/project/slop-engine-layered-roadmap.md`;
-- `docs/project/engine-19-conformance-matrix.md`.
-
-## Status Key
-
-- Complete/proven: implemented and covered by checked-in tests or explicit optional gates.
-- Partial: useful implementation exists, but important behavior or evidence remains scoped
-  out.
-- Missing: not implemented.
-- Blocked: depends on a missing decision or prerequisite.
-- Deferred: intentionally later and not part of the current claim.
-
-## Core MVP Status
-
-| Area | Status | Current boundary |
-| --- | --- | --- |
-| Compiler -> Plan/artifacts | Complete/proven | Supported subset only; COMPILER-30.A adds module/library/test-harness foundation, not full TypeScript checking, package resolution, or broad module/service/schema/effect/capability inference. |
-| V8 runtime execution | Complete/proven for scoped path | Optional V8 SDK lane; default gates do not prove V8. |
-| Async semantics | Partial | Direct returned Promises that settle during bounded owner-thread microtask drain are supported; timers/fetch/arbitrary native async sources are missing. |
-| HTTP backend | Complete/proven for MVP | Sequential keep-alive, bounded chunked request decoding, and internal chunked response writer only; no pipelining, public streaming APIs, SSE/WebSockets/file streaming, production HTTP, TLS, HTTP/2/3, middleware, or benchmark claims. |
-| Libuv localhost transport | Complete/proven for MVP | Bounded localhost transport with sequential HTTP/1.1 keep-alive, idle timeout, max requests, chunked request decoding, internal chunked response writer, and close policy. |
-| SQLite users API | Complete/proven for proof fixture | Current bridge is synchronous and not provider-executor-backed. |
-| Capability enforcement | Complete/proven for integrated paths | SQLite/provider-executor paths enforce before provider work; CORE-FS-01 implements filesystem feature/capability policy, import-driven Plan metadata, runtime path-policy enforcement for implemented FS operations, and doctor/audit goldens for filesystem metadata visibility; CORE-FS-02 keeps trusted runtime artifact reads independent of app filesystem grants; CORE-NET-01.I adds network capability doctor/audit metadata visibility without claiming an OS sandbox. |
-| Provider executor | Partial | Native executor exists; provider bridge adoption remains future work. |
-| Time/deadline API | Complete/proven for scoped path | CORE-TIME-01.A/B defines `sloppy/time`, `stdlib.time`, compiler Plan activation, stable diagnostics, and bootstrap error classes. CORE-TIME-01.C/D/G adds the V8-gated native delay backend, owner-thread Promise settlement, `Time.delay`, `Time.timeout`, `Deadline`, and `CancellationController`. CORE-TIME-01.E/F adds intervals, scheduled jobs, and fake clock. CORE-TIME-01.H aligns filesystem options plus app/request/provider/HTTP naming boundaries. CORE-TIME-01.I adds source examples, final goldens, and the conformance evidence index. |
-| TCP networking API | Complete/proven for scoped path | CORE-NET-01.C/D/H defines `sloppy/net`, `stdlib.net`, compiler Plan activation, development/strict network policy, lifecycle model, stable diagnostics, native libuv-backed TCP client connections, `TcpClient`/`TcpConnection`, feature-gated `__sloppy.net`, owner-thread Promise settlement, and loopback client conformance. CORE-NET-01.E/F adds `TcpListener`, ephemeral loopback listen, accept, JS async accept iteration, listener close/abort, and accept-timeout evidence. CORE-NET-01.G adds `NetworkAddress` object/text parsing, local DNS/hostname-backed listen coverage, IPv4/IPv6 address handling, and checked `noDelay`/`keepAlive` option propagation. CORE-NET-01.I adds doctor/audit goldens, source examples, and conformance indexing. External live-network, stress/torture, package, and benchmark evidence remain separate. |
-| Crypto API | Complete/proven for scoped path | CORE-CRYPTO-01.A/B/C/D/E/F/G/H/I implements `sloppy/crypto` random helpers, SHA-2/HMAC, ConstantTime, Secret cleanup, `stdlib.crypto`/`__sloppy.crypto`, bootstrap JS surface, libsodium Argon2id password hash/verify/needsRehash with V8 offload, dependency-backed `NonCryptoHash.xxHash64`, source examples, diagnostic goldens, and conformance evidence indexing. Broader compatibility and production hardening remain future work; deterministic tests do not claim random quality, cracking cost, timing-proof behavior, non-crypto hash security, WebCrypto/Node/Bun compatibility, or performance. |
-| Codec API | Complete/proven for scoped path | CORE-CODEC-01.A/B defines `sloppy/codec`, `stdlib.codec`, compiler Plan activation, backend/dependency policy, stable diagnostics, and safety policy. CORE-CODEC-01.C/D/I implements Base64/Base64Url/Hex, UTF-8 encode/decode and streaming decoder, bootstrap/generated-app runtime exports, and V8-gated namespace smoke coverage. CORE-CODEC-01.E implements Binary reader/writer. CORE-CODEC-01.F/G implements zlib-backed gzip/gunzip and bounded async-iterable gzip/gunzip transforms. CORE-CODEC-01.H/J implements CRC32, checksum security-context warnings, source examples, and conformance evidence indexing. Broader compression algorithms, incremental native streaming, package evidence, public alpha docs, and production hardening remain future work. |
-| Package smoke | Partial | Local experimental package evidence, not release readiness or package-manager compatibility. |
-| Source-input run | Partial/proven for compiler-owned module subset | `sloppy run <source.js>` and `sloppy run` via `sloppy.json` compile through `sloppyc`, validate artifacts, and reuse `--artifacts`; supported relative function modules and Sloppy provider imports are compiler-owned. Cache reuse, watch/hot reload, Node/npm, and full TypeScript remain deferred. |
-| Framework configuration | Partial/proven for first slice | Built-in defaults, appsettings overlays, environment selection, canonical env vars, selected CLI overrides, typed access, `bind`, config-driven SQLite provider metadata, redacted Plan metadata, and first Plan-driven doctor/audit consumption exist. Reload, user secrets, custom/remote providers, broad CLI config, and OpenAPI config consumption remain deferred. |
-| Public alpha | Blocked | Needs canonical docs, executable examples, broader ergonomics, package/platform story, and no fake claims. |
-
-## Active Issue Map
-
-Closed during this reset or immediately before it:
-
-- ENGINE-13 HTTP backend parent;
-- ENGINE-14 module/bootstrap runtime parent;
-- ENGINE-15 diagnostics/source-map parent;
-- ENGINE-16 app/resource lifetime parent;
-- ENGINE-17 SQLite runtime parent;
-- ENGINE-19 conformance/package evidence tasks;
-- ENGINE-24 HTTP transport parent;
-- HTTP-25 keep-alive/chunked/internal streaming parent;
-- HARDEN-01 post-Core foundation hardening parent;
-- COMPILER-30 compiler inference parent/tasks;
-- legacy ENGINE-08 and ENGINE-09 diagnostic/example parents now covered by completed
-  ENGINE-15/16 and framework/example evidence.
-
-Kept open intentionally:
-
-- #259 compiler/source-input parent remains open; #302/#346 are closed for the current
-  rebuild-always JavaScript shortcut, leaving TypeScript/module/cache reuse follow-ups;
-- #316 CLI/dev loop parent, with #345 and #349 still open for artifact inspection,
-  watch/dev-loop, and command-diagnostic cleanup;
-- #318/#355-#359 Strong Plan strategic layer;
-- #268/#300/#301 public alpha readiness and non-claims review.
-- #571 CORE-CRYPTO-01 remains the crypto parent only until #572-#580 are closed and the
-  final evidence comment is recorded. The implemented scoped path covers contract,
-  feature/diagnostic model, random/hash/HMAC/Secret/V8, password, NonCryptoHash, examples,
-  and conformance evidence.
-- #581 CORE-NET-01 covers the scoped TCP networking API through #584-#592: contract,
-  feature/policy/diagnostics, native TCP client/listener runtime, DNS/address/options,
-  doctor/audit goldens, source examples, and conformance evidence.
-
-Previously created for the owner-approved post-Core next wave, now completed or kept as
-historical evidence where closed:
-
-- #432 FRAMEWORK-01 framework/app-layer parent, with #437-#439 still open for request
-  binding, validation/error responses, and response model completion;
-- #433/#441-#446 HTTP-25 HTTP/1.1 keep-alive, chunked request decoding, internal
-  streaming response writing, and bounded stress/conformance evidence;
-- #434/#447/#448 HARDEN-01 post-Core foundation hardening, with #431 and #26 reused for
-  SQLite preflight and platform scanner proof.
-
-Created for Engine Roadmap-2:
-
-- ENGINE-26 Execution Model Hardening;
-- ENGINE-27 Runtime Feature Modularity;
-- ENGINE-28 Provider Runtime Maturation;
-- HTTP-26 Route-Level HTTP Policy and Observability;
-- ENGINE-29 Runtime Events and Metrics;
-- ENGINE-30 Runtime Torture and Crash-Resistance Harness.
-
-The exact issue-number map lives in `docs/project/engine-roadmap-2-issue-index.md`.
-
-## Next Recommended Tracks
-
-The next engine wave is `docs/project/engine-roadmap-2.md`. In order:
-
-1. ENGINE-26 execution model hardening.
-2. ENGINE-27 runtime feature modularity.
-3. ENGINE-28 provider runtime maturation, including SQLite executor-backed bridge work.
-4. HTTP-26 route-level HTTP policy and observability.
-5. ENGINE-29 runtime events and metrics.
-6. ENGINE-30 runtime torture and crash-resistance harness.
-
-Provider expansion remains after provider runtime maturation. Torture tests come after
-execution/modularity/provider/metrics foundations are mature. Public alpha and benchmark
-claims remain blocked.
+1. `HTTP-SERVER-01` - mature inbound HTTP/1.1 server behavior, diagnostics,
+   lifecycle, bounded request/response handling, tests, and docs.
+2. `HTTP-SERVER-TLS-01` - add inbound TLS only after the HTTP server contract is
+   ready; this is not HTTP client TLS and not broad production-edge HTTP.
+3. `FRAMEWORK-V2-01` - move toward compiler-inferred framework ergonomics while
+   keeping the bootstrap/runtime boundary explicit.
+4. Packaging, build, and distribution - produce honest experimental packaging
+   evidence before any public release artifact claim.
+5. Realistic dogfood and examples - add examples that exercise current runtime
+   behavior without presenting unfinished Framework v2 APIs as tutorials.
+6. Public alpha gate - verify docs, release notes, versioning, packaging,
+   security/TLS posture, examples, and required CI before alpha cutover.
 
 ## Deferred By Design
 
-- Node/npm/package-manager compatibility.
-- Public alpha docs and tutorials.
-- Public performance or benchmark comparison claims.
-- WebCrypto, Node crypto, or Bun compatibility promises.
-- Custom crypto algorithms or weak random fallbacks.
-- Node Buffer, Web Streams, Bun, or Deno codec compatibility promises.
-- Custom compression algorithms.
-- Production-edge HTTP claims.
-- PostgreSQL/SQL Server JavaScript bridges.
-- ORM/migrations.
-- TLS, HTTP/2, HTTP/3, WebSockets, pipelining, public streaming APIs, SSE/file streaming,
-  reverse-proxy behavior, static files, compression, and production hardening unless a
-  future scoped issue says so.
+The following remain deferred unless a scoped source doc and issue promote them:
 
-## Cleanup Policy
+- HTTP/2, HTTP/3, WebSockets, SSE, static file serving, and production-edge HTTP
+  behavior.
+- Package-manager behavior, npm compatibility, and Node/Bun/Deno compatibility.
+- Production hardening, operational support claims, and performance claims.
+- Broad provider bridges, ORM/migration layers, and live database support beyond
+  scoped provider lanes.
+- Public tutorials or broad public user documentation before Framework v2 and
+  the public alpha gate are complete.
 
-Temporary planning docs are allowed during fast build phases, but each phase should end
-with compaction: merge durable facts into canonical docs, archive useful history, delete
-obsolete "current state" docs, reconcile GitHub issues with evidence, and keep roadmap
-claims tied to code/tests/examples.
+## Evidence Policy
+
+Evidence must name each applicable lane and status: `PASS`, `FAIL`, `SKIPPED`,
+`UNAVAILABLE`, `DEFERRED`, or `NOT RUN`. Default non-V8 evidence proves only
+the default native/Cargo/CTest/scanner path. V8, package, source-input,
+platform-specific, live-provider, fuzz/property, stress/torture, sanitizer, and
+benchmark lanes are separate.
+
+Skipped optional lanes are not pass evidence. Benchmark smoke proves harness
+execution only; measured Release benchmark evidence is separate from correctness
+and never supports performance claims without the command, build context,
+hardware/context, workload, and output.
+
+## Historical Records
+
+Historical planning and audit records live under `docs/project/archive/`. They
+remain useful evidence, but they are not the current roadmap. Current
+architecture and workflow docs are linked from `docs/project/README.md`.

@@ -1,6 +1,6 @@
 # Crypto Password Example
 
-Status: CORE-CRYPTO-01.I source example. This example documents the async password
+Status: source example. This example documents the async password
 hashing, verification, and rehash policy shape.
 
 ```js

@@ -1,6 +1,6 @@
 # Core Policy Audit Example
 
-Status: CORE-INTEGRATION-01 conformance source example. This example keeps capability and
+Status: conformance source example. This example keeps capability and
 strict-policy metadata explicit so doctor/audit output can describe implemented and deferred
 policy behavior honestly.
 

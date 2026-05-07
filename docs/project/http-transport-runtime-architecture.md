@@ -10,7 +10,8 @@ pointers. `uv_loop_t`, `uv_tcp_t`, and libuv callback details live only in
 
 The transport composes the existing `SlHttpBackend` instead of replacing it. The backend
 continues to own admission counters and core connection/request lifecycle state. The
-transport owns listener handles, accepted TCP placeholders, and bounded connection storage.
+transport owns listener handles, accepted TCP connection slots, and bounded connection
+storage.
 
 ## Server Lifecycle
 
@@ -42,8 +43,8 @@ These are foundation defaults, not production-edge defaults.
 ## Accept Lifecycle
 
 The listen callback claims a slot from the fixed connection table, admits one backend
-connection, initializes an internal TCP handle, accepts the pending socket, and parks the
-connection in `ACCEPTED`. No request read loop is started in ENGINE-24.A/B.
+connection, initializes an internal TCP handle, accepts the pending socket, and starts the
+bounded read loop for that accepted connection.
 
 When capacity is full, the transport accepts the pending socket into an internal overflow
 handle and closes it immediately. This prevents unbounded queue growth without pretending to
@@ -64,96 +65,49 @@ owns semantic validation: parser target/header limits, malformed-head diagnostic
 Content-Length body length, body-size limit, and JSON/text media policy. Parsed target,
 path, headers, and body bytes remain request-arena owned.
 
-Supported request framing is intentionally small:
+Supported request framing is intentionally bounded:
 
-- one request per connection;
+- sequential keep-alive only after each response write completes and request state resets;
 - `Content-Length` bodies only;
+- bounded chunked request decoding in scoped native/runtime lanes;
 - empty bodies are supported;
 - body bytes may arrive in the same TCP chunk as the head or across later chunks;
-- `Transfer-Encoding`/chunked, streaming bodies, keep-alive, and pipelining are rejected
-  or closed as unsupported MVP behavior.
+- public request streaming, pipelining, SSE/WebSockets, and production-edge HTTP behavior
+  remain out of scope.
 
 When a full request is parsed and the body reader finishes, the connection transitions to
-`REQUEST_READY`. ENGINE-24.D consumes that state exactly once when a dispatch callback is
-configured: backend request state moves from reading to dispatching, the callback returns a
+`REQUEST_READY`. The configured dispatch callback consumes that state once per parsed
+request: backend request state moves from reading to dispatching, the callback returns a
 normal `SlHttpResponse`, the existing response writer serializes bytes into the
-connection-owned response buffer, libuv writes those bytes, and the connection closes after
-the write callback. The optional request-ready hook remains for tests/observation, but it
-is no longer the only consumer of parsed requests.
+connection-owned response buffer or a scoped chunked writer owns the response, and libuv
+writes those bytes before the next sequential request can be read. The optional
+request-ready hook remains for tests and observation, but it is no longer the only consumer
+of parsed requests.
 
-The MVP connection policy is still one request per connection. Extra/pipelined bytes are
-rejected before dispatch, keep-alive is not enabled, response bodies are serialized
-eagerly, and streaming/chunked response writing is not implemented.
+The connection policy is bounded sequential HTTP/1.1 keep-alive. A connection may process a
+sequence of requests only after each response write completes and the request arena,
+body-reader state, parser state, lifecycle token, timeout state, and response storage have
+been reset for the next request. Idle keep-alive timeout and maximum requests per
+connection are bounded transport settings, not production graceful-drain tuning. Pipelined
+bytes are rejected before dispatch because response ordering, queued response ownership,
+cancellation for queued requests, and bounded pipelining queues are not part of the current
+contract. HTTP/2 and HTTP/3 remain separate future transport directions.
 
-## Keep-Alive Decision And HTTP/1.1 Upgrade Plan
-
-ENGINE-24.G keeps the ENGINE-24 MVP close-after-response by design:
-
-- one request is served per TCP connection;
-- the response writer emits `Connection: close`;
-- the transport closes the connection after write completion;
-- explicit `Connection: keep-alive` does not keep the connection open;
-- a sequential second request on the same connection is not accepted;
-- pipelined bytes after the first complete request are rejected as unsupported MVP
-  behavior.
-
-That decision is intentional rather than an unfinished hidden feature. Close-after-response
-keeps cleanup direct, avoids keeping request arenas and body-reader state alive for idle
-connections, reduces timeout and shutdown race surfaces, and is enough for the localhost
-transport proof and users API proof planned after the core transport MVP. It also keeps the
-current connection terminal path easy to audit: read one bounded request, dispatch once,
-write one bounded response, then close and release backend connection/request admission
-exactly once.
-
-Keep-alive is deferred until a later HTTP/1.1 upgrade slice can implement and test the full
-connection loop. That later work must define at least:
-
-- sequential requests per connection, with the read loop resuming only after response write
-  completion;
-- an idle timeout for connections that are open between requests;
-- a maximum requests-per-connection cap;
-- shutdown drain behavior for idle, reading, dispatching, and writing keep-alive
-  connections;
-- parser, accumulated-byte, body-reader, response, and request-lifecycle state reset for
-  each request;
-- request-arena reset or equivalent per-request storage rotation between requests;
-- per-request cancellation and timeout state that is independent from the longer-lived TCP
-  connection;
-- diagnostics for idle timeout, max-requests close, client close while idle or between
-  requests, and shutdown drain/force-close.
-
-HTTP/1.1 pipelining is not part of the MVP and is likely to remain unsupported or
-deprioritized. If Slop ever supports pipelining, response ordering, queued response
-ownership, cancellation behavior for queued requests, and bounded queue limits must be
-explicitly specified and tested before enabling it. HTTP/2 is the later multiplexing
-direction; pipelining must not become an accidental substitute for that design.
-
-Chunked request decoding, chunked response encoding, and streaming response bodies are also
-deferred. Future streaming work must define socket backpressure behavior, body-stream
-lifetime, cancellation and shutdown semantics for partially consumed streams, and memory
-ownership for data that outlives one parser callback. ENGINE-24.G does not implement any of
-that behavior.
-
-Future issue recommendation only: create a later `ENGINE-25: HTTP/1.1 Keep-Alive and
-Streaming` epic after the close-after-response core proof lands. Likely tasks are:
-
-- keep-alive connection loop;
-- idle timeout and max requests per connection;
-- sequential request lifecycle reset;
-- chunked request decoding;
-- chunked/streaming response writer;
-- keep-alive stress and conformance.
-
-No ENGINE-25 GitHub issues are created by ENGINE-24.G.
+Chunked request decoding and scoped chunked response writing are bounded native/runtime
+capabilities. Public streaming response helpers, SSE, WebSockets, production graceful
+drain, and broad edge-server behavior remain out of scope. Future streaming work must
+define socket backpressure behavior, body-stream lifetime, cancellation and shutdown
+semantics for partially consumed streams, and memory ownership for data that outlives one
+parser callback.
 
 If no dispatch callback is configured, the parsed request is closed immediately so backend
-admission is released rather than parked forever. ENGINE-24.F/#417 adds real localhost TCP
-smoke over the reusable transport using raw client request bytes and native/fake dispatch
-callbacks. That evidence proves bounded MVP transport behavior for simple success, route
-miss, method mismatch, POST text body handling, malformed input, body limits, unsupported
-media, unsupported transfer encoding, one request per connection, close-after-response, and
-shutdown cleanup. It does not claim V8 transport execution, benchmark/performance
-evidence, production graceful-drain behavior, or production-edge HTTP readiness.
+admission is released rather than parked forever. Localhost TCP smoke over the reusable
+transport uses raw client request bytes and native/fake dispatch callbacks. That evidence
+proves bounded transport behavior for simple success, route miss, method mismatch, POST
+text body handling, malformed input, body limits, unsupported media, unsupported transfer
+encoding, sequential keep-alive, scoped chunked handling, and shutdown cleanup. It does not
+claim V8 transport execution, benchmark/performance evidence, production graceful-drain
+behavior, or production-edge HTTP readiness.
 
 ENGINE-24.E adds the transport terminal-state layer. Connections can be closed directly, by
 server stop, by client disconnect, by read/parse/body failure, dispatch failure, timeout,

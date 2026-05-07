@@ -1,3 +1,3 @@
 //! Function effect summaries and callgraph propagation.
 //!
-//! COMPILER-30.A does not implement effect inference.
+//! The current compiler does not implement effect inference.

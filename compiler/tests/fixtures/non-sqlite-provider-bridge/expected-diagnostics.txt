@@ -3,4 +3,4 @@
    |
 13 | app.get("/analytics", () => Results.json(analytics.query("select id from events", [])));
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-hint: Provider handle 'analytics' is recognized for Plan metadata, but only the SQLite generated bridge is executable in this compiler slice.
+hint: Provider handle 'analytics' is recognized for Plan metadata, but only the SQLite generated bridge is executable by the current compiler/runtime contract.

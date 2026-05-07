@@ -1,6 +1,6 @@
 # Core FS Time Codec Example
 
-Status: CORE-INTEGRATION-01 conformance source example. This example shows filesystem bytes,
+Status: conformance source example. This example shows filesystem bytes,
 an operation deadline, and the shared Codec UTF-8 decoder used together.
 
 The example documents implemented API shape only. It has no public alpha claim, no

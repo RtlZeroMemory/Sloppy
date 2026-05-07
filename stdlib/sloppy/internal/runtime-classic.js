@@ -1157,7 +1157,7 @@ Operation:
   ${operation}
 
 Reason:
-  CORE-TIME-01.C/D/G requires the V8 native time bridge for runtime scheduling.`);
+  Runtime scheduling requires the native time bridge to be registered in the active V8 lane.`);
     }
 
     function nativeTime(operation) {
@@ -4208,11 +4208,11 @@ Reason:
         if (scheme === "https") {
             throw httpClientError(
                 "SLOPPY_E_HTTP_CLIENT_TLS_BACKEND_UNAVAILABLE",
-                "HTTPS requires the later TLS backend slice; no custom TLS fallback is available.",
+                "HTTPS requires a configured TLS backend; no custom TLS fallback is available.",
             );
         }
         if (scheme !== "http") {
-            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_URL", `${operation} supports http:// URLs in this slice.`);
+            throw httpClientError("SLOPPY_E_HTTP_CLIENT_INVALID_URL", `${operation} supports http:// URLs only.`);
         }
 
         const rest = url.slice(schemeEnd + 3);
@@ -4744,7 +4744,7 @@ Reason:
         } else if (transferEncoding !== undefined && transferEncoding !== "identity") {
             throw httpClientError(
                 "SLOPPY_E_HTTP_CLIENT_MALFORMED_RESPONSE",
-                "HTTP response Transfer-Encoding is not supported in this slice.",
+                "HTTP response Transfer-Encoding is not supported by this HTTP client.",
             );
         } else if (contentLength !== undefined) {
             if (contentLength > maxResponseBytes) {

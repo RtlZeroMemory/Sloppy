@@ -28,27 +28,27 @@ records that still had context value moved under `docs/project/archive/post-core
 
 | Path | Classification | Action | Reason |
 | --- | --- | --- | --- |
-| `docs/project/post-core-mvp-code-reality-audit.md` | compact audit | Added | Replaces scattered current-state/code reality docs. |
-| `docs/project/post-core-mvp-docs-inventory.md` | compact inventory | Added | Records compaction decisions. |
-| `docs/project/post-core-mvp-issue-reconciliation.md` | compact issue audit | Added | Replaces old issue cleanup/audit docs. |
-| `docs/project/post-core-mvp-memory-string-audit.md` | compact adoption audit | Added | Replaces old memory/string audit/adoption maps for current reporting. |
-| `docs/project/post-core-mvp-boundary-audit.md` | compact boundary audit | Added | Captures architecture-rule findings. |
-| `docs/project/post-core-mvp-next-roadmap.md` | compact roadmap proposal | Added | Replaces old next-roadmap draft. |
+| `docs/project/archive/post-alpha-transition/post-core-mvp-code-reality-audit.md` | compact audit | Added | Replaces scattered current-state/code reality docs. |
+| `docs/project/archive/post-alpha-transition/post-core-mvp-docs-inventory.md` | compact inventory | Added | Records compaction decisions. |
+| `docs/project/archive/post-alpha-transition/post-core-mvp-issue-reconciliation.md` | compact issue audit | Added | Replaces old issue cleanup/audit docs. |
+| `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md` | compact adoption audit | Added | Replaces old memory/string audit/adoption maps for current reporting. |
+| `docs/project/archive/post-alpha-transition/post-core-mvp-boundary-audit.md` | compact boundary audit | Added | Captures architecture-rule findings. |
+| `docs/project/archive/post-alpha-transition/post-core-mvp-next-roadmap.md` | compact roadmap proposal | Added | Replaces old next-roadmap draft. |
 
 ## Archived
 
 | Path | Classification | Action | Replacement |
 | --- | --- | --- | --- |
-| `docs/project/engine-13-plus-architecture.md` | historical architecture | Archived | `docs/project/slop-engine-final-shape.md`, `docs/project/post-core-mvp-next-roadmap.md` |
-| `docs/project/engine-13-plus-issue-index.md` | historical issue index | Archived | `docs/project/post-core-mvp-issue-reconciliation.md` |
-| `docs/project/engine-21-22-issue-index.md` | historical issue index | Archived | `docs/project/post-core-mvp-memory-string-audit.md` |
+| `docs/project/engine-13-plus-architecture.md` | historical architecture | Archived | `docs/project/slop-engine-final-shape.md`, `docs/project/archive/post-alpha-transition/post-core-mvp-next-roadmap.md` |
+| `docs/project/engine-13-plus-issue-index.md` | historical issue index | Archived | `docs/project/archive/post-alpha-transition/post-core-mvp-issue-reconciliation.md` |
+| `docs/project/engine-21-22-issue-index.md` | historical issue index | Archived | `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md` |
 | `docs/project/engine-23-provider-execution-issue-index.md` | historical issue index | Archived | `docs/project/provider-execution-runtime-architecture.md` |
-| `docs/project/memory-string-current-state-audit.md` | historical audit | Archived | `docs/project/post-core-mvp-memory-string-audit.md` |
+| `docs/project/memory-string-current-state-audit.md` | historical audit | Archived | `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md` |
 | `docs/project/memory-string-foundation-architecture.md` | historical architecture | Archived | `docs/memory.md` |
-| `docs/project/memory-string-adoption-map.md` | historical adoption map | Archived | `docs/project/post-core-mvp-memory-string-audit.md` |
+| `docs/project/memory-string-adoption-map.md` | historical adoption map | Archived | `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md` |
 | `docs/project/archive/post-core-mvp/provider-execution-current-state-audit.md` | historical audit | Archived | `docs/project/provider-execution-runtime-architecture.md` |
-| `docs/project/strategic-current-state-audit.md` | historical audit | Archived | `docs/roadmap.md`, `docs/project/post-core-mvp-next-roadmap.md` |
-| `docs/project/strategic-system-audit.md` | historical audit | Archived | `docs/project/post-core-mvp-code-reality-audit.md` |
+| `docs/project/strategic-current-state-audit.md` | historical audit | Archived | `docs/roadmap.md`, `docs/project/archive/post-alpha-transition/post-core-mvp-next-roadmap.md` |
+| `docs/project/strategic-system-audit.md` | historical audit | Archived | `docs/project/archive/post-alpha-transition/post-core-mvp-code-reality-audit.md` |
 
 ## Deleted
 
@@ -56,10 +56,10 @@ records that still had context value moved under `docs/project/archive/post-core
 | --- | --- | --- | --- |
 | `docs/project/barebones-and-advanced-feature-inventory.md` | obsolete audit | Deleted | Superseded by code reality and tech-debt reports. |
 | `docs/project/current-issue-state-audit.md` | obsolete issue audit | Deleted | Superseded by post-core issue reconciliation. |
-| `docs/project/engine-24-http-transport-issue-index.md` | obsolete issue index | Deleted | ENGINE-24 children are closed; retained evidence lives in issue reconciliation and transport architecture. |
+| `docs/project/archive/post-alpha-transition/engine-24-http-transport-issue-index.md` | obsolete issue index | Archived | ENGINE-24 children are closed; retained for historical issue evidence only. |
 | `docs/project/github-issue-cleanup-result.md` | obsolete cleanup result | Deleted | Superseded by post-core issue reconciliation. |
 | `docs/project/github-issue-hygiene-audit.md` | obsolete cleanup audit | Deleted | Superseded by post-core issue reconciliation. |
-| `docs/project/http-transport-current-state-audit.md` | obsolete audit | Deleted | Superseded by code reality and boundary reports. |
+| `docs/project/archive/post-alpha-transition/http-transport-current-state-audit.md` | obsolete audit | Archived | Superseded by current transport docs; retained for historical audit evidence only. |
 | `docs/project/main-main1-issue-cleanup-plan.md` | obsolete cleanup plan | Deleted | Applied historical plan; current tracker is live issue reconciliation. |
 | `docs/project/main-main1-scope.md` | obsolete roadmap scope | Deleted | Superseded by post-core roadmap proposal. |
 | `docs/project/main-main1-system-audit.md` | obsolete audit | Deleted | Superseded by code reality and boundary reports. |

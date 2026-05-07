@@ -1,54 +1,45 @@
 # Contributing to Sloppy
 
-Sloppy is in the foundation/spec phase. The current repository is meant to lock architecture,
-standards, tooling, and quality gates before implementation Phase 1 starts.
+Sloppy is a pre-alpha runtime project. The repository is expected to read and behave like a
+serious engineering project even while major product tracks remain unfinished.
 
-No feature work should land before the supporting standards, tests, diagnostics, and tooling
-exist. MVP means narrow, not bad. Sloppy is an experiment in disciplined AI-assisted systems
-engineering: AI assistance is expected, but human engineering judgment is required.
-
-Do not commit build outputs, generated local artifacts, V8 SDKs, Rust `target` directories,
-local dependency caches, release archives, or local binaries.
+Do not commit build outputs, generated local artifacts, V8 SDKs, Rust `target`
+directories, local dependency caches, release archives, or local binaries.
 
 Windows x64 with `clang-cl`, `lld-link`, CMake, and Ninja is the first-class runtime
-developer path. Sloppy is still cross-platform by design.
-
-No WinAPI, POSIX, Linux, or macOS API calls may be added outside `src/platform/*`. Core
-modules must not include OS-specific headers. Any new platform-specific behavior must update
-`docs/platform-abstraction.md`.
+developer path. Sloppy remains cross-platform by design. No WinAPI, POSIX, Linux, or macOS
+API calls may be added outside `src/platform/*`; core modules must not include
+OS-specific headers.
 
 ## Local Commands
 
 Run from a Visual Studio Developer PowerShell/Command Prompt or an equivalent initialized
-environment that exposes MSVC and Windows SDK `INCLUDE` and `LIB` paths.
+environment:
 
 ```powershell
-.\tools\bootstrap.ps1
-.\tools\dev.ps1 configure
-.\tools\dev.ps1 build
-.\tools\dev.ps1 test
-.\tools\dev.ps1 format-check
-.\tools\dev.ps1 lint
+.\tools\windows\bootstrap.ps1
+.\tools\windows\dev.ps1 configure
+.\tools\windows\dev.ps1 build
+.\tools\windows\dev.ps1 test
+.\tools\windows\dev.ps1 format-check
+.\tools\windows\dev.ps1 lint
+git diff --check
 ```
 
-The root scripts are compatibility forwarders to `tools/windows/*.ps1`. Windows-specific
-tooling lives under `tools/windows/`; future Unix tooling belongs under `tools/unix/`.
+Root scripts are compatibility forwarders to `tools/windows/*.ps1`.
 
 ## Definition Of Done
 
-- docs/specs updated where behavior, architecture, or public contracts changed;
-- tests added, or a missing test is explicitly justified for foundation-only changes;
-- docs freshness decision is explicit: updated, or not needed with reason;
-- tests reference intended behavior from source docs/specs;
-- `format-check` passes;
-- `lint` passes;
-- language standards scanners pass for touched JS/TS and Rust areas;
-- CMake build passes;
-- CTest passes;
-- `cargo fmt --check`, `cargo clippy -- -D warnings`, and `cargo test` pass for compiler
+- source docs, ADRs, module docs, or user-facing docs updated when behavior or architecture
   changes;
-- no ignored/generated artifacts are staged.
-- platform-boundary checks pass.
+- tests added or an explicit reason given for docs-only/spec-only changes;
+- tests reference intended behavior from source docs/specs;
+- positive and negative paths covered where applicable;
+- golden updates explain the intended behavior change;
+- evidence lanes reported honestly;
+- no ignored/generated artifacts staged;
+- relevant format, lint, build, and test gates run or reported as not run with reason;
+- platform, V8, memory, diagnostics, and JavaScript boundary rules preserved.
 
 ## Evidence Lane Report
 
@@ -56,8 +47,8 @@ Every implementation PR must report test evidence by lane and status. Use the la
 from `docs/testing-strategy.md` and `docs/quality-gates.md`: default non-V8,
 compiler/Plan, V8-gated, source-input, package outside-checkout, platform-specific,
 dependency-backed, live-network/live-provider, fuzz/property, stress/torture,
-sanitizer/memory-safety, and benchmark. Status values are PASS, FAIL, SKIPPED,
-UNAVAILABLE, DEFERRED, or NOT RUN. Skipped optional gates are not pass claims.
+sanitizer/memory-safety, and benchmark. Status values are `PASS`, `FAIL`, `SKIPPED`,
+`UNAVAILABLE`, `DEFERRED`, or `NOT RUN`. Skipped optional gates are not pass claims.
 
 The report must state:
 
@@ -69,66 +60,65 @@ The report must state:
 - secret/redaction checks run;
 - known deferred coverage with issue references.
 
-Benchmark results are never correctness evidence. V8, package, live-provider, fuzz,
-stress/torture, and platform-specific results must stay separate from default non-V8
-evidence.
+Benchmark results are never correctness evidence. V8, package, live-provider,
+fuzz/property, stress/torture, sanitizer, and platform-specific results must stay separate
+from default non-V8 evidence.
 
+## Implementation Contract for Reviewers
+
+Large or high-risk PRs must include an implementation contract that reviewers can check
+against. Include:
+
+- source docs and issues read;
+- intended behavior;
+- explicit non-goals;
+- files or surfaces touched;
+- docs, tests, and code expected to move together;
+- negative paths and diagnostics that must be covered;
+- evidence lanes required, skipped, or deferred;
+- known residual risk or follow-up.
+
+Reviewers should compare the PR against this contract, not only inspect local code style.
 
 ## Project Issue Policy
 
-Implementation PRs should reference a task issue or a task file under `docs/project/tasks/`. If no issue exists, create or update one before implementation unless the change is trivial docs-only cleanup. Medium-sized bounded-context PRs are preferred: one coherent building block, not a swarm of microscopic PRs and not a kitchen-sink change.
+Implementation PRs should reference a current GitHub issue or a task file under
+`docs/project/tasks/`. If no issue exists, create or update one before implementation
+unless the change is trivial docs-only cleanup. GitHub owns live issue state; local issue
+indexes are snapshots.
 
 ## Pull Request Policy
 
-- Keep changes small and focused.
-- Map implementation PRs to a `docs/roadmap.md` EPIC and task.
-- Prefer bounded-context PRs: one coherent module or foundation slice at a time.
-- Do not send kitchen-sink PRs that mix unrelated architecture, tooling, and feature work.
-- Sloppy prefers bounded, direct implementations.
+- Prefer bounded, coherent, reviewable PRs.
+- One large PR is acceptable when it represents one bounded context.
+- Avoid unrelated refactors, broad rewrites, and formatting churn.
+- Do not split coherent work into tiny PRs only to satisfy process ceremony.
+- Do not mix unrelated architecture, tooling, and feature work.
 - Do not add frameworks, registries, plugin systems, generic abstractions, or public
-  extension points unless the task or ADR requires them.
-- Comments must explain what/why/how where context matters.
-- Do not add AI-noise comments that narrate obvious syntax.
-- Public APIs and tricky internals require ownership, lifetime, and rationale comments.
+  extension points unless a source doc or ADR requires them.
+- Comments must explain rationale, ownership, lifetime, safety, platform, engine, or
+  threading invariants where context matters.
 - Stale comments must be fixed in the same PR as the behavior change.
-- Follow `docs/documentation-policy.md`: code, tests, and docs move together.
-- Public API changes require `docs/public/` updates.
-- Module implementation changes require `docs/modules/` updates.
-- Architecture changes require an ADR update or a new ADR.
-- Each implementation PR must include tests and acceptance criteria, or explicitly explain
-  why it is documentation/spec-only.
 - Tests must verify documented intended behavior, not accidental current behavior.
-- Golden output updates require an explanation of the intended behavior change.
 - Do not introduce hidden global mutable state.
-- Do not use raw `malloc`/`free` outside allocator modules once allocator modules exist.
 - Do not leak V8 types outside `src/engine/v8/`.
 - Do not expose raw native pointers to JavaScript.
-- Do not add feature code without a diagnostics and testing plan.
-- Do not add Oxc, V8, libuv, llhttp, yyjson, sqlite, libpq, ODBC, or other real runtime
-  dependencies before the relevant implementation phase.
-- Put platform-specific tooling under the correct `tools/<platform>/` directory.
+- Do not add package-manager scope or Node compatibility assumptions.
+- Do not add public alpha, production-readiness, performance, package-readiness,
+  provider-readiness, or Node/Bun/Deno compatibility claims without source docs and
+  matching evidence.
 
-## AI/Codex Workflow
+## Agent Workflow
 
-AI-assisted development is expected. Use a deliberate loop:
+Agent-assisted development is part of the repository workflow, but outcome quality matters
+more than prompt choreography. Agents should read `AGENTS.md`, use the relevant skills under
+`docs/skills/`, identify the source docs first, keep scope bounded, run checks, and report
+commands honestly.
 
-1. architect prompt: turn the roadmap task into files, constraints, tests, and acceptance;
-2. dev prompt: implement only the bounded slice;
-3. independent reviewer prompt: check spec compliance, C safety, tests, and tooling;
-4. fixer prompt: address actionable findings only;
-5. final verification prompt: run gates and summarize residual risk.
+Use targeted independent reviewers or subagents for high-risk work such as C safety, V8
+boundaries, concurrency, providers, permissions/security, diagnostics redaction, packaging,
+release evidence, and repository-wide documentation cleanup. Trivial changes do not need a
+specialist sweep.
 
-The docs and ADRs are the source of truth. If an AI-generated implementation needs to guess
-architectural intent, update the spec first.
-
-Testing follows `docs/testing-strategy.md`: tests encode documented intent. Do not update
-expected outputs merely to match current code without explaining the intent change.
-
-Agent harness expectations:
-
-- consult `AGENTS.md` before editing;
-- use the relevant skill docs under `docs/skills/`;
-- create or update an execution plan under `docs/exec-plans/` for complex work;
-- promote repeated review findings into docs/checks/tools;
-- avoid prompt-only rules when a mechanical check is reasonable;
-- update `docs/tech-debt-tracker.md` when deferring known cleanup.
+Promote repeated review findings into docs, checks, or tools. Track deferred cleanup in
+`docs/tech-debt-tracker.md` when the cleanup is real but outside the current PR.

@@ -2,16 +2,16 @@
 
 ## Mission
 
-Sloppy is an AI-assisted TypeScript backend application runtime/app-host.
+Sloppy is a pre-alpha TypeScript backend application runtime/app-host.
 
-It has a C runtime kernel, with V8 reached later through an isolated C++ bridge. The Rust
-`sloppyc` project is a placeholder today and may become an Oxc-based tool later.
+It has a C runtime kernel, an isolated C++ V8 bridge, and a Rust `sloppyc` compiler
+toolchain built around Oxc parsing and Sloppy artifact emission.
 
 The developer loop is Windows-first and cross-platform by design. Developer ergonomics is
 the product wedge: Sloppy should feel designed, not assembled from runtime primitives and
 framework soup.
 
-Clean/safe C is non-negotiable. The name is a joke; the standards are not.
+Clean/safe C and honest evidence are non-negotiable.
 
 ## How to work
 
@@ -35,20 +35,29 @@ Clean/safe C is non-negotiable. The name is a joke; the standards are not.
 - Before changing code, identify whether user-facing docs, module docs, architecture docs,
   or ADRs need updates.
 - Tests must verify documented intent, not current accidental behavior.
+- Large coherent PRs are allowed when they represent one bounded context. Avoid both
+  micro-PR paralysis and kitchen-sink scope.
+- Use targeted subagents or independent specialist passes for high-risk sweeps such as
+  C safety, V8 boundaries, concurrency, providers, permissions/security, diagnostics
+  redaction, packaging, release evidence, and repository-wide documentation cleanup.
+- Do not introduce public alpha, production-readiness, benchmark/performance,
+  package-readiness, provider-readiness, or Node/Bun/Deno compatibility claims unless the
+  source doc and evidence lane prove the exact claim.
 
-## Future PR test evidence
+## Implementation Contract for Reviewers
 
-Every future implementation PR must include an evidence report that names the expected
-behavior under test, the source-of-truth contract, negative paths, evidence lanes run,
-lanes skipped or unavailable, golden updates and why they are intended, secret/redaction
-checks, and deferred coverage. Skipped optional gates are not pass claims.
+Every implementation PR must include an evidence report that names the expected behavior
+under test, the source-of-truth contract, explicit non-goals, negative paths, evidence
+lanes run, lanes skipped or unavailable, golden updates and why they are intended,
+secret/redaction checks, and deferred coverage. Skipped optional gates are not pass claims.
 
 Tests must fail for a contract violation, not mirror the current output. New behavior needs
 contract or source-of-truth coverage, and large PRs must include an "Implementation
 Contract for Reviewers" section so reviewers can compare the code and tests against the
 task contract. CodeRabbit and human reviewers should reject shallow happy-path-only tests,
 current-output snapshots, unredacted goldens, V8/package/live/fuzz/stress evidence
-reported as default evidence, and optional lanes reported as success.
+reported as default evidence, optional lanes reported as success, and unsupported public
+alpha/production/performance/compatibility claims.
 
 ## Source-of-truth map
 
@@ -157,7 +166,7 @@ task or the source-of-truth docs.
 - No Node compatibility by default.
 - No package-manager behavior unless a scoped task and docs require it.
 - No Node compatibility assumptions.
-- No runtime features before foundation tasks.
+- No runtime features before scoped source docs and tasks.
 - No overengineering in JS/Rust either; keep public API and compiler/tooling work direct.
 - Avoid speculative abstraction; simple direct C is preferred unless a documented
   boundary/invariant requires abstraction.

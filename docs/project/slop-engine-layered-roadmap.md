@@ -431,7 +431,7 @@ of local helpers.
 
 Strategic sources:
 
-- `docs/project/post-core-mvp-memory-string-audit.md`;
+- `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md`;
 - `docs/project/archive/post-core-mvp/memory-string-foundation-architecture.md`;
 - `docs/memory.md`.
 

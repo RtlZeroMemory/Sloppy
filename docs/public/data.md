@@ -2,13 +2,13 @@
 
 Status: Bootstrap data/capabilities foundation, native SQLite/PostgreSQL/SQL Server
 providers, and a Plan/capability-wired V8-gated SQLite JavaScript bridge implemented.
-ENGINE-17.E adds a V8-gated, source-built SQLite users API example that runs over
+The V8-gated, source-built SQLite users API example runs over
 `sloppy run --artifacts` and real localhost TCP in the conformance lane.
 
 Purpose: document future data provider modules, query templates, transactions, and
 provider-specific limitations.
 
-ENGINE-01 target contract:
+Current target contract:
 
 - SQLite is the core foundation database provider.
 - Canonical public SQLite open options use `database`, `capability`, and `access`.
@@ -141,14 +141,14 @@ Implemented behavior:
 - Plan v1 alpha can carry metadata-only `dataProviders` entries with a token, provider
   kind (`sqlite`, `postgres`, or `sqlserver`), optional service token, and optional
   capability token reference.
-- ENGINE-02 compiler output can emit minimal SQLite `dataProviders` and database
+- Compiler output can emit minimal SQLite `dataProviders` and database
   `capabilities` metadata from `builder.capabilities.addDatabase(...)`; this is metadata
   for later runtime/provider work and does not open a native provider by itself.
-- MAIN1-10 adds a native capability registry and provider policy check hook for plan
-  capability metadata. ENGINE-05 SQLite bridge calls that hook before open/read/write
+- The native runtime includes a capability registry and provider policy check hook for plan
+  capability metadata. The SQLite bridge calls that hook before open/read/write
   provider work and fails closed if the hook inputs are unavailable.
 - native C SQLite tests execute real SQLite against `:memory:` databases.
-- ENGINE-19.D exposes the native provider path as
+- The conformance matrix exposes the native provider path as
   `conformance.sqlite.native_provider` and the native capability/admission paths as
   `conformance.capability.native_registry` and
   `conformance.capability.provider_executor`.

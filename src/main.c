@@ -1,10 +1,10 @@
 /*
  * Sloppy CLI.
  *
- * EPIC-19 adds metadata-only introspection commands over plan-compatible JSON files.
- * EPIC-22 adds the dev-only `sloppy run` artifact path. EPIC-23 gives that path a small
- * native response writer and request context while it still avoids production HTTP,
- * package-manager, Node-compatibility, middleware, streaming, and hot reload.
+ * Provides plan introspection commands and the bounded development `sloppy run` path.
+ * Runtime execution requires V8-enabled artifacts and intentionally avoids production
+ * HTTP, package-manager behavior, Node compatibility, middleware, streaming, and hot
+ * reload claims.
  */
 #include "sloppy/arena.h"
 #include "sloppy/builder.h"
@@ -357,7 +357,7 @@ static void sl_cli_print_version(void)
 static void sl_cli_print_help(void)
 {
     sl_cli_print_version();
-    (void)printf("Foundation build with dev-only run MVP and metadata CLI introspection.\n\n");
+    (void)printf("Pre-alpha runtime foundation with bounded run and metadata CLI introspection.\n\n");
     (void)printf("Usage:\n");
     (void)printf("  sloppy --help\n");
     (void)printf("  sloppy --version\n");
@@ -389,7 +389,7 @@ static void sl_cli_print_command_help(const char* command)
         (void)printf("\n");
         (void)printf("Source input compiles through sloppyc, validates artifacts, then runs the "
                      "artifact path.\n");
-        (void)printf("Dev-only MVP. Runtime execution requires a V8-enabled build.\n");
+        (void)printf("Bounded development runtime. Execution requires a V8-enabled build.\n");
         return;
     }
     if (strcmp(command, "doctor") == 0) {
@@ -2091,7 +2091,7 @@ static SlEngineOptions sl_run_v8_options(const SlRunApp* app, const char* app_js
     SlEngineOptions options = {0};
 
     options.kind = SL_ENGINE_KIND_V8;
-    options.runtime_name = sl_str_from_cstr("sloppy-run-mvp");
+    options.runtime_name = sl_str_from_cstr("sloppy-run");
     options.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
     options.target_platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
     options.target_engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
@@ -2615,7 +2615,7 @@ static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_sc
     SlEngineResult result = {0};
     SlStatus status;
 
-    /* The scope is represented by the callback boundary; this slice registers no cleanups here. */
+    /* The scope is represented by the callback boundary; no request cleanups are registered here. */
     (void)request_scope;
     if (context == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -2802,7 +2802,8 @@ static int sl_run_once(SlRunApp* app, const char* method, const char* target)
     request.raw_target = sl_str_from_cstr(target);
     request.path = sl_run_target_path(target);
     if (request.method == SL_HTTP_METHOD_UNKNOWN) {
-        sl_cli_write_cstr(stderr, "sloppy run: --once method is unsupported by the MVP parser\n");
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: --once method is unsupported by the bounded parser\n");
         return 1;
     }
 
@@ -2912,7 +2913,7 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
     }
 
     (void)printf("Sloppy dev server listening on http://%s:%u\n", host, (unsigned)port);
-    (void)printf("Dev-only MVP: no TLS, no streaming, no middleware.\n");
+    (void)printf("Bounded development server: no TLS, no middleware, no production-edge claim.\n");
     status = sl_http_transport_server_run(&server, &diag);
     if (!sl_status_is_ok(status)) {
         result = 1;

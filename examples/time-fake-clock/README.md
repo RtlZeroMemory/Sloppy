@@ -1,6 +1,6 @@
 # Time Fake Clock Example
 
-Status: CORE-TIME-01.I source example. This example documents deterministic tests that
+Status: source example. This example documents deterministic tests that
 inject a clock explicitly.
 
 `Time.fakeClock()` creates an explicit test-scoped provider. Passing `{ clock }` to

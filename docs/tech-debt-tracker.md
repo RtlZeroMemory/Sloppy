@@ -32,7 +32,7 @@ ENGINE-01 locks the framework contract in
 against that contract rather than reopening ambiguous "minimum alpha" scope.
 
 - Post-core primitive adoption follow-up:
-  `docs/project/post-core-mvp-memory-string-audit.md` records provider-specific cleanup
+  `docs/project/archive/post-alpha-transition/post-core-mvp-memory-string-audit.md` records provider-specific cleanup
   outside the completed consolidation/audit work.
   <a id="postgresql-provider-copy-helpers"></a>PostgreSQL cleanup should move
   `src/data/postgres.c` local copy helpers `sl_pg_copy_str`, `sl_pg_copy_cstr`,
@@ -56,7 +56,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   <a id="tests-strcpy-boundary"></a>Test-only C-string boundary helpers should either
   use shared checked helpers or document why a local boundary helper is acceptable.
 - Post-core boundary follow-up:
-  `docs/project/post-core-mvp-boundary-audit.md` records the current libuv boundary state.
+  `docs/project/archive/post-alpha-transition/post-core-mvp-boundary-audit.md` records the libuv boundary audit state.
   HARDEN-01.A retires the legacy public `sl_http_libuv_smoke` helper and routes the
   dev-only CLI server path through `SlHttpTransportServer`; HTTP-25.A/B/C adds bounded
   sequential keep-alive, HTTP-25.D/E adds chunked decoding and internal streaming, and
@@ -397,7 +397,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - GitHub issue cleanup follow-through: the 2026-05-05 post-ENGINE-16 cleanup closed the
   completed ENGINE-08/09, ENGINE-14, HTTP-25, and HARDEN-01 parent/task issues with
   evidence comments. Current issue reconciliation lives in
-  `docs/project/post-engine-16-docs-issue-reconciliation.md`.
+  `docs/project/archive/post-engine-16/post-engine-16-docs-issue-reconciliation.md`.
 
 ## Deferred By Design
 
@@ -427,7 +427,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   shape, array support, TLS/options hardening, PostgreSQL COPY/listen/notify, SQL Server
   TVP/bulk copy, and raw SQL escape hatch policy.
 - Dynamic module/package loading, package-manager behavior, native plugin ABI, compiler
-  plugins, and Node compatibility.
+  plugins, and Node-style runtime/module semantics.
 - Multi-worker/process scaling, hot reload, dev watch, inspector/debugger integration, and
   snapshots.
 - Performance dashboards, upload jobs, and CI performance regression thresholds.
@@ -520,7 +520,7 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
 - Applied the 2026-04-30 GitHub issue hygiene pass after ENGINE-23 roadmap creation:
   closed completed ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12, ENGINE-21,
   ENGINE-22, and old #32 with evidence comments; documented kept-open and human-review
-  issues in `docs/project/post-core-mvp-issue-reconciliation.md` and
+  issues in `docs/project/archive/post-alpha-transition/post-core-mvp-issue-reconciliation.md` and
   related project audit documents.
 - Added the ENGINE-01 framework contract source of truth for JS app API, Results, request
   context, async/microtasks, cancellation/deadlines, HTTP, SQLite, capabilities, and

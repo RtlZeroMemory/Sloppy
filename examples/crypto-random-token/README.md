@@ -1,6 +1,6 @@
 # Crypto Random Token Example
 
-Status: CORE-CRYPTO-01.I source example. This example documents the intended
+Status: source example. This example documents the intended
 `sloppy/crypto` random helper shape for UUIDs, random bytes, URL-safe tokens, hex text, and
 numeric codes.
 

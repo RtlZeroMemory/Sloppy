@@ -1,6 +1,6 @@
 # Filesystem Streams Example
 
-Status: CORE-FS-01.J FileHandle/stream example.
+Status: filesystem FileHandle/stream example.
 
 `FileHandle` exposes Sloppy-owned async iteration helpers without claiming Node stream
 compatibility:

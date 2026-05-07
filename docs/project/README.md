@@ -1,93 +1,83 @@
-# GitHub Project Model
+# Project Documentation Map
 
-Sloppy's docs and ADRs are the source of truth. GitHub issues mirror that source of truth; they do not replace it.
+This directory contains project contracts, planning snapshots, historical
+records, and issue-creation inputs. Repository docs and ADRs describe durable
+design contracts. GitHub issues and pull requests own live task state. Local
+issue indexes are creation or navigation snapshots, not authoritative status.
 
-EPICs describe big outcomes. Tasks describe bounded-context PR chunks that a dev agent can implement, a reviewer agent can review, and a human architect can merge with confidence.
+## Current Contracts
 
-The preferred unit of work is one medium-sized coherent PR. Avoid micro-PR paralysis where every enum or helper becomes a separate review, and avoid kitchen-sink PRs that mix unrelated runtime, tooling, compiler, and documentation work.
+Use these documents when implementing or reviewing current behavior:
 
-Default loop:
+- `docs/architecture.md`
+- `docs/execution-model.md`
+- `docs/concurrency.md`
+- `docs/memory.md`
+- `docs/diagnostics.md`
+- `docs/security-permissions.md`
+- `docs/developer-ergonomics.md`
+- `docs/app-plan.md`
+- `docs/compiler.md`
+- `docs/compiler-supported-syntax.md`
+- `docs/testing-strategy.md`
+- `docs/quality-gates.md`
+- `docs/documentation-policy.md`
+- `docs/project/core-api-platform-map.md`
+- `docs/project/config-api-architecture.md`
+- `docs/project/codec-api-architecture.md`
+- `docs/project/crypto-api-architecture.md`
+- `docs/project/filesystem-api-architecture.md`
+- `docs/project/time-api-architecture.md`
+- `docs/project/network-api-architecture.md`
+- `docs/project/os-api-architecture.md`
+- `docs/project/local-ipc-api-architecture.md`
+- `docs/project/http-client-api-architecture.md`
+- `docs/project/compiler-inference-engine-architecture.md`
+- `docs/project/provider-execution-runtime-architecture.md`
+- `docs/project/http-transport-runtime-architecture.md`
+- `docs/project/framework-api-shape.md`
+- `docs/project/engine-19-conformance-matrix.md`
+- `docs/project/main-evidence.md`
+- `docs/project/test-platform-inventory.md`
 
-1. Pick a ready task from `docs/project/tasks/` or its GitHub issue.
-2. Generate a dev prompt from the task and source docs.
-3. Dev Codex implements one bounded task.
-4. Reviewer Codex reviews that task against the same docs.
-5. Human architect/final reviewer consolidates feedback and decides what blocks merge.
-6. Fixer Codex addresses confirmed blocking findings only.
-7. Optional final verifier checks original acceptance criteria and confirmed fixes.
-8. Human merges.
+`docs/project/framework-api-shape.md` remains the Framework-01 baseline.
+Framework v2 work is tracked through `FRAMEWORK-V2-01` until a current
+Framework v2 contract replaces it.
 
-This project does not require a swarm of agents. The standard model is one dev Codex, one reviewer Codex, and human final review. Add extra reviewers only for high-risk slices such as V8 boundaries, allocator/resource lifetime, concurrency, provider dependencies, or security-sensitive diagnostics.
+## Current Planning
 
-Implementation work should map to a project task. If no issue exists, create or update one before implementation unless the change is trivial docs-only cleanup.
+- `docs/roadmap.md` is the current repository roadmap.
+- `docs/project/roadmap-main.md` and
+  `docs/project/roadmap-main-1-hardening.md` remain active while the main-lane
+  contract checks and active execution plans reference them.
+- `docs/project/issue-workflow.md` and `docs/project/pr-workflow.md` describe
+  issue and PR mechanics.
+- `docs/project/prompts/` contains reusable internal prompts for scoped work.
 
-Before applying GitHub project data, validate and dry-run it:
+GitHub is authoritative for issue state, blocking relationships, review status,
+and merge readiness.
 
-```powershell
-.\tools\github\validate-issue-data.ps1
-.\tools\github\dry-run-summary.ps1
-.\tools\github\create-all.ps1
-```
+## Issue Snapshots
 
-Only apply after validation passes and the dry-run output looks right:
+The files under `docs/project/tasks/`, `docs/project/epics/`, and the
+`*-issue-index.md` files are snapshots or issue-creation inputs. They can help
+recover intent, but they must not be treated as current status if GitHub differs.
 
-```powershell
-.\tools\github\create-all.ps1 -Apply
-```
+## Historical Records
 
-Do not include `.git/`, `build/`, `compiler/target/`, or other generated artifacts in review archives. Use `tools/windows/create-review-zip.ps1` or `git archive` for source-only bundles.
+Historical audits and construction-phase planning records live under:
 
-## Current Source-Of-Truth Reset
+- `docs/project/archive/post-alpha-transition/`
+- `docs/project/archive/post-engine-16/`
+- `docs/project/archive/http/`
+- `docs/project/archive/post-core-mvp/`
 
-- `docs/project/engine-roadmap-2.md` is the current post-ENGINE-16 runtime maturation
-  roadmap before the next framework expansion.
-- `docs/project/engine-roadmap-2-issue-index.md` maps Roadmap-2 EPIC/TASK issues.
-- `docs/project/post-engine-16-execution-model-audit.md` records the execution domain,
-  async, threading, cancellation, and terminal-state audit.
-- `docs/project/post-engine-16-runtime-modularity-audit.md` records the runtime feature
-  composition and Plan/import/use-driven modularity audit.
-- `docs/project/post-engine-16-provider-runtime-audit.md` records provider executor,
-  SQLite bridge, PostgreSQL, and SQL Server runtime/offload findings.
-- `docs/project/post-engine-16-http-runtime-audit.md` records HTTP maturity after
-  HTTP-25 and the HTTP-26 direction.
-- `docs/project/post-engine-16-lifecycle-memory-audit.md` records app/resource lifecycle
-  and memory/string safety findings after ENGINE-16.
-- `docs/project/post-engine-16-diagnostics-observability-audit.md` records
-  diagnostics/source-map/observability findings after ENGINE-15.
-- `docs/project/post-engine-16-docs-issue-reconciliation.md` records the 2026-05-05 docs
-  and issue reconciliation.
-- `docs/project/codec-api-architecture.md` records the CORE-CODEC-01 API contract,
-  backend/dependency policy, feature/Plan model, diagnostics, and safety boundaries.
-- `docs/project/codec-api-issue-index.md` maps CORE-CODEC-01 issue slices #622-#631.
-- `docs/project/core-api-platform-map.md` records the CORE-INTEGRATION-01 dependency,
-  primitive ownership, option-shape, stream, diagnostics, scanner, and evidence-lane map.
+Archived documents may retain old issue names, task handles, and paths because
+they are evidence records. Current docs should link to archives only when the
+historical context is useful.
 
-## Historical Post-Core Reset
+## Documentation Rule
 
-- `docs/project/post-core-mvp-code-reality-audit.md` records the compact code/test reality
-  check after the Core MVP proof phase.
-- `docs/project/post-core-mvp-docs-inventory.md` records which temporary docs were kept,
-  archived, or deleted during the compaction.
-- `docs/project/post-core-mvp-issue-reconciliation.md` records live GitHub issue/PR
-  reconciliation decisions after ENGINE-19 and ENGINE-24.
-- `docs/project/post-core-mvp-memory-string-audit.md` records remaining primitive adoption
-  gaps without reopening broad runtime rewrites.
-- `docs/project/post-core-mvp-boundary-audit.md` records V8/libuv/provider/HTTP boundary
-  findings.
-- `docs/project/post-core-mvp-next-roadmap.md` proposes the next wave. It is proposal-only;
-  the owner-approved post-Core issue wave is now mapped in
-  `docs/project/post-core-next-wave-issue-map.md`.
-- `docs/project/framework-app-layer-roadmap.md` records the FRAMEWORK-01 source of truth.
-- `docs/project/framework-api-shape.md` locks the post-Core framework/API ergonomics and
-  Plan-first design target before implementation.
-- `docs/project/config-api-architecture.md` records the CORE-CONFIG-01 configuration
-  contract, source precedence, typed binding, redaction, and Plan/package metadata shape.
-- `docs/project/config-api-issue-index.md` maps the CORE-CONFIG-01 parent and child issues.
-- `docs/project/source-input-run-dev-loop-plan.md` records the reused source-input/dev-loop
-  plan for #259/#302/#346 and the remaining #316/#345/#349 dev-loop work.
-- `docs/project/strong-plan-strategic-layer-plan.md` records the reused Strong Plan plan
-  for #318/#355-#359.
-- `docs/project/http-post-mvp-transport-plan.md` records the HTTP-25 post-MVP transport
-  plan.
-- `docs/project/post-core-immediate-hardening-plan.md` records the HARDEN-01 and reused
-  hardening issue map.
+Before changing behavior, identify the governing source doc. If the source doc
+is stale, update it with the implementation and tests. If a task is docs-only,
+state why code and tests did not change.

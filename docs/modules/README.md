@@ -6,16 +6,12 @@ Every implemented module should have a README in this tree, and `src/<module>/RE
 may mirror or point to it where useful. These docs are not marketing docs; they are the
 working contract for APIs, ownership, invariants, diagnostics, tests, and limitations.
 
-Required module README sections:
+Required module README content:
 
-- Status;
-- Purpose;
-- Scope;
-- Non-goals;
-- Public/Internal API;
-- Ownership/Lifetime Rules;
-- Invariants;
-- Diagnostics;
-- Tests;
-- Source Docs;
-- Open Questions.
+- purpose;
+- current status or status;
+- invariants or ownership/lifetime rules.
+
+Add narrower sections such as diagnostics, tests, source docs, non-claims, or
+deferred work when they carry useful current information. Do not keep empty
+template sections just to satisfy ceremony.

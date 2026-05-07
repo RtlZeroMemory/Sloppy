@@ -35,9 +35,9 @@ typedef enum SlHttpMethod
 } SlHttpMethod;
 
 /*
- * Shared ENGINE-04 framework method set. These helpers intentionally return false for
- * HEAD/OPTIONS even though the parser recognizes those tokens: the current runtime only
- * dispatches GET, POST, PUT, PATCH, and DELETE route metadata.
+ * Shared framework method set. These helpers intentionally return false for HEAD/OPTIONS
+ * even though the parser recognizes those tokens: the current runtime only dispatches GET,
+ * POST, PUT, PATCH, and DELETE route metadata.
  */
 bool sl_http_method_supported(SlHttpMethod method);
 SlStatus sl_http_method_from_str(SlStr method, SlHttpMethod* out_method);
@@ -92,8 +92,8 @@ typedef struct SlHttpParseOptions
  * supplied, an arena-owned diagnostic.
  *
  * The parser stores `raw_target` exactly as llhttp reports it. `path` is the portion before
- * `?`; EPIC-23 query parsing and percent decoding live in `http_context.h` so the request
- * head parser stays focused on HTTP syntax.
+ * `?`; query parsing and percent decoding live in `http_context.h` so the request head
+ * parser stays focused on HTTP syntax.
  */
 SlStatus sl_http_parse_request_head(SlArena* arena, SlBytes bytes,
                                     const SlHttpParseOptions* options,

@@ -1,9 +1,9 @@
 /*
  * src/core/http_backend.c
  *
- * ENGINE-13.A/B/C core HTTP backend foundation. This file owns only Slop state,
- * admission, lifecycle, parser-limit, and cancellation/deadline bookkeeping. Concrete
- * sockets/listeners remain behind the platform boundary.
+ * Core HTTP backend foundation. This file owns only Sloppy state, admission, lifecycle,
+ * parser-limit, and cancellation/deadline bookkeeping. Concrete sockets/listeners remain
+ * behind the platform boundary.
  */
 #include "sloppy/http_backend.h"
 

@@ -1,8 +1,8 @@
 # Filesystem Roots And Policy Example
 
-Status: CORE-FS-01.J policy example.
+Status: filesystem policy example.
 
-Named roots are the recommended production shape:
+Named roots are the recommended Sloppy filesystem policy shape:
 
 ```js
 import { Directory, File } from "sloppy/fs";

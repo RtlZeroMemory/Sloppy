@@ -53,9 +53,9 @@ SQLite read/write capabilities, the `usersModule` module attribution, and explic
 response metadata for module handlers whose runtime branches are not fully inferred.
 
 This is not an ORM, migration framework, production HTTP edge, benchmark, public alpha
-claim, HTTP-25.F keep-alive/chunked/streaming stress claim, PostgreSQL bridge claim, or
-SQL Server bridge claim. The localhost transport is keep-alive-capable after
-HTTP-25.A/B/C, but this users API fixture remains V8-gated workflow evidence rather than
-streaming, chunked, pipelining, or production-edge HTTP evidence. SQLite bridge calls are
-still synchronous in the current V8 bridge; provider executor/offload conversion remains a
+claim, keep-alive/chunked/streaming stress claim, PostgreSQL bridge claim, or SQL Server
+bridge claim. The localhost transport is keep-alive-capable for basic request sequences,
+but this users API fixture remains V8-gated workflow evidence rather than streaming,
+chunked, pipelining, or production-edge HTTP evidence. SQLite bridge calls are still
+synchronous in the current V8 bridge; provider executor/offload conversion remains a
 separate provider-runtime task.

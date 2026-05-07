@@ -1,150 +1,124 @@
 # Documentation Policy
 
-## Purpose
+Documentation is part of Sloppy's correctness story. A change is not complete when code
+passes but the next reader is sent to stale behavior, old task history, or unsupported
+product claims.
 
-Sloppy has two documentation audiences:
+## Audiences
 
-- implementers and agents working on Sloppy internals;
-- developers using Sloppy to build applications.
-
-Both must remain accurate. Internal docs explain how Sloppy is built. Public docs explain
-how Sloppy is used. A change is not complete when code passes but the relevant docs now
-mislead the next reader.
+- Current architecture and contributor docs explain how Sloppy is built and reviewed.
+- Public/user-facing docs explain how Sloppy is used, but remain pre-alpha skeletons until
+  the public alpha gate promotes them.
+- Historical/archive docs preserve evidence and planning context without becoming current
+  source of truth.
 
 ## Documentation Layers
 
-### A. Architecture/spec docs
+### Current Source Docs
 
-Architecture and spec docs are the source of truth for implementation:
+Current source docs describe architecture, invariants, implemented behavior, limitations,
+and evidence boundaries:
 
-- `docs/architecture.md`;
-- `docs/execution-model.md`;
-- `docs/concurrency.md`;
-- `docs/platform-abstraction.md`;
-- `docs/memory.md`;
-- `docs/diagnostics.md`;
-- `docs/app-plan.md`;
-- `docs/compiler.md`;
-- `docs/modularity.md`;
-- `docs/data-providers.md`.
+- `docs/architecture.md`
+- `docs/execution-model.md`
+- `docs/concurrency.md`
+- `docs/platform-abstraction.md`
+- `docs/memory.md`
+- `docs/diagnostics.md`
+- `docs/security-permissions.md`
+- `docs/app-plan.md`
+- `docs/compiler.md`
+- `docs/compiler-supported-syntax.md`
+- `docs/modularity.md`
+- `docs/data-providers.md`
+- `docs/developer-ergonomics.md`
+- `docs/testing-strategy.md`
+- `docs/quality-gates.md`
+- current contract docs under `docs/project/`
 
-### B. User/developer-facing docs
+`docs/project/README.md` maps current contracts, issue snapshots, and archives.
 
-User-facing docs live under `docs/public/*`.
+### Public Docs
 
-Their purpose is to teach people how to use Sloppy. During the foundation phase, they are
-planned docs and must clearly say when examples are not implemented yet.
+Public docs live under `docs/public/*`. During pre-alpha, they must be explicit skeletons
+or current-subset pages. They must not expose internal issue choreography, imply public
+alpha launch, or present Framework v2/package/release behavior before it exists.
 
-### C. Module docs
+### Module Docs
 
 Module docs live under `docs/modules/*`, with `src/<module>/README.md` added where useful.
+They document implemented module behavior, invariants, APIs, tests, diagnostics, and
+limitations.
 
-Their purpose is to document actual implemented module behavior, invariants, APIs, tests,
-diagnostics, and limitations.
+### Contributor And Agent Docs
 
-### D. ADRs
+Contributor docs include `CONTRIBUTING.md`, `AGENTS.md`, `docs/agent-harness.md`,
+`docs/review-playbook.md`, `docs/skills/*`, and prompt templates under
+`docs/project/prompts/`. They may mention agent workflow when it helps implementation, but
+they should focus on outcomes: source docs, bounded context, implementation contract,
+evidence lanes, review criteria, and honest claims.
 
-ADRs live under `adr/*`.
+### ADRs And Execution Plans
 
-Their purpose is to record long-lived architecture decisions, rejected alternatives, and
-consequences.
+ADRs record long-lived architecture decisions and rejected alternatives. Execution plans
+track complex implementation work and move to `docs/exec-plans/completed/` when done.
 
-### E. Execution plans
+### Archives
 
-Execution plans live under `docs/exec-plans/*`.
+Archive docs under `docs/project/archive/**` and completed execution plans may retain old
+task names, issue handles, and construction-era wording. Current docs must not point to
+archive files as live status.
 
-Their purpose is to track complex implementation work, progress, and decisions that should
-not live only in chat history.
-
-## Rule: Code, Tests, Docs Move Together
+## Code, Tests, Docs Move Together
 
 A PR that changes behavior, APIs, module boundaries, diagnostics, architecture, CLI
-behavior, test expectations, or public examples must update relevant docs.
+behavior, test expectations, or public examples must update relevant docs. Examples:
 
-Examples:
+- changing string or arena semantics updates module docs and memory docs;
+- changing diagnostic format updates diagnostics docs and goldens;
+- adding a CLI command updates public CLI docs and any relevant source docs;
+- changing public JS API or examples updates JS/TS standards, examples, and public/internal
+  docs with implemented-vs-deferred wording;
+- changing compiler extraction updates compiler docs, syntax docs, fixtures, and tests;
+- standards changes update `AGENTS.md`, `CONTRIBUTING.md`, and relevant skills.
 
-- changing `SlStr` semantics updates `docs/modules/core/README.md` and `docs/memory.md`;
-- adding `SlArena` updates `docs/modules/memory/README.md` and `docs/memory.md`;
-- changing diagnostic format updates `docs/diagnostics.md` and
-  `docs/public/diagnostics.md`;
-- adding a CLI command updates `docs/public/cli.md`;
-- changing app API updates `docs/public/app-model.md` and
-  `docs/developer-ergonomics.md`.
-- changing public JS API or examples updates the relevant public/internal docs and must
-  distinguish implemented behavior from future runtime/compiler behavior.
-- changing compiler extraction or diagnostics docs must distinguish supported syntax from
-  rejected syntax.
-- Rust/JS changes must update docs and examples together when public behavior, examples,
-  or fixture intent changes.
-- standards changes must update `AGENTS.md` references and relevant skill docs.
+## No Stale Documentation
 
-## Rule: No Stale Documentation
+If docs contradict implementation or tests, fix the contradiction or explicitly document a
+migration/deprecation. Do not leave stale docs with TODO-only excuses.
 
-If docs contradict implementation or tests, the PR must fix the contradiction or explicitly
-document a migration/deprecation. Do not leave stale docs with TODO-only excuses.
+Current docs should describe current invariants. Historical docs should be archived or
+clearly labeled. Issue indexes should not replace GitHub live issue state.
 
-## User-Facing Documentation Requirements
+## No Unsupported Claims
 
-Every public feature must eventually include:
+Current/public docs must not claim:
 
-- overview;
-- quick example;
-- API shape;
-- behavior;
-- error/diagnostic behavior;
-- limitations;
-- links to deeper architecture docs if relevant.
+- public alpha release or readiness;
+- production readiness or operational hardening;
+- performance results or benchmark conclusions;
+- Node/Bun/Deno/npm compatibility;
+- package/release readiness;
+- provider, V8, HTTP, TLS, or framework behavior beyond the evidence lane that proves it.
 
-## Module Documentation Requirements
+Negative limitation wording is encouraged when it prevents overclaiming.
 
-Every implemented module should document:
+## PR Documentation Checklist
 
-- purpose;
-- public/internal API;
-- ownership/lifetime rules;
-- invariants;
-- non-goals;
-- key data structures;
-- error behavior;
-- diagnostics;
-- tests;
-- examples if applicable;
-- known limitations;
-- source docs/ADRs.
-
-## Documentation Checklist for PRs
-
-- Does this PR change behavior?
-- Does this PR add/change public API?
-- Does this PR change diagnostics?
-- Does this PR change test intent?
-- Does this PR change architecture or boundaries?
-- Does this PR require user-facing docs?
-- Does this PR require module docs?
-- Does this PR require ADR update?
-- Does this PR touch JS/TS public API or examples and therefore need
-  `docs/js-ts-standards.md` plus updated examples/docs?
-- Does this PR touch compiler/tooling and therefore need `docs/rust-standards.md` plus
-  updated compiler docs or fixtures?
+- Does this PR change behavior, public API, diagnostics, test intent, architecture, or
+  boundaries?
+- Which source docs govern the change?
+- Do user-facing docs, module docs, architecture docs, ADRs, skills, or examples need
+  updates?
+- Do tests verify documented intent rather than current output?
+- Are optional lanes and limitations reported honestly?
+- Are stale construction breadcrumbs moved to archive or rewritten as current invariants?
 
 ## Docs Freshness Gate
 
-Future/checkable rules:
+Static docs checks should be high-signal. They should distinguish current/public docs from
+archive, planning, skills, tests, and issue snapshots. Secret-looking values should remain
+broadly forbidden across docs, examples, tests, and goldens, except approved fake markers.
 
-- public docs must not mention implemented commands/APIs incorrectly;
-- module docs must exist for implemented modules;
-- docs links must not be broken where checkable;
-- PR template requires a docs decision.
-
-The lightweight checker starts with structure and required headings. Stronger semantic
-freshness checks should be added only when they are reliable.
-
-## Acceptance Criteria
-
-For this pass:
-
-- `docs/documentation-policy.md` exists;
-- `docs/public/` skeleton exists;
-- `docs/modules/` skeleton exists;
-- `AGENTS.md`, `CONTRIBUTING.md`, and the PR template reference docs freshness;
-- testing strategy references docs-as-intent.
+Add semantic checks only when they are reliable enough to reduce reviewer memory without
+creating noisy false positives.

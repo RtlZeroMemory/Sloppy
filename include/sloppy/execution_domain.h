@@ -22,10 +22,10 @@ typedef enum SlExecutionDomain
 } SlExecutionDomain;
 
 /*
- * Fixed ENGINE-26 execution-domain policy.
+ * Fixed execution-domain policy.
  *
- * This is a small source-of-truth table for tests, docs, and future runtime boundary
- * checks. It is not a dynamic feature registry and does not carry per-request state.
+ * This is a small source-of-truth table for tests, docs, and runtime boundary checks. It is
+ * not a dynamic feature registry and does not carry per-request state.
  */
 SlStr sl_execution_domain_name(SlExecutionDomain domain);
 bool sl_execution_domain_is_supported(SlExecutionDomain domain);
