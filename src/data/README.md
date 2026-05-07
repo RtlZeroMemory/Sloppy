@@ -26,11 +26,9 @@ Implemented now:
 
 Still deferred:
 
-- executor-backed JavaScript SQLite bridge adoption and broader JavaScript provider
-  intrinsics;
-- production pooling, migrations, provider async/offload integration, cancellation/
-  deadlines, TLS option hardening, provider array mapping, richer provider-specific value
-  policy, and SQL Server TVP/bulk support.
+- broader JavaScript PostgreSQL and SQL Server provider intrinsics;
+- migrations, cancellation/deadline hardening, TLS option hardening, provider array
+  mapping, richer provider-specific value policy, and SQL Server TVP/bulk support.
 
 Future JavaScript-visible provider handles must use `SlResourceId` entries in the core
 resource table. Provider pointers and driver handles must not be exposed to JavaScript.

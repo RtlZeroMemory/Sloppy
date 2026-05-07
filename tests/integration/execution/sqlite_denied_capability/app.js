@@ -4,12 +4,12 @@ if (__sloppyRuntime === undefined) {
 }
 const { Results, data } = __sloppyRuntime;
 
-globalThis.__sloppy_handler_1 = () => {
+globalThis.__sloppy_handler_1 = async () => {
   const db = data.sqlite("main");
   try {
-    db.exec("create table users (id integer primary key, name text not null)");
-    db.exec("insert into users (name) values (?)", ["Ada"]);
-    const row = db.queryOne("select id, name from users where id = ?", [1]);
+    await db.exec("create table users (id integer primary key, name text not null)");
+    await db.exec("insert into users (name) values (?)", ["Ada"]);
+    const row = await db.queryOne("select id, name from users where id = ?", [1]);
     return Results.json(row);
   } finally {
     db.close();

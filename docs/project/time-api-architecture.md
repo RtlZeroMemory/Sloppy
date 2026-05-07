@@ -204,8 +204,8 @@ timer completions become cleanup-only on the native side.
   `ctx.deadline` shapes from the native request lifecycle. CORE-TIME-01.H aligns naming
   with `sloppy/time` but does not introduce a new public app lifecycle API.
 - Provider executor: native provider descriptors already carry cancellation/deadline
-  slots and terminal-state handling. The current SQLite JS bridge remains synchronous and
-  is not converted to the provider executor in this EPIC.
+  slots and terminal-state handling. The SQLite JS bridge now uses the serialized provider
+  executor for database work; this EPIC does not expand provider-specific timeout policy.
 - HTTP policy: existing native HTTP request lifecycle timeout/deadline hooks keep using
   the same cancellation diagnostic model. Route-level HTTP timeout policy remains HTTP-26.
 

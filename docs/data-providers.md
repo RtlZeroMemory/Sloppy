@@ -21,18 +21,18 @@ Implemented foundations include:
   diagnostics;
 - SQLite provider configuration that maps to `SERIALIZED_BLOCKING` executor policy with
   one active operation per provider instance;
-- synchronous native SQLite open/close, file and in-memory database, query/exec,
+- native SQLite open/close, file and in-memory database, query/exec,
   transaction, binding, result-copy, and diagnostic behavior;
-- a narrow V8-gated SQLite bridge;
+- a V8-gated SQLite bridge that routes SQLite exec/query/queryOne/transaction work through
+  the serialized provider executor and settles Promises on the V8 owner thread;
 - doctor/audit metadata for providers and capabilities;
 - tests and examples that distinguish metadata, native provider behavior, V8 bridge
   behavior, and live-provider evidence.
 
-The current SQLite bridge is synchronous in the V8 path. The native SQLite provider now has
-the executor configuration contract for serialized blocking admission, but routing the
-JavaScript bridge through owner-thread Promise settlement remains separate work. PostgreSQL
-and SQL Server JavaScript bridge behavior and live-provider lanes must not be implied
-unless those lanes run.
+The SQLite bridge is async at the JavaScript boundary through the `SERIALIZED_BLOCKING`
+executor. SQLite work still runs on one serialized blocking worker per provider instance;
+it is not labeled `TRUE_ASYNC`. PostgreSQL and SQL Server JavaScript bridge behavior and
+live-provider lanes must not be implied unless those lanes run.
 
 ## Capability Rules
 
@@ -92,7 +92,6 @@ These lanes are separate. A default pass is not live-provider or V8 evidence.
 
 ## Deferred Work
 
-Deferred provider work includes executor-backed SQLite bridge adoption, broader
-JavaScript-to-native provider bridges, Docker-backed live-provider CI lanes, richer
-provider audit policy, connection pooling policy, migrations/schema tooling, and
-production hardening.
+Deferred provider work includes broader JavaScript-to-native PostgreSQL and SQL Server
+bridges, Docker-backed live-provider CI lanes, richer provider audit policy,
+migrations/schema tooling, and production hardening.

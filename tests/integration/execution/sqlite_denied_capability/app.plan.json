@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:bb3cab1a604cda5577a27ae9af7d100aab8150d52aa8de0fc41ac99c38744795",
+    "hash": "sha256:3814ec2b6232a9d338ba6e0facf133d63d00caff2f01a2085e590bdc63bd07d6",
     "id": "sqlite-denied-app-js",
     "path": "app.js"
   },
@@ -23,7 +23,7 @@
     }
   ],
   "features": {
-    "asyncHandlers": false,
+    "asyncHandlers": true,
     "capabilities": true,
     "dataProviders": true,
     "sourceMaps": true

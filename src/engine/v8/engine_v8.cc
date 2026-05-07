@@ -23,6 +23,8 @@
 #include "engine_v8_internal.h"
 #include "string_interop.h"
 
+#include "sloppy/data_sqlite.h"
+
 #include <libplatform/libplatform.h>
 #include <v8.h>
 #include <yyjson.h>
@@ -980,10 +982,28 @@ SlStatus sl_v8_fs_capability_allow(const SlCapabilityRegistry* registry, SlArena
     return sl_status_ok();
 }
 
+SlStatus sl_v8_sqlite_capability_allow(const SlCapabilityRegistry* registry, SlArena* diag_arena,
+                                       SlStr token, SlCapabilityOperation operation,
+                                       SlStr provider_token, SlStr provider_kind, SlDiag* out_diag,
+                                       void* user)
+{
+    (void)provider_token;
+    (void)user;
+    return sl_capability_check_database_provider(registry, diag_arena, token, operation,
+                                                 provider_kind, out_diag);
+}
+
 bool sl_v8_fs_feature_enabled(const SlV8Engine* backend)
 {
     return backend != nullptr && backend->has_runtime_features &&
            sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_STDLIB_FS);
+}
+
+bool sl_v8_sqlite_feature_enabled(const SlV8Engine* backend)
+{
+    return backend != nullptr &&
+           (!backend->has_runtime_features ||
+            sl_v8_runtime_feature_active(backend, SL_RUNTIME_FEATURE_PROVIDER_SQLITE));
 }
 
 bool sl_v8_time_feature_enabled(const SlV8Engine* backend)
@@ -1020,9 +1040,10 @@ bool sl_v8_workers_feature_enabled(const SlV8Engine* backend)
 bool sl_v8_needs_async_loop(const SlV8Engine* backend)
 {
     return backend != nullptr &&
-           (sl_v8_fs_feature_enabled(backend) || sl_v8_time_feature_enabled(backend) ||
-            sl_v8_crypto_feature_enabled(backend) || sl_v8_net_feature_enabled(backend) ||
-            sl_v8_os_feature_enabled(backend) || sl_v8_workers_feature_enabled(backend));
+           (sl_v8_sqlite_feature_enabled(backend) || sl_v8_fs_feature_enabled(backend) ||
+            sl_v8_time_feature_enabled(backend) || sl_v8_crypto_feature_enabled(backend) ||
+            sl_v8_net_feature_enabled(backend) || sl_v8_os_feature_enabled(backend) ||
+            sl_v8_workers_feature_enabled(backend));
 }
 
 SlStatus sl_v8_init_async_features(SlV8Engine* backend, SlArena* arena)
@@ -1043,6 +1064,31 @@ SlStatus sl_v8_init_async_features(SlV8Engine* backend, SlArena* arena)
         }
     }
 
+    if (sl_v8_sqlite_feature_enabled(backend)) {
+        SlSqliteProviderConfig sqlite_config = sl_sqlite_provider_config_default(
+            sl_str_from_cstr("stdlib.sqlite"), sl_str_from_cstr("sqlite"));
+        sqlite_config.queue_capacity = backend->sqlite_slots.size();
+        sqlite_config.capability_registry = backend->capabilities;
+        sqlite_config.capability_check = sl_v8_sqlite_capability_allow;
+
+        status = sl_sqlite_provider_executor_config(&sqlite_config, &config);
+        if (sl_status_is_ok(status)) {
+            status = sl_provider_executor_init(&backend->sqlite_executor, arena, &config,
+                                               backend->sqlite_slots.data(), backend->async_loop);
+        }
+        if (!sl_status_is_ok(status)) {
+            sl_v8_workers_dispose(backend);
+            sl_v8_time_dispose(backend);
+            sl_v8_crypto_dispose(backend);
+            sl_v8_net_dispose(backend);
+            sl_v8_os_dispose(backend);
+            sl_async_loop_dispose(backend->async_loop);
+            backend->async_loop = nullptr;
+            return status;
+        }
+        backend->sqlite_executor_initialized = true;
+    }
+
     if (!sl_v8_fs_feature_enabled(backend)) {
         return sl_status_ok();
     }
@@ -1060,6 +1106,10 @@ SlStatus sl_v8_init_async_features(SlV8Engine* backend, SlArena* arena)
     status = sl_provider_executor_init(&backend->fs_executor, arena, &config,
                                        backend->fs_slots.data(), backend->async_loop);
     if (!sl_status_is_ok(status)) {
+        if (backend->sqlite_executor_initialized) {
+            sl_provider_executor_dispose(&backend->sqlite_executor);
+            backend->sqlite_executor_initialized = false;
+        }
         sl_v8_workers_dispose(backend);
         sl_v8_time_dispose(backend);
         sl_v8_crypto_dispose(backend);
@@ -1156,6 +1206,9 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
     if (backend->allocator == nullptr) {
         sl_resource_table_dispose(&backend->resources);
+        if (backend->sqlite_executor_initialized) {
+            sl_provider_executor_dispose(&backend->sqlite_executor);
+        }
         if (backend->fs_executor_initialized) {
             sl_provider_executor_dispose(&backend->fs_executor);
         }
@@ -1176,6 +1229,9 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->isolate = v8::Isolate::New(create_params);
     if (backend->isolate == nullptr) {
         sl_resource_table_dispose(&backend->resources);
+        if (backend->sqlite_executor_initialized) {
+            sl_provider_executor_dispose(&backend->sqlite_executor);
+        }
         if (backend->fs_executor_initialized) {
             sl_provider_executor_dispose(&backend->fs_executor);
         }
@@ -1203,6 +1259,9 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
             backend->isolate->SetData(0, nullptr);
             backend->isolate->Dispose();
             sl_resource_table_dispose(&backend->resources);
+            if (backend->sqlite_executor_initialized) {
+                sl_provider_executor_dispose(&backend->sqlite_executor);
+            }
             if (backend->fs_executor_initialized) {
                 sl_provider_executor_dispose(&backend->fs_executor);
             }
@@ -1228,6 +1287,9 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
         backend->isolate->SetData(0, nullptr);
         backend->isolate->Dispose();
         sl_resource_table_dispose(&backend->resources);
+        if (backend->sqlite_executor_initialized) {
+            sl_provider_executor_dispose(&backend->sqlite_executor);
+        }
         if (backend->fs_executor_initialized) {
             sl_provider_executor_dispose(&backend->fs_executor);
         }
@@ -1275,11 +1337,15 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
     engine->backend = nullptr;
 
     if (backend != nullptr) {
-        sl_resource_table_dispose(&backend->resources);
+        if (backend->sqlite_executor_initialized) {
+            sl_provider_executor_dispose(&backend->sqlite_executor);
+            backend->sqlite_executor_initialized = false;
+        }
         if (backend->fs_executor_initialized) {
             sl_provider_executor_dispose(&backend->fs_executor);
             backend->fs_executor_initialized = false;
         }
+        sl_resource_table_dispose(&backend->resources);
         if (backend->async_loop != nullptr) {
             sl_v8_workers_dispose(backend);
             sl_v8_time_dispose(backend);

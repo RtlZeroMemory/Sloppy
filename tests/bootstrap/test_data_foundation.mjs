@@ -622,7 +622,7 @@ function createForgedLoweredQuery() {
             database: ":memory:",
             capability: "data.main",
         });
-        assertThrowsMessage(() => thenGetterDb.transaction(() => ({
+        await assertRejectsMessage(() => thenGetterDb.transaction(() => ({
             get then() {
                 throw new Error("then getter failed");
             },
@@ -635,9 +635,9 @@ function createForgedLoweredQuery() {
             capability: "data.main",
         });
         commitShouldFail = true;
-        assertThrowsMessage(() => commitFailureDb.transaction(() => "commit"), /commit failed/);
+        await assertRejectsMessage(() => commitFailureDb.transaction(() => "commit"), /commit failed/);
         assert.equal(commitFailureDb.__debug().closed, true);
-        assert.equal(commitFailureDb.__debug().transactionActive, true);
+        assert.equal(commitFailureDb.__debug().transactionActive, false);
         assertThrowsMessage(() => commitFailureDb.query("select 1"), /sqlite connection is closed/);
         commitShouldFail = false;
 

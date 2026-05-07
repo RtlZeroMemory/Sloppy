@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:10d7d851f9c5bff293ae7c60b5179b0aa80927303f92e5d7103a9b42283f6d4f",
+    "hash": "sha256:5fb96d897a6b5af5a70c5f7d6e2095e895aa34c168ceeae1966e1db8e06c0adf",
     "id": "sqlite-bridge-app-js",
     "path": "app.js"
   },
