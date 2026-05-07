@@ -4,6 +4,8 @@ This directory contains provider-specific runtime support.
 
 Implemented now:
 
+- `src/data/common.c` implements the provider-neutral Db value, statement, result, and
+  redaction helpers declared by `include/sloppy/data.h`.
 - `src/data/sqlite.c` implements the first native SQLite provider boundary.
 - `src/data/postgres.c` implements the native PostgreSQL/libpq provider boundary.
 - `src/data/sqlserver.c` implements the native SQL Server/ODBC provider boundary.
@@ -24,8 +26,9 @@ Implemented now:
 Still deferred:
 
 - JavaScript stdlib-to-native database intrinsics;
-- production pooling, migrations, async worker offload, cancellation/deadlines, TLS option
-  hardening, arrays, JSON, blob/date support, and SQL Server TVP/bulk support.
+- provider adoption of the common Db contract, production pooling, migrations, provider
+  async/offload integration, cancellation/deadlines, TLS option hardening, provider array
+  mapping, richer JSON/blob/date support, and SQL Server TVP/bulk support.
 
 Future JavaScript-visible provider handles must use `SlResourceId` entries in the core
 resource table. Provider pointers and driver handles must not be exposed to JavaScript.

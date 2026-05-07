@@ -1,18 +1,17 @@
 # Provider Execution Runtime Architecture
 
-Status: ENGINE-23 strategic architecture with ENGINE-23.A/B descriptor/admission,
-ENGINE-23.C serialized blocking execution, ENGINE-23.D blocking pool execution,
-ENGINE-23.E/F terminal-state plus capability-gated dispatch, and ENGINE-23.G/H
+Status: DATA-RUNTIME-01 strategic architecture with descriptor/admission,
+serialized blocking execution, blocking pool execution, true-async mode metadata,
+fail-closed unavailable mode, terminal-state plus capability-gated dispatch, and
 diagnostics/stress evidence plus provider integration guidance implemented.
 
 ENGINE-23 creates Slop's provider execution and blocking offload runtime. It sits after
 ENGINE-12's generic async backend and before deeper provider, SQLite, HTTP, and public
 alpha work can rely on scalable provider behavior.
 
-This document is implementation-grade architecture for tasks under:
-
-- `ENGINE-23: Provider Execution and Blocking Offload Runtime`;
-- `TASK ENGINE-23.A` through `TASK ENGINE-23.H`.
+This document is implementation-grade architecture for tasks under
+`DATA-RUNTIME-01: Provider Execution Runtime, Async Modes, Admission, Cancellation, and
+Diagnostics`.
 
 It does not implement runtime code by itself. It also does not create Node/npm
 compatibility, package-manager behavior, green threads/fibers/virtual threads,
@@ -43,19 +42,6 @@ when work may outlive the caller stack, block, wait on I/O, or settle JavaScript
 
 Provider execution modes are core Slop semantics.
 
-### INLINE_FAST
-
-`INLINE_FAST` is for bounded metadata/config work only.
-
-Rules:
-
-- must never block on I/O, database calls, disk, network, or long locks;
-- must not call a provider driver function that can wait on external resources;
-- may validate descriptors, inspect immutable Plan/provider metadata, derive cheap
-  configuration, or build diagnostics;
-- must still honor capability, cancellation, and admission rules when it is part of a
-  provider operation.
-
 ### SERIALIZED_BLOCKING
 
 `SERIALIZED_BLOCKING` is one operation at a time for one provider instance.
@@ -82,9 +68,9 @@ Rules:
 - no global uncontrolled provider pool;
 - per-instance in-flight limits remain authoritative.
 
-### NONBLOCKING_IO
+### TRUE_ASYNC
 
-`NONBLOCKING_IO` is for providers/clients with true async I/O support.
+`TRUE_ASYNC` is for providers/clients with true async I/O support.
 
 Rules:
 
@@ -95,17 +81,16 @@ Rules:
   owner-thread settlement semantics;
 - provider-specific async state must be owned by the operation or retained scope.
 
-### EXTERNAL_MANAGED
+### UNAVAILABLE
 
-`EXTERNAL_MANAGED` is a future escape hatch for externally managed provider runtimes or
-pools.
+`UNAVAILABLE` is an explicit fail-closed provider execution mode.
 
 Rules:
 
-- still must use Slop admission, completion, diagnostic, cancellation, and lifetime rules;
-- must not bypass capability checks;
-- must expose bounded in-flight and shutdown behavior to Slop;
-- must not settle JS directly or enter V8 from external worker threads.
+- capability checks still run before admission;
+- provider work is rejected before enqueue;
+- diagnostics report runtime-feature/provider unavailability without leaking secrets;
+- callers must not treat this as skipped, optional, or successful provider evidence.
 
 ## 3. Provider Instance Model
 
@@ -340,7 +325,7 @@ Implemented in ENGINE-23.E/F:
 - provider-like tests prove parallel active execution is capped by configured workers and
   queued work is promoted without creating one thread per operation.
 
-`NONBLOCKING_IO` requirements:
+`TRUE_ASYNC` requirements:
 
 - provider async wait state is owned by operation/executor;
 - waiting does not occupy a blocking worker;
@@ -373,7 +358,7 @@ Provider-specific examples:
   bridge is scoped.
 - SQL Server may use ODBC cancellation if driver behavior is documented and tested.
 
-ENGINE-23.E preserves generic terminal-state correctness for pre-cancelled admission,
+DATA-RUNTIME-01 preserves generic terminal-state correctness for pre-cancelled admission,
 queued/active cancellation, timeout marking, immediate shutdown, and late worker result
 handling. Provider-specific interruption paths remain deferred provider-specific work; no
 SQLite, PostgreSQL, or SQL Server interruption hook is implemented here.
@@ -393,7 +378,7 @@ Rules:
 - denied diagnostics identify token, operation, provider context, and access mismatch
   without exposing secret config values.
 
-The current database runtime capability registry is immutable and Plan-backed. ENGINE-23.F
+The current database runtime capability registry is immutable and Plan-backed. DATA-RUNTIME-01
 wires provider-supplied capability hooks into dispatch so future provider bridges cannot
 accidentally call native provider code directly after parsing JS arguments. Executor
 initialization requires a capability hook and provider token; descriptor admission then
@@ -467,33 +452,19 @@ Evidence reporting:
 - stress smoke is not a production benchmark;
 - benchmark claims remain out of scope.
 
-## 11. ENGINE-23 Task Map
+## 11. DATA-RUNTIME-01 Task Map
 
-Recommended implementation order:
+Implemented scope:
 
-1. `TASK ENGINE-23.A`: Provider Operation Descriptor and Ownership Contract.
-2. `TASK ENGINE-23.B`: Per-Provider-Instance Executor Model.
-3. `TASK ENGINE-23.C`: Serialized Blocking Executor for SQLite-Class Providers.
-4. `TASK ENGINE-23.D`: Blocking Pool Executor and Admission Policy. Done for the native
-   provider-like executor: per-instance workers, bounded queue/in-flight counts,
-   deterministic overflow, shutdown/dispose cleanup, and libuv completion posting.
-5. `TASK ENGINE-23.E`: Provider Cancellation, Timeout, and Late Completion Semantics. Done
-   for the native provider executor: pre-admission cancellation/deadline rejection, queued
-   cancellation, active terminal posting, immediate shutdown terminal states, deferred
-   active cleanup until worker return, and late-completion cleanup-only handling.
-6. `TASK ENGINE-23.F`: Capability-Gated Provider Dispatch. Done for the native provider
-   executor: registry-backed fail-closed admission, read/write/readwrite access checks,
-   provider-token/provider-kind mismatch denial, and redacted admission diagnostics.
-7. `TASK ENGINE-23.G`: Provider Executor Diagnostics and Stress Evidence. Done for the
-   native provider executor: stable counters/diagnostics cover overload, invalid
-   operation, shutdown, worker/operation failure, cancellation, timeout, late completion,
-   and capability denial; bounded stress smoke covers many admitted operations,
-   deterministic overflow, serialized one-active behavior, blocking-pool worker caps,
-   cleanup once, and shutdown safety. This is correctness evidence, not a benchmark.
-8. `TASK ENGINE-23.H`: Provider Runtime Integration Guide for SQLite/PostgreSQL/SQL Server.
-   Done in `docs/project/provider-runtime-integration-guide.md`; it defines how future
-   SQLite, PostgreSQL, and SQL Server bridges must consume the provider executor without
-   adding those bridges here.
+- provider operation descriptor and ownership contract;
+- per-provider-instance executor model;
+- serialized blocking executor for SQLite-class providers;
+- blocking pool executor and admission policy;
+- true-async and unavailable execution mode contracts;
+- cancellation, timeout, and late completion semantics;
+- capability-gated provider dispatch;
+- provider executor diagnostics and stress evidence;
+- provider runtime integration guide for SQLite/PostgreSQL/SQL Server.
 
 Dependencies:
 
@@ -507,7 +478,7 @@ Work after ENGINE-23:
 
 - ENGINE-13 proper HTTP backend may consume shared pressure/cancellation semantics but does
   not implement provider runtime;
-- ENGINE-17 SQLite runtime completion should route SQLite operations through the provider
+- SQLite runtime completion should route SQLite operations through the provider
   executor before claiming scalable provider behavior;
 - PostgreSQL and SQL Server JS bridges remain deferred until the provider runtime and
   SQLite path are solid.

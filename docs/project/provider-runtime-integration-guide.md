@@ -1,7 +1,7 @@
 # Provider Runtime Integration Guide
 
-Status: ENGINE-23.G/H evidence and integration guide for future SQLite, PostgreSQL, and
-SQL Server runtime work.
+Status: DATA-RUNTIME-01 evidence and integration guide for SQLite, PostgreSQL, and SQL
+Server runtime work.
 
 This guide explains how database providers must consume the ENGINE-23 provider executor.
 It is not a database bridge implementation. It does not convert SQLite to async offload,
@@ -16,6 +16,8 @@ ENGINE-23 now provides a Slop-owned native provider/offload executor with:
 - per-provider-instance bounded admission and deterministic overload rejection;
 - `SERIALIZED_BLOCKING` execution with one active operation per provider instance;
 - `BLOCKING_POOL` execution capped by configured worker count and queue capacity;
+- `TRUE_ASYNC` execution-mode metadata for provider-owned nonblocking state machines;
+- fail-closed `UNAVAILABLE` mode that checks capabilities and rejects before enqueue;
 - capability-gated dispatch before enqueue and before provider work starts;
 - cancellation, timeout, shutdown, and late-completion terminal states;
 - cleanup-once behavior across success, failure, rejection, shutdown, and late completion;
@@ -49,7 +51,7 @@ Rules:
 
 Default mode for a single SQLite connection is `SERIALIZED_BLOCKING`.
 
-Future ENGINE-17 SQLite runtime completion should route `query`, `exec`, and `queryOne`
+Future SQLite runtime completion should route `query`, `execute`, and `queryOne`
 through the executor:
 
 1. Resolve the JS-facing opaque resource ID to the native SQLite connection resource on the
@@ -76,18 +78,16 @@ default.
 
 ## PostgreSQL Integration
 
-PostgreSQL may use `NONBLOCKING_IO` if a true async client API or nonblocking libpq state
-machine is chosen. It may use `BLOCKING_POOL` if the bridge initially uses blocking libpq
-calls.
+PostgreSQL final provider work must use `TRUE_ASYNC` through nonblocking libpq-style state
+machines. A blocking-pool fallback can be used only as explicit temporary evidence or
+local scaffolding and must never be reported as true async provider completion.
 
-Either strategy must still use Slop admission, cancellation, timeout, completion, and
-cleanup semantics:
+The true-async strategy must still use Slop admission, cancellation, timeout, completion,
+and cleanup semantics:
 
 - capability checks happen before enqueue;
 - connection strings and credentials stay redacted;
 - operation descriptors own query text, parameter data, and result-conversion state;
-- blocking mode uses bounded per-instance workers and must not create one thread per
-  request;
 - nonblocking mode owns provider async state without occupying a blocking worker while
   waiting;
 - provider cancellation, such as libpq cancellation, must be explicit and tested before it
@@ -98,8 +98,9 @@ call into native provider code.
 
 ## SQL Server Integration
 
-SQL Server will likely use `BLOCKING_POOL` first when using blocking ODBC or native driver
-calls. An async/native driver strategy can be evaluated later as scoped provider work.
+SQL Server final provider work must use true async driver behavior when available and must
+report `UNAVAILABLE` or `UNSUPPORTED` honestly when the configured ODBC/driver lane cannot
+provide async execution. Blocking-pool fallback must not be labeled true async.
 
 Rules:
 

@@ -543,11 +543,11 @@ against that contract rather than reopening ambiguous "minimum alpha" scope.
   generic terminal check plus late-completion hook so terminal owners can turn late
   completions into cleanup-only work, and `sl_cancellation_diag_code` centralizes native
   cancel/deadline/backpressure/shutdown diagnostic categories.
-- Added ENGINE-26.E/F blocking/offload policy and bounded race evidence:
-  provider-executor mode helpers classify only `INLINE_FAST` as owner-thread inline work
-  and serialized/pool-backed blocking modes as worker-offloaded, while async backend tests
-  cover terminal-after-enqueue cleanup-only behavior. SQLite bridge executor adoption
-  remains ENGINE-28 debt.
+- Added ENGINE-26.E/F blocking/offload policy and bounded race evidence, later tightened
+  under DATA-RUNTIME-01: provider-executor modes now distinguish serialized blocking,
+  bounded blocking pools, true-async provider state machines, and fail-closed unavailable
+  providers, while async backend tests cover terminal-after-enqueue cleanup-only behavior.
+  SQLite bridge executor adoption remains ENGINE-28 debt.
 - Applied the 2026-04-30 GitHub issue hygiene pass after ENGINE-23 roadmap creation:
   closed completed ENGINE-01, ENGINE-03 through ENGINE-07, ENGINE-12, ENGINE-21,
   ENGINE-22, and old #32 with evidence comments; documented kept-open and human-review

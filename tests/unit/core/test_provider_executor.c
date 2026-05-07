@@ -430,28 +430,13 @@ static int make_worker_descriptor_for(ProviderRecord* record, ProviderWorkPayloa
 
 static int test_execution_mode_offload_policy(void)
 {
-    if (!sl_provider_execution_mode_may_run_inline_on_owner_thread(
-            SL_PROVIDER_EXECUTION_INLINE_FAST) ||
-        sl_provider_execution_mode_may_run_inline_on_owner_thread(
-            SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) ||
-        sl_provider_execution_mode_may_run_inline_on_owner_thread(
-            SL_PROVIDER_EXECUTION_BLOCKING_POOL) ||
-        sl_provider_execution_mode_may_run_inline_on_owner_thread(
-            SL_PROVIDER_EXECUTION_NONBLOCKING_IO) ||
-        sl_provider_execution_mode_may_run_inline_on_owner_thread(
-            SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED))
-    {
-        return 1;
-    }
-
-    if (sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_INLINE_FAST) ||
-        !sl_provider_execution_mode_requires_offload_worker(
+    if (!sl_provider_execution_mode_requires_offload_worker(
             SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING) ||
         !sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_BLOCKING_POOL) ||
-        sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_NONBLOCKING_IO) ||
-        sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED))
+        sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_TRUE_ASYNC) ||
+        sl_provider_execution_mode_requires_offload_worker(SL_PROVIDER_EXECUTION_UNAVAILABLE))
     {
-        return 2;
+        return 1;
     }
 
     return 0;
@@ -673,14 +658,17 @@ static int init_blocking_pool_executor(SlArena* arena, SlAsyncLoop** loop,
 
 static int test_execution_mode_parse_and_validation(void)
 {
-    SlProviderExecutionMode mode = SL_PROVIDER_EXECUTION_INLINE_FAST;
+    SlProviderExecutionMode mode = SL_PROVIDER_EXECUTION_UNAVAILABLE;
 
     if (expect_status(
-            sl_provider_execution_mode_parse(sl_str_from_cstr("SerializedBlocking"), &mode),
+            sl_provider_execution_mode_parse(sl_str_from_cstr("SERIALIZED_BLOCKING"), &mode),
             SL_STATUS_OK) != 0 ||
         mode != SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING ||
-        !sl_str_equal(sl_provider_execution_mode_name(SL_PROVIDER_EXECUTION_NONBLOCKING_IO),
-                      sl_str_from_cstr("NonBlockingIo")) ||
+        expect_status(sl_provider_execution_mode_parse(sl_str_from_cstr("true-async"), &mode),
+                      SL_STATUS_OK) != 0 ||
+        mode != SL_PROVIDER_EXECUTION_TRUE_ASYNC ||
+        !sl_str_equal(sl_provider_execution_mode_name(SL_PROVIDER_EXECUTION_TRUE_ASYNC),
+                      sl_str_from_cstr("TRUE_ASYNC")) ||
         expect_status(sl_provider_execution_mode_parse(sl_str_from_cstr("mystery"), &mode),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
@@ -768,7 +756,7 @@ static int test_invalid_descriptor_fields_fail_without_cleanup(void)
     if (make_descriptor(&record, sl_bytes_empty(), NULL, &desc) != 0) {
         return 73;
     }
-    desc.execution_mode = SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED;
+    desc.execution_mode = SL_PROVIDER_EXECUTION_TRUE_ASYNC;
     op = (SlProviderOperation*)1;
     if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
@@ -787,6 +775,68 @@ static int test_invalid_descriptor_fields_fail_without_cleanup(void)
         op != NULL || record.cleanup_count != 0U)
     {
         return 76;
+    }
+
+    sl_provider_executor_dispose(&executor);
+    sl_async_loop_dispose(loop);
+    return 0;
+}
+
+static int test_unavailable_executor_rejects_after_capability_before_enqueue(void)
+{
+    unsigned char arena_storage[8192];
+    SlArena arena;
+    SlAsyncCompletion completions[16];
+    SlAsyncLoop* loop = NULL;
+    SlProviderExecutorConfig config = {0};
+    SlProviderInstanceExecutor executor = {0};
+    ProviderRecord record = {0};
+    SlDiag diag = {0};
+    SlProviderOperation* op = (SlProviderOperation*)1;
+    SlProviderOperationDescriptor desc;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_async_loop_create(SL_ASYNC_BACKEND_TEST, &arena, completions, 16U, &loop),
+                      SL_STATUS_OK) != 0)
+    {
+        return 80;
+    }
+
+    config.instance_id = sl_str_from_cstr("postgres:main");
+    config.provider_kind = sl_str_from_cstr("postgres");
+    config.provider_token = sl_str_from_cstr("data.pg");
+    config.mode = SL_PROVIDER_EXECUTION_UNAVAILABLE;
+    config.queue_capacity = 0U;
+    config.worker_count = 0U;
+    config.max_in_flight = 0U;
+    config.capability_registry = provider_test_capability_registry();
+    config.capability_check = provider_test_database_capability_check;
+    if (expect_status(sl_provider_executor_init(&executor, &arena, &config, NULL, loop),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_async_loop_dispose(loop);
+        return 81;
+    }
+
+    if (make_descriptor_for(&record, sl_bytes_empty(), NULL, sl_str_from_cstr("postgres:main"),
+                            sl_str_from_cstr("postgres"), SL_PROVIDER_EXECUTION_UNAVAILABLE,
+                            &desc) != 0 ||
+        expect_status(sl_provider_operation_descriptor_attach_admission_diag(&desc, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        return 82;
+    }
+
+    if (expect_status(sl_provider_executor_submit(&executor, &arena, &desc, &op),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        op != NULL || record.cleanup_count != 0U ||
+        sl_provider_executor_pending_count(&executor) != 0U ||
+        sl_provider_executor_in_flight_count(&executor) != 0U ||
+        executor.capability_denied_count != 0U || executor.invalid_operation_count != 1U ||
+        diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE)
+    {
+        return 83;
     }
 
     sl_provider_executor_dispose(&executor);
@@ -2594,6 +2644,7 @@ int main(void)
                               test_provider_executor_admission_diagnostics_and_counters,
                               test_descriptor_helpers_preserve_outputs_on_failure,
                               test_invalid_descriptor_fields_fail_without_cleanup,
+                              test_unavailable_executor_rejects_after_capability_before_enqueue,
                               test_pre_cancelled_and_expired_deadline_reject_before_enqueue,
                               test_capability_denials_reject_before_enqueue,
                               test_missing_capability_redacts_unsafe_admission_hints,
