@@ -1,5 +1,4 @@
 param(
-    [switch]$StrictAlloc,
     [switch]$SelfTest,
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 )
