@@ -159,7 +159,7 @@ SlStatus sl_os_environment_get(SlArena* arena, const SlOsPolicy* policy, SlStr k
                                SlOwnedStr* out_value, bool* out_found, SlDiag* out_diag)
 {
     if (arena == NULL || out_value == NULL || out_found == NULL || key.ptr == NULL ||
-        key.length == 0U)
+        key.length == 0U || !sl_status_is_ok(sl_str_validate_no_nul(key)))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -176,7 +176,9 @@ SlStatus sl_os_environment_get(SlArena* arena, const SlOsPolicy* policy, SlStr k
 SlStatus sl_os_environment_has(const SlOsPolicy* policy, SlStr key, bool* out_found,
                                SlDiag* out_diag)
 {
-    if (out_found == NULL || key.ptr == NULL || key.length == 0U) {
+    if (out_found == NULL || key.ptr == NULL || key.length == 0U ||
+        !sl_status_is_ok(sl_str_validate_no_nul(key)))
+    {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_found = false;
@@ -211,21 +213,6 @@ SlStatus sl_os_environment_list(SlArena* arena, const SlOsPolicy* policy, SlStr 
     return sl_os_platform_environment_list(arena, effective_prefix, out, out_diag);
 }
 
-static bool sl_os_str_contains_nul(SlStr value)
-{
-    size_t index = 0U;
-
-    if (value.ptr == NULL) {
-        return false;
-    }
-    for (index = 0U; index < value.length; index += 1U) {
-        if (value.ptr[index] == '\0') {
-            return true;
-        }
-    }
-    return false;
-}
-
 static bool sl_os_process_env_override_valid(const SlOsEnvironmentOverride* entry)
 {
     size_t index = 0U;
@@ -235,7 +222,9 @@ static bool sl_os_process_env_override_valid(const SlOsEnvironmentOverride* entr
     {
         return false;
     }
-    if (sl_os_str_contains_nul(entry->key) || sl_os_str_contains_nul(entry->value)) {
+    if (!sl_status_is_ok(sl_str_validate_no_nul(entry->key)) ||
+        !sl_status_is_ok(sl_str_validate_no_nul(entry->value)))
+    {
         return false;
     }
     for (index = 0U; index < entry->key.length; index += 1U) {
@@ -255,7 +244,7 @@ SlStatus sl_os_process_run(SlArena* arena, const SlOsPolicy* policy, SlStr comma
     SlOsProcessRunOptions defaults = {0};
 
     if (arena == NULL || out == NULL || command.ptr == NULL || command.length == 0U ||
-        sl_os_str_contains_nul(command) || (arg_count != 0U && args == NULL))
+        !sl_status_is_ok(sl_str_validate_no_nul(command)) || (arg_count != 0U && args == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -267,7 +256,7 @@ SlStatus sl_os_process_run(SlArena* arena, const SlOsPolicy* policy, SlStr comma
             sl_str_from_cstr("Grant process.run before admitting native process work."));
     }
     for (index = 0U; index < arg_count; index += 1U) {
-        if (args[index].ptr == NULL || sl_os_str_contains_nul(args[index])) {
+        if (args[index].ptr == NULL || !sl_status_is_ok(sl_str_validate_no_nul(args[index]))) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
     }
@@ -275,7 +264,7 @@ SlStatus sl_os_process_run(SlArena* arena, const SlOsPolicy* policy, SlStr comma
         options = &defaults;
     }
     if (!sl_str_is_empty(options->cwd) &&
-        (options->cwd.ptr == NULL || sl_os_str_contains_nul(options->cwd)))
+        (options->cwd.ptr == NULL || !sl_status_is_ok(sl_str_validate_no_nul(options->cwd))))
     {
         return sl_os_denied(SL_DIAG_OS_INVALID_CWD, out_diag,
                             sl_str_from_cstr("process working directory is invalid"),
@@ -302,8 +291,8 @@ static SlStatus sl_os_process_common_validate(const SlOsPolicy* policy, SlStr co
 {
     size_t index = 0U;
 
-    if (command.ptr == NULL || command.length == 0U || sl_os_str_contains_nul(command) ||
-        (arg_count != 0U && args == NULL))
+    if (command.ptr == NULL || command.length == 0U ||
+        !sl_status_is_ok(sl_str_validate_no_nul(command)) || (arg_count != 0U && args == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -314,7 +303,7 @@ static SlStatus sl_os_process_common_validate(const SlOsPolicy* policy, SlStr co
             sl_str_from_cstr("Grant process.run before admitting native process work."));
     }
     for (index = 0U; index < arg_count; index += 1U) {
-        if (args[index].ptr == NULL || sl_os_str_contains_nul(args[index])) {
+        if (args[index].ptr == NULL || !sl_status_is_ok(sl_str_validate_no_nul(args[index]))) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
     }
@@ -330,7 +319,7 @@ static SlStatus sl_os_process_start_options_validate(const SlOsProcessStartOptio
         return sl_status_ok();
     }
     if (!sl_str_is_empty(options->cwd) &&
-        (options->cwd.ptr == NULL || sl_os_str_contains_nul(options->cwd)))
+        (options->cwd.ptr == NULL || !sl_status_is_ok(sl_str_validate_no_nul(options->cwd))))
     {
         return sl_os_denied(SL_DIAG_OS_INVALID_CWD, out_diag,
                             sl_str_from_cstr("process working directory is invalid"),

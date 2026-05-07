@@ -181,7 +181,7 @@ static SlStatus sl_http_query_alloc_params(SlArena* arena, size_t capacity,
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_checked_mul_size(capacity, sizeof(SlHttpQueryParam), &alloc_size);
+    status = sl_checked_array_size(capacity, sizeof(SlHttpQueryParam), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }

@@ -457,7 +457,8 @@ cleanup:
 
 `SlStr` is pointer plus length and is not necessarily null-terminated. `SlBytes` is the
 byte-slice equivalent. Do not rely on internal `strlen`; use boundary adapters only for C,
-OS, and library APIs. Add explicit UTF-8 validation where needed later.
+OS, and library APIs. C-string boundaries must validate no embedded NUL before producing
+terminated storage. Add explicit UTF-8 validation where needed later.
 
 ## Memory, String, Buffer, And Builder Operations
 
@@ -472,6 +473,8 @@ Required:
 - use `SlStringBuilder` and `SlByteBuilder` for bounded construction;
 - use existing checked size, capacity, and growth helpers;
 - use existing string/byte equality, hash, and copy helpers;
+- use scalar byte-search helpers instead of open-coded delimiter scans where the shared
+  primitive fits;
 - use existing diagnostics rendering and redaction helpers;
 - preserve explicit pointer-plus-length semantics;
 - preserve embedded-NUL and binary correctness.
@@ -496,13 +499,16 @@ If a required primitive is missing:
 - do not solve it with one-off local buffer manipulation.
 
 Approved boundary helpers must be narrow, documented, and easy for the standards scanner to
-recognize. New exceptions should be rarer than new reusable primitives.
+recognize. Raw NUL-append string copies are not C-string validation; OS/env/config/app-host
+boundaries should use the canonical C-string copy helper. New exceptions should be rarer
+than new reusable primitives.
 
 ## Integer and Size Safety
 
-Use checked add/mul for allocation sizes. Avoid unchecked casts from signed to unsigned and
-truncating conversions without helpers. Avoid magic constants. Use `size_t` for sizes and
-`uint*_t` when exact width matters.
+Use checked add/mul for allocation sizes. Prefer checked array-size helpers for
+`count * sizeof(T)` allocations and checked three-term additions for repeated-size totals.
+Avoid unchecked casts from signed to unsigned and truncating conversions without helpers.
+Avoid magic constants. Use `size_t` for sizes and `uint*_t` when exact width matters.
 
 ## Memory Allocation
 

@@ -252,7 +252,7 @@ SlStatus sl_resource_table_init_from_arena(SlResourceTable* table, SlArena* aren
         return sl_resource_table_init(table, NULL, 0U);
     }
 
-    status = sl_checked_mul_size(capacity, sizeof(SlResourceEntry), &storage_size);
+    status = sl_checked_array_size(capacity, sizeof(SlResourceEntry), &storage_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }

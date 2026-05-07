@@ -43,7 +43,7 @@ struct SlFsFileLock
 
 static SlStatus sl_fs_posix_path(SlArena* arena, SlStr path, SlOwnedStr* out)
 {
-    return sl_str_copy_to_arena_nul(arena, path, out);
+    return sl_str_copy_to_arena_cstr(arena, path, out);
 }
 
 static SlStatus sl_fs_posix_status(int error)
@@ -567,7 +567,7 @@ SlStatus sl_fs_platform_list_directory(SlArena* arena, SlStr path, SlFsDirectory
     rewinddir(dir);
     if (count != 0U) {
         size_t bytes = 0U;
-        status = sl_checked_mul_size(count, sizeof(SlFsDirectoryEntry), &bytes);
+        status = sl_checked_array_size(count, sizeof(SlFsDirectoryEntry), &bytes);
         if (sl_status_is_ok(status)) {
             status = sl_arena_alloc(arena, bytes, _Alignof(SlFsDirectoryEntry), &memory);
         }

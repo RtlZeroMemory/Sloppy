@@ -440,7 +440,7 @@ static SlStatus sl_fs_watch_alloc(SlArena* arena, SlStr path, const SlFsWatchOpt
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_checked_mul_size(options->queue_capacity, sizeof(SlFsWatchEvent), &bytes);
+    status = sl_checked_array_size(options->queue_capacity, sizeof(SlFsWatchEvent), &bytes);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -456,7 +456,7 @@ static SlStatus sl_fs_watch_alloc(SlArena* arena, SlStr path, const SlFsWatchOpt
     for (size_t index = 0U; index < options->queue_capacity; index += 1U) {
         watch->queue[index] = (SlFsWatchEvent){0};
     }
-    status = sl_checked_mul_size(options->snapshot_capacity, sizeof(SlFsWatchSnapshot), &bytes);
+    status = sl_checked_array_size(options->snapshot_capacity, sizeof(SlFsWatchSnapshot), &bytes);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -657,7 +657,7 @@ static SlStatus sl_fs_alloc_size_array(SlArena* arena, size_t count, size_t** ou
     }
 
     *out = NULL;
-    status = sl_checked_mul_size(count, sizeof(size_t), &bytes);
+    status = sl_checked_array_size(count, sizeof(size_t), &bytes);
     if (!sl_status_is_ok(status)) {
         return status;
     }

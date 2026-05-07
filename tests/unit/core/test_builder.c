@@ -132,6 +132,53 @@ static int test_arena_byte_builder_growth_and_failures(void)
     return 0;
 }
 
+static int test_fixed_builder_self_overlap_append(void)
+{
+    unsigned char byte_storage[8] = {'a', 'b', 'c', 'd', 'Z', 0U, 0U, 0U};
+    char string_storage[12] = {'a', 'b', 'c', 'd', 'Z', '\0'};
+    const unsigned char expected_bytes[] = {'a', 'b', 'c', 'd', 'd', 'Z'};
+    SlByteBuilder byte_builder;
+    SlStringBuilder string_builder;
+
+    if (expect_status(sl_byte_builder_init_fixed(&byte_builder, byte_storage, sizeof(byte_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_byte_builder_append_bytes(&byte_builder, sl_bytes_from_parts(byte_storage, 4U)),
+            SL_STATUS_OK) != 0)
+    {
+        return 16;
+    }
+
+    if (expect_status(
+            sl_byte_builder_append_bytes(&byte_builder, sl_bytes_from_parts(byte_storage + 3U, 2U)),
+            SL_STATUS_OK) != 0 ||
+        expect_bytes(sl_byte_builder_view(&byte_builder), expected_bytes, sizeof(expected_bytes)) !=
+            0)
+    {
+        return 17;
+    }
+
+    if (expect_status(
+            sl_string_builder_init_fixed(&string_builder, string_storage, sizeof(string_storage)),
+            SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_string_builder_append_str(&string_builder, sl_str_from_parts(string_storage, 3U)),
+            SL_STATUS_OK) != 0)
+    {
+        return 18;
+    }
+
+    if (expect_status(sl_string_builder_append_str(&string_builder,
+                                                   sl_str_from_parts(string_storage + 1U, 3U)),
+                      SL_STATUS_OK) != 0 ||
+        expect_str(sl_string_builder_view(&string_builder), "abcbcd", 6U) != 0)
+    {
+        return 19;
+    }
+
+    return 0;
+}
+
 static int test_string_builder_formatting_and_nul(void)
 {
     char storage[64];
@@ -287,6 +334,11 @@ int main(void)
     }
 
     result = test_arena_byte_builder_growth_and_failures();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_fixed_builder_self_overlap_append();
     if (result != 0) {
         return result;
     }

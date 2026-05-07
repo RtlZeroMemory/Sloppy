@@ -585,7 +585,7 @@ static SlStatus sl_http_prepare_headers(SlArena* arena, size_t max_headers,
         return sl_status_ok();
     }
 
-    status = sl_checked_mul_size(max_headers, sizeof(SlHttpHeader), &alloc_size);
+    status = sl_checked_array_size(max_headers, sizeof(SlHttpHeader), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }

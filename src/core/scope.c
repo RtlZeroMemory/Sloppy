@@ -47,7 +47,7 @@ SlStatus sl_scope_init_from_arena(SlScope* scope, SlArena* arena, size_t cleanup
         return sl_scope_init(scope, NULL, 0U);
     }
 
-    status = sl_checked_mul_size(cleanup_capacity, sizeof(SlScopeCleanup), &storage_size);
+    status = sl_checked_array_size(cleanup_capacity, sizeof(SlScopeCleanup), &storage_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }

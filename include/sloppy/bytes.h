@@ -35,6 +35,13 @@ typedef struct SlOwnedBytes
     size_t length;
 } SlOwnedBytes;
 
+typedef struct SlBytesFindResult
+{
+    bool found;
+    size_t index;
+    unsigned char value;
+} SlBytesFindResult;
+
 SlBytes sl_bytes_from_parts(const unsigned char* ptr, size_t length);
 SlBytes sl_bytes_empty(void);
 bool sl_bytes_is_empty(SlBytes bytes);
@@ -42,6 +49,8 @@ bool sl_bytes_equal(SlBytes left, SlBytes right);
 bool sl_bytes_starts_with(SlBytes bytes, SlBytes prefix);
 bool sl_bytes_ends_with(SlBytes bytes, SlBytes suffix);
 SlBytes sl_owned_bytes_as_view(SlOwnedBytes bytes);
+SlStatus sl_bytes_find(SlBytes bytes, unsigned char needle, SlBytesFindResult* out);
+SlStatus sl_bytes_find_any(SlBytes bytes, SlBytes needles, SlBytesFindResult* out);
 
 /*
  * Hashes the exact bytes in `bytes` with a deterministic non-cryptographic hash.

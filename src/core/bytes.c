@@ -90,6 +90,59 @@ SlBytes sl_owned_bytes_as_view(SlOwnedBytes bytes)
     return sl_bytes_from_parts(bytes.ptr, bytes.length);
 }
 
+SlStatus sl_bytes_find(SlBytes bytes, unsigned char needle, SlBytesFindResult* out)
+{
+    size_t index = 0U;
+    SlBytesFindResult result = {.found = false, .index = bytes.length, .value = 0U};
+
+    if (out == NULL || !sl_bytes_has_valid_storage(bytes)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < bytes.length; index += 1U) {
+        if (bytes.ptr[index] == needle) {
+            result.found = true;
+            result.index = index;
+            result.value = needle;
+            break;
+        }
+    }
+
+    *out = result;
+    return sl_status_ok();
+}
+
+SlStatus sl_bytes_find_any(SlBytes bytes, SlBytes needles, SlBytesFindResult* out)
+{
+    size_t index = 0U;
+    size_t needle_index = 0U;
+    SlBytesFindResult result = {.found = false, .index = bytes.length, .value = 0U};
+
+    if (out == NULL || !sl_bytes_has_valid_storage(bytes) || !sl_bytes_has_valid_storage(needles)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (needles.length == 0U) {
+        *out = result;
+        return sl_status_ok();
+    }
+
+    for (index = 0U; index < bytes.length; index += 1U) {
+        for (needle_index = 0U; needle_index < needles.length; needle_index += 1U) {
+            if (bytes.ptr[index] == needles.ptr[needle_index]) {
+                result.found = true;
+                result.index = index;
+                result.value = bytes.ptr[index];
+                *out = result;
+                return sl_status_ok();
+            }
+        }
+    }
+
+    *out = result;
+    return sl_status_ok();
+}
+
 SlStatus sl_bytes_hash(SlBytes bytes, uint64_t* out_hash)
 {
     uint64_t hash = SL_BYTES_FNV1A_OFFSET;

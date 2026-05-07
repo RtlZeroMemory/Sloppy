@@ -563,7 +563,7 @@ static SlStatus sl_http_route_table_alloc(SlArena* arena, size_t route_count,
         return sl_status_ok();
     }
 
-    status = sl_checked_mul_size(route_count, sizeof(SlHttpRouteTableEntry), &alloc_size);
+    status = sl_checked_array_size(route_count, sizeof(SlHttpRouteTableEntry), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -572,7 +572,7 @@ static SlStatus sl_http_route_table_alloc(SlArena* arena, size_t route_count,
         return status;
     }
 
-    status = sl_checked_mul_size(route_count, sizeof(SlHttpRouteBinding), &alloc_size);
+    status = sl_checked_array_size(route_count, sizeof(SlHttpRouteBinding), &alloc_size);
     if (!sl_status_is_ok(status)) {
         return status;
     }

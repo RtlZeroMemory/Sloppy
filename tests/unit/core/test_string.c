@@ -31,7 +31,8 @@ static int test_views_and_helpers(void)
 
     if (expect_true(sl_str_is_empty(empty)) != 0 ||
         expect_true(sl_str_equal(empty, from_null_cstr)) != 0 ||
-        expect_true(from_cstr.length == 5U) != 0)
+        expect_true(from_cstr.length == 5U) != 0 ||
+        expect_true(sl_str_equal(SL_STR_LITERAL("hello"), from_cstr)) != 0)
     {
         return 1;
     }
@@ -52,6 +53,32 @@ static int test_views_and_helpers(void)
 
     if (expect_true(sl_str_equal(sl_owned_str_as_view(owned), different_str)) != 0) {
         return 4;
+    }
+
+    return 0;
+}
+
+static int test_no_nul_boundary_helpers(void)
+{
+    const char embedded[] = {'h', 'o', 's', 't', '\0', 'x'};
+    const char non_ascii[] = {(char)0xc3, (char)0xa9};
+    SlStr embedded_str = sl_str_from_parts(embedded, sizeof(embedded));
+    SlStr non_ascii_str = sl_str_from_parts(non_ascii, sizeof(non_ascii));
+
+    if (expect_true(sl_str_contains_nul(embedded_str)) != 0 ||
+        expect_true(!sl_str_contains_nul(non_ascii_str)) != 0 ||
+        expect_true(!sl_str_contains_nul(sl_str_empty())) != 0)
+    {
+        return 5;
+    }
+
+    if (expect_status(sl_str_validate_no_nul(sl_str_empty()), SL_STATUS_OK) != 0 ||
+        expect_status(sl_str_validate_no_nul(non_ascii_str), SL_STATUS_OK) != 0 ||
+        expect_status(sl_str_validate_no_nul(embedded_str), SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        expect_status(sl_str_validate_no_nul(sl_str_from_parts(NULL, 1U)),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 6;
     }
 
     return 0;
@@ -177,6 +204,31 @@ static int test_arena_copies(void)
     }
 
     owned = sentinel;
+    if (expect_status(sl_str_copy_to_arena_cstr(&arena, embedded_str, &owned),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        owned.ptr != sentinel.ptr || owned.length != sentinel.length)
+    {
+        return 28;
+    }
+
+    owned = sentinel;
+    if (expect_status(sl_str_copy_to_arena_cstr(&arena, sl_str_from_cstr("host"), &owned),
+                      SL_STATUS_OK) != 0 ||
+        owned.length != 4U || owned.ptr[owned.length] != '\0' ||
+        !sl_str_equal(sl_owned_str_as_view(owned), sl_str_from_cstr("host")))
+    {
+        return 29;
+    }
+
+    owned = sentinel;
+    if (expect_status(sl_str_copy_to_arena_cstr(&arena, sl_str_empty(), &owned), SL_STATUS_OK) !=
+            0 ||
+        owned.ptr == NULL || owned.length != 0U || owned.ptr[0] != '\0')
+    {
+        return 30;
+    }
+
+    owned = sentinel;
     if (expect_status(sl_str_copy_to_arena_nul(&arena, sl_str_from_parts(NULL, 1U), &owned),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
         owned.ptr != sentinel.ptr || owned.length != sentinel.length)
@@ -209,6 +261,11 @@ int main(void)
     }
 
     result = test_hashing();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_no_nul_boundary_helpers();
     if (result != 0) {
         return result;
     }

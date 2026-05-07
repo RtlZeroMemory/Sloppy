@@ -15,7 +15,10 @@ adoption work must preserve documented ownership and evidence lanes.
 ## Invariants
 
 - Borrowed views do not imply ownership or NUL termination.
+- C-string boundaries must validate no embedded NUL before copying to terminated storage.
 - Arena-owned outputs must document their owner.
+- Checked array allocation and scalar byte-search helpers are canonical memory primitives.
+- Builder self-overlap must preserve the original source bytes.
 - Delayed or cross-thread work must own or retain data.
 - Resource IDs use generation checks.
 - Cleanup callbacks run at most once.

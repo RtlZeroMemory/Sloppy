@@ -902,8 +902,8 @@ static SlStatus sl_http_transport_copy_stream_response(SlHttpTransportConnection
 
     {
         size_t chunk_bytes = 0U;
-        status = sl_checked_mul_size(sizeof(SlHttpResponseStreamChunk),
-                                     response->stream_chunk_count, &chunk_bytes);
+        status = sl_checked_array_size(response->stream_chunk_count,
+                                       sizeof(SlHttpResponseStreamChunk), &chunk_bytes);
         if (!sl_status_is_ok(status)) {
             *out_response = (SlHttpResponse){0};
             return status;
@@ -2665,7 +2665,7 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_str_copy_to_arena_nul(arena, server->config.host, &server->host);
+    status = sl_str_copy_to_arena_cstr(arena, server->config.host, &server->host);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -2691,8 +2691,8 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     *server->platform = (SlHttpPlatformListener){0};
     server->platform->server = server;
 
-    status = sl_checked_mul_size(sizeof(SlHttpTransportConnection),
-                                 server->config.connection_capacity, &connections_bytes);
+    status = sl_checked_array_size(server->config.connection_capacity,
+                                   sizeof(SlHttpTransportConnection), &connections_bytes);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -2703,8 +2703,8 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     }
     server->connections = (SlHttpTransportConnection*)memory;
 
-    status = sl_checked_mul_size(sizeof(SlHttpPlatformConnection),
-                                 server->config.connection_capacity, &platform_connections_bytes);
+    status = sl_checked_array_size(server->config.connection_capacity,
+                                   sizeof(SlHttpPlatformConnection), &platform_connections_bytes);
     if (!sl_status_is_ok(status)) {
         return status;
     }

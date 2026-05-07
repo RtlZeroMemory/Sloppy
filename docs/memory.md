@@ -10,6 +10,9 @@ handles, request scopes, async completions, and native/JavaScript boundaries.
 
 - `SlStr` and `SlBytes` are borrowed views. They do not imply NUL termination, ownership, or
   stable lifetime beyond the documented owner.
+- C-string boundaries are explicit. A component that must pass a Sloppy string to an OS,
+  libuv, env, config, or other NUL-terminated API must validate that the borrowed `SlStr`
+  contains no embedded NUL before copying it to a terminated arena string.
 - Arena-owned strings and bytes remain valid until the arena is reset or its backing storage
   ends.
 - Callers must use checked arithmetic for sizes and offsets that can overflow.
@@ -26,9 +29,10 @@ The current runtime includes:
 
 - `SlStatus` and `SlSourceLoc`;
 - borrowed `SlStr` and `SlBytes`;
-- arena-owned string and byte copy helpers;
-- deterministic string/byte equality and hashing helpers;
-- checked `size_t` arithmetic;
+- arena-owned string and byte copy helpers, including a C-string boundary helper that
+  rejects embedded NUL before appending a terminator;
+- deterministic string/byte equality, hashing, and scalar byte search helpers;
+- checked `size_t` arithmetic, including array-allocation and three-term-addition helpers;
 - assertion macros;
 - caller-backed `SlArena`;
 - bounded fixed or arena-backed byte and string builders;
@@ -65,6 +69,10 @@ and other hot or failure-sensitive paths.
 
 Overflow is a normal error path. Builder failures must not silently truncate semantic
 output unless the contract explicitly defines truncation.
+
+Builder appends are allowed to read from the builder's current storage. Overlapping
+self-appends must behave as if the source bytes were captured before the append, so callers
+do not need a scratch copy for length-preserving byte/string duplication.
 
 ## Interned Metadata
 

@@ -27,7 +27,8 @@ typedef enum SlBuilderStorageKind
  * replacement buffers from a caller-supplied arena as they grow, up to `max_capacity`.
  * The builder never owns or frees an arena. Failed append/reserve calls leave the existing
  * builder contents valid and unchanged, so callers may keep using or viewing the prefix
- * already written.
+ * already written. Appends may source bytes from the builder's current storage; self-overlap
+ * preserves the source bytes as if copied through a temporary view.
  */
 typedef struct SlByteBuilder
 {
