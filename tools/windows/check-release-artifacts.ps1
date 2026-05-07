@@ -101,6 +101,13 @@ function Test-ReleaseWorkflow {
 
     $workflow = Get-Content -LiteralPath $workflowPath -Raw
     Assert-TextContains -Text $workflow -Needle "workflow_dispatch:" -Message "Release artifact workflow must be manual workflow_dispatch."
+    $onBlock = [regex]::Match($workflow, "(?m)^on:\r?\n(?<block>(?:^[ ]+.+\r?\n?)*)").Groups["block"].Value
+    Assert-True (-not [string]::IsNullOrWhiteSpace($onBlock)) "Release artifact workflow must declare workflow_dispatch under top-level on."
+    foreach ($line in ($onBlock -split "\r?\n")) {
+        if ($line -match "^\s{2}(push|pull_request|schedule|repository_dispatch|workflow_run|release):") {
+            throw "Release artifact workflow must be triggered only by workflow_dispatch. Found: $($line.Trim())"
+        }
+    }
     Assert-TextContains -Text $workflow -Needle "actions/upload-artifact@v4" -Message "Release artifact workflow must upload package/checksum artifacts."
     Assert-TextContains -Text $workflow -Needle "SHA256SUMS.txt" -Message "Release artifact workflow must preserve checksum artifacts."
     Assert-TextContains -Text $workflow -Needle "contents: read" -Message "Release artifact workflow should not need write permissions for dry-run."

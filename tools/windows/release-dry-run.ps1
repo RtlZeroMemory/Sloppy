@@ -48,14 +48,18 @@ $packageDir = Resolve-RepoPath -Path $OutputDir
 $summaryFile = Resolve-RepoPath -Path $SummaryPath
 $devScript = Join-Path $PSScriptRoot "dev.ps1"
 $packageScript = Join-Path $PSScriptRoot "package.ps1"
+$powerShellExe = (Get-Process -Id $PID).Path
+if ([string]::IsNullOrWhiteSpace($powerShellExe)) {
+    $powerShellExe = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh" } else { "powershell" }
+}
 
-Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"), "-SelfTest")
-Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"))
-Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-SelfTest")
-Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
+Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"), "-SelfTest")
+Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"))
+Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-SelfTest")
+Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
 
 if (-not $SkipPackage) {
-    Invoke-Native "powershell" @(
+    Invoke-Native $powerShellExe @(
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
@@ -83,10 +87,10 @@ if (-not $SkipSmoke) {
     if ([string]::IsNullOrWhiteSpace($packagePath)) {
         throw "release dry-run could not find a package archive under $packageDir."
     }
-    Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $devScript, "test-package", "-PackagePath", $packagePath)
+    Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $devScript, "test-package", "-PackagePath", $packagePath)
 }
 
-Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
+Invoke-Native $powerShellExe @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $summaryFile) | Out-Null
 [ordered]@{

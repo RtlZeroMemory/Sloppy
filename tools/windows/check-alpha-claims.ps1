@@ -162,7 +162,7 @@ function Get-SecretClaimViolations {
         @{ Name = "AWS access key"; Pattern = '\bAKIA[0-9A-Z]{16}\b' },
         @{ Name = "GitHub token"; Pattern = '\bgh[pousr]_[A-Za-z0-9_]{20,}\b' },
         @{ Name = "inline password"; Pattern = '(?i)\b(password|passwd|pwd)\s*[:=]\s*[^<\s][^\s]+' },
-        @{ Name = "inline API key"; Pattern = '(?i)\b(api[_-]?key|secret|token)\s*[:=]\s*[^<\s][^\s]+' }
+        @{ Name = "inline API key"; Pattern = '(?i)\b(api[_-]?key|secret|token)\s*[:=]\s*(?!\$\{\{)[^<\s][^\s]+' }
     )
 
     $releaseFiles = @(

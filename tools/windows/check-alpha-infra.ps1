@@ -260,7 +260,7 @@ function Get-LocalPathHygieneMatches {
             $allowed = $true
         }
         foreach ($allowlistPath in $allowlistPaths) {
-            if ($line.Contains($allowlistPath) -or $line -match $allowlistPath) {
+            if ($lineWithoutUrls.Contains($allowlistPath) -or $lineWithoutUrls -match $allowlistPath) {
                 $allowed = $true
                 break
             }
@@ -306,6 +306,7 @@ function Test-LocalPathHygiene {
     foreach ($relative in $paths) {
         $path = Join-Path $Root $relative
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            $bad.Add("${relative}: missing required guardrail file")
             continue
         }
         $foundMatches = Get-LocalPathHygieneMatches -Path $path -Relative $relative
