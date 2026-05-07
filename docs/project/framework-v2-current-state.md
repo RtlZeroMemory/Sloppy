@@ -23,14 +23,16 @@ emit deterministic metadata for:
 The generated handler for typed multi-parameter Framework v2 routes remains runtime
 deferred. Provider parameters and queue parameters are Plan facts only; they do not
 register native providers, create provider handles, perform DI, execute queues, or open
-PostgreSQL/SQL Server JavaScript bridges.
+SQLite/PostgreSQL/SQL Server JavaScript bridges. The provider platform is ready for a
+future Framework v2 injection slice because provider metadata, capability references,
+runtime features, stdlib facades, and provider bridge contracts now use one common Db
+shape; this document is not that runtime injection implementation.
 
 Still deferred:
 
 - controller/module runtime APIs and constructor injection;
 - runtime binding, validation, and default validation error responses;
-- provider runtime injection and full provider/DI consumption after the provider roadmap
-  lands;
+- provider runtime injection and full provider/DI consumption;
 - broader CRUD/background examples that actually execute through runtime provider and queue
   integrations;
 - full OpenAPI/security-scheme/exporter completion beyond consuming existing Plan

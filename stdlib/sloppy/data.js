@@ -261,9 +261,10 @@ function validateSqliteParams(params, operation) {
             && type !== "string"
             && type !== "number"
             && type !== "boolean"
+            && !(param instanceof Uint8Array)
         ) {
             throw new TypeError(
-                `Sloppy sqlite.${operation} parameters support only null, string, number, and boolean values.`,
+                `Sloppy sqlite.${operation} parameters support only null, string, number, boolean, and Uint8Array values.`,
             );
         }
     }
@@ -1154,7 +1155,7 @@ const sqliteSupports = {
     memory: true,
     file: true,
     queryTemplates: true,
-    parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
+    parameters: Object.freeze(["null", "string", "integer", "float", "boolean", "bytes"]),
     transactions: true,
     transactionsMode: "callback",
     preparedStatements: false,

@@ -34,6 +34,9 @@ Implemented foundations include:
 - doctor/audit metadata for providers and capabilities;
 - tests and examples that distinguish metadata, native provider behavior, V8 bridge
   behavior, and live-provider evidence.
+- a provider conformance matrix covering common Db behavior, SQLite default evidence,
+  PostgreSQL/SQL Server live-provider lanes, V8 bridge behavior, and stress/torture lane
+  reporting without folding those lanes into default evidence.
 
 The SQLite bridge is async at the JavaScript boundary through the `SERIALIZED_BLOCKING`
 executor. SQLite work still runs on one serialized blocking worker per provider instance;
@@ -100,7 +103,23 @@ SQLite instead of claiming native SQLite value types that do not exist.
 
 These lanes are separate. A default pass is not live-provider or V8 evidence.
 
+Provider implementation PRs should report the following lane names directly:
+
+- default non-V8: `data.common.contract`, provider native tests, diagnostics, redaction,
+  and SQLite embedded conformance;
+- V8-gated: `conformance.sqlite.bridge`, provider bridge live tests when configured, and
+  owner-thread Promise settlement checks;
+- live-network/live-provider: Docker-backed PostgreSQL and SQL Server native/bridge lanes
+  through `tools/windows/test-live-providers.ps1` or the matching POSIX scripts;
+- stress/torture: optional/manual lifecycle pressure such as queue overflow,
+  cancellation/timeout races, pool drain, repeated open/close, and late-completion cleanup;
+- benchmark: separate measurement only, never provider correctness or readiness.
+
+Missing Docker, missing ODBC driver support, missing environment configuration, or SQL
+Server async-driver unavailability must be reported as `UNAVAILABLE`/`unavailable` or
+`SKIPPED`/`skipped`, not as a passed provider lane.
+
 ## Deferred Work
 
-Deferred provider work includes broader live-provider CI scheduling, richer provider audit
-policy, migrations/schema tooling, and production hardening.
+Deferred provider work includes richer provider audit policy, migrations/schema tooling,
+and production hardening.

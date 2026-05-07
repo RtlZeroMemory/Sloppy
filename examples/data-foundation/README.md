@@ -29,8 +29,10 @@ What does not work yet:
 - no database connection is opened;
 - no SQL is executed;
 - filesystem and network capabilities are not enforced;
-- migrations, pooling, cancellation, isolation levels, and native SQL execution are future
-  work;
+- migrations and ORM behavior are not part of Sloppy's provider surface;
+- real native SQL execution, pooling, true-async external providers, and live-provider
+  evidence are covered by the provider-specific SQLite/PostgreSQL/SQL Server examples and
+  tests;
 - the future bare `"sloppy"` import is planned only.
 
 See `examples/sqlite-basic/`, `examples/postgres-basic/`, and `examples/sqlserver-basic/`

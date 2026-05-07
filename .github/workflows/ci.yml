@@ -3,6 +3,8 @@ name: ci
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "17 3 * * *"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
   workflow_dispatch:
@@ -28,6 +30,16 @@ on:
         options:
           - "false"
           - "true"
+      live_provider:
+        description: "Run Docker-backed provider live lanes."
+        required: true
+        default: "none"
+        type: choice
+        options:
+          - "none"
+          - "postgres"
+          - "sqlserver"
+          - "all"
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -47,6 +59,7 @@ jobs:
       simd_relevant: ${{ steps.changed.outputs.simd_relevant }}
       analysis_relevant: ${{ steps.changed.outputs.analysis_relevant }}
       windows_tooling_relevant: ${{ steps.changed.outputs.windows_tooling_relevant }}
+      provider_relevant: ${{ steps.changed.outputs.provider_relevant }}
 
     steps:
       - name: Checkout
@@ -67,6 +80,7 @@ jobs:
             echo "simd_relevant=false" >> "$GITHUB_OUTPUT"
             echo "analysis_relevant=false" >> "$GITHUB_OUTPUT"
             echo "windows_tooling_relevant=true" >> "$GITHUB_OUTPUT"
+            echo "provider_relevant=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -90,6 +104,7 @@ jobs:
           simd_relevant=false
           analysis_relevant=false
           windows_tooling_relevant=false
+          provider_relevant=false
           if [ "${#files[@]}" -eq 0 ]; then
             docs_only=false
             native_relevant=true
@@ -112,6 +127,24 @@ jobs:
               CMakeLists.txt|CMakePresets.json|vcpkg.json|vcpkg-configuration.json|\
               include/**|src/**|tests/**|benchmarks/**|third_party/**)
                 native_relevant=true
+                ;;
+            esac
+
+            case "$file" in
+              .github/workflows/ci.yml|docs/data-providers.md|docs/modules/data/**|docs/quality-gates.md|docs/testing-strategy.md)
+                provider_relevant=true
+                ;;
+              include/sloppy/data*|src/data/**|src/core/provider_executor.c)
+                provider_relevant=true
+                ;;
+              src/engine/v8/intrinsics_*sqlite*|src/engine/v8/intrinsics_*postgres*|src/engine/v8/intrinsics_*sqlserver*)
+                provider_relevant=true
+                ;;
+              stdlib/sloppy/data.js|tests/live/**|tests/unit/data/**|tests/conformance/providers/**)
+                provider_relevant=true
+                ;;
+              tools/windows/test-live-*|tools/unix/test-live-*)
+                provider_relevant=true
                 ;;
             esac
 
@@ -151,12 +184,14 @@ jobs:
           echo "simd_relevant=$simd_relevant"
           echo "analysis_relevant=$analysis_relevant"
           echo "windows_tooling_relevant=$windows_tooling_relevant"
+          echo "provider_relevant=$provider_relevant"
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
           echo "native_relevant=$native_relevant" >> "$GITHUB_OUTPUT"
           echo "rust_relevant=$rust_relevant" >> "$GITHUB_OUTPUT"
           echo "simd_relevant=$simd_relevant" >> "$GITHUB_OUTPUT"
           echo "analysis_relevant=$analysis_relevant" >> "$GITHUB_OUTPUT"
           echo "windows_tooling_relevant=$windows_tooling_relevant" >> "$GITHUB_OUTPUT"
+          echo "provider_relevant=$provider_relevant" >> "$GITHUB_OUTPUT"
 
   ci-fast:
     name: ci-fast / static
@@ -829,6 +864,101 @@ jobs:
       - name: Lint including standards scanners
         shell: pwsh
         run: .\tools\windows\dev.ps1 lint -Preset windows-dev
+
+  provider-live:
+    name: provider-live / docker-backed
+    runs-on: windows-latest
+    needs: changes
+    if: |
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.live_provider != 'none') ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'live-postgres') ||
+        contains(github.event.pull_request.labels.*.name, 'live-sqlserver') ||
+        contains(github.event.pull_request.labels.*.name, 'live-providers') ||
+        contains(github.event.pull_request.labels.*.name, 'full-ci')
+      ))
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Ensure Ninja
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-provider-live-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            windows-provider-live-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-${{ env.VCPKG_COMMIT }}-
+            windows-vcpkg-
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
+          $vcpkgBinaryCache = Join-Path $PWD ".sdeps/vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $vcpkgBinaryCache | Out-Null
+          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          }
+          git -C $vcpkgRoot fetch origin
+          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
+          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
+            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Toolchain bootstrap
+        shell: pwsh
+        run: .\tools\windows\bootstrap.ps1
+
+      - name: Configure provider live preset
+        shell: pwsh
+        run: .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo
+
+      - name: Save vcpkg cache after configure
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: windows-provider-live-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Run selected provider live lanes
+        shell: pwsh
+        run: |
+          $provider = "all"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $provider = "${{ inputs.live_provider }}"
+          } elseif ("${{ github.event_name }}" -eq "pull_request") {
+            if ("${{ contains(github.event.pull_request.labels.*.name, 'live-postgres') }}" -eq "true") {
+              $provider = "postgres"
+            }
+            if ("${{ contains(github.event.pull_request.labels.*.name, 'live-sqlserver') }}" -eq "true") {
+              $provider = if ($provider -eq "postgres") { "all" } else { "sqlserver" }
+            }
+          }
+          .\tools\windows\test-live-providers.ps1 -Provider $provider -Preset windows-relwithdebinfo
 
   unix:
     name: ci-platform / ${{ matrix.name }}

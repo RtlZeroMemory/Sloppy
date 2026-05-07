@@ -60,6 +60,7 @@ struct SqliteV8ParamValue
 {
     SlSqliteParamKind kind = SL_SQLITE_PARAM_NULL;
     std::string text;
+    std::vector<unsigned char> bytes;
     int64_t integer = 0;
     double number = 0.0;
     bool boolean = false;
@@ -629,10 +630,28 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
                 return false;
             }
         }
+        else if (item->IsUint8Array()) {
+            v8::Local<v8::Uint8Array> bytes = item.As<v8::Uint8Array>();
+            v8::Local<v8::ArrayBuffer> buffer = bytes->Buffer();
+            std::shared_ptr<v8::BackingStore> backing = buffer->GetBackingStore();
+            const size_t offset = bytes->ByteOffset();
+            const size_t byte_length = bytes->ByteLength();
+            const unsigned char* data = static_cast<const unsigned char*>(backing->Data());
+            param.kind = SL_SQLITE_PARAM_BLOB;
+            if (byte_length != 0U && (data == nullptr || offset > backing->ByteLength() ||
+                                      byte_length > backing->ByteLength() - offset))
+            {
+                sqlite_v8_throw_type_error(isolate, "sqlite Uint8Array parameter is out of range");
+                return false;
+            }
+            if (byte_length != 0U) {
+                param.bytes.assign(data + offset, data + offset + byte_length);
+            }
+        }
         else {
             sqlite_v8_throw_type_error(
                 isolate,
-                "sqlite parameters support only null, string, integer, float, and boolean values");
+                "sqlite parameters support only null, string, integer, float, boolean, and bytes");
             return false;
         }
 
@@ -664,6 +683,10 @@ void sqlite_v8_refresh_param_views(SqliteV8Request* request)
         switch (value.kind) {
         case SL_SQLITE_PARAM_TEXT:
             param.value.text = sl_str_from_parts(value.text.data(), value.text.size());
+            break;
+        case SL_SQLITE_PARAM_BLOB:
+            param.value.blob = sl_bytes_from_parts(
+                value.bytes.empty() ? nullptr : value.bytes.data(), value.bytes.size());
             break;
         case SL_SQLITE_PARAM_INTEGER:
             param.value.integer = value.integer;

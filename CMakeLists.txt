@@ -935,6 +935,12 @@ if(SLOPPY_ENABLE_TESTS)
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_test_platform_contract.cmake")
     set_tests_properties(docs.test_platform_contract PROPERTIES LABELS "docs;test-platform")
+    add_test(
+        NAME docs.provider_evidence_policy
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_provider_evidence_policy.cmake")
+    set_tests_properties(
+        docs.provider_evidence_policy PROPERTIES LABELS "docs;provider;live-provider")
 
     sloppy_add_c_unit_test(core_status_basic core.status.basic tests/unit/core/test_status.c)
     sloppy_add_c_unit_test(
@@ -1015,6 +1021,9 @@ if(SLOPPY_ENABLE_TESTS)
     set_tests_properties(
         conformance.capability.provider_executor
         PROPERTIES LABELS "conformance;capability;smoke")
+    add_test(NAME stress.provider_executor COMMAND $<TARGET_FILE:core_provider_executor>)
+    set_tests_properties(
+        stress.provider_executor PROPERTIES LABELS "stress;provider;executor")
     if(CMAKE_CXX_COMPILER)
         sloppy_add_cxx_unit_test(
             core_async_backend_libuv core.async.backend_libuv
@@ -1159,16 +1168,33 @@ if(SLOPPY_ENABLE_TESTS)
         fuzz_memory_primitives_libfuzzer tests/fuzz/fuzz_memory_primitives.c)
     sloppy_add_c_unit_test(
         data_common_contract data.common.contract tests/unit/data/test_data_common.c)
+    add_test(NAME conformance.data.common_contract COMMAND $<TARGET_FILE:data_common_contract>)
+    set_tests_properties(
+        conformance.data.common_contract PROPERTIES LABELS "conformance;data;provider")
     sloppy_add_c_unit_test(
         data_postgres_provider data.postgres.provider tests/unit/data/test_postgres.c)
+    add_test(NAME conformance.postgres.native_provider COMMAND $<TARGET_FILE:data_postgres_provider>)
+    set_tests_properties(
+        conformance.postgres.native_provider PROPERTIES LABELS "conformance;postgres;provider")
     add_test(NAME data.postgres.live_provider COMMAND data_postgres_provider --live)
     set_tests_properties(
         data.postgres.live_provider PROPERTIES SKIP_RETURN_CODE 77 LABELS "live-provider;postgres")
+    add_test(NAME conformance.postgres.native_live COMMAND data_postgres_provider --live)
+    set_tests_properties(
+        conformance.postgres.native_live
+        PROPERTIES SKIP_RETURN_CODE 77 LABELS "conformance;postgres;live-provider")
     sloppy_add_c_unit_test(
         data_sqlserver_provider data.sqlserver.provider tests/unit/data/test_sqlserver.c)
+    add_test(NAME conformance.sqlserver.native_provider COMMAND $<TARGET_FILE:data_sqlserver_provider>)
+    set_tests_properties(
+        conformance.sqlserver.native_provider PROPERTIES LABELS "conformance;sqlserver;provider")
     add_test(NAME data.sqlserver.live_provider COMMAND data_sqlserver_provider --live)
     set_tests_properties(
         data.sqlserver.live_provider PROPERTIES SKIP_RETURN_CODE 77 LABELS "live-provider;sqlserver")
+    add_test(NAME conformance.sqlserver.native_live COMMAND data_sqlserver_provider --live)
+    set_tests_properties(
+        conformance.sqlserver.native_live
+        PROPERTIES SKIP_RETURN_CODE 77 LABELS "conformance;sqlserver;live-provider")
     sloppy_add_c_unit_test(data_sqlite_provider data.sqlite.provider tests/unit/data/test_sqlite.c)
     add_test(NAME conformance.sqlite.native_provider COMMAND $<TARGET_FILE:data_sqlite_provider>)
     set_tests_properties(

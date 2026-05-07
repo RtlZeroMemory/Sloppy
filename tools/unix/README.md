@@ -38,3 +38,16 @@ manifest fields, required package files, excluded build/dependency directories, 
 non-V8 packages report packaged `sloppy run --artifacts` as skipped/not configured because
 V8 is unavailable. It is not part of the required CI gate until a scoped package-smoke job
 is added.
+
+Provider live lanes have POSIX wrappers for machines that already have the matching CMake
+preset configured and the required service dependencies installed:
+
+```sh
+tools/unix/test-live-postgres.sh --preset linux-clang
+tools/unix/test-live-sqlserver.sh --preset linux-clang
+tools/unix/test-live-providers.sh --provider all --preset linux-clang
+```
+
+These scripts are opt-in Docker-backed live-provider evidence. Missing Docker, missing
+ODBC driver support, or an unavailable database service is reported as unavailable or
+failed live-provider evidence, never as default CI success.

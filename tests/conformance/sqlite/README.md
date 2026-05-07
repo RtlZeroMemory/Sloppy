@@ -43,6 +43,7 @@ Expected behavior:
   `data.main` capability;
 - create and populate a table;
 - insert one row through `transaction(callback)` and commit on callback success;
+- bind `Uint8Array` as a blob parameter and read blob metadata back through SQLite;
 - select one row with a positional parameter;
 - return a JSON result containing `Ada`;
 - close the resource in a `finally` block.
