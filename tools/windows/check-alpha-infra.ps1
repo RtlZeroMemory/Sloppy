@@ -130,6 +130,23 @@ function Invoke-SelfTest {
     Assert-True (-not (Test-SlVersionAtLeast -Actual "3.24.9" -Minimum "3.25.0")) "Version parser accepted an old version."
     Assert-True (-not (Test-SlVersionAtLeast -Actual "not-a-version" -Minimum "3.25.0")) "Version parser accepted malformed version text."
 
+    $hygieneRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("sloppy-alpha-infra-hygiene-" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $hygieneRoot | Out-Null
+    try {
+        $hygieneFixture = Join-Path $hygieneRoot "paths.txt"
+        @(
+            ('sdk=' + 'D:' + '\deps\v8'),
+            ('\\' + 'buildshare\deps\v8'),
+            ('/' + 'Users/example/v8'),
+            ('~' + '/sloppy-sdk'),
+            './tools/windows/bootstrap.ps1'
+        ) | Set-Content -LiteralPath $hygieneFixture -Encoding ASCII
+        $hygieneMatches = Get-LocalPathHygieneMatches -Path $hygieneFixture -Relative "paths.txt"
+        Assert-True ($hygieneMatches.Count -eq 4) "Local path hygiene scanner missed absolute path fixtures."
+    } finally {
+        Remove-Item -LiteralPath $hygieneRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("sloppy-alpha-infra-v8-" + [System.Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
     $oldV8Root = $env:SLOPPY_V8_ROOT
@@ -207,6 +224,41 @@ function Test-Manifest {
     }
 }
 
+function Get-LocalPathHygieneMatches {
+    param(
+        [string]$Path,
+        [string]$Relative
+    )
+
+    $localPathPatterns = @(
+        '(?i)[A-Z]:[\\/]',
+        '\\\\[^\\\s"<>|]+\\[^\\\s"<>|]+',
+        '//[^/\s"<>|]+/[^/\s"<>|]+',
+        '(^|[\s"=:,(])~(/|$)',
+        '(^|[\s"=:,(])/(Users|home|Volumes|opt|var|tmp|private|mnt|workspace|workspaces)(/|$)'
+    )
+    $allowlistPaths = @(
+        '//[^/\s"<>|]+/[^/\s"<>|]+',
+        'vcpkg[\\/]+scripts[\\/]buildsystems[\\/]vcpkg\.cmake'
+    )
+    $bad = New-Object System.Collections.Generic.List[string]
+    $foundMatches = Select-String -LiteralPath $Path -Pattern $localPathPatterns -AllMatches
+    foreach ($match in $foundMatches) {
+        $line = $match.Line.Trim()
+        $allowed = $false
+        foreach ($allowlistPath in $allowlistPaths) {
+            if ($line.Contains($allowlistPath)) {
+                $allowed = $true
+                break
+            }
+        }
+        if (-not $allowed) {
+            $bad.Add("${Relative}:$($match.LineNumber): $line")
+        }
+    }
+    return @($bad)
+}
+
 function Test-LocalPathHygiene {
     $paths = @(
         "tools/deps/sloppy-deps.json",
@@ -226,10 +278,9 @@ function Test-LocalPathHygiene {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             continue
         }
-        $localPathNeedles = @("C:" + "\Users\", "V:" + "\")
-        $foundMatches = Select-String -LiteralPath $path -SimpleMatch -Pattern $localPathNeedles -AllMatches
+        $foundMatches = Get-LocalPathHygieneMatches -Path $path -Relative $relative
         foreach ($match in $foundMatches) {
-            $bad.Add("${relative}:$($match.LineNumber): $($match.Line.Trim())")
+            $bad.Add($match)
         }
     }
 

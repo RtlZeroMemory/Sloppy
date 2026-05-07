@@ -347,11 +347,12 @@ function Test-SlV8ForDoctor {
     try {
         $resolution = Resolve-SlV8SdkRootForMode -RepoRoot $Root -Mode $Mode
     } catch {
+        $required = ($Mode -eq "REQUIRED")
         return [ordered]@{
             name = "v8-sdk"
             kind = "v8"
-            required = $true
-            status = "missing"
+            required = $required
+            status = if ($required) { "missing" } else { "optional unavailable" }
             mode = $Mode
             detail = [string]$_
         }

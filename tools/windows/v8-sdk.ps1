@@ -10,9 +10,6 @@ if (Test-Path -LiteralPath $SlDepsManifestPath -PathType Leaf) {
     if ($SlDepsManifest.v8Sdk.crLibcxxRevision) {
         $SlV8ExpectedCrLibcxxRevision = [string]$SlDepsManifest.v8Sdk.crLibcxxRevision
     }
-    if ($SlDepsManifest.v8Sdk.platforms.PSObject.Properties["windows-x64"]) {
-        $SlV8DefaultPlatform = "windows-x64"
-    }
 }
 
 function Write-SlV8ExpectedLayout {
