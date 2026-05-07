@@ -3,7 +3,6 @@ set -euo pipefail
 
 configuration="Release"
 output_dir="artifacts/packages"
-include_examples=0
 skip_build=0
 
 while [[ $# -gt 0 ]]; do
@@ -16,17 +15,13 @@ while [[ $# -gt 0 ]]; do
       output_dir="${2:?missing value for --output-dir}"
       shift 2
       ;;
-    --include-examples)
-      include_examples=1
-      shift
-      ;;
     --skip-build)
       skip_build=1
       shift
       ;;
     -h|--help)
       cat <<'USAGE'
-Usage: tools/unix/package.sh [--configuration Release|Debug] [--output-dir DIR] [--include-examples] [--skip-build]
+Usage: tools/unix/package.sh [--configuration Release|Debug] [--output-dir DIR] [--skip-build]
 
 Creates an experimental local tar.gz package from already supported Unix build outputs.
 This script is intentionally small and does not install dependencies, fetch V8, or claim a
@@ -95,14 +90,38 @@ package_name="sloppy-$package_version-$platform-$arch"
 output_root="$repo_root/$output_dir"
 stage_root="$output_root/stage/$package_name"
 rm -rf "$stage_root"
-mkdir -p "$stage_root/bin" "$stage_root/lib/sloppy/stdlib" "$stage_root/share/sloppy/licenses" "$stage_root/share/sloppy/schemas"
+mkdir -p "$stage_root/bin" "$stage_root/stdlib" "$stage_root/examples" "$stage_root/docs"
 
 cp "$sloppy_bin" "$stage_root/bin/sloppy"
 cp "$sloppyc_bin" "$stage_root/bin/sloppyc"
-cp -R "$repo_root/stdlib/sloppy" "$stage_root/lib/sloppy/stdlib/sloppy"
+cp -R "$repo_root/stdlib/sloppy" "$stage_root/stdlib/sloppy"
+cp -R "$repo_root/examples/." "$stage_root/examples/"
 cp "$repo_root/LICENSE.md" "$stage_root/LICENSE"
-cat > "$stage_root/THIRD_PARTY_NOTICES.md" <<'NOTICES'
-# Third Party Notices
+cat > "$stage_root/docs/KNOWN_LIMITATIONS.md" <<'LIMITATIONS'
+# Known Limitations
+
+This package is an experimental pre-alpha development artifact.
+
+- It is not a public alpha release.
+- It is not production ready.
+- It is not a Node, Bun, Deno, npm, or package-manager compatibility target.
+- Default packages do not prove V8 execution, live provider readiness, TLS hardening, or
+  release readiness.
+- V8 SDK headers, import libraries, and source/build trees are intentionally excluded.
+- PostgreSQL and SQL Server live-provider behavior requires separate opt-in evidence.
+- Signing, notarization, installers, auto-update, and package-manager distribution are not
+  included.
+LIMITATIONS
+cat > "$stage_root/docs/LICENSES.md" <<'LICENSES'
+# Licenses
+
+This experimental package includes Sloppy source-license text in the repository root
+LICENSE file and may include runtime dependencies provided by the host build environment.
+
+Complete third-party license review remains required before any public release.
+LICENSES
+cat > "$stage_root/docs/NOTICE.md" <<'NOTICES'
+# Notice
 
 This experimental local package may include runtime dependencies provided by the
 host build environment. It does not include V8 SDK headers/import libraries,
@@ -119,11 +138,6 @@ anything, fetch dependencies, bundle a V8 SDK, provide package-manager behavior,
 production readiness.
 README
 
-if [[ "$include_examples" -eq 1 ]]; then
-  mkdir -p "$stage_root/share/sloppy"
-  cp -R "$repo_root/examples" "$stage_root/share/sloppy/examples"
-fi
-
 commit="$(git rev-parse --short HEAD 2>/dev/null || printf 'unknown')"
 cat > "$stage_root/manifest.json" <<JSON
 {
@@ -133,10 +147,28 @@ cat > "$stage_root/manifest.json" <<JSON
   "arch": "$arch",
   "configuration": "$configuration",
   "commit": "$commit",
+  "compiler": {
+    "name": "sloppyc",
+    "profile": "$cargo_profile",
+    "included": true
+  },
+  "v8": {
+    "sdkIncluded": false,
+    "runtimeIncluded": false,
+    "status": "not bundled",
+    "version": "pinned by tools/deps/sloppy-deps.json"
+  },
+  "enabledFeatures": ["native-runtime", "stdlib", "compiler"],
+  "dependencyStatuses": {
+    "nativeRuntimeDependencies": "host-linked or system-provided",
+    "v8Sdk": "excluded",
+    "v8Runtime": "not bundled",
+    "liveProviders": "not configured"
+  },
   "containsV8Runtime": false,
   "containsV8Sdk": false,
   "containsStdlib": true,
-  "containsExamples": $([[ "$include_examples" -eq 1 ]] && printf true || printf false),
+  "containsExamples": true,
   "containsNativeRuntimeDependencies": false,
   "tools": ["sloppy", "sloppyc"],
   "layoutVersion": 1,

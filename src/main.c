@@ -227,6 +227,7 @@ typedef struct SlCliMetadata
 typedef struct SlCliOptions
 {
     const char* command;
+    char executable_path[SL_RUN_PATH_MAX_BYTES];
     const char* plan_path;
     const char* output_path;
     const char* input_path;
@@ -273,6 +274,16 @@ static bool sl_cli_span_equal(SlCliSpan left, SlCliSpan right)
 static bool sl_cli_span_equal_cstr(SlCliSpan left, const char* right)
 {
     return sl_cli_span_equal(left, sl_cli_span_cstr(right));
+}
+
+static bool sl_cli_copy_cstr(char* buffer, size_t capacity, const char* value)
+{
+    SlStr view = {0};
+    SlStringBuilder builder = {0};
+
+    return sl_status_is_ok(sl_string_builder_init_fixed(&builder, buffer, capacity)) &&
+           sl_status_is_ok(sl_string_builder_append_cstr(&builder, value)) &&
+           sl_status_is_ok(sl_string_builder_view_with_nul(&builder, &view)) && view.ptr == buffer;
 }
 
 static bool sl_cli_string_builder_append_span(SlStringBuilder* builder, SlCliSpan span)
@@ -611,6 +622,12 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     }
 
     *out = (SlCliOptions){0};
+    if (!sl_status_is_ok(sl_platform_process_executable_path(out->executable_path,
+                                                             sizeof(out->executable_path))) &&
+        argc > 0 && argv != NULL && argv[0] != NULL)
+    {
+        (void)sl_cli_copy_cstr(out->executable_path, sizeof(out->executable_path), argv[0]);
+    }
     out->format = SL_CLI_FORMAT_TEXT;
     out->host = SL_RUN_DEFAULT_HOST;
     out->port = (uint16_t)SL_RUN_DEFAULT_PORT;
@@ -618,6 +635,9 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     if (argc <= 1) {
         out->help = true;
         return 0;
+    }
+    if (argv == NULL || argv[1] == NULL) {
+        return 1;
     }
 
     if (strcmp(argv[1], "--version") == 0) {
@@ -3179,6 +3199,86 @@ static bool sl_run_file_exists(const char* path)
            stat.kind == SL_FS_NODE_FILE;
 }
 
+static bool sl_run_copy_package_stdlib_path(char* buffer, size_t capacity,
+                                            const char* executable_path)
+{
+    SlCliSpan executable = {0};
+    SlCliSpan executable_dir = {0};
+    SlCliSpan package_root = {0};
+    SlCliSpan bin_leaf = {0};
+    SlStringBuilder root_builder = {0};
+    SlStr root_view = {0};
+    char root_buffer[SL_RUN_PATH_MAX_BYTES];
+    size_t index = 0U;
+    size_t file_separator = 0U;
+    size_t root_separator = 0U;
+    bool has_file_separator = false;
+    bool has_root_separator = false;
+
+    if (buffer == NULL || capacity == 0U || executable_path == NULL || executable_path[0] == '\0') {
+        return false;
+    }
+
+    executable = sl_cli_span_cstr(executable_path);
+    for (index = 0U; index < executable.length; index += 1U) {
+        if (executable.ptr[index] == '/' || executable.ptr[index] == '\\') {
+            file_separator = index;
+            has_file_separator = true;
+        }
+    }
+    if (!has_file_separator || file_separator == 0U) {
+        return false;
+    }
+
+    executable_dir = (SlCliSpan){executable.ptr, file_separator};
+    for (index = 0U; index < executable_dir.length; index += 1U) {
+        if (executable_dir.ptr[index] == '/' || executable_dir.ptr[index] == '\\') {
+            root_separator = index;
+            has_root_separator = true;
+        }
+    }
+    if (!has_root_separator || root_separator == 0U) {
+        return false;
+    }
+
+    bin_leaf = (SlCliSpan){executable_dir.ptr + root_separator + 1U,
+                           executable_dir.length - root_separator - 1U};
+    if (!sl_cli_span_equal_cstr(bin_leaf, "bin")) {
+        return false;
+    }
+
+    package_root = (SlCliSpan){executable_dir.ptr, root_separator};
+    if (!sl_status_is_ok(
+            sl_string_builder_init_fixed(&root_builder, root_buffer, sizeof(root_buffer))) ||
+        !sl_cli_string_builder_append_span(&root_builder, package_root) ||
+        !sl_status_is_ok(sl_string_builder_view_with_nul(&root_builder, &root_view)))
+    {
+        return false;
+    }
+    (void)root_view;
+
+    return sl_run_join_path(buffer, capacity, root_buffer, sl_cli_span_cstr("stdlib/sloppy"));
+}
+
+static bool sl_run_try_package_stdlib_path(const SlCliOptions* options, char* buffer,
+                                           size_t capacity)
+{
+    char manifest_path[SL_RUN_PATH_MAX_BYTES];
+
+    if (options == NULL ||
+        !sl_run_copy_package_stdlib_path(buffer, capacity, options->executable_path))
+    {
+        return false;
+    }
+    if (!sl_run_artifact_file_path(manifest_path, sizeof(manifest_path), buffer,
+                                   "bootstrap.manifest.json"))
+    {
+        return false;
+    }
+
+    return sl_run_file_exists(manifest_path);
+}
+
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value)
 {
     SlStringBuilder builder = {0};
@@ -3507,6 +3607,7 @@ static int sl_cli_command_run(const SlCliOptions* options)
     const char* run_host = options->host;
     uint16_t run_port = options->port;
     char source_artifacts_path[SL_RUN_PATH_MAX_BYTES];
+    char package_stdlib_path[SL_RUN_PATH_MAX_BYTES];
     int result = 0;
 
     if (options->environment_explicit && artifacts_path == NULL && options->input_path != NULL &&
@@ -3545,7 +3646,14 @@ static int sl_cli_command_run(const SlCliOptions* options)
     }
 
     if (stdlib_path == NULL) {
-        stdlib_path = SLOPPY_BOOTSTRAP_BUILD_DIR;
+        if (sl_run_try_package_stdlib_path(options, package_stdlib_path,
+                                           sizeof(package_stdlib_path)))
+        {
+            stdlib_path = package_stdlib_path;
+        }
+        else {
+            stdlib_path = SLOPPY_BOOTSTRAP_BUILD_DIR;
+        }
     }
 
     if (sl_run_load_app(artifacts_path, stdlib_path, &app) != 0) {

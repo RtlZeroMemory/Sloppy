@@ -25,6 +25,9 @@ static SlStatus sl_platform_process_status_from_uv(int status)
     if (status == UV_ENOMEM) {
         return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
     }
+    if (status == UV_ENOBUFS) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+    }
     if (status == UV_EINVAL || status == UV_ENOENT) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -45,6 +48,27 @@ static void sl_platform_process_on_exit(uv_process_t* process, int64_t exit_stat
         run->exit_code = term_signal == 0 ? (int)exit_status : 1;
     }
     uv_close((uv_handle_t*)process, NULL);
+}
+
+SlStatus sl_platform_process_executable_path(char* buffer, size_t capacity)
+{
+    size_t length = capacity;
+    int uv_status = 0;
+
+    if (buffer == NULL || capacity == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    buffer[0] = '\0';
+    uv_status = uv_exepath(buffer, &length);
+    if (uv_status != 0) {
+        return sl_platform_process_status_from_uv(uv_status);
+    }
+    if (length >= capacity) {
+        buffer[0] = '\0';
+        return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
+    }
+    buffer[length] = '\0';
+    return sl_status_ok();
 }
 
 SlStatus sl_platform_process_run(const SlPlatformProcessArgs* args, int* out_exit_code)

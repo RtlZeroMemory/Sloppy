@@ -29,6 +29,8 @@ Canonical local workflow:
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
 .\tools\windows\dev.ps1 lint
+.\tools\windows\dev.ps1 package
+.\tools\windows\dev.ps1 test-package
 ```
 
 V8-enabled work must run the resolver and V8 preset when the task touches runtime,
@@ -52,9 +54,26 @@ project. JavaScript dependencies are not a package-manager surface for Sloppy ap
 ## Packages
 
 Current package artifacts are experimental evidence for layout and outside-checkout
-behavior. They are not a public release, installer, hosted distribution, or compatibility
-claim. Package fixtures must not recompile source when the package contract says execution
-comes from packaged artifacts.
+behavior. The alpha layout is:
+
+```text
+sloppy-<version>-<platform>-<arch>/
+  bin/
+  stdlib/
+    sloppy/
+  examples/
+  docs/
+    KNOWN_LIMITATIONS.md
+    LICENSES.md
+    NOTICE.md
+  manifest.json
+```
+
+They are not a public release, installer, hosted distribution, or compatibility claim.
+Package fixtures must not recompile source when the package contract says execution comes
+from packaged artifacts. Default package smoke proves packaged CLI startup, `sloppy doctor`,
+manifest/checksum layout, required docs, stdlib/examples presence, and no accidental source
+checkout dependency; V8 package execution remains a separate V8-gated lane.
 
 ## CI
 

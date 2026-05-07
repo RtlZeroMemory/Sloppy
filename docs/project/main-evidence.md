@@ -139,12 +139,14 @@ The explicit outside-checkout smoke command for an existing archive is:
 
 ```powershell
 .\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+.\tools\windows\dev.ps1 test-package
 ```
 
 Package smoke extracts the archive under a temporary directory outside the checkout, runs
-`sloppy --version`, `sloppy --help`, `sloppyc --version`, and `sloppyc --help`, verifies
-stdlib assets and manifest fields, checks excluded local/build directories and V8 SDK
-files are absent, and verifies `SHA256SUMS.txt` when present.
+`sloppy --version`, `sloppy --help`, `sloppy doctor`, `sloppyc --version`, and
+`sloppyc --help`, verifies stdlib assets, examples, package docs and manifest fields,
+checks excluded local/build directories and V8 SDK files are absent, and verifies
+`SHA256SUMS.txt` when present.
 
 Package smoke proves the local Windows archive layout can start the basic packaged CLI
 tools outside the source checkout. It does not prove V8 runtime execution, live providers,
@@ -156,6 +158,8 @@ Linux/macOS packaging currently has an experimental TAR staging script:
 ```sh
 tools/unix/package.sh --configuration Release
 tools/unix/test-package.sh --package-path artifacts/packages/sloppy-0.0.0-dev-<platform>-<arch>.tar.gz
+tools/unix/dev.sh package
+tools/unix/dev.sh test-package
 ```
 
 Hosted Linux/macOS default CI validates non-V8 configure/build/test, Cargo gates, and POSIX

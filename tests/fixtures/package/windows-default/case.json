@@ -6,12 +6,17 @@
   "requiredFiles": [
     "README.md",
     "LICENSE",
-    "THIRD_PARTY_NOTICES.md",
+    "docs/KNOWN_LIMITATIONS.md",
+    "docs/LICENSES.md",
+    "docs/NOTICE.md",
     "manifest.json"
   ],
   "requiredDirectories": [
-    "share/sloppy/licenses",
-    "share/sloppy/schemas"
+    "bin",
+    "stdlib",
+    "stdlib/sloppy",
+    "examples",
+    "docs"
   ],
   "requiredStdlibAssets": [
     "index.js",
@@ -31,8 +36,8 @@
     "vcpkg_installed"
   ],
   "excludedFiles": [
-    "lib/sloppy/engines/v8/include/v8.h",
-    "lib/sloppy/engines/v8/lib/v8_monolith.lib"
+    "engines/v8/include/v8.h",
+    "engines/v8/lib/v8_monolith.lib"
   ],
   "expectedManifest": {
     "name": "sloppy",

@@ -246,6 +246,17 @@ function Get-LocalPathHygieneMatches {
     foreach ($match in $foundMatches) {
         $line = $match.Line.Trim()
         $allowed = $false
+        $lineWithoutUrls = $line -replace 'https?://\S+', ''
+        $hasLocalPathOutsideUrl = $false
+        foreach ($localPathPattern in $localPathPatterns) {
+            if ($lineWithoutUrls -match $localPathPattern) {
+                $hasLocalPathOutsideUrl = $true
+                break
+            }
+        }
+        if (-not $hasLocalPathOutsideUrl) {
+            $allowed = $true
+        }
         foreach ($allowlistPath in $allowlistPaths) {
             if ($line.Contains($allowlistPath)) {
                 $allowed = $true
@@ -268,6 +279,12 @@ function Test-LocalPathHygiene {
         "tools/windows/resolve-v8-sdk.ps1",
         "tools/windows/bootstrap.ps1",
         "tools/windows/dev.ps1",
+        "tools/windows/package.ps1",
+        "tools/windows/test-package.ps1",
+        "tools/unix/bootstrap.sh",
+        "tools/unix/dev.sh",
+        "tools/unix/package.sh",
+        "tools/unix/test-package.sh",
         "docs/dependencies.md",
         "docs/build-and-distribution.md"
     )
@@ -289,6 +306,80 @@ function Test-LocalPathHygiene {
     }
 }
 
+function Invoke-ProcessCheck {
+    param(
+        [string]$File,
+        [string[]]$Arguments,
+        [int[]]$AllowedExitCodes,
+        [string]$OutputMustContain
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $File
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.UseShellExecute = $false
+    $quotedArguments = foreach ($argument in $Arguments) {
+        '"' + ($argument -replace '"', '\"') + '"'
+    }
+    $startInfo.Arguments = ($quotedArguments -join " ")
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw "Failed to start $File."
+        }
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $combined = $stdout + $stderr
+        if (-not ($AllowedExitCodes -contains $process.ExitCode)) {
+            throw "$File exited with $($process.ExitCode), expected one of $($AllowedExitCodes -join ', '): $combined"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($OutputMustContain) -and
+            -not $combined.Contains($OutputMustContain))
+        {
+            throw "$File output did not contain '$OutputMustContain'. Output: $combined"
+        }
+    } finally {
+        $process.Dispose()
+    }
+}
+
+function Test-DevCommandContract {
+    $devScript = Join-Path $Root "tools/windows/dev.ps1"
+    Invoke-ProcessCheck -File "powershell" -Arguments @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $devScript,
+        "help"
+    ) -AllowedExitCodes @(0) -OutputMustContain "test-package"
+
+    Invoke-ProcessCheck -File "powershell" -Arguments @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $devScript,
+        "definitely-not-a-command"
+    ) -AllowedExitCodes @(2) -OutputMustContain "unknown command"
+
+    $bootstrapPath = Join-Path $Root "tools/unix/bootstrap.sh"
+    Assert-True (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) "Unix bootstrap script is missing."
+    $bootstrapText = Get-Content -LiteralPath $bootstrapPath -Raw
+    Assert-True $bootstrapText.Contains("Usage: tools/unix/bootstrap.sh") "Unix bootstrap help contract is missing."
+
+    $devPath = Join-Path $Root "tools/unix/dev.sh"
+    Assert-True (Test-Path -LiteralPath $devPath -PathType Leaf) "Unix dev script is missing."
+    $devText = Get-Content -LiteralPath $devPath -Raw
+    foreach ($command in @("doctor", "configure", "build", "test", "lint", "format-check", "package", "test-package")) {
+        Assert-True $devText.Contains($command) "Unix dev command contract is missing '$command'."
+    }
+}
+
 if ($SelfTest) {
     Invoke-SelfTest
     exit 0
@@ -296,5 +387,6 @@ if ($SelfTest) {
 
 Test-Manifest
 Test-LocalPathHygiene
+Test-DevCommandContract
 Write-Host "alpha infra manifest and hygiene checks passed."
 exit 0

@@ -61,6 +61,8 @@ Package creation is currently a repository tool, not a `sloppy` CLI command:
 .\tools\windows\package.ps1 -Configuration Release
 .\tools\windows\package.ps1 -Configuration Release -Smoke
 .\tools\windows\test-package.ps1 -PackagePath artifacts\packages\sloppy-0.0.0-dev-windows-x64.zip
+.\tools\windows\dev.ps1 package
+.\tools\windows\dev.ps1 test-package
 ```
 
 Packages are experimental development artifacts. They are not public releases, installers,
@@ -95,10 +97,9 @@ ID through the runtime-contract path.
 
 Stdlib lookup is deterministic. `--stdlib <dir>` uses the explicit bootstrap stdlib root;
 relative explicit paths are resolved by the process in the usual way, so automation should
-prefer absolute paths. Without `--stdlib`, build-tree executables use the CMake-staged
-bootstrap root compiled into the binary. Package layouts stage the same assets under
-`lib/sloppy/bootstrap/sloppy`; executable-relative package lookup is still deferred, so
-package smoke tests may pass that directory explicitly.
+prefer absolute paths. Without `--stdlib`, packaged executables first look for
+`../stdlib/sloppy` relative to their `bin/` directory, then build-tree executables fall
+back to the CMake-staged bootstrap root compiled into the binary.
 
 The explicit artifact path remains supported and is the advanced/debug path:
 

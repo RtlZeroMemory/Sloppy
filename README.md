@@ -33,6 +33,8 @@ The supported development path is narrow but real:
 .\tools\windows\dev.ps1 configure
 .\tools\windows\dev.ps1 build
 .\tools\windows\dev.ps1 test
+.\tools\windows\dev.ps1 package
+.\tools\windows\dev.ps1 test-package
 ```
 
 Compiler/source-input work flows through `sloppyc` and the artifact runtime:
@@ -63,7 +65,7 @@ non-V8 evidence does not prove V8 execution.
 | HTTP | HTTP/1.1 runtime support is bounded development evidence. Sequential keep-alive and bounded chunked handling exist, but production-edge HTTP, pipelining, streaming public APIs, middleware, and TLS are not claimed. |
 | Data providers | SQLite has native/runtime support in scoped lanes. PostgreSQL and SQL Server remain metadata/provider-boundary work without complete JS runtime bridges. |
 | Capabilities and security | Capability checks are runtime policy checks. They are not an operating-system sandbox. |
-| Packaging | Package smoke checks prove layout and source packaging mechanics only. They are not release-readiness evidence. |
+| Packaging | Package smoke checks prove local archive layout and outside-checkout behavior only. They are not release-readiness evidence. |
 | Benchmarks | Benchmark harnesses may compile or smoke-run, but no performance claim is made from this repository state. |
 
 ## Limits That Matter

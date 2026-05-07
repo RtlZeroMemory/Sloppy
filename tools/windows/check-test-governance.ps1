@@ -53,6 +53,19 @@ function Read-Lines {
     return @(Get-Content -LiteralPath $absolute)
 }
 
+function Get-RelativeRepoPath {
+    param([string]$Path)
+
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+    $pathFull = [System.IO.Path]::GetFullPath($Path)
+    $prefix = $rootFull + [System.IO.Path]::DirectorySeparatorChar
+    if ($pathFull.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $pathFull.Substring($prefix.Length).Replace("\", "/")
+    }
+
+    return $pathFull.Replace("\", "/")
+}
+
 function Require-Text {
     param(
         [string]$RelativePath,
@@ -282,7 +295,7 @@ function Test-FixtureMetadata {
         }
 
         foreach ($metadataFile in $metadataFiles) {
-            $relative = [System.IO.Path]::GetRelativePath($Root, $metadataFile.FullName).Replace("\", "/")
+            $relative = Get-RelativeRepoPath -Path $metadataFile.FullName
             try {
                 $metadata = Get-Content -LiteralPath $metadataFile.FullName -Raw | ConvertFrom-Json
             } catch {
@@ -320,7 +333,7 @@ function Test-FixtureMetadata {
         }
 
         foreach ($metadataFile in $metadataFiles) {
-            $relative = [System.IO.Path]::GetRelativePath($Root, $metadataFile.FullName).Replace("\", "/")
+            $relative = Get-RelativeRepoPath -Path $metadataFile.FullName
             try {
                 $metadata = Get-Content -LiteralPath $metadataFile.FullName -Raw | ConvertFrom-Json
             } catch {

@@ -24,10 +24,12 @@ environment:
 .\tools\windows\dev.ps1 test
 .\tools\windows\dev.ps1 format-check
 .\tools\windows\dev.ps1 lint
+.\tools\windows\dev.ps1 package
+.\tools\windows\dev.ps1 test-package
 git diff --check
 ```
 
-Root scripts are compatibility forwarders to `tools/windows/*.ps1`.
+Root scripts are convenience forwarders to `tools/windows/*.ps1`.
 
 ## Definition Of Done
 
