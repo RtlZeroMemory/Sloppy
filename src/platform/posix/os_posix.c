@@ -4,8 +4,11 @@
 
 #include "../../core/os_platform.h"
 
+#include "sloppy/checked_math.h"
+
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -148,6 +151,7 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
     size_t count = 0U;
     size_t index = 0U;
     char** cursor = environ;
+    size_t alloc_size = 0U;
     void* memory = NULL;
     SlStatus status;
 
@@ -169,8 +173,11 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
     if (out->count == 0U) {
         return sl_status_ok();
     }
-    status = sl_arena_alloc(arena, out->count * sizeof(SlOsEnvironmentEntry),
-                            _Alignof(SlOsEnvironmentEntry), &memory);
+    status = sl_checked_mul_size(out->count, sizeof(SlOsEnvironmentEntry), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(SlOsEnvironmentEntry), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -339,11 +346,24 @@ static bool sl_os_posix_env_entry_overridden(const char* entry,
 static SlStatus sl_os_posix_env_assignment(SlArena* arena, SlOsEnvironmentOverride entry,
                                            char** out)
 {
-    size_t length = entry.key.length + 1U + entry.value.length;
+    size_t length = 0U;
+    size_t alloc_size = 0U;
     size_t offset = 0U;
     void* memory = NULL;
-    SlStatus status = sl_arena_alloc(arena, length + 1U, _Alignof(char), &memory);
+    SlStatus status = sl_checked_add_size(entry.key.length, 1U, &length);
 
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(length, entry.value.length, &length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(length, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -365,6 +385,8 @@ static SlStatus sl_os_posix_environment_block(SlArena* arena,
 {
     size_t inherited_count = 0U;
     size_t offset = 0U;
+    size_t pointer_count = 0U;
+    size_t alloc_size = 0U;
     void* memory = NULL;
     SlStatus status;
 
@@ -373,8 +395,19 @@ static SlStatus sl_os_posix_environment_block(SlArena* arena,
             inherited_count += 1U;
         }
     }
-    status = sl_arena_alloc(arena, (inherited_count + override_count + 1U) * sizeof(char*),
-                            _Alignof(char*), &memory);
+    status = sl_checked_add_size(inherited_count, override_count, &pointer_count);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(pointer_count, 1U, &pointer_count);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_mul_size(pointer_count, sizeof(char*), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char*), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -422,11 +455,23 @@ static SlStatus sl_os_posix_join_path(SlArena* arena, const char* directory, siz
 {
     size_t command_len = sl_str_from_cstr(command).length;
     size_t separator = directory_len == 0U ? 0U : 1U;
+    size_t length = 0U;
     size_t offset = 0U;
     void* memory = NULL;
-    SlStatus status = sl_arena_alloc(arena, directory_len + separator + command_len + 1U,
-                                     _Alignof(char), &memory);
+    SlStatus status = sl_checked_add_size(directory_len, separator, &length);
 
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(length, command_len, &length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(length, 1U, &length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, length, _Alignof(char), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -448,11 +493,23 @@ static SlStatus sl_os_posix_join_segment(SlArena* arena, const char* left, size_
                                          const char* right, size_t right_len, char** out)
 {
     size_t separator = left_len == 0U ? 0U : 1U;
+    size_t length = 0U;
     size_t offset = 0U;
     void* memory = NULL;
-    SlStatus status =
-        sl_arena_alloc(arena, left_len + separator + right_len + 1U, _Alignof(char), &memory);
+    SlStatus status = sl_checked_add_size(left_len, separator, &length);
 
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(length, right_len, &length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_add_size(length, 1U, &length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, length, _Alignof(char), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -565,6 +622,8 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     bool capture = options->capture != SL_OS_PROCESS_CAPTURE_NONE;
     SlStatus status;
     void* memory = NULL;
+    size_t alloc_count = 0U;
+    size_t alloc_size = 0U;
 
     (void)out_diag;
     *out = (SlOsProcessRunResult){0};
@@ -572,7 +631,15 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, (arg_count + 2U) * sizeof(char*), _Alignof(char*), &memory);
+    status = sl_checked_add_size(arg_count, 2U, &alloc_count);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_mul_size(alloc_count, sizeof(char*), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char*), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -615,12 +682,20 @@ SlStatus sl_os_platform_process_run(SlArena* arena, SlStr command, const SlStr* 
     if (capture) {
         stdout_capacity = options->max_stdout_bytes == 0U ? 65536U : options->max_stdout_bytes;
         stderr_capacity = options->max_stderr_bytes == 0U ? 65536U : options->max_stderr_bytes;
-        status = sl_arena_alloc(arena, stdout_capacity + 1U, _Alignof(char), &memory);
+        status = sl_checked_add_size(stdout_capacity, 1U, &alloc_size);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
         if (!sl_status_is_ok(status)) {
             return status;
         }
         stdout_buffer = (char*)memory;
-        status = sl_arena_alloc(arena, stderr_capacity + 1U, _Alignof(char), &memory);
+        status = sl_checked_add_size(stderr_capacity, 1U, &alloc_size);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -812,6 +887,8 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     pid_t child = -1;
     void* memory = NULL;
     SlOsProcessHandle* handle = NULL;
+    size_t alloc_count = 0U;
+    size_t alloc_size = 0U;
     SlStatus status;
 
     *out = NULL;
@@ -819,7 +896,15 @@ SlStatus sl_os_platform_process_start(SlArena* arena, SlStr command, const SlStr
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(arena, (arg_count + 2U) * sizeof(char*), _Alignof(char*), &memory);
+    status = sl_checked_add_size(arg_count, 2U, &alloc_count);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_checked_mul_size(alloc_count, sizeof(char*), &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char*), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1017,12 +1102,20 @@ static SlStatus sl_os_posix_pipe_read_to_arena(SlArena* arena, int* fd, size_t m
 {
     void* memory = NULL;
     ssize_t got;
+    size_t alloc_size = 0U;
     SlStatus status;
 
     if (*fd < 0) {
         return sl_os_posix_pipe_closed(out_diag);
     }
-    status = sl_arena_alloc(arena, max_bytes + 1U, _Alignof(char), &memory);
+    if (max_bytes > (size_t)SSIZE_MAX) {
+        return sl_status_from_code(SL_STATUS_OVERFLOW);
+    }
+    status = sl_checked_add_size(max_bytes, 1U, &alloc_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(arena, alloc_size, _Alignof(char), &memory);
     if (!sl_status_is_ok(status)) {
         return status;
     }

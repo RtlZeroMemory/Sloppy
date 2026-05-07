@@ -960,6 +960,107 @@ static int test_malformed_source_map_reports_generated_location(void)
     return 0;
 }
 
+static int expect_malformed_source_map_case(const char* mappings, const char* function_name,
+                                            const char* message, int failure_base)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    char source[256];
+    char source_map[512];
+    const char* throw_token = NULL;
+    size_t expected_column = 0U;
+
+    if (snprintf(source, sizeof(source),
+                 "globalThis.%s = function () { throw new Error(\"%s\"); };", function_name,
+                 message) < 0 ||
+        snprintf(source_map, sizeof(source_map),
+                 "{\"version\":3,\"sources\":[\"src/malformed.js\"],\"names\":[],"
+                 "\"mappings\":\"%s\"}",
+                 mappings) < 0)
+    {
+        return failure_base;
+    }
+    throw_token = strstr(source, "throw");
+    if (throw_token == NULL) {
+        return failure_base + 6;
+    }
+    expected_column = (size_t)(throw_token - source) + 1U;
+
+    options.source_map = sl_bytes_from_parts((const unsigned char*)source_map, strlen(source_map));
+    options.source_map_source_name = sl_str_from_cstr("generated-app.js");
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return failure_base + 1;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return failure_base + 2;
+    }
+
+    if (expect_status(sl_engine_eval_source(engine, sl_str_from_cstr("generated-app.js"),
+                                            sl_str_from_cstr(source), &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return failure_base + 3;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr(function_name), &result, &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return failure_base + 4;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+        !diag.primary_span.has_location || diag.primary_span.line != 1U ||
+        diag.primary_span.column != expected_column ||
+        !sl_str_equal(diag.primary_span.path, sl_str_from_cstr("generated-app.js")) ||
+        diag.hint_count == 0U ||
+        expect_str_contains(diag.hints[0], sl_str_from_cstr("Malformed source map")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return failure_base + 5;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_source_map_bounds_malformed_cases_report_generated_location(void)
+{
+    int result = expect_malformed_source_map_case("DAAA", "sloppy_negative_generated_column",
+                                                  "negative generated column", 73);
+    if (result != 0) {
+        return result;
+    }
+
+    result = expect_malformed_source_map_case("+///////////PAAA,CAAA",
+                                              "sloppy_generated_column_overflow",
+                                              "generated column overflow", 80);
+    if (result != 0) {
+        return result;
+    }
+
+    result = expect_malformed_source_map_case(
+        "AA+///////////PA,CACA", "sloppy_original_line_overflow", "original line overflow", 87);
+    if (result != 0) {
+        return result;
+    }
+
+    return expect_malformed_source_map_case("AAA+///////////P", "sloppy_original_column_overflow",
+                                            "original column overflow", 94);
+}
+
 static int test_registered_handler_throw_remaps_source_map_location(void)
 {
     unsigned char engine_storage[8192];
@@ -4700,6 +4801,11 @@ int main(int argc, char** argv)
     }
 
     result = test_malformed_source_map_reports_generated_location();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_source_map_bounds_malformed_cases_report_generated_location();
     if (result != 0) {
         return result;
     }

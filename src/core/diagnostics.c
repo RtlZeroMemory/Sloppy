@@ -852,6 +852,40 @@ static bool sl_diag_str_is_valid(SlStr str)
     return str.length == 0U || str.ptr != NULL;
 }
 
+static bool sl_diag_span_is_valid(SlSourceSpan span)
+{
+    if (!sl_diag_str_is_valid(span.path)) {
+        return false;
+    }
+    return !span.has_location || (span.line != 0U && span.column != 0U);
+}
+
+static SlStatus sl_diag_validate_render_input(const SlDiag* diag)
+{
+    if (diag == NULL || !sl_diag_str_is_valid(diag->message) ||
+        !sl_diag_span_is_valid(diag->primary_span) || diag->related_count > SL_DIAG_MAX_RELATED ||
+        diag->hint_count > SL_DIAG_MAX_HINTS)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (size_t index = 0U; index < diag->related_count; index += 1U) {
+        if (!sl_diag_str_is_valid(diag->related[index].message) ||
+            !sl_diag_span_is_valid(diag->related[index].span))
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+    }
+
+    for (size_t index = 0U; index < diag->hint_count; index += 1U) {
+        if (!sl_diag_str_is_valid(diag->hints[index])) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+    }
+
+    return sl_status_ok();
+}
+
 static SlStatus sl_diag_copy_str(SlArena* arena, SlStr src, SlStr* out)
 {
     void* ptr = NULL;
@@ -1187,10 +1221,9 @@ static SlStatus sl_diag_render_len(const SlDiag* diag, size_t* out)
     SlStatus status;
     size_t total = 0U;
 
-    if (diag == NULL || out == NULL || !sl_diag_str_is_valid(diag->message) ||
-        diag->related_count > SL_DIAG_MAX_RELATED || diag->hint_count > SL_DIAG_MAX_HINTS)
-    {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    status = sl_diag_validate_render_input(diag);
+    if (!sl_status_is_ok(status) || out == NULL) {
+        return out == NULL ? sl_status_from_code(SL_STATUS_INVALID_ARGUMENT) : status;
     }
 
     status = sl_diag_header_render_len(&total, diag);
@@ -1662,6 +1695,7 @@ SlStatus sl_diag_render_text(SlArena* arena, const SlDiag* diag, SlStr* out)
 static bool sl_diag_source_matches(const SlDiag* diag, const SlDiagSource* source)
 {
     if (diag == NULL || source == NULL || !diag->primary_span.has_location ||
+        !sl_diag_str_is_valid(source->path) || !sl_diag_str_is_valid(source->text) ||
         sl_str_is_empty(source->text))
     {
         return false;
@@ -1719,7 +1753,15 @@ static SlStatus sl_diag_frame_render_len(size_t* total, const SlDiag* diag, SlSt
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_diag_add_len(total, 7U + diag->primary_span.column - 1U + underline);
+    status = sl_diag_add_len(total, 7U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, diag->primary_span.column - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, underline);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1800,6 +1842,12 @@ SlStatus sl_diag_render_text_with_source(SlArena* arena, const SlDiag* diag,
     SlStr line = sl_str_empty();
     size_t length = 0U;
 
+    status = sl_diag_validate_render_input(diag);
+    if (!sl_status_is_ok(status) || arena == NULL || out == NULL) {
+        return arena == NULL || out == NULL ? sl_status_from_code(SL_STATUS_INVALID_ARGUMENT)
+                                            : status;
+    }
+
     if (!sl_diag_source_matches(diag, source) ||
         !sl_diag_source_line(source->text, diag->primary_span.line, &line))
     {
@@ -1856,24 +1904,43 @@ SlStatus sl_diag_render_text_with_source(SlArena* arena, const SlDiag* diag,
     return sl_status_ok();
 }
 
-static size_t sl_diag_json_escaped_len(SlStr value)
+static SlStatus sl_diag_json_escaped_len(SlStr value, size_t* out)
 {
     size_t length = 2U;
     size_t index = 0U;
+    SlStatus status;
 
+    if (out == NULL || !sl_diag_str_is_valid(value)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
     for (index = 0U; index < value.length; index += 1U) {
         unsigned char ch = (unsigned char)value.ptr[index];
         if (ch == '"' || ch == '\\' || ch == '\n' || ch == '\r' || ch == '\t') {
-            length += 2U;
+            status = sl_checked_add_size(length, 2U, &length);
         }
         else if (ch < 0x20U) {
-            length += 6U;
+            status = sl_checked_add_size(length, 6U, &length);
         }
         else {
-            length += 1U;
+            status = sl_checked_add_size(length, 1U, &length);
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
         }
     }
-    return length;
+    *out = length;
+    return sl_status_ok();
+}
+
+static SlStatus sl_diag_add_json_escaped_len(size_t* total, SlStr value)
+{
+    size_t length = 0U;
+    SlStatus status = sl_diag_json_escaped_len(value, &length);
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_diag_add_len(total, length);
 }
 
 static char sl_diag_json_escape_letter(unsigned char ch)
@@ -1950,8 +2017,11 @@ static SlStatus sl_diag_json_span_len(size_t* total, SlSourceSpan span)
         return status;
     }
     if (!sl_str_is_empty(span.path)) {
-        status =
-            sl_diag_add_len(total, sizeof("\"file\":") - 1U + sl_diag_json_escaped_len(span.path));
+        status = sl_diag_add_len(total, sizeof("\"file\":") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_add_json_escaped_len(total, span.path);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -2041,11 +2111,27 @@ static SlStatus sl_diag_builder_append_json_span(SlStringBuilder* builder, SlSou
 
 static SlStatus sl_diag_json_base_len(size_t* total, const SlDiag* diag)
 {
-    return sl_diag_add_len(
-        total, sizeof("{\"code\":") - 1U + sl_diag_json_escaped_len(sl_diag_code_name(diag->code)) +
-                   sizeof(",\"severity\":") - 1U +
-                   sl_diag_json_escaped_len(sl_diag_severity_name(diag->severity)) +
-                   sizeof(",\"message\":") - 1U + sl_diag_json_escaped_len(diag->message));
+    SlStatus status = sl_diag_add_len(total, sizeof("{\"code\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_json_escaped_len(total, sl_diag_code_name(diag->code));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sizeof(",\"severity\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_json_escaped_len(total, sl_diag_severity_name(diag->severity));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sizeof(",\"message\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_diag_add_json_escaped_len(total, diag->message);
 }
 
 static SlStatus sl_diag_json_primary_len(size_t* total, const SlDiag* diag)
@@ -2084,9 +2170,15 @@ static SlStatus sl_diag_json_related_len(size_t* total, const SlDiag* diag)
                 return status;
             }
         }
-        status = sl_diag_add_len(total, sizeof("{\"message\":") - 1U +
-                                            sl_diag_json_escaped_len(diag->related[index].message) +
-                                            sizeof(",\"span\":") - 1U);
+        status = sl_diag_add_len(total, sizeof("{\"message\":") - 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_add_json_escaped_len(total, diag->related[index].message);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_add_len(total, sizeof(",\"span\":") - 1U);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -2118,8 +2210,11 @@ static SlStatus sl_diag_json_hints_len(size_t* total, const SlDiag* diag)
         if (!sl_diag_str_is_valid(diag->hints[index])) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
-        status = sl_diag_add_len(total, (index == 0U ? 0U : 1U) +
-                                            sl_diag_json_escaped_len(diag->hints[index]));
+        status = sl_diag_add_len(total, index == 0U ? 0U : 1U);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_diag_add_json_escaped_len(total, diag->hints[index]);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -2131,10 +2226,12 @@ static SlStatus sl_diag_json_render_len(size_t* total, const SlDiag* diag)
 {
     SlStatus status;
 
-    if (total == NULL || diag == NULL || !sl_diag_str_is_valid(diag->message) ||
-        diag->related_count > SL_DIAG_MAX_RELATED || diag->hint_count > SL_DIAG_MAX_HINTS)
-    {
+    if (total == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_diag_validate_render_input(diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
     status = sl_diag_json_base_len(total, diag);
@@ -2270,31 +2367,96 @@ static SlStatus sl_diag_builder_append_json_hints(SlStringBuilder* builder, cons
     return sl_status_ok();
 }
 
+static SlStatus sl_diag_json_source_frame_fields_len(size_t* total, const SlDiag* diag, SlStr line,
+                                                     size_t underline)
+{
+    SlStatus status = sl_diag_add_len(total, sizeof("\"file\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_json_escaped_len(total, diag->primary_span.path);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sizeof(",\"line\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sl_diag_decimal_len(diag->primary_span.line));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sizeof(",\"column\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sl_diag_decimal_len(diag->primary_span.column));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sizeof(",\"span\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sl_diag_decimal_len(underline));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_len(total, sizeof(",\"text\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_add_json_escaped_len(total, line);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_diag_add_len(total, sizeof(",\"marker\":") - 1U + 2U);
+}
+
+static SlStatus sl_diag_json_source_frame_marker_len(size_t* total, const SlDiag* diag,
+                                                     size_t underline)
+{
+    SlStatus status = sl_diag_add_len(total, diag->primary_span.column - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_diag_add_len(total, underline);
+}
+
+static SlStatus sl_diag_json_source_frame_hint_len(size_t* total, SlStr hint)
+{
+    SlStatus status;
+
+    if (sl_str_is_empty(hint)) {
+        return sl_status_ok();
+    }
+    status = sl_diag_add_len(total, sizeof(",\"hint\":") - 1U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_diag_add_json_escaped_len(total, hint);
+}
+
 static SlStatus sl_diag_json_source_frame_len(size_t* total, const SlDiag* diag, SlStr line)
 {
     const size_t underline = diag->primary_span.length == 0U ? 1U : diag->primary_span.length;
     SlStr hint = sl_diag_first_hint(diag);
-    SlStatus status;
+    SlStatus status = sl_diag_add_len(total, sizeof(",\"sourceFrame\":{") - 1U);
 
-    status = sl_diag_add_len(total, sizeof(",\"sourceFrame\":{") - 1U);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_diag_add_len(
-        total, sizeof("\"file\":") - 1U + sl_diag_json_escaped_len(diag->primary_span.path) +
-                   sizeof(",\"line\":") - 1U + sl_diag_decimal_len(diag->primary_span.line) +
-                   sizeof(",\"column\":") - 1U + sl_diag_decimal_len(diag->primary_span.column) +
-                   sizeof(",\"span\":") - 1U + sl_diag_decimal_len(underline) +
-                   sizeof(",\"text\":") - 1U + sl_diag_json_escaped_len(line) +
-                   sizeof(",\"marker\":") - 1U + 2U + diag->primary_span.column - 1U + underline);
+    status = sl_diag_json_source_frame_fields_len(total, diag, line, underline);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (!sl_str_is_empty(hint)) {
-        status = sl_diag_add_len(total, sizeof(",\"hint\":") - 1U + sl_diag_json_escaped_len(hint));
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
+    status = sl_diag_json_source_frame_marker_len(total, diag, underline);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_diag_json_source_frame_hint_len(total, hint);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
     return sl_diag_add_len(total, 1U);
 }
@@ -2447,6 +2609,10 @@ SlStatus sl_diag_render_json_with_source(SlArena* arena, const SlDiag* diag,
 
     if (arena == NULL || diag == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_diag_validate_render_input(diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
 
     if (!sl_diag_source_matches(diag, source) ||

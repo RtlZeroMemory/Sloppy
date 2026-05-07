@@ -45,8 +45,17 @@ that write into an arena must leave outputs unchanged on failure unless their co
 otherwise, and should use marks/rollback when parsing or validation can fail after partial
 allocation.
 
+Aggregate result APIs that publish arena-backed rows, columns, or values must be
+deterministic on failure: either keep the documented unchanged-output contract or clear the
+aggregate before returning. If an arena mark is rolled back, no output field may continue to
+point into the reset range.
+
 Request-scoped arenas are for one request. App/static arenas are for validated metadata and
 startup-owned resources. Scratch arenas must not leak views to longer-lived owners.
+
+Public rendering boundaries must treat non-empty `SlStr`/`SlBytes` views with `NULL`
+storage as malformed input and fail or fall back deterministically instead of dereferencing
+the view.
 
 ## Builders
 
