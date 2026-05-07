@@ -191,11 +191,13 @@ function Test-Manifest {
         Assert-InSet -Value ([string]$platform.status) -Allowed @($manifest.platformStatusVocabulary) -Message "Invalid status for platform '$platformName'."
     }
 
-    foreach ($tool in @("cmake", "ninja", "git", "rust")) {
+    foreach ($tool in @("cmake", "ninja", "git", "vcpkg", "rust")) {
         $policy = $manifest.toolchainPolicy.PSObject.Properties[$tool].Value
         Assert-True ($null -ne $policy) "Dependency manifest missing toolchain policy '$tool'."
         Assert-True ([bool]$policy.required) "Toolchain '$tool' must be required."
-        Assert-True (-not [string]::IsNullOrWhiteSpace([string]$policy.minimumVersion)) "Toolchain '$tool' must name minimumVersion."
+        if ($tool -ne "vcpkg") {
+            Assert-True (-not [string]::IsNullOrWhiteSpace([string]$policy.minimumVersion)) "Toolchain '$tool' must name minimumVersion."
+        }
     }
 
     Assert-True ($manifest.v8Sdk.name -eq "sloppy-v8-sdk") "V8 SDK manifest policy must name sloppy-v8-sdk."

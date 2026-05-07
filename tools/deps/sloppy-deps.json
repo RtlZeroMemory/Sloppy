@@ -37,6 +37,13 @@
       "versionArguments": ["--version"],
       "versionPattern": "git version ([0-9]+\\.[0-9]+\\.[0-9]+)"
     },
+    "vcpkg": {
+      "required": true,
+      "minimumVersion": null,
+      "command": "vcpkg",
+      "resolution": ".sdeps/vcpkg, VCPKG_ROOT, PATH, or Visual Studio bundled vcpkg with scripts/buildsystems/vcpkg.cmake",
+      "reason": "Required C dependency manager and CMake toolchain for configure/build."
+    },
     "rust": {
       "required": true,
       "minimumVersion": "1.76.0",

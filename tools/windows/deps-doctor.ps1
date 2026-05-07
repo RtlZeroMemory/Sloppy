@@ -200,6 +200,56 @@ function Test-SlTool {
     }
 }
 
+function Test-SlVcpkg {
+    $candidates = New-Object System.Collections.Generic.List[string]
+    $localRoot = Join-Path $Root ".sdeps/vcpkg"
+    $candidates.Add($localRoot)
+
+    if (-not [string]::IsNullOrWhiteSpace($env:VCPKG_ROOT)) {
+        $candidates.Add($env:VCPKG_ROOT)
+    }
+
+    $vcpkgCommand = Get-Command "vcpkg" -ErrorAction SilentlyContinue
+    if ($null -ne $vcpkgCommand) {
+        $candidates.Add((Split-Path -Parent $vcpkgCommand.Source))
+    }
+
+    $installPath = Get-SlVisualStudioInstallPath
+    if (-not [string]::IsNullOrWhiteSpace($installPath)) {
+        $candidates.Add((Join-Path $installPath "VC/vcpkg"))
+    }
+
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+
+        $toolchain = Join-Path $candidate "scripts/buildsystems/vcpkg.cmake"
+        if (Test-Path -LiteralPath $toolchain -PathType Leaf) {
+            return [ordered]@{
+                name = "vcpkg"
+                kind = "toolchain"
+                required = $true
+                status = "found"
+                version = $null
+                minimumVersion = $null
+                detail = "vcpkg CMake toolchain resolved."
+                path = (Resolve-Path -LiteralPath $candidate).Path
+            }
+        }
+    }
+
+    return [ordered]@{
+        name = "vcpkg"
+        kind = "toolchain"
+        required = $true
+        status = "missing"
+        version = $null
+        minimumVersion = $null
+        detail = "vcpkg CMake toolchain was not found. Configure requires .sdeps/vcpkg, VCPKG_ROOT, PATH vcpkg, or the Visual Studio bundled vcpkg layout with scripts/buildsystems/vcpkg.cmake."
+    }
+}
+
 function Test-SlVisualStudioShell {
     $hasCHeader = Test-SlEnvFile -EnvValue $env:INCLUDE -FileName "stdio.h"
     $hasKernelLib = Test-SlEnvFile -EnvValue $env:LIB -FileName "kernel32.lib"
@@ -219,7 +269,10 @@ function Test-SlVisualStudioShell {
     }
 
     $installPath = Get-SlVisualStudioInstallPath
-    $vcTools = Get-SlLatestDirectoryName -Path (Join-Path $installPath "VC/Tools/MSVC")
+    $vcTools = $null
+    if (-not [string]::IsNullOrWhiteSpace($installPath)) {
+        $vcTools = Get-SlLatestDirectoryName -Path (Join-Path $installPath "VC/Tools/MSVC")
+    }
     $sdkIncludeRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/Include"
     $sdkLibRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/Lib"
     $sdkInclude = Get-SlLatestDirectoryName -Path $sdkIncludeRoot
@@ -369,7 +422,11 @@ if ($null -eq $platform) {
 }
 
 foreach ($tool in $manifest.toolchainPolicy.PSObject.Properties) {
-    $checks.Add((Test-SlTool -Name $tool.Name -Policy $tool.Value))
+    if ($tool.Name -eq "vcpkg") {
+        $checks.Add((Test-SlVcpkg))
+    } else {
+        $checks.Add((Test-SlTool -Name $tool.Name -Policy $tool.Value))
+    }
 }
 
 if ($platformKey -eq "windows-x64") {

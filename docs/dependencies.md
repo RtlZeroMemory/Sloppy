@@ -184,6 +184,10 @@ arm64 without turning unverified lanes into support claims.
 such as Docker or V8 in `AUTO` mode are reported separately and do not count as pass
 evidence.
 
+The doctor also validates the required vcpkg CMake toolchain through local `.sdeps/vcpkg`,
+`VCPKG_ROOT`, a PATH `vcpkg` layout, or the Visual Studio bundled vcpkg layout before
+bootstrap reports success, because configure still depends on that toolchain.
+
 V8 resolver modes are explicit:
 
 - `OFF`: do not validate or enable V8.
