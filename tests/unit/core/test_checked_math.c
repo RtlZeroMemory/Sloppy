@@ -143,6 +143,44 @@ static int test_checked_array_helpers(void)
     return 0;
 }
 
+static int test_deterministic_checked_size_properties(void)
+{
+    size_t a = 0U;
+
+    for (a = 0U; a < 128U; a += 1U) {
+        size_t b = 0U;
+
+        for (b = 0U; b < 128U; b += 1U) {
+            size_t sum = 999U;
+            size_t product = 999U;
+
+            if (expect_status(sl_checked_add_size(a, b, &sum), SL_STATUS_OK) != 0 || sum != a + b) {
+                return 20;
+            }
+
+            if (expect_status(sl_checked_mul_size(a, b, &product), SL_STATUS_OK) != 0 ||
+                product != a * b)
+            {
+                return 21;
+            }
+        }
+    }
+
+    for (a = 2U; a < 128U; a += 1U) {
+        size_t out = 2468U;
+        size_t overflow_count = (SIZE_MAX / a) + 1U;
+
+        if (expect_status(sl_checked_array_size(overflow_count, a, &out), SL_STATUS_OVERFLOW) !=
+                0 ||
+            out != 2468U)
+        {
+            return 22;
+        }
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int result = test_checked_add_helpers();
@@ -155,5 +193,10 @@ int main(void)
         return result;
     }
 
-    return test_checked_array_helpers();
+    result = test_checked_array_helpers();
+    if (result != 0) {
+        return result;
+    }
+
+    return test_deterministic_checked_size_properties();
 }

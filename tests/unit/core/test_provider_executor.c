@@ -2139,7 +2139,7 @@ static int test_serialized_worker_failure_and_late_completion_cleanup_once(void)
     SlArena arena;
     SlAsyncCompletion completions[16];
     SlAsyncLoop* loop = NULL;
-    SlProviderInstanceExecutor executor;
+    SlProviderInstanceExecutor executor = {0};
     SlProviderExecutorSlot slots[2];
     ProviderRecord record = {0};
     ProviderWorkPayload failure_payload =
@@ -2151,13 +2151,15 @@ static int test_serialized_worker_failure_and_late_completion_cleanup_once(void)
     SlProviderOperation* late = NULL;
     SlProviderOperationDescriptor failure_desc;
     SlProviderOperationDescriptor late_desc;
+    int result = 0;
 
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
             0 ||
         init_executor_with_backend(&arena, &loop, &executor, slots, completions, 2U,
                                    SL_ASYNC_BACKEND_LIBUV) != 0)
     {
-        return 110;
+        result = 110;
+        goto cleanup;
     }
 
     if (make_worker_descriptor(&record, &failure_payload, &failure_desc) != 0 ||
@@ -2167,7 +2169,8 @@ static int test_serialized_worker_failure_and_late_completion_cleanup_once(void)
         expect_status(sl_provider_executor_submit(&executor, &arena, &late_desc, &late),
                       SL_STATUS_OK) != 0)
     {
-        return 111;
+        result = 111;
+        goto cleanup;
     }
 
     if (drain_until_dispatch_count(loop, &record, 2U) != 0 || record.worker_count != 2U ||
@@ -2175,15 +2178,28 @@ static int test_serialized_worker_failure_and_late_completion_cleanup_once(void)
         record.statuses[0] != SL_STATUS_INTERNAL ||
         record.diag_codes[0] != SL_DIAG_SQLITE_PROVIDER_ERROR ||
         record.statuses[1] != SL_STATUS_CANCELLED ||
-        record.diag_codes[1] != SL_DIAG_ENGINE_CANCELLED || executor.worker_failure_count != 1U ||
-        executor.late_completion_count != 1U)
+        record.diag_codes[1] != SL_DIAG_ENGINE_CANCELLED)
     {
-        return 112;
+        result = 112;
+        goto cleanup;
     }
 
     sl_provider_executor_dispose(&executor);
+    if (executor.worker_failure_count != 1U || executor.late_completion_count != 1U) {
+        result = 113;
+        goto cleanup_loop;
+    }
+
+cleanup_loop:
     sl_async_loop_dispose(loop);
-    return 0;
+    return result;
+
+cleanup:
+    sl_provider_executor_dispose(&executor);
+    if (loop != NULL) {
+        sl_async_loop_dispose(loop);
+    }
+    return result;
 }
 
 static int test_completion_post_failure_releases_claimed_active_operation(void)

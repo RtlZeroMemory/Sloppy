@@ -323,6 +323,81 @@ static int test_mark_reset_and_stats(void)
     return 0;
 }
 
+static int test_stats_snapshot_contract(void)
+{
+    unsigned char buffer[32];
+    SlArena arena;
+    SlArenaStats stats;
+    SlArenaMark mark;
+    void* ptr = NULL;
+    unsigned int initial_generation = 0U;
+
+    fill_bytes(buffer, sizeof(buffer), 0U);
+
+    stats = sl_arena_stats(NULL);
+    if (stats.capacity != 0U || stats.used != 0U || stats.remaining != 0U ||
+        stats.high_water != 0U || stats.generation != 0U)
+    {
+        return 80;
+    }
+
+    if (expect_status(sl_arena_init(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 81;
+    }
+
+    stats = sl_arena_stats(&arena);
+    initial_generation = stats.generation;
+    if (stats.capacity != sizeof(buffer) || stats.used != 0U || stats.remaining != sizeof(buffer) ||
+        stats.high_water != 0U || stats.generation == 0U)
+    {
+        return 82;
+    }
+
+    if (expect_status(sl_arena_alloc(&arena, 7U, 1U, &ptr), SL_STATUS_OK) != 0) {
+        return 83;
+    }
+
+    mark = sl_arena_mark(&arena);
+    if (expect_status(sl_arena_alloc(&arena, 8U, 8U, &ptr), SL_STATUS_OK) != 0) {
+        return 84;
+    }
+
+    stats = sl_arena_stats(&arena);
+    if (stats.used != sl_arena_used(&arena) || stats.remaining != sl_arena_remaining(&arena) ||
+        stats.high_water != sl_arena_high_water(&arena) || stats.generation != initial_generation)
+    {
+        return 85;
+    }
+
+    if (expect_status(sl_arena_reset_to(&arena, mark), SL_STATUS_OK) != 0) {
+        return 86;
+    }
+
+    stats = sl_arena_stats(&arena);
+    if (stats.used != mark.offset || stats.high_water <= stats.used ||
+        stats.generation != initial_generation)
+    {
+        return 87;
+    }
+
+    sl_arena_reset(&arena);
+    stats = sl_arena_stats(&arena);
+    if (stats.used != 0U || stats.high_water <= 0U || stats.generation == initial_generation ||
+        stats.remaining != sizeof(buffer))
+    {
+        return 88;
+    }
+
+    sl_arena_dispose(&arena);
+    stats = sl_arena_stats(&arena);
+    if (stats.capacity != 0U || stats.used != 0U || stats.remaining != 0U || stats.high_water != 0U)
+    {
+        return 89;
+    }
+
+    return 0;
+}
+
 static int test_debug_poisoning(void)
 {
 #if SL_ENABLE_ASSERTS
@@ -418,6 +493,11 @@ int main(void)
     }
 
     result = test_mark_reset_and_stats();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_stats_snapshot_contract();
     if (result != 0) {
         return result;
     }

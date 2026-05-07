@@ -44,6 +44,11 @@ Handler dispatch benchmarks are split by current runtime capability:
 `http.request_head.parse` is a microbenchmark for the complete-buffer request-head parser.
 It is not an HTTP server throughput benchmark.
 
+Memory primitive benchmarks currently include scalar byte find-any scans, ASCII
+case-insensitive string comparison, checked array-size arithmetic, and arena-backed builder
+append/growth counters. These are internal microbenchmarks for future optimization
+decisions. They are not allocation-rate, parser-throughput, or public performance claims.
+
 ## Output
 
 Text output is human-readable. JSON output uses `sloppyBenchmarkVersion: 1` and is intended
@@ -51,7 +56,10 @@ for checked-in examples or local comparison artifacts. Local benchmark result fi
 stay untracked unless a future task deliberately adds golden benchmark metadata.
 
 See `benchmarks/fixtures/sample-output.json` for the output shape. The sample contains
-zero values and is not performance data.
+zero values and is not performance data. Any measured report used for an optimization
+decision must include the command, preset/configuration, compiler, platform, CPU/VM
+context, V8 setting, relevant corpus/fixture, raw JSON/text output, and whether the run was
+smoke or measured.
 
 ## Deferred
 

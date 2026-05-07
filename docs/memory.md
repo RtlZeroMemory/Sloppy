@@ -34,8 +34,9 @@ The current runtime includes:
 - deterministic string/byte equality, hashing, and scalar byte search helpers;
 - checked `size_t` arithmetic, including array-allocation and three-term-addition helpers;
 - assertion macros;
-- caller-backed `SlArena`;
-- bounded fixed or arena-backed byte and string builders;
+- caller-backed `SlArena` with read-only stats snapshots;
+- bounded fixed or arena-backed byte and string builders with deterministic internal
+  growth/copy counters;
 - app/static-lifetime intern tables for stable metadata;
 - fixed-capacity cleanup scopes;
 - generation-counted resource IDs and resource tables;
@@ -61,6 +62,10 @@ Public rendering boundaries must treat non-empty `SlStr`/`SlBytes` views with `N
 storage as malformed input and fail or fall back deterministically instead of dereferencing
 the view.
 
+`sl_arena_stats` reports capacity, used bytes, remaining bytes, high-water bytes, and the
+current generation without mutating the arena. It is internal evidence for tests,
+benchmarks, and future optimization decisions; it is not an allocator abstraction.
+
 ## Builders
 
 Builders are bounded output primitives. They exist to replace repeated ad hoc fixed-buffer
@@ -73,6 +78,10 @@ output unless the contract explicitly defines truncation.
 Builder appends are allowed to read from the builder's current storage. Overlapping
 self-appends must behave as if the source bytes were captured before the append, so callers
 do not need a scratch copy for length-preserving byte/string duplication.
+
+Builder stats report length, capacity, max capacity, grow count, copied bytes, appended
+bytes, failed reserve count, and storage kind. Counters are deterministic internal
+measurement evidence and do not change append, reserve, reset, or failure semantics.
 
 ## Interned Metadata
 

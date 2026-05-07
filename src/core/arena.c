@@ -250,3 +250,19 @@ size_t sl_arena_high_water(const SlArena* arena)
 {
     return arena == NULL ? 0U : arena->high_water;
 }
+
+SlArenaStats sl_arena_stats(const SlArena* arena)
+{
+    SlArenaStats stats = {0U};
+
+    if (arena == NULL) {
+        return stats;
+    }
+
+    stats.capacity = arena->capacity;
+    stats.used = arena->offset;
+    stats.remaining = sl_arena_remaining(arena);
+    stats.high_water = arena->high_water;
+    stats.generation = arena->generation;
+    return stats;
+}

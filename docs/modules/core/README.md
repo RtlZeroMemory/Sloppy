@@ -5,6 +5,8 @@
 The core module provides Sloppy's low-level C contracts: status values, source locations,
 borrowed string/byte views, checked arithmetic, arenas, builders, interned metadata,
 diagnostics integration, and small ownership primitives.
+Arena and builder stats are read-only internal measurement evidence; they do not introduce
+allocator ownership or performance claims.
 
 ## Current Status
 
@@ -21,11 +23,14 @@ provider-specific implementations.
 - NUL-terminated API boundaries must use the canonical no-NUL validation/copy helper rather
   than treating `SlStr` storage as a C string.
 - Arena-owned outputs must state the arena lifetime.
+- Arena stats snapshots are side-effect-free and must not make stale marks valid.
 - Checked arithmetic is required for potentially overflowing sizes or offsets. Array
   allocation counts should use the canonical checked array-size helper.
 - Failure paths should leave outputs unchanged or document the exception.
 - Builder self-overlap is a supported append case and must preserve the original source
   bytes.
+- Builder growth/copy counters must not change append, reserve, reset, or failure
+  semantics.
 - Diagnostics should use stable codes and avoid leaking secrets.
 
 ## Tests
