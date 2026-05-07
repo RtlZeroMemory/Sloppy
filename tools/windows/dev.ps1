@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("configure", "build", "test", "clean", "format-check", "lint", "all")]
+    [ValidateSet("configure", "build", "test", "clean", "format-check", "lint", "analyze", "all")]
     [string]$Command = "all",
 
     [string]$Preset = "windows-dev",
@@ -333,6 +333,15 @@ function Invoke-PlatformBoundaryCheck {
 
 function Invoke-CStandardsCheck {
     $script = Join-Path $PSScriptRoot "check-c-standards.ps1"
+    & $script -SelfTest
+    if (-not $?) {
+        throw "C standards scanner self-test failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "C standards scanner self-test failed with exit code $LASTEXITCODE"
+    }
+
     & $script
     if (-not $?) {
         throw "C standards check failed"
@@ -484,6 +493,23 @@ function Invoke-Lint {
     Write-Host "lint completed."
 }
 
+function Invoke-Analyze {
+    Import-SlVisualStudioEnvironment
+
+    $clangTidy = Resolve-GateTool "clang-tidy" "advanced C/C++ static analysis"
+    if ($null -eq $clangTidy) {
+        throw "clang-tidy was not found; install clang-tidy to run the advanced analysis lane."
+    }
+
+    $compileCommands = Join-Path $BuildDir "compile_commands.json"
+    if (-not (Test-Path -LiteralPath $compileCommands)) {
+        throw "compile_commands.json was not found at $compileCommands; run configure before analyze."
+    }
+
+    Invoke-Native "cmake" @("--build", "--preset", $Preset, "--target", "sloppy_memory_analysis")
+    Write-Host "advanced memory/core static analysis completed."
+}
+
 switch ($Command) {
     "configure" { Invoke-Configure }
     "build" { Invoke-Build }
@@ -491,6 +517,7 @@ switch ($Command) {
     "clean" { Invoke-Clean }
     "format-check" { Invoke-FormatCheck }
     "lint" { Invoke-Lint }
+    "analyze" { Invoke-Analyze }
     "all" {
         Invoke-Configure
         Invoke-Build

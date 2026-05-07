@@ -6,6 +6,7 @@ Default Linux/macOS CI uses direct CMake/Cargo commands plus these lightweight s
 
 ```sh
 tools/unix/check-platform-boundaries.sh
+tools/unix/check-c-standards.sh --self-test
 tools/unix/check-c-standards.sh
 ```
 

@@ -679,6 +679,7 @@ bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
             if (value->value.blob.ptr == nullptr) {
                 return false;
             }
+            /* sloppy-allow: c-memory-boundary #760 V8 blob copy; remove when helper lands */
             std::memcpy(backing->Data(), value->value.blob.ptr, value->value.blob.length);
         }
         v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));

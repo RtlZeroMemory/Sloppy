@@ -263,6 +263,7 @@ static void sl_tcp_resolve_cb(uv_getaddrinfo_t* req, int status, struct addrinfo
             unsigned char* destination = (unsigned char*)&state->addr;
             size_t index = 0U;
 
+            /* sloppy-allow: c-memory-boundary #760 zero-init; remove when helper lands */
             memset(&state->addr, 0, sizeof(state->addr));
             while (index < (size_t)candidate->ai_addrlen) {
                 destination[index] = source[index];
@@ -433,15 +434,18 @@ static SlStatus sl_tcp_parse_sockaddr(SlStr host_value, uint16_t port, bool allo
                            sl_tcp_literal("network port is invalid"));
     }
     if (uv_ip4_addr(host, (int)port, &addr4) == 0) {
+        /* sloppy-allow: c-memory-boundary #760 zero-init; remove when helper lands */
         memset(out_addr, 0, sizeof(*out_addr));
         *((struct sockaddr_in*)out_addr) = addr4;
         return sl_status_ok();
     }
     if (uv_ip6_addr(host, (int)port, &addr6) == 0) {
+        /* sloppy-allow: c-memory-boundary #760 zero-init; remove when helper lands */
         memset(out_addr, 0, sizeof(*out_addr));
         *((struct sockaddr_in6*)out_addr) = addr6;
         return sl_status_ok();
     }
+    /* sloppy-allow: c-memory-boundary #760 zero-init; remove when helper lands */
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -454,6 +458,7 @@ static SlStatus sl_tcp_parse_sockaddr(SlStr host_value, uint16_t port, bool allo
         return sl_tcp_status_from_uv(uv_status, out_diag, SL_DIAG_NET_BACKEND_UNAVAILABLE,
                                      sl_tcp_literal("TCP backend is unavailable"));
     }
+    /* sloppy-allow: c-memory-boundary #760 zero-init; remove when helper lands */
     memset(&request, 0, sizeof(request));
     request.data = &state;
     uv_status = uv_getaddrinfo(&loop, &request, sl_tcp_resolve_cb, host, NULL, &hints);

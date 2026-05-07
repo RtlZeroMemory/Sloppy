@@ -470,12 +470,14 @@ static SlStatus sl_pg_param_text(SlArena* arena, const SlPostgresParam* param, c
         *out_value = copied;
         return sl_status_ok();
     case SL_POSTGRES_PARAM_INTEGER:
+        /* sloppy-allow: c-memory-boundary #760 libpq integer; remove when byte-builder formats */
         if (snprintf(buffer, buffer_size, "%lld", (long long)param->value.integer) < 0) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
         *out_value = buffer;
         return sl_status_ok();
     case SL_POSTGRES_PARAM_FLOAT:
+        /* sloppy-allow: c-memory-boundary #760 libpq float; remove when byte-builder formats */
         if (snprintf(buffer, buffer_size, "%.17g", param->value.number) < 0) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }

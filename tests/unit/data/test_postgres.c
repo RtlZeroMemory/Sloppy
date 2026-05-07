@@ -514,10 +514,13 @@ static int test_live_pool(void)
         return 77;
     }
     char copied_url[512];
-    if (strlen(url) >= sizeof(copied_url)) {
+    size_t copied_url_length = strlen(url);
+    if (copied_url_length >= sizeof(copied_url)) {
         return 56;
     }
-    (void)strcpy(copied_url, url);
+    for (size_t index = 0U; index <= copied_url_length; index += 1U) {
+        copied_url[index] = url[index];
+    }
     options = sl_postgres_pool_options_connection_string(sl_str_from_cstr(copied_url), 2U);
     diag = (SlDiag){0};
     status = sl_postgres_pool_open(&arena, &options, &pool, &diag);
@@ -525,9 +528,16 @@ static int test_live_pool(void)
         printf("FAIL: live PostgreSQL pool open failed; category: %s. Diagnostics are redacted "
                "and connection strings are not printed.\n",
                classify_live_open_failure(&diag));
+        for (size_t index = 0U; index < copied_url_length; index += 1U) {
+            copied_url[index] = 'x';
+        }
+        copied_url[copied_url_length] = '\0';
         return 51;
     }
-    (void)memset(copied_url, 'x', strlen(copied_url));
+    for (size_t index = 0U; index < copied_url_length; index += 1U) {
+        copied_url[index] = 'x';
+    }
+    copied_url[copied_url_length] = '\0';
     if (expect_status(sl_postgres_pool_acquire(&arena, &pool, &first, NULL), SL_STATUS_OK) != 0 ||
         expect_status(sl_postgres_pool_acquire(&arena, &pool, &second, NULL), SL_STATUS_OK) != 0)
     {

@@ -503,6 +503,43 @@ recognize. Raw NUL-append string copies are not C-string validation; OS/env/conf
 boundaries should use the canonical C-string copy helper. New exceptions should be rarer
 than new reusable primitives.
 
+### C Stdlib Memory/String Policy
+
+The C standards scanner is the fast first line of defense. These categories are enforced
+for implementation code under `include/` and `src/`, with always-unsafe string APIs also
+banned in tests and benchmarks.
+
+Always banned:
+
+- `gets`;
+- `strcpy`, `strncpy`, `strcat`;
+- `sprintf`, `vsprintf`;
+- `strdup`.
+
+Primitive-only or explicit-boundary APIs:
+
+- `strlen` is allowed in `src/core/string.c` for the canonical C-string adapter. Other
+  uses need a same-line or immediately preceding `sloppy-allow: c-memory-boundary #issue
+  reason; remove when condition` comment.
+- `memcpy`, `memmove`, `memcmp`, and `memset` need the same narrow boundary allowance
+  unless they live inside canonical string/byte primitives recognized by the scanner.
+- `snprintf` is allowed only at documented dependency or C-string formatting boundaries
+  until a shared builder/numeric formatting primitive replaces the local use.
+- `memset` must not be used for secret wiping. Structure zero-initialization at platform
+  or dependency boundaries needs an allowance that states it is not secret wiping.
+
+Raw allocation APIs:
+
+- `malloc`, `free`, `realloc`, and `calloc` are errors outside allocator modules. New code
+  should use arenas, resource tables, or a scoped allocator primitive instead.
+
+Static-analysis suppressions:
+
+- `NOLINT`, `NOLINTNEXTLINE`, `NOLINTBEGIN`, and `NOLINTEND` require
+  `sloppy-analysis-suppress: #issue reason; remove when condition`.
+- Prefer fixing the analyzer finding over suppressing it. Suppressions are narrow,
+  reviewed debt, not a baseline dumping ground.
+
 ## Integer and Size Safety
 
 Use checked add/mul for allocation sizes. Prefer checked array-size helpers for

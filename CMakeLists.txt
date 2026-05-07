@@ -458,6 +458,51 @@ set(
     benchmarks/bench_route_matcher.c
     benchmarks/bench_handler_dispatch.c)
 
+set(SLOPPY_MEMORY_ANALYSIS_SOURCES src/main.c)
+foreach(sloppy_core_source IN LISTS SLOPPY_CORE_SOURCES)
+    if(sloppy_core_source MATCHES "^src/core/")
+        list(APPEND SLOPPY_MEMORY_ANALYSIS_SOURCES "${sloppy_core_source}")
+    endif()
+endforeach()
+list(
+    APPEND
+    SLOPPY_MEMORY_ANALYSIS_SOURCES
+    tests/unit/core/test_status.c
+    tests/unit/core/test_source_loc.c
+    tests/unit/core/test_string.c
+    tests/unit/core/test_bytes.c
+    tests/unit/core/test_cancellation.c
+    tests/unit/core/test_checked_math.c
+    tests/unit/core/test_arena.c
+    tests/unit/core/test_builder.c
+    tests/unit/core/test_intern.c
+    tests/unit/core/test_scope.c
+    tests/unit/core/test_resource.c
+    tests/unit/core/test_capability.c
+    tests/unit/core/test_execution_domain.c
+    tests/unit/core/test_features.c
+    tests/unit/core/test_crypto.c
+    tests/unit/core/test_os.c
+    tests/unit/core/test_app_host.c
+    tests/unit/core/test_loop.c
+    tests/unit/core/test_async.c
+    tests/unit/core/test_async_backend.c
+    tests/unit/core/test_provider_executor.c
+    tests/unit/core/test_worker_pool.c
+    tests/unit/core/test_http.c
+    tests/unit/core/test_http_backend.c
+    tests/unit/core/test_http_context.c
+    tests/unit/core/test_http_dispatch.c
+    tests/unit/core/test_http_response.c
+    tests/unit/core/test_route.c
+    tests/unit/core/test_plan.c
+    tests/unit/core/test_plan_parse.c
+    tests/unit/core/test_runtime_contract.c
+    tests/unit/core/test_engine.c
+    tests/unit/core/test_diagnostics.c
+    tests/unit/core/test_assert.c
+    tests/unit/core/test_assert_enabled_under_ndebug.c)
+
 if(SLOPPY_ENABLE_V8)
     list(
         APPEND
@@ -663,7 +708,15 @@ else()
 endif()
 
 if(CLANG_TIDY_EXECUTABLE)
+    list(TRANSFORM SLOPPY_MEMORY_ANALYSIS_SOURCES PREPEND "${PROJECT_SOURCE_DIR}/")
     list(TRANSFORM SLOPPY_C_LINT_SOURCES PREPEND "${PROJECT_SOURCE_DIR}/")
+    add_custom_target(
+        sloppy_memory_analysis
+        COMMAND "${CLANG_TIDY_EXECUTABLE}" ${SLOPPY_MEMORY_ANALYSIS_SOURCES} -p
+                "${CMAKE_BINARY_DIR}" "--warnings-as-errors=*"
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        COMMENT "Running memory/core clang-tidy analysis"
+        VERBATIM)
     add_custom_target(
         sloppy_clang_tidy
         COMMAND "${CLANG_TIDY_EXECUTABLE}" ${SLOPPY_C_LINT_SOURCES} -p "${CMAKE_BINARY_DIR}"
@@ -672,6 +725,11 @@ if(CLANG_TIDY_EXECUTABLE)
         COMMENT "Running clang-tidy"
         VERBATIM)
 else()
+    add_custom_target(
+        sloppy_memory_analysis
+        COMMAND "${CMAKE_COMMAND}" -E echo "clang-tidy was not found; install it to run this gate."
+        COMMAND "${CMAKE_COMMAND}" -E false
+        VERBATIM)
     add_custom_target(
         sloppy_clang_tidy
         COMMAND "${CMAKE_COMMAND}" -E echo "clang-tidy was not found; install it to run this gate."

@@ -75,8 +75,8 @@ hint/redaction, cleanup, and rollback behavior where applicable.
 ## Optional Lanes
 
 Optional lanes include V8-gated, source-input, package outside-checkout, platform-specific,
-dependency-backed, live-network/live-provider, fuzz/property, stress/torture,
-sanitizer/memory-safety, and benchmark evidence. Skipped optional lanes are not pass
-evidence.
+dependency-backed, live-network/live-provider, advanced static analysis, fuzz/property,
+stress/torture, sanitizer/memory-safety, and benchmark evidence. Skipped optional lanes
+are not pass evidence.
 
 Benchmark smoke proves that the harness runs. It does not prove performance.

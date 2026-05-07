@@ -38,6 +38,7 @@ Use PASS, FAIL, SKIPPED, UNAVAILABLE, DEFERRED, or NOT RUN. Skipped optional gat
 | platform-specific | NOT RUN | |
 | dependency-backed | NOT RUN | |
 | live-network/live-provider | NOT RUN | |
+| advanced static analysis | NOT RUN | |
 | fuzz/property | NOT RUN | |
 | stress/torture | NOT RUN | |
 | sanitizer/memory-safety | NOT RUN | |
@@ -66,7 +67,7 @@ List commands run and results. Do not mark a command as passed if it was not run
 - [ ] Goldens changed only because intended behavior changed.
 - [ ] Goldens are semantic, normalized, and redacted.
 - [ ] Evidence lanes and skipped/unavailable lanes are reported honestly.
-- [ ] Optional V8/package/live-provider/fuzz/stress/sanitizer/benchmark lanes are separate.
+- [ ] Optional V8/package/live-provider/advanced-static/fuzz/stress/sanitizer/benchmark lanes are separate.
 - [ ] No generated/build artifacts staged.
 - [ ] No real secrets in tests, docs, examples, or goldens.
 - [ ] No public alpha, production-readiness, or benchmark/performance claims.

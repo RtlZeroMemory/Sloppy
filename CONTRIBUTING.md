@@ -47,8 +47,9 @@ Every implementation PR must report test evidence by lane and status. Use the la
 from `docs/testing-strategy.md` and `docs/quality-gates.md`: default non-V8,
 compiler/Plan, V8-gated, source-input, package outside-checkout, platform-specific,
 dependency-backed, live-network/live-provider, fuzz/property, stress/torture,
-sanitizer/memory-safety, and benchmark. Status values are `PASS`, `FAIL`, `SKIPPED`,
-`UNAVAILABLE`, `DEFERRED`, or `NOT RUN`. Skipped optional gates are not pass claims.
+advanced static analysis, sanitizer/memory-safety, and benchmark. Status values are
+`PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`, `DEFERRED`, or `NOT RUN`. Skipped optional gates
+are not pass claims.
 
 The report must state:
 
@@ -61,8 +62,8 @@ The report must state:
 - known deferred coverage with issue references.
 
 Benchmark results are never correctness evidence. V8, package, live-provider,
-fuzz/property, stress/torture, sanitizer, and platform-specific results must stay separate
-from default non-V8 evidence.
+advanced static analysis, fuzz/property, stress/torture, sanitizer, and platform-specific
+results must stay separate from default non-V8 evidence.
 
 ## Implementation Contract for Reviewers
 

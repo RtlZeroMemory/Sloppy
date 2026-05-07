@@ -41,13 +41,13 @@ but not executed.
 | `NOT RUN` | The lane was applicable but was not run. |
 
 Optional lane results must not be folded into the default lane. A default pass
-does not imply V8, package, live-provider, sanitizer, stress, torture, or
-benchmark evidence.
+does not imply V8, package, live-provider, advanced static analysis, sanitizer, stress,
+torture, or benchmark evidence.
 
 Use the PR lane names from `docs/testing-strategy.md`: default non-V8, compiler/Plan,
 V8-gated, source-input, package outside-checkout, platform-specific, dependency-backed,
-live-network/live-provider, fuzz/property, stress/torture, sanitizer/memory-safety, and
-benchmark.
+live-network/live-provider, advanced static analysis, fuzz/property, stress/torture,
+sanitizer/memory-safety, and benchmark.
 
 ## Required CI Rules
 
@@ -92,9 +92,33 @@ contain historical or fake marker text when that text is clearly scoped.
 - Rust/compiler changes: `tools/windows/check-rust-standards.ps1`, plus
   `cargo fmt`, `cargo clippy`, and `cargo test` where applicable.
 - C/runtime changes: configure, build, test, format-check, lint, and applicable
-  V8 or sanitizer lanes.
+  V8, advanced static analysis, or sanitizer lanes.
 - Package or release tooling changes: package smoke outside the checkout, plus
   artifact hygiene.
+
+## Advanced Static Analysis
+
+Fast script scanners remain part of default lint. The clang-tidy/analyzer lane is deeper
+evidence and is intentionally controlled while the baseline stabilizes. The enforceable
+lane runs the memory/core `sloppy_memory_analysis` target; the broader
+`sloppy_clang_tidy` target remains exploratory until the full-repo analyzer baseline is
+quiet enough to be governed as a gate.
+
+Local Windows lane:
+
+```powershell
+.\tools\windows\dev.ps1 configure
+.\tools\windows\dev.ps1 analyze
+```
+
+GitHub CI can run the optional `advanced static analysis` job through
+`workflow_dispatch` with `advanced_analysis=true` or by applying the `memory-analysis`
+label to a pull request. That lane is expected for memory-sensitive PRs when practical:
+memory primitives, parsers, platform backends, V8/native bridge changes, provider
+backends, HTTP parser/transport, resource lifetime work, and security/redaction changes.
+
+Skipped advanced analysis is not pass evidence. If a finding is suppressed, the PR must
+name the suppression, issue, reason, and removal condition.
 
 ## Final Review
 

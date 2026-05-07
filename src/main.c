@@ -249,6 +249,7 @@ static SlCliSpan sl_cli_span_cstr(const char* text)
 {
     SlCliSpan span = {text, 0U};
     if (text != NULL) {
+        /* sloppy-allow: c-memory-boundary #760 CLI argv; remove when CLI uses SlStr */
         span.length = strlen(text);
     }
     return span;
@@ -1530,12 +1531,14 @@ static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* v
 
 static bool sl_run_span_ends_with(SlCliSpan span, const char* suffix)
 {
+    /* sloppy-allow: c-memory-boundary #760 static suffix; remove when suffix is SlStr */
     size_t suffix_length = strlen(suffix);
 
     if (span.length < suffix_length) {
         return false;
     }
 
+    /* sloppy-allow: c-memory-boundary #760 checked suffix compare; remove when suffix is SlStr */
     return memcmp(span.ptr + span.length - suffix_length, suffix, suffix_length) == 0;
 }
 
@@ -1594,6 +1597,7 @@ static bool sl_run_join_path(char* buffer, size_t capacity, const char* dir, SlC
         return false;
     }
 
+    /* sloppy-allow: c-memory-boundary #760 process CWD path; remove when roots are SlStr */
     dir_length = strlen(dir);
     if (dir_length == 0U) {
         return false;
@@ -1670,9 +1674,11 @@ static bool sl_run_json_string_equals_cstr(yyjson_val* value, const char* expect
 
     text = yyjson_get_str(value);
     text_length = yyjson_get_len(value);
+    /* sloppy-allow: c-memory-boundary #760 JSON literal; remove when callers pass SlStr */
     expected_length = strlen(expected);
 
     return text != NULL && text_length == expected_length &&
+           /* sloppy-allow: c-memory-boundary #760 yyjson compare; remove when literal is SlStr */
            memcmp(text, expected, expected_length) == 0;
 }
 
@@ -2087,6 +2093,7 @@ static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
     size_t index = 0U;
 
     if (expected.length != 71U || expected.ptr == NULL ||
+        /* sloppy-allow: c-memory-boundary #760 digest prefix; remove when parser is factored */
         memcmp(expected.ptr, "sha256:", sizeof("sha256:") - 1U) != 0)
     {
         return false;
@@ -2108,6 +2115,7 @@ static bool sl_run_hash_matches(SlStr expected, SlBytes bytes)
         actual[7U + (index * 2U) + 1U] = hex[digest[index] & 0x0FU];
     }
 
+    /* sloppy-allow: c-memory-boundary #760 fixed digest compare; remove when parser is factored */
     return memcmp(expected.ptr, actual, sizeof(actual)) == 0;
 }
 
@@ -3512,6 +3520,7 @@ static int sl_cli_span_compare(SlCliSpan left, SlCliSpan right)
     }
 
     if (common != 0U) {
+        /* sloppy-allow: c-memory-boundary #760 route ordering; remove when SlStr compare exists */
         result = memcmp(left.ptr, right.ptr, common);
         if (result != 0) {
             return result < 0 ? -1 : 1;
