@@ -297,18 +297,13 @@ foreach ($file in $files) {
 
         if ((Test-ImplementationPath $relativePath) -and
             ($line -match $allocPattern) -and -not (Test-AllowedAllocPath $relativePath)) {
-            $finding = New-Finding `
+            $violations += New-Finding `
                 -File $relativePath `
                 -Line $lineNumber `
                 -Pattern $Matches[1] `
                 -Rule "Raw allocation belongs in allocator modules." `
                 -Fix "Use future allocator APIs; see docs/c-standards.md." `
-                -Severity "warning"
-
-            if ($StrictAlloc) {
-                $finding.Severity = "error"
-                $violations += $finding
-            }
+                -Severity "error"
         }
 
         $previousLine = $line
@@ -343,8 +338,10 @@ int ok_suppression(void) { return 0; }
 
         Set-Content -LiteralPath (Join-Path $invalidRoot "src/core/bad.c") -Value @'
 #include <string.h>
+#include <stdlib.h>
 void bad_copy(char* dst, const char* src) { strcpy(dst, src); }
 void bad_memset(char* dst) { memset(dst, 0, 8); }
+void* bad_alloc(void) { return malloc(16); }
 /* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 int bad_suppression(void) { return 0; }
 '@
@@ -353,12 +350,12 @@ int bad_suppression(void) { return 0; }
 void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
 '@
 
-        & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $validRoot -StrictAlloc | Out-Host
+        & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $validRoot | Out-Host
         if ($LASTEXITCODE -ne 0) {
             throw "C standards scanner self-test valid fixture failed."
         }
 
-        & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $invalidRoot -StrictAlloc *> $null
+        & $powerShell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Root $invalidRoot *> $null
         if ($LASTEXITCODE -eq 0) {
             throw "C standards scanner self-test invalid fixture unexpectedly passed."
         }

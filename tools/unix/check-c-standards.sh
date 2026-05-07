@@ -25,8 +25,10 @@ EOF
 
     cat > "$invalid/src/core/bad.c" <<'EOF'
 #include <string.h>
+#include <stdlib.h>
 void bad_copy(char* dst, const char* src) { strcpy(dst, src); }
 void bad_memset(char* dst) { memset(dst, 0, 8); }
+void* bad_alloc(void) { return malloc(16); }
 /* NOLINTNEXTLINE(clang-analyzer-core.NullDereference) */
 int bad_suppression(void) { return 0; }
 EOF
