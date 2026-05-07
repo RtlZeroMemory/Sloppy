@@ -5285,7 +5285,7 @@ fn typed_framework_handler_from_arrow(
 ) -> Option<Handler> {
     let bindings =
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
-    let responses = response_metadata_many_from_arrow(function, source_name, source);
+    let responses = response_metadata_many_from_arrow(function, source_name, source, schema_names);
     Some(Handler {
         source: deferred_framework_handler_source(),
         span: function.span,
@@ -5309,7 +5309,8 @@ fn typed_framework_handler_from_function(
 ) -> Option<Handler> {
     let bindings =
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
-    let responses = response_metadata_many_from_function(function, source_name, source);
+    let responses =
+        response_metadata_many_from_function(function, source_name, source, schema_names);
     Some(Handler {
         source: deferred_framework_handler_source(),
         span: function.span,
@@ -5384,12 +5385,14 @@ fn binding_from_typed_parameter(
     ty: &TSType<'_>,
     route_names: &BTreeSet<String>,
     bound_route_names: &mut BTreeSet<String>,
-    implicit_body_parameter: &mut Option<String>,
+    body_parameter: &mut Option<String>,
     schema_names: &BTreeSet<String>,
     span: Span,
 ) -> Option<RequestBinding> {
     if let Some(wrapper) = wrapper_type_reference(ty) {
-        if unresolved_body_type(wrapper.1, schema_names) {
+        if matches!(wrapper.0, "Body" | "Query" | "Route" | "Header")
+            && unresolved_body_type(wrapper.1, schema_names)
+        {
             return None;
         }
         if wrapper.0 == "Route" && !route_names.contains(parameter_name) {
@@ -5397,6 +5400,15 @@ fn binding_from_typed_parameter(
         }
         if wrapper.0 == "Route" {
             bound_route_names.insert(parameter_name.to_string());
+        }
+        if wrapper.0 == "Body" {
+            if body_parameter
+                .as_ref()
+                .is_some_and(|existing| existing != parameter_name)
+            {
+                return None;
+            }
+            *body_parameter = Some(parameter_name.to_string());
         }
         return explicit_wrapper_binding(parameter_name, wrapper, schema_names, span);
     }
@@ -5443,13 +5455,13 @@ fn binding_from_typed_parameter(
         return None;
     }
     let schema = schema_name_from_type(ty, schema_names)?;
-    if implicit_body_parameter
+    if body_parameter
         .as_ref()
         .is_some_and(|existing| existing != parameter_name)
     {
         return None;
     }
-    *implicit_body_parameter = Some(parameter_name.to_string());
+    *body_parameter = Some(parameter_name.to_string());
     Some(framework_binding(
         "body.json",
         None,
@@ -5481,9 +5493,16 @@ fn explicit_wrapper_binding(
         "Config" => "config",
         _ => return None,
     };
+    let name = if wrapper_name == "Service" {
+        Some(type_display_name(target_type))
+    } else {
+        key.as_deref()
+            .or(Some(parameter_name))
+            .map(ToOwned::to_owned)
+    };
     let mut binding = framework_binding(
         kind,
-        key.as_deref().or(Some(parameter_name)),
+        name.as_deref(),
         schema.as_deref(),
         Some(parameter_name),
         span,
@@ -5738,7 +5757,7 @@ fn framework_binding_diagnostic(
             .with_span(parameters.span),
         );
     }
-    let mut implicit_body = false;
+    let mut body_parameter = None::<String>;
     let mut bound_route_names = BTreeSet::new();
     for parameter in &parameters.items {
         let BindingPattern::BindingIdentifier(identifier) = &parameter.pattern else {
@@ -5810,7 +5829,9 @@ fn framework_binding_diagnostic(
                     .with_hint("Use Header<\"x-request-id\"> or Header<\"x-request-id\", string>."),
                 );
             }
-            if unresolved_body_type(wrapper.1, schema_names) {
+            if matches!(wrapper.0, "Body" | "Query" | "Route" | "Header")
+                && unresolved_body_type(wrapper.1, schema_names)
+            {
                 return Some(
                     Diagnostic::new(
                         "SLOPPYC_E_UNRESOLVED_TYPE",
@@ -5838,6 +5859,25 @@ fn framework_binding_diagnostic(
                     );
                 }
                 bound_route_names.insert(parameter_name.to_string());
+            }
+            if wrapper.0 == "Body" {
+                if body_parameter
+                    .as_ref()
+                    .is_some_and(|existing| existing != parameter_name)
+                {
+                    return Some(
+                        Diagnostic::new(
+                            "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
+                            "route handlers may have only one body parameter",
+                        )
+                        .with_path(path)
+                        .with_span(parameter.span)
+                        .with_hint(
+                            "Use one Body<T> wrapper or combine the body shape into one model.",
+                        ),
+                    );
+                }
+                body_parameter = Some(parameter_name.to_string());
             }
             continue;
         }
@@ -5877,11 +5917,14 @@ fn framework_binding_diagnostic(
                 .with_hint("Declare a concrete type alias or interface in the same source file."),
             );
         }
-        if implicit_body {
+        if body_parameter
+            .as_ref()
+            .is_some_and(|existing| existing != parameter_name)
+        {
             return Some(
                 Diagnostic::new(
                     "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
-                    "route handlers may have only one implicit body parameter",
+                    "route handlers may have only one body parameter",
                 )
                 .with_path(path)
                 .with_span(parameter.span)
@@ -5890,7 +5933,7 @@ fn framework_binding_diagnostic(
                 ),
             );
         }
-        implicit_body = true;
+        body_parameter = Some(parameter_name.to_string());
     }
     if let Some(unbound) = route_names
         .iter()
@@ -5950,24 +5993,29 @@ fn unknown_generic_injection_marker(ty: &TSType<'_>) -> Option<String> {
         return None;
     };
     let name = typescript_type_name(&reference.type_name)?;
-    if reference.type_arguments.is_none()
-        || matches!(
-            name,
-            "Route"
-                | "Query"
-                | "Body"
-                | "Header"
-                | "Service"
-                | "Config"
-                | "Postgres"
-                | "Sqlite"
-                | "SqlServer"
-                | "WorkQueue"
-                | "PasswordString"
-        )
-    {
+    let Some(arguments) = &reference.type_arguments else {
+        return None;
+    };
+    if matches!(
+        name,
+        "Route"
+            | "Query"
+            | "Body"
+            | "Header"
+            | "Service"
+            | "Config"
+            | "Postgres"
+            | "Sqlite"
+            | "SqlServer"
+            | "WorkQueue"
+            | "PasswordString"
+    ) {
         return None;
     }
+    arguments
+        .params
+        .first()
+        .and_then(type_string_literal_value)?;
     Some(name.to_string())
 }
 
@@ -6787,10 +6835,19 @@ fn response_metadata_many_from_arrow(
     function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
     source_name: &str,
     source: &str,
+    schema_names: &BTreeSet<String>,
 ) -> Vec<ResponseMetadata> {
     let mut responses = Vec::new();
+    let mut response_schema_scopes = vec![BTreeMap::new()];
     for statement in &function.body.statements {
-        collect_statement_responses(statement, source_name, source, &mut responses);
+        collect_statement_responses(
+            statement,
+            source_name,
+            source,
+            &mut response_schema_scopes,
+            schema_names,
+            &mut responses,
+        );
     }
     dedupe_response_metadata(responses)
 }
@@ -6799,11 +6856,20 @@ fn response_metadata_many_from_function(
     function: &oxc_ast::ast::Function<'_>,
     source_name: &str,
     source: &str,
+    schema_names: &BTreeSet<String>,
 ) -> Vec<ResponseMetadata> {
     let mut responses = Vec::new();
     if let Some(body) = &function.body {
+        let mut response_schema_scopes = vec![BTreeMap::new()];
         for statement in &body.statements {
-            collect_statement_responses(statement, source_name, source, &mut responses);
+            collect_statement_responses(
+                statement,
+                source_name,
+                source,
+                &mut response_schema_scopes,
+                schema_names,
+                &mut responses,
+            );
         }
     }
     dedupe_response_metadata(responses)
@@ -6813,26 +6879,85 @@ fn collect_statement_responses(
     statement: &Statement<'_>,
     source_name: &str,
     source: &str,
+    response_schema_scopes: &mut Vec<BTreeMap<String, String>>,
+    schema_names: &BTreeSet<String>,
     responses: &mut Vec<ResponseMetadata>,
 ) {
     match statement {
+        Statement::VariableDeclaration(declaration) => {
+            for declarator in &declaration.declarations {
+                let BindingPattern::BindingIdentifier(identifier) = &declarator.id else {
+                    continue;
+                };
+                let Some(init) = &declarator.init else {
+                    continue;
+                };
+                let Some(schema) =
+                    response_schema_from_expression(init, response_schema_scopes, schema_names)
+                else {
+                    continue;
+                };
+                if let Some(scope) = response_schema_scopes.last_mut() {
+                    scope.insert(identifier.name.as_str().to_string(), schema);
+                }
+            }
+        }
         Statement::ReturnStatement(statement) => {
             if let Some(argument) = &statement.argument {
-                collect_expression_responses(argument, source_name, source, responses);
+                collect_expression_responses(
+                    argument,
+                    source_name,
+                    source,
+                    response_schema_scopes,
+                    schema_names,
+                    responses,
+                );
             }
         }
         Statement::ExpressionStatement(statement) => {
-            collect_expression_responses(&statement.expression, source_name, source, responses);
+            collect_expression_responses(
+                &statement.expression,
+                source_name,
+                source,
+                response_schema_scopes,
+                schema_names,
+                responses,
+            );
         }
         Statement::BlockStatement(block) => {
+            response_schema_scopes.push(BTreeMap::new());
             for statement in &block.body {
-                collect_statement_responses(statement, source_name, source, responses);
+                collect_statement_responses(
+                    statement,
+                    source_name,
+                    source,
+                    response_schema_scopes,
+                    schema_names,
+                    responses,
+                );
             }
+            response_schema_scopes.pop();
         }
         Statement::IfStatement(statement) => {
-            collect_statement_responses(&statement.consequent, source_name, source, responses);
+            let mut consequent_scopes = response_schema_scopes.clone();
+            collect_statement_responses(
+                &statement.consequent,
+                source_name,
+                source,
+                &mut consequent_scopes,
+                schema_names,
+                responses,
+            );
             if let Some(alternate) = &statement.alternate {
-                collect_statement_responses(alternate, source_name, source, responses);
+                let mut alternate_scopes = response_schema_scopes.clone();
+                collect_statement_responses(
+                    alternate,
+                    source_name,
+                    source,
+                    &mut alternate_scopes,
+                    schema_names,
+                    responses,
+                );
             }
         }
         _ => {}
@@ -6843,10 +6968,14 @@ fn collect_expression_responses(
     expression: &Expression<'_>,
     source_name: &str,
     source: &str,
+    response_schema_scopes: &mut Vec<BTreeMap<String, String>>,
+    schema_names: &BTreeSet<String>,
     responses: &mut Vec<ResponseMetadata>,
 ) {
     if let Some(call) = result_call(expression) {
         if let Some(mut response) = response_metadata_from_call(call) {
+            response.body_schema =
+                response_schema_from_result_call(call, response_schema_scopes, schema_names);
             response.source_name = Some(source_name.to_string());
             response.source_text = Some(source.to_string());
             response.span = Some(call.span);
@@ -6856,21 +6985,158 @@ fn collect_expression_responses(
     }
     match expression {
         Expression::ConditionalExpression(conditional) => {
-            collect_expression_responses(&conditional.consequent, source_name, source, responses);
-            collect_expression_responses(&conditional.alternate, source_name, source, responses);
+            collect_expression_responses(
+                &conditional.consequent,
+                source_name,
+                source,
+                response_schema_scopes,
+                schema_names,
+                responses,
+            );
+            collect_expression_responses(
+                &conditional.alternate,
+                source_name,
+                source,
+                response_schema_scopes,
+                schema_names,
+                responses,
+            );
         }
         Expression::ParenthesizedExpression(parenthesized) => {
-            collect_expression_responses(&parenthesized.expression, source_name, source, responses);
+            collect_expression_responses(
+                &parenthesized.expression,
+                source_name,
+                source,
+                response_schema_scopes,
+                schema_names,
+                responses,
+            );
         }
         _ => {}
     }
+}
+
+fn response_schema_from_result_call(
+    call: &CallExpression<'_>,
+    response_schema_scopes: &[BTreeMap<String, String>],
+    schema_names: &BTreeSet<String>,
+) -> Option<String> {
+    response_schema_from_result_type_arguments(call, schema_names).or_else(|| {
+        response_body_argument(call).and_then(|argument| {
+            response_schema_from_argument(argument, response_schema_scopes, schema_names)
+        })
+    })
+}
+
+fn response_schema_from_result_type_arguments(
+    call: &CallExpression<'_>,
+    schema_names: &BTreeSet<String>,
+) -> Option<String> {
+    let (receiver, _) = static_member_name(&call.callee)?;
+    if receiver != "Results" {
+        return None;
+    }
+    response_schema_from_type_arguments(call, schema_names)
+}
+
+fn response_schema_from_data_call_type_arguments(
+    call: &CallExpression<'_>,
+    schema_names: &BTreeSet<String>,
+) -> Option<String> {
+    let (_, method) = static_member_name(&call.callee)?;
+    if !matches!(method, "queryOne") {
+        return None;
+    }
+    response_schema_from_type_arguments(call, schema_names)
+}
+
+fn response_schema_from_type_arguments(
+    call: &CallExpression<'_>,
+    schema_names: &BTreeSet<String>,
+) -> Option<String> {
+    let ty = call.type_arguments.as_ref()?.params.first()?;
+    schema_name_from_type(ty, schema_names)
+}
+
+fn response_body_argument<'a>(call: &'a CallExpression<'a>) -> Option<&'a Argument<'a>> {
+    let (_, helper) = static_member_name(&call.callee)?;
+    let index = match helper {
+        "ok" | "json" | "accepted" | "badRequest" | "notFound" | "problem" => 0,
+        "created" | "status" => 1,
+        _ => return None,
+    };
+    call.arguments.get(index)
+}
+
+fn response_schema_from_argument(
+    argument: &Argument<'_>,
+    response_schema_scopes: &[BTreeMap<String, String>],
+    schema_names: &BTreeSet<String>,
+) -> Option<String> {
+    match argument {
+        Argument::Identifier(identifier) => {
+            response_schema_lookup(response_schema_scopes, identifier.name.as_str())
+        }
+        Argument::CallExpression(call) => {
+            response_schema_from_data_call_type_arguments(call, schema_names)
+        }
+        Argument::ParenthesizedExpression(parenthesized) => response_schema_from_expression(
+            &parenthesized.expression,
+            response_schema_scopes,
+            schema_names,
+        ),
+        _ => None,
+    }
+}
+
+fn response_schema_from_expression(
+    expression: &Expression<'_>,
+    response_schema_scopes: &[BTreeMap<String, String>],
+    schema_names: &BTreeSet<String>,
+) -> Option<String> {
+    match expression {
+        Expression::Identifier(identifier) => {
+            response_schema_lookup(response_schema_scopes, identifier.name.as_str())
+        }
+        Expression::CallExpression(call) => {
+            response_schema_from_data_call_type_arguments(call, schema_names)
+        }
+        Expression::AwaitExpression(await_expression) => response_schema_from_expression(
+            &await_expression.argument,
+            response_schema_scopes,
+            schema_names,
+        ),
+        Expression::ParenthesizedExpression(parenthesized) => response_schema_from_expression(
+            &parenthesized.expression,
+            response_schema_scopes,
+            schema_names,
+        ),
+        _ => None,
+    }
+}
+
+fn response_schema_lookup(
+    response_schema_scopes: &[BTreeMap<String, String>],
+    name: &str,
+) -> Option<String> {
+    response_schema_scopes
+        .iter()
+        .rev()
+        .find_map(|scope| scope.get(name).cloned())
 }
 
 fn dedupe_response_metadata(responses: Vec<ResponseMetadata>) -> Vec<ResponseMetadata> {
     let mut seen = BTreeSet::new();
     let mut deduped = Vec::new();
     for response in responses {
-        let key = format!("{}:{}:{}", response.helper, response.status, response.kind);
+        let key = format!(
+            "{}:{}:{}:{}:{}",
+            response.helper,
+            response.status,
+            response.kind,
+            response.body_schema.as_deref().unwrap_or(""),
+            response.partial
+        );
         if seen.insert(key) {
             deduped.push(response);
         }
@@ -12106,6 +12372,35 @@ export default app;
                 "SLOPPYC_E_UNRESOLVED_TYPE",
             ),
             (
+                r#"import { Sloppy, Results, Body } from "sloppy";
+type BodyA = { name: string };
+type BodyB = { note: string };
+const app = Sloppy.create();
+app.post("/users", (a: Body<BodyA>, b: Body<BodyB>) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
+            ),
+            (
+                r#"import { Sloppy, Results, Body } from "sloppy";
+type BodyA = { name: string };
+type BodyB = { note: string };
+const app = Sloppy.create();
+app.post("/users", (a: Body<BodyA>, b: BodyB) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
+            ),
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+type UserCreate = { name: string };
+const app = Sloppy.create();
+app.post("/users", (input: Paginated<UserCreate>) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_UNRESOLVED_TYPE",
+            ),
+            (
                 r#"import { Sloppy, Results, Route } from "sloppy";
 const app = Sloppy.create();
 app.get("/users/:id", (routeId: Route<number>) => Results.ok({ routeId }));
@@ -12140,6 +12435,97 @@ export default app;
                 "{code} should include a source span"
             );
         }
+    }
+
+    #[test]
+    fn typed_framework_service_wrapper_emits_service_metadata() {
+        let source = r#"import { Sloppy, Results, Service } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", (users: Service<UserService>) => Results.ok({ ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("explicit service wrapper should extract metadata");
+        let binding = app.routes[0]
+            .handler
+            .bindings
+            .iter()
+            .find(|binding| binding.parameter.as_deref() == Some("users"))
+            .expect("service wrapper binding should be present");
+        assert_eq!(binding.kind, "injection");
+        assert_eq!(binding.wrapper.as_deref(), Some("Service"));
+        assert_eq!(binding.injection_kind.as_deref(), Some("service"));
+        assert_eq!(binding.name.as_deref(), Some("UserService"));
+    }
+
+    #[test]
+    fn typed_framework_response_schema_inference_is_scope_aware() {
+        let source = r#"import { Sloppy, Results, Route } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+type UserDto = { id: number };
+type OrderDto = { id: number };
+const app = Sloppy.create();
+app.get("/items/:id", async (id: Route<number>, db: Postgres<"main">) => {
+  if (id > 0) {
+    const payload = await db.queryOne<UserDto>("select user");
+    return Results.ok(payload);
+  }
+  const payload = await db.queryOne<OrderDto>("select order");
+  return Results.ok(payload);
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("scoped response schemas should extract");
+        let body_schemas: Vec<_> = app.routes[0]
+            .handler
+            .responses
+            .iter()
+            .map(|response| response.body_schema.as_deref())
+            .collect();
+        assert_eq!(body_schemas, vec![Some("UserDto"), Some("OrderDto")]);
+    }
+
+    #[test]
+    fn typed_framework_response_dedupe_preserves_distinct_body_schema() {
+        let source = r#"import { Sloppy, Results, Route } from "sloppy";
+type UserDto = { id: number };
+type OrderDto = { id: number };
+const app = Sloppy.create();
+app.get("/items/:id", (id: Route<number>) => {
+  if (id > 0) {
+    return Results.ok<UserDto>({ id });
+  }
+  return Results.ok<OrderDto>({ id });
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("distinct typed responses should extract");
+        let body_schemas: Vec<_> = app.routes[0]
+            .handler
+            .responses
+            .iter()
+            .map(|response| response.body_schema.as_deref())
+            .collect();
+        assert_eq!(body_schemas, vec![Some("UserDto"), Some("OrderDto")]);
+    }
+
+    #[test]
+    fn typed_framework_response_schema_ignores_arbitrary_generic_wrappers() {
+        let source = r#"import { Sloppy, Results, Route } from "sloppy";
+type UserDto = { id: number };
+const app = Sloppy.create();
+app.get("/items/:id", async (id: Route<number>) => {
+  const payload = await Promise.resolve<UserDto>({ id });
+  return Results.ok(payload);
+});
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("unsupported generic wrapper should not become schema evidence");
+        assert_eq!(app.routes[0].handler.responses.len(), 1);
+        assert_eq!(app.routes[0].handler.responses[0].body_schema, None);
     }
 
     #[test]

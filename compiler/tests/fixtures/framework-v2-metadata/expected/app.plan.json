@@ -93,7 +93,7 @@
       "runtimeDispatch": "deferred",
       "source": {
         "column": 20,
-        "line": 38,
+        "line": 49,
         "path": "input.ts"
       }
     },
@@ -105,7 +105,7 @@
       "runtimeDispatch": "deferred",
       "source": {
         "column": 23,
-        "line": 54,
+        "line": 65,
         "path": "input.ts"
       }
     }
@@ -121,7 +121,7 @@
           "schema": "UserCreate",
           "source": {
             "column": 3,
-            "line": 39,
+            "line": 50,
             "path": "input.ts"
           },
           "type": "UserCreate"
@@ -136,7 +136,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 40,
+            "line": 51,
             "path": "input.ts"
           },
           "type": "Postgres<\"main\">"
@@ -151,7 +151,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 41,
+            "line": 52,
             "path": "input.ts"
           },
           "type": "Sqlite<\"audit\">"
@@ -166,7 +166,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 42,
+            "line": 53,
             "path": "input.ts"
           },
           "type": "SqlServer<\"search\">"
@@ -181,7 +181,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 43,
+            "line": 54,
             "path": "input.ts"
           },
           "type": "WorkQueue<\"emails\">"
@@ -193,7 +193,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 44,
+            "line": 55,
             "path": "input.ts"
           },
           "type": "RequestContext"
@@ -243,19 +243,20 @@
       "name": null,
       "pattern": "/users",
       "response": {
+        "bodySchema": "UserDto",
         "helper": "created",
         "kind": "json",
         "status": 201
       },
       "responses": [
         {
-          "bodySchema": null,
+          "bodySchema": "UserDto",
           "helper": "created",
           "kind": "json",
           "partial": false,
           "source": {
             "column": 10,
-            "line": 51,
+            "line": 62,
             "path": "input.ts"
           },
           "status": 201
@@ -263,7 +264,7 @@
       ],
       "source": {
         "column": 1,
-        "line": 38,
+        "line": 49,
         "path": "input.ts"
       }
     },
@@ -276,7 +277,7 @@
           "schema": "number",
           "source": {
             "column": 3,
-            "line": 55,
+            "line": 66,
             "path": "input.ts"
           },
           "type": "Route<number>",
@@ -289,7 +290,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 56,
+            "line": 67,
             "path": "input.ts"
           },
           "type": "Header<\"x-trace-id\">",
@@ -302,7 +303,7 @@
           "schema": "bool",
           "source": {
             "column": 3,
-            "line": 57,
+            "line": 68,
             "path": "input.ts"
           },
           "type": "Query<boolean>",
@@ -315,7 +316,7 @@
           "schema": "UserCreate",
           "source": {
             "column": 3,
-            "line": 58,
+            "line": 69,
             "path": "input.ts"
           },
           "type": "Body<UserCreate>",
@@ -331,7 +332,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 59,
+            "line": 70,
             "path": "input.ts"
           },
           "type": "Postgres<\"main\">"
@@ -343,7 +344,7 @@
           "schema": null,
           "source": {
             "column": 3,
-            "line": 60,
+            "line": 71,
             "path": "input.ts"
           },
           "type": "RequestContext"
@@ -373,19 +374,20 @@
       "name": null,
       "pattern": "/users/{id}",
       "response": {
+        "bodySchema": "UserDto",
         "helper": "ok",
         "kind": "json",
         "status": 200
       },
       "responses": [
         {
-          "bodySchema": null,
+          "bodySchema": "UserDto",
           "helper": "ok",
           "kind": "json",
           "partial": false,
           "source": {
             "column": 17,
-            "line": 67,
+            "line": 78,
             "path": "input.ts"
           },
           "status": 200
@@ -397,7 +399,7 @@
           "partial": false,
           "source": {
             "column": 36,
-            "line": 67,
+            "line": 78,
             "path": "input.ts"
           },
           "status": 404
@@ -410,7 +412,7 @@
       ],
       "source": {
         "column": 1,
-        "line": 54,
+        "line": 65,
         "path": "input.ts"
       }
     }
@@ -422,10 +424,26 @@
       "definition": {
         "kind": "object",
         "properties": {
+          "createdAt": {
+            "kind": "string",
+            "semantic": "DateTime",
+            "validation": "datetime"
+          },
           "email": {
             "kind": "string",
             "semantic": "Email",
             "validation": "email"
+          },
+          "lastSeenAt": {
+            "kind": "string",
+            "nullable": true,
+            "semantic": "Instant",
+            "validation": "datetime"
+          },
+          "loginCount": {
+            "kind": "int",
+            "min": 1,
+            "semantic": "PositiveInt"
           },
           "name": {
             "kind": "string",
@@ -466,13 +484,24 @@
                 "value": "user"
               }
             ]
+          },
+          "secretNote": {
+            "kind": "string",
+            "redaction": "secret",
+            "secret": true,
+            "semantic": "SecretString"
+          },
+          "tenantId": {
+            "kind": "string",
+            "semantic": "Uuid",
+            "validation": "uuid"
           }
         }
       },
       "name": "UserCreate",
       "source": {
         "column": 1,
-        "line": 19,
+        "line": 25,
         "path": "input.ts"
       }
     },
@@ -494,19 +523,19 @@
       "name": "UserDto",
       "source": {
         "column": 1,
-        "line": 30,
+        "line": 41,
         "path": "input.ts"
       }
     }
   ],
   "sourceFiles": [
     {
-      "hash": "sha256:f42ed833becaa772e3e69189f277cc30edcae28c074128160fc45cbcda637d5b",
+      "hash": "sha256:6598d1727e849a035e9c8fe102b892e99d38f72f755c9da3ef465d8d79d0baaf",
       "path": "input.ts"
     }
   ],
   "sourceMap": {
-    "hash": "sha256:9c8ffc9e66df259827bcf891bda202993612465c9db6a070e391c3c374f31879",
+    "hash": "sha256:13113c1bce3c2ea9f1654d65dcc7e95f356c760c4f9b438d376ec621e3ae6783",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },

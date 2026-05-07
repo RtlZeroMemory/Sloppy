@@ -1,12 +1,12 @@
 {
   "file": "app.js",
-  "mappings": ";;;;;;gCAqCmB;;gCAgBG",
+  "mappings": ";;;;;;gCAgDmB;;gCAgBG",
   "names": [],
   "sources": [
     "input.ts"
   ],
   "sourcesContent": [
-    "import {\n  Sloppy,\n  Results,\n  Email,\n  NonEmptyString,\n  PasswordString,\n  RequestContext,\n  Body,\n  Header,\n  Query,\n  Route,\n} from \"sloppy\";\nimport { sql } from \"sloppy/data\";\nimport { Postgres } from \"sloppy/providers/postgres\";\nimport { Sqlite } from \"sloppy/providers/sqlite\";\nimport { SqlServer } from \"sloppy/providers/sqlserver\";\nimport type { WorkQueue } from \"sloppy/workers\";\n\ntype UserCreate = {\n  email: Email;\n  name: NonEmptyString;\n  password: PasswordString<8>;\n  profile?: {\n    displayName: string;\n    tags: string[];\n  };\n  role: \"admin\" | \"user\";\n};\n\ntype UserDto = {\n  id: number;\n  email: string;\n  name: string;\n};\n\nconst app = Sloppy.create();\n\napp.post(\"/users\", async (\n  input: UserCreate,\n  db: Postgres<\"main\">,\n  audit: Sqlite<\"audit\">,\n  search: SqlServer<\"search\">,\n  emails: WorkQueue<\"emails\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${1}`,\n    { deadline: ctx.deadline }\n  );\n\n  return Results.created(`/users/${user.id}`, user);\n});\n\napp.get(\"/users/:id\", async (\n  id: Route<number>,\n  trace: Header<\"x-trace-id\">,\n  includeDeleted: Query<boolean>,\n  input: Body<UserCreate>,\n  db: Postgres<\"main\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${id}`,\n    { deadline: ctx.deadline, trace, includeDeleted, input }\n  );\n\n  return user ? Results.ok(user) : Results.notFound();\n});\n\nexport default app;\n"
+    "import {\n  Sloppy,\n  Results,\n  Email,\n  NonEmptyString,\n  PasswordString,\n  SecretString,\n  Uuid,\n  PositiveInt,\n  DateTime,\n  Instant,\n  RequestContext,\n  Body,\n  Header,\n  Query,\n  Route,\n} from \"sloppy\";\nimport { sql } from \"sloppy/data\";\nimport { Postgres } from \"sloppy/providers/postgres\";\nimport { Sqlite } from \"sloppy/providers/sqlite\";\nimport { SqlServer } from \"sloppy/providers/sqlserver\";\nimport type { WorkQueue } from \"sloppy/workers\";\n\n// Fixture invariant: semantic schema extraction and redaction coverage.\ntype UserCreate = {\n  email: Email;\n  name: NonEmptyString;\n  password: PasswordString<8>;\n  secretNote: SecretString;\n  tenantId: Uuid;\n  loginCount: PositiveInt;\n  createdAt: DateTime;\n  lastSeenAt: Instant | null;\n  profile?: {\n    displayName: string;\n    tags: string[];\n  };\n  role: \"admin\" | \"user\";\n};\n\ntype UserDto = {\n  id: number;\n  email: string;\n  name: string;\n};\n\nconst app = Sloppy.create();\n\napp.post(\"/users\", async (\n  input: UserCreate,\n  db: Postgres<\"main\">,\n  audit: Sqlite<\"audit\">,\n  search: SqlServer<\"search\">,\n  emails: WorkQueue<\"emails\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${1}`,\n    { deadline: ctx.deadline }\n  );\n\n  return Results.created(`/users/${user.id}`, user);\n});\n\napp.get(\"/users/:id\", async (\n  id: Route<number>,\n  trace: Header<\"x-trace-id\">,\n  includeDeleted: Query<boolean>,\n  input: Body<UserCreate>,\n  db: Postgres<\"main\">,\n  ctx: RequestContext,\n) => {\n  const user = await db.queryOne<UserDto>(\n    sql`select id, email, name from users where id = ${id}`,\n    { deadline: ctx.deadline, trace, includeDeleted, input }\n  );\n\n  return user ? Results.ok(user) : Results.notFound();\n});\n\nexport default app;\n"
   ],
   "version": 3,
   "x_sloppy": {
@@ -21,7 +21,7 @@
         "id": 1,
         "source": {
           "column": 20,
-          "line": 38,
+          "line": 49,
           "path": "input.ts"
         }
       },
@@ -33,7 +33,7 @@
         "id": 2,
         "source": {
           "column": 23,
-          "line": 54,
+          "line": 65,
           "path": "input.ts"
         }
       }
@@ -48,7 +48,7 @@
         "pattern": "/users",
         "source": {
           "column": 1,
-          "line": 38,
+          "line": 49,
           "path": "input.ts"
         }
       },
@@ -60,7 +60,7 @@
         "pattern": "/users/{id}",
         "source": {
           "column": 1,
-          "line": 54,
+          "line": 65,
           "path": "input.ts"
         }
       }
@@ -70,7 +70,7 @@
         "name": "UserCreate",
         "source": {
           "column": 1,
-          "line": 19,
+          "line": 25,
           "path": "input.ts"
         }
       },
@@ -78,14 +78,14 @@
         "name": "UserDto",
         "source": {
           "column": 1,
-          "line": 30,
+          "line": 41,
           "path": "input.ts"
         }
       }
     ],
     "sourceFiles": [
       {
-        "hash": "sha256:f42ed833becaa772e3e69189f277cc30edcae28c074128160fc45cbcda637d5b",
+        "hash": "sha256:6598d1727e849a035e9c8fe102b892e99d38f72f755c9da3ef465d8d79d0baaf",
         "path": "input.ts"
       }
     ],

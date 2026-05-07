@@ -4,6 +4,11 @@ import {
   Email,
   NonEmptyString,
   PasswordString,
+  SecretString,
+  Uuid,
+  PositiveInt,
+  DateTime,
+  Instant,
   RequestContext,
   Body,
   Header,
@@ -16,10 +21,16 @@ import { Sqlite } from "sloppy/providers/sqlite";
 import { SqlServer } from "sloppy/providers/sqlserver";
 import type { WorkQueue } from "sloppy/workers";
 
+// Fixture invariant: semantic schema extraction and redaction coverage.
 type UserCreate = {
   email: Email;
   name: NonEmptyString;
   password: PasswordString<8>;
+  secretNote: SecretString;
+  tenantId: Uuid;
+  loginCount: PositiveInt;
+  createdAt: DateTime;
+  lastSeenAt: Instant | null;
   profile?: {
     displayName: string;
     tags: string[];
