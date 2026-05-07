@@ -171,7 +171,7 @@ Prefer capability and platform abstraction APIs over platform macros in core mod
 portability, and high-signal bug checks. The enforceable advanced-analysis baseline is the
 memory/core `sloppy_memory_analysis` target; the broader full-repo target remains
 exploratory until its findings are triaged. Generic style-noise checks stay out of the
-first baseline unless a scoped task proves they catch a Slop invariant.
+first baseline unless a scoped task proves they catch a Sloppy invariant.
 
 New warnings should be fixed or explicitly documented. CI treats warnings as failures for
 configured gates. `NOLINT` suppressions require `sloppy-analysis-suppress: #issue reason;

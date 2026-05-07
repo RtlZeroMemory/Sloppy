@@ -21,6 +21,9 @@ EOF
     cat > "$valid/tests/unit/core/test_ok.c" <<'EOF'
 /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): sloppy-analysis-suppress: #805 fixture suppression; remove when fixture is replaced */
 int ok_suppression(void) { return 0; }
+/* NOLINTBEGIN(clang-analyzer-deadcode.DeadStores): sloppy-analysis-suppress: #805 fixture block suppression; remove when fixture is replaced */
+int ok_block_suppression(void) { int value = 1; return value; }
+/* NOLINTEND(clang-analyzer-deadcode.DeadStores) */
 EOF
 
     cat > "$invalid/src/core/bad.c" <<'EOF'
@@ -113,6 +116,7 @@ while IFS= read -r file; do
 
     line_number=0
     previous_line=""
+    inside_nolint_block=0
     while IFS= read -r line || [ -n "$line" ]; do
         ((line_number += 1))
         allowance_context="$previous_line $line"
@@ -141,9 +145,26 @@ while IFS= read -r file; do
             add_finding violations "$file" "$line_number" "Unsafe C string/format functions are forbidden." "${BASH_REMATCH[2]}"
         fi
 
-        if [[ "$line" =~ (^|[^[:alnum:]_])NOLINT(NEXTLINE|BEGIN|END)?\b ]] &&
-            [[ ! "$allowance_context" =~ sloppy-analysis-suppress:[[:space:]]#[0-9]+[[:space:]].*\;[[:space:]]remove[[:space:]]when[[:space:]].+ ]]; then
+        has_nolint=0
+        is_nolint_begin=0
+        is_nolint_end=0
+        has_valid_suppression=0
+        skip_nolint_violation=0
+        [[ "$line" =~ (^|[^[:alnum:]_])NOLINT(NEXTLINE|BEGIN|END)?($|[^[:alnum:]_]) ]] && has_nolint=1
+        [[ "$line" =~ (^|[^[:alnum:]_])NOLINTBEGIN($|[^[:alnum:]_]) ]] && is_nolint_begin=1
+        [[ "$line" =~ (^|[^[:alnum:]_])NOLINTEND($|[^[:alnum:]_]) ]] && is_nolint_end=1
+        [[ "$allowance_context" =~ sloppy-analysis-suppress:[[:space:]]#[0-9]+[[:space:]].*\;[[:space:]]remove[[:space:]]when[[:space:]].+ ]] && has_valid_suppression=1
+        if [[ "$is_nolint_end" -eq 1 && "$inside_nolint_block" -eq 1 ]]; then
+            skip_nolint_violation=1
+        fi
+        if [[ "$has_nolint" -eq 1 && "$skip_nolint_violation" -eq 0 && "$has_valid_suppression" -eq 0 ]]; then
             add_finding violations "$file" "$line_number" "Static-analysis suppressions need an issue, reason, and removal condition." "NOLINT"
+        fi
+        if [[ "$has_nolint" -eq 1 && "$is_nolint_begin" -eq 1 && "$has_valid_suppression" -eq 1 ]]; then
+            inside_nolint_block=1
+        fi
+        if [[ "$has_nolint" -eq 1 && "$is_nolint_end" -eq 1 ]]; then
+            inside_nolint_block=0
         fi
 
         if is_implementation_path "$file" &&

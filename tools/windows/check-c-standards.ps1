@@ -209,6 +209,7 @@ foreach ($file in $files) {
     $relativePath = Convert-ToRepoPath $file
     $lineNumber = 0
     $previousLine = ""
+    $insideNolintBlock = $false
 
     foreach ($line in Get-Content -LiteralPath $file) {
         $lineNumber += 1
@@ -258,8 +259,13 @@ foreach ($file in $files) {
                     -Severity "error"
         }
 
-        if ($line -match $analysisSuppressionPattern -and
-            $allowanceContext -notmatch $validAnalysisSuppressionPattern) {
+        $isNolintBegin = $line -match '\bNOLINTBEGIN\b'
+        $isNolintEnd = $line -match '\bNOLINTEND\b'
+        $hasAnalysisSuppression = $line -match $analysisSuppressionPattern
+        $hasValidAnalysisSuppression = $allowanceContext -match $validAnalysisSuppressionPattern
+        if ($hasAnalysisSuppression -and
+            -not ($isNolintEnd -and $insideNolintBlock) -and
+            -not $hasValidAnalysisSuppression) {
             $violations += New-Finding `
                 -File $relativePath `
                 -Line $lineNumber `
@@ -267,6 +273,12 @@ foreach ($file in $files) {
                 -Rule "Static-analysis suppressions need an issue, reason, and removal condition." `
                 -Fix "Use `sloppy-analysis-suppress: #issue reason; remove when condition` on the suppression line." `
                 -Severity "error"
+        }
+        if ($hasAnalysisSuppression -and $isNolintBegin -and $hasValidAnalysisSuppression) {
+            $insideNolintBlock = $true
+        }
+        if ($hasAnalysisSuppression -and $isNolintEnd) {
+            $insideNolintBlock = $false
         }
 
         if ((Test-ImplementationPath $relativePath) -and
@@ -334,6 +346,9 @@ void ok_boundary(char* dst, const char* src, size_t n) { memcpy(dst, src, n); } 
         Set-Content -LiteralPath (Join-Path $validRoot "tests/unit/core/test_ok.c") -Value @'
 /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): sloppy-analysis-suppress: #805 fixture suppression; remove when fixture is replaced */
 int ok_suppression(void) { return 0; }
+/* NOLINTBEGIN(clang-analyzer-deadcode.DeadStores): sloppy-analysis-suppress: #805 fixture block suppression; remove when fixture is replaced */
+int ok_block_suppression(void) { int value = 1; return value; }
+/* NOLINTEND(clang-analyzer-deadcode.DeadStores) */
 '@
 
         Set-Content -LiteralPath (Join-Path $invalidRoot "src/core/bad.c") -Value @'
