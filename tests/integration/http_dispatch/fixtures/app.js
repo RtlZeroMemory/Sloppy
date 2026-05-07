@@ -26,10 +26,15 @@ globalThis.__sloppy_register_handler(5, function (ctx) {
 globalThis.__sloppy_register_handler(6, function (ctx) {
   const bytes = ctx.request.body.bytes();
   let secondReadRejected = false;
+  let secondReadError = null;
   try {
     ctx.request.body.text();
   } catch (error) {
     secondReadRejected = true;
+    secondReadError = {
+      name: String(error && error.name ? error.name : "Error"),
+      message: String(error && error.message ? error.message : error),
+    };
   }
 
   return Results.json({
@@ -45,5 +50,6 @@ globalThis.__sloppy_register_handler(6, function (ctx) {
     consumed: ctx.request.body.consumed,
     bytes: Array.from(bytes),
     secondReadRejected,
+    secondReadError,
   });
 });

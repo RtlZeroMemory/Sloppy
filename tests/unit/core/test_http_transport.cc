@@ -633,7 +633,7 @@ static int test_config_validation_and_lifecycle(void)
     {
         return 3;
     }
-    if (server.config.parse.max_headers != 0U) {
+    if (server.config.parse.max_headers != SL_HTTP_DEFAULT_MAX_HEADERS) {
         return 4;
     }
     if (expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0) {
@@ -1410,50 +1410,96 @@ static int test_streaming_response_writes_chunked_frames(void)
     return 0;
 }
 
-static int test_streaming_response_rejects_control_header_values(void)
+static int run_streaming_response_header_policy_case(SlStr content_type, SlHttpHeader* headers,
+                                                     size_t header_count,
+                                                     SlStatusCode expected_status,
+                                                     SlDiagCode expected_diag)
 {
-    static const char value_with_nul[] = {'o', 'k', '\0', 'b', 'a', 'd'};
     SlHttpResponseStreamChunk chunks[1] = {};
-    SlHttpHeader headers[1] = {};
     SlHttpTransportConfig config = {};
     SlHttpTransportServer server = {};
     DispatchHook dispatch = {};
     SlDiag diag = {};
+    unsigned char storage[65536];
+    SlArena arena = {};
+    ClientConnect client = {};
 
     chunks[0].bytes = bytes_from_cstr("hello");
-    headers[0].name = sl_str_from_cstr("X-Test");
-    headers[0].value = sl_str_from_parts(value_with_nul, sizeof(value_with_nul));
-    dispatch.response =
-        sl_http_response_stream(200U, sl_str_from_cstr("text/plain; charset=utf-8"), chunks, 1U);
+    dispatch.response = sl_http_response_stream(200U, content_type, chunks, 1U);
     dispatch.response.headers = headers;
-    dispatch.response.header_count = 1U;
+    dispatch.response.header_count = header_count;
     config = small_config(nullptr);
     config.dispatch = dispatch_hook;
     config.dispatch_user = &dispatch;
 
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /stream HTTP/1.1\r\nHost: local\r\n\r\n"), &diag),
+                      expected_status) != 0 ||
+        diag.code != expected_diag)
     {
-        unsigned char storage[65536];
-        SlArena arena = {};
-        ClientConnect client = {};
-
-        if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
-            expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
-                          SL_STATUS_OK) != 0 ||
-            expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
-            connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
-            start_client_read(&client) != 0 ||
-            expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
-            expect_status(sl_http_transport_connection_feed_test(
-                              &server.connections[0],
-                              bytes_from_cstr("GET /stream HTTP/1.1\r\nHost: local\r\n\r\n"),
-                              &diag),
-                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
-            diag.code != SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED)
-        {
-            stop_one_connection(&server, &client);
-            return 821;
-        }
         stop_one_connection(&server, &client);
+        return 1;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_streaming_response_rejects_control_header_values(void)
+{
+    static const char value_with_nul[] = {'o', 'k', '\0', 'b', 'a', 'd'};
+    static const char value_with_htab[] = {'o', 'k', '\t', 'v', 'a', 'l', 'u', 'e'};
+    static const char invalid_content_type[] = {'t', 'e', 'x', 't', '/', 'p',
+                                                'l', 'a', 'i', 'n', '\0'};
+    SlHttpHeader header = {};
+
+    header.name = sl_str_from_cstr("X-Test");
+    header.value = sl_str_from_parts(value_with_nul, sizeof(value_with_nul));
+    if (run_streaming_response_header_policy_case(sl_str_from_cstr("text/plain; charset=utf-8"),
+                                                  &header, 1U, SL_STATUS_INVALID_ARGUMENT,
+                                                  SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED) != 0)
+    {
+        return 821;
+    }
+
+    header.value = sl_str_from_parts(value_with_htab, sizeof(value_with_htab));
+    if (run_streaming_response_header_policy_case(sl_str_from_cstr("text/plain; charset=utf-8"),
+                                                  &header, 1U, SL_STATUS_OK, SL_DIAG_NONE) != 0)
+    {
+        return 822;
+    }
+
+    header.name = sl_str_from_cstr("Content-Length");
+    header.value = sl_str_from_cstr("5");
+    if (run_streaming_response_header_policy_case(sl_str_from_cstr("text/plain; charset=utf-8"),
+                                                  &header, 1U, SL_STATUS_INVALID_ARGUMENT,
+                                                  SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED) != 0)
+    {
+        return 823;
+    }
+
+    header.name = sl_str_from_cstr("Keep-Alive");
+    header.value = sl_str_from_cstr("timeout=5");
+    if (run_streaming_response_header_policy_case(sl_str_from_cstr("text/plain; charset=utf-8"),
+                                                  &header, 1U, SL_STATUS_INVALID_ARGUMENT,
+                                                  SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED) != 0)
+    {
+        return 824;
+    }
+
+    if (run_streaming_response_header_policy_case(
+            sl_str_from_parts(invalid_content_type, sizeof(invalid_content_type)), nullptr, 0U,
+            SL_STATUS_INVALID_ARGUMENT, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED) != 0)
+    {
+        return 825;
     }
 
     return 0;

@@ -139,7 +139,7 @@ Prioritize:
   unnecessary `unwrap`/`expect`, deterministic output, feature/crate boundary drift, and
   trait or macro abstractions that obscure simple logic;
 - JavaScript/TypeScript runtime-contract issues: descriptor shape drift, unsupported
-  Node/npm runtime assumptions, nullable/undefined assumptions, type holes, async
+  Node/Bun/Deno/npm behavior assumptions, nullable/undefined assumptions, type holes, async
   cleanup, secret redaction, and ESM/package-boundary regressions;
 - native boundary issues: V8 type leakage outside `src/engine/v8/*`, JS raw native pointer
   exposure, ownership transfer across language boundaries, thread-affinity mistakes, string

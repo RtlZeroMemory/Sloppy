@@ -341,7 +341,9 @@ static int test_context_metadata_and_bytes_body_reach_v8_handler(void)
             "{\"id\":\"0\",\"scheme\":\"http\",\"protocol\":\"HTTP/1.1\",\"queryString\":\"x=1\","
             "\"contentType\":\"application/octet-stream\",\"contentLength\":3,"
             "\"connectionId\":\"0\",\"connection\":\"http:http:false\",\"bodyKind\":\"bytes\","
-            "\"consumed\":true,\"bytes\":[65,66,67],\"secondReadRejected\":true}",
+            "\"consumed\":true,\"bytes\":[65,66,67],\"secondReadRejected\":true,"
+            "\"secondReadError\":{\"name\":\"TypeError\",\"message\":\"Request body is already "
+            "consumed.\"}}",
             SL_DIAG_NONE) != 0)
     {
         return 50;
@@ -406,13 +408,15 @@ static int test_lifecycle_context_metadata_reaches_v8_handler(void)
     status = sl_http_dispatch_request_lifecycle(&dispatch_arena, engine, &plan, &table, &request,
                                                 &result, &diag);
     if (sl_status_code(status) != SL_STATUS_OK || result.kind != SL_ENGINE_RESULT_JSON ||
-        expect_bytes_equal(result.response.body,
-                           "{\"id\":\"1\",\"scheme\":\"http\",\"protocol\":\"HTTP/1.1\","
-                           "\"queryString\":\"x=1\",\"contentType\":\"application/octet-stream\","
-                           "\"contentLength\":3,\"connectionId\":\"1\","
-                           "\"connection\":\"http:http:false\",\"bodyKind\":\"bytes\","
-                           "\"consumed\":true,\"bytes\":[65,66,67],"
-                           "\"secondReadRejected\":true}") != 0)
+        expect_bytes_equal(
+            result.response.body,
+            "{\"id\":\"1\",\"scheme\":\"http\",\"protocol\":\"HTTP/1.1\","
+            "\"queryString\":\"x=1\",\"contentType\":\"application/octet-stream\","
+            "\"contentLength\":3,\"connectionId\":\"1\","
+            "\"connection\":\"http:http:false\",\"bodyKind\":\"bytes\","
+            "\"consumed\":true,\"bytes\":[65,66,67],"
+            "\"secondReadRejected\":true,\"secondReadError\":{\"name\":\"TypeError\","
+            "\"message\":\"Request body is already consumed.\"}}") != 0)
     {
         sl_engine_destroy(engine);
         return 61;

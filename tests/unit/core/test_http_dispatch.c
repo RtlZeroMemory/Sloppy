@@ -26,6 +26,21 @@ static SlBytes bytes_from_cstr(const char* text)
     return sl_bytes_from_parts((const unsigned char*)str.ptr, str.length);
 }
 
+static SlStr body_limit_plus_one_header_value(void)
+{
+    static char digits[32];
+    size_t cursor = sizeof(digits);
+    size_t value = SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U;
+
+    do {
+        cursor -= 1U;
+        digits[cursor] = (char)('0' + (value % 10U));
+        value /= 10U;
+    } while (value != 0U && cursor > 0U);
+
+    return sl_str_from_parts(digits + cursor, sizeof(digits) - cursor);
+}
+
 static int init_arena(SlArena* arena, unsigned char* storage, size_t storage_size)
 {
     return expect_status(sl_arena_init(arena, storage, storage_size), SL_STATUS_OK);
@@ -677,7 +692,7 @@ static int test_body_too_large_fails_before_handler_call(void)
     headers[0].name = sl_str_from_cstr("Content-Type");
     headers[0].value = sl_str_from_cstr("text/plain");
     headers[1].name = sl_str_from_cstr("Content-Length");
-    headers[1].value = sl_str_from_cstr("65537");
+    headers[1].value = body_limit_plus_one_header_value();
     request.method = SL_HTTP_METHOD_POST;
     request.path = sl_str_from_cstr("/hello");
     request.raw_target = sl_str_from_cstr("/hello");
@@ -749,7 +764,7 @@ static int test_lifecycle_dispatch_uses_backend_body_limit(void)
     headers[0].name = sl_str_from_cstr("Content-Type");
     headers[0].value = sl_str_from_cstr("text/plain");
     headers[1].name = sl_str_from_cstr("Content-Length");
-    headers[1].value = sl_str_from_cstr("65537");
+    headers[1].value = body_limit_plus_one_header_value();
     request.head.method = SL_HTTP_METHOD_POST;
     request.head.path = sl_str_from_cstr("/hello");
     request.head.raw_target = sl_str_from_cstr("/hello");

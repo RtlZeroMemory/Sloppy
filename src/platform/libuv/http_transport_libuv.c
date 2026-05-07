@@ -172,7 +172,8 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.port = input->port;
         config.max_connections = input->max_connections;
         config.max_active_requests = input->max_active_requests;
-        config.parse.max_headers = input->parse.max_headers;
+        config.parse.max_headers =
+            input->parse.max_headers == 0U ? config.parse.max_headers : input->parse.max_headers;
         config.parse.max_request_line_length = input->parse.max_request_line_length == 0U
                                                    ? config.parse.max_request_line_length
                                                    : input->parse.max_request_line_length;
@@ -476,6 +477,7 @@ static bool sl_http_transport_response_header_value_valid(SlStr value)
 static bool sl_http_transport_response_header_managed(SlStr name)
 {
     return sl_str_equal_ci_ascii(name, sl_str_from_cstr("Connection")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Keep-Alive")) ||
            sl_str_equal_ci_ascii(name, sl_str_from_cstr("Content-Type")) ||
            sl_str_equal_ci_ascii(name, sl_str_from_cstr("Transfer-Encoding")) ||
            sl_str_equal_ci_ascii(name, sl_str_from_cstr("Content-Length"));
