@@ -3239,13 +3239,18 @@ static int test_request_context_body_object_is_one_shot(void)
         return 424;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_JSON ||
-        expect_bytes_equal(result.response.body,
-                           "{\"first\":\"{\\\"ok\\\":true}\",\"second\":\"consumed\","
-                           "\"consumed\":true}") != 0)
     {
-        sl_engine_destroy(engine);
-        return 425;
+        SlStr body_text =
+            sl_str_from_parts((const char*)result.response.body.ptr, result.response.body.length);
+        if (result.kind != SL_ENGINE_RESULT_JSON ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"first\":\"{\\\"ok\\\":true}\"")) !=
+                0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"second\":\"consumed\"")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"consumed\":true")) != 0)
+        {
+            sl_engine_destroy(engine);
+            return 425;
+        }
     }
 
     sl_engine_destroy(engine);

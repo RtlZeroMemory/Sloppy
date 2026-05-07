@@ -7509,6 +7509,10 @@ mod tests {
             "Sloppy:Server:Tls:PrivateKeyPath"
         );
         assert_eq!(
+            canonical_config_key("SLOPPY:SERVER:TLS:CERTIFICATEPATH"),
+            "Sloppy:Server:Tls:CertificatePath"
+        );
+        assert_eq!(
             canonical_config_key("SLOPPY:SERVER:TLS:PASSPHRASE"),
             "Sloppy:Server:Tls:Passphrase"
         );

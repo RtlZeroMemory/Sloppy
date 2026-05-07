@@ -121,8 +121,9 @@ typedef struct SlHttpConnection
     uint64_t id;
     /*
      * Borrowed protocol scheme for request contexts created on this connection. Platform
-     * transports may set this to "https" after TLS wrapping succeeds; the view must remain valid
-     * until the connection is closed. Core never exposes native handles.
+     * transports may set this to a static or arena-owned "https" view after TLS wrapping
+     * succeeds; the view must remain valid until the connection is closed. Core never exposes
+     * native handles.
      */
     SlStr scheme;
     size_t request_count;
@@ -136,7 +137,11 @@ typedef struct SlHttpRequestLifecycle
     SlHttpConnection* connection;
     SlArena* arena;
     uint64_t id;
-    /* Borrowed protocol scheme copied from the connection for the request lifecycle. */
+    /*
+     * Non-owning scheme copied from connection->scheme by sl_http_request_begin. It may be
+     * empty/null when the connection has no scheme yet, and borrows the same connection-bounded
+     * lifetime as SlHttpConnection.scheme.
+     */
     SlStr scheme;
     SlHttpRequestState state;
     /* Arena-owned parsed request head, cleared by sl_http_request_close. */
