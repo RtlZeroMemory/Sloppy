@@ -20,12 +20,12 @@
  */
 #include "sloppy/data_postgres.h"
 
+#include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 
 #include <libpq-fe.h>
 #include <errno.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 enum
@@ -450,6 +450,8 @@ static SlStatus sl_pg_param_text(SlArena* arena, const SlPostgresParam* param, c
                                  size_t buffer_size, const char** out_value)
 {
     char* copied = NULL;
+    SlStringBuilder builder = {0};
+    SlStr formatted = {0};
     SlStatus status;
 
     if (param == NULL || out_value == NULL) {
@@ -470,18 +472,34 @@ static SlStatus sl_pg_param_text(SlArena* arena, const SlPostgresParam* param, c
         *out_value = copied;
         return sl_status_ok();
     case SL_POSTGRES_PARAM_INTEGER:
-        /* sloppy-allow: c-memory-boundary #760 libpq integer; remove when byte-builder formats */
-        if (snprintf(buffer, buffer_size, "%lld", (long long)param->value.integer) < 0) {
-            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        status = sl_string_builder_init_fixed(&builder, buffer, buffer_size);
+        if (!sl_status_is_ok(status)) {
+            return status;
         }
-        *out_value = buffer;
+        status = sl_string_builder_append_i64(&builder, param->value.integer);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_view_with_nul(&builder, &formatted);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = formatted.ptr;
         return sl_status_ok();
     case SL_POSTGRES_PARAM_FLOAT:
-        /* sloppy-allow: c-memory-boundary #760 libpq float; remove when byte-builder formats */
-        if (snprintf(buffer, buffer_size, "%.17g", param->value.number) < 0) {
-            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        status = sl_string_builder_init_fixed(&builder, buffer, buffer_size);
+        if (!sl_status_is_ok(status)) {
+            return status;
         }
-        *out_value = buffer;
+        status = sl_string_builder_append_f64(&builder, param->value.number);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_string_builder_view_with_nul(&builder, &formatted);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        *out_value = formatted.ptr;
         return sl_status_ok();
     case SL_POSTGRES_PARAM_BOOL:
         *out_value = param->value.boolean ? "true" : "false";

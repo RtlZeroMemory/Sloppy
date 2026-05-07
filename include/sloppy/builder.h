@@ -13,6 +13,11 @@
 extern "C" {
 #endif
 
+#define SL_STRING_FORMAT_F32_CAPACITY 16U
+#define SL_STRING_FORMAT_F64_CAPACITY 25U
+#define SL_STRING_FORMAT_U64_CAPACITY 21U
+#define SL_STRING_FORMAT_I64_CAPACITY 21U
+
 typedef enum SlBuilderStorageKind
 {
     SL_BUILDER_STORAGE_INVALID = 0,
@@ -115,7 +120,20 @@ SlStatus sl_string_builder_append_cstr(SlStringBuilder* builder, const char* cst
 SlStatus sl_string_builder_append_char(SlStringBuilder* builder, char value);
 SlStatus sl_string_builder_append_u64(SlStringBuilder* builder, uint64_t value);
 SlStatus sl_string_builder_append_i64(SlStringBuilder* builder, int64_t value);
+SlStatus sl_string_builder_append_f64(SlStringBuilder* builder, double value);
 SlStatus sl_string_builder_append_size(SlStringBuilder* builder, size_t value);
+
+/*
+ * Formats numbers into caller-provided storage using Slop's canonical text boundary.
+ *
+ * On success, `out` views the bytes before the terminating NUL. On failure, `out` is left
+ * unchanged.
+ */
+SlStatus sl_string_format_u64(char* buffer, size_t capacity, uint64_t value, SlStr* out);
+SlStatus sl_string_format_i64(char* buffer, size_t capacity, int64_t value, SlStr* out);
+SlStatus sl_string_format_size(char* buffer, size_t capacity, size_t value, SlStr* out);
+SlStatus sl_string_format_f32(char* buffer, size_t capacity, float value, SlStr* out);
+SlStatus sl_string_format_f64(char* buffer, size_t capacity, double value, SlStr* out);
 
 #ifdef __cplusplus
 }

@@ -153,11 +153,17 @@ ctest --preset windows-avx2 -R "core\.(bytes|str)|fuzz\.memory_primitives\.seed_
 
 ## Advanced Static Analysis
 
-Fast script scanners remain part of default lint. The clang-tidy/analyzer lane is deeper
-evidence and is intentionally controlled while the baseline stabilizes. The enforceable
-lane runs the memory/core `sloppy_memory_analysis` target; the broader
-`sloppy_clang_tidy` target remains exploratory until the full-repo analyzer baseline is
-quiet enough to be governed as a gate.
+Fast script scanners remain part of default lint. The clang-tidy/analyzer lane is mandatory
+for non-doc repository changes and path-gated for speed. It runs the repo-wide
+`sloppy_memory_analysis` target over configured native source, unit, fuzz seed-replay, and
+benchmark harness files that are present in the current compile database. The same source
+set backs `sloppy_clang_tidy`, so local and CI analysis use one governed baseline.
+
+CodeQL is mandatory for relevant source, test, benchmark, compiler, stdlib, example,
+CMake, vcpkg, and workflow changes. It runs separate optimized jobs for C/C++ with a traced
+Linux Clang build, JavaScript/TypeScript with no build, and Rust with no build. CodeQL uses
+`security-extended` and `security-and-quality` queries. Docs-only PRs do not trigger the
+lane unless workflow dispatch or branch protection requires it.
 
 Local Windows lane:
 
@@ -167,13 +173,11 @@ Local Windows lane:
 ```
 
 GitHub CI can run the optional `advanced static analysis` job through
-`workflow_dispatch` with `advanced_analysis=true` or by applying the `memory-analysis`
-label to a pull request. That lane is expected for memory-sensitive PRs when practical:
-memory primitives, parsers, platform backends, V8/native bridge changes, provider
-backends, HTTP parser/transport, resource lifetime work, and security/redaction changes.
+`workflow_dispatch` with `advanced_analysis=true`; it otherwise runs automatically for
+analysis-relevant PRs and pushes. Applying `memory-analysis` or `full-ci` also forces it.
 
-Skipped advanced analysis is not pass evidence. If a finding is suppressed, the PR must
-name the suppression, issue, reason, and removal condition.
+Skipped advanced analysis or CodeQL is not pass evidence. If a finding is suppressed, the
+PR must name the suppression, issue, reason, and removal condition.
 
 ## Final Review
 

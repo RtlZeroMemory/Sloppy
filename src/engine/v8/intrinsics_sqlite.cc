@@ -14,7 +14,6 @@
 
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <limits>
 #include <memory>
 #include <new>
@@ -676,11 +675,14 @@ bool sqlite_v8_set_cell(v8::Isolate* isolate, v8::Local<v8::Context> context,
             return false;
         }
         if (value->value.blob.length != 0U) {
+            unsigned char* destination = static_cast<unsigned char*>(backing->Data());
+            size_t index = 0U;
             if (value->value.blob.ptr == nullptr) {
                 return false;
             }
-            /* sloppy-allow: c-memory-boundary #760 V8 blob copy; remove when helper lands */
-            std::memcpy(backing->Data(), value->value.blob.ptr, value->value.blob.length);
+            for (index = 0U; index < value->value.blob.length; index += 1U) {
+                destination[index] = value->value.blob.ptr[index];
+            }
         }
         v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
         js_value = v8::Uint8Array::New(buffer, 0U, value->value.blob.length);

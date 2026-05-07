@@ -524,14 +524,15 @@ Always banned:
 Primitive-only or explicit-boundary APIs:
 
 - `strlen` is allowed in `src/core/string.c` for the canonical C-string adapter. Other
-  uses need a same-line or immediately preceding `sloppy-allow: c-memory-boundary #issue
-  reason; remove when condition` comment.
-- `memcpy`, `memmove`, `memcmp`, and `memset` need the same narrow boundary allowance
-  unless they live inside canonical string/byte primitives recognized by the scanner.
-- `snprintf` is allowed only at documented dependency or C-string formatting boundaries
-  until a shared builder/numeric formatting primitive replaces the local use.
+  C-string boundary code must use `SlStr` adapters instead of local length scans.
+- `memcpy`, `memmove`, `memcmp`, and `memset` are errors outside canonical string/byte
+  primitives recognized by the scanner. Add a reusable Slop primitive instead of an
+  inline exception.
+- `snprintf` is not allowed in Slop-owned implementation code. Floating-point text uses
+  the Ryu-backed `sl_string_format_f32` / `sl_string_format_f64` helpers, and integer text
+  uses the canonical `sl_string_format_*` helpers.
 - `memset` must not be used for secret wiping. Structure zero-initialization at platform
-  or dependency boundaries needs an allowance that states it is not secret wiping.
+  or dependency boundaries must use a narrow local helper or canonical primitive.
 
 Raw allocation APIs:
 

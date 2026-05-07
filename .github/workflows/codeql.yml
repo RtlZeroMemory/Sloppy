@@ -1,0 +1,198 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "vcpkg.json"
+      - "vcpkg-configuration.json"
+      - "include/**"
+      - "src/**"
+      - "tests/**"
+      - "benchmarks/**"
+      - "compiler/**"
+      - "stdlib/**"
+      - "examples/**"
+      - "tools/**"
+      - "third_party/**"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "vcpkg.json"
+      - "vcpkg-configuration.json"
+      - "include/**"
+      - "src/**"
+      - "tests/**"
+      - "benchmarks/**"
+      - "compiler/**"
+      - "stdlib/**"
+      - "examples/**"
+      - "tools/**"
+      - "third_party/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+env:
+  VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
+
+jobs:
+  analyze-c-cpp:
+    name: CodeQL / c-cpp
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+          queries: security-extended,security-and-quality
+
+      - name: Install host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(build-essential clang cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex)
+          missing=()
+
+          for command in clang clang++ cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex; do
+            if ! command -v "$command" >/dev/null 2>&1; then
+              missing=("${packages[@]}")
+              break
+            fi
+          done
+          if ! dpkg-query -W -f='${Status}' autoconf-archive 2>/dev/null | grep -q "install ok installed"; then
+            missing=("${packages[@]}")
+          fi
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+          fi
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: codeql-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            codeql-vcpkg-${{ env.VCPKG_COMMIT }}-
+            Linux-linux-clang-vcpkg-${{ env.VCPKG_COMMIT }}-
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          vcpkg_root="$PWD/.sdeps/vcpkg"
+          vcpkg_binary_cache="$PWD/.sdeps/vcpkg-bincache"
+          mkdir -p "$vcpkg_binary_cache"
+          if [ ! -d "$vcpkg_root" ]; then
+            mkdir -p "$(dirname "$vcpkg_root")"
+            git clone https://github.com/microsoft/vcpkg.git "$vcpkg_root"
+          fi
+          git -C "$vcpkg_root" fetch origin
+          git -C "$vcpkg_root" checkout "$VCPKG_COMMIT"
+          if [ ! -x "$vcpkg_root/vcpkg" ]; then
+            "$vcpkg_root/bootstrap-vcpkg.sh" -disableMetrics
+          fi
+          echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+
+      - name: Configure traced native build
+        shell: bash
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -euo pipefail
+          cmake \
+            --preset linux-clang \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DCMAKE_MAKE_PROGRAM="$(command -v ninja)" \
+            -DSLOPPY_ENABLE_WERROR=OFF \
+            -DSLOPPY_ENABLE_V8=OFF \
+            -DSLOPPY_ENGINE=none
+
+      - name: Save vcpkg cache after configure
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .sdeps/vcpkg
+            .sdeps/vcpkg-bincache
+            vcpkg_installed
+          key: codeql-vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
+      - name: Build native targets
+        shell: bash
+        run: cmake --build --preset linux-clang
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"
+
+  analyze-javascript-typescript:
+    name: CodeQL / javascript-typescript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended,security-and-quality
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  analyze-rust:
+    name: CodeQL / rust
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: rust
+          build-mode: none
+          queries: security-extended,security-and-quality
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:rust"

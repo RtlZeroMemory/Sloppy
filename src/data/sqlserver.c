@@ -24,7 +24,6 @@
 
 #include <errno.h>
 #include <stddef.h>
-#include <string.h>
 #include <stdlib.h>
 
 #ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
@@ -1254,9 +1253,7 @@ static size_t sl_sqlsrv_chunk_length(const char* buffer, size_t capacity)
 
 static SlStatus sl_sqlsrv_append_chunk(SlArena* arena, SlStr current, SlStr chunk, SlStr* out)
 {
-    void* ptr = NULL;
-    char* dst = NULL;
-    size_t length = 0U;
+    SlOwnedStr copied = {0};
     SlStatus status;
 
     if (arena == NULL || out == NULL || !sl_sqlsrv_str_valid(current) ||
@@ -1264,28 +1261,11 @@ static SlStatus sl_sqlsrv_append_chunk(SlArena* arena, SlStr current, SlStr chun
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_checked_add_size(current.length, chunk.length, &length);
+    status = sl_str_concat_to_arena(arena, current, chunk, &copied);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    if (length == 0U) {
-        *out = sl_str_empty();
-        return sl_status_ok();
-    }
-    status = sl_arena_alloc(arena, length, 1U, &ptr);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    dst = (char*)ptr;
-    if (current.length > 0U) {
-        /* sloppy-allow: c-memory-boundary #760 text copy; remove when helper lands */
-        memcpy(dst, current.ptr, current.length);
-    }
-    if (chunk.length > 0U) {
-        /* sloppy-allow: c-memory-boundary #760 text copy; remove when helper lands */
-        memcpy(dst + current.length, chunk.ptr, chunk.length);
-    }
-    *out = sl_str_from_parts(dst, length);
+    *out = sl_owned_str_as_view(copied);
     return sl_status_ok();
 }
 

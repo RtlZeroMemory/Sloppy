@@ -178,13 +178,8 @@ $validAnalysisSuppressionPattern = 'sloppy-analysis-suppress:\s*#\d+\s+.+;\s*rem
 function Test-AllowedMemoryPrimitiveBoundary {
     param(
         [string]$RelativePath,
-        [string]$FunctionName,
-        [string]$Line
+        [string]$FunctionName
     )
-
-    if ($Line -match 'sloppy-allow:\s*c-memory-boundary\s+#\d+\s+.+;\s*remove when .+$') {
-        return $true
-    }
 
     if ($RelativePath -eq "src/core/string.c" -and $FunctionName -eq "strlen") {
         return $true
@@ -295,7 +290,7 @@ foreach ($file in $files) {
 
         if ((Test-ImplementationPath $relativePath) -and $line -match $memoryPrimitivePattern) {
             $functionName = $Matches[1]
-            if (-not (Test-AllowedMemoryPrimitiveBoundary -RelativePath $relativePath -FunctionName $functionName -Line $allowanceContext)) {
+            if (-not (Test-AllowedMemoryPrimitiveBoundary -RelativePath $relativePath -FunctionName $functionName)) {
                 $violations += New-Finding `
                     -File $relativePath `
                     -Line $lineNumber `
@@ -340,7 +335,6 @@ if ($SelfTest) {
 #include <string.h>
 size_t ok_strlen(const char* text) { return strlen(text); }
 int ok_memcmp(const char* a, const char* b, size_t n) { return memcmp(a, b, n); }
-void ok_boundary(char* dst, const char* src, size_t n) { memcpy(dst, src, n); } /* sloppy-allow: c-memory-boundary #760 fixture boundary copy; remove when fixture is replaced */
 '@
         Set-Content -LiteralPath (Join-Path $validRoot "tests/unit/core/test_ok.c") -Value @'
 /* NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): sloppy-analysis-suppress: #805 fixture suppression; remove when fixture is replaced */

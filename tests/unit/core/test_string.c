@@ -44,6 +44,14 @@ static int test_views_and_helpers(void)
         return 2;
     }
 
+    if (expect_true(sl_str_compare(embedded_str, same_embedded_str) == 0) != 0 ||
+        expect_true(sl_str_compare(embedded_str, different_str) < 0) != 0 ||
+        expect_true(sl_str_compare(sl_str_from_cstr("app"), sl_str_from_cstr("apple")) < 0) != 0 ||
+        expect_true(sl_str_compare(sl_str_from_parts(NULL, 1U), embedded_str) < 0) != 0)
+    {
+        return 7;
+    }
+
     if (expect_true(sl_str_starts_with(embedded_str, prefix)) != 0 ||
         expect_true(sl_str_starts_with(embedded_str, empty)) != 0 ||
         expect_true(sl_str_ends_with(embedded_str, suffix)) != 0)
@@ -308,6 +316,24 @@ static int test_arena_copies(void)
         !sl_str_equal(sl_owned_str_as_view(owned), embedded_str))
     {
         return 21;
+    }
+
+    owned = sentinel;
+    if (expect_status(
+            sl_str_concat_to_arena(&arena, sl_str_from_cstr("ab"), sl_str_from_cstr("cd"), &owned),
+            SL_STATUS_OK) != 0 ||
+        owned.length != 4U || !sl_str_equal(sl_owned_str_as_view(owned), sl_str_from_cstr("abcd")))
+    {
+        return 31;
+    }
+
+    owned = sentinel;
+    if (expect_status(sl_str_concat_to_arena(&arena, sl_str_from_parts(NULL, 1U),
+                                             sl_str_from_cstr("x"), &owned),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        owned.ptr != sentinel.ptr || owned.length != sentinel.length)
+    {
+        return 32;
     }
 
     owned = sentinel;

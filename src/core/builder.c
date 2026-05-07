@@ -11,6 +11,7 @@
  */
 #include "sloppy/builder.h"
 
+#include "ryu/ryu.h"
 #include "sloppy/checked_math.h"
 
 #include <limits.h>
@@ -471,12 +472,48 @@ SlStatus sl_string_builder_append_char(SlStringBuilder* builder, char value)
 
 SlStatus sl_string_builder_append_u64(SlStringBuilder* builder, uint64_t value)
 {
-    char digits[20];
-    size_t length = 0U;
-    size_t index = 0U;
+    char buffer[SL_STRING_FORMAT_U64_CAPACITY];
+    SlStr formatted = {0};
     SlStatus status;
 
     if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_string_format_u64(buffer, sizeof(buffer), value, &formatted);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_string_builder_append_str(builder, formatted);
+}
+
+SlStatus sl_string_builder_append_i64(SlStringBuilder* builder, int64_t value)
+{
+    char buffer[SL_STRING_FORMAT_I64_CAPACITY];
+    SlStr formatted = {0};
+    SlStatus status;
+
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_string_format_i64(buffer, sizeof(buffer), value, &formatted);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_string_builder_append_str(builder, formatted);
+}
+
+SlStatus sl_string_format_u64(char* buffer, size_t capacity, uint64_t value, SlStr* out)
+{
+    char digits[SL_STRING_FORMAT_U64_CAPACITY - 1U];
+    size_t length = 0U;
+    size_t index = 0U;
+    SlStr result = {0};
+
+    if (buffer == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
@@ -486,73 +523,251 @@ SlStatus sl_string_builder_append_u64(SlStringBuilder* builder, uint64_t value)
         length += 1U;
     } while (value != 0U);
 
-    status = sl_string_builder_reserve(builder, length);
-    if (!sl_status_is_ok(status)) {
-        return status;
+    if (capacity <= length) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     for (index = 0U; index < length; index += 1U) {
-        sl_byte_builder_data(&builder->bytes)[builder->bytes.length + index] =
-            (unsigned char)digits[length - index - 1U];
+        buffer[index] = digits[length - index - 1U];
     }
+    buffer[length] = '\0';
 
-    builder->bytes.length += length;
-    sl_builder_counter_add(&builder->bytes.appended_bytes, length);
+    result = sl_str_from_parts(buffer, length);
+    *out = result;
     return sl_status_ok();
 }
 
-SlStatus sl_string_builder_append_i64(SlStringBuilder* builder, int64_t value)
+SlStatus sl_string_format_i64(char* buffer, size_t capacity, int64_t value, SlStr* out)
 {
-    char digits[21];
     uint64_t magnitude = 0U;
+    SlStr unsigned_view = {0};
+    SlStr result = {0};
+    SlStatus status;
+
+    if (buffer == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (value < 0) {
+        magnitude = (uint64_t)(-(value + 1)) + 1U;
+        if (capacity < 3U) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        buffer[0] = '-';
+        status = sl_string_format_u64(buffer + 1U, capacity - 1U, magnitude, &unsigned_view);
+        if (!sl_status_is_ok(status)) {
+            buffer[0] = '\0';
+            return status;
+        }
+        result = sl_str_from_parts(buffer, unsigned_view.length + 1U);
+        *out = result;
+        return sl_status_ok();
+    }
+
+    return sl_string_format_u64(buffer, capacity, (uint64_t)value, out);
+}
+
+SlStatus sl_string_format_size(char* buffer, size_t capacity, size_t value, SlStr* out)
+{
+    return sl_string_format_u64(buffer, capacity, (uint64_t)value, out);
+}
+
+static bool sl_string_format_rewrite_ryu_plain(char* buffer, size_t capacity, size_t* length,
+                                               uint32_t max_plain_exponent)
+{
+    char digits[SL_STRING_FORMAT_F64_CAPACITY];
+    char rewritten[SL_STRING_FORMAT_F64_CAPACITY];
+    size_t digit_count = 0U;
+    size_t exponent_index = 0U;
+    size_t read_index = 0U;
+    size_t write_index = 0U;
+    int32_t exponent = 0;
+    int32_t decimal_pos = 0;
+    bool has_exponent = false;
+    bool negative_exponent = false;
+
+    if (buffer == NULL || length == NULL) {
+        return false;
+    }
+
+    for (read_index = 0U; read_index < *length; read_index += 1U) {
+        if (buffer[read_index] == 'E') {
+            exponent_index = read_index;
+            has_exponent = true;
+            break;
+        }
+    }
+    if (!has_exponent) {
+        return true;
+    }
+
+    read_index = exponent_index + 1U;
+    if (read_index < *length && buffer[read_index] == '-') {
+        negative_exponent = true;
+        read_index += 1U;
+    }
+    for (; read_index < *length; read_index += 1U) {
+        if (buffer[read_index] < '0' || buffer[read_index] > '9') {
+            return false;
+        }
+        exponent = (exponent * 10) + (int32_t)(buffer[read_index] - '0');
+    }
+    if (negative_exponent) {
+        exponent = -exponent;
+    }
+
+    if (exponent < -4 || exponent >= (int32_t)max_plain_exponent) {
+        return true;
+    }
+
+    read_index = buffer[0] == '-' ? 1U : 0U;
+    for (; read_index < exponent_index; read_index += 1U) {
+        if (buffer[read_index] != '.') {
+            digits[digit_count] = buffer[read_index];
+            digit_count += 1U;
+        }
+    }
+    decimal_pos = exponent + 1;
+
+    if (buffer[0] == '-') {
+        rewritten[write_index] = '-';
+        write_index += 1U;
+    }
+
+    if (decimal_pos <= 0) {
+        rewritten[write_index] = '0';
+        write_index += 1U;
+        rewritten[write_index] = '.';
+        write_index += 1U;
+        for (int32_t zero = 0; zero < -decimal_pos; zero += 1) {
+            rewritten[write_index] = '0';
+            write_index += 1U;
+        }
+        for (read_index = 0U; read_index < digit_count; read_index += 1U) {
+            rewritten[write_index] = digits[read_index];
+            write_index += 1U;
+        }
+    }
+    else if ((size_t)decimal_pos >= digit_count) {
+        for (read_index = 0U; read_index < digit_count; read_index += 1U) {
+            rewritten[write_index] = digits[read_index];
+            write_index += 1U;
+        }
+        for (size_t zero = digit_count; zero < (size_t)decimal_pos; zero += 1U) {
+            rewritten[write_index] = '0';
+            write_index += 1U;
+        }
+    }
+    else {
+        for (read_index = 0U; read_index < (size_t)decimal_pos; read_index += 1U) {
+            rewritten[write_index] = digits[read_index];
+            write_index += 1U;
+        }
+        rewritten[write_index] = '.';
+        write_index += 1U;
+        for (; read_index < digit_count; read_index += 1U) {
+            rewritten[write_index] = digits[read_index];
+            write_index += 1U;
+        }
+    }
+
+    if (write_index >= capacity) {
+        return false;
+    }
+    for (read_index = 0U; read_index < write_index; read_index += 1U) {
+        buffer[read_index] = rewritten[read_index];
+    }
+    buffer[write_index] = '\0';
+    *length = write_index;
+    return true;
+}
+
+SlStatus sl_string_format_f32(char* buffer, size_t capacity, float value, SlStr* out)
+{
+    int written = 0;
     size_t length = 0U;
-    size_t index = 0U;
+    SlStr result = {0};
+
+    if (buffer == NULL || out == NULL || capacity < SL_STRING_FORMAT_F32_CAPACITY) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    written = f2s_buffered_n(value, buffer);
+    if (written < 0 || (size_t)written >= capacity) {
+        buffer[0] = '\0';
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    buffer[written] = '\0';
+    length = (size_t)written;
+    if (!sl_string_format_rewrite_ryu_plain(buffer, capacity, &length, 9U)) {
+        buffer[0] = '\0';
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    result = sl_str_from_parts(buffer, length);
+    *out = result;
+    return sl_status_ok();
+}
+
+SlStatus sl_string_format_f64(char* buffer, size_t capacity, double value, SlStr* out)
+{
+    int written = 0;
+    size_t length = 0U;
+    SlStr result = {0};
+
+    if (buffer == NULL || out == NULL || capacity < SL_STRING_FORMAT_F64_CAPACITY) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    written = d2s_buffered_n(value, buffer);
+    if (written < 0 || (size_t)written >= capacity) {
+        buffer[0] = '\0';
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    buffer[written] = '\0';
+    length = (size_t)written;
+    if (!sl_string_format_rewrite_ryu_plain(buffer, capacity, &length, 17U)) {
+        buffer[0] = '\0';
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    result = sl_str_from_parts(buffer, length);
+    *out = result;
+    return sl_status_ok();
+}
+
+SlStatus sl_string_builder_append_f64(SlStringBuilder* builder, double value)
+{
+    char buffer[SL_STRING_FORMAT_F64_CAPACITY];
+    SlStr formatted = {0};
     SlStatus status;
 
     if (builder == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (value < 0) {
-        digits[length] = '-';
-        length += 1U;
-        magnitude = (uint64_t)(-(value + 1)) + 1U;
-    }
-    else {
-        magnitude = (uint64_t)value;
-    }
-
-    do {
-        digits[length] = (char)('0' + (char)(magnitude % 10U));
-        magnitude /= 10U;
-        length += 1U;
-    } while (magnitude != 0U);
-
-    status = sl_string_builder_reserve(builder, length);
+    status = sl_string_format_f64(buffer, sizeof(buffer), value, &formatted);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    if (digits[0] == '-') {
-        sl_byte_builder_data(&builder->bytes)[builder->bytes.length] = (unsigned char)digits[0];
-        for (index = 1U; index < length; index += 1U) {
-            sl_byte_builder_data(&builder->bytes)[builder->bytes.length + index] =
-                (unsigned char)digits[length - index];
-        }
-    }
-    else {
-        for (index = 0U; index < length; index += 1U) {
-            sl_byte_builder_data(&builder->bytes)[builder->bytes.length + index] =
-                (unsigned char)digits[length - index - 1U];
-        }
-    }
-
-    builder->bytes.length += length;
-    sl_builder_counter_add(&builder->bytes.appended_bytes, length);
-    return sl_status_ok();
+    return sl_string_builder_append_str(builder, formatted);
 }
 
 SlStatus sl_string_builder_append_size(SlStringBuilder* builder, size_t value)
 {
-    return sl_string_builder_append_u64(builder, (uint64_t)value);
+    char buffer[SL_STRING_FORMAT_U64_CAPACITY];
+    SlStr formatted = {0};
+    SlStatus status;
+
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_string_format_size(buffer, sizeof(buffer), value, &formatted);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    return sl_string_builder_append_str(builder, formatted);
 }
