@@ -4074,27 +4074,34 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
             sl_engine_eval_source(
                 engine, sl_str_from_cstr("sqlite-bridge.js"),
                 sl_str_from_cstr(
-                    "globalThis.sqliteSmoke = function () {"
+                    "globalThis.sqliteSmoke = async function () {"
                     "  const db = __sloppy.data.sqlite.open({ provider: 'sqlite', database: "
                     "':memory:', capability: 'data.main' });"
-                    "  __sloppy.data.sqlite.exec(db, 'create table users (id integer primary key, "
+                    "  await __sloppy.data.sqlite.exec(db, 'create table users (id integer primary "
+                    "key, "
                     "name text not null, raw blob)', []);"
-                    "  __sloppy.data.sqlite.exec(db, \"insert into users (name, raw) values (?, "
+                    "  await __sloppy.data.sqlite.exec(db, \"insert into users (name, raw) values "
+                    "(?, "
                     "x'0041ff')\", "
                     "['Ada']);"
-                    "  __sloppy.data.sqlite.transactionBegin(db);"
-                    "  __sloppy.data.sqlite.transactionExec(db, \"insert into users (name, raw) "
+                    "  await __sloppy.data.sqlite.transactionBegin(db);"
+                    "  await __sloppy.data.sqlite.transactionExec(db, \"insert into users (name, "
+                    "raw) "
                     "values (?, x'01')\", ['Grace']);"
-                    "  __sloppy.data.sqlite.transactionCommit(db);"
-                    "  __sloppy.data.sqlite.transactionBegin(db);"
-                    "  __sloppy.data.sqlite.transactionExec(db, \"insert into users (name, raw) "
+                    "  await __sloppy.data.sqlite.transactionCommit(db);"
+                    "  await __sloppy.data.sqlite.transactionBegin(db);"
+                    "  await __sloppy.data.sqlite.transactionExec(db, \"insert into users (name, "
+                    "raw) "
                     "values (?, x'02')\", ['Rollback']);"
-                    "  __sloppy.data.sqlite.transactionRollback(db);"
-                    "  const row = __sloppy.data.sqlite.queryOne(db, 'select name, raw from users "
+                    "  await __sloppy.data.sqlite.transactionRollback(db);"
+                    "  const row = await __sloppy.data.sqlite.queryOne(db, 'select name, raw from "
+                    "users "
                     "where id = ?', [1]);"
-                    "  const rows = __sloppy.data.sqlite.query(db, 'select name from users order "
+                    "  const rows = await __sloppy.data.sqlite.query(db, 'select name from users "
+                    "order "
                     "by id', []);"
-                    "  const typed = __sloppy.data.sqlite.queryOne(db, 'select typeof(?) as kind', "
+                    "  const typed = await __sloppy.data.sqlite.queryOne(db, 'select typeof(?) as "
+                    "kind', "
                     "[9007199254740991]);"
                     "  const raw = Array.from(row.raw);"
                     "  __sloppy.data.sqlite.close(db);"
@@ -4576,12 +4583,13 @@ static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
             sl_engine_eval_source(
                 engine, sl_str_from_cstr("sqlite-denied.js"),
                 sl_str_from_cstr(
-                    "globalThis.sqliteDenied = function () {"
+                    "globalThis.sqliteDenied = async function () {"
                     "  const db = __sloppy.data.sqlite.open({ provider: 'sqlite', database: "
                     "':memory:', capability: 'data.main', access: 'write' });"
                     "  try {"
-                    "    __sloppy.data.sqlite.exec(db, 'create table users (id integer)', []);"
-                    "    __sloppy.data.sqlite.queryOne(db, 'select id from users', []);"
+                    "    await __sloppy.data.sqlite.exec(db, 'create table users (id integer)', "
+                    "[]);"
+                    "    await __sloppy.data.sqlite.queryOne(db, 'select id from users', []);"
                     "  } finally {"
                     "    __sloppy.data.sqlite.close(db);"
                     "  }"
@@ -4601,7 +4609,7 @@ static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
         return 184;
     }
 
-    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+    if (diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
         expect_str_contains(diag.message,
                             sl_str_from_cstr("capability access denied: insufficient handle "
                                              "access")) != 0 ||
@@ -4824,23 +4832,24 @@ static int test_sqlite_intrinsic_explicit_write_capability_opens_write_only_hand
         return 202;
     }
 
-    if (expect_status(sl_engine_eval_source(
-                          engine, sl_str_from_cstr("sqlite-write-only.js"),
-                          sl_str_from_cstr("globalThis.sqliteWriteOnly = function () {"
-                                           "  const db = __sloppy.data.sqlite.open({ provider: "
-                                           "'sqlite', database: ':memory:', capability: "
-                                           "'data.main', access: 'write' });"
-                                           "  try {"
-                                           "    __sloppy.data.sqlite.exec(db, 'create table t "
-                                           "(id integer)', []);"
-                                           "    __sloppy.data.sqlite.query(db, 'select id from t', "
-                                           "[]);"
-                                           "  } finally {"
-                                           "    __sloppy.data.sqlite.close(db);"
-                                           "  }"
-                                           "};"),
-                          &diag),
-                      SL_STATUS_OK) != 0)
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("sqlite-write-only.js"),
+                sl_str_from_cstr("globalThis.sqliteWriteOnly = async function () {"
+                                 "  const db = __sloppy.data.sqlite.open({ provider: "
+                                 "'sqlite', database: ':memory:', capability: "
+                                 "'data.main', access: 'write' });"
+                                 "  try {"
+                                 "    await __sloppy.data.sqlite.exec(db, 'create table t "
+                                 "(id integer)', []);"
+                                 "    await __sloppy.data.sqlite.query(db, 'select id from t', "
+                                 "[]);"
+                                 "  } finally {"
+                                 "    __sloppy.data.sqlite.close(db);"
+                                 "  }"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 203;
@@ -4854,7 +4863,7 @@ static int test_sqlite_intrinsic_explicit_write_capability_opens_write_only_hand
         return 204;
     }
 
-    if (diag.code != SL_DIAG_ENGINE_EXCEPTION ||
+    if (diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
         expect_str_contains(diag.message, sl_str_from_cstr("insufficient handle access")) != 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("actual access: write")) != 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("operation: read")) != 0)

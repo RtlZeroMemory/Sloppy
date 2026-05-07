@@ -18,10 +18,13 @@ ctest -R conformance.sqlite.native_provider --output-on-failure
 
 Expected native behavior:
 
-- open and close `:memory:` databases and reject use after close;
+- open and close `:memory:` and file databases and reject use after close;
+- expose provider configuration that maps SQLite to `SERIALIZED_BLOCKING` executor policy;
 - execute DDL/DML, insert rows, query rows, and return `queryOne` found/not-found states;
 - copy text and blob values into arena-owned result storage, preserving embedded bytes;
 - map null, integer, float, text, boolean, blob, and empty blob parameters/results;
+- treat JSON, date, time, timestamp, and instant-like values as explicit text/blob
+  encodings, not native SQLite types;
 - reject unsupported parameters, trailing SQL, arity mismatch, invalid open options, and
   invalid SQL with stable provider diagnostics;
 - redact SQL parameter values from provider diagnostics;
@@ -59,9 +62,10 @@ Expected users API behavior:
 - verify `GET /users`, `GET /users/{id}`, missing-user `404`, `POST /users`, follow-up
   `GET /users`, invalid JSON `400`, and denied SQLite capability behavior.
 
-Default evidence: native C SQLite provider tests cover `:memory:` open, exec, query,
-`queryOne`, primitive parameters, transactions, and diagnostics. The default suite does
-not prove the V8 JavaScript bridge or localhost transport executed.
+Default evidence: native C SQLite provider tests cover `:memory:` and file DB open, exec,
+query, `queryOne`, primitive parameters, explicit SQLite encoding policy, transactions,
+provider executor configuration, and diagnostics. The default suite does not prove the V8
+JavaScript bridge or localhost transport executed.
 
 Gated/deferred requirements: PostgreSQL and SQL Server JavaScript bridges are not part of
 this conformance suite. The users API fixture is localhost transport evidence, not

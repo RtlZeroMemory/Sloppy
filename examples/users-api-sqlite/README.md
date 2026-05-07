@@ -56,6 +56,6 @@ This is not an ORM, migration framework, production HTTP edge, benchmark, public
 claim, keep-alive/chunked/streaming stress claim, PostgreSQL bridge claim, or SQL Server
 bridge claim. The localhost transport is keep-alive-capable for basic request sequences,
 but this users API fixture remains V8-gated workflow evidence rather than streaming,
-chunked, pipelining, or production-edge HTTP evidence. SQLite bridge calls are still
-synchronous in the current V8 bridge; provider executor/offload conversion remains a
-separate provider-runtime task.
+chunked, pipelining, or production-edge HTTP evidence. SQLite bridge calls are
+async-at-boundary through the serialized provider executor; they are not `TRUE_ASYNC`
+database I/O claims.

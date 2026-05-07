@@ -156,6 +156,9 @@ struct SlV8Engine
     SlProviderInstanceExecutor fs_executor = {};
     std::array<SlProviderExecutorSlot, 32U> fs_slots = {};
     bool fs_executor_initialized = false;
+    SlProviderInstanceExecutor sqlite_executor = {};
+    std::array<SlProviderExecutorSlot, 32U> sqlite_slots = {};
+    bool sqlite_executor_initialized = false;
 };
 
 bool sl_v8_runtime_feature_active(const SlV8Engine* backend, SlRuntimeFeatureId id);

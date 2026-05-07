@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #define TEST_ARENA_SIZE 131072U
 
@@ -187,6 +188,22 @@ static int close_and_return(SlSqliteConnection* connection, int result)
     return result;
 }
 
+static SlStatus allow_sqlite_capability(const SlCapabilityRegistry* registry, SlArena* diag_arena,
+                                        SlStr token, SlCapabilityOperation operation,
+                                        SlStr provider_token, SlStr provider_kind, SlDiag* out_diag,
+                                        void* user)
+{
+    (void)registry;
+    (void)diag_arena;
+    (void)token;
+    (void)operation;
+    (void)provider_token;
+    (void)provider_kind;
+    (void)out_diag;
+    (void)user;
+    return sl_status_ok();
+}
+
 static int test_open_close_and_use_after_close(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -219,6 +236,112 @@ static int test_open_close_and_use_after_close(void)
     }
 
     return 0;
+}
+
+static int test_sqlite_provider_executor_config_policy(void)
+{
+    SlSqliteProviderConfig config = sl_sqlite_provider_config_default(
+        sl_str_from_cstr("data.main"), sl_str_from_cstr("cap.database.main"));
+    SlProviderExecutorConfig executor_config = {0};
+    SlStatus status;
+
+    config.queue_capacity = 7U;
+    config.capability_check = allow_sqlite_capability;
+    config.capability_check_user = &config;
+
+    status = sl_sqlite_provider_executor_config(&config, &executor_config);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        !sl_str_equal(executor_config.instance_id, sl_str_from_cstr("data.main")) ||
+        !sl_str_equal(executor_config.provider_kind, sl_str_from_cstr("sqlite")) ||
+        !sl_str_equal(executor_config.provider_token, sl_str_from_cstr("cap.database.main")) ||
+        executor_config.mode != SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING ||
+        executor_config.queue_capacity != 7U || executor_config.worker_count != 1U ||
+        executor_config.max_in_flight != 1U ||
+        executor_config.capability_check != allow_sqlite_capability ||
+        executor_config.capability_check_user != &config)
+    {
+        return 6;
+    }
+
+    config.queue_capacity = 0U;
+    executor_config.mode = SL_PROVIDER_EXECUTION_UNAVAILABLE;
+    status = sl_sqlite_provider_executor_config(&config, &executor_config);
+    if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        executor_config.mode != SL_PROVIDER_EXECUTION_UNAVAILABLE)
+    {
+        return 7;
+    }
+
+    return 0;
+}
+
+static int test_temp_file_database_persists_and_reopens(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteConnection readonly_connection = {0};
+    SlSqliteOpenOptions options = {.path = sl_str_from_cstr("sloppy_sqlite_file_policy_test.db"),
+                                   .access = SL_SQLITE_ACCESS_READWRITE};
+    SlSqliteOpenOptions readonly_options = {
+        .path = sl_str_from_cstr("sloppy_sqlite_file_policy_test.db"),
+        .access = SL_SQLITE_ACCESS_READ};
+    SlSqliteParam params[1] = {text_param("persisted")};
+    SlSqliteExecResult exec_result = {0};
+    SlSqliteQueryOneResult one = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    (void)remove("sloppy_sqlite_file_policy_test.db");
+
+    if (!sl_status_is_ok(status)) {
+        return 8;
+    }
+
+    status = sl_sqlite_open(&arena, &options, &connection, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        (void)remove("sloppy_sqlite_file_policy_test.db");
+        return 9;
+    }
+
+    if (exec_sql(&arena, &connection, "create table file_policy (value text)") != 0) {
+        (void)remove("sloppy_sqlite_file_policy_test.db");
+        return close_and_return(&connection, 10);
+    }
+
+    status = sl_sqlite_exec(&arena, &connection,
+                            sl_str_from_cstr("insert into file_policy (value) values (?)"), params,
+                            1U, &exec_result, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
+        (void)remove("sloppy_sqlite_file_policy_test.db");
+        return close_and_return(&connection, 11);
+    }
+
+    if (expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) != 0) {
+        (void)remove("sloppy_sqlite_file_policy_test.db");
+        return 12;
+    }
+
+    status = sl_sqlite_open(&arena, &readonly_options, &readonly_connection, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        (void)remove("sloppy_sqlite_file_policy_test.db");
+        return 13;
+    }
+
+    status = sl_sqlite_query_one(
+        &arena, &readonly_connection,
+        sl_str_from_cstr("select value from file_policy where value = 'persisted'"), NULL, 0U, &one,
+        NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found || one.column_count != 1U ||
+        one.values[0].kind != SL_SQLITE_VALUE_TEXT ||
+        expect_str_equal(one.values[0].value.text, "persisted") != 0)
+    {
+        (void)remove("sloppy_sqlite_file_policy_test.db");
+        return close_and_return(&readonly_connection, 14);
+    }
+
+    status = sl_sqlite_close(&readonly_connection);
+    (void)remove("sloppy_sqlite_file_policy_test.db");
+    return expect_status(status, SL_STATUS_OK) == 0 ? 0 : 15;
 }
 
 static int test_exec_insert_and_query_rows(void)
@@ -356,6 +479,61 @@ static int test_parameter_binding_and_types(void)
     }
 
     return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 27;
+}
+
+static int test_json_date_time_are_explicit_text_policy(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteParam params[] = {text_param("{\"ok\":true}"), text_param("2026-05-07"),
+                              text_param("18:45:30.123"), text_param("2026-05-07T14:45:30Z")};
+    SlSqliteExecResult exec_result = {0};
+    SlSqliteQueryOneResult row = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 28;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 29;
+    }
+    if (exec_sql(&arena, &connection,
+                 "create table encoded_values (json_text text, date_text text, time_text text, "
+                 "instant_text text)") != 0)
+    {
+        return close_and_return(&connection, 30);
+    }
+
+    status = sl_sqlite_exec(&arena, &connection,
+                            sl_str_from_cstr("insert into encoded_values values (?, ?, ?, ?)"),
+                            params, 4U, &exec_result, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
+        return close_and_return(&connection, 31);
+    }
+
+    status = sl_sqlite_query_one(
+        &arena, &connection,
+        sl_str_from_cstr(
+            "select json_text, date_text, time_text, instant_text from encoded_values"),
+        NULL, 0U, &row, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !row.found || row.column_count != 4U) {
+        return close_and_return(&connection, 32);
+    }
+
+    if (row.values[0].kind != SL_SQLITE_VALUE_TEXT ||
+        expect_str_equal(row.values[0].value.text, "{\"ok\":true}") != 0 ||
+        row.values[1].kind != SL_SQLITE_VALUE_TEXT ||
+        expect_str_equal(row.values[1].value.text, "2026-05-07") != 0 ||
+        row.values[2].kind != SL_SQLITE_VALUE_TEXT ||
+        expect_str_equal(row.values[2].value.text, "18:45:30.123") != 0 ||
+        row.values[3].kind != SL_SQLITE_VALUE_TEXT ||
+        expect_str_equal(row.values[3].value.text, "2026-05-07T14:45:30Z") != 0)
+    {
+        return close_and_return(&connection, 33);
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 34;
 }
 
 static int test_result_and_parameter_lifetimes(void)
@@ -959,12 +1137,27 @@ int main(void)
         return result;
     }
 
+    result = test_sqlite_provider_executor_config_policy();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_temp_file_database_persists_and_reopens();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_exec_insert_and_query_rows();
     if (result != 0) {
         return result;
     }
 
     result = test_parameter_binding_and_types();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_json_date_time_are_explicit_text_policy();
     if (result != 0) {
         return result;
     }

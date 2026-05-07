@@ -12,7 +12,8 @@ Implemented now:
 - SQLite headers are included only in that provider-specific file.
 - libpq headers are included only in the PostgreSQL provider-specific file.
 - ODBC headers are included only in the SQL Server provider-specific file.
-- Native tests cover `:memory:` open/close, `exec`, `query`, `queryOne`, parameter binding,
+- Native tests cover `:memory:` and file database open/close, `exec`, `query`, `queryOne`,
+  parameter binding, explicit SQLite text encoding for JSON/date/time-like values,
   transaction commit/rollback, and provider diagnostics.
 - PostgreSQL default tests cover option validation, redaction, bridge diagnostics, and
   skipped-by-default live coverage. When `SLOPPY_POSTGRES_TEST_URL` is set, they connect to
@@ -25,10 +26,9 @@ Implemented now:
 
 Still deferred:
 
-- JavaScript stdlib-to-native database intrinsics;
-- provider adoption of the common Db contract, production pooling, migrations, provider
-  async/offload integration, cancellation/deadlines, TLS option hardening, provider array
-  mapping, richer JSON/blob/date support, and SQL Server TVP/bulk support.
+- broader JavaScript PostgreSQL and SQL Server provider intrinsics;
+- migrations, cancellation/deadline hardening, TLS option hardening, provider array
+  mapping, richer provider-specific value policy, and SQL Server TVP/bulk support.
 
 Future JavaScript-visible provider handles must use `SlResourceId` entries in the core
 resource table. Provider pointers and driver handles must not be exposed to JavaScript.

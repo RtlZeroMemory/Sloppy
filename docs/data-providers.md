@@ -19,15 +19,20 @@ Implemented foundations include:
 - provider-neutral C Db contract types for `DbValue`, SQL statements, parameters,
   columns, row sets, execute results, transaction options, and redacted statement
   diagnostics;
-- synchronous native SQLite query/exec behavior;
-- a narrow V8-gated SQLite bridge;
+- SQLite provider configuration that maps to `SERIALIZED_BLOCKING` executor policy with
+  one active operation per provider instance;
+- native SQLite open/close, file and in-memory database, query/exec,
+  transaction, binding, result-copy, and diagnostic behavior;
+- a V8-gated SQLite bridge that routes SQLite exec/query/queryOne/transaction work through
+  the serialized provider executor and settles Promises on the V8 owner thread;
 - doctor/audit metadata for providers and capabilities;
 - tests and examples that distinguish metadata, native provider behavior, V8 bridge
   behavior, and live-provider evidence.
 
-The current SQLite bridge is synchronous in the V8 path. Provider executor/offload adoption
-for that bridge remains separate work. PostgreSQL and SQL Server JavaScript bridge behavior
-and live-provider lanes must not be implied unless those lanes run.
+The SQLite bridge is async at the JavaScript boundary through the `SERIALIZED_BLOCKING`
+executor. SQLite work still runs on one serialized blocking worker per provider instance;
+it is not labeled `TRUE_ASYNC`. PostgreSQL and SQL Server JavaScript bridge behavior and
+live-provider lanes must not be implied unless those lanes run.
 
 ## Capability Rules
 
@@ -72,6 +77,10 @@ Provider-specific implementations still own driver conversion rules, lifecycle, 
 I/O. The common contract is not an ORM, migration layer, SQL parser, or package-manager
 surface.
 
+SQLite stores only SQLite-native null, integer, real, text, and blob values. Sloppy maps
+JSON, date, time, timestamp, and instant values through explicit text/blob encodings for
+SQLite instead of claiming native SQLite value types that do not exist.
+
 ## Evidence Lanes
 
 - Default non-V8 tests can prove native provider metadata and native provider contracts.
@@ -83,7 +92,6 @@ These lanes are separate. A default pass is not live-provider or V8 evidence.
 
 ## Deferred Work
 
-Deferred provider work includes executor-backed SQLite bridge adoption, broader
-JavaScript-to-native provider bridges, Docker-backed live-provider CI lanes, richer
-provider audit policy, connection pooling policy, migrations/schema tooling, and
-production hardening.
+Deferred provider work includes broader JavaScript-to-native PostgreSQL and SQL Server
+bridges, Docker-backed live-provider CI lanes, richer provider audit policy,
+migrations/schema tooling, and production hardening.

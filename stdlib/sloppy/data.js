@@ -354,9 +354,9 @@ function createSqliteConnection(nativeBridge, handle) {
         };
     }
 
-    function rollbackAfterCallbackError(error, transaction) {
+    async function rollbackAfterCallbackError(error, transaction) {
         try {
-            nativeBridge.transactionRollback(state.handle);
+            await nativeBridge.transactionRollback(state.handle);
         } catch {
             if (transaction !== undefined) {
                 transaction.close();
@@ -376,11 +376,12 @@ function createSqliteConnection(nativeBridge, handle) {
         throw error;
     }
 
-    function commitTransaction(transaction) {
+    async function commitTransaction(transaction) {
         try {
-            nativeBridge.transactionCommit(state.handle);
+            await nativeBridge.transactionCommit(state.handle);
         } catch (error) {
             transaction.close();
+            state.transactionActive = false;
             state.closed = true;
             try {
                 nativeBridge.close(state.handle);
@@ -391,31 +392,6 @@ function createSqliteConnection(nativeBridge, handle) {
         }
         transaction.close();
         state.transactionActive = false;
-    }
-
-    function callbackResultThen(callbackResult, transaction) {
-        if (
-            callbackResult === null
-            || typeof callbackResult !== "object" && typeof callbackResult !== "function"
-        ) {
-            return undefined;
-        }
-
-        try {
-            return callbackResult.then;
-        } catch (error) {
-            return rollbackAfterCallbackError(error, transaction);
-        }
-    }
-
-    function resolveThenable(callbackResult, then) {
-        return new Promise((resolve, reject) => {
-            try {
-                then.call(callbackResult, resolve, reject);
-            } catch (error) {
-                reject(error);
-            }
-        });
     }
 
     return Object.freeze({
@@ -437,7 +413,7 @@ function createSqliteConnection(nativeBridge, handle) {
             return nativeBridge.exec(state.handle, query.text, query.parameters);
         },
 
-        transaction(callback) {
+        async transaction(callback) {
             assertOpen("transaction");
             if (typeof callback !== "function") {
                 throw new TypeError("Sloppy sqlite.transaction callback must be a function.");
@@ -446,34 +422,23 @@ function createSqliteConnection(nativeBridge, handle) {
                 throw createSqliteNestedTransactionError();
             }
 
-            nativeBridge.transactionBegin(state.handle);
             state.transactionActive = true;
+            try {
+                await nativeBridge.transactionBegin(state.handle);
+            } catch (error) {
+                state.transactionActive = false;
+                throw error;
+            }
 
             const transaction = createSqliteTransaction();
-            let callbackResult;
-
+            let value;
             try {
-                callbackResult = callback(transaction.tx);
+                value = await callback(transaction.tx);
             } catch (error) {
                 return rollbackAfterCallbackError(error, transaction);
             }
-
-            const then = callbackResultThen(callbackResult, transaction);
-
-            if (typeof then !== "function") {
-                commitTransaction(transaction);
-                return callbackResult;
-            }
-
-            return resolveThenable(callbackResult, then).then(
-                (value) => {
-                    commitTransaction(transaction);
-                    return value;
-                },
-                (error) => {
-                    return rollbackAfterCallbackError(error, transaction);
-                },
-            );
+            await commitTransaction(transaction);
+            return value;
         },
 
         close() {

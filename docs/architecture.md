@@ -24,7 +24,7 @@ Implemented foundations include:
   native/runtime lanes;
 - runtime feature descriptors and activation checks;
 - provider metadata, native provider boundaries, provider executor infrastructure, and the
-  current synchronous SQLite V8 bridge;
+  executor-backed SQLite V8 bridge;
 - optional V8 handler execution, request-context/result conversion, bounded Promise
   settlement, exception diagnostics, and source-map primary-span remapping;
 - docs, tests, conformance fixtures, package fixtures, fuzz/property scaffolding, and
