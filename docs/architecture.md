@@ -108,12 +108,14 @@ process APIs must not leak into public headers or core modules.
 
 The current HTTP path is a bounded localhost/runtime transport, not a production edge
 server. The parser and backend own complete-buffer request semantics, request lifecycle,
-body limits, diagnostics, cancellation, and response serialization. The transport owns
-listener/connection handles, bounded connection storage, sequential keep-alive, and scoped
-chunked behavior where implemented.
+body limits, diagnostics, cancellation, response serialization, and an optional inbound
+OpenSSL TLS wrapper. The transport owns listener/connection handles, bounded connection
+storage, sequential keep-alive, scoped chunked behavior, and TLS handshake/encrypted-write
+plumbing where configured.
 
-Deferred HTTP work includes TLS, production graceful drain, HTTP/2/3, WebSockets, SSE,
-static files, public streaming response APIs, and production-edge hardening.
+Deferred HTTP work includes production graceful drain, HTTP/2/3, WebSockets, SSE, static
+files, public streaming response APIs, ALPN/mTLS/custom certificate validation, and
+production-edge hardening.
 
 ## Provider Boundary
 

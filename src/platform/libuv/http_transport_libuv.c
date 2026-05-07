@@ -11,12 +11,15 @@
 #include "sloppy/http_response.h"
 
 #include <limits.h>
+#include <openssl/err.h>
+#include <openssl/ssl.h>
 #include <uv.h>
 
 struct SlHttpPlatformConnection
 {
     uv_tcp_t handle;
     uv_write_t write;
+    uv_write_t tls_write;
     uv_timer_t header_timer;
     uv_timer_t body_timer;
     uv_timer_t request_timer;
@@ -24,7 +27,14 @@ struct SlHttpPlatformConnection
     uv_timer_t idle_timer;
     SlHttpTransportConnection* owner;
     unsigned char* read_buffer;
+    unsigned char* tls_plain_read_buffer;
+    unsigned char* tls_handshake_write_buffer;
+    unsigned char* tls_write_buffer;
     size_t read_buffer_size;
+    size_t tls_plain_read_buffer_size;
+    size_t tls_handshake_write_buffer_size;
+    size_t tls_write_buffer_size;
+    SSL* tls_ssl;
     bool initialized;
     bool header_timer_initialized;
     bool body_timer_initialized;
@@ -34,6 +44,10 @@ struct SlHttpPlatformConnection
     bool closing;
     bool reading;
     bool writing;
+    bool tls_enabled;
+    bool tls_handshake_complete;
+    bool tls_writing;
+    bool tls_shutdown_writing;
 };
 
 struct SlHttpPlatformListener
@@ -42,6 +56,7 @@ struct SlHttpPlatformListener
     uv_tcp_t listener;
     uv_tcp_t overflow;
     SlHttpTransportServer* server;
+    SSL_CTX* tls_context;
     bool loop_initialized;
     bool listener_initialized;
     bool overflow_initialized;
@@ -221,6 +236,10 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
                                                  ? config.max_requests_per_connection
                                                  : input->max_requests_per_connection;
         config.keep_alive_disabled = input->keep_alive_disabled;
+        config.tls = input->tls;
+        if (config.tls.enabled && config.tls.backend == SL_HTTP_TRANSPORT_TLS_BACKEND_NONE) {
+            config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+        }
         config.connection_capacity = input->connection_capacity;
         config.backlog = input->backlog;
         config.on_request_ready = input->on_request_ready;
@@ -268,6 +287,49 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
                           "HTTP transport request body limit exceeds request arena",
                           sizeof("HTTP transport request body limit exceeds request arena") - 1U));
     }
+    if (config.tls.enabled) {
+        if (config.tls.backend != SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL) {
+            return sl_http_transport_diag(
+                out_diag, SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE, SL_STATUS_UNSUPPORTED,
+                sl_http_transport_literal("HTTP TLS backend is unsupported",
+                                          sizeof("HTTP TLS backend is unsupported") - 1U),
+                sl_http_transport_literal("use the OpenSSL TLS backend for inbound HTTPS",
+                                          sizeof("use the OpenSSL TLS backend for inbound HTTPS") -
+                                              1U));
+        }
+        if (!sl_http_transport_str_valid(config.tls.certificate_path) ||
+            sl_str_is_empty(config.tls.certificate_path))
+        {
+            return sl_http_transport_diag(
+                out_diag, SL_DIAG_HTTP_TLS_CONFIG, SL_STATUS_INVALID_ARGUMENT,
+                sl_http_transport_literal("HTTP TLS certificate path is required",
+                                          sizeof("HTTP TLS certificate path is required") - 1U),
+                sl_http_transport_literal("configure a non-secret certificate path",
+                                          sizeof("configure a non-secret certificate path") - 1U));
+        }
+        if (!sl_http_transport_str_valid(config.tls.private_key_path) ||
+            sl_str_is_empty(config.tls.private_key_path))
+        {
+            return sl_http_transport_diag(
+                out_diag, SL_DIAG_HTTP_TLS_CONFIG, SL_STATUS_INVALID_ARGUMENT,
+                sl_http_transport_literal("HTTP TLS private key path is required",
+                                          sizeof("HTTP TLS private key path is required") - 1U),
+                sl_http_transport_literal("configure a private key path; key material is redacted",
+                                          sizeof("configure a private key path; key material is "
+                                                 "redacted") -
+                                              1U));
+        }
+        if (!sl_http_transport_str_valid(config.tls.passphrase)) {
+            return sl_http_transport_diag(
+                out_diag, SL_DIAG_HTTP_TLS_CONFIG, SL_STATUS_INVALID_ARGUMENT,
+                sl_http_transport_literal("HTTP TLS passphrase value is invalid",
+                                          sizeof("HTTP TLS passphrase value is invalid") - 1U),
+                sl_http_transport_literal("TLS passphrases are accepted only as bounded strings",
+                                          sizeof("TLS passphrases are accepted only as bounded "
+                                                 "strings") -
+                                              1U));
+        }
+    }
 
     *out = config;
     return sl_status_ok();
@@ -288,6 +350,14 @@ static void sl_http_transport_connection_close_cb(uv_handle_t* handle)
     if (platform == NULL) {
         return;
     }
+    if (platform->tls_ssl != NULL) {
+        SSL_free(platform->tls_ssl);
+        platform->tls_ssl = NULL;
+    }
+    platform->tls_enabled = false;
+    platform->tls_handshake_complete = false;
+    platform->tls_writing = false;
+    platform->tls_shutdown_writing = false;
     platform->closing = false;
     platform->initialized = false;
     if (platform->owner != NULL) {
@@ -492,11 +562,15 @@ static void sl_http_transport_stop_timer(uv_timer_t* timer, bool* initialized);
 static void sl_http_transport_write_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_idle_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_write_cb(uv_write_t* request, int status);
+static void sl_http_transport_tls_write_cb(uv_write_t* request, int status);
+static void sl_http_transport_tls_shutdown_write_cb(uv_write_t* request, int status);
 static SlStatus sl_http_transport_restart_keep_alive_read(SlHttpTransportConnection* connection,
                                                           SlDiag* out_diag);
 static void sl_http_transport_alloc_read(uv_handle_t* handle, size_t suggested_size,
                                          uv_buf_t* out_buffer);
 static void sl_http_transport_on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buffer);
+static SlStatus sl_http_transport_tls_drain_handshake(SlHttpTransportConnection* connection,
+                                                      SlDiag* out_diag);
 
 static bool sl_http_transport_request_terminal(SlHttpRequestState state)
 {
@@ -533,6 +607,207 @@ static bool sl_http_transport_connection_header_has_token(SlStr value, SlStr tok
         cursor = end + 1U;
     }
     return false;
+}
+
+static int sl_http_transport_tls_passphrase_cb(char* buffer, int size, int rwflag, void* user)
+{
+    SlHttpTransportServer* server = (SlHttpTransportServer*)user;
+    SlStr passphrase = {0};
+    size_t index = 0U;
+
+    (void)rwflag;
+    if (buffer == NULL || size <= 0 || server == NULL) {
+        return 0;
+    }
+    passphrase = sl_owned_str_as_view(server->tls_passphrase);
+    if (sl_str_is_empty(passphrase)) {
+        return 0;
+    }
+    if (passphrase.length >= (size_t)size) {
+        return 0;
+    }
+    for (index = 0U; index < passphrase.length; index += 1U) {
+        buffer[index] = passphrase.ptr[index];
+    }
+    buffer[passphrase.length] = '\0';
+    return (int)passphrase.length;
+}
+
+static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server, SlDiag* out_diag)
+{
+    SSL_CTX* context = NULL;
+
+    if (server == NULL || server->platform == NULL || !server->config.tls.enabled) {
+        return sl_status_ok();
+    }
+
+    context = SSL_CTX_new(TLS_server_method());
+    if (context == NULL) {
+        return sl_http_transport_diag(
+            out_diag, SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE, SL_STATUS_UNSUPPORTED,
+            sl_http_transport_literal("HTTP TLS backend initialization failed",
+                                      sizeof("HTTP TLS backend initialization failed") - 1U),
+            sl_http_transport_literal("OpenSSL details stay inside the platform boundary",
+                                      sizeof("OpenSSL details stay inside the platform boundary") -
+                                          1U));
+    }
+
+    SSL_CTX_set_min_proto_version(context, TLS1_2_VERSION);
+    SSL_CTX_set_default_passwd_cb(context, sl_http_transport_tls_passphrase_cb);
+    SSL_CTX_set_default_passwd_cb_userdata(context, server);
+    if (SSL_CTX_use_certificate_chain_file(
+            context, sl_owned_str_as_view(server->tls_certificate_path).ptr) != 1)
+    {
+        SSL_CTX_free(context);
+        return sl_http_transport_diag(
+            out_diag, SL_DIAG_HTTP_TLS_CONFIG, SL_STATUS_INVALID_ARGUMENT,
+            sl_http_transport_literal("HTTP TLS certificate could not be loaded",
+                                      sizeof("HTTP TLS certificate could not be loaded") - 1U),
+            sl_http_transport_literal("certificate diagnostics redact file contents and secrets",
+                                      sizeof("certificate diagnostics redact file contents and "
+                                             "secrets") -
+                                          1U));
+    }
+    if (SSL_CTX_use_PrivateKey_file(context, sl_owned_str_as_view(server->tls_private_key_path).ptr,
+                                    SSL_FILETYPE_PEM) != 1)
+    {
+        SSL_CTX_free(context);
+        return sl_http_transport_diag(
+            out_diag, SL_DIAG_HTTP_TLS_CONFIG, SL_STATUS_INVALID_ARGUMENT,
+            sl_http_transport_literal("HTTP TLS private key could not be loaded",
+                                      sizeof("HTTP TLS private key could not be loaded") - 1U),
+            sl_http_transport_literal("private key material and passphrases are redacted",
+                                      sizeof("private key material and passphrases are redacted") -
+                                          1U));
+    }
+    if (SSL_CTX_check_private_key(context) != 1) {
+        SSL_CTX_free(context);
+        return sl_http_transport_diag(
+            out_diag, SL_DIAG_HTTP_TLS_CONFIG, SL_STATUS_INVALID_ARGUMENT,
+            sl_http_transport_literal("HTTP TLS certificate and private key do not match",
+                                      sizeof("HTTP TLS certificate and private key do not match") -
+                                          1U),
+            sl_http_transport_literal("key material is not included in diagnostics",
+                                      sizeof("key material is not included in diagnostics") - 1U));
+    }
+
+    server->platform->tls_context = context;
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_transport_tls_attach(SlHttpTransportConnection* connection,
+                                             SlDiag* out_diag)
+{
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+    BIO* read_bio = NULL;
+    BIO* write_bio = NULL;
+
+    if (connection == NULL || connection->platform == NULL || server == NULL ||
+        !server->config.tls.enabled)
+    {
+        return sl_status_ok();
+    }
+    if (server->platform == NULL || server->platform->tls_context == NULL) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE, SL_STATUS_UNSUPPORTED,
+            sl_http_transport_literal("HTTP TLS backend is unavailable",
+                                      sizeof("HTTP TLS backend is unavailable") - 1U),
+            sl_http_transport_literal("configure a supported TLS backend before listen",
+                                      sizeof("configure a supported TLS backend before listen") -
+                                          1U));
+    }
+
+    connection->platform->tls_ssl = SSL_new(server->platform->tls_context);
+    read_bio = BIO_new(BIO_s_mem());
+    write_bio = BIO_new(BIO_s_mem());
+    if (connection->platform->tls_ssl == NULL || read_bio == NULL || write_bio == NULL) {
+        if (read_bio != NULL) {
+            BIO_free(read_bio);
+        }
+        if (write_bio != NULL) {
+            BIO_free(write_bio);
+        }
+        if (connection->platform->tls_ssl != NULL) {
+            SSL_free(connection->platform->tls_ssl);
+            connection->platform->tls_ssl = NULL;
+        }
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE, SL_STATUS_OUT_OF_MEMORY,
+            sl_http_transport_literal("HTTP TLS connection state allocation failed",
+                                      sizeof("HTTP TLS connection state allocation failed") - 1U),
+            sl_http_transport_literal("OpenSSL handles stay inside the platform transport",
+                                      sizeof("OpenSSL handles stay inside the platform transport") -
+                                          1U));
+    }
+
+    BIO_set_mem_eof_return(read_bio, -1);
+    BIO_set_mem_eof_return(write_bio, -1);
+    SSL_set_bio(connection->platform->tls_ssl, read_bio, write_bio);
+    SSL_set_accept_state(connection->platform->tls_ssl);
+    connection->platform->tls_enabled = true;
+    connection->platform->tls_handshake_complete = false;
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_transport_tls_drain_handshake(SlHttpTransportConnection* connection,
+                                                      SlDiag* out_diag)
+{
+    SlHttpPlatformConnection* platform = connection == NULL ? NULL : connection->platform;
+    BIO* write_bio = NULL;
+    int pending = 0;
+    int read_count = 0;
+    uv_buf_t buffer;
+
+    if (platform == NULL || platform->tls_ssl == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (platform->tls_writing) {
+        return sl_status_ok();
+    }
+    write_bio = SSL_get_wbio(platform->tls_ssl);
+    pending = write_bio == NULL ? 0 : BIO_pending(write_bio);
+    if (pending <= 0) {
+        return sl_status_ok();
+    }
+    if ((size_t)pending > platform->tls_handshake_write_buffer_size) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_CAPACITY_EXCEEDED,
+            sl_http_transport_literal("HTTP TLS handshake bytes exceed transport buffer",
+                                      sizeof("HTTP TLS handshake bytes exceed transport buffer") -
+                                          1U),
+            sl_http_transport_literal("TLS handshake output must fit configured response caps",
+                                      sizeof("TLS handshake output must fit configured response "
+                                             "caps") -
+                                          1U));
+    }
+    read_count = BIO_read(write_bio, platform->tls_handshake_write_buffer, pending);
+    if (read_count <= 0) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP TLS handshake output failed",
+                                      sizeof("HTTP TLS handshake output failed") - 1U),
+            sl_http_transport_literal("OpenSSL details stay inside the platform boundary",
+                                      sizeof("OpenSSL details stay inside the platform boundary") -
+                                          1U));
+    }
+    buffer = uv_buf_init((char*)platform->tls_handshake_write_buffer, (unsigned int)read_count);
+    platform->tls_write.data = platform;
+    platform->tls_writing = true;
+    if (uv_write(&platform->tls_write, (uv_stream_t*)&platform->handle, &buffer, 1U,
+                 sl_http_transport_tls_write_cb) != 0)
+    {
+        platform->tls_writing = false;
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP TLS handshake write failed",
+                                      sizeof("HTTP TLS handshake write failed") - 1U),
+            sl_http_transport_literal("socket and OpenSSL handles stay inside the platform "
+                                      "boundary",
+                                      sizeof("socket and OpenSSL handles stay inside the platform "
+                                             "boundary") -
+                                          1U));
+    }
+    return sl_status_ok();
 }
 
 static bool sl_http_transport_client_requested_close(const SlHttpRequestHead* head)
@@ -738,7 +1013,68 @@ static SlStatus sl_http_transport_start_write_bytes(SlHttpTransportConnection* c
                                       sizeof("the connection is already closing or writing") - 1U));
     }
 
-    buffer = uv_buf_init((char*)bytes.ptr, (unsigned int)bytes.length);
+    if (connection->platform->tls_enabled) {
+        BIO* write_bio = NULL;
+        int pending = 0;
+        int read_count = 0;
+        int write_count = 0;
+
+        if (!connection->platform->tls_handshake_complete ||
+            connection->platform->tls_ssl == NULL || bytes.length > (size_t)INT_MAX)
+        {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INVALID_STATE,
+                sl_http_transport_literal("HTTP TLS response write cannot start",
+                                          sizeof("HTTP TLS response write cannot start") - 1U),
+                sl_http_transport_literal("TLS handshake must complete before HTTP response "
+                                          "bytes are written",
+                                          sizeof("TLS handshake must complete before HTTP "
+                                                 "response bytes are written") -
+                                              1U));
+        }
+        ERR_clear_error();
+        write_count = SSL_write(connection->platform->tls_ssl, bytes.ptr, (int)bytes.length);
+        if (write_count <= 0 || (size_t)write_count != bytes.length) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
+                sl_http_transport_literal("HTTP TLS response encryption failed",
+                                          sizeof("HTTP TLS response encryption failed") - 1U),
+                sl_http_transport_literal("OpenSSL details stay inside the platform boundary",
+                                          sizeof("OpenSSL details stay inside the platform "
+                                                 "boundary") -
+                                              1U));
+        }
+        write_bio = SSL_get_wbio(connection->platform->tls_ssl);
+        pending = write_bio == NULL ? 0 : BIO_pending(write_bio);
+        if (pending <= 0 || (size_t)pending > connection->platform->tls_write_buffer_size) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_CAPACITY_EXCEEDED,
+                sl_http_transport_literal("HTTP TLS response bytes exceed transport buffer",
+                                          sizeof("HTTP TLS response bytes exceed transport "
+                                                 "buffer") -
+                                              1U),
+                sl_http_transport_literal("encrypted response bytes must fit configured caps",
+                                          sizeof("encrypted response bytes must fit configured "
+                                                 "caps") -
+                                              1U));
+        }
+        read_count = BIO_read(write_bio, connection->platform->tls_write_buffer, pending);
+        if (read_count <= 0) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
+                sl_http_transport_literal("HTTP TLS response output failed",
+                                          sizeof("HTTP TLS response output failed") - 1U),
+                sl_http_transport_literal("OpenSSL details stay inside the platform boundary",
+                                          sizeof("OpenSSL details stay inside the platform "
+                                                 "boundary") -
+                                              1U));
+        }
+        buffer =
+            uv_buf_init((char*)connection->platform->tls_write_buffer, (unsigned int)read_count);
+    }
+    else {
+        buffer = uv_buf_init((char*)bytes.ptr, (unsigned int)bytes.length);
+    }
     connection->platform->write.data = connection->platform;
     {
         SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
@@ -1138,14 +1474,59 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
     (void)sl_http_transport_connection_close(connection, NULL);
 }
 
+static void sl_http_transport_tls_write_cb(uv_write_t* request, int status)
+{
+    SlHttpPlatformConnection* platform =
+        request == NULL ? NULL : (SlHttpPlatformConnection*)request->data;
+    SlHttpTransportConnection* connection = platform == NULL ? NULL : platform->owner;
+    SlDiag diag = {0};
+
+    if (platform != NULL) {
+        platform->tls_writing = false;
+    }
+    if (connection == NULL) {
+        return;
+    }
+    if (status != 0) {
+        (void)sl_http_transport_connection_diag(
+            connection, &diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP TLS handshake write failed",
+                                      sizeof("HTTP TLS handshake write failed") - 1U),
+            sl_http_transport_literal("socket and OpenSSL handles stay inside the platform "
+                                      "boundary",
+                                      sizeof("socket and OpenSSL handles stay inside the platform "
+                                             "boundary") -
+                                          1U));
+        (void)sl_http_transport_connection_close(connection, NULL);
+        return;
+    }
+    if (!sl_status_is_ok(sl_http_transport_tls_drain_handshake(connection, &diag))) {
+        (void)sl_http_transport_connection_close(connection, NULL);
+    }
+}
+
+static void sl_http_transport_tls_shutdown_write_cb(uv_write_t* request, int status)
+{
+    SlHttpPlatformConnection* platform =
+        request == NULL ? NULL : (SlHttpPlatformConnection*)request->data;
+
+    (void)status;
+    if (platform == NULL) {
+        return;
+    }
+    platform->tls_writing = false;
+    platform->tls_shutdown_writing = false;
+    if (platform->initialized && !uv_is_closing((uv_handle_t*)&platform->handle)) {
+        uv_close((uv_handle_t*)&platform->handle, sl_http_transport_connection_close_cb);
+    }
+}
+
 static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* connection,
                                                  const SlHttpResponse* response, SlDiag* out_diag)
 {
     SlStatus status;
     SlBytes bytes = {0};
     SlHttpResponseWriteOptions write_options = {0};
-    uv_buf_t buffer;
-    int rc = 0;
 
     if (connection == NULL || response == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1217,51 +1598,7 @@ static SlStatus sl_http_transport_write_response(SlHttpTransportConnection* conn
     }
 
     connection->response_length = bytes.length;
-    if (connection->platform == NULL || !connection->platform->initialized ||
-        connection->platform->closing)
-    {
-        return sl_http_transport_connection_diag(
-            connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INVALID_STATE,
-            sl_http_transport_literal("HTTP transport response write cannot start",
-                                      sizeof("HTTP transport response write cannot start") - 1U),
-            sl_http_transport_literal("the connection is already closing",
-                                      sizeof("the connection is already closing") - 1U));
-    }
-
-    buffer = uv_buf_init((char*)connection->response_storage, (unsigned int)bytes.length);
-    connection->platform->write.data = connection->platform;
-    {
-        SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
-        status =
-            sl_http_transport_start_timer(connection->platform, &connection->platform->write_timer,
-                                          &connection->platform->write_timer_initialized,
-                                          server == NULL ? 0U : server->config.write_timeout_ms,
-                                          sl_http_transport_write_timeout_cb);
-    }
-    if (!sl_status_is_ok(status)) {
-        return sl_http_transport_connection_diag(
-            connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, sl_status_code(status),
-            sl_http_transport_literal("HTTP transport write timeout could not start",
-                                      sizeof("HTTP transport write timeout could not start") - 1U),
-            sl_http_transport_literal("the response write was not queued",
-                                      sizeof("the response write was not queued") - 1U));
-    }
-    connection->platform->writing = true;
-    connection->write_started = true;
-    rc = uv_write(&connection->platform->write, (uv_stream_t*)&connection->platform->handle,
-                  &buffer, 1U, sl_http_transport_write_cb);
-    if (rc != 0) {
-        connection->platform->writing = false;
-        sl_http_transport_stop_timer(&connection->platform->write_timer,
-                                     &connection->platform->write_timer_initialized);
-        return sl_http_transport_uv_status(
-            rc, out_diag, SL_DIAG_HTTP_WRITE_FAILED,
-            sl_http_transport_literal("HTTP transport response write failed to start",
-                                      sizeof("HTTP transport response write failed to start") -
-                                          1U));
-    }
-
-    return sl_status_ok();
+    return sl_http_transport_start_write_bytes(connection, bytes, out_diag);
 }
 
 static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection* connection,
@@ -1270,7 +1607,6 @@ static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection
     SlHttpResponse response =
         sl_http_response_text(status_code, sl_http_transport_body_for_status(status_code));
     SlBytes bytes = {0};
-    uv_buf_t buffer;
 
     if (connection == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1301,44 +1637,9 @@ static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection
                                           1U));
     }
 
-    buffer = uv_buf_init((char*)connection->response_storage, (unsigned int)bytes.length);
-    connection->platform->write.data = connection->platform;
-    {
-        SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
-        SlStatus timer_status =
-            sl_http_transport_start_timer(connection->platform, &connection->platform->write_timer,
-                                          &connection->platform->write_timer_initialized,
-                                          server == NULL ? 0U : server->config.write_timeout_ms,
-                                          sl_http_transport_write_timeout_cb);
-        if (!sl_status_is_ok(timer_status)) {
-            return sl_http_transport_connection_diag(
-                connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, sl_status_code(timer_status),
-                sl_http_transport_literal("HTTP transport write timeout could not start",
-                                          sizeof("HTTP transport write timeout could not start") -
-                                              1U),
-                sl_http_transport_literal("the response write was not queued",
-                                          sizeof("the response write was not queued") - 1U));
-        }
-    }
-    connection->platform->writing = true;
-    connection->write_started = true;
     connection->response_length = bytes.length;
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
-    if (uv_write(&connection->platform->write, (uv_stream_t*)&connection->platform->handle, &buffer,
-                 1U, sl_http_transport_write_cb) != 0)
-    {
-        connection->platform->writing = false;
-        sl_http_transport_stop_timer(&connection->platform->write_timer,
-                                     &connection->platform->write_timer_initialized);
-        return sl_http_transport_connection_diag(
-            connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, SL_STATUS_INTERNAL,
-            sl_http_transport_literal("HTTP transport response write failed to start",
-                                      sizeof("HTTP transport response write failed to start") - 1U),
-            sl_http_transport_literal("socket details stay inside the platform boundary",
-                                      sizeof("socket details stay inside the platform boundary") -
-                                          1U));
-    }
-    return sl_status_ok();
+    return sl_http_transport_start_write_bytes(connection, bytes, out_diag);
 }
 
 static void sl_http_transport_timer_close_cb(uv_handle_t* handle)
@@ -2331,6 +2632,16 @@ static SlHttpTransportConnection* sl_http_transport_claim_connection(SlHttpTrans
             size_t response_storage_size = connection->response_storage_size;
             unsigned char* read_buffer = platform == NULL ? NULL : platform->read_buffer;
             size_t read_buffer_size = platform == NULL ? 0U : platform->read_buffer_size;
+            unsigned char* tls_plain_read_buffer =
+                platform == NULL ? NULL : platform->tls_plain_read_buffer;
+            size_t tls_plain_read_buffer_size =
+                platform == NULL ? 0U : platform->tls_plain_read_buffer_size;
+            unsigned char* tls_handshake_write_buffer =
+                platform == NULL ? NULL : platform->tls_handshake_write_buffer;
+            size_t tls_handshake_write_buffer_size =
+                platform == NULL ? 0U : platform->tls_handshake_write_buffer_size;
+            unsigned char* tls_write_buffer = platform == NULL ? NULL : platform->tls_write_buffer;
+            size_t tls_write_buffer_size = platform == NULL ? 0U : platform->tls_write_buffer_size;
             *connection = (SlHttpTransportConnection){0};
             connection->platform = platform;
             connection->request_storage = request_storage;
@@ -2342,6 +2653,12 @@ static SlHttpTransportConnection* sl_http_transport_claim_connection(SlHttpTrans
             connection->platform->owner = connection;
             connection->platform->read_buffer = read_buffer;
             connection->platform->read_buffer_size = read_buffer_size;
+            connection->platform->tls_plain_read_buffer = tls_plain_read_buffer;
+            connection->platform->tls_plain_read_buffer_size = tls_plain_read_buffer_size;
+            connection->platform->tls_handshake_write_buffer = tls_handshake_write_buffer;
+            connection->platform->tls_handshake_write_buffer_size = tls_handshake_write_buffer_size;
+            connection->platform->tls_write_buffer = tls_write_buffer;
+            connection->platform->tls_write_buffer_size = tls_write_buffer_size;
             (void)sl_arena_init(&connection->request_arena, connection->request_storage,
                                 connection->request_storage_size);
             (void)sl_byte_builder_init_fixed(&connection->accumulation_builder,
@@ -2422,6 +2739,204 @@ static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connecti
     (void)sl_http_transport_connection_close(connection, NULL);
 }
 
+static SlStatus sl_http_transport_tls_feed(SlHttpTransportConnection* connection, SlBytes bytes,
+                                           SlDiag* out_diag)
+{
+    SlHttpPlatformConnection* platform = connection == NULL ? NULL : connection->platform;
+    BIO* read_bio = NULL;
+    int written = 0;
+    int rc = 0;
+
+    if (connection == NULL || platform == NULL || platform->tls_ssl == NULL ||
+        (bytes.ptr == NULL && bytes.length != 0U) || bytes.length > (size_t)INT_MAX)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    read_bio = SSL_get_rbio(platform->tls_ssl);
+    if (read_bio == NULL) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP TLS input buffer is unavailable",
+                                      sizeof("HTTP TLS input buffer is unavailable") - 1U),
+            sl_http_transport_literal("OpenSSL handles stay inside the platform transport",
+                                      sizeof("OpenSSL handles stay inside the platform transport") -
+                                          1U));
+    }
+    written = BIO_write(read_bio, bytes.ptr, (int)bytes.length);
+    if (written <= 0 || (size_t)written != bytes.length) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP TLS encrypted input could not be buffered",
+                                      sizeof("HTTP TLS encrypted input could not be buffered") -
+                                          1U),
+            sl_http_transport_literal("OpenSSL details stay inside the platform boundary",
+                                      sizeof("OpenSSL details stay inside the platform boundary") -
+                                          1U));
+    }
+
+    if (!platform->tls_handshake_complete) {
+        ERR_clear_error();
+        rc = SSL_accept(platform->tls_ssl);
+        if (rc == 1) {
+            platform->tls_handshake_complete = true;
+            connection->core.scheme = sl_str_from_cstr("https");
+        }
+        else {
+            int error = SSL_get_error(platform->tls_ssl, rc);
+            SlStatus drain_status = sl_http_transport_tls_drain_handshake(connection, out_diag);
+            if (!sl_status_is_ok(drain_status)) {
+                return drain_status;
+            }
+            if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
+                return sl_status_ok();
+            }
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_INVALID_ARGUMENT,
+                sl_http_transport_literal("HTTP TLS handshake failed",
+                                          sizeof("HTTP TLS handshake failed") - 1U),
+                sl_http_transport_literal("handshake diagnostics redact OpenSSL and certificate "
+                                          "details",
+                                          sizeof("handshake diagnostics redact OpenSSL and "
+                                                 "certificate details") -
+                                              1U));
+        }
+        {
+            SlStatus drain_status = sl_http_transport_tls_drain_handshake(connection, out_diag);
+            if (!sl_status_is_ok(drain_status)) {
+                return drain_status;
+            }
+        }
+    }
+
+    for (;;) {
+        int read_count = SSL_read(platform->tls_ssl, platform->tls_plain_read_buffer,
+                                  (int)platform->tls_plain_read_buffer_size);
+        if (read_count > 0) {
+            SlStatus status = sl_http_transport_connection_feed_test(
+                connection,
+                sl_bytes_from_parts(platform->tls_plain_read_buffer, (size_t)read_count), out_diag);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            continue;
+        }
+        {
+            int error = SSL_get_error(platform->tls_ssl, read_count);
+            if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
+                return sl_status_ok();
+            }
+            if (error == SSL_ERROR_ZERO_RETURN) {
+                return sl_http_transport_connection_diag(
+                    connection, out_diag, SL_DIAG_HTTP_CONNECTION_CLOSED, SL_STATUS_CANCELLED,
+                    sl_http_transport_literal("HTTP TLS client closed the connection",
+                                              sizeof("HTTP TLS client closed the connection") - 1U),
+                    sl_http_transport_literal("request cleanup still runs after TLS close",
+                                              sizeof("request cleanup still runs after TLS close") -
+                                                  1U));
+            }
+        }
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_HANDSHAKE_FAILED, SL_STATUS_INVALID_ARGUMENT,
+            sl_http_transport_literal("HTTP TLS record processing failed",
+                                      sizeof("HTTP TLS record processing failed") - 1U),
+            sl_http_transport_literal("OpenSSL details stay inside the platform boundary",
+                                      sizeof("OpenSSL details stay inside the platform boundary") -
+                                          1U));
+    }
+}
+
+static SlStatus sl_http_transport_tls_start_shutdown(SlHttpTransportConnection* connection,
+                                                     SlDiag* out_diag, bool* out_queued)
+{
+    SlHttpPlatformConnection* platform = connection == NULL ? NULL : connection->platform;
+    BIO* write_bio = NULL;
+    uv_buf_t buffer;
+    int pending = 0;
+    int read_count = 0;
+    int rc = 0;
+
+    if (out_queued != NULL) {
+        *out_queued = false;
+    }
+    if (connection == NULL || platform == NULL || !platform->tls_enabled ||
+        !platform->tls_handshake_complete || platform->tls_ssl == NULL)
+    {
+        return sl_status_ok();
+    }
+    if (platform->tls_writing) {
+        return sl_status_ok();
+    }
+
+    ERR_clear_error();
+    rc = SSL_shutdown(platform->tls_ssl);
+    if (rc < 0) {
+        int error = SSL_get_error(platform->tls_ssl, rc);
+        if (error != SSL_ERROR_WANT_READ && error != SSL_ERROR_WANT_WRITE) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED, SL_STATUS_INTERNAL,
+                sl_http_transport_literal("HTTP TLS shutdown failed",
+                                          sizeof("HTTP TLS shutdown failed") - 1U),
+                sl_http_transport_literal("OpenSSL details stay inside the platform boundary",
+                                          sizeof("OpenSSL details stay inside the platform "
+                                                 "boundary") -
+                                              1U));
+        }
+    }
+
+    write_bio = SSL_get_wbio(platform->tls_ssl);
+    pending = write_bio == NULL ? 0 : BIO_pending(write_bio);
+    if (pending <= 0) {
+        return sl_status_ok();
+    }
+    if ((size_t)pending > platform->tls_handshake_write_buffer_size) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED, SL_STATUS_CAPACITY_EXCEEDED,
+            sl_http_transport_literal("HTTP TLS shutdown bytes exceed transport buffer",
+                                      sizeof("HTTP TLS shutdown bytes exceed transport buffer") -
+                                          1U),
+            sl_http_transport_literal("TLS close output must fit configured response caps",
+                                      sizeof("TLS close output must fit configured response "
+                                             "caps") -
+                                          1U));
+    }
+    read_count = BIO_read(write_bio, platform->tls_handshake_write_buffer, pending);
+    if (read_count <= 0) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP TLS shutdown output failed",
+                                      sizeof("HTTP TLS shutdown output failed") - 1U),
+            sl_http_transport_literal("OpenSSL details stay inside the platform boundary",
+                                      sizeof("OpenSSL details stay inside the platform boundary") -
+                                          1U));
+    }
+
+    buffer = uv_buf_init((char*)platform->tls_handshake_write_buffer, (unsigned int)read_count);
+    platform->tls_write.data = platform;
+    platform->tls_writing = true;
+    platform->tls_shutdown_writing = true;
+    platform->closing = true;
+    if (uv_write(&platform->tls_write, (uv_stream_t*)&platform->handle, &buffer, 1U,
+                 sl_http_transport_tls_shutdown_write_cb) != 0)
+    {
+        platform->tls_writing = false;
+        platform->tls_shutdown_writing = false;
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_TLS_SHUTDOWN_FAILED, SL_STATUS_INTERNAL,
+            sl_http_transport_literal("HTTP TLS shutdown write failed",
+                                      sizeof("HTTP TLS shutdown write failed") - 1U),
+            sl_http_transport_literal("socket and OpenSSL handles stay inside the platform "
+                                      "boundary",
+                                      sizeof("socket and OpenSSL handles stay inside the platform "
+                                             "boundary") -
+                                          1U));
+    }
+    if (out_queued != NULL) {
+        *out_queued = true;
+    }
+    return sl_status_ok();
+}
+
 static void sl_http_transport_on_read(uv_stream_t* stream, ssize_t nread, const uv_buf_t* buffer)
 {
     SlHttpPlatformConnection* platform =
@@ -2435,8 +2950,14 @@ static void sl_http_transport_on_read(uv_stream_t* stream, ssize_t nread, const 
         return;
     }
     if (nread > 0) {
-        status = sl_http_transport_connection_feed_test(
-            connection, sl_bytes_from_parts(platform->read_buffer, (size_t)nread), &diag);
+        if (platform->tls_enabled) {
+            status = sl_http_transport_tls_feed(
+                connection, sl_bytes_from_parts(platform->read_buffer, (size_t)nread), &diag);
+        }
+        else {
+            status = sl_http_transport_connection_feed_test(
+                connection, sl_bytes_from_parts(platform->read_buffer, (size_t)nread), &diag);
+        }
         if (!sl_status_is_ok(status)) {
             sl_http_transport_fail_and_close(connection, &diag);
         }
@@ -2613,6 +3134,15 @@ static void sl_http_transport_on_connection(uv_stream_t* listener, int status)
         return;
     }
 
+    accept_status = sl_http_transport_tls_attach(connection, NULL);
+    if (!sl_status_is_ok(accept_status)) {
+        (void)sl_http_connection_fail(&connection->core, NULL);
+        connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR;
+        (void)sl_http_transport_connection_close(connection, NULL);
+        server->accept_failures += 1U;
+        return;
+    }
+
     connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_ACCEPTED;
     server->accepted_connections += 1U;
     if (!sl_status_is_ok(sl_http_transport_start_read(connection, NULL))) {
@@ -2638,6 +3168,10 @@ static void sl_http_transport_close_listener(SlHttpPlatformListener* platform)
         while (uv_run(&platform->loop, UV_RUN_DEFAULT) != 0) {
         }
     }
+    if (platform->tls_context != NULL) {
+        SSL_CTX_free(platform->tls_context);
+        platform->tls_context = NULL;
+    }
     platform->listener_initialized = false;
 }
 
@@ -2656,6 +3190,7 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     size_t request_storage_bytes = 0U;
     size_t read_buffer_bytes = 0U;
     size_t response_storage_bytes = 0U;
+    size_t tls_write_buffer_size = 0U;
 
     sl_http_transport_clear_diag(out_diag);
     if (server == NULL || arena == NULL) {
@@ -2671,6 +3206,42 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     status = sl_str_copy_to_arena_cstr(arena, server->config.host, &server->host);
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (server->config.tls.enabled) {
+        status = sl_str_copy_to_arena_cstr(arena, server->config.tls.certificate_path,
+                                           &server->tls_certificate_path);
+        if (!sl_status_is_ok(status)) {
+            return sl_http_transport_diag(
+                out_diag, SL_DIAG_HTTP_TLS_CONFIG, sl_status_code(status),
+                sl_http_transport_literal("HTTP TLS certificate path is invalid",
+                                          sizeof("HTTP TLS certificate path is invalid") - 1U),
+                sl_http_transport_literal("TLS paths must not contain embedded NUL bytes",
+                                          sizeof("TLS paths must not contain embedded NUL bytes") -
+                                              1U));
+        }
+        status = sl_str_copy_to_arena_cstr(arena, server->config.tls.private_key_path,
+                                           &server->tls_private_key_path);
+        if (!sl_status_is_ok(status)) {
+            return sl_http_transport_diag(
+                out_diag, SL_DIAG_HTTP_TLS_CONFIG, sl_status_code(status),
+                sl_http_transport_literal("HTTP TLS private key path is invalid",
+                                          sizeof("HTTP TLS private key path is invalid") - 1U),
+                sl_http_transport_literal("TLS paths must not contain embedded NUL bytes",
+                                          sizeof("TLS paths must not contain embedded NUL bytes") -
+                                              1U));
+        }
+        if (!sl_str_is_empty(server->config.tls.passphrase)) {
+            status = sl_str_copy_to_arena_cstr(arena, server->config.tls.passphrase,
+                                               &server->tls_passphrase);
+            if (!sl_status_is_ok(status)) {
+                return sl_http_transport_diag(
+                    out_diag, SL_DIAG_HTTP_TLS_CONFIG, sl_status_code(status),
+                    sl_http_transport_literal("HTTP TLS passphrase is invalid",
+                                              sizeof("HTTP TLS passphrase is invalid") - 1U),
+                    sl_http_transport_literal("TLS passphrase material is redacted",
+                                              sizeof("TLS passphrase material is redacted") - 1U));
+            }
+        }
     }
 
     backend_options.max_connections = server->config.max_connections;
@@ -2757,6 +3328,10 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_checked_add_size(server->config.max_response_bytes, 4096U, &tls_write_buffer_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     (void)accumulation_bytes;
     (void)request_storage_bytes;
     (void)read_buffer_bytes;
@@ -2792,6 +3367,28 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
         }
         server->platform_connections[index].read_buffer = (unsigned char*)memory;
         server->platform_connections[index].read_buffer_size = server->config.read_chunk_bytes;
+        if (server->config.tls.enabled) {
+            status = sl_http_transport_alloc(arena, server->config.read_chunk_bytes, 1U, &memory);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            server->platform_connections[index].tls_plain_read_buffer = (unsigned char*)memory;
+            server->platform_connections[index].tls_plain_read_buffer_size =
+                server->config.read_chunk_bytes;
+            status = sl_http_transport_alloc(arena, tls_write_buffer_size, 1U, &memory);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            server->platform_connections[index].tls_handshake_write_buffer = (unsigned char*)memory;
+            server->platform_connections[index].tls_handshake_write_buffer_size =
+                tls_write_buffer_size;
+            status = sl_http_transport_alloc(arena, tls_write_buffer_size, 1U, &memory);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            server->platform_connections[index].tls_write_buffer = (unsigned char*)memory;
+            server->platform_connections[index].tls_write_buffer_size = tls_write_buffer_size;
+        }
     }
 
     server->state = SL_HTTP_TRANSPORT_SERVER_STATE_CREATED;
@@ -2860,6 +3457,15 @@ SlStatus sl_http_transport_server_listen(SlHttpTransportServer* server, SlDiag* 
             rc, out_diag, SL_DIAG_HTTP_BIND_FAILED,
             sl_http_transport_literal("HTTP transport bind failed",
                                       sizeof("HTTP transport bind failed") - 1U));
+    }
+
+    status = sl_http_transport_tls_context_init(server, out_diag);
+    if (!sl_status_is_ok(status)) {
+        server->state = SL_HTTP_TRANSPORT_SERVER_STATE_ERROR;
+        sl_http_transport_close_listener(server->platform);
+        (void)uv_loop_close(&server->platform->loop);
+        server->platform->loop_initialized = false;
+        return status;
     }
 
     rc = uv_listen((uv_stream_t*)&server->platform->listener, server->config.backlog,
@@ -2960,12 +3566,18 @@ SlStatus sl_http_transport_server_run(SlHttpTransportServer* server, SlDiag* out
 SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connection, SlDiag* out_diag)
 {
     SlStr transfer_encoding = {0};
+    bool tls_shutdown_queued = false;
     sl_http_transport_clear_diag(out_diag);
     if (connection == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED ||
         connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_EMPTY)
+    {
+        return sl_status_ok();
+    }
+    if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING &&
+        connection->platform != NULL && connection->platform->tls_shutdown_writing)
     {
         return sl_status_ok();
     }
@@ -2982,6 +3594,8 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
                                       &connection->platform->body_timer_initialized);
         sl_http_transport_close_timer(&connection->platform->request_timer,
                                       &connection->platform->request_timer_initialized);
+        sl_http_transport_close_timer(&connection->platform->write_timer,
+                                      &connection->platform->write_timer_initialized);
         sl_http_transport_close_timer(&connection->platform->idle_timer,
                                       &connection->platform->idle_timer_initialized);
         if (connection->request_started &&
@@ -3032,6 +3646,15 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
     if (connection->platform != NULL && connection->platform->initialized &&
         !connection->platform->closing)
     {
+        SlStatus tls_shutdown_status =
+            sl_http_transport_tls_start_shutdown(connection, out_diag, &tls_shutdown_queued);
+        if (!sl_status_is_ok(tls_shutdown_status)) {
+            sl_http_transport_store_diag(connection, out_diag);
+        }
+        if (tls_shutdown_queued) {
+            connection->slot_claimed = false;
+            return sl_status_ok();
+        }
         connection->platform->closing = true;
         uv_close((uv_handle_t*)&connection->platform->handle,
                  sl_http_transport_connection_close_cb);

@@ -37,6 +37,11 @@ Body text is created lazily and cached on the facade the first time `text()` or 
 needs it. Empty request bodies do not allocate an eager empty body buffer. Borrowed native
 request views are not exposed to JS or retained across async boundaries.
 
+The request-context scheme is native metadata, not a parser or socket handle. Cleartext
+HTTP contexts expose `http`; HTTPS contexts expose `https` and `connection.secure === true`
+after the transport completes the TLS handshake. The bridge does not expose OpenSSL,
+socket, libuv, or TLS handles to JavaScript.
+
 Native async continuations are still posted back through the Sloppy async loop and settle
 Promises on the V8 owner thread. Continuation state is synchronized so concurrent native
 post attempts settle at most once.

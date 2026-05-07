@@ -1702,8 +1702,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                                          sl_str_from_cstr("http")) ||
         !http_v8_set_string_property_key(isolate, context, connection, SL_V8_HTTP_STRING_SCHEME,
                                          request_context->scheme) ||
-        !http_v8_set_bool_property_key(isolate, context, connection, SL_V8_HTTP_STRING_SECURE,
-                                       false))
+        !http_v8_set_bool_property_key(
+            isolate, context, connection, SL_V8_HTTP_STRING_SECURE,
+            sl_str_equal(request_context->scheme, sl_str_from_cstr("https"))))
     {
         return false;
     }

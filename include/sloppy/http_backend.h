@@ -119,6 +119,11 @@ typedef struct SlHttpConnection
     SlHttpBackend* backend;
     SlHttpConnectionState state;
     uint64_t id;
+    /*
+     * Protocol scheme for request contexts created on this connection. Platform transports
+     * may set this to "https" after TLS wrapping succeeds. Core never exposes native handles.
+     */
+    SlStr scheme;
     size_t request_count;
     /* True only while this connection owns one backend active-connection slot. */
     bool slot_admitted;
@@ -130,6 +135,7 @@ typedef struct SlHttpRequestLifecycle
     SlHttpConnection* connection;
     SlArena* arena;
     uint64_t id;
+    SlStr scheme;
     SlHttpRequestState state;
     /* Arena-owned parsed request head, cleared by sl_http_request_close. */
     SlHttpRequestHead head;

@@ -48,9 +48,16 @@ remain outside the current source subset.
 
 The runtime consumes Slop-owned server metadata emitted by the current compiler/config
 pipeline for `sloppy run`: host, port, max connections, max request body bytes, request
-timeout, keep-alive enablement, keep-alive idle timeout, and max requests per connection.
-Malformed, zero, unsupported, or range-overflowing values fail closed before serving work.
-Route-level limits and trusted proxy policy are not Plan metadata yet.
+timeout, keep-alive enablement, keep-alive idle timeout, max requests per connection, and
+explicit inbound TLS listener settings.
+
+TLS remains opt-in. Cleartext HTTP is the default. Enabling TLS requires
+`Sloppy:Server:Tls:Enabled`, `Sloppy:Server:Tls:CertificatePath`, and
+`Sloppy:Server:Tls:PrivateKeyPath`. Passphrase-protected private keys remain available
+only through the native transport config until Sloppy has a non-redacted runtime secret
+retrieval lane. Malformed, zero, unsupported, range-overflowing, missing certificate/key,
+or embedded-NUL values fail closed before serving work. Route-level limits and trusted
+proxy policy are not Plan metadata yet.
 
 ## Required Features
 

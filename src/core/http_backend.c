@@ -541,6 +541,7 @@ SlStatus sl_http_backend_accept_connection(SlHttpBackend* backend, SlHttpConnect
     out_connection->backend = backend;
     out_connection->state = SL_HTTP_CONNECTION_STATE_ACCEPTED;
     out_connection->id = backend->next_connection_id;
+    out_connection->scheme = sl_str_from_cstr("http");
     out_connection->slot_admitted = true;
     backend->next_connection_id += 1U;
     backend->active_connections += 1U;
@@ -632,6 +633,8 @@ SlStatus sl_http_request_begin(SlHttpConnection* connection, SlArena* arena,
     out_request->connection = connection;
     out_request->arena = arena;
     out_request->id = backend->next_request_id;
+    out_request->scheme =
+        sl_str_is_empty(connection->scheme) ? sl_str_from_cstr("http") : connection->scheme;
     out_request->state = SL_HTTP_REQUEST_STATE_CREATED;
     out_request->admitted = true;
     backend->next_request_id += 1U;

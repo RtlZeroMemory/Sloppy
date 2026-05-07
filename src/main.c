@@ -1504,6 +1504,8 @@ typedef struct SlRunApp
     SlAppLifecycle lifecycle;
     SlHttpRouteTable route_table;
     char config_host[SL_RUN_CONFIG_HOST_MAX_BYTES];
+    char config_tls_certificate_path[SL_RUN_PATH_MAX_BYTES];
+    char config_tls_private_key_path[SL_RUN_PATH_MAX_BYTES];
     uint16_t config_port;
     uint64_t config_max_connections;
     uint64_t config_max_request_body_bytes;
@@ -1511,6 +1513,7 @@ typedef struct SlRunApp
     uint64_t config_max_requests_per_connection;
     uint64_t config_request_timeout_ms;
     uint64_t next_request_id;
+    bool config_tls_enabled;
     bool config_keep_alive_enabled;
     bool config_has_host;
     bool config_has_port;
@@ -1520,6 +1523,9 @@ typedef struct SlRunApp
     bool config_has_keep_alive_idle_timeout_ms;
     bool config_has_max_requests_per_connection;
     bool config_has_request_timeout_ms;
+    bool config_has_tls_enabled;
+    bool config_has_tls_certificate_path;
+    bool config_has_tls_private_key_path;
 } SlRunApp;
 
 static bool sl_run_copy_json_string(char* buffer, size_t capacity, yyjson_val* value);
@@ -1775,8 +1781,48 @@ static bool sl_run_plan_config_parse_bool(yyjson_val* value, bool* out)
     return true;
 }
 
+static int sl_run_apply_tls_config_metadata_entry(SlRunApp* app, yyjson_val* key, yyjson_val* value)
+{
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Tls:Enabled")) {
+        if (!sl_run_plan_config_parse_bool(value, &app->config_tls_enabled)) {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:Tls:Enabled must be a boolean\n");
+            return 1;
+        }
+        app->config_has_tls_enabled = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Tls:CertificatePath")) {
+        if (!sl_run_copy_json_string(app->config_tls_certificate_path,
+                                     sizeof(app->config_tls_certificate_path), value) ||
+            app->config_tls_certificate_path[0] == '\0')
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:Tls:CertificatePath must be a string\n");
+            return 1;
+        }
+        app->config_has_tls_certificate_path = true;
+        return 0;
+    }
+    if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Tls:PrivateKeyPath")) {
+        if (!sl_run_copy_json_string(app->config_tls_private_key_path,
+                                     sizeof(app->config_tls_private_key_path), value) ||
+            app->config_tls_private_key_path[0] == '\0')
+        {
+            sl_cli_write_cstr(stderr, "sloppy run: app.plan.json "
+                                      "Sloppy:Server:Tls:PrivateKeyPath must be a string\n");
+            return 1;
+        }
+        app->config_has_tls_private_key_path = true;
+        return 0;
+    }
+    return -1;
+}
+
 static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yyjson_val* value)
 {
+    int tls_result = 0;
+
     if (sl_run_json_string_equals_cstr(key, "Sloppy:Server:Host")) {
         if (!sl_run_copy_json_string(app->config_host, sizeof(app->config_host), value) ||
             app->config_host[0] == '\0')
@@ -1852,6 +1898,12 @@ static int sl_run_apply_config_metadata_entry(SlRunApp* app, yyjson_val* key, yy
             return 1;
         }
         app->config_has_request_timeout_ms = true;
+    }
+    else {
+        tls_result = sl_run_apply_tls_config_metadata_entry(app, key, value);
+        if (tls_result >= 0) {
+            return tls_result;
+        }
     }
 
     return 0;
@@ -2938,6 +2990,18 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     if (app != NULL && app->config_has_request_timeout_ms) {
         config.request_timeout_ms = app->config_request_timeout_ms;
     }
+    if (app != NULL && app->config_has_tls_enabled) {
+        config.tls.enabled = app->config_tls_enabled;
+        if (app->config_tls_enabled) {
+            config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+        }
+    }
+    if (app != NULL && app->config_has_tls_certificate_path) {
+        config.tls.certificate_path = sl_str_from_cstr(app->config_tls_certificate_path);
+    }
+    if (app != NULL && app->config_has_tls_private_key_path) {
+        config.tls.private_key_path = sl_str_from_cstr(app->config_tls_private_key_path);
+    }
     config.dispatch = sl_run_transport_dispatch;
     config.dispatch_user = app;
     return config;
@@ -2977,8 +3041,11 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
         return 1;
     }
 
-    (void)printf("Sloppy dev server listening on http://%s:%u\n", host, (unsigned)port);
-    (void)printf("Bounded development server: no TLS, no middleware, no production-edge claim.\n");
+    (void)printf("Sloppy dev server listening on %s://%s:%u\n",
+                 config.tls.enabled ? "https" : "http", host, (unsigned)port);
+    (void)printf(
+        "Bounded development server: HTTP/1.1%s, no middleware, no production-edge claim.\n",
+        config.tls.enabled ? " over TLS" : "");
     status = sl_http_transport_server_run(&server, &diag);
     if (!sl_status_is_ok(status)) {
         result = 1;

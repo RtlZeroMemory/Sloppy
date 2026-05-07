@@ -588,6 +588,7 @@ target_link_libraries(
             ${SLOPPY_LIBUV_TARGET}
             ${SLOPPY_XXHASH_TARGET}
             OpenSSL::Crypto
+            OpenSSL::SSL
             unofficial-sodium::sodium
             PostgreSQL::PostgreSQL
             unofficial::sqlite3::sqlite3
@@ -1046,6 +1047,8 @@ if(SLOPPY_ENABLE_TESTS)
         sloppy_add_http_transport_case(
             conformance.transport.streaming_response streaming_response)
         sloppy_add_http_transport_case(conformance.transport.backpressure backpressure)
+        sloppy_add_http_transport_case(conformance.transport.https_loopback https_loopback)
+        sloppy_add_http_transport_case(conformance.transport.https_tls_negative https_tls_negative)
         sloppy_add_http_transport_case(conformance.transport.shutdown_cancel shutdown_cancel)
         add_test(
             NAME smoke.transport.keep_alive_streaming_bounded

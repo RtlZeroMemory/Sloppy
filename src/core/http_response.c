@@ -11,7 +11,8 @@
  * - Content-Length is derived from the exact body byte count;
  * - 204 responses never write body bytes;
  * - runtime-managed response headers cannot be overridden by custom headers;
- * - user-controlled Content-Type or custom header values containing CR/LF are rejected.
+ * - user-controlled Content-Type or custom header values containing control bytes are
+ *   rejected, except HTAB inside header values.
  *
  * Tests: tests/unit/core/test_http_response.c.
  */
@@ -123,7 +124,8 @@ static bool sl_http_response_content_type_valid(SlStr content_type)
     }
 
     for (index = 0U; index < content_type.length; index += 1U) {
-        if (content_type.ptr[index] == '\r' || content_type.ptr[index] == '\n') {
+        unsigned char ch = (unsigned char)content_type.ptr[index];
+        if (ch < 0x20U || ch == 0x7FU) {
             return false;
         }
     }
@@ -165,7 +167,8 @@ static bool sl_http_response_header_value_valid(SlStr value)
     }
 
     for (index = 0U; index < value.length; index += 1U) {
-        if (value.ptr[index] == '\r' || value.ptr[index] == '\n') {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        if ((ch < 0x20U && ch != '\t') || ch == 0x7FU) {
             return false;
         }
     }
@@ -176,6 +179,7 @@ static bool sl_http_response_header_value_valid(SlStr value)
 static bool sl_http_response_header_managed(SlStr name)
 {
     return sl_str_equal_ci_ascii(name, sl_str_from_cstr("Connection")) ||
+           sl_str_equal_ci_ascii(name, sl_str_from_cstr("Keep-Alive")) ||
            sl_str_equal_ci_ascii(name, sl_str_from_cstr("Content-Type")) ||
            sl_str_equal_ci_ascii(name, sl_str_from_cstr("Transfer-Encoding")) ||
            sl_str_equal_ci_ascii(name, sl_str_from_cstr("Content-Length"));

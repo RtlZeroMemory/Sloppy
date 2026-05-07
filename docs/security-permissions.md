@@ -19,6 +19,8 @@ Implemented foundations include:
 - feature activation checks before selected engine/provider/transport startup;
 - filesystem policy checks for implemented filesystem operations;
 - network capability metadata and audit/doctor evidence for scoped TCP APIs;
+- inbound HTTPS transport config validation and OpenSSL-backed TLS wrapping for the HTTP
+  server;
 - SQLite bridge checks in the V8-gated path;
 - metadata-driven `doctor` and `audit` surfaces.
 
@@ -58,6 +60,13 @@ Config and environment secrets must not appear in diagnostics, goldens, logs, do
 output, source maps, or generated artifacts except as approved fake placeholders used to
 prove redaction. Static checks should reject high-confidence secret-looking values in docs,
 examples, fixtures, and goldens.
+
+Inbound HTTP TLS passphrases and private-key material are secret-bearing values. Server TLS
+diagnostics may identify the failing contract, such as missing path, unsupported backend,
+certificate/key load failure, key mismatch, handshake failure, or shutdown failure, but
+must not include passphrases, PEM contents, raw OpenSSL error strings with sensitive
+material, or native TLS handles. TLS loopback tests generate temporary local certificates
+and keys at runtime instead of committing key fixtures.
 
 ## Native Pointers
 

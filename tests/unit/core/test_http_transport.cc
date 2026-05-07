@@ -1,10 +1,21 @@
 #include "sloppy/http_transport.h"
 
+#include <atomic>
+#include <chrono>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <string>
+#include <thread>
 
+#include <openssl/bio.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/rsa.h>
+#include <openssl/ssl.h>
+#include <openssl/x509.h>
 #include <uv.h>
-
-#include <cstring>
 
 static int expect_true(bool condition)
 {
@@ -695,7 +706,543 @@ static int test_config_validation_and_lifecycle(void)
         return 9;
     }
 
+    sl_arena_reset(&arena);
+    config = small_config(nullptr);
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    server = {};
+    diag = {};
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_HTTP_TLS_CONFIG)
+    {
+        return 11;
+    }
+
+    sl_arena_reset(&arena);
+    config = small_config(nullptr);
+    config.tls.enabled = true;
+    config.tls.backend = static_cast<SlHttpTransportTlsBackend>(999);
+    config.tls.certificate_path = sl_str_from_cstr("cert.pem");
+    config.tls.private_key_path = sl_str_from_cstr("key.pem");
+    server = {};
+    diag = {};
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        diag.code != SL_DIAG_HTTP_TLS_BACKEND_UNAVAILABLE)
+    {
+        return 12;
+    }
+
+    {
+        static const char key_with_nul[] = {'k', 'e', 'y', '.', 'p', 'e', 'm', '\0', 'x'};
+        sl_arena_reset(&arena);
+        config = small_config(nullptr);
+        config.tls.enabled = true;
+        config.tls.certificate_path = sl_str_from_cstr("cert.pem");
+        config.tls.private_key_path = sl_str_from_parts(key_with_nul, sizeof(key_with_nul));
+        server = {};
+        diag = {};
+        if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_HTTP_TLS_CONFIG)
+        {
+            return 13;
+        }
+    }
+
+    {
+        static const char passphrase_with_nul[] = {'s', 'e', 'c', 'r', 'e', 't', '\0', 'x'};
+        sl_arena_reset(&arena);
+        config = small_config(nullptr);
+        config.tls.enabled = true;
+        config.tls.certificate_path = sl_str_from_cstr("cert.pem");
+        config.tls.private_key_path = sl_str_from_cstr("key.pem");
+        config.tls.passphrase = sl_str_from_parts(passphrase_with_nul, sizeof(passphrase_with_nul));
+        server = {};
+        diag = {};
+        if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                          SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_HTTP_TLS_CONFIG)
+        {
+            return 14;
+        }
+    }
+
     return 0;
+}
+
+static int write_generated_tls_fixture(std::filesystem::path* out_cert,
+                                       std::filesystem::path* out_key, const char* key_passphrase)
+{
+    std::filesystem::path root =
+        std::filesystem::temp_directory_path() /
+        ("sloppy-http-tls-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    EVP_PKEY_CTX* key_context = nullptr;
+    EVP_PKEY* key = nullptr;
+    X509* cert = nullptr;
+    X509_NAME* name = nullptr;
+    BIO* cert_file = nullptr;
+    BIO* key_file = nullptr;
+    int result = 1;
+
+    if (out_cert == nullptr || out_key == nullptr) {
+        return 1;
+    }
+    std::filesystem::create_directories(root);
+    *out_cert = root / "localhost-cert.pem";
+    *out_key = root / "localhost-key.pem";
+
+    key_context = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
+    if (key_context == nullptr || EVP_PKEY_keygen_init(key_context) <= 0 ||
+        EVP_PKEY_CTX_set_rsa_keygen_bits(key_context, 2048) <= 0 ||
+        EVP_PKEY_keygen(key_context, &key) <= 0)
+    {
+        goto cleanup;
+    }
+
+    cert = X509_new();
+    if (cert == nullptr || X509_set_version(cert, 2L) != 1 ||
+        ASN1_INTEGER_set(X509_get_serialNumber(cert), 1L) != 1 ||
+        X509_gmtime_adj(X509_get_notBefore(cert), 0L) == nullptr ||
+        X509_gmtime_adj(X509_get_notAfter(cert), 3600L) == nullptr ||
+        X509_set_pubkey(cert, key) != 1)
+    {
+        goto cleanup;
+    }
+    name = X509_get_subject_name(cert);
+    if (name == nullptr ||
+        X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+                                   reinterpret_cast<const unsigned char*>("localhost"), -1, -1,
+                                   0) != 1 ||
+        X509_set_issuer_name(cert, name) != 1 || X509_sign(cert, key, EVP_sha256()) <= 0)
+    {
+        goto cleanup;
+    }
+
+    cert_file = BIO_new_file(out_cert->string().c_str(), "w");
+    key_file = BIO_new_file(out_key->string().c_str(), "w");
+    if (cert_file == nullptr || key_file == nullptr || PEM_write_bio_X509(cert_file, cert) != 1) {
+        goto cleanup;
+    }
+    if (key_passphrase == nullptr) {
+        if (PEM_write_bio_PrivateKey(key_file, key, nullptr, nullptr, 0, nullptr, nullptr) != 1) {
+            goto cleanup;
+        }
+    }
+    else {
+        if (PEM_write_bio_PrivateKey(
+                key_file, key, EVP_aes_256_cbc(),
+                reinterpret_cast<unsigned char*>(const_cast<char*>(key_passphrase)),
+                static_cast<int>(strlen(key_passphrase)), nullptr, nullptr) != 1)
+        {
+            goto cleanup;
+        }
+    }
+    result = 0;
+
+cleanup:
+    if (cert_file != nullptr) {
+        BIO_free(cert_file);
+    }
+    if (key_file != nullptr) {
+        BIO_free(key_file);
+    }
+    if (cert != nullptr) {
+        X509_free(cert);
+    }
+    if (key != nullptr) {
+        EVP_PKEY_free(key);
+    }
+    if (key_context != nullptr) {
+        EVP_PKEY_CTX_free(key_context);
+    }
+    if (result != 0) {
+        std::filesystem::remove_all(root);
+    }
+    return result;
+}
+
+static int write_generated_tls_fixture(std::filesystem::path* out_cert,
+                                       std::filesystem::path* out_key)
+{
+    return write_generated_tls_fixture(out_cert, out_key, nullptr);
+}
+
+static int run_tls_client(uint32_t port, std::string* out_response, bool require_shutdown)
+{
+    SSL_CTX* context = nullptr;
+    BIO* bio = nullptr;
+    SSL* ssl = nullptr;
+    std::string endpoint = "127.0.0.1:" + std::to_string(port);
+    const char request[] = "GET /secure HTTP/1.1\r\nHost: local\r\nConnection: close\r\n\r\n";
+    char buffer[512];
+    int result = 1;
+
+    if (out_response == nullptr) {
+        return 1;
+    }
+    context = SSL_CTX_new(TLS_client_method());
+    if (context == nullptr) {
+        return 2;
+    }
+    SSL_CTX_set_verify(context, SSL_VERIFY_NONE, nullptr);
+    bio = BIO_new_ssl_connect(context);
+    if (bio == nullptr) {
+        goto cleanup;
+    }
+    BIO_get_ssl(bio, &ssl);
+    if (ssl == nullptr) {
+        goto cleanup;
+    }
+    SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+    BIO_set_conn_hostname(bio, endpoint.c_str());
+    if (BIO_do_connect(bio) <= 0 || BIO_do_handshake(bio) <= 0) {
+        goto cleanup;
+    }
+    if (BIO_write(bio, request, static_cast<int>(sizeof(request) - 1U)) <= 0) {
+        goto cleanup;
+    }
+    for (;;) {
+        int read_count = BIO_read(bio, buffer, static_cast<int>(sizeof(buffer)));
+        if (read_count > 0) {
+            out_response->append(buffer, static_cast<size_t>(read_count));
+            if (!require_shutdown && out_response->find("secure") != std::string::npos) {
+                result = 0;
+                break;
+            }
+            continue;
+        }
+        if (!BIO_should_retry(bio)) {
+            break;
+        }
+    }
+    if (require_shutdown && out_response->find("secure") != std::string::npos &&
+        (SSL_get_shutdown(ssl) & SSL_RECEIVED_SHUTDOWN) != 0)
+    {
+        result = 0;
+    }
+
+cleanup:
+    if (bio != nullptr) {
+        BIO_free_all(bio);
+    }
+    if (context != nullptr) {
+        SSL_CTX_free(context);
+    }
+    return result;
+}
+
+static int test_https_loopback_reaches_handler_and_marks_scheme(void)
+{
+    std::filesystem::path cert_path;
+    std::filesystem::path key_path;
+    std::string cert_path_text;
+    std::string key_path_text;
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+    std::atomic<int> client_result{999};
+    std::string client_response;
+    std::thread client;
+    int result = 1;
+
+    if (write_generated_tls_fixture(&cert_path, &key_path) != 0) {
+        return 901;
+    }
+    cert_path_text = cert_path.string();
+    key_path_text = key_path.string();
+
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("secure"));
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    config.tls.certificate_path = sl_str_from_cstr(cert_path_text.c_str());
+    config.tls.private_key_path = sl_str_from_cstr(key_path_text.c_str());
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        result = 902;
+        goto cleanup;
+    }
+
+    client = std::thread([&]() {
+        int code =
+            run_tls_client(sl_http_transport_server_bound_port(&server), &client_response, true);
+        client_result.store(code);
+    });
+
+    for (size_t index = 0U; index < 2048U && client_result.load() == 999; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0) {
+            result = 903;
+            goto cleanup;
+        }
+        uv_sleep(1U);
+    }
+    if (client.joinable()) {
+        client.join();
+    }
+    for (size_t index = 0U; index < 64U; index += 1U) {
+        (void)sl_http_transport_server_poll(&server, &diag);
+    }
+    if (client_result.load() != 0 || dispatch.count != 1U ||
+        !sl_str_equal(dispatch.path, sl_str_from_cstr("/secure")) ||
+        !sl_str_equal(server.connections[0].core.scheme, sl_str_from_cstr("https")) ||
+        client_response.find("HTTP/1.1 200 OK") == std::string::npos ||
+        client_response.find("secure") == std::string::npos)
+    {
+        result = 904;
+        goto cleanup;
+    }
+    result = 0;
+
+cleanup:
+    if (client.joinable()) {
+        (void)sl_http_transport_server_stop(&server, &diag);
+        client.join();
+    }
+    (void)sl_http_transport_server_stop(&server, &diag);
+    (void)sl_http_transport_server_dispose(&server, &diag);
+    std::filesystem::remove_all(cert_path.parent_path());
+    return result;
+}
+
+static int test_https_listen_rejects_invalid_cert_key_and_passphrase(void)
+{
+    std::filesystem::path cert_path;
+    std::filesystem::path key_path;
+    std::filesystem::path encrypted_cert_path;
+    std::filesystem::path encrypted_key_path;
+    std::string cert_path_text;
+    std::string key_path_text;
+    std::string encrypted_cert_path_text;
+    std::string encrypted_key_path_text;
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    SlDiag diag = {};
+
+    if (write_generated_tls_fixture(&cert_path, &key_path) != 0 ||
+        write_generated_tls_fixture(&encrypted_cert_path, &encrypted_key_path, "correct-pass") != 0)
+    {
+        return 910;
+    }
+    cert_path_text = cert_path.string();
+    key_path_text = key_path.string();
+    encrypted_cert_path_text = encrypted_cert_path.string();
+    encrypted_key_path_text = encrypted_key_path.string();
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 911;
+    }
+
+    config = small_config(nullptr);
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    config.tls.certificate_path = sl_str_from_cstr("missing-cert.pem");
+    config.tls.private_key_path = sl_str_from_cstr(key_path_text.c_str());
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_HTTP_TLS_CONFIG ||
+        sl_http_transport_server_state(&server) != SL_HTTP_TRANSPORT_SERVER_STATE_ERROR)
+    {
+        std::filesystem::remove_all(cert_path.parent_path());
+        std::filesystem::remove_all(encrypted_cert_path.parent_path());
+        return 912;
+    }
+    (void)sl_http_transport_server_dispose(&server, &diag);
+
+    sl_arena_reset(&arena);
+    server = {};
+    diag = {};
+    config = small_config(nullptr);
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    config.tls.certificate_path = sl_str_from_cstr(cert_path_text.c_str());
+    config.tls.private_key_path = sl_str_from_cstr("missing-key.pem");
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_HTTP_TLS_CONFIG ||
+        sl_http_transport_server_state(&server) != SL_HTTP_TRANSPORT_SERVER_STATE_ERROR)
+    {
+        std::filesystem::remove_all(cert_path.parent_path());
+        std::filesystem::remove_all(encrypted_cert_path.parent_path());
+        return 913;
+    }
+    (void)sl_http_transport_server_dispose(&server, &diag);
+
+    sl_arena_reset(&arena);
+    server = {};
+    diag = {};
+    config = small_config(nullptr);
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    config.tls.certificate_path = sl_str_from_cstr(encrypted_cert_path_text.c_str());
+    config.tls.private_key_path = sl_str_from_cstr(encrypted_key_path_text.c_str());
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_HTTP_TLS_CONFIG)
+    {
+        std::filesystem::remove_all(cert_path.parent_path());
+        std::filesystem::remove_all(encrypted_cert_path.parent_path());
+        return 914;
+    }
+    (void)sl_http_transport_server_dispose(&server, &diag);
+
+    sl_arena_reset(&arena);
+    server = {};
+    diag = {};
+    config = small_config(nullptr);
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    config.tls.certificate_path = sl_str_from_cstr(encrypted_cert_path_text.c_str());
+    config.tls.private_key_path = sl_str_from_cstr(encrypted_key_path_text.c_str());
+    config.tls.passphrase = sl_str_from_cstr("wrong-pass");
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag),
+                      SL_STATUS_INVALID_ARGUMENT) != 0 ||
+        diag.code != SL_DIAG_HTTP_TLS_CONFIG)
+    {
+        std::filesystem::remove_all(cert_path.parent_path());
+        std::filesystem::remove_all(encrypted_cert_path.parent_path());
+        return 915;
+    }
+    (void)sl_http_transport_server_dispose(&server, &diag);
+
+    sl_arena_reset(&arena);
+    server = {};
+    diag = {};
+    config = small_config(nullptr);
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    config.tls.certificate_path = sl_str_from_cstr(encrypted_cert_path_text.c_str());
+    config.tls.private_key_path = sl_str_from_cstr(encrypted_key_path_text.c_str());
+    config.tls.passphrase = sl_str_from_cstr("correct-pass");
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        std::filesystem::remove_all(cert_path.parent_path());
+        std::filesystem::remove_all(encrypted_cert_path.parent_path());
+        return 916;
+    }
+    (void)sl_http_transport_server_stop(&server, &diag);
+    (void)sl_http_transport_server_dispose(&server, &diag);
+
+    std::filesystem::remove_all(cert_path.parent_path());
+    std::filesystem::remove_all(encrypted_cert_path.parent_path());
+    return 0;
+}
+
+static int test_https_handshake_failure_and_active_shutdown_cleanup(void)
+{
+    std::filesystem::path cert_path;
+    std::filesystem::path key_path;
+    std::string cert_path_text;
+    std::string key_path_text;
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportConfig config = {};
+    SlHttpTransportServer server = {};
+    DispatchHook dispatch = {};
+    SlDiag diag = {};
+    ClientConnect client = {};
+    int result = 1;
+
+    if (write_generated_tls_fixture(&cert_path, &key_path) != 0) {
+        return 920;
+    }
+    cert_path_text = cert_path.string();
+    key_path_text = key_path.string();
+
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    config.tls.enabled = true;
+    config.tls.backend = SL_HTTP_TRANSPORT_TLS_BACKEND_OPENSSL;
+    config.tls.certificate_path = sl_str_from_cstr(cert_path_text.c_str());
+    config.tls.private_key_path = sl_str_from_cstr(key_path_text.c_str());
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_active_connections(&server) != 1U)
+    {
+        result = 921;
+        goto cleanup;
+    }
+
+    if (write_client_bytes(&client, "GET /plaintext HTTP/1.1\r\nHost: local\r\n\r\n") != 0) {
+        result = 922;
+        goto cleanup;
+    }
+    for (size_t index = 0U; index < 512U; index += 1U) {
+        if (expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0) {
+            result = 923;
+            goto cleanup;
+        }
+        (void)uv_run(&client.loop, UV_RUN_NOWAIT);
+        if (sl_http_transport_server_active_connections(&server) == 0U) {
+            break;
+        }
+        uv_sleep(1U);
+    }
+    if (sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U || dispatch.count != 0U)
+    {
+        result = 924;
+        goto cleanup;
+    }
+    close_client(&client);
+
+    sl_arena_reset(&arena);
+    server = {};
+    client = {};
+    dispatch = {};
+    diag = {};
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_active_connections(&server) != 1U ||
+        expect_status(sl_http_transport_server_stop(&server, &diag), SL_STATUS_OK) != 0 ||
+        sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U || dispatch.count != 0U)
+    {
+        result = 925;
+        goto cleanup;
+    }
+    result = 0;
+
+cleanup:
+    close_client(&client);
+    (void)sl_http_transport_server_stop(&server, &diag);
+    (void)sl_http_transport_server_dispose(&server, &diag);
+    std::filesystem::remove_all(cert_path.parent_path());
+    return result;
 }
 
 static int test_listen_accept_capacity_and_cleanup(void)
@@ -1462,6 +2009,12 @@ static int run_streaming_response_header_policy_case(SlStr content_type, SlHttpH
     {
         stop_one_connection(&server, &client);
         return 1;
+    }
+    if (expected_status == SL_STATUS_OK &&
+        poll_server_and_client_until_response(&server, &client) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 2;
     }
 
     stop_one_connection(&server, &client);
@@ -2650,9 +3203,25 @@ static int run_named_transport_case(const char* name)
                                        test_streaming_response_rejects_control_header_values,
                                        test_streaming_response_multiple_empty_and_keep_alive);
     }
+    if (strcmp(name, "streaming_response_basic") == 0) {
+        return test_streaming_response_writes_chunked_frames();
+    }
+    if (strcmp(name, "streaming_response_header_policy") == 0) {
+        return test_streaming_response_rejects_control_header_values();
+    }
+    if (strcmp(name, "streaming_response_keep_alive") == 0) {
+        return test_streaming_response_multiple_empty_and_keep_alive();
+    }
     if (strcmp(name, "backpressure") == 0) {
         SLOPPY_TRANSPORT_CASE_SEQUENCE(test_streaming_response_backpressure_rejection,
                                        test_response_buffer_capacity_failure_is_deterministic);
+    }
+    if (strcmp(name, "https_loopback") == 0) {
+        return test_https_loopback_reaches_handler_and_marks_scheme();
+    }
+    if (strcmp(name, "https_tls_negative") == 0) {
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(test_https_listen_rejects_invalid_cert_key_and_passphrase,
+                                       test_https_handshake_failure_and_active_shutdown_cleanup);
     }
     if (strcmp(name, "shutdown_cancel") == 0) {
         SLOPPY_TRANSPORT_CASE_SEQUENCE(test_disconnect_cleanup_paths,
@@ -2774,6 +3343,18 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_dispatch_failures_map_to_safe_responses();
+    if (result != 0) {
+        return result;
+    }
+    result = test_https_loopback_reaches_handler_and_marks_scheme();
+    if (result != 0) {
+        return result;
+    }
+    result = test_https_listen_rejects_invalid_cert_key_and_passphrase();
+    if (result != 0) {
+        return result;
+    }
+    result = test_https_handshake_failure_and_active_shutdown_cleanup();
     if (result != 0) {
         return result;
     }
