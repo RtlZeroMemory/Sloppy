@@ -109,7 +109,10 @@ sloppyc_bin="$repo_root/compiler/target/$cargo_profile/sloppyc"
 [[ -x "$sloppyc_bin" ]] || { echo "missing built sloppyc executable: $sloppyc_bin" >&2; exit 1; }
 
 package_name="sloppy-$package_version-$platform-$arch"
-output_root="$repo_root/$output_dir"
+case "$output_dir" in
+  /*) output_root="$output_dir" ;;
+  *) output_root="$repo_root/$output_dir" ;;
+esac
 stage_root="$output_root/stage/$package_name"
 rm -rf "$stage_root"
 mkdir -p "$stage_root/bin" "$stage_root/stdlib" "$stage_root/examples" "$stage_root/docs"

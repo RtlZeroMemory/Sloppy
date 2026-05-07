@@ -42,16 +42,21 @@ USAGE
   esac
 done
 
-dev_args=()
-if [[ -n "$preset" ]]; then
-  dev_args+=(--preset "$preset")
-fi
+package_configuration() {
+  case "$preset" in
+    *debug*|*Debug*) printf 'Debug\n' ;;
+    *) printf 'Release\n' ;;
+  esac
+}
 
 if [[ "$skip_package" -eq 0 ]]; then
-  "$repo_root/tools/unix/dev.sh" package "${dev_args[@]}"
+  "$repo_root/tools/unix/package.sh" --configuration "$(package_configuration)" --output-dir "$output_dir"
 fi
 
-package_dir="$repo_root/$output_dir"
+case "$output_dir" in
+  /*) package_dir="$output_dir" ;;
+  *) package_dir="$repo_root/$output_dir" ;;
+esac
 package_path="$(ls -t "$package_dir"/sloppy-*.tar.gz 2>/dev/null | head -n 1 || true)"
 if [[ "$skip_smoke" -eq 0 ]]; then
   if [[ -z "$package_path" ]]; then

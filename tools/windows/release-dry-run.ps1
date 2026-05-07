@@ -32,10 +32,22 @@ function Resolve-RepoPath {
     return [System.IO.Path]::GetFullPath((Join-Path $Root $Path))
 }
 
+function Get-PackageConfiguration {
+    switch ($Preset) {
+        "windows-dev" { return "Debug" }
+        "windows-release" { return "Release" }
+        "windows-relwithdebinfo" { return "RelWithDebInfo" }
+        default {
+            throw "Preset '$Preset' is not supported by the release dry-run package lane. Use windows-dev, windows-release, or windows-relwithdebinfo."
+        }
+    }
+}
+
 $startedAt = [DateTimeOffset]::UtcNow
 $packageDir = Resolve-RepoPath -Path $OutputDir
 $summaryFile = Resolve-RepoPath -Path $SummaryPath
 $devScript = Join-Path $PSScriptRoot "dev.ps1"
+$packageScript = Join-Path $PSScriptRoot "package.ps1"
 
 Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"), "-SelfTest")
 Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-alpha-claims.ps1"))
@@ -43,7 +55,17 @@ Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File"
 Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "check-release-artifacts.ps1"), "-PackageDirectory", $packageDir)
 
 if (-not $SkipPackage) {
-    Invoke-Native "powershell" @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $devScript, "package", "-Preset", $Preset)
+    Invoke-Native "powershell" @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $packageScript,
+        "-Configuration",
+        (Get-PackageConfiguration),
+        "-OutputDir",
+        $packageDir
+    )
 }
 
 $packagePath = ""
