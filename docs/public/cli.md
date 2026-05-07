@@ -133,7 +133,8 @@ Current source input follows the compiler's existing JavaScript policy. `.js` an
 can compile when they match the supported source shape. `.ts`/`.mts` are handed to
 `sloppyc` so they fail with the compiler's TypeScript-not-supported diagnostic; there is
 no full TypeScript typechecker, package-manager behavior, `node_modules` resolution, watch
-mode, hot reload, public alpha claim, or benchmark/performance claim in this command.
+mode, hot reload, or public alpha claim. This command does not make benchmark/performance
+claims.
 
 Default server binding is `127.0.0.1:5173`. The server is single-process, dev-only, and
 intentionally tiny: HTTP/1 request heads only, GET dispatch only, route/query/request

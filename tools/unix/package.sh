@@ -79,7 +79,6 @@ if [[ "$skip_build" -eq 0 ]]; then
   cmake_args=(
     -S "$repo_root"
     -B "$build_dir"
-    -G Ninja
     -DCMAKE_BUILD_TYPE="$build_type"
     -DSLOPPY_ENABLE_V8=OFF
     -DSLOPPY_ENGINE=none
@@ -90,7 +89,10 @@ if [[ "$skip_build" -eq 0 ]]; then
     cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$vcpkg_toolchain")
   fi
   if command -v ninja >/dev/null 2>&1; then
-    cmake_args+=("-DCMAKE_MAKE_PROGRAM=$(command -v ninja)")
+    cmake_args+=(
+      -G Ninja
+      "-DCMAKE_MAKE_PROGRAM=$(command -v ninja)"
+    )
   fi
   if command -v ccache >/dev/null 2>&1; then
     cmake_args+=(

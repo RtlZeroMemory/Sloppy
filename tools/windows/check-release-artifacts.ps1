@@ -104,6 +104,15 @@ function Test-ReleaseWorkflow {
     Assert-TextContains -Text $workflow -Needle "actions/upload-artifact@v4" -Message "Release artifact workflow must upload package/checksum artifacts."
     Assert-TextContains -Text $workflow -Needle "SHA256SUMS.txt" -Message "Release artifact workflow must preserve checksum artifacts."
     Assert-TextContains -Text $workflow -Needle "contents: read" -Message "Release artifact workflow should not need write permissions for dry-run."
+    $permissionsBlock = [regex]::Match($workflow, "(?m)^permissions:\r?\n(?<block>(?:^[ ]+.+\r?\n?)*)").Groups["block"].Value
+    Assert-True (-not [string]::IsNullOrWhiteSpace($permissionsBlock)) "Release artifact workflow must declare top-level permissions."
+    foreach ($line in ($permissionsBlock -split "\r?\n")) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+        Assert-True ($line -match "^\s+[A-Za-z0-9_-]+:\s*read\s*$") "Release artifact workflow permissions must be read-only. Found: $($line.Trim())"
+        Assert-True (-not ($line -match ":\s*write\b|\*")) "Release artifact workflow must not grant write or wildcard permissions. Found: $($line.Trim())"
+    }
 
     $forbidden = @(
         "gh release create",
@@ -140,6 +149,23 @@ function Test-PackageChecksums {
     }
 
     $checksumLines = @(Get-Content -LiteralPath $checksumPath)
+    $archiveNames = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::Ordinal)
+    foreach ($archive in $archives) {
+        $null = $archiveNames.Add($archive.Name)
+    }
+    foreach ($line in $checksumLines) {
+        $trimmed = $line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith("#")) {
+            continue
+        }
+        if ($trimmed -notmatch "^[0-9a-fA-F]{64}\s+\*?(?<name>.+)$") {
+            throw "SHA256SUMS.txt contains a malformed checksum line: $trimmed"
+        }
+        $name = $matches["name"]
+        if (-not $archiveNames.Contains($name)) {
+            throw "SHA256SUMS.txt contains a stale entry for missing archive: $name"
+        }
+    }
     foreach ($archive in $archives) {
         $actualHash = Get-Sha256Hex -Path $archive.FullName
         $expectedName = [regex]::Escape($archive.Name)
@@ -161,6 +187,18 @@ function Invoke-SelfTest {
         $hash = Get-Sha256Hex -Path $archive
         "$hash  sloppy-0.0.0-dev-windows-x64.zip" | Set-Content -LiteralPath (Join-Path $tempRoot "SHA256SUMS.txt") -Encoding ASCII
         Test-PackageChecksums -Directory $tempRoot
+
+        @(
+            "$hash  sloppy-0.0.0-dev-windows-x64.zip",
+            "$hash  stale-package.zip"
+        ) | Set-Content -LiteralPath (Join-Path $tempRoot "SHA256SUMS.txt") -Encoding ASCII
+        $staleFailed = $false
+        try {
+            Test-PackageChecksums -Directory $tempRoot
+        } catch {
+            $staleFailed = $true
+        }
+        Assert-True $staleFailed "Release checksum scanner accepted a stale checksum fixture."
 
         "bad  sloppy-0.0.0-dev-windows-x64.zip" | Set-Content -LiteralPath (Join-Path $tempRoot "SHA256SUMS.txt") -Encoding ASCII
         $failed = $false

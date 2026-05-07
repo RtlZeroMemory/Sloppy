@@ -63,8 +63,8 @@ chunked handling, opt-in inbound TLS wrapping, supported result descriptor conve
 safe framework error responses for invalid results or handler failures.
 
 The current path does not claim production TLS hardening, HTTP/2, HTTP/3, WebSockets,
-public streaming APIs, middleware, production graceful drain, reverse proxy behavior, or
-benchmark performance.
+public streaming APIs, middleware, production graceful drain, or reverse proxy behavior.
+It also makes no benchmark performance claim.
 
 ## Request Context
 

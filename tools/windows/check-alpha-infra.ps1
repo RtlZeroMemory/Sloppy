@@ -240,6 +240,7 @@ function Get-LocalPathHygieneMatches {
     $allowlistPaths = @(
         '//[^/\s"<>|]+/[^/\s"<>|]+',
         '~[\\/]\.ccache',
+        '\\r\?\\n',
         'vcpkg[\\/]+scripts[\\/]buildsystems[\\/]vcpkg\.cmake'
     )
     $bad = New-Object System.Collections.Generic.List[string]

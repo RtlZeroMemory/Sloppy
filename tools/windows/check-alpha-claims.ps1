@@ -141,18 +141,13 @@ function Get-AlphaClaimViolations {
     foreach ($file in Get-ClaimScanFiles -ScanRoot $ScanRoot) {
         $relative = (Get-RelativePath -Base $ScanRoot -Path $file) -replace "\\", "/"
         $lineNumber = 0
-        $previousPreviousLine = ""
-        $previousLine = ""
         foreach ($line in Get-Content -LiteralPath $file) {
             $lineNumber += 1
             foreach ($rule in $claimRules) {
-                $guardContext = "$previousPreviousLine $previousLine $line"
-                if ($line -match $rule.Pattern -and -not (Test-GuardedClaimLine -Line $guardContext)) {
+                if ($line -match $rule.Pattern -and -not (Test-GuardedClaimLine -Line $line)) {
                     $violations.Add("${relative}:${lineNumber}: $($rule.Name): $($line.Trim())")
                 }
             }
-            $previousPreviousLine = $previousLine
-            $previousLine = $line
         }
     }
 
