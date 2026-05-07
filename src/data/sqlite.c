@@ -423,6 +423,49 @@ SlSqliteOpenOptions sl_sqlite_open_options_memory(void)
     return options;
 }
 
+SlSqliteProviderConfig sl_sqlite_provider_config_default(SlStr instance_id, SlStr provider_token)
+{
+    SlSqliteProviderConfig config = {0};
+
+    config.instance_id = instance_id;
+    config.provider_token = provider_token;
+    config.queue_capacity = 16U;
+    return config;
+}
+
+SlStatus sl_sqlite_provider_executor_config(const SlSqliteProviderConfig* config,
+                                            SlProviderExecutorConfig* out_config)
+{
+    SlProviderExecutorConfig executor_config = {0};
+
+    if (config == NULL || out_config == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!sl_sqlite_str_valid(config->instance_id) || sl_str_is_empty(config->instance_id) ||
+        !sl_sqlite_str_valid(config->provider_token) || sl_str_is_empty(config->provider_token) ||
+        config->queue_capacity == 0U || config->capability_check == NULL)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    executor_config.instance_id = config->instance_id;
+    executor_config.provider_kind = sl_str_from_cstr("sqlite");
+    executor_config.provider_token = config->provider_token;
+    executor_config.mode = SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING;
+    executor_config.queue_capacity = config->queue_capacity;
+    executor_config.worker_count = 1U;
+    executor_config.max_in_flight = 1U;
+    executor_config.capability_registry = config->capability_registry;
+    executor_config.capability_check = config->capability_check;
+    executor_config.capability_check_user = config->capability_check_user;
+    executor_config.app_owner = config->app_owner;
+    executor_config.config_binding = config->config_binding;
+
+    *out_config = executor_config;
+    return sl_status_ok();
+}
+
 SlStatus sl_sqlite_copy_result_text_to_arena(SlArena* arena, SlStr text, SlStr* out)
 {
     SlOwnedStr copied = {0};

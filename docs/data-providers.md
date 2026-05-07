@@ -19,15 +19,20 @@ Implemented foundations include:
 - provider-neutral C Db contract types for `DbValue`, SQL statements, parameters,
   columns, row sets, execute results, transaction options, and redacted statement
   diagnostics;
-- synchronous native SQLite query/exec behavior;
+- SQLite provider configuration that maps to `SERIALIZED_BLOCKING` executor policy with
+  one active operation per provider instance;
+- synchronous native SQLite open/close, file and in-memory database, query/exec,
+  transaction, binding, result-copy, and diagnostic behavior;
 - a narrow V8-gated SQLite bridge;
 - doctor/audit metadata for providers and capabilities;
 - tests and examples that distinguish metadata, native provider behavior, V8 bridge
   behavior, and live-provider evidence.
 
-The current SQLite bridge is synchronous in the V8 path. Provider executor/offload adoption
-for that bridge remains separate work. PostgreSQL and SQL Server JavaScript bridge behavior
-and live-provider lanes must not be implied unless those lanes run.
+The current SQLite bridge is synchronous in the V8 path. The native SQLite provider now has
+the executor configuration contract for serialized blocking admission, but routing the
+JavaScript bridge through owner-thread Promise settlement remains separate work. PostgreSQL
+and SQL Server JavaScript bridge behavior and live-provider lanes must not be implied
+unless those lanes run.
 
 ## Capability Rules
 
@@ -71,6 +76,10 @@ redacted statement formatter that never prints parameter values.
 Provider-specific implementations still own driver conversion rules, lifecycle, and live
 I/O. The common contract is not an ORM, migration layer, SQL parser, or package-manager
 surface.
+
+SQLite stores only SQLite-native null, integer, real, text, and blob values. Sloppy maps
+JSON, date, time, timestamp, and instant values through explicit text/blob encodings for
+SQLite instead of claiming native SQLite value types that do not exist.
 
 ## Evidence Lanes
 

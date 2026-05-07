@@ -4,6 +4,7 @@
 #include "sloppy/arena.h"
 #include "sloppy/bytes.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/provider_executor.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
 
@@ -33,6 +34,18 @@ typedef struct SlSqliteOpenOptions
     SlStr path;
     SlSqliteAccess access;
 } SlSqliteOpenOptions;
+
+typedef struct SlSqliteProviderConfig
+{
+    SlStr instance_id;
+    SlStr provider_token;
+    size_t queue_capacity;
+    const SlCapabilityRegistry* capability_registry;
+    SlProviderCapabilityCheckFn capability_check;
+    void* capability_check_user;
+    void* app_owner;
+    void* config_binding;
+} SlSqliteProviderConfig;
 
 /*
  * Caller-owned SQLite connection wrapper.
@@ -143,6 +156,9 @@ typedef struct SlSqliteTransaction
 } SlSqliteTransaction;
 
 SlSqliteOpenOptions sl_sqlite_open_options_memory(void);
+SlSqliteProviderConfig sl_sqlite_provider_config_default(SlStr instance_id, SlStr provider_token);
+SlStatus sl_sqlite_provider_executor_config(const SlSqliteProviderConfig* config,
+                                            SlProviderExecutorConfig* out_config);
 
 /*
  * Copies SQLite transient text/blob result storage into `arena`.
