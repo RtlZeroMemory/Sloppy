@@ -44,7 +44,7 @@ scalar reference behavior exactly.
   - `SLOPPY_ENABLE_SIMD=OFF` scalar-only fallback;
   - `SLOPPY_ENABLE_SIMD=ON` fail-fast if no supported backend exists;
   - `SLOPPY_SIMD_LEVEL=AUTO|SSE2|AVX2`, where AUTO does not select AVX2;
-  - `windows-simd` baseline preset;
+  - `windows-simd` SSE2-targeted baseline preset;
   - `windows-avx2` AVX2-targeted preset for AVX2-capable CPUs;
   - CI matrix for baseline and AVX2 parity lanes.
 - Existing scalar APIs:

@@ -117,7 +117,8 @@ static int exercise_builders(const uint8_t* data, size_t size)
     SlArena arena;
     SlByteBuilderStats stats;
     SlBytes bytes = sl_bytes_from_parts(data, size);
-    size_t prefix = size > 16U ? 16U : size;
+    size_t prefix =
+        size > SL_BYTE_BUILDER_SMALL_CAPACITY ? SL_BYTE_BUILDER_SMALL_CAPACITY : size;
 
     if (!status_is_ok(sl_byte_builder_init_fixed(&byte_builder, storage, sizeof(storage)))) {
         return 1;
@@ -136,10 +137,14 @@ static int exercise_builders(const uint8_t* data, size_t size)
     if (!status_is_ok(sl_byte_builder_init_small(&small_builder))) {
         return 1;
     }
-    (void)sl_byte_builder_append_bytes(&small_builder, sl_bytes_from_parts(data, prefix));
+    if (!status_is_ok(sl_byte_builder_append_bytes(&small_builder,
+                                                   sl_bytes_from_parts(data, prefix))))
+    {
+        return 1;
+    }
     stats = sl_byte_builder_stats(&small_builder);
     if (stats.storage != SL_BUILDER_STORAGE_SMALL || stats.length > stats.capacity ||
-        stats.capacity != SL_BYTE_BUILDER_SMALL_CAPACITY)
+        stats.capacity != SL_BYTE_BUILDER_SMALL_CAPACITY || stats.length != prefix)
     {
         return 1;
     }

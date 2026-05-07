@@ -85,7 +85,7 @@ bool sl_str_contains_nul_sse2(SlStr str)
     const __m128i zero = _mm_setzero_si128();
     size_t index = 0U;
 
-    if (str.length == 0U) {
+    if (str.length == 0U || str.ptr == NULL) {
         return false;
     }
 

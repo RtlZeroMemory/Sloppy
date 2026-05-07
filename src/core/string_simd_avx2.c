@@ -85,7 +85,7 @@ bool sl_str_contains_nul_avx2(SlStr str)
     const __m256i zero = _mm256_setzero_si256();
     size_t index = 0U;
 
-    if (str.length == 0U) {
+    if (str.length == 0U || str.ptr == NULL) {
         return false;
     }
 
