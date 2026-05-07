@@ -97,18 +97,24 @@ canonical primitive only when the scalar contract, tests, and fallback behavior 
 exist. A SIMD backend must preserve pointer-plus-length semantics, embedded-zero behavior,
 failure-output rules, and deterministic first-match results.
 
-`SLOPPY_ENABLE_SIMD=AUTO` is the default. Supported architectures enable available
-compile-time SIMD backends automatically; unsupported architectures keep the same public
+`SLOPPY_ENABLE_SIMD=AUTO` is the default. Supported x86_64/AMD64 architectures enable available
+compile-time baseline SIMD automatically; unsupported architectures keep the same public
 APIs and use the scalar reference path. `SLOPPY_ENABLE_SIMD=OFF` forces scalar fallback,
 and `SLOPPY_ENABLE_SIMD=ON` requires a supported backend or fails configuration.
-`SLOPPY_SIMD_LEVEL=AUTO` selects the safe baseline backend; `SLOPPY_SIMD_LEVEL=AVX2`
-builds the advanced backend for AVX2-targeted artifacts.
+`SLOPPY_SIMD_LEVEL=AUTO` selects the safe baseline backend and does not select AVX2.
+`SLOPPY_SIMD_LEVEL=AVX2` builds an AVX2-targeted binary that must only run on AVX2-capable
+CPUs.
 
 The initial backends cover byte find, byte find-any, no-NUL scans, and ASCII
-case-insensitive string comparison. SSE2 is the default x86/x64 baseline; AVX2 is available
-through the explicit `windows-avx2` preset and equivalent CMake configuration. Both are
+case-insensitive string comparison. SSE2 is the default x86_64/AMD64 baseline; AVX2 is available
+through the explicit AVX2-targeted `windows-avx2` preset and equivalent CMake configuration. Both are
 covered by the same unit/property/fuzz/benchmark smoke evidence as the scalar path and do
 not make a public performance claim.
+
+`sl_str_contains_nul` is a scan predicate, not a complete C-string boundary validator. It
+returns false for malformed non-empty NULL-backed views because there is no valid storage to
+scan. C-string boundaries must use `sl_str_validate_no_nul` or
+`sl_str_copy_to_arena_cstr`, which reject malformed storage before scanning.
 
 ## Interned Metadata
 

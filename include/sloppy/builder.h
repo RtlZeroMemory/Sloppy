@@ -28,8 +28,9 @@ typedef enum SlBuilderStorageKind
  *
  * Fixed builders write into caller-owned storage and never grow. Arena builders allocate
  * replacement buffers from a caller-supplied arena as they grow, up to `max_capacity`.
- * Small builders use inline storage inside the builder and never grow; their views are
- * valid only while the builder object remains alive and unchanged.
+ * Small builders use inline storage inside the builder and never grow; operations access
+ * that storage by storage kind, not through a persisted self-pointer. Their views are valid
+ * only while the builder object remains alive and unchanged.
  * The builder never owns or frees an arena. Failed append/reserve calls leave the existing
  * builder contents valid and unchanged, so callers may keep using or viewing the prefix
  * already written. Appends may source bytes from the builder's current storage; self-overlap

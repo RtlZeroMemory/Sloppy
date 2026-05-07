@@ -59,6 +59,12 @@ bool sl_str_ends_with(SlStr str, SlStr suffix);
 bool sl_str_equal_ci_ascii(SlStr left, SlStr right);
 bool sl_str_starts_with_ci_ascii(SlStr str, SlStr prefix);
 bool sl_str_ends_with_ci_ascii(SlStr str, SlStr suffix);
+
+/*
+ * Scans a valid string view for embedded NUL bytes. Malformed non-empty views with NULL
+ * storage return false because there is no valid storage to scan. C-string boundaries must
+ * call `sl_str_validate_no_nul` or `sl_str_copy_to_arena_cstr`, not this predicate alone.
+ */
 bool sl_str_contains_nul(SlStr str);
 
 SlStr sl_owned_str_as_view(SlOwnedStr str);

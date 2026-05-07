@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docs_only: ${{ steps.changed.outputs.docs_only }}
+      simd_relevant: ${{ steps.changed.outputs.simd_relevant }}
 
     steps:
       - name: Checkout
@@ -57,6 +58,7 @@ jobs:
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "simd_relevant=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -75,6 +77,7 @@ jobs:
           fi
 
           docs_only=true
+          simd_relevant=false
           if [ "${#files[@]}" -eq 0 ]; then
             docs_only=false
           fi
@@ -87,9 +90,20 @@ jobs:
                 docs_only=false
                 ;;
             esac
+
+            case "$file" in
+              .github/workflows/ci.yml|CMakeLists.txt|CMakePresets.json|\
+              include/sloppy/bytes.h|include/sloppy/string.h|include/sloppy/builder.h|\
+              src/core/bytes*|src/core/string*|src/core/builder*|\
+              tests/unit/core/test_bytes.c|tests/unit/core/test_string.c|tests/unit/core/test_builder.c|\
+              tests/fuzz/fuzz_memory_primitives.c|benchmarks/bench_memory.c|benchmarks/README.md)
+                simd_relevant=true
+                ;;
+            esac
           done
 
           echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "simd_relevant=$simd_relevant" >> "$GITHUB_OUTPUT"
 
   ci-fast:
     name: ci-fast / static
@@ -467,7 +481,7 @@ jobs:
     name: memory-simd / ${{ matrix.name }}
     runs-on: windows-latest
     needs: changes
-    if: github.event_name != 'workflow_dispatch' && (needs.changes.outputs.docs_only != 'true' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+    if: github.event_name != 'workflow_dispatch' && (needs.changes.outputs.simd_relevant == 'true' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')))
 
     strategy:
       fail-fast: false

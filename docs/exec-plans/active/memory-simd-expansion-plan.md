@@ -43,9 +43,9 @@ scalar reference behavior exactly.
   - default `SLOPPY_ENABLE_SIMD=AUTO`;
   - `SLOPPY_ENABLE_SIMD=OFF` scalar-only fallback;
   - `SLOPPY_ENABLE_SIMD=ON` fail-fast if no supported backend exists;
-  - `SLOPPY_SIMD_LEVEL=AUTO|SSE2|AVX2`;
+  - `SLOPPY_SIMD_LEVEL=AUTO|SSE2|AVX2`, where AUTO does not select AVX2;
   - `windows-simd` baseline preset;
-  - `windows-avx2` advanced preset;
+  - `windows-avx2` AVX2-targeted preset for AVX2-capable CPUs;
   - CI matrix for baseline and AVX2 parity lanes.
 - Existing scalar APIs:
   - `sl_bytes_find`;
@@ -101,7 +101,7 @@ Acceptance:
 
 ### Step 2: Lock Configuration Semantics
 
-- Make `AUTO` baseline-safe and enabled on supported x86/x64 platforms.
+- Make `AUTO` baseline-safe and enabled on supported x86_64/AMD64 platforms.
 - Keep AVX2 explicit through `SLOPPY_SIMD_LEVEL=AVX2` and `windows-avx2`.
 - Add configure messages that name the selected backend.
 - Confirm stale CMake cache behavior is avoided by pinning preset values.
@@ -235,7 +235,7 @@ Acceptance:
 ## Acceptance Criteria
 
 - Scalar API behavior is unchanged.
-- Default supported x86/x64 builds enable baseline SIMD automatically.
+- Default supported x86_64/AMD64 builds enable baseline SIMD automatically.
 - AVX2 is available only through explicit advanced configuration.
 - Unsupported architectures fall back under `AUTO`.
 - Forced SIMD fails configuration when unsupported.
@@ -272,9 +272,9 @@ git diff --check
 ## Decision Log
 
 - 2026-05-07: Keep scalar APIs as the only public surface.
-- 2026-05-07: Enable baseline SIMD automatically on supported x86/x64.
+- 2026-05-07: Enable baseline SIMD automatically on supported x86_64/AMD64.
 - 2026-05-07: Keep AVX2 explicit through `SLOPPY_SIMD_LEVEL=AVX2` to avoid accidental
-  illegal-instruction risk in general binaries.
+  illegal-instruction risk in general binaries; AUTO must not select AVX2.
 - 2026-05-07: Do not add array SIMD until Sloppy owns a canonical array/buffer API or a
   repeated hot path needs a scalar helper first.
 - 2026-05-07: Do not hide SSO inside arena builders because existing diagnostics, HTTP,
@@ -285,14 +285,14 @@ git diff --check
 
 - 2026-05-07: Initial SSE2 and AVX2 backend files are in progress.
 - 2026-05-07: `core.bytes.views` is passing in scalar/SSE2/AVX2 after parity test fix.
-- 2026-05-07: `core.str.views` currently fails in SIMD-enabled presets and must be fixed
-  before expanding or opening the PR.
+- 2026-05-07: `core.str.views` is passing in scalar/SSE2/AVX2 after the ASCII parity
+  oracle was fixed.
 
 ## Risks
 
-- AVX2 builds can compile on CI but may fail at runtime if the runner lacks AVX2. Mitigate
-  by keeping AVX2 in its own lane and disabling that lane only with an explicit issue
-  comment if the runner proves unsupported.
+- AVX2-targeted builds can compile on CI but may fail at runtime if the runner lacks AVX2.
+  Mitigate by keeping AVX2 in its own lane and disabling that lane only with an explicit
+  issue comment if the runner proves unsupported.
 - Signed byte SIMD comparisons can accidentally treat non-ASCII as alphabetic. Mitigate
   with high-bit and punctuation parity tests.
 - First-match SIMD masks can return a later match than scalar. Mitigate with boundary and
@@ -307,5 +307,5 @@ git diff --check
 
 ## Completion Notes
 
-Pending. The current implementation must not be pushed until all scalar, SSE2, and AVX2
-parity lanes pass locally.
+Local scalar, SSE2, and AVX2 parity lanes passed before PR publication. Review fixes must
+rerun targeted gates before push.

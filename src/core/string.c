@@ -261,6 +261,7 @@ SlStatus sl_str_validate_no_nul(SlStr str)
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    /* C-string boundary validation checks storage before using the scan predicate. */
     return sl_str_contains_nul(str) ? sl_status_from_code(SL_STATUS_INVALID_ARGUMENT)
                                     : sl_status_ok();
 }

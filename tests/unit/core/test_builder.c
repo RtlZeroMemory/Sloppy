@@ -141,7 +141,9 @@ static int test_small_builder_sso_contract(void)
         'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x',
         'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x', 'x'};
     SlByteBuilder byte_builder;
+    SlByteBuilder copied_byte_builder;
     SlStringBuilder string_builder;
+    SlStringBuilder copied_string_builder;
     SlByteBuilderStats stats;
     SlStr view = sl_str_from_cstr("sentinel");
 
@@ -167,6 +169,16 @@ static int test_small_builder_sso_contract(void)
         return 72;
     }
 
+    copied_byte_builder = byte_builder;
+    if (expect_status(sl_byte_builder_append_byte(&copied_byte_builder, (unsigned char)'!'),
+                      SL_STATUS_OK) != 0 ||
+        expect_bytes(sl_byte_builder_view(&byte_builder), prefix, sizeof(prefix)) != 0 ||
+        expect_bytes(sl_byte_builder_view(&copied_byte_builder), (const unsigned char*)"sso!", 4U) !=
+            0)
+    {
+        return 77;
+    }
+
     if (expect_status(sl_byte_builder_append_bytes(&byte_builder,
                                                    sl_bytes_from_parts(overflow, sizeof(overflow))),
                       SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
@@ -188,6 +200,15 @@ static int test_small_builder_sso_contract(void)
         expect_str(view, "small:7", 7U) != 0 || view.ptr[view.length] != '\0')
     {
         return 75;
+    }
+
+    copied_string_builder = string_builder;
+    if (expect_status(sl_string_builder_append_cstr(&copied_string_builder, ":copy"),
+                      SL_STATUS_OK) != 0 ||
+        expect_str(sl_string_builder_view(&string_builder), "small:7", 7U) != 0 ||
+        expect_str(sl_string_builder_view(&copied_string_builder), "small:7:copy", 12U) != 0)
+    {
+        return 78;
     }
 
     sl_string_builder_reset(&string_builder);

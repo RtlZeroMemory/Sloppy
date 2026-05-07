@@ -81,10 +81,11 @@ contract.
 Default-safe fuzz/property seed replay may run in the default lane when it is
 deterministic and bounded. Windows ASan, Windows libFuzzer seed replay, and Linux
 ASan/UBSan are mandatory memory-safety CI lanes and must be reported separately.
-The `windows-simd` and `windows-avx2` lanes are mandatory for SIMD backend PRs and report
-scalar/SIMD parity plus seed replay, not performance. libFuzzer mutation, long fuzzing,
-stress/torture, live-provider checks, package checks, V8 checks, and benchmarks remain
-separate opt-in evidence unless a scoped task promotes a bounded target.
+The `windows-simd` and AVX2-targeted `windows-avx2` lanes are mandatory for SIMD backend
+PRs and report scalar/SIMD parity plus seed replay, not performance. `windows-avx2` must
+only run on AVX2-capable CPUs. libFuzzer mutation, long fuzzing, stress/torture,
+live-provider checks, package checks, V8 checks, and benchmarks remain separate opt-in
+evidence unless a scoped task promotes a bounded target.
 
 Advanced static analysis is separate from default script lint. A clean clang-tidy/analyzer
 run is useful evidence for memory-sensitive PRs, but skipped or unavailable advanced

@@ -130,12 +130,13 @@ not committed unless a scoped task deliberately promotes them to reviewed seeds.
 
 ## SIMD Evidence
 
-SIMD backends are selected build-time implementations of canonical scalar primitives. The
-`memory-simd` CI matrix builds both `windows-simd` with default `SLOPPY_ENABLE_SIMD=AUTO`
-selection and `windows-avx2` with `SLOPPY_SIMD_LEVEL=AVX2`, then runs byte/string parity
-tests, memory primitive seed replay, and benchmark smoke. Those lanes prove backend
-selection and scalar/SIMD parity for the covered primitives on supported runners; benchmark
-smoke remains harness evidence, not performance evidence.
+SIMD backends are selected build-time implementations of canonical scalar primitives on
+supported x86_64/AMD64 targets. The `memory-simd` CI matrix builds both `windows-simd` with default `SLOPPY_ENABLE_SIMD=AUTO`
+selection and the AVX2-targeted `windows-avx2` preset with `SLOPPY_SIMD_LEVEL=AVX2`, then
+runs byte/string parity tests, memory primitive seed replay, and benchmark smoke. `AUTO`
+does not select AVX2, and `windows-avx2` must only run on AVX2-capable CPUs. Those lanes
+prove backend selection and scalar/SIMD parity for the covered primitives on supported
+runners; benchmark smoke remains harness evidence, not performance evidence.
 
 Local Windows lane:
 

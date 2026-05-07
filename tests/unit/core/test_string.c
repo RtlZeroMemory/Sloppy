@@ -67,7 +67,8 @@ static int test_no_nul_boundary_helpers(void)
 
     if (expect_true(sl_str_contains_nul(embedded_str)) != 0 ||
         expect_true(!sl_str_contains_nul(non_ascii_str)) != 0 ||
-        expect_true(!sl_str_contains_nul(sl_str_empty())) != 0)
+        expect_true(!sl_str_contains_nul(sl_str_empty())) != 0 ||
+        expect_true(!sl_str_contains_nul(sl_str_from_parts(NULL, 1U))) != 0)
     {
         return 5;
     }
