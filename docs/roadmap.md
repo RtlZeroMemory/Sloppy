@@ -46,8 +46,7 @@ The following remain deferred unless a scoped source doc and issue promote them:
   validation, and production-edge HTTP/TLS behavior.
 - Package-manager behavior, npm compatibility, and Node/Bun/Deno compatibility.
 - Production hardening, operational support claims, and performance claims.
-- SQL Server JavaScript bridge completion, ORM/migration layers, and live database support
-  beyond scoped provider lanes.
+- ORM/migration layers and live database support beyond scoped provider lanes.
 - Public tutorials or broad public user documentation before Framework v2 and
   the public alpha gate are complete.
 

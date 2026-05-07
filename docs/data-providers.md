@@ -28,6 +28,9 @@ Implemented foundations include:
 - a V8-gated PostgreSQL bridge that uses libpq's nonblocking state machine, Slop-owned
   socket-readiness watches, bounded connection pooling, parameterized exec/query/queryOne,
   callback transactions, and owner-thread Promise settlement;
+- a V8-gated SQL Server bridge that enables asynchronous ODBC connection/statement mode,
+  advances the driver through Slop-owned V8 continuations, owns result payloads before
+  Promise settlement, and exposes bounded connection pooling and callback transactions;
 - doctor/audit metadata for providers and capabilities;
 - tests and examples that distinguish metadata, native provider behavior, V8 bridge
   behavior, and live-provider evidence.
@@ -36,8 +39,10 @@ The SQLite bridge is async at the JavaScript boundary through the `SERIALIZED_BL
 executor. SQLite work still runs on one serialized blocking worker per provider instance;
 it is not labeled `TRUE_ASYNC`. PostgreSQL JavaScript provider work is labeled
 `TRUE_ASYNC` only for the V8 bridge path that is driven by nonblocking libpq and
-`SlAsyncIoWatch`, not for blocking-pool fallback. SQL Server JavaScript bridge behavior and
-live-provider lanes must not be implied unless those lanes run.
+`SlAsyncIoWatch`, not for blocking-pool fallback. SQL Server JavaScript provider work is
+`TRUE_ASYNC` only for the V8 bridge path that successfully enables ODBC async connection
+and statement behavior; unsupported drivers fail closed instead of using a blocking-pool
+fallback.
 
 ## Capability Rules
 
@@ -97,6 +102,5 @@ These lanes are separate. A default pass is not live-provider or V8 evidence.
 
 ## Deferred Work
 
-Deferred provider work includes SQL Server JavaScript bridge completion until the ODBC
-driver async lane proves real async behavior, broader live-provider CI scheduling, richer
-provider audit policy, migrations/schema tooling, and production hardening.
+Deferred provider work includes broader live-provider CI scheduling, richer provider audit
+policy, migrations/schema tooling, and production hardening.

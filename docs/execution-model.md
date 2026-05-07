@@ -84,9 +84,9 @@ invalid route metadata fail before handler execution.
 ## Providers And Capabilities
 
 Provider metadata and capability metadata are validated from the Plan before runtime work.
-SQLite bridge calls check database capability metadata in scoped V8 lanes. PostgreSQL,
-SQL Server, filesystem, and network JavaScript bridges remain separate work and must not be
-claimed from metadata-only evidence.
+SQLite, PostgreSQL, and SQL Server bridge calls check database capability metadata in
+scoped V8 lanes. Filesystem and network JavaScript bridges must not be claimed from
+metadata-only evidence.
 
 Capability checks are runtime policy checks, not an OS sandbox.
 

@@ -41,6 +41,7 @@ mismatch, stale handle failure, and denied users API transport behavior.
 
 Gated requirements: SQLite bridge enforcement executes only in V8-enabled builds.
 PostgreSQL bridge capability enforcement is covered by the live PostgreSQL V8 lane when a
-database is configured. SQL Server JavaScript bridge enforcement remains separate until the
-async ODBC bridge lane lands. Filesystem/network checks are Sloppy runtime policy/metadata
-evidence only and do not prove OS-level containment.
+database is configured. SQL Server bridge enforcement is covered by the live SQL Server V8
+lane when an async-capable ODBC driver and database are configured. Filesystem/network
+checks are Sloppy runtime policy/metadata evidence only and do not prove OS-level
+containment.

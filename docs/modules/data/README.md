@@ -14,8 +14,9 @@ a V8-gated SQLite bridge whose exec/query/queryOne/transaction operations settle
 JavaScript Promises from provider-executor completions on the V8 owner thread.
 PostgreSQL has a V8-gated true-async bridge over nonblocking libpq, Slop-owned socket
 readiness watches, bounded pooling, parameterized exec/query/queryOne, and callback
-transactions. SQL Server requires its own evidence lane before JavaScript bridge behavior
-is claimed.
+transactions. SQL Server has a V8-gated true-async bridge that requires ODBC asynchronous
+connection and statement support, bounded pooling, parameterized exec/query/queryOne, and
+callback transactions.
 
 ## Invariants
 
@@ -31,6 +32,5 @@ is claimed.
 
 ## Deferred Work
 
-Deferred work includes SQL Server JavaScript bridge completion until real ODBC async
-behavior is proven, broader live-provider CI scheduling, richer audit behavior,
+Deferred work includes broader live-provider CI scheduling, richer audit behavior,
 migrations/schema tooling, and production hardening.

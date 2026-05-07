@@ -511,6 +511,10 @@ function postgresNativeBridge() {
     return globalThis.__sloppy?.data?.postgres ?? null;
 }
 
+function sqlserverNativeBridge() {
+    return globalThis.__sloppy?.data?.sqlserver ?? null;
+}
+
 function redactOdbcConnectionString(value) {
     return value.replace(
         /(^|;)(\s*)(password|pwd|access token|accesstoken)(\s*)=(\s*)({(?:}}|[^}])*}|[^;]*)/gi,
@@ -553,8 +557,10 @@ function validateSqlServerOpenOptions(options) {
 
     return Object.freeze({
         provider: "sqlserver",
-        connectionString: redactOdbcConnectionString(options.connectionString),
+        connectionString: options.connectionString,
+        redactedConnectionString: redactOdbcConnectionString(options.connectionString),
         driver: extractOdbcDriverName(options.connectionString),
+        capability: options.capability ?? "data.sqlserver",
         access,
         maxConnections,
         placeholderStyle: "question",
@@ -627,13 +633,13 @@ Operation:
   ${operation}
 
 Connection:
-  ${safeOptions.connectionString}
+  ${safeOptions.redactedConnectionString}
 
 Reason:
-  provider.sqlserver is a deferred runtime feature descriptor; the stdlib-to-native bridge is not implemented.
+  The active Sloppy Plan did not enable the __sloppy.data.sqlserver V8 intrinsic namespace.
 
 Fix:
-  Register SQL Server as a capability/service shape today, and use the native provider tests until the runtime bridge lands.`);
+  Add SQL Server provider metadata to the Plan, or keep SQL Server usage behind a documented capability boundary.`);
 }
 
 function openSqlite(options) {
@@ -879,6 +885,225 @@ function createPostgresConnection(nativeBridge, handle) {
     });
 }
 
+function createSqlServerClosedError(operation) {
+    return new Error(`sloppy: sqlserver connection is closed
+
+Provider:
+  sqlserver
+
+Operation:
+  ${operation}
+
+Fix:
+  Open a new SQL Server connection before using ${operation}.`);
+}
+
+function createSqlServerTransactionClosedError(operation) {
+    return new Error(`sloppy: sqlserver transaction scope is closed
+
+Provider:
+  sqlserver
+
+Operation:
+  ${operation}
+
+Fix:
+  Do not use the transaction object after transaction(...) resolves or rejects.`);
+}
+
+function createSqlServerNestedTransactionError() {
+    return new Error(`sloppy: sqlserver nested transactions are not supported
+
+Provider:
+  sqlserver
+
+Operation:
+  transaction
+
+Fix:
+  Use the transaction object passed to the current callback, or start a new transaction after it settles.`);
+}
+
+function normalizeSqlServerOperation(operation, args) {
+    if (args.length === 1 && isLoweredQuery(args[0])) {
+        return {
+            text: args[0].text,
+            parameters: args[0].parameters,
+        };
+    }
+
+    if (typeof args[0] === "string") {
+        if (args.length > 2) {
+            throw new TypeError(`Sloppy sqlserver.${operation} accepts sql and optional params.`);
+        }
+        if (args[0].length === 0) {
+            throw new TypeError(`Sloppy sqlserver.${operation} SQL must be a non-empty string.`);
+        }
+        if (args[1] !== undefined && !Array.isArray(args[1])) {
+            throw new TypeError(`Sloppy sqlserver.${operation} parameters must be an array.`);
+        }
+        return {
+            text: args[0],
+            parameters: args[1] ?? [],
+        };
+    }
+
+    return normalizeQueryArguments(operation, "question", args);
+}
+
+function createSqlServerConnection(nativeBridge, handle) {
+    const state = {
+        closed: false,
+        handle,
+        transactionActive: false,
+    };
+
+    function assertOpen(operation) {
+        if (state.closed) {
+            throw createSqlServerClosedError(operation);
+        }
+    }
+
+    function createTransaction() {
+        const txState = { closed: false };
+        function assertTransactionOpen(operation) {
+            assertOpen(operation);
+            if (txState.closed) {
+                throw createSqlServerTransactionClosedError(operation);
+            }
+        }
+
+        const tx = Object.freeze({
+            query(...args) {
+                assertTransactionOpen("transaction.query");
+                const query = normalizeSqlServerOperation("query", args);
+                return nativeBridge.transactionQuery(state.handle, query.text, query.parameters);
+            },
+            queryOne(...args) {
+                assertTransactionOpen("transaction.queryOne");
+                const query = normalizeSqlServerOperation("queryOne", args);
+                return nativeBridge.transactionQueryOne(state.handle, query.text, query.parameters);
+            },
+            exec(...args) {
+                assertTransactionOpen("transaction.exec");
+                const query = normalizeSqlServerOperation("exec", args);
+                return nativeBridge.transactionExec(state.handle, query.text, query.parameters);
+            },
+            transaction() {
+                throw createSqlServerNestedTransactionError();
+            },
+        });
+
+        return {
+            tx,
+            close() {
+                txState.closed = true;
+            },
+        };
+    }
+
+    async function rollbackAfterCallbackError(error, transaction) {
+        try {
+            await nativeBridge.transactionRollback(state.handle);
+        } catch {
+            transaction.close();
+            state.closed = true;
+            try {
+                nativeBridge.close(state.handle);
+            } catch {
+                // Preserve the original callback error while preventing reuse.
+            }
+            throw error;
+        }
+        transaction.close();
+        state.transactionActive = false;
+        throw error;
+    }
+
+    async function commitTransaction(transaction) {
+        try {
+            await nativeBridge.transactionCommit(state.handle);
+        } catch (error) {
+            transaction.close();
+            state.transactionActive = false;
+            state.closed = true;
+            try {
+                nativeBridge.close(state.handle);
+            } catch {
+                // Keep the commit failure as the observable error.
+            }
+            throw error;
+        }
+        transaction.close();
+        state.transactionActive = false;
+    }
+
+    return Object.freeze({
+        query(...args) {
+            assertOpen("query");
+            const query = normalizeSqlServerOperation("query", args);
+            return nativeBridge.query(state.handle, query.text, query.parameters);
+        },
+        queryOne(...args) {
+            assertOpen("queryOne");
+            const query = normalizeSqlServerOperation("queryOne", args);
+            return nativeBridge.queryOne(state.handle, query.text, query.parameters);
+        },
+        exec(...args) {
+            assertOpen("exec");
+            const query = normalizeSqlServerOperation("exec", args);
+            return nativeBridge.exec(state.handle, query.text, query.parameters);
+        },
+        async transaction(callback) {
+            assertOpen("transaction");
+            if (typeof callback !== "function") {
+                throw new TypeError("Sloppy sqlserver.transaction callback must be a function.");
+            }
+            if (state.transactionActive) {
+                throw createSqlServerNestedTransactionError();
+            }
+            state.transactionActive = true;
+            try {
+                await nativeBridge.transactionBegin(state.handle);
+            } catch (error) {
+                state.transactionActive = false;
+                throw error;
+            }
+            const transaction = createTransaction();
+            let value;
+            try {
+                value = await callback(transaction.tx);
+            } catch (error) {
+                return rollbackAfterCallbackError(error, transaction);
+            }
+            await commitTransaction(transaction);
+            return value;
+        },
+        close() {
+            if (state.closed) {
+                return;
+            }
+            if (state.transactionActive) {
+                throw new Error("sloppy: sqlserver transaction is active");
+            }
+            nativeBridge.close(state.handle);
+            state.closed = true;
+        },
+        __debug() {
+            return Object.freeze({
+                kind: "sqlserver-connection",
+                closed: state.closed,
+                transactionActive: state.transactionActive,
+                resource: Object.freeze({
+                    slot: state.handle.slot,
+                    generation: state.handle.generation,
+                    kind: state.handle.kind,
+                }),
+            });
+        },
+    });
+}
+
 function openPostgres(options) {
     const safeOptions = validatePostgresOpenOptions(options);
     const nativeBridge = postgresNativeBridge();
@@ -891,7 +1116,14 @@ function openPostgres(options) {
 }
 
 function openSqlServer(options) {
-    throw createSqlServerUnavailableError("open", options);
+    const safeOptions = validateSqlServerOpenOptions(options);
+    const nativeBridge = sqlserverNativeBridge();
+
+    if (nativeBridge === null) {
+        throw createSqlServerUnavailableError("open", options);
+    }
+
+    return createSqlServerConnection(nativeBridge, nativeBridge.open(safeOptions));
 }
 
 function doctorSqlServer(options = {}) {
@@ -965,6 +1197,33 @@ Object.defineProperty(postgresSupports, "nativeStdlibBridge", {
     },
 });
 
+const sqlserverSupports = {
+    connectionString: true,
+    odbc: true,
+    queryTemplates: true,
+    parameters: Object.freeze([
+        "null",
+        "string",
+        "integer",
+        "float",
+        "boolean",
+        "bigint",
+        "bytes",
+    ]),
+    transactions: true,
+    pooling: true,
+    executionMode: "TRUE_ASYNC",
+    migrations: false,
+    orm: false,
+};
+
+Object.defineProperty(sqlserverSupports, "nativeStdlibBridge", {
+    enumerable: true,
+    get() {
+        return sqlserverNativeBridge() !== null;
+    },
+});
+
 function sqlite(name) {
     return openSqliteProvider(name);
 }
@@ -1019,17 +1278,7 @@ const postgres = Object.freeze({
 const sqlserver = Object.freeze({
     provider: "sqlserver",
     placeholderStyle: "question",
-    supports: Object.freeze({
-        connectionString: true,
-        odbc: true,
-        queryTemplates: true,
-        parameters: Object.freeze(["null", "string", "integer", "float", "boolean"]),
-        transactions: true,
-        pooling: "skeleton",
-        migrations: false,
-        orm: false,
-        nativeStdlibBridge: false,
-    }),
+    supports: Object.freeze(sqlserverSupports),
     open: openSqlServer,
     doctor: doctorSqlServer,
     redactConnectionString: redactOdbcConnectionString,
@@ -1037,7 +1286,8 @@ const sqlserver = Object.freeze({
         return Object.freeze({
             provider: "sqlserver",
             placeholderStyle: "question",
-            nativeStdlibBridge: false,
+            nativeStdlibBridge: sqlserverNativeBridge() !== null,
+            executionMode: "TRUE_ASYNC",
         });
     },
 });
