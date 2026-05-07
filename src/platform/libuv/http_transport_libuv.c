@@ -57,6 +57,9 @@ struct SlHttpPlatformListener
     uv_tcp_t overflow;
     SlHttpTransportServer* server;
     SSL_CTX* tls_context;
+    SlOwnedStr tls_certificate_path;
+    SlOwnedStr tls_private_key_path;
+    SlOwnedStr tls_passphrase;
     bool loop_initialized;
     bool listener_initialized;
     bool overflow_initialized;
@@ -619,7 +622,10 @@ static int sl_http_transport_tls_passphrase_cb(char* buffer, int size, int rwfla
     if (buffer == NULL || size <= 0 || server == NULL) {
         return 0;
     }
-    passphrase = sl_owned_str_as_view(server->tls_passphrase);
+    if (server->platform == NULL) {
+        return 0;
+    }
+    passphrase = sl_owned_str_as_view(server->platform->tls_passphrase);
     if (sl_str_is_empty(passphrase)) {
         return 0;
     }
@@ -648,11 +654,13 @@ static void sl_http_transport_secure_zero(char* ptr, size_t length)
 
 static void sl_http_transport_clear_tls_passphrase(SlHttpTransportServer* server)
 {
-    if (server == NULL || server->tls_passphrase.ptr == NULL) {
+    if (server == NULL || server->platform == NULL || server->platform->tls_passphrase.ptr == NULL)
+    {
         return;
     }
-    sl_http_transport_secure_zero(server->tls_passphrase.ptr, server->tls_passphrase.length);
-    server->tls_passphrase = (SlOwnedStr){0};
+    sl_http_transport_secure_zero(server->platform->tls_passphrase.ptr,
+                                  server->platform->tls_passphrase.length);
+    server->platform->tls_passphrase = (SlOwnedStr){0};
 }
 
 static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server, SlDiag* out_diag)
@@ -678,7 +686,7 @@ static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server
     SSL_CTX_set_default_passwd_cb(context, sl_http_transport_tls_passphrase_cb);
     SSL_CTX_set_default_passwd_cb_userdata(context, server);
     if (SSL_CTX_use_certificate_chain_file(
-            context, sl_owned_str_as_view(server->tls_certificate_path).ptr) != 1)
+            context, sl_owned_str_as_view(server->platform->tls_certificate_path).ptr) != 1)
     {
         sl_http_transport_clear_tls_passphrase(server);
         SSL_CTX_free(context);
@@ -691,8 +699,9 @@ static SlStatus sl_http_transport_tls_context_init(SlHttpTransportServer* server
                                              "secrets") -
                                           1U));
     }
-    if (SSL_CTX_use_PrivateKey_file(context, sl_owned_str_as_view(server->tls_private_key_path).ptr,
-                                    SSL_FILETYPE_PEM) != 1)
+    if (SSL_CTX_use_PrivateKey_file(
+            context, sl_owned_str_as_view(server->platform->tls_private_key_path).ptr,
+            SSL_FILETYPE_PEM) != 1)
     {
         sl_http_transport_clear_tls_passphrase(server);
         SSL_CTX_free(context);
@@ -2764,6 +2773,25 @@ static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connecti
     (void)sl_http_transport_connection_close(connection, NULL);
 }
 
+static void sl_http_transport_disconnect_and_close(SlHttpTransportConnection* connection,
+                                                   SlDiag* diag, SlStr cancel_message)
+{
+    if (connection == NULL) {
+        return;
+    }
+    sl_http_transport_store_diag(connection, diag);
+    if (connection->request_started && connection->request.state != SL_HTTP_REQUEST_STATE_CLOSED &&
+        connection->request.state != SL_HTTP_REQUEST_STATE_COMPLETED &&
+        connection->request.state != SL_HTTP_REQUEST_STATE_CANCELLED &&
+        connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT &&
+        connection->request.state != SL_HTTP_REQUEST_STATE_FAILED)
+    {
+        (void)sl_http_request_cancel(&connection->request, SL_CANCELLATION_REASON_CANCELLED,
+                                     cancel_message, NULL);
+    }
+    (void)sl_http_transport_connection_close(connection, NULL);
+}
+
 static SlStatus sl_http_transport_tls_feed(SlHttpTransportConnection* connection, SlBytes bytes,
                                            SlDiag* out_diag)
 {
@@ -2999,6 +3027,15 @@ static void sl_http_transport_on_read(uv_stream_t* stream, ssize_t nread, const 
                 connection, sl_bytes_from_parts(platform->read_buffer, (size_t)nread), &diag);
         }
         if (!sl_status_is_ok(status)) {
+            if (diag.code == SL_DIAG_HTTP_CONNECTION_CLOSED &&
+                sl_status_code(status) == SL_STATUS_CANCELLED)
+            {
+                sl_http_transport_disconnect_and_close(
+                    connection, &diag,
+                    sl_http_transport_literal("HTTP TLS client disconnected",
+                                              sizeof("HTTP TLS client disconnected") - 1U));
+                return;
+            }
             sl_http_transport_fail_and_close(connection, &diag);
         }
         return;
@@ -3022,20 +3059,10 @@ static void sl_http_transport_on_read(uv_stream_t* stream, ssize_t nread, const 
             sl_http_transport_literal("request cleanup still runs after disconnect",
                                       sizeof("request cleanup still runs after disconnect") - 1U));
         (void)status;
-        if (connection->request_started &&
-            connection->request.state != SL_HTTP_REQUEST_STATE_CLOSED &&
-            connection->request.state != SL_HTTP_REQUEST_STATE_COMPLETED &&
-            connection->request.state != SL_HTTP_REQUEST_STATE_CANCELLED &&
-            connection->request.state != SL_HTTP_REQUEST_STATE_TIMED_OUT &&
-            connection->request.state != SL_HTTP_REQUEST_STATE_FAILED)
-        {
-            (void)sl_http_request_cancel(
-                &connection->request, SL_CANCELLATION_REASON_CANCELLED,
-                sl_http_transport_literal("HTTP client disconnected",
-                                          sizeof("HTTP client disconnected") - 1U),
-                NULL);
-        }
-        (void)sl_http_transport_connection_close(connection, NULL);
+        sl_http_transport_disconnect_and_close(
+            connection, &diag,
+            sl_http_transport_literal("HTTP client disconnected",
+                                      sizeof("HTTP client disconnected") - 1U));
         return;
     }
 
@@ -3247,9 +3274,18 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_http_transport_alloc(arena, sizeof(SlHttpPlatformListener),
+                                     _Alignof(SlHttpPlatformListener), &memory);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    server->platform = (SlHttpPlatformListener*)memory;
+    *server->platform = (SlHttpPlatformListener){0};
+    server->platform->server = server;
+
     if (server->config.tls.enabled) {
         status = sl_str_copy_to_arena_cstr(arena, server->config.tls.certificate_path,
-                                           &server->tls_certificate_path);
+                                           &server->platform->tls_certificate_path);
         if (!sl_status_is_ok(status)) {
             return sl_http_transport_diag(
                 out_diag, SL_DIAG_HTTP_TLS_CONFIG, sl_status_code(status),
@@ -3260,7 +3296,7 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
                                               1U));
         }
         status = sl_str_copy_to_arena_cstr(arena, server->config.tls.private_key_path,
-                                           &server->tls_private_key_path);
+                                           &server->platform->tls_private_key_path);
         if (!sl_status_is_ok(status)) {
             return sl_http_transport_diag(
                 out_diag, SL_DIAG_HTTP_TLS_CONFIG, sl_status_code(status),
@@ -3272,7 +3308,7 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
         }
         if (!sl_str_is_empty(server->config.tls.passphrase)) {
             status = sl_str_copy_to_arena_cstr(arena, server->config.tls.passphrase,
-                                               &server->tls_passphrase);
+                                               &server->platform->tls_passphrase);
             if (!sl_status_is_ok(status)) {
                 return sl_http_transport_diag(
                     out_diag, SL_DIAG_HTTP_TLS_CONFIG, sl_status_code(status),
@@ -3282,6 +3318,9 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
                                               sizeof("TLS passphrase material is redacted") - 1U));
             }
         }
+        server->config.tls.certificate_path = sl_str_empty();
+        server->config.tls.private_key_path = sl_str_empty();
+        server->config.tls.passphrase = sl_str_empty();
     }
 
     backend_options.max_connections = server->config.max_connections;
@@ -3295,15 +3334,6 @@ SlStatus sl_http_transport_server_init(SlHttpTransportServer* server, SlArena* a
     if (!sl_status_is_ok(status)) {
         return status;
     }
-
-    status = sl_http_transport_alloc(arena, sizeof(SlHttpPlatformListener),
-                                     _Alignof(SlHttpPlatformListener), &memory);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    server->platform = (SlHttpPlatformListener*)memory;
-    *server->platform = (SlHttpPlatformListener){0};
-    server->platform->server = server;
 
     status = sl_checked_array_size(server->config.connection_capacity,
                                    sizeof(SlHttpTransportConnection), &connections_bytes);

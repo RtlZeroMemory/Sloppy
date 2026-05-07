@@ -165,9 +165,6 @@ typedef struct SlHttpTransportServer
     SlArena* arena;
     SlHttpTransportConfig config;
     SlOwnedStr host;
-    SlOwnedStr tls_certificate_path;
-    SlOwnedStr tls_private_key_path;
-    SlOwnedStr tls_passphrase;
     SlHttpBackend backend;
     SlHttpPlatformListener* platform;
     SlHttpPlatformConnection* platform_connections;
