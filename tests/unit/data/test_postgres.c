@@ -528,6 +528,10 @@ static int test_live_pool(void)
         printf("FAIL: live PostgreSQL pool open failed; category: %s. Diagnostics are redacted "
                "and connection strings are not printed.\n",
                classify_live_open_failure(&diag));
+        for (size_t index = 0U; index < copied_url_length; index += 1U) {
+            copied_url[index] = 'x';
+        }
+        copied_url[copied_url_length] = '\0';
         return 51;
     }
     for (size_t index = 0U; index < copied_url_length; index += 1U) {
