@@ -438,6 +438,7 @@ set(
     src/core/plan_parse.c
     src/core/runtime_contract.c
     src/core/diagnostics.c
+    src/data/common.c
     src/data/postgres.c
     src/data/sqlserver.c
     src/data/sqlite.c
@@ -532,6 +533,7 @@ set(
     tests/unit/core/test_runtime_contract.c
     tests/unit/core/test_engine.c
     tests/unit/core/test_diagnostics.c
+    tests/unit/data/test_data_common.c
     tests/unit/data/test_postgres.c
     tests/unit/data/test_sqlserver.c
     tests/unit/core/test_assert.c
@@ -1150,6 +1152,8 @@ if(SLOPPY_ENABLE_TESTS)
         fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)
     sloppy_add_libfuzzer_target(
         fuzz_memory_primitives_libfuzzer tests/fuzz/fuzz_memory_primitives.c)
+    sloppy_add_c_unit_test(
+        data_common_contract data.common.contract tests/unit/data/test_data_common.c)
     sloppy_add_c_unit_test(
         data_postgres_provider data.postgres.provider tests/unit/data/test_postgres.c)
     add_test(NAME data.postgres.live_provider COMMAND data_postgres_provider --live)

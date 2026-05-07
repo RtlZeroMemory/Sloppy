@@ -34,18 +34,16 @@ static SlStatus sl_provider_copy_str(SlArena* arena, SlStr input, SlOwnedStr* ou
 SlStr sl_provider_execution_mode_name(SlProviderExecutionMode mode)
 {
     switch (mode) {
-    case SL_PROVIDER_EXECUTION_INLINE_FAST:
-        return sl_str_from_cstr("InlineFast");
     case SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING:
-        return sl_str_from_cstr("SerializedBlocking");
+        return sl_str_from_cstr("SERIALIZED_BLOCKING");
     case SL_PROVIDER_EXECUTION_BLOCKING_POOL:
-        return sl_str_from_cstr("BlockingPool");
-    case SL_PROVIDER_EXECUTION_NONBLOCKING_IO:
-        return sl_str_from_cstr("NonBlockingIo");
-    case SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED:
-        return sl_str_from_cstr("ExternalManaged");
+        return sl_str_from_cstr("BLOCKING_POOL");
+    case SL_PROVIDER_EXECUTION_TRUE_ASYNC:
+        return sl_str_from_cstr("TRUE_ASYNC");
+    case SL_PROVIDER_EXECUTION_UNAVAILABLE:
+        return sl_str_from_cstr("UNAVAILABLE");
     default:
-        return sl_str_from_cstr("Unknown");
+        return sl_str_from_cstr("UNKNOWN");
     }
 }
 
@@ -55,34 +53,32 @@ SlStatus sl_provider_execution_mode_parse(SlStr text, SlProviderExecutionMode* o
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (sl_str_equal(text, sl_str_from_cstr("InlineFast")) ||
-        sl_str_equal(text, sl_str_from_cstr("inline-fast")))
-    {
-        *out = SL_PROVIDER_EXECUTION_INLINE_FAST;
-        return sl_status_ok();
-    }
-    if (sl_str_equal(text, sl_str_from_cstr("SerializedBlocking")) ||
+    if (sl_str_equal(text, sl_str_from_cstr("SERIALIZED_BLOCKING")) ||
+        sl_str_equal(text, sl_str_from_cstr("SerializedBlocking")) ||
         sl_str_equal(text, sl_str_from_cstr("serialized-blocking")))
     {
         *out = SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING;
         return sl_status_ok();
     }
-    if (sl_str_equal(text, sl_str_from_cstr("BlockingPool")) ||
+    if (sl_str_equal(text, sl_str_from_cstr("BLOCKING_POOL")) ||
+        sl_str_equal(text, sl_str_from_cstr("BlockingPool")) ||
         sl_str_equal(text, sl_str_from_cstr("blocking-pool")))
     {
         *out = SL_PROVIDER_EXECUTION_BLOCKING_POOL;
         return sl_status_ok();
     }
-    if (sl_str_equal(text, sl_str_from_cstr("NonBlockingIo")) ||
-        sl_str_equal(text, sl_str_from_cstr("nonblocking-io")))
+    if (sl_str_equal(text, sl_str_from_cstr("TRUE_ASYNC")) ||
+        sl_str_equal(text, sl_str_from_cstr("TrueAsync")) ||
+        sl_str_equal(text, sl_str_from_cstr("true-async")))
     {
-        *out = SL_PROVIDER_EXECUTION_NONBLOCKING_IO;
+        *out = SL_PROVIDER_EXECUTION_TRUE_ASYNC;
         return sl_status_ok();
     }
-    if (sl_str_equal(text, sl_str_from_cstr("ExternalManaged")) ||
-        sl_str_equal(text, sl_str_from_cstr("external-managed")))
+    if (sl_str_equal(text, sl_str_from_cstr("UNAVAILABLE")) ||
+        sl_str_equal(text, sl_str_from_cstr("Unavailable")) ||
+        sl_str_equal(text, sl_str_from_cstr("unavailable")))
     {
-        *out = SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED;
+        *out = SL_PROVIDER_EXECUTION_UNAVAILABLE;
         return sl_status_ok();
     }
 
@@ -91,16 +87,9 @@ SlStatus sl_provider_execution_mode_parse(SlStr text, SlProviderExecutionMode* o
 
 bool sl_provider_execution_mode_is_supported(SlProviderExecutionMode mode)
 {
-    return mode == SL_PROVIDER_EXECUTION_INLINE_FAST ||
-           mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING ||
+    return mode == SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING ||
            mode == SL_PROVIDER_EXECUTION_BLOCKING_POOL ||
-           mode == SL_PROVIDER_EXECUTION_NONBLOCKING_IO ||
-           mode == SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED;
-}
-
-bool sl_provider_execution_mode_may_run_inline_on_owner_thread(SlProviderExecutionMode mode)
-{
-    return mode == SL_PROVIDER_EXECUTION_INLINE_FAST;
+           mode == SL_PROVIDER_EXECUTION_TRUE_ASYNC || mode == SL_PROVIDER_EXECUTION_UNAVAILABLE;
 }
 
 bool sl_provider_execution_mode_requires_offload_worker(SlProviderExecutionMode mode)
@@ -1114,6 +1103,14 @@ sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor, S
             executor->capability_denied_count += 1U;
             return status;
         }
+    }
+
+    if (executor->mode == SL_PROVIDER_EXECUTION_UNAVAILABLE) {
+        executor->invalid_operation_count += 1U;
+        return sl_provider_executor_reject_with_diag(
+            arena, descriptor, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            sl_str_from_cstr("provider operation rejected: execution mode unavailable"),
+            SL_STATUS_UNSUPPORTED);
     }
 
     if (descriptor->run != NULL &&

@@ -22,11 +22,10 @@ typedef struct SlProviderOperation SlProviderOperation;
 
 typedef enum SlProviderExecutionMode
 {
-    SL_PROVIDER_EXECUTION_INLINE_FAST = 0,
-    SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING = 1,
-    SL_PROVIDER_EXECUTION_BLOCKING_POOL = 2,
-    SL_PROVIDER_EXECUTION_NONBLOCKING_IO = 3,
-    SL_PROVIDER_EXECUTION_EXTERNAL_MANAGED = 4
+    SL_PROVIDER_EXECUTION_SERIALIZED_BLOCKING = 0,
+    SL_PROVIDER_EXECUTION_BLOCKING_POOL = 1,
+    SL_PROVIDER_EXECUTION_TRUE_ASYNC = 2,
+    SL_PROVIDER_EXECUTION_UNAVAILABLE = 3
 } SlProviderExecutionMode;
 
 typedef enum SlProviderOperationState
@@ -209,7 +208,6 @@ struct SlProviderInstanceExecutor
 SlStr sl_provider_execution_mode_name(SlProviderExecutionMode mode);
 SlStatus sl_provider_execution_mode_parse(SlStr text, SlProviderExecutionMode* out);
 bool sl_provider_execution_mode_is_supported(SlProviderExecutionMode mode);
-bool sl_provider_execution_mode_may_run_inline_on_owner_thread(SlProviderExecutionMode mode);
 bool sl_provider_execution_mode_requires_offload_worker(SlProviderExecutionMode mode);
 SlStr sl_provider_operation_kind_name(SlProviderOperationKind kind);
 bool sl_provider_operation_kind_is_supported(SlProviderOperationKind kind);
@@ -254,11 +252,12 @@ sl_provider_operation_descriptor_set_diagnostic_context(SlProviderOperationDescr
  *
  * SERIALIZED_BLOCKING starts one long-lived worker on init. BLOCKING_POOL starts a bounded
  * number of long-lived workers on init and caps active work to configured max_in_flight,
- * which must not exceed worker_count. Other modes currently model per-provider-instance
- * admission, mode metadata, pending/in-flight counts, terminal completion posting, and
- * shutdown policy without execution engines. `arena`, `slots`, and `completion_loop` must
- * outlive the executor. Provider work admitted here must never block the V8 owner thread,
- * and workers must never enter V8.
+ * which must not exceed worker_count. TRUE_ASYNC models provider-owned nonblocking state
+ * that completes through Slop owner-thread completion without occupying blocking workers.
+ * UNAVAILABLE is an explicit fail-closed mode: capability checks still run before
+ * admission, but provider work is rejected before enqueue. `arena`, `slots`, and
+ * `completion_loop` must outlive the executor. Provider work admitted here must never
+ * block the V8 owner thread, and workers must never enter V8.
  *
  * Threading contract: this executor is caller-serialized. `init`, `dispose`, `submit`,
  * `complete`, `cancel`, `timeout`, `shutdown`, and query calls must not race with each

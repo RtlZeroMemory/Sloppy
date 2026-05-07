@@ -311,7 +311,7 @@ alpha docs, HTTP backend implementation, and benchmark claims.
 Acceptance criteria: provider operations own queued inputs; providers are admitted through
 bounded per-instance executors; SQLite-class blocking work runs off the V8 owner thread in
 serialized order; providers that support parallel blocking work use bounded pools; true
-async providers can use `NONBLOCKING_IO` without occupying blocking workers; capability
+async providers can use `TRUE_ASYNC` without occupying blocking workers; capability
 denial happens before enqueue; cancellation, timeout, shutdown, overflow, provider
 failure, and late completion are deterministic and cleanup-safe; diagnostics and stress
 smoke are present without performance claims.
