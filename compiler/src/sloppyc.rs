@@ -10,7 +10,7 @@ use oxc_ast::ast::{
     Argument, ArrayExpressionElement, BindingPattern, CallExpression, ChainElement, Declaration,
     Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
     ImportDeclarationSpecifier, ImportOrExportKind, ObjectPropertyKind, PropertyKey, PropertyKind,
-    Statement,
+    Statement, TSLiteral, TSSignature, TSType, TSTypeName,
 };
 use oxc_parser::Parser;
 use oxc_span::Span;
@@ -134,6 +134,7 @@ pub struct CompileError {
 struct Route {
     method: &'static str,
     pattern: String,
+    framework_path: Option<String>,
     name: Option<String>,
     span: Span,
     source_path: PathBuf,
@@ -148,10 +149,12 @@ struct Handler {
     source: String,
     span: Span,
     is_async: bool,
+    runtime_deferred: bool,
     source_name: String,
     source_text: String,
     bindings: Vec<RequestBinding>,
     response: Option<ResponseMetadata>,
+    responses: Vec<ResponseMetadata>,
     effects: Vec<EffectMetadata>,
 }
 
@@ -221,6 +224,17 @@ struct RequestBinding {
     kind: String,
     name: Option<String>,
     schema: Option<String>,
+    parameter: Option<String>,
+    type_name: Option<String>,
+    source_name: Option<String>,
+    source_text: Option<String>,
+    span: Option<Span>,
+    wrapper: Option<String>,
+    injection_kind: Option<String>,
+    provider_kind: Option<String>,
+    capability: Option<String>,
+    semantic: Option<String>,
+    redacted: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -228,6 +242,11 @@ struct ResponseMetadata {
     helper: String,
     status: u16,
     kind: String,
+    body_schema: Option<String>,
+    source_name: Option<String>,
+    source_text: Option<String>,
+    span: Option<Span>,
+    partial: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -251,6 +270,16 @@ struct FunctionEffectSummary {
     unknown_provider_usage: bool,
     source_name: String,
     source_text: String,
+}
+
+struct HandlerExtractionContext<'a> {
+    route_pattern: &'a str,
+    source: &'a str,
+    source_name: &'a str,
+    allow_data_handler_body: bool,
+    schema_names: &'a BTreeSet<String>,
+    provider_bindings: &'a BTreeMap<String, ProviderBinding>,
+    helper_effects: &'a BTreeMap<String, FunctionEffectSummary>,
 }
 
 #[derive(Debug, Clone)]
@@ -283,11 +312,7 @@ struct ConfigReadMetadata {
 }
 
 fn schema_names(state: &AppState) -> BTreeSet<String> {
-    if state.schema_imported {
-        state.schema_names.clone()
-    } else {
-        BTreeSet::new()
-    }
+    state.schema_names.clone()
 }
 
 #[derive(Debug, Clone)]
@@ -1426,6 +1451,28 @@ fn extract_entry(
             Statement::FunctionDeclaration(function) => {
                 extract_function_declaration(path, source, &source_name, &mut state, function)?
             }
+            Statement::TSTypeAliasDeclaration(alias) => {
+                if let Some(schema) = typescript_type_alias_schema(
+                    path,
+                    source,
+                    &source_name,
+                    alias,
+                    &state.schema_names,
+                )? {
+                    state.schemas.push(schema);
+                }
+            }
+            Statement::TSInterfaceDeclaration(interface) => {
+                if let Some(schema) = typescript_interface_schema(
+                    path,
+                    source,
+                    &source_name,
+                    interface,
+                    &state.schema_names,
+                )? {
+                    state.schemas.push(schema);
+                }
+            }
             Statement::ExpressionStatement(_) => {}
             Statement::ExportDefaultDeclaration(export) => {
                 state.default_export = export_default_identifier(&export.declaration);
@@ -1643,18 +1690,30 @@ fn helper_source_is_safe_for_top_level(summary: Option<&FunctionEffectSummary>) 
 fn collect_schema_declaration_names(statements: &[Statement<'_>]) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     for statement in statements {
-        let Statement::VariableDeclaration(declaration) = statement else {
-            continue;
-        };
-        for declarator in &declaration.declarations {
-            let Some(init) = &declarator.init else {
-                continue;
-            };
-            if expression_mentions_schema(init) {
-                if let Some(name) = binding_identifier(&declarator.id) {
-                    names.insert(name.to_string());
+        match statement {
+            Statement::VariableDeclaration(declaration) => {
+                for declarator in &declaration.declarations {
+                    let Some(init) = &declarator.init else {
+                        continue;
+                    };
+                    if expression_mentions_schema(init) {
+                        if let Some(name) = binding_identifier(&declarator.id) {
+                            names.insert(name.to_string());
+                        }
+                    }
                 }
             }
+            Statement::TSTypeAliasDeclaration(alias) => {
+                if alias.type_parameters.is_none() {
+                    names.insert(alias.id.name.as_str().to_string());
+                }
+            }
+            Statement::TSInterfaceDeclaration(interface) => {
+                if interface.type_parameters.is_none() {
+                    names.insert(interface.id.name.as_str().to_string());
+                }
+            }
+            _ => {}
         }
     }
     names
@@ -2164,7 +2223,16 @@ fn extract_import(
         return Ok(());
     }
 
-    if import_source == "sloppy/providers/sqlite" {
+    if matches!(
+        import_source,
+        "sloppy/providers/sqlite" | "sloppy/providers/postgres" | "sloppy/providers/sqlserver"
+    ) {
+        let supported_type_name = match import_source {
+            "sloppy/providers/sqlite" => "Sqlite",
+            "sloppy/providers/postgres" => "Postgres",
+            "sloppy/providers/sqlserver" => "SqlServer",
+            _ => unreachable!(),
+        };
         if let Some(specifiers) = &import.specifiers {
             for specifier in specifiers {
                 let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
@@ -2176,7 +2244,27 @@ fn extract_import(
                 let local = specifier.local.name.as_str();
                 if imported == "sqlite" && local == "sqlite" {
                     state.sqlite_imported = true;
+                } else if imported == supported_type_name && local == supported_type_name {
+                    /* Provider marker imports are compiler metadata only in this slice. */
                 } else {
+                    state.unsupported_import_name = Some((imported.to_string(), specifier.span));
+                }
+            }
+        }
+        return Ok(());
+    }
+
+    if import_source == "sloppy/data" {
+        if let Some(specifiers) = &import.specifiers {
+            for specifier in specifiers {
+                let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                    state.unsupported_import_specifier =
+                        Some((import_source.to_string(), import.source.span));
+                    return Ok(());
+                };
+                let imported = specifier.imported.name().as_str();
+                let local = specifier.local.name.as_str();
+                if imported != "sql" || local != "sql" {
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
             }
@@ -2205,7 +2293,7 @@ fn extract_import(
 
             let imported = specifier.imported.name().as_str();
             let local = specifier.local.name.as_str();
-            if matches!(imported, "Sloppy" | "Results" | "data" | "schema") && imported != local {
+            if sloppy_root_import_name_supported(imported) && imported != local {
                 state.unsupported_import_alias = true;
                 state.unsupported_import_name = Some((imported.to_string(), specifier.span));
             }
@@ -2214,7 +2302,8 @@ fn extract_import(
                 ("Results", "Results") => state.results_imported = true,
                 ("data", "data") => state.data_imported = true,
                 ("schema", "schema") => state.schema_imported = true,
-                ("Sloppy" | "Results" | "data" | "schema", _) => {}
+                _ if sloppy_root_import_name_supported(imported) && imported == local => {}
+                _ if sloppy_root_import_name_supported(imported) => {}
                 _ => {
                     state.unsupported_import_name = Some((imported.to_string(), specifier.span));
                 }
@@ -2222,6 +2311,35 @@ fn extract_import(
         }
     }
     Ok(())
+}
+
+fn sloppy_root_import_name_supported(name: &str) -> bool {
+    matches!(
+        name,
+        "Sloppy"
+            | "Results"
+            | "data"
+            | "schema"
+            | "Email"
+            | "NonEmptyString"
+            | "PasswordString"
+            | "SecretString"
+            | "Uuid"
+            | "PositiveInt"
+            | "DateTime"
+            | "Instant"
+            | "RequestContext"
+            | "SlopRequest"
+            | "SlopResponse"
+            | "CancellationSignal"
+            | "Deadline"
+            | "Route"
+            | "Query"
+            | "Body"
+            | "Header"
+            | "Service"
+            | "Config"
+    )
 }
 
 fn extract_variable_declaration(
@@ -2407,16 +2525,7 @@ fn extract_expression_statement(
         _ => (&statement.expression, None),
     };
 
-    let schema_names = schema_names(state);
-    let Some((receiver, method, pattern, handler)) = route_call(
-        route_expr,
-        source,
-        source_name,
-        state.data_imported,
-        &schema_names,
-        &state.provider_bindings,
-        &state.helper_effects,
-    ) else {
+    let Some((receiver, method, pattern, handler_arg)) = route_call_parts(route_expr) else {
         if let Some(diagnostic) = unsupported_route_call_diagnostic(path, route_expr, source, state)
         {
             return Err(diagnostic);
@@ -2446,7 +2555,8 @@ fn extract_expression_statement(
         .with_span(statement.span));
     };
 
-    if !route_pattern_supported(&full_pattern) {
+    let normalized_pattern = normalize_framework_route_pattern(&full_pattern);
+    if !route_pattern_supported(&normalized_pattern) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN",
             "route pattern is outside the Plan v1 alpha route syntax",
@@ -2455,6 +2565,26 @@ fn extract_expression_statement(
         .with_span(statement.span)
         .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
     }
+
+    let schema_names = schema_names(state);
+    let handler_context = HandlerExtractionContext {
+        route_pattern: &full_pattern,
+        source,
+        source_name,
+        allow_data_handler_body: state.data_imported,
+        schema_names: &schema_names,
+        provider_bindings: &state.provider_bindings,
+        helper_effects: &state.helper_effects,
+    };
+    let Some(handler) = handler_from_argument(handler_arg, &handler_context) else {
+        return Err(handler_diagnostic(
+            path,
+            handler_arg,
+            &full_pattern,
+            &schema_names,
+            statement.span,
+        ));
+    };
 
     let mut handler = handler;
     if !handler.effects.is_empty() {
@@ -2487,7 +2617,8 @@ fn extract_expression_statement(
 
     state.routes.push(Route {
         method,
-        pattern: full_pattern,
+        framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
+        pattern: normalized_pattern,
         name,
         span: statement.span,
         source_path: path.to_path_buf(),
@@ -2568,20 +2699,34 @@ fn unsupported_route_call_diagnostic(
         .arguments
         .get(1)
         .and_then(|argument| {
-            handler_from_argument(
-                argument,
+            let context = HandlerExtractionContext {
+                route_pattern: call
+                    .arguments
+                    .first()
+                    .and_then(string_argument)
+                    .unwrap_or_default(),
                 source,
-                "",
-                state.data_imported,
-                &schema_names(state),
-                &state.provider_bindings,
-                &state.helper_effects,
-            )
+                source_name: "",
+                allow_data_handler_body: state.data_imported,
+                schema_names: &schema_names(state),
+                provider_bindings: &state.provider_bindings,
+                helper_effects: &state.helper_effects,
+            };
+            handler_from_argument(argument, &context)
         })
         .is_none()
     {
         let handler_argument = call.arguments.get(1)?;
-        return Some(handler_diagnostic(path, handler_argument, call.span));
+        return Some(handler_diagnostic(
+            path,
+            handler_argument,
+            call.arguments
+                .first()
+                .and_then(string_argument)
+                .unwrap_or_default(),
+            &schema_names(state),
+            call.span,
+        ));
     }
 
     None
@@ -3354,6 +3499,460 @@ fn schema_declaration(
     }))
 }
 
+fn typescript_type_alias_schema(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    alias: &oxc_ast::ast::TSTypeAliasDeclaration<'_>,
+    known_schema_names: &BTreeSet<String>,
+) -> Result<Option<SchemaMetadata>, Diagnostic> {
+    if alias.type_parameters.is_some() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
+            "generic type aliases are not supported by Framework v2 schema inference",
+        )
+        .with_path(path)
+        .with_span(alias.span)
+        .with_hint(
+            "Use concrete object aliases or interfaces for compiler-emitted schema metadata.",
+        ));
+    }
+    let name = alias.id.name.as_str();
+    let definition = typescript_schema_definition(
+        path,
+        source,
+        &alias.type_annotation,
+        known_schema_names,
+        Some(name),
+    )?;
+    Ok(Some(SchemaMetadata {
+        name: name.to_string(),
+        definition,
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+        span: alias.span,
+    }))
+}
+
+fn typescript_interface_schema(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    interface: &oxc_ast::ast::TSInterfaceDeclaration<'_>,
+    known_schema_names: &BTreeSet<String>,
+) -> Result<Option<SchemaMetadata>, Diagnostic> {
+    if interface.type_parameters.is_some() || !interface.extends.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
+            "generic or inherited interfaces are not supported by Framework v2 schema inference",
+        )
+        .with_path(path)
+        .with_span(interface.span)
+        .with_hint(
+            "Use a concrete interface without extends for compiler-emitted schema metadata.",
+        ));
+    }
+    let name = interface.id.name.as_str();
+    let definition = typescript_object_schema_from_signatures(
+        path,
+        source,
+        &interface.body.body,
+        known_schema_names,
+        Some(name),
+    )?;
+    Ok(Some(SchemaMetadata {
+        name: name.to_string(),
+        definition,
+        source_name: source_name.to_string(),
+        source: source.to_string(),
+        span: interface.span,
+    }))
+}
+
+fn typescript_schema_definition(
+    path: &Path,
+    source: &str,
+    ty: &TSType<'_>,
+    known_schema_names: &BTreeSet<String>,
+    current_schema_name: Option<&str>,
+) -> Result<Value, Diagnostic> {
+    match ty {
+        TSType::TSStringKeyword(_) => Ok(json!({ "kind": "string" })),
+        TSType::TSNumberKeyword(_) => Ok(json!({ "kind": "number" })),
+        TSType::TSBooleanKeyword(_) => Ok(json!({ "kind": "bool" })),
+        TSType::TSNullKeyword(_) => Ok(json!({ "kind": "null" })),
+        TSType::TSArrayType(array) => {
+            let items = typescript_schema_definition(
+                path,
+                source,
+                &array.element_type,
+                known_schema_names,
+                current_schema_name,
+            )?;
+            Ok(json!({ "kind": "array", "items": items }))
+        }
+        TSType::TSTypeLiteral(literal) => typescript_object_schema_from_signatures(
+            path,
+            source,
+            &literal.members,
+            known_schema_names,
+            current_schema_name,
+        ),
+        TSType::TSTypeReference(reference) => {
+            let Some(name) = typescript_type_name(&reference.type_name) else {
+                return Err(unsupported_typescript_schema_diagnostic(
+                    path,
+                    reference.span,
+                    "qualified or computed type references are not supported by Framework v2 schema inference",
+                ));
+            };
+            semantic_or_reference_schema(
+                path,
+                reference.span,
+                name,
+                reference.type_arguments.as_deref(),
+                known_schema_names,
+                current_schema_name,
+            )
+        }
+        TSType::TSLiteralType(literal) => literal_type_schema(path, literal),
+        TSType::TSUnionType(union) => union_type_schema(
+            path,
+            source,
+            &union.types,
+            union.span,
+            known_schema_names,
+            current_schema_name,
+        ),
+        TSType::TSParenthesizedType(parenthesized) => typescript_schema_definition(
+            path,
+            source,
+            &parenthesized.type_annotation,
+            known_schema_names,
+            current_schema_name,
+        ),
+        TSType::TSAnyKeyword(_)
+        | TSType::TSUnknownKeyword(_)
+        | TSType::TSConditionalType(_)
+        | TSType::TSMappedType(_)
+        | TSType::TSFunctionType(_)
+        | TSType::TSImportType(_)
+        | TSType::TSIndexedAccessType(_)
+        | TSType::TSInferType(_)
+        | TSType::TSIntersectionType(_)
+        | TSType::TSTemplateLiteralType(_)
+        | TSType::TSTupleType(_)
+        | TSType::TSTypeOperatorType(_)
+        | TSType::TSTypeQuery(_) => Err(unsupported_typescript_schema_diagnostic(
+            path,
+            ts_type_span(ty),
+            "unsupported TypeScript type shape in Framework v2 schema inference",
+        )),
+        _ => Err(unsupported_typescript_schema_diagnostic(
+            path,
+            ts_type_span(ty),
+            "unsupported TypeScript type keyword in Framework v2 schema inference",
+        )),
+    }
+}
+
+fn typescript_object_schema_from_signatures(
+    path: &Path,
+    source: &str,
+    signatures: &[TSSignature<'_>],
+    known_schema_names: &BTreeSet<String>,
+    current_schema_name: Option<&str>,
+) -> Result<Value, Diagnostic> {
+    let mut properties = serde_json::Map::new();
+    for signature in signatures {
+        let TSSignature::TSPropertySignature(property) = signature else {
+            return Err(unsupported_typescript_schema_diagnostic(
+                path,
+                ts_signature_span(signature),
+                "only object properties are supported in Framework v2 schema metadata",
+            ));
+        };
+        if property.computed {
+            return Err(unsupported_typescript_schema_diagnostic(
+                path,
+                property.span,
+                "computed TypeScript property names are not supported in Framework v2 schema metadata",
+            ));
+        }
+        let Some(annotation) = &property.type_annotation else {
+            return Err(unsupported_typescript_schema_diagnostic(
+                path,
+                property.span,
+                "schema properties must include TypeScript type annotations",
+            ));
+        };
+        let Some(key) = property_key_string(&property.key) else {
+            return Err(unsupported_typescript_schema_diagnostic(
+                path,
+                property.span,
+                "schema property names must be static strings or identifiers",
+            ));
+        };
+        let mut value = typescript_schema_definition(
+            path,
+            source,
+            &annotation.type_annotation,
+            known_schema_names,
+            current_schema_name,
+        )?;
+        if property.optional {
+            value["optional"] = json!(true);
+        }
+        if schema_value_is_secret(&value) || key_is_secret_like(&key) {
+            value["secret"] = json!(true);
+            value["redaction"] = json!("secret");
+        }
+        properties.insert(key, value);
+    }
+    Ok(json!({ "kind": "object", "properties": properties }))
+}
+
+fn semantic_or_reference_schema(
+    path: &Path,
+    span: Span,
+    name: &str,
+    type_arguments: Option<&oxc_ast::ast::TSTypeParameterInstantiation<'_>>,
+    known_schema_names: &BTreeSet<String>,
+    current_schema_name: Option<&str>,
+) -> Result<Value, Diagnostic> {
+    match name {
+        "Email" if type_arguments.is_none() => Ok(json!({
+            "kind": "string",
+            "semantic": "Email",
+            "validation": "email"
+        })),
+        "NonEmptyString" if type_arguments.is_none() => Ok(json!({
+            "kind": "string",
+            "semantic": "NonEmptyString",
+            "min": 1
+        })),
+        "SecretString" if type_arguments.is_none() => Ok(json!({
+            "kind": "string",
+            "semantic": "SecretString",
+            "secret": true,
+            "redaction": "secret"
+        })),
+        "PasswordString" => {
+            let min = type_arguments
+                .and_then(|arguments| arguments.params.first())
+                .and_then(type_numeric_literal_value)
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
+                        "PasswordString requires a numeric literal minimum length",
+                    )
+                    .with_path(path)
+                    .with_span(span)
+                    .with_hint("Use PasswordString<8> or another numeric literal.")
+                })?;
+            Ok(json!({
+                "kind": "string",
+                "semantic": "PasswordString",
+                "min": min,
+                "secret": true,
+                "redaction": "secret"
+            }))
+        }
+        "Uuid" if type_arguments.is_none() => Ok(json!({
+            "kind": "string",
+            "semantic": "Uuid",
+            "validation": "uuid"
+        })),
+        "DateTime" | "Instant" if type_arguments.is_none() => Ok(json!({
+            "kind": "string",
+            "semantic": name,
+            "validation": "datetime"
+        })),
+        "PositiveInt" if type_arguments.is_none() => Ok(json!({
+            "kind": "int",
+            "semantic": "PositiveInt",
+            "min": 1
+        })),
+        _ if type_arguments.is_none() && current_schema_name == Some(name) => Err(
+            unsupported_typescript_schema_diagnostic(
+                path,
+                span,
+                "recursive TypeScript schema references are not supported by Framework v2 schema inference",
+            ),
+        ),
+        _ if type_arguments.is_none() && known_schema_names.contains(name) => {
+            Ok(json!({ "kind": "ref", "name": name }))
+        }
+        _ if type_arguments.is_none() => Err(Diagnostic::new(
+            "SLOPPYC_E_UNRESOLVED_TYPE",
+            "unresolved TypeScript type reference in Framework v2 schema inference",
+        )
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use a local type alias/interface or a supported Sloppy semantic built-in.")),
+        _ => Err(unsupported_typescript_schema_diagnostic(
+            path,
+            span,
+            "generic type references are not supported by Framework v2 schema inference",
+        )),
+    }
+}
+
+fn literal_type_schema(
+    path: &Path,
+    literal: &oxc_ast::ast::TSLiteralType<'_>,
+) -> Result<Value, Diagnostic> {
+    match &literal.literal {
+        TSLiteral::StringLiteral(value) => {
+            Ok(json!({ "kind": "literal", "value": value.value.as_str() }))
+        }
+        TSLiteral::NumericLiteral(value) => Ok(json!({ "kind": "literal", "value": value.value })),
+        TSLiteral::BooleanLiteral(value) => Ok(json!({ "kind": "literal", "value": value.value })),
+        _ => Err(unsupported_typescript_schema_diagnostic(
+            path,
+            literal.span,
+            "only string, number, and boolean literal types are supported",
+        )),
+    }
+}
+
+fn union_type_schema(
+    path: &Path,
+    source: &str,
+    types: &[TSType<'_>],
+    span: Span,
+    known_schema_names: &BTreeSet<String>,
+    current_schema_name: Option<&str>,
+) -> Result<Value, Diagnostic> {
+    let mut nullable = false;
+    let mut variants = Vec::new();
+    for ty in types {
+        if matches!(ty, TSType::TSNullKeyword(_)) {
+            nullable = true;
+            continue;
+        }
+        variants.push(typescript_schema_definition(
+            path,
+            source,
+            ty,
+            known_schema_names,
+            current_schema_name,
+        )?);
+    }
+    if nullable && variants.len() == 1 {
+        let mut value = variants.remove(0);
+        value["nullable"] = json!(true);
+        return Ok(value);
+    }
+    if variants.is_empty() {
+        return Err(unsupported_typescript_schema_diagnostic(
+            path,
+            span,
+            "union types must contain at least one non-null variant",
+        ));
+    }
+    if variants.iter().all(|value| value["kind"] == "literal") {
+        return Ok(json!({ "kind": "literalUnion", "variants": variants }));
+    }
+    Err(unsupported_typescript_schema_diagnostic(
+        path,
+        span,
+        "only nullable unions and literal unions are supported by Framework v2 schema inference",
+    ))
+}
+
+fn unsupported_typescript_schema_diagnostic(path: &Path, span: Span, message: &str) -> Diagnostic {
+    Diagnostic::new("SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA", message)
+        .with_path(path)
+        .with_span(span)
+        .with_hint("Use concrete aliases, interfaces, object literals, arrays, primitives, semantic built-ins, nullable unions, or literal unions.")
+}
+
+fn type_numeric_literal_value(ty: &TSType<'_>) -> Option<u64> {
+    let TSType::TSLiteralType(literal) = ty else {
+        return None;
+    };
+    let TSLiteral::NumericLiteral(value) = &literal.literal else {
+        return None;
+    };
+    if value.value.fract() == 0.0 && value.value >= 0.0 {
+        Some(value.value as u64)
+    } else {
+        None
+    }
+}
+
+fn typescript_type_name<'a>(name: &'a TSTypeName<'a>) -> Option<&'a str> {
+    match name {
+        TSTypeName::IdentifierReference(identifier) => Some(identifier.name.as_str()),
+        _ => None,
+    }
+}
+
+fn schema_value_is_secret(value: &Value) -> bool {
+    value
+        .get("secret")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+fn key_is_secret_like(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    lower.contains("password") || lower.contains("secret") || lower.contains("token")
+}
+
+fn ts_type_span(ty: &TSType<'_>) -> Span {
+    match ty {
+        TSType::TSAnyKeyword(node) => node.span,
+        TSType::TSBigIntKeyword(node) => node.span,
+        TSType::TSBooleanKeyword(node) => node.span,
+        TSType::TSIntrinsicKeyword(node) => node.span,
+        TSType::TSNeverKeyword(node) => node.span,
+        TSType::TSNullKeyword(node) => node.span,
+        TSType::TSNumberKeyword(node) => node.span,
+        TSType::TSObjectKeyword(node) => node.span,
+        TSType::TSStringKeyword(node) => node.span,
+        TSType::TSSymbolKeyword(node) => node.span,
+        TSType::TSUndefinedKeyword(node) => node.span,
+        TSType::TSUnknownKeyword(node) => node.span,
+        TSType::TSVoidKeyword(node) => node.span,
+        TSType::TSArrayType(node) => node.span,
+        TSType::TSConditionalType(node) => node.span,
+        TSType::TSConstructorType(node) => node.span,
+        TSType::TSFunctionType(node) => node.span,
+        TSType::TSImportType(node) => node.span,
+        TSType::TSIndexedAccessType(node) => node.span,
+        TSType::TSInferType(node) => node.span,
+        TSType::TSIntersectionType(node) => node.span,
+        TSType::TSLiteralType(node) => node.span,
+        TSType::TSMappedType(node) => node.span,
+        TSType::TSNamedTupleMember(node) => node.span,
+        TSType::TSTemplateLiteralType(node) => node.span,
+        TSType::TSThisType(node) => node.span,
+        TSType::TSTupleType(node) => node.span,
+        TSType::TSTypeLiteral(node) => node.span,
+        TSType::TSTypeOperatorType(node) => node.span,
+        TSType::TSTypePredicate(node) => node.span,
+        TSType::TSTypeQuery(node) => node.span,
+        TSType::TSTypeReference(node) => node.span,
+        TSType::TSUnionType(node) => node.span,
+        TSType::TSParenthesizedType(node) => node.span,
+        TSType::JSDocNullableType(node) => node.span,
+        TSType::JSDocNonNullableType(node) => node.span,
+        TSType::JSDocUnknownType(node) => node.span,
+    }
+}
+
+fn ts_signature_span(signature: &TSSignature<'_>) -> Span {
+    match signature {
+        TSSignature::TSIndexSignature(node) => node.span,
+        TSSignature::TSPropertySignature(node) => node.span,
+        TSSignature::TSCallSignatureDeclaration(node) => node.span,
+        TSSignature::TSConstructSignatureDeclaration(node) => node.span,
+        TSSignature::TSMethodSignature(node) => node.span,
+    }
+}
+
 fn schema_definition(expression: &Expression<'_>) -> Option<Value> {
     match expression {
         Expression::CallExpression(call) => schema_definition_call(call),
@@ -4002,15 +4601,8 @@ fn extract_module_function_routes(
                     },
                     _ => (&statement.expression, None),
                 };
-                let Some((receiver, method, pattern, mut handler)) = route_call(
-                    route_expr,
-                    source,
-                    source_name,
-                    false,
-                    &BTreeSet::new(),
-                    &providers,
-                    &BTreeMap::new(),
-                ) else {
+                let Some((receiver, method, pattern, handler_arg)) = route_call_parts(route_expr)
+                else {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
                         "function modules support provider lookup, route groups, and literal routes only",
@@ -4030,7 +4622,8 @@ fn extract_module_function_routes(
                     .with_path(path)
                     .with_span(statement.span));
                 };
-                if !route_pattern_supported(&full_pattern) {
+                let normalized_pattern = normalize_framework_route_pattern(&full_pattern);
+                if !route_pattern_supported(&normalized_pattern) {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_ROUTE_PATTERN",
                         "route pattern is outside the Plan v1 alpha route syntax",
@@ -4039,6 +4632,27 @@ fn extract_module_function_routes(
                     .with_span(statement.span)
                     .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
                 }
+
+                let schema_names = BTreeSet::new();
+                let helper_effects = BTreeMap::new();
+                let handler_context = HandlerExtractionContext {
+                    route_pattern: &full_pattern,
+                    source,
+                    source_name,
+                    allow_data_handler_body: false,
+                    schema_names: &schema_names,
+                    provider_bindings: &providers,
+                    helper_effects: &helper_effects,
+                };
+                let Some(mut handler) = handler_from_argument(handler_arg, &handler_context) else {
+                    return Err(handler_diagnostic(
+                        path,
+                        handler_arg,
+                        &full_pattern,
+                        &schema_names,
+                        statement.span,
+                    ));
+                };
 
                 if !handler.effects.is_empty() {
                     let used_providers = providers_used_by_effects(&providers, &handler.effects);
@@ -4067,7 +4681,8 @@ fn extract_module_function_routes(
                 }
                 routes.push(Route {
                     method,
-                    pattern: full_pattern,
+                    framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
+                    pattern: normalized_pattern,
                     name,
                     span: statement.span,
                     source_path: path.to_path_buf(),
@@ -4183,6 +4798,23 @@ fn route_call<'a>(
     provider_bindings: &BTreeMap<String, ProviderBinding>,
     helper_effects: &BTreeMap<String, FunctionEffectSummary>,
 ) -> Option<(&'a str, &'static str, &'a str, Handler)> {
+    let (receiver, method, pattern, handler_arg) = route_call_parts(expression)?;
+    let context = HandlerExtractionContext {
+        route_pattern: pattern,
+        source,
+        source_name,
+        allow_data_handler_body,
+        schema_names,
+        provider_bindings,
+        helper_effects,
+    };
+    let handler = handler_from_argument(handler_arg, &context)?;
+    Some((receiver, method, pattern, handler))
+}
+
+fn route_call_parts<'a>(
+    expression: &'a Expression<'a>,
+) -> Option<(&'a str, &'static str, &'a str, &'a Argument<'a>)> {
     let Expression::CallExpression(call) = expression else {
         return None;
     };
@@ -4194,16 +4826,7 @@ fn route_call<'a>(
 
     let pattern = string_argument(call.arguments.first()?)?;
     let handler_arg = call.arguments.get(1)?;
-    let handler = handler_from_argument(
-        handler_arg,
-        source,
-        source_name,
-        allow_data_handler_body,
-        schema_names,
-        provider_bindings,
-        helper_effects,
-    )?;
-    Some((receiver, method, pattern, handler))
+    Some((receiver, method, pattern, handler_arg))
 }
 
 fn route_method_from_property(property: &str) -> Option<&'static str> {
@@ -4493,6 +5116,21 @@ fn route_pattern_supported(pattern: &str) -> bool {
     pattern.split('/').skip(1).all(route_segment_supported)
 }
 
+fn normalize_framework_route_pattern(pattern: &str) -> String {
+    if !pattern.contains("/:") {
+        return pattern.to_string();
+    }
+    let mut normalized = Vec::new();
+    for segment in pattern.split('/') {
+        if let Some(name) = segment.strip_prefix(':') {
+            normalized.push(format!("{{{name}}}"));
+        } else {
+            normalized.push(segment.to_string());
+        }
+    }
+    normalized.join("/")
+}
+
 fn route_segment_supported(segment: &str) -> bool {
     if segment.is_empty() {
         return false;
@@ -4517,35 +5155,39 @@ fn route_segment_supported(segment: &str) -> bool {
 
 fn handler_from_argument(
     argument: &Argument<'_>,
-    source: &str,
-    source_name: &str,
-    allow_data_handler_body: bool,
-    schema_names: &BTreeSet<String>,
-    provider_bindings: &BTreeMap<String, ProviderBinding>,
-    helper_effects: &BTreeMap<String, FunctionEffectSummary>,
+    context: &HandlerExtractionContext<'_>,
 ) -> Option<Handler> {
     match argument {
         Argument::ArrowFunctionExpression(function) => {
+            if typed_framework_handler_parameters(&function.params) {
+                return typed_framework_handler_from_arrow(
+                    function,
+                    context.route_pattern,
+                    context.source,
+                    context.source_name,
+                    context.schema_names,
+                );
+            }
             let effects = function_effects_from_arrow(
                 function,
-                provider_bindings,
-                helper_effects,
-                source,
-                source_name,
+                context.provider_bindings,
+                context.helper_effects,
+                context.source,
+                context.source_name,
             );
             if handler_parameters_are_unsupported(&function.params)
                 || arrow_has_typescript_syntax(function)
                 || effects.unknown_provider_usage
-                || (!allow_data_handler_body
+                || (!context.allow_data_handler_body
                     && effects.effects.is_empty()
-                    && !handler_body_is_supported_arrow(function, schema_names))
+                    && !handler_body_is_supported_arrow(function, context.schema_names))
             {
                 return None;
             }
-            let handler_source = source_slice(source, function.span)?;
+            let handler_source = source_slice(context.source, function.span)?;
             let schema_spans = handler_context_parameter_name(&function.params)
                 .map(|ctx_name| {
-                    body_json_schema_argument_spans_arrow(function, &ctx_name, schema_names)
+                    body_json_schema_argument_spans_arrow(function, &ctx_name, context.schema_names)
                 })
                 .unwrap_or_default();
             Some(Handler {
@@ -4556,34 +5198,49 @@ fn handler_from_argument(
                 ),
                 span: function.span,
                 is_async: function.r#async,
-                source_name: source_name.to_string(),
-                source_text: source.to_string(),
-                bindings: request_bindings_from_arrow(function, schema_names),
+                runtime_deferred: false,
+                source_name: context.source_name.to_string(),
+                source_text: context.source.to_string(),
+                bindings: request_bindings_from_arrow(function, context.schema_names),
                 response: response_metadata_from_arrow(function),
+                responses: response_metadata_from_arrow(function).into_iter().collect(),
                 effects: effects.effects,
             })
         }
         Argument::FunctionExpression(function) => {
+            if typed_framework_handler_parameters(&function.params) {
+                return typed_framework_handler_from_function(
+                    function,
+                    context.route_pattern,
+                    context.source,
+                    context.source_name,
+                    context.schema_names,
+                );
+            }
             let effects = function_effects_from_function(
                 function,
-                provider_bindings,
-                helper_effects,
-                source,
-                source_name,
+                context.provider_bindings,
+                context.helper_effects,
+                context.source,
+                context.source_name,
             );
             if handler_parameters_are_unsupported(&function.params)
                 || function_has_typescript_syntax(function)
                 || effects.unknown_provider_usage
-                || (!allow_data_handler_body
+                || (!context.allow_data_handler_body
                     && effects.effects.is_empty()
-                    && !handler_body_is_supported_function(function, schema_names))
+                    && !handler_body_is_supported_function(function, context.schema_names))
             {
                 return None;
             }
-            let handler_source = source_slice(source, function.span)?;
+            let handler_source = source_slice(context.source, function.span)?;
             let schema_spans = handler_context_parameter_name(&function.params)
                 .map(|ctx_name| {
-                    body_json_schema_argument_spans_function(function, &ctx_name, schema_names)
+                    body_json_schema_argument_spans_function(
+                        function,
+                        &ctx_name,
+                        context.schema_names,
+                    )
                 })
                 .unwrap_or_default();
             Some(Handler {
@@ -4594,10 +5251,14 @@ fn handler_from_argument(
                 ),
                 span: function.span,
                 is_async: function.r#async,
-                source_name: source_name.to_string(),
-                source_text: source.to_string(),
-                bindings: request_bindings_from_function(function, schema_names),
+                runtime_deferred: false,
+                source_name: context.source_name.to_string(),
+                source_text: context.source.to_string(),
+                bindings: request_bindings_from_function(function, context.schema_names),
                 response: response_metadata_from_function(function),
+                responses: response_metadata_from_function(function)
+                    .into_iter()
+                    .collect(),
                 effects: effects.effects,
             })
         }
@@ -4605,8 +5266,758 @@ fn handler_from_argument(
     }
 }
 
-fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span) -> Diagnostic {
-    let schema_names = BTreeSet::new();
+fn typed_framework_handler_parameters(parameters: &oxc_ast::ast::FormalParameters<'_>) -> bool {
+    parameters
+        .items
+        .iter()
+        .any(|parameter| parameter.type_annotation.is_some())
+}
+
+fn typed_framework_handler_from_arrow(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    route_pattern: &str,
+    source: &str,
+    source_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<Handler> {
+    let bindings =
+        typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
+    let responses = response_metadata_many_from_arrow(function, source_name, source);
+    Some(Handler {
+        source: deferred_framework_handler_source(),
+        span: function.span,
+        is_async: function.r#async,
+        runtime_deferred: true,
+        source_name: source_name.to_string(),
+        source_text: source.to_string(),
+        bindings,
+        response: responses.first().cloned(),
+        responses,
+        effects: Vec::new(),
+    })
+}
+
+fn typed_framework_handler_from_function(
+    function: &oxc_ast::ast::Function<'_>,
+    route_pattern: &str,
+    source: &str,
+    source_name: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<Handler> {
+    let bindings =
+        typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
+    let responses = response_metadata_many_from_function(function, source_name, source);
+    Some(Handler {
+        source: deferred_framework_handler_source(),
+        span: function.span,
+        is_async: function.r#async,
+        runtime_deferred: true,
+        source_name: source_name.to_string(),
+        source_text: source.to_string(),
+        bindings,
+        response: responses.first().cloned(),
+        responses,
+        effects: Vec::new(),
+    })
+}
+
+fn deferred_framework_handler_source() -> String {
+    "() => Results.problem({ status: 501, title: \"Framework v2 runtime dispatch is deferred\" })"
+        .to_string()
+}
+
+fn typed_framework_bindings_from_parameters(
+    parameters: &oxc_ast::ast::FormalParameters<'_>,
+    route_pattern: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<Vec<RequestBinding>> {
+    if parameters.rest.is_some() {
+        return None;
+    }
+    let route_names = route_parameter_names(route_pattern);
+    let mut bound_route_names = BTreeSet::new();
+    let mut implicit_body_parameter = None::<String>;
+    let mut bindings = Vec::new();
+    for parameter in &parameters.items {
+        if parameter.initializer.is_some()
+            || parameter.optional
+            || parameter.accessibility.is_some()
+            || parameter.readonly
+            || parameter.r#override
+        {
+            return None;
+        }
+        let BindingPattern::BindingIdentifier(identifier) = &parameter.pattern else {
+            return None;
+        };
+        let parameter_name = identifier.name.as_str();
+        let annotation = parameter.type_annotation.as_ref()?;
+        let type_name = type_display_name(&annotation.type_annotation);
+        let span = parameter.span;
+        let binding = binding_from_typed_parameter(
+            parameter_name,
+            &annotation.type_annotation,
+            &route_names,
+            &mut bound_route_names,
+            &mut implicit_body_parameter,
+            schema_names,
+            span,
+        )?;
+        let mut binding = binding;
+        binding.type_name = Some(type_name);
+        bindings.push(binding);
+    }
+    if route_names
+        .iter()
+        .any(|name| !bound_route_names.contains(name))
+    {
+        return None;
+    }
+    Some(dedupe_request_bindings(bindings))
+}
+
+fn binding_from_typed_parameter(
+    parameter_name: &str,
+    ty: &TSType<'_>,
+    route_names: &BTreeSet<String>,
+    bound_route_names: &mut BTreeSet<String>,
+    implicit_body_parameter: &mut Option<String>,
+    schema_names: &BTreeSet<String>,
+    span: Span,
+) -> Option<RequestBinding> {
+    if let Some(wrapper) = wrapper_type_reference(ty) {
+        if unresolved_body_type(wrapper.1, schema_names) {
+            return None;
+        }
+        if wrapper.0 == "Route" && !route_names.contains(parameter_name) {
+            return None;
+        }
+        if wrapper.0 == "Route" {
+            bound_route_names.insert(parameter_name.to_string());
+        }
+        return explicit_wrapper_binding(parameter_name, wrapper, schema_names, span);
+    }
+    if let Some(context_kind) = framework_context_type(ty) {
+        return Some(framework_binding(
+            "context",
+            Some(context_kind),
+            None,
+            Some(parameter_name),
+            span,
+        ));
+    }
+    if let Some((provider_kind, name)) = provider_type_reference(ty) {
+        let capability = provider_capability_token(provider_kind, &name);
+        let mut binding =
+            framework_binding("injection", Some(&name), None, Some(parameter_name), span);
+        binding.injection_kind = Some("provider".to_string());
+        binding.provider_kind = Some(provider_kind.to_string());
+        binding.capability = Some(capability);
+        return Some(binding);
+    }
+    if let Some(name) = work_queue_type_reference(ty) {
+        let mut binding =
+            framework_binding("injection", Some(&name), None, Some(parameter_name), span);
+        binding.injection_kind = Some("queue".to_string());
+        binding.provider_kind = Some("workqueue".to_string());
+        binding.capability = Some(format!("queue.{name}"));
+        return Some(binding);
+    }
+    if route_names.contains(parameter_name) && primitive_type_schema(ty).is_some() {
+        bound_route_names.insert(parameter_name.to_string());
+        let schema = primitive_type_schema(ty);
+        let mut binding = framework_binding(
+            "route",
+            Some(parameter_name),
+            schema.as_deref(),
+            Some(parameter_name),
+            span,
+        );
+        binding.semantic = semantic_name_from_type(ty).map(ToOwned::to_owned);
+        return Some(binding);
+    }
+    if primitive_type_schema(ty).is_some() {
+        return None;
+    }
+    let schema = schema_name_from_type(ty, schema_names)?;
+    if implicit_body_parameter
+        .as_ref()
+        .is_some_and(|existing| existing != parameter_name)
+    {
+        return None;
+    }
+    *implicit_body_parameter = Some(parameter_name.to_string());
+    Some(framework_binding(
+        "body.json",
+        None,
+        Some(&schema),
+        Some(parameter_name),
+        span,
+    ))
+}
+
+fn explicit_wrapper_binding(
+    parameter_name: &str,
+    wrapper: (&str, &TSType<'_>, Option<String>),
+    schema_names: &BTreeSet<String>,
+    span: Span,
+) -> Option<RequestBinding> {
+    let (wrapper_name, target_type, key) = wrapper;
+    let schema = match wrapper_name {
+        "Body" => schema_name_from_type(target_type, schema_names),
+        _ => primitive_type_schema(target_type)
+            .or_else(|| schema_name_from_type(target_type, schema_names))
+            .or_else(|| semantic_name_from_type(target_type).map(ToOwned::to_owned)),
+    };
+    let kind = match wrapper_name {
+        "Route" => "route",
+        "Query" => "query",
+        "Body" => "body.json",
+        "Header" => "header",
+        "Service" => "injection",
+        "Config" => "config",
+        _ => return None,
+    };
+    let mut binding = framework_binding(
+        kind,
+        key.as_deref().or(Some(parameter_name)),
+        schema.as_deref(),
+        Some(parameter_name),
+        span,
+    );
+    binding.wrapper = Some(wrapper_name.to_string());
+    if wrapper_name == "Service" {
+        binding.injection_kind = Some("service".to_string());
+    }
+    binding.semantic = semantic_name_from_type(target_type).map(ToOwned::to_owned);
+    binding.redacted = semantic_name_from_type(target_type)
+        .is_some_and(|name| matches!(name, "PasswordString" | "SecretString"));
+    Some(binding)
+}
+
+fn framework_binding(
+    kind: &str,
+    name: Option<&str>,
+    schema: Option<&str>,
+    parameter: Option<&str>,
+    span: Span,
+) -> RequestBinding {
+    RequestBinding {
+        kind: kind.to_string(),
+        name: name.map(ToOwned::to_owned),
+        schema: schema.map(ToOwned::to_owned),
+        parameter: parameter.map(ToOwned::to_owned),
+        type_name: None,
+        source_name: None,
+        source_text: None,
+        span: Some(span),
+        wrapper: None,
+        injection_kind: None,
+        provider_kind: None,
+        capability: None,
+        semantic: None,
+        redacted: false,
+    }
+}
+
+fn route_parameter_names(pattern: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for segment in pattern.split('/').skip(1) {
+        if let Some(name) = segment.strip_prefix(':') {
+            let name = name.split([':', '.', '?']).next().unwrap_or(name);
+            if !name.is_empty() {
+                names.insert(name.to_string());
+            }
+        } else if segment.starts_with('{') && segment.ends_with('}') {
+            let inner = &segment[1..segment.len() - 1];
+            let name = inner.split_once(':').map(|(name, _)| name).unwrap_or(inner);
+            if !name.is_empty() {
+                names.insert(name.to_string());
+            }
+        }
+    }
+    names
+}
+
+fn primitive_type_schema(ty: &TSType<'_>) -> Option<String> {
+    match ty {
+        TSType::TSStringKeyword(_) => Some("string".to_string()),
+        TSType::TSNumberKeyword(_) => Some("number".to_string()),
+        TSType::TSBooleanKeyword(_) => Some("bool".to_string()),
+        TSType::TSTypeReference(reference) => {
+            let name = typescript_type_name(&reference.type_name)?;
+            match name {
+                "Email" | "NonEmptyString" | "PasswordString" | "SecretString" | "Uuid"
+                | "DateTime" | "Instant" => Some("string".to_string()),
+                "PositiveInt" => Some("int".to_string()),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn schema_name_from_type(ty: &TSType<'_>, schema_names: &BTreeSet<String>) -> Option<String> {
+    match ty {
+        TSType::TSTypeReference(reference) => {
+            let name = typescript_type_name(&reference.type_name)?;
+            if schema_names.contains(name) {
+                Some(name.to_string())
+            } else {
+                None
+            }
+        }
+        TSType::TSTypeLiteral(_) => Some("<inline>".to_string()),
+        _ => None,
+    }
+}
+
+fn semantic_name_from_type(ty: &TSType<'_>) -> Option<&'static str> {
+    let TSType::TSTypeReference(reference) = ty else {
+        return None;
+    };
+    match typescript_type_name(&reference.type_name)? {
+        "Email" => Some("Email"),
+        "NonEmptyString" => Some("NonEmptyString"),
+        "PasswordString" => Some("PasswordString"),
+        "SecretString" => Some("SecretString"),
+        "Uuid" => Some("Uuid"),
+        "PositiveInt" => Some("PositiveInt"),
+        "DateTime" => Some("DateTime"),
+        "Instant" => Some("Instant"),
+        _ => None,
+    }
+}
+
+fn wrapper_type_reference<'a>(
+    ty: &'a TSType<'a>,
+) -> Option<(&'a str, &'a TSType<'a>, Option<String>)> {
+    let TSType::TSTypeReference(reference) = ty else {
+        return None;
+    };
+    let wrapper = typescript_type_name(&reference.type_name)?;
+    if !matches!(
+        wrapper,
+        "Route" | "Query" | "Body" | "Header" | "Service" | "Config"
+    ) {
+        return None;
+    }
+    let arguments = reference.type_arguments.as_ref()?;
+    if wrapper == "Header" {
+        let key = arguments
+            .params
+            .first()
+            .and_then(type_string_literal_value)?;
+        let target = arguments.params.get(1).unwrap_or(arguments.params.first()?);
+        return Some((wrapper, target, Some(key)));
+    }
+    let target = arguments.params.first()?;
+    Some((wrapper, target, None))
+}
+
+fn framework_context_type(ty: &TSType<'_>) -> Option<&'static str> {
+    let TSType::TSTypeReference(reference) = ty else {
+        return None;
+    };
+    match typescript_type_name(&reference.type_name)? {
+        "RequestContext" => Some("RequestContext"),
+        "SlopRequest" => Some("SlopRequest"),
+        "SlopResponse" => Some("SlopResponse"),
+        "CancellationSignal" => Some("CancellationSignal"),
+        "Deadline" => Some("Deadline"),
+        _ => None,
+    }
+}
+
+fn provider_type_reference(ty: &TSType<'_>) -> Option<(&'static str, String)> {
+    let TSType::TSTypeReference(reference) = ty else {
+        return None;
+    };
+    let provider_kind = match typescript_type_name(&reference.type_name)? {
+        "Postgres" => "postgres",
+        "Sqlite" => "sqlite",
+        "SqlServer" => "sqlserver",
+        _ => return None,
+    };
+    let name = reference
+        .type_arguments
+        .as_ref()
+        .and_then(|arguments| arguments.params.first())
+        .and_then(type_string_literal_value)?;
+    Some((provider_kind, name))
+}
+
+fn work_queue_type_reference(ty: &TSType<'_>) -> Option<String> {
+    let TSType::TSTypeReference(reference) = ty else {
+        return None;
+    };
+    if typescript_type_name(&reference.type_name)? != "WorkQueue" {
+        return None;
+    }
+    reference
+        .type_arguments
+        .as_ref()
+        .and_then(|arguments| arguments.params.first())
+        .and_then(type_string_literal_value)
+}
+
+fn provider_capability_token(_provider_kind: &str, name: &str) -> String {
+    normalize_database_provider_token(name)
+}
+
+fn type_string_literal_value(ty: &TSType<'_>) -> Option<String> {
+    let TSType::TSLiteralType(literal) = ty else {
+        return None;
+    };
+    let TSLiteral::StringLiteral(value) = &literal.literal else {
+        return None;
+    };
+    Some(value.value.as_str().to_string())
+}
+
+fn type_display_name(ty: &TSType<'_>) -> String {
+    match ty {
+        TSType::TSStringKeyword(_) => "string".to_string(),
+        TSType::TSNumberKeyword(_) => "number".to_string(),
+        TSType::TSBooleanKeyword(_) => "boolean".to_string(),
+        TSType::TSNullKeyword(_) => "null".to_string(),
+        TSType::TSArrayType(array) => format!("{}[]", type_display_name(&array.element_type)),
+        TSType::TSTypeReference(reference) => {
+            let name = typescript_type_name(&reference.type_name).unwrap_or("<qualified>");
+            if let Some(arguments) = &reference.type_arguments {
+                let values = arguments
+                    .params
+                    .iter()
+                    .map(type_display_name)
+                    .collect::<Vec<_>>();
+                format!("{name}<{}>", values.join(", "))
+            } else {
+                name.to_string()
+            }
+        }
+        TSType::TSLiteralType(literal) => match &literal.literal {
+            TSLiteral::StringLiteral(value) => format!("\"{}\"", value.value.as_str()),
+            TSLiteral::NumericLiteral(value) => value.value.to_string(),
+            TSLiteral::BooleanLiteral(value) => value.value.to_string(),
+            _ => "<literal>".to_string(),
+        },
+        _ => "<unsupported>".to_string(),
+    }
+}
+
+fn framework_binding_diagnostic(
+    path: &Path,
+    argument: &Argument<'_>,
+    route_pattern: &str,
+    schema_names: &BTreeSet<String>,
+) -> Option<Diagnostic> {
+    let parameters = match argument {
+        Argument::ArrowFunctionExpression(function)
+            if typed_framework_handler_parameters(&function.params) =>
+        {
+            &function.params
+        }
+        Argument::FunctionExpression(function)
+            if typed_framework_handler_parameters(&function.params) =>
+        {
+            &function.params
+        }
+        _ => return None,
+    };
+    let route_names = route_parameter_names(route_pattern);
+    if parameters.rest.is_some() {
+        return Some(
+            Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
+                "Framework v2 route handlers do not support rest parameters",
+            )
+            .with_path(path)
+            .with_span(parameters.span),
+        );
+    }
+    let mut implicit_body = false;
+    let mut bound_route_names = BTreeSet::new();
+    for parameter in &parameters.items {
+        let BindingPattern::BindingIdentifier(identifier) = &parameter.pattern else {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
+                    "Framework v2 route handler parameters must be simple identifiers",
+                )
+                .with_path(path)
+                .with_span(parameter.span),
+            );
+        };
+        let parameter_name = identifier.name.as_str();
+        let Some(annotation) = &parameter.type_annotation else {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HANDLER_PARAMETERS",
+                    "Framework v2 route handler parameters must have TypeScript type annotations",
+                )
+                .with_path(path)
+                .with_span(parameter.span),
+            );
+        };
+        let ty = &annotation.type_annotation;
+        if malformed_header_wrapper(ty) {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEADER_BINDING",
+                    "Header<T> binding requires a string literal header name",
+                )
+                .with_path(path)
+                .with_span(parameter.span)
+                .with_hint("Use Header<\"x-request-id\"> or Header<\"x-request-id\", string>."),
+            );
+        }
+        if let Some(provider_kind) = provider_type_reference_without_literal_name(ty) {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_DYNAMIC_PROVIDER_NAME",
+                    format!("{provider_kind} provider injection requires a string literal name"),
+                )
+                .with_path(path)
+                .with_span(parameter.span)
+                .with_hint("Use Postgres<\"main\">, Sqlite<\"main\">, or SqlServer<\"main\">."),
+            );
+        }
+        if let Some(marker) = unknown_generic_injection_marker(ty) {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_UNKNOWN_INJECTION_MARKER",
+                    format!("unknown provider/service/queue marker '{marker}'"),
+                )
+                .with_path(path)
+                .with_span(parameter.span)
+                .with_hint(
+                    "Use supported provider markers or wrap ordinary body models with Body<T>.",
+                ),
+            );
+        }
+        if let Some(wrapper) = wrapper_type_reference(ty) {
+            if wrapper.0 == "Header" && wrapper.2.is_none() {
+                return Some(
+                    Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEADER_BINDING",
+                        "Header<T> binding requires a string literal header name",
+                    )
+                    .with_path(path)
+                    .with_span(parameter.span)
+                    .with_hint("Use Header<\"x-request-id\"> or Header<\"x-request-id\", string>."),
+                );
+            }
+            if unresolved_body_type(wrapper.1, schema_names) {
+                return Some(
+                    Diagnostic::new(
+                        "SLOPPYC_E_UNRESOLVED_TYPE",
+                        format!(
+                            "handler parameter '{parameter_name}' references an unresolved binding type"
+                        ),
+                    )
+                    .with_path(path)
+                    .with_span(parameter.span)
+                    .with_hint("Declare a concrete type alias or interface in the same source file."),
+                );
+            }
+            if wrapper.0 == "Route" {
+                if !route_names.contains(parameter_name) {
+                    return Some(
+                        Diagnostic::new(
+                            "SLOPPYC_E_ROUTE_BINDING_MISMATCH",
+                            format!(
+                                "explicit Route<T> parameter '{parameter_name}' does not match any route segment"
+                            ),
+                        )
+                        .with_path(path)
+                        .with_span(parameter.span)
+                        .with_hint("Rename the parameter to match a route segment or use Query<T>, Header<...>, or Body<T>."),
+                    );
+                }
+                bound_route_names.insert(parameter_name.to_string());
+            }
+            continue;
+        }
+        if framework_context_type(ty).is_some()
+            || provider_type_reference(ty).is_some()
+            || work_queue_type_reference(ty).is_some()
+        {
+            continue;
+        }
+        if route_names.contains(parameter_name) && primitive_type_schema(ty).is_some() {
+            bound_route_names.insert(parameter_name.to_string());
+            continue;
+        }
+        if primitive_type_schema(ty).is_some() {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_AMBIGUOUS_BINDING",
+                    format!("primitive handler parameter '{parameter_name}' has no binding source"),
+                )
+                .with_path(path)
+                .with_span(parameter.span)
+                .with_hint(
+                    "Use Query<T>, Route<T>, Header<...>, or Body<T> to make the binding explicit.",
+                ),
+            );
+        }
+        if unresolved_body_type(ty, schema_names) {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_UNRESOLVED_TYPE",
+                    format!(
+                        "handler parameter '{parameter_name}' references an unresolved body type"
+                    ),
+                )
+                .with_path(path)
+                .with_span(parameter.span)
+                .with_hint("Declare a concrete type alias or interface in the same source file."),
+            );
+        }
+        if implicit_body {
+            return Some(
+                Diagnostic::new(
+                    "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
+                    "route handlers may have only one implicit body parameter",
+                )
+                .with_path(path)
+                .with_span(parameter.span)
+                .with_hint(
+                    "Use explicit Body<T> wrappers or combine the body shape into one model.",
+                ),
+            );
+        }
+        implicit_body = true;
+    }
+    if let Some(unbound) = route_names
+        .iter()
+        .find(|name| !bound_route_names.contains(*name))
+    {
+        return Some(
+            Diagnostic::new(
+                "SLOPPYC_E_UNBOUND_ROUTE_PARAMETER",
+                format!("route parameter '{unbound}' is not bound by the handler signature"),
+            )
+            .with_path(path)
+            .with_span(parameters.span)
+            .with_hint("Add a matching parameter name or an explicit Route<T> binding."),
+        );
+    }
+    None
+}
+
+fn malformed_header_wrapper(ty: &TSType<'_>) -> bool {
+    let TSType::TSTypeReference(reference) = ty else {
+        return false;
+    };
+    typescript_type_name(&reference.type_name) == Some("Header")
+        && reference
+            .type_arguments
+            .as_ref()
+            .and_then(|arguments| arguments.params.first())
+            .and_then(type_string_literal_value)
+            .is_none()
+}
+
+fn provider_type_reference_without_literal_name(ty: &TSType<'_>) -> Option<&'static str> {
+    let TSType::TSTypeReference(reference) = ty else {
+        return None;
+    };
+    let provider_kind = match typescript_type_name(&reference.type_name)? {
+        "Postgres" => "postgres",
+        "Sqlite" => "sqlite",
+        "SqlServer" => "sqlserver",
+        _ => return None,
+    };
+    if reference
+        .type_arguments
+        .as_ref()
+        .and_then(|arguments| arguments.params.first())
+        .and_then(type_string_literal_value)
+        .is_some()
+    {
+        None
+    } else {
+        Some(provider_kind)
+    }
+}
+
+fn unknown_generic_injection_marker(ty: &TSType<'_>) -> Option<String> {
+    let TSType::TSTypeReference(reference) = ty else {
+        return None;
+    };
+    let name = typescript_type_name(&reference.type_name)?;
+    if reference.type_arguments.is_none()
+        || matches!(
+            name,
+            "Route"
+                | "Query"
+                | "Body"
+                | "Header"
+                | "Service"
+                | "Config"
+                | "Postgres"
+                | "Sqlite"
+                | "SqlServer"
+                | "WorkQueue"
+                | "PasswordString"
+        )
+    {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+fn unresolved_body_type(ty: &TSType<'_>, schema_names: &BTreeSet<String>) -> bool {
+    let TSType::TSTypeReference(reference) = ty else {
+        return false;
+    };
+    let Some(name) = typescript_type_name(&reference.type_name) else {
+        return false;
+    };
+    if schema_names.contains(name) {
+        return false;
+    }
+    !matches!(
+        name,
+        "Email"
+            | "NonEmptyString"
+            | "PasswordString"
+            | "SecretString"
+            | "Uuid"
+            | "PositiveInt"
+            | "DateTime"
+            | "Instant"
+            | "Postgres"
+            | "Sqlite"
+            | "SqlServer"
+            | "WorkQueue"
+            | "RequestContext"
+            | "SlopRequest"
+            | "SlopResponse"
+            | "CancellationSignal"
+            | "Deadline"
+            | "Route"
+            | "Query"
+            | "Body"
+            | "Header"
+            | "Service"
+            | "Config"
+    )
+}
+
+fn handler_diagnostic(
+    path: &Path,
+    argument: &Argument<'_>,
+    route_pattern: &str,
+    schema_names: &BTreeSet<String>,
+    fallback_span: Span,
+) -> Diagnostic {
+    if let Some(diagnostic) =
+        framework_binding_diagnostic(path, argument, route_pattern, schema_names)
+    {
+        return diagnostic;
+    }
     let (code, message, hint) = match argument {
         Argument::ArrowFunctionExpression(function) => {
             if handler_parameters_are_unsupported(&function.params) {
@@ -4621,7 +6032,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
                     "TypeScript handler syntax is not supported by the supported app compiler",
                     Some("Use JavaScript handler syntax until TypeScript lowering is implemented."),
                 )
-            } else if handler_result_uses_unsupported_values_arrow(function, &schema_names) {
+            } else if handler_result_uses_unsupported_values_arrow(function, schema_names) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE",
                     "route handler result arguments must be inline JSON-safe values",
@@ -4654,7 +6065,7 @@ fn handler_diagnostic(path: &Path, argument: &Argument<'_>, fallback_span: Span)
                     "TypeScript handler syntax is not supported by the supported app compiler",
                     Some("Use JavaScript handler syntax until TypeScript lowering is implemented."),
                 )
-            } else if handler_result_uses_unsupported_values_function(function, &schema_names) {
+            } else if handler_result_uses_unsupported_values_function(function, schema_names) {
                 (
                     "SLOPPYC_E_UNSUPPORTED_HANDLER_VALUE",
                     "route handler result arguments must be inline JSON-safe values",
@@ -5369,6 +6780,101 @@ fn response_metadata_from_function(
     response_metadata_from_call(call)
 }
 
+fn response_metadata_many_from_arrow(
+    function: &oxc_ast::ast::ArrowFunctionExpression<'_>,
+    source_name: &str,
+    source: &str,
+) -> Vec<ResponseMetadata> {
+    let mut responses = Vec::new();
+    for statement in &function.body.statements {
+        collect_statement_responses(statement, source_name, source, &mut responses);
+    }
+    dedupe_response_metadata(responses)
+}
+
+fn response_metadata_many_from_function(
+    function: &oxc_ast::ast::Function<'_>,
+    source_name: &str,
+    source: &str,
+) -> Vec<ResponseMetadata> {
+    let mut responses = Vec::new();
+    if let Some(body) = &function.body {
+        for statement in &body.statements {
+            collect_statement_responses(statement, source_name, source, &mut responses);
+        }
+    }
+    dedupe_response_metadata(responses)
+}
+
+fn collect_statement_responses(
+    statement: &Statement<'_>,
+    source_name: &str,
+    source: &str,
+    responses: &mut Vec<ResponseMetadata>,
+) {
+    match statement {
+        Statement::ReturnStatement(statement) => {
+            if let Some(argument) = &statement.argument {
+                collect_expression_responses(argument, source_name, source, responses);
+            }
+        }
+        Statement::ExpressionStatement(statement) => {
+            collect_expression_responses(&statement.expression, source_name, source, responses);
+        }
+        Statement::BlockStatement(block) => {
+            for statement in &block.body {
+                collect_statement_responses(statement, source_name, source, responses);
+            }
+        }
+        Statement::IfStatement(statement) => {
+            collect_statement_responses(&statement.consequent, source_name, source, responses);
+            if let Some(alternate) = &statement.alternate {
+                collect_statement_responses(alternate, source_name, source, responses);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_expression_responses(
+    expression: &Expression<'_>,
+    source_name: &str,
+    source: &str,
+    responses: &mut Vec<ResponseMetadata>,
+) {
+    if let Some(call) = result_call(expression) {
+        if let Some(mut response) = response_metadata_from_call(call) {
+            response.source_name = Some(source_name.to_string());
+            response.source_text = Some(source.to_string());
+            response.span = Some(call.span);
+            responses.push(response);
+        }
+        return;
+    }
+    match expression {
+        Expression::ConditionalExpression(conditional) => {
+            collect_expression_responses(&conditional.consequent, source_name, source, responses);
+            collect_expression_responses(&conditional.alternate, source_name, source, responses);
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            collect_expression_responses(&parenthesized.expression, source_name, source, responses);
+        }
+        _ => {}
+    }
+}
+
+fn dedupe_response_metadata(responses: Vec<ResponseMetadata>) -> Vec<ResponseMetadata> {
+    let mut seen = BTreeSet::new();
+    let mut deduped = Vec::new();
+    for response in responses {
+        let key = format!("{}:{}:{}", response.helper, response.status, response.kind);
+        if seen.insert(key) {
+            deduped.push(response);
+        }
+    }
+    deduped
+}
+
 fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMetadata> {
     let (_, helper) = static_member_name(&call.callee)?;
     let (status, kind) = match helper {
@@ -5389,6 +6895,11 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
         helper: helper.to_string(),
         status,
         kind: kind.to_string(),
+        body_schema: None,
+        source_name: None,
+        source_text: None,
+        span: Some(call.span),
+        partial: false,
     })
 }
 
@@ -5608,6 +7119,17 @@ fn request_binding_from_expression(
             kind: chain[1].to_string(),
             name: Some(chain[2].to_string()),
             schema: None,
+            parameter: None,
+            type_name: None,
+            source_name: None,
+            source_text: None,
+            span: None,
+            wrapper: None,
+            injection_kind: None,
+            provider_kind: None,
+            capability: None,
+            semantic: None,
+            redacted: false,
         });
     }
     None
@@ -5625,6 +7147,17 @@ fn request_binding_from_call(
             kind: format!("body.{}", chain[2]),
             name: None,
             schema,
+            parameter: None,
+            type_name: None,
+            source_name: None,
+            source_text: None,
+            span: None,
+            wrapper: None,
+            injection_kind: None,
+            provider_kind: None,
+            capability: None,
+            semantic: None,
+            redacted: false,
         });
     }
     None
@@ -6367,6 +7900,8 @@ fn emit_plan(
         || app.routes.iter().any(|route| {
             !route.handler.bindings.is_empty()
                 || route.handler.response.is_some()
+                || !route.handler.responses.is_empty()
+                || route.handler.runtime_deferred
                 || !route.handler.effects.is_empty()
         });
     let handlers = app
@@ -6376,7 +7911,7 @@ fn emit_plan(
         .map(|(index, route)| {
             let id = index + 1;
             let (line, column) = line_column(&route.handler.source_text, route.handler.span.start);
-            json!({
+            let mut handler = json!({
                 "async": route.handler.is_async,
                 "id": id,
                 "exportName": format!("__sloppy_handler_{id}"),
@@ -6386,7 +7921,11 @@ fn emit_plan(
                     "line": line,
                     "column": column
                 }
-            })
+            });
+            if route.handler.runtime_deferred {
+                handler["runtimeDispatch"] = json!("deferred");
+            }
+            handler
         })
         .collect::<Vec<_>>();
 
@@ -6408,7 +7947,7 @@ fn emit_plan(
                             && capability.provider == effect.provider_kind
                     })
                 }),
-                runtime_only: false,
+                runtime_only: route.handler.runtime_deferred,
             })
         })
         .collect::<Vec<_>>();
@@ -6436,9 +7975,24 @@ fn emit_plan(
             if let Some(module) = &route.module {
                 route_json["module"] = json!(module);
             }
+            if let Some(framework_path) = &route.framework_path {
+                route_json["frameworkPath"] = json!(framework_path);
+            }
+            if route.handler.runtime_deferred {
+                let route_params = route_parameter_names(
+                    route.framework_path.as_deref().unwrap_or(&route.pattern),
+                )
+                .into_iter()
+                .map(|name| json!({ "name": name }))
+                .collect::<Vec<_>>();
+                if !route_params.is_empty() {
+                    route_json["routeParams"] = json!(route_params);
+                }
+            }
             let emits_route_metadata = emits_app_metadata
                 || !route.handler.bindings.is_empty()
                 || route.handler.response.is_some()
+                || !route.handler.responses.is_empty()
                 || !route.handler.effects.is_empty();
             if !route.handler.bindings.is_empty() {
                 route_json["bindings"] = json!(route
@@ -6446,21 +8000,108 @@ fn emit_plan(
                     .bindings
                     .iter()
                     .map(|binding| {
-                        json!({
+                        let mut binding_json = json!({
                             "kind": binding.kind,
                             "name": binding.name,
                             "schema": binding.schema
-                        })
+                        });
+                        if let Some(parameter) = &binding.parameter {
+                            binding_json["parameter"] = json!(parameter);
+                        }
+                        if let Some(type_name) = &binding.type_name {
+                            binding_json["type"] = json!(type_name);
+                        }
+                        if let Some(wrapper) = &binding.wrapper {
+                            binding_json["wrapper"] = json!(wrapper);
+                        }
+                        if let Some(kind) = &binding.injection_kind {
+                            binding_json["injectionKind"] = json!(kind);
+                        }
+                        if let Some(provider_kind) = &binding.provider_kind {
+                            binding_json["providerKind"] = json!(provider_kind);
+                        }
+                        if let Some(capability) = &binding.capability {
+                            binding_json["capability"] = json!(capability);
+                        }
+                        if let Some(semantic) = &binding.semantic {
+                            binding_json["semantic"] = json!(semantic);
+                        }
+                        if binding.redacted {
+                            binding_json["secret"] = json!(true);
+                            binding_json["redaction"] = json!("secret");
+                        }
+                        if let Some(span) = binding.span {
+                            binding_json["source"] = source_location_json(
+                                binding
+                                    .source_name
+                                    .as_deref()
+                                    .unwrap_or(&route.handler.source_name),
+                                binding
+                                    .source_text
+                                    .as_deref()
+                                    .unwrap_or(&route.handler.source_text),
+                                span,
+                            );
+                        }
+                        binding_json
                     })
                     .collect::<Vec<_>>());
+                let injections = route
+                    .handler
+                    .bindings
+                    .iter()
+                    .filter(|binding| binding.injection_kind.is_some())
+                    .map(|binding| {
+                        json!({
+                            "kind": binding.injection_kind,
+                            "providerKind": binding.provider_kind,
+                            "name": binding.name,
+                            "parameter": binding.parameter,
+                            "capability": binding.capability
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                if !injections.is_empty() {
+                    route_json["injections"] = json!(injections);
+                }
             }
             if emits_route_metadata {
                 if let Some(response) = &route.handler.response {
-                    route_json["response"] = json!({
+                    let mut response_json = json!({
                         "helper": response.helper,
                         "status": response.status,
                         "kind": response.kind
                     });
+                    if response.body_schema.is_some() {
+                        response_json["bodySchema"] = json!(response.body_schema);
+                    }
+                    if response.partial {
+                        response_json["partial"] = json!(true);
+                    }
+                    route_json["response"] = response_json;
+                }
+                if route.handler.responses.len() > 1 || route.handler.runtime_deferred {
+                    route_json["responses"] = json!(route
+                        .handler
+                        .responses
+                        .iter()
+                        .map(|response| {
+                            let mut value = json!({
+                                "helper": response.helper,
+                                "status": response.status,
+                                "kind": response.kind,
+                                "bodySchema": response.body_schema,
+                                "partial": response.partial
+                            });
+                            if let (Some(source_name), Some(source_text), Some(span)) =
+                                (&response.source_name, &response.source_text, response.span)
+                            {
+                                value["source"] =
+                                    source_location_json(source_name, source_text, span);
+                            }
+                            value
+                        })
+                        .collect::<Vec<_>>());
                 }
             }
             if !route.handler.effects.is_empty() {
@@ -7027,13 +8668,17 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
         .iter()
         .enumerate()
         .map(|(index, route)| {
-            json!({
+            let mut route_json = json!({
                 "handlerId": index + 1,
                 "method": route.method,
                 "pattern": route.pattern,
                 "module": route.module,
                 "source": source_location_json(&route.source_name, &route.source, route.span)
-            })
+            });
+            if let Some(framework_path) = &route.framework_path {
+                route_json["frameworkPath"] = json!(framework_path);
+            }
+            route_json
         })
         .collect::<Vec<_>>();
     let modules = app
@@ -7948,6 +9593,54 @@ export default app;
     }
 
     #[test]
+    fn typed_framework_route_bindings_use_full_grouped_pattern() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+const users = app.group("/users/:userId");
+users.get("/posts/:postId", (userId: number, postId: number) => Results.ok({ ok: true }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed grouped route should extract");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.routes[0].pattern, "/users/{userId}/posts/{postId}");
+        assert_eq!(
+            app.routes[0].framework_path.as_deref(),
+            Some("/users/:userId/posts/:postId")
+        );
+        let bindings = app.routes[0]
+            .handler
+            .bindings
+            .iter()
+            .map(|binding| (binding.kind.as_str(), binding.name.as_deref()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            bindings,
+            [("route", Some("userId")), ("route", Some("postId")),]
+        );
+    }
+
+    #[test]
+    fn typed_framework_colon_route_type_suffix_binds_name() {
+        let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/:id:int", (id: number) => Results.ok({ id }));
+export default app;
+"#;
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("typed colon route with type suffix should extract");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.routes[0].pattern, "/users/{id:int}");
+        let bindings = app.routes[0]
+            .handler
+            .bindings
+            .iter()
+            .map(|binding| (binding.kind.as_str(), binding.name.as_deref()))
+            .collect::<Vec<_>>();
+        assert_eq!(bindings, [("route", Some("id"))]);
+    }
+
+    #[test]
     fn extracts_direct_and_nested_function_module_routes() {
         let root = fixture_temp_dir("function-module-routes");
         let modules = root.join("modules");
@@ -8006,6 +9699,48 @@ export default app;
         .expect("plan should emit");
         assert!(plan.contains("\"module\": \"usersModule\""));
         assert!(plan.contains("\"path\": \"users.js\""));
+
+        fs::remove_dir_all(&root).expect("test directory should be removable");
+    }
+
+    #[test]
+    fn typed_function_module_route_bindings_use_full_grouped_pattern() {
+        let root = fixture_temp_dir("function-module-typed-groups");
+        let modules = root.join("modules");
+        fs::create_dir_all(&modules).expect("modules directory should be created");
+        fs::write(
+            modules.join("users.ts"),
+            r#"import { Results } from "sloppy";
+
+export function usersModule(app) {
+    const users = app.group("/users/:userId");
+    users.get("/posts/:postId", (userId: number, postId: number) => Results.ok({ ok: true }));
+}
+"#,
+        )
+        .expect("module fixture should be writable");
+        let source = r#"import { Sloppy, Results } from "sloppy";
+import { usersModule } from "./modules/users.ts";
+
+const app = Sloppy.create();
+app.useModule(usersModule);
+export default app;
+"#;
+        let app = extract_temp_input(&root, source)
+            .expect("typed grouped function module route should extract");
+        assert_eq!(app.routes.len(), 1);
+        assert_eq!(app.routes[0].pattern, "/users/{userId}/posts/{postId}");
+        assert_eq!(app.routes[0].module.as_deref(), Some("usersModule"));
+        let bindings = app.routes[0]
+            .handler
+            .bindings
+            .iter()
+            .map(|binding| (binding.kind.as_str(), binding.name.as_deref()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            bindings,
+            [("route", Some("userId")), ("route", Some("postId")),]
+        );
 
         fs::remove_dir_all(&root).expect("test directory should be removable");
     }
@@ -10182,6 +11917,165 @@ export default app;
         assert_eq!(app.routes[0].module.as_deref(), Some("healthModule"));
         assert_eq!(app.routes[1].pattern, "/users");
         assert_eq!(app.routes[1].module.as_deref(), Some("usersModule"));
+    }
+
+    #[test]
+    fn typed_framework_metadata_fixture_expected_outputs_stay_current() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let fixture_name = "framework-v2-metadata";
+        let fixture = root
+            .join("tests/fixtures")
+            .join(fixture_name)
+            .join("input.ts");
+        let source = fs::read_to_string(&fixture).expect("fixture input should exist");
+        let mut app = extract(&fixture, &source).expect("framework v2 fixture should extract");
+        super::ConfigurationModel::load(&fixture, &CompileOptions::new(), &app.config_reads)
+            .expect("fixture configuration should load")
+            .apply_to_app(&mut app)
+            .expect("fixture configuration should apply");
+
+        let emitted_js = super::emit_app_js(&app);
+        let expected_js = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.js"),
+        )
+        .expect("expected app.js should exist");
+        assert_eq!(emitted_js.source, expected_js, "{fixture_name} app.js");
+
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let emitted_plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let expected_plan = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.plan.json"),
+        )
+        .expect("expected app.plan.json should exist");
+        assert_eq!(emitted_plan, expected_plan, "{fixture_name} app.plan.json");
+
+        let expected_source_map = fs::read_to_string(
+            root.join("tests/fixtures")
+                .join(fixture_name)
+                .join("expected/app.js.map"),
+        )
+        .expect("expected app.js.map should exist");
+        assert_eq!(
+            emitted_source_map, expected_source_map,
+            "{fixture_name} app.js.map"
+        );
+    }
+
+    #[test]
+    fn typed_framework_negative_diagnostics_are_source_aware() {
+        for (source, code) in [
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", (id: number) => Results.ok({ id }));
+export default app;
+"#,
+                "SLOPPYC_E_AMBIGUOUS_BINDING",
+            ),
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+type BodyA = { name: string };
+type BodyB = { name: string };
+const app = Sloppy.create();
+app.post("/users", (a: BodyA, b: BodyB) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_MULTIPLE_BODY_BINDINGS",
+            ),
+            (
+                r#"import { Sloppy, Results, Header } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", (trace: Header<string>) => Results.ok({ trace }));
+export default app;
+"#,
+                "SLOPPYC_E_UNSUPPORTED_HEADER_BINDING",
+            ),
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+import { Postgres } from "sloppy/providers/postgres";
+const app = Sloppy.create();
+app.get("/users", (db: Postgres<string>) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_DYNAMIC_PROVIDER_NAME",
+            ),
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", (db: Mongo<"main">) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_UNKNOWN_INJECTION_MARKER",
+            ),
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (input: MissingModel) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_UNRESOLVED_TYPE",
+            ),
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+type Body = { child: MissingModel };
+const app = Sloppy.create();
+app.post("/users", (input: Body) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_UNRESOLVED_TYPE",
+            ),
+            (
+                r#"import { Sloppy, Results, Body } from "sloppy";
+const app = Sloppy.create();
+app.post("/users", (input: Body<MissingModel>) => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_UNRESOLVED_TYPE",
+            ),
+            (
+                r#"import { Sloppy, Results, Route } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/:id", (routeId: Route<number>) => Results.ok({ routeId }));
+export default app;
+"#,
+                "SLOPPYC_E_ROUTE_BINDING_MISMATCH",
+            ),
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+type Maybe<T> = T extends string ? string : number;
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
+            ),
+            (
+                r#"import { Sloppy, Results } from "sloppy";
+type Node = { next: Node };
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+                "SLOPPYC_E_UNSUPPORTED_TYPESCRIPT_SCHEMA",
+            ),
+        ] {
+            let diagnostic = extract(std::path::Path::new("app.ts"), source)
+                .expect_err("unsupported framework v2 source should fail");
+            assert_eq!(diagnostic.code, code);
+            assert!(
+                diagnostic.span.is_some(),
+                "{code} should include a source span"
+            );
+        }
     }
 
     #[test]

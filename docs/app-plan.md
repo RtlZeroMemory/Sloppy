@@ -38,11 +38,21 @@ The compiler can emit route metadata for the supported source subset:
 - source metadata;
 - direct handler IDs;
 - simple request context usage in supported handlers.
+- Framework v2 compiler-inferred metadata for typed handlers, including route/body/query/header
+  bindings, context bindings, provider/queue injection requirements, schema definitions,
+  semantic validation/redaction metadata, and visible `Results.*` response metadata.
 
 The native runtime validates route metadata, builds a deterministic route table, and
 dispatches supported requests through V8 in the V8 lane. Dynamic route registration,
 middleware, modules, automatic validation, arbitrary imports, and full TypeScript semantics
 remain outside the current source subset.
+
+Typed Framework v2 handler metadata is compiler/Plan-first. When the compiler sees a typed
+multi-parameter handler that the current runtime cannot execute directly, it emits
+`handlers[].runtimeDispatch: "deferred"` and a generated handler that returns a 501 problem
+descriptor. That is an honest runtime boundary: the Plan metadata may be complete for route,
+binding, schema, injection, and response facts while actual HTTP dispatch, DI/provider
+resolution, runtime validation, and response writing remain separate implementation lanes.
 
 ## Server Config Metadata
 
@@ -70,6 +80,10 @@ SQLite provider/capability metadata is consumed by the V8 SQLite bridge in scope
 PostgreSQL, SQL Server, filesystem, and network capability metadata must not be presented
 as complete JavaScript bridge or OS-sandbox evidence unless a scoped implementation and
 evidence lane prove it.
+
+Framework v2 typed provider parameters such as `Postgres<"main">`, `Sqlite<"main">`, and
+`SqlServer<"main">` are represented as injection/capability requirements in route metadata.
+They do not register or execute native database providers by themselves.
 
 Credential-bearing fields must not be persisted in Plan metadata. Use redacted placeholders,
 config references, or secret-source references.
